@@ -32,8 +32,6 @@ images = []
 
 AUGMENTATION_CLS_EXCEPT = {
     A.Lambda,
-    A.RandomSizedBBoxSafeCrop,
-    A.BBoxSafeRandomCrop,
 }
 
 
@@ -119,7 +117,7 @@ def test_augmentations_serialization_with_custom_parameters(
     elif augmentation_cls in transforms3d:
         data["volume"] = np.array([image] * 10)
         data["mask"] = np.array([mask] * 10)
-    elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop}:
+    elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop}:
         data["bboxes"] = np.array([[10, 20, 40, 50]])
     elif augmentation_cls == A.FDA:
         data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
@@ -196,7 +194,7 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
         data["textimage_metadata"] = {"text": "Test", "bbox": (0.1, 0.1, 0.9, 0.2)}
     elif augmentation_cls in transforms3d:
         data = {"volume": np.array([image] * 10), "mask3d": np.array([mask] * 10)}
-    elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop}:
+    elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop}:
         data["bboxes"] = np.array([[10, 20, 40, 50]])
     elif augmentation_cls == A.FDA:
         data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]

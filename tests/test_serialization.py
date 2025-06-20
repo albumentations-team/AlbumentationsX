@@ -31,13 +31,9 @@ images = []
 
 
 AUGMENTATION_CLS_EXCEPT = {
-    A.FDA,
-    A.HistogramMatching,
-    A.PixelDistributionAdaptation,
     A.Lambda,
     A.RandomSizedBBoxSafeCrop,
     A.BBoxSafeRandomCrop,
-    A.Mosaic,
 }
 
 
@@ -77,6 +73,8 @@ def test_augmentations_serialization(augmentation_cls, params, p, seed, image):
         data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
     elif augmentation_cls == A.PixelDistributionAdaptation:
         data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.Mosaic:
+        data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -129,6 +127,8 @@ def test_augmentations_serialization_with_custom_parameters(
         data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
     elif augmentation_cls == A.PixelDistributionAdaptation:
         data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.Mosaic:
+        data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -204,6 +204,8 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
         data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
     elif augmentation_cls == A.PixelDistributionAdaptation:
         data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.Mosaic:
+        data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -562,6 +564,8 @@ def test_additional_targets_for_image_only_serialization(
         data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
     elif augmentation_cls == A.PixelDistributionAdaptation:
         data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.Mosaic:
+        data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)

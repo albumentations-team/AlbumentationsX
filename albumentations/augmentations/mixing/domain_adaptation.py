@@ -167,8 +167,8 @@ class BaseDomainAdaptation(ImageOnlyTransform):
                 f"'{self.metadata_key}' in the input data.",
             )
 
-        if not isinstance(metadata_images, Sequence) or not metadata_images:
-            raise ValueError(
+        if not isinstance(metadata_images, Sequence):
+            raise TypeError(
                 f"Metadata key '{self.metadata_key}' should contain a non-empty sequence of numpy arrays.",
             )
 

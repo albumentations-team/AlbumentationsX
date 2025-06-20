@@ -9,6 +9,7 @@ proper data flow and maintaining consistent behavior across the augmentation pip
 
 from __future__ import annotations
 
+import contextlib
 import random
 import warnings
 from collections import defaultdict
@@ -18,6 +19,11 @@ from typing import Any, Union, cast
 import cv2
 import numpy as np
 
+from .analytics.collectors import collect_pipeline_info, get_environment_info
+
+# Telemetry imports
+from .analytics.settings import settings
+from .analytics.telemetry import get_telemetry_client
 from .bbox_utils import BboxParams, BboxProcessor
 from .hub_mixin import HubMixin
 from .keypoints_utils import KeypointParams, KeypointsProcessor
@@ -657,6 +663,11 @@ class Compose(BaseCompose, HubMixin):
             random state.
         save_applied_params (bool): If True, saves the applied parameters of each transform. Default is False.
             You will need to use the `applied_transforms` key in the output dictionary to access the parameters.
+        telemetry (bool): If True, enables telemetry collection to help improve AlbumentationsX.
+            This collects anonymous usage data including pipeline configuration, environment info,
+            and common parameter patterns. No image data or personal information is collected.
+            Telemetry can be disabled globally via settings.telemetry_enabled = False or by
+            setting the environment variable ALBUMENTATIONSX_NO_TELEMETRY=1. Default is True.
 
     Examples:
         >>> # Basic usage:
@@ -708,6 +719,7 @@ class Compose(BaseCompose, HubMixin):
         mask_interpolation: int | None = None,
         seed: int | None = None,
         save_applied_params: bool = False,
+        telemetry: bool = True,
     ):
         # Store the original base seed for worker context recalculation
         self._base_seed = seed
@@ -765,6 +777,25 @@ class Compose(BaseCompose, HubMixin):
         self._images_was_list = False
         self._masks_was_list = False
         self._last_torch_seed: int | None = None
+
+        # Track telemetry after nested composes are processed
+        # This ensures nested composes have main_compose=False from disable_check_args_private
+        if self.main_compose and settings.telemetry_enabled:
+            with contextlib.suppress(Exception):
+                client = get_telemetry_client()
+
+                # Collect telemetry data
+                env_info = get_environment_info()
+                pipeline_info = collect_pipeline_info(self)
+
+                # Combine all data
+                telemetry_data = {
+                    **env_info,
+                    **pipeline_info,
+                }
+
+                # Always call the client, let it decide based on telemetry parameter
+                client.track_compose_init(telemetry_data, telemetry=telemetry)
 
     @property
     def strict(self) -> bool:

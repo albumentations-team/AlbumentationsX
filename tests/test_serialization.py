@@ -21,7 +21,6 @@ from tests.conftest import (
 )
 
 from .utils import (
-    OpenMock,
     check_all_augs_exists,
     get_dual_transforms,
     get_image_only_transforms,
@@ -52,9 +51,6 @@ TEST_SEEDS = (137,)
         custom_arguments={
         },
         except_augmentations={
-            A.FDA,
-            A.HistogramMatching,
-            A.PixelDistributionAdaptation,
             A.Lambda,
         },
     ),
@@ -72,8 +68,18 @@ def test_augmentations_serialization(augmentation_cls, params, p, seed, image):
     deserialized_aug = A.from_dict(serialized_aug)
 
     deserialized_aug.random_generator = np.random.default_rng(seed)
-    aug_data = aug(image=image, mask=mask)
-    deserialized_aug_data = deserialized_aug(image=image, mask=mask)
+
+    data = {"image": image, "mask": mask}
+
+    if augmentation_cls == A.FDA:
+        data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.HistogramMatching:
+        data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.PixelDistributionAdaptation:
+        data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+
+    aug_data = aug(**data)
+    deserialized_aug_data = deserialized_aug(**data)
 
     np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
     np.testing.assert_array_equal(aug_data["mask"], deserialized_aug_data["mask"])
@@ -111,12 +117,18 @@ def test_augmentations_serialization_with_custom_parameters(
     elif augmentation_cls == A.RandomCropNearBBox:
         data["cropping_bbox"] = [10, 20, 40, 50]
     elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = []
+        data["textimage_metadata"] = {"text": "Test", "bbox": (0.1, 0.1, 0.9, 0.2)}
     elif augmentation_cls in transforms3d:
         data["volume"] = np.array([image] * 10)
         data["mask"] = np.array([mask] * 10)
     elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop}:
         data["bboxes"] = np.array([[10, 20, 40, 50]])
+    elif augmentation_cls == A.FDA:
+        data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.HistogramMatching:
+        data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.PixelDistributionAdaptation:
+        data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -181,11 +193,17 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
     elif augmentation_cls == A.RandomCropNearBBox:
         data["cropping_bbox"] = [10, 20, 40, 50]
     elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = []
+        data["textimage_metadata"] = {"text": "Test", "bbox": (0.1, 0.1, 0.9, 0.2)}
     elif augmentation_cls in transforms3d:
         data = {"volume": np.array([image] * 10), "mask3d": np.array([mask] * 10)}
     elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop}:
         data["bboxes"] = np.array([[10, 20, 40, 50]])
+    elif augmentation_cls == A.FDA:
+        data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.HistogramMatching:
+        data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.PixelDistributionAdaptation:
+        data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -204,9 +222,6 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
         custom_arguments={
         },
         except_augmentations={
-            A.FDA,
-            A.HistogramMatching,
-            A.PixelDistributionAdaptation,
             A.Lambda,
             A.CoarseDropout,
             A.CropNonEmptyMaskIfExists,
@@ -253,9 +268,6 @@ def test_augmentations_for_bboxes_serialization(
         custom_arguments={
         },
         except_augmentations={
-            A.FDA,
-            A.HistogramMatching,
-            A.PixelDistributionAdaptation,
             A.Lambda,
             A.CropNonEmptyMaskIfExists,
             A.RandomSizedBBoxSafeCrop,
@@ -518,9 +530,6 @@ def test_transform_pipeline_serialization_with_keypoints(
     ["augmentation_cls", "params"],
     get_image_only_transforms(
         except_augmentations={
-            A.HistogramMatching,
-            A.FDA,
-            A.PixelDistributionAdaptation,
             A.TextImage,
         },
     ),
@@ -545,8 +554,17 @@ def test_additional_targets_for_image_only_serialization(
     deserialized_aug = A.from_dict(serialized_aug)
     deserialized_aug.set_random_seed(seed)
 
-    aug_data = aug(image=image, image2=image2)
-    deserialized_aug_data = deserialized_aug(image=image, image2=image2)
+    data = {"image": image, "image2": image2}
+
+    if augmentation_cls == A.FDA:
+        data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.HistogramMatching:
+        data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+    elif augmentation_cls == A.PixelDistributionAdaptation:
+        data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
+
+    aug_data = aug(**data)
+    deserialized_aug_data = deserialized_aug(**data)
 
     np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
     np.testing.assert_array_equal(aug_data["image2"], deserialized_aug_data["image2"])
@@ -736,9 +754,6 @@ def test_shorten_class_name(class_fullname, expected_short_class_name):
         custom_arguments={
         },
         except_augmentations={
-            A.FDA,
-            A.HistogramMatching,
-            A.PixelDistributionAdaptation,
             A.Lambda,
         },
     ),

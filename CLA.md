@@ -89,6 +89,7 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU BE LIABL
 By making a contribution to this project, I certify that I have read and agree to the terms of this Contributor License Agreement.
 
 To sign this agreement electronically, please comment on the pull request with:
-```
+
+```text
 I have read the CLA Document and I hereby sign the CLA
-``` 
+```

@@ -8,21 +8,18 @@ like histograms, frequency spectra, or overall pixel distributions.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Sequence
-from typing import Annotated, Any, Callable, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
-from pydantic import AfterValidator, field_validator, model_validator
-from typing_extensions import Self
+from pydantic import AfterValidator, field_validator
 
 from albumentations.augmentations.mixing.domain_adaptation_functional import (
     adapt_pixel_distribution,
     apply_histogram,
     fourier_domain_adaptation,
 )
-from albumentations.augmentations.utils import read_rgb_image
 from albumentations.core.pydantic import ZeroOneRangeType, check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 
@@ -37,26 +34,7 @@ MAX_BETA_LIMIT = 0.5
 
 # Base class for Domain Adaptation Init Schema
 class BaseDomainAdaptationInitSchema(BaseTransformInitSchema):
-    reference_images: Sequence[Any] | None
-    read_fn: Callable[[Any], np.ndarray] | None
     metadata_key: str
-
-    @model_validator(mode="after")
-    def _check_deprecated_args(self) -> Self:
-        if self.reference_images is not None:
-            warnings.warn(
-                "'reference_images' and 'read_fn' arguments are deprecated. "
-                "Please pass pre-loaded reference images "
-                f"using the '{self.metadata_key}' key in the input data dictionary.",
-                DeprecationWarning,
-                stacklevel=3,  # Adjust stacklevel as needed
-            )
-
-            if self.read_fn is None:
-                msg = "read_fn cannot be None when using the deprecated 'reference_images' argument."
-                raise ValueError(msg)
-
-        return self
 
 
 class BaseDomainAdaptation(ImageOnlyTransform):
@@ -70,11 +48,6 @@ class BaseDomainAdaptation(ImageOnlyTransform):
     color transfer, style transfer, frequency domain adaptation, or histogram matching.
 
     Args:
-        reference_images (Sequence[Any] | None): Deprecated. Sequence of references to images from the target
-            domain. Should be used with read_fn to load actual images. Prefer passing pre-loaded images via
-            metadata_key.
-        read_fn (Callable[[Any], np.ndarray] | None): Deprecated. Function to read an image from a reference.
-            Should be used with reference_images.
         metadata_key (str): Key in the input data dictionary that contains pre-loaded target domain images.
         p (float): Probability of applying the transform. Default: 0.5.
 
@@ -174,14 +147,10 @@ class BaseDomainAdaptation(ImageOnlyTransform):
 
     def __init__(
         self,
-        reference_images: Sequence[Any] | None,
-        read_fn: Callable[[Any], np.ndarray] | None,
         metadata_key: str,
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.reference_images = reference_images
-        self.read_fn = read_fn
         self.metadata_key = metadata_key
 
     @property
@@ -189,68 +158,36 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         return [self.metadata_key]
 
     def _get_reference_image(self, data: dict[str, Any]) -> np.ndarray:
-        """Retrieves the reference image from metadata or deprecated arguments."""
-        reference_image = None
+        """Retrieves the reference image from metadata."""
+        metadata_images = data.get(self.metadata_key)
 
-        if metadata_images := data.get(self.metadata_key):
-            if not isinstance(metadata_images, Sequence) or not metadata_images:
-                raise ValueError(
-                    f"Metadata key '{self.metadata_key}' should contain a non-empty sequence of numpy arrays.",
-                )
-            if not isinstance(metadata_images[0], np.ndarray):
-                raise ValueError(
-                    f"Images in metadata key '{self.metadata_key}' should be numpy arrays.",
-                )
-            reference_image = self.py_random.choice(metadata_images)
-
-            if self.reference_images is not None:
-                warnings.warn(
-                    f"Both 'reference_images' (deprecated constructor argument) and metadata via "
-                    f"'{self.metadata_key}' were provided. Prioritizing metadata.",
-                    UserWarning,
-                    stacklevel=3,  # Adjust stacklevel as needed
-                )
-
-        elif self.reference_images is not None:
-            # Deprecation warning is handled by the InitSchema validator
-            if self.read_fn is None:
-                # This case should ideally be caught by InitSchema, but safety check
-                msg = "read_fn cannot be None when using the deprecated 'reference_images' argument."
-                raise ValueError(msg)
-            ref_source = self.py_random.choice(self.reference_images)
-            reference_image = self.read_fn(ref_source)
-        else:
+        if not metadata_images:
             raise ValueError(
                 f"{self.__class__.__name__} requires reference images. Provide them via the `metadata_key` "
-                f"'{self.metadata_key}' in the input data, or use the deprecated 'reference_images' argument.",
+                f"'{self.metadata_key}' in the input data.",
             )
 
-        if reference_image is None:
-            # Should not happen if logic above is correct, but safety check
-            msg = "Could not obtain a reference image."
-            raise RuntimeError(msg)
+        if not isinstance(metadata_images, Sequence) or not metadata_images:
+            raise ValueError(
+                f"Metadata key '{self.metadata_key}' should contain a non-empty sequence of numpy arrays.",
+            )
 
-        return reference_image
+        if not isinstance(metadata_images[0], np.ndarray):
+            raise TypeError(
+                f"Images in metadata key '{self.metadata_key}' should be numpy arrays.",
+            )
+
+        return self.py_random.choice(metadata_images)
 
     def to_dict_private(self) -> dict[str, Any]:
         """Convert the transform to a dictionary for serialization.
 
-        Raises:
-            NotImplementedError: Domain adaptation transforms cannot be reliably serialized
-                                 when using metadata key or deprecated arguments.
+        Returns:
+            dict[str, Any]: Dictionary representation of the transform
 
         """
-        if self.reference_images is not None:
-            msg = (
-                f"{self.__class__.__name__} cannot be reliably serialized when using the deprecated 'reference_images'."
-            )
-            raise NotImplementedError(msg)
-
-        msg = (
-            f"{self.__class__.__name__} cannot be reliably serialized due to its dependency "
-            "on external data via metadata."
-        )
-        raise NotImplementedError(msg)
+        # Transform is now fully serializable since we removed deprecated parameters
+        return super().to_dict_private()
 
 
 class HistogramMatching(BaseDomainAdaptation):
@@ -298,7 +235,6 @@ class HistogramMatching(BaseDomainAdaptation):
 
     Note:
         - Requires at least one reference image to be provided via the `metadata_key` argument.
-        - The `reference_images` and `read_fn` constructor arguments are deprecated.
 
     Examples:
         >>> import numpy as np
@@ -358,13 +294,11 @@ class HistogramMatching(BaseDomainAdaptation):
 
     def __init__(
         self,
-        reference_images: Sequence[Any] | None = None,
         blend_ratio: tuple[float, float] = (0.5, 1.0),
-        read_fn: Callable[[Any], np.ndarray] | None = read_rgb_image,
         metadata_key: str = "hm_metadata",
         p: float = 0.5,
     ):
-        super().__init__(reference_images=reference_images, read_fn=read_fn, metadata_key=metadata_key, p=p)
+        super().__init__(metadata_key=metadata_key, p=p)
         self.blend_ratio = blend_ratio
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
@@ -451,7 +385,6 @@ class FDA(BaseDomainAdaptation):
 
     Note:
         - Requires at least one reference image to be provided via the `metadata_key` argument.
-        - The `reference_images` and `read_fn` constructor arguments are deprecated.
 
     Examples:
         >>> import numpy as np
@@ -557,13 +490,11 @@ class FDA(BaseDomainAdaptation):
 
     def __init__(
         self,
-        reference_images: Sequence[Any] | None = None,
         beta_limit: tuple[float, float] | float = (0, 0.1),
-        read_fn: Callable[[Any], np.ndarray] | None = read_rgb_image,
         metadata_key: str = "fda_metadata",
         p: float = 0.5,
     ):
-        super().__init__(reference_images=reference_images, read_fn=read_fn, metadata_key=metadata_key, p=p)
+        super().__init__(metadata_key=metadata_key, p=p)
         self.beta_limit = cast("tuple[float, float]", beta_limit)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
@@ -647,7 +578,6 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
 
     Note:
         - Requires at least one reference image to be provided via the `metadata_key` argument.
-        - The `reference_images` and `read_fn` constructor arguments are deprecated.
 
     Examples:
         >>> import numpy as np
@@ -747,14 +677,12 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
 
     def __init__(
         self,
-        reference_images: Sequence[Any] | None = None,
         blend_ratio: tuple[float, float] = (0.25, 1.0),
-        read_fn: Callable[[Any], np.ndarray] | None = read_rgb_image,
         transform_type: Literal["pca", "standard", "minmax"] = "pca",
         metadata_key: str = "pda_metadata",
         p: float = 0.5,
     ):
-        super().__init__(reference_images=reference_images, read_fn=read_fn, metadata_key=metadata_key, p=p)
+        super().__init__(metadata_key=metadata_key, p=p)
         self.blend_ratio = blend_ratio
         self.transform_type = transform_type
 

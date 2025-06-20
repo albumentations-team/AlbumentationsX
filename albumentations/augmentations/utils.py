@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import functools
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
+from typing import Any, Callable, TypeVar, cast
 
 import cv2
 import numpy as np
@@ -24,64 +24,14 @@ from typing_extensions import Concatenate, ParamSpec
 
 from albumentations.core.keypoints_utils import angle_to_2pi_range
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-
 __all__ = [
     "angle_2pi_range",
     "non_rgb_error",
-    "read_bgr_image",
-    "read_grayscale",
-    "read_rgb_image",
 ]
 
 P = ParamSpec("P")
 T = TypeVar("T", bound=np.ndarray)
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-def read_bgr_image(path: str | Path) -> np.ndarray:
-    """Read an image in BGR format from the specified path.
-
-    Args:
-        path (str | Path): Path to the image file.
-
-    Returns:
-        np.ndarray: Image in BGR format as a numpy array.
-
-    """
-    return cv2.imread(str(path), cv2.IMREAD_COLOR)
-
-
-def read_rgb_image(path: str | Path) -> np.ndarray:
-    """Read an image in RGB format from the specified path.
-
-    This function reads an image in BGR format using OpenCV and then
-    converts it to RGB format.
-
-    Args:
-        path (str | Path): Path to the image file.
-
-    Returns:
-        np.ndarray: Image in RGB format as a numpy array.
-
-    """
-    image = read_bgr_image(path)
-    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-
-def read_grayscale(path: str | Path) -> np.ndarray:
-    """Read a grayscale image from the specified path.
-
-    Args:
-        path (str | Path): Path to the image file.
-
-    Returns:
-        np.ndarray: Grayscale image as a numpy array.
-
-    """
-    return cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
 
 
 def angle_2pi_range(

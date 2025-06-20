@@ -54,7 +54,7 @@ Before we can accept your contribution, you must sign our [Contributor License A
 
 When you open your first pull request, the CLA Assistant bot will automatically check if you've signed. To sign, simply comment on the PR:
 
-```
+```text
 I have read the CLA Document and I hereby sign the CLA
 ```
 

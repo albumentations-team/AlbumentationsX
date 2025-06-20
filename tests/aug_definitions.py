@@ -446,4 +446,7 @@ AUGMENTATION_CLS_PARAMS = [
         {"method": "random_preset",
          "intensity_scale_range": (0.5, 1.5), "intensity_shift_range": (-0.1, 0.1), "augment_background": True},
     ]],
+    [A.FDA, {"beta_limit": (0.1, 0.3), "metadata_key": "fda_metadata"}],
+    [A.HistogramMatching, {"blend_ratio": (0.5, 1.0), "metadata_key": "hm_metadata"}],
+    [A.PixelDistributionAdaptation, {"blend_ratio": (0.25, 1.0), "transform_type": "pca", "metadata_key": "pda_metadata"}],
 ]

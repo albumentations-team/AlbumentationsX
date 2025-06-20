@@ -102,11 +102,14 @@ class TestConnectivity:
         """Test successful connectivity check."""
         with patch("socket.socket") as mock_socket:
             mock_sock = MagicMock()
-            mock_socket.return_value = mock_sock
+            # Set up context manager behavior
+            mock_socket.return_value.__enter__.return_value = mock_sock
+            mock_socket.return_value.__exit__.return_value = None
 
             assert check_connectivity() is True
             mock_sock.connect.assert_called_once()
-            mock_sock.close.assert_called_once()
+            # Should not call close explicitly since context manager handles it
+            mock_sock.close.assert_not_called()
 
     def test_check_connectivity_dns_failure_http_success(self, clean_environment):
         """Test fallback to HTTP when DNS fails."""
@@ -146,7 +149,9 @@ class TestConnectivity:
         """Test that connectivity check is cached."""
         with patch("socket.socket") as mock_socket:
             mock_sock = MagicMock()
-            mock_socket.return_value = mock_sock
+            # Set up context manager behavior
+            mock_socket.return_value.__enter__.return_value = mock_sock
+            mock_socket.return_value.__exit__.return_value = None
 
             # First call
             assert check_connectivity() is True
@@ -247,14 +252,49 @@ class TestPyPIFetching:
 
                 assert fetch_pypi_version() is None
 
+    def test_fetch_pypi_version_missing_info(self, clean_environment):
+        """Test PyPI fetch with valid JSON missing 'info' key."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"releases": {}}).encode()
+
+        with patch("albumentations.check_version.check_connectivity", return_value=True):
+            with patch("urllib.request.build_opener") as mock_opener_builder:
+                mock_opener = MagicMock()
+                mock_opener.open.return_value.__enter__.return_value = mock_response
+                mock_opener_builder.return_value = mock_opener
+
+                assert fetch_pypi_version() is None
+
+    def test_fetch_pypi_version_missing_version(self, clean_environment):
+        """Test PyPI fetch with valid JSON where 'info' exists but 'version' is missing."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"info": {"name": "albumentationsx"}}).encode()
+
+        with patch("albumentations.check_version.check_connectivity", return_value=True):
+            with patch("urllib.request.build_opener") as mock_opener_builder:
+                mock_opener = MagicMock()
+                mock_opener.open.return_value.__enter__.return_value = mock_response
+                mock_opener_builder.return_value = mock_opener
+
+                assert fetch_pypi_version() is None
+
 
 class TestGetLatestVersion:
     """Test get_latest_version functionality."""
 
-    def test_get_latest_version_disabled(self, clean_environment, monkeypatch):
+    def test_get_latest_version_disabled(self, clean_environment, temp_cache_file, monkeypatch):
         """Test when update check is disabled."""
         monkeypatch.setenv(ENV_NO_UPDATE, "1")
         assert get_latest_version() is None
+
+        # Clear cache and test with "true"
+        monkeypatch.setenv(ENV_NO_UPDATE, "true")
+        assert get_latest_version() is None
+
+        # Test that other values don't disable
+        monkeypatch.setenv(ENV_NO_UPDATE, "0")
+        with patch("albumentations.check_version.fetch_pypi_version", return_value="1.4.25"):
+            assert get_latest_version() == "1.4.25"
 
     def test_get_latest_version_from_cache(self, clean_environment, temp_cache_file):
         """Test getting version from cache."""
@@ -347,9 +387,14 @@ class TestIntegration:
     def test_real_pypi_check(self, clean_environment):
         """Test actual PyPI connectivity (integration test)."""
         version = fetch_pypi_version()
-        if version:
-            # Should be a valid version string
-            assert parse_version(version) is not None
+        if version is None:
+            # This is expected if the package doesn't exist on PyPI yet
+            # or if there's a network issue - both are valid scenarios
+            pytest.skip("Package not available on PyPI or network issue")
+        else:
+            # If we got a version, it should be valid semantic version
+            parsed = parse_version(version)
+            assert parsed is not None, f"Version '{version}' is not a valid semantic version"
 
 
 class TestEdgeCases:

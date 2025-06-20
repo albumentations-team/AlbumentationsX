@@ -11,8 +11,8 @@ Features:
     - Support for pre-release versions
 
 Environment Variables:
-    NO_ALBUMENTATIONS_UPDATE: Set to disable update checks
-    ALBUMENTATIONS_OFFLINE: Set to force offline mode
+    NO_ALBUMENTATIONS_UPDATE: Set to "1" or "true" to disable update checks
+    ALBUMENTATIONS_OFFLINE: Set to "1" or "true" to force offline mode
 
 Usage:
     >>> from albumentations.check_version import check_for_updates
@@ -51,14 +51,12 @@ DNS_SERVERS = [("1.1.1.1", 53), ("8.8.8.8", 53)]  # Cloudflare and Google
 def _try_dns_connect(server: str, port: int) -> bool:
     """Try to connect to a DNS server."""
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        sock.connect((server, port))
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            sock.connect((server, port))
+            return True
     except (socket.timeout, OSError):
         return False
-    else:
-        sock.close()
-        return True
 
 
 @functools.lru_cache(maxsize=1)
@@ -177,7 +175,7 @@ def parse_version(version: str) -> tuple[int, ...] | None:
 def get_latest_version() -> str | None:
     """Get the latest version with caching."""
     # Check if disabled
-    if os.environ.get(ENV_NO_UPDATE):
+    if os.environ.get(ENV_NO_UPDATE, "").lower() in {"1", "true"}:
         return None
 
     # Try cache first

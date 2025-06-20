@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import socket
 import urllib.error
 import warnings
+import sys
 
 import pytest
 
@@ -213,6 +214,7 @@ class TestCacheOperations:
 
         assert read_cache() is None
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="File permission test not applicable on Windows")
     def test_cache_file_permissions_error(self, temp_cache_file, monkeypatch):
         """Test handling of permission errors."""
         # First, ensure the cache file doesn't exist
@@ -505,3 +507,60 @@ class TestEdgeCases:
 
         # Verify the cache file can be parsed (not corrupted)
         assert parse_version(final_version) is not None, "Final cache value should be a valid version"
+
+    def test_concurrent_cache_corruption(self, temp_cache_file):
+        """Test handling of cache corruption during concurrent access."""
+        import threading
+        import time
+
+        results = []
+        corruption_occurred = False
+
+        def write_and_corrupt(version, should_corrupt=False):
+            nonlocal corruption_occurred
+            try:
+                if should_corrupt and not corruption_occurred:
+                    # Simulate corruption by writing invalid data
+                    time.sleep(0.01)  # Small delay to increase chance of race condition
+                    with temp_cache_file.open("w") as f:
+                        f.write("{ corrupted during write")
+                    corruption_occurred = True
+                else:
+                    write_cache(version)
+
+                # Try to read after write/corruption
+                result = read_cache()
+                results.append(result)
+            except Exception as e:
+                results.append(f"error: {type(e).__name__}")
+
+        # Mix normal writes with corruption attempts
+        threads = []
+        for i in range(10):
+            # Every 3rd thread tries to corrupt
+            should_corrupt = (i % 3 == 0)
+            t = threading.Thread(
+                target=write_and_corrupt,
+                args=(f"1.4.{i}", should_corrupt)
+            )
+            threads.append(t)
+
+        # Start all threads
+        for t in threads:
+            t.start()
+
+        # Wait for completion
+        for t in threads:
+            t.join()
+
+        # Verify behavior
+        assert len(results) == 10, "All threads should complete"
+
+        # Check that at least some operations succeeded despite corruption
+        valid_results = [r for r in results if r and isinstance(r, str) and r.startswith("1.4.")]
+        assert len(valid_results) > 0, "Some cache operations should succeed despite corruption attempts"
+
+        # Final cache state should be either valid or non-existent
+        final_state = read_cache()
+        if final_state is not None:
+            assert parse_version(final_state) is not None, "Final cache should be valid if it exists"

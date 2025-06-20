@@ -37,7 +37,6 @@ from albumentations import __version__ as current_version
 # Constants
 HTTP_TIMEOUT = 3.0
 PYPI_URL = "https://pypi.org/pypi/albumentationsx/json"
-CACHE_FILE = Path.home() / ".cache" / "albumentationsx" / "version_cache.json"
 CACHE_HOURS = 24
 
 # Environment variables
@@ -92,6 +91,26 @@ def fetch_pypi_version() -> str | None:
             return data.get("info", {}).get("version")
     except (urllib.error.URLError, json.JSONDecodeError, KeyError, OSError):
         return None
+
+
+def get_cache_dir() -> Path:
+    """Get platform-appropriate cache directory."""
+    # Check for environment variable override
+    if cache_dir := os.environ.get("ALBUMENTATIONS_CACHE_DIR"):
+        return Path(cache_dir)
+
+    # Use platform-specific directories
+    if os.name == "nt":  # Windows
+        # Use %LOCALAPPDATA% on Windows (e.g., C:\Users\username\AppData\Local)
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return base / "AlbumentationsX" / "Cache"
+    # Unix-like
+    # Follow XDG Base Directory spec
+    base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return base / "albumentationsx"
+
+
+CACHE_FILE = get_cache_dir() / "version_cache.json"
 
 
 def read_cache() -> str | None:
@@ -179,8 +198,7 @@ def get_latest_version() -> str | None:
         return None
 
     # Try cache first
-    cached = read_cache()
-    if cached:
+    if cached := read_cache():
         return cached
 
     # Fetch from PyPI

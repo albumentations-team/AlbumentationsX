@@ -3,8 +3,7 @@
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 import socket
 import urllib.error
 import warnings
@@ -12,12 +11,9 @@ import warnings
 import pytest
 
 from albumentations.check_version import (
-    CACHE_FILE,
     CACHE_HOURS,
-    DNS_SERVERS,
     ENV_NO_UPDATE,
     ENV_OFFLINE,
-    PYPI_URL,
     check_connectivity,
     check_for_updates,
     fetch_pypi_version,
@@ -110,6 +106,30 @@ class TestConnectivity:
             mock_sock.connect.assert_called_once()
             # Should not call close explicitly since context manager handles it
             mock_sock.close.assert_not_called()
+
+    def test_check_connectivity_partial_dns_failure(self, clean_environment):
+        """Test that connectivity check tries multiple DNS servers."""
+        call_count = 0
+
+        def socket_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+
+            mock_sock = MagicMock()
+            if call_count == 1:
+                # First DNS server fails
+                mock_sock.__enter__.return_value.connect.side_effect = socket.error("Connection failed")
+            else:
+                # Second DNS server succeeds
+                mock_sock.__enter__.return_value = mock_sock
+
+            mock_sock.__exit__.return_value = None
+            return mock_sock
+
+        with patch("socket.socket", side_effect=socket_side_effect):
+            assert check_connectivity() is True
+            # Should have tried two sockets (first failed, second succeeded)
+            assert call_count == 2
 
     def test_check_connectivity_dns_failure_http_success(self, clean_environment):
         """Test fallback to HTTP when DNS fails."""
@@ -252,6 +272,16 @@ class TestPyPIFetching:
 
                 assert fetch_pypi_version() is None
 
+    def test_fetch_pypi_version_timeout(self, clean_environment):
+        """Test PyPI fetch with network timeout."""
+        with patch("albumentations.check_version.check_connectivity", return_value=True):
+            with patch("urllib.request.build_opener") as mock_opener_builder:
+                mock_opener = MagicMock()
+                mock_opener.open.side_effect = socket.timeout("Network timeout")
+                mock_opener_builder.return_value = mock_opener
+
+                assert fetch_pypi_version() is None
+
     def test_fetch_pypi_version_missing_info(self, clean_environment):
         """Test PyPI fetch with valid JSON missing 'info' key."""
         mock_response = MagicMock()
@@ -312,6 +342,18 @@ class TestGetLatestVersion:
         """Test when PyPI fetch fails."""
         with patch("albumentations.check_version.fetch_pypi_version", return_value=None):
             assert get_latest_version() is None
+
+    def test_get_latest_version_corrupted_cache(self, clean_environment, temp_cache_file):
+        """Test that corrupted cache files are handled gracefully."""
+        # Write corrupted cache
+        with temp_cache_file.open("w") as f:
+            f.write("{ invalid json }")
+
+        # Should fall back to fetching from PyPI
+        with patch("albumentations.check_version.fetch_pypi_version", return_value="1.4.27"):
+            assert get_latest_version() == "1.4.27"
+            # Verify it was re-cached correctly
+            assert read_cache() == "1.4.27"
 
 
 class TestCheckForUpdates:
@@ -375,6 +417,27 @@ class TestCheckForUpdates:
 
                 # Should not emit any warnings in silent mode
                 assert len(warning_list) == 0
+
+    def test_check_for_updates_disabled_by_env(self, clean_environment, monkeypatch):
+        """Test that NO_ALBUMENTATIONS_UPDATE disables update check."""
+        monkeypatch.setenv(ENV_NO_UPDATE, "1")
+
+        # Even with a newer version "available", check should be disabled
+        with patch("albumentations.check_version.fetch_pypi_version", return_value="1.5.0"):
+            with patch("albumentations.check_version.current_version", "1.4.0"):
+                # Should not emit any warnings
+                with warnings.catch_warnings(record=True) as warning_list:
+                    update_available, latest = check_for_updates(verbose=True)
+
+                assert update_available is False
+                assert latest is None
+                assert len(warning_list) == 0  # No warnings should be emitted
+
+        # Also test with "true" value
+        monkeypatch.setenv(ENV_NO_UPDATE, "true")
+        update_available, latest = check_for_updates(verbose=True)
+        assert update_available is False
+        assert latest is None
 
 
 class TestIntegration:

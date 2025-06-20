@@ -215,15 +215,22 @@ class TestCacheOperations:
 
     def test_cache_file_permissions_error(self, temp_cache_file, monkeypatch):
         """Test handling of permission errors."""
+        # First, ensure the cache file doesn't exist
+        assert not temp_cache_file.exists()
+
         # Make parent directory read-only
         temp_cache_file.parent.chmod(0o444)
 
         try:
-            # Should not raise, just fail silently
+            # write_cache should not raise, just fail silently
             write_cache("1.4.25")
+            # No assertion needed - if no exception is raised, the test passes
         finally:
             # Restore permissions for cleanup
             temp_cache_file.parent.chmod(0o755)
+
+        # After restoring permissions, verify file was not created
+        assert not temp_cache_file.exists(), "Cache file should not have been created when parent dir was read-only"
 
 
 class TestPyPIFetching:
@@ -487,3 +494,14 @@ class TestEdgeCases:
         assert len(results) == 10
         # At least some reads should succeed (concurrent file I/O isn't guaranteed)
         assert any(r is not None for r in results)
+
+        # Verify final cache state is valid
+        final_version = read_cache()
+        assert final_version is not None, "Cache should be readable after concurrent access"
+
+        # Verify it's one of the versions we wrote (not corrupted)
+        expected_versions = {f"1.4.{i}" for i in range(10)}
+        assert final_version in expected_versions, f"Final version {final_version} should be one of the written versions"
+
+        # Verify the cache file can be parsed (not corrupted)
+        assert parse_version(final_version) is not None, "Final cache value should be a valid version"

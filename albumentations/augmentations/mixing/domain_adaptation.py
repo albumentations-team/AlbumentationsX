@@ -179,16 +179,6 @@ class BaseDomainAdaptation(ImageOnlyTransform):
 
         return self.py_random.choice(metadata_images)
 
-    def to_dict_private(self) -> dict[str, Any]:
-        """Convert the transform to a dictionary for serialization.
-
-        Returns:
-            dict[str, Any]: Dictionary representation of the transform
-
-        """
-        # Transform is now fully serializable since we removed deprecated parameters
-        return super().to_dict_private()
-
 
 class HistogramMatching(BaseDomainAdaptation):
     """Adjust the pixel value distribution of an input image to match a reference image.

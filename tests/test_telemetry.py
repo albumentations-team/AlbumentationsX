@@ -493,10 +493,12 @@ class TestComposeInitEvent:
         hash2 = ComposeInitEvent.generate_pipeline_hash(transforms2)
         hash3 = ComposeInitEvent.generate_pipeline_hash(transforms3)
 
-        # Same transforms in different order should produce same hash
-        assert hash1 == hash2
+        # Different transform orders should produce different hashes
+        # because order matters in augmentation pipelines!
+        assert hash1 != hash2
         # Different transforms should produce different hash
         assert hash1 != hash3
+        assert hash2 != hash3
 
     def test_event_data_for_mixpanel(self):
         """Test event data structure is suitable for Mixpanel."""

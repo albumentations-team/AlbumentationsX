@@ -735,6 +735,9 @@ class Compose(BaseCompose, HubMixin):
             save_applied_params=save_applied_params,
         )
 
+        # Store telemetry parameter
+        self.telemetry = telemetry
+
         if bbox_params:
             if isinstance(bbox_params, dict):
                 b_params = BboxParams(**bbox_params)
@@ -1352,6 +1355,7 @@ class Compose(BaseCompose, HubMixin):
             "mask_interpolation": getattr(self, "mask_interpolation", None),
             "seed": getattr(self, "_base_seed", None),
             "save_applied_params": getattr(self, "save_applied_params", False),
+            "telemetry": getattr(self, "telemetry", True),
         }
 
 

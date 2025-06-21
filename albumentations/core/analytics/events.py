@@ -74,6 +74,6 @@ class ComposeInitEvent:
             SHA-256 hash of the pipeline configuration
 
         """
-        # Sort transforms to ensure consistent hashing
-        pipeline_str = json.dumps(sorted(transforms), sort_keys=True)
+        # Do NOT sort transforms - order matters in augmentation pipelines!
+        pipeline_str = json.dumps(transforms, sort_keys=True)
         return hashlib.sha256(pipeline_str.encode()).hexdigest()

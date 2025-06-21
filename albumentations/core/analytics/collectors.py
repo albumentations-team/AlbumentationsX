@@ -105,8 +105,8 @@ def _get_linux_os_info() -> str:
     try:
         if hasattr(platform, "freedesktop_os_release"):
             os_info = platform.freedesktop_os_release()
-            name = os_info.get("PRETTY_NAME", "")
-            if name:
+
+            if name := os_info.get("PRETTY_NAME", ""):
                 return name
     except (OSError, AttributeError):
         pass
@@ -172,8 +172,7 @@ def get_cpu_model() -> str:
             pass
 
     # Fallback to machine architecture
-    machine = platform.machine()
-    if machine:
+    if machine := platform.machine():
         # Provide meaningful names for common architectures
         arch_names = {
             "arm64": "ARM64",

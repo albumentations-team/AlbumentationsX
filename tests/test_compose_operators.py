@@ -658,3 +658,39 @@ def test_compose_operators_validation():
 
     result4 = [A.RandomCrop(100, 100), A.Blur(p=1.0)] + base_compose
     assert len(result4.transforms) == 3
+
+
+def test_compose_operators_preserve_telemetry():
+    """Test that telemetry parameter is preserved when using pipeline operators."""
+    # Test with telemetry=False
+    compose_no_telemetry = A.Compose([A.HorizontalFlip(p=1.0)], telemetry=False)
+
+    # Test __add__ operator
+    result_add = compose_no_telemetry + A.VerticalFlip(p=1.0)
+    assert hasattr(result_add, 'telemetry')
+    assert result_add.telemetry is False, "telemetry=False should be preserved with + operator"
+
+    # Test __radd__ operator
+    result_radd = A.VerticalFlip(p=1.0) + compose_no_telemetry
+    assert hasattr(result_radd, 'telemetry')
+    assert result_radd.telemetry is False, "telemetry=False should be preserved with __radd__ operator"
+
+    # Test __sub__ operator
+    compose_multi = A.Compose([A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0)], telemetry=False)
+    result_sub = compose_multi - A.HorizontalFlip
+    assert hasattr(result_sub, 'telemetry')
+    assert result_sub.telemetry is False, "telemetry=False should be preserved with - operator"
+
+    # Test with telemetry=True (default)
+    compose_with_telemetry = A.Compose([A.HorizontalFlip(p=1.0)])  # defaults to True
+    assert compose_with_telemetry.telemetry is True, "telemetry should default to True"
+
+    result_with_telemetry = compose_with_telemetry + A.VerticalFlip(p=1.0)
+    assert result_with_telemetry.telemetry is True, "telemetry=True should be preserved"
+
+    # Test multiple operations preserve telemetry
+    compose = A.Compose([A.HorizontalFlip(p=1.0)], telemetry=False)
+    compose = compose + A.VerticalFlip(p=1.0)
+    compose = A.RandomRotate90(p=1.0) + compose
+    compose = compose - A.HorizontalFlip
+    assert compose.telemetry is False, "telemetry should be preserved through multiple operations"

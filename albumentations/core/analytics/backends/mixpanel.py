@@ -104,10 +104,8 @@ class MixpanelBackend:
             # Use a short timeout to not block user code
             with urllib.request.urlopen(req, timeout=2) as response:
                 # Mixpanel returns 1 for success, 0 for failure
-                result = response.read().decode("utf-8").strip()
-                if result != "1":
-                    # Silently ignore failures
-                    pass
+                # We silently ignore failures
+                response.read()
 
         except (OSError, urllib.error.URLError, UnicodeDecodeError, json.JSONDecodeError):
             # Never let telemetry errors affect user code

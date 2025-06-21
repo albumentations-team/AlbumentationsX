@@ -66,11 +66,7 @@ class UserIDManager:
                 data = json.load(f)
                 user_id = data.get("user_id", "")
 
-                # Check if user has opted out
-                if user_id.lower() == DO_NOT_TRACK_VALUE.lower():
-                    return None
-
-                return user_id
+                return None if user_id.lower() == DO_NOT_TRACK_VALUE.lower() else user_id
         except (json.JSONDecodeError, OSError):
             return None
 
@@ -194,14 +190,14 @@ class UserIDManager:
 
     def reset(self) -> None:
         """Reset user ID by deleting the file and clearing cache."""
-        try:
+        # Always clear the cache first
+        self._cached_user_id = None
+        self._cache_loaded = False
+
+        # Try to delete the file
+        with contextlib.suppress(OSError):
             if self.user_id_file.exists():
                 self.user_id_file.unlink()
-            # Clear the cache
-            self._cached_user_id = None
-            self._cache_loaded = False
-        except OSError:
-            pass
 
 
 # Global instance for easy access

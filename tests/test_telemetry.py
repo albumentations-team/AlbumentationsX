@@ -374,7 +374,7 @@ class TestDataCollectors:
         assert 'ram_gb' in info
 
         # Check environment is one of the expected values
-        assert info['environment'] in ['colab', 'kaggle', 'docker', 'jupyter', 'local']
+        assert info['environment'] in ['ci', 'colab', 'kaggle', 'docker', 'jupyter', 'local']
 
         # OS should be more specific than just "Linux", "Darwin", "Windows"
         # e.g., "Ubuntu 22.04", "macOS 14.2", "Windows 11"

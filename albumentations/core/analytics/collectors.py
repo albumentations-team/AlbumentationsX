@@ -43,61 +43,75 @@ def detect_environment() -> str:
         Environment name as string
 
     """
+    # Check CI first
     if is_ci_environment():
         return "ci"
-    if is_colab_environment():
+
+    # Check Colab
+    if _check_module("google.colab"):
         return "colab"
-    if is_kaggle_environment():
-        return "kaggle"
-    if is_docker_environment():
-        return "docker"
-    if is_jupyter_environment():
+
+    # Check Kaggle
+    try:
+        if Path("/kaggle/working").exists():
+            return "kaggle"
+    except OSError:
+        pass
+
+    # Check Docker
+    try:
+        if Path("/.dockerenv").exists() or Path("/proc/self/cgroup").is_file():
+            return "docker"
+    except OSError:
+        pass
+
+    # Check Jupyter
+    if _check_jupyter():
         return "jupyter"
+
     return "local"
 
 
-def _try_freedesktop_os_release() -> str | None:
-    """Try to get Linux info using platform.freedesktop_os_release()."""
-    if not hasattr(platform, "freedesktop_os_release"):
-        return None
-
+def _check_module(module_name: str) -> bool:
+    """Check if a module is available."""
     try:
-        os_info = platform.freedesktop_os_release()
-        name = os_info.get("PRETTY_NAME", "")
-        if name:
-            return name
-        # Fallback to NAME and VERSION_ID
-        name = os_info.get("NAME", "Linux")
-        version = os_info.get("VERSION_ID", "")
-        if version:
-            return f"{name} {version}"
+        import importlib.util
+
+        spec = importlib.util.find_spec(module_name)
+    except (ImportError, AttributeError):
+        return False
+    else:
+        return spec is not None
+
+
+def _check_jupyter() -> bool:
+    """Check if running in Jupyter notebook."""
+    try:
+        from IPython import get_ipython
+
+        ipython = get_ipython()
+        if ipython is None:
+            return False
+    except (ImportError, NameError):
+        return False
+    else:
+        return ipython.__class__.__name__ in ["ZMQInteractiveShell", "TerminalInteractiveShell"]
+
+
+@functools.lru_cache(maxsize=1)
+def _get_linux_os_info() -> str:
+    """Get Linux OS information."""
+    # Try to get distribution info
+    try:
+        if hasattr(platform, "freedesktop_os_release"):
+            os_info = platform.freedesktop_os_release()
+            name = os_info.get("PRETTY_NAME", "")
+            if name:
+                return name
     except (OSError, AttributeError):
         pass
-    return None
 
-
-def _try_lsb_release() -> str | None:
-    """Try to get Linux info using lsb_release command."""
-    try:
-        result = subprocess.run(
-            ["lsb_release", "-d"],  # noqa: S607
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=1,
-        )
-        if result.returncode == 0:
-            # Parse "Description:\tUbuntu 22.04.3 LTS"
-            desc = result.stdout.strip()
-            if ":" in desc:
-                return desc.split(":", 1)[1].strip()
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return None
-
-
-def _try_os_release_file() -> str | None:
-    """Try to get Linux info from /etc/os-release file."""
+    # Fallback to /etc/os-release
     try:
         os_release_path = Path("/etc/os-release")
         if os_release_path.exists():
@@ -107,218 +121,60 @@ def _try_os_release_file() -> str | None:
                         return line.split("=", 1)[1].strip().strip('"')
     except OSError:
         pass
-    return None
 
-
-@functools.lru_cache(maxsize=1)
-def _get_linux_os_info() -> str:
-    """Get Linux distribution information.
-
-    Cached since OS info doesn't change during runtime.
-    """
-    # Try using platform.freedesktop_os_release() (Python 3.10+)
-    info = _try_freedesktop_os_release()
-    if info:
-        return info
-
-    # Try lsb_release command
-    info = _try_lsb_release()
-    if info:
-        return info
-
-    # Try reading /etc/os-release directly
-    info = _try_os_release_file()
-    if info:
-        return info
-
-    # Fallback to generic Linux
     return "Linux"
 
 
 @functools.lru_cache(maxsize=1)
 def get_os_info() -> str:
-    """Get detailed OS information including version.
-
-    Cached since OS info doesn't change during runtime.
-    """
+    """Get OS information in a simple format."""
     system = platform.system()
 
+    if system == "Darwin":  # macOS
+        version = platform.mac_ver()[0]
+        return f"macOS {version}" if version else "macOS"
+    if system == "Windows":
+        # Simple Windows detection
+        release = platform.release()
+        version = platform.version()
+        if release == "10" and version and version.startswith("10.0.22"):
+            return "Windows 11"
+        return f"Windows {release}" if release else "Windows"
     if system == "Linux":
         return _get_linux_os_info()
 
-    if system == "Darwin":  # macOS
-        # Get macOS version
-        version = platform.mac_ver()[0]
-        if version:
-            return f"macOS {version}"
-        return "macOS"
-
-    if system == "Windows":
-        # Get Windows version
-        version = platform.version()
-        release = platform.release()
-        if release == "10" and version and version.startswith("10.0.22"):
-            return "Windows 11"
-        if release:
-            return f"Windows {release}"
-        return "Windows"
-
-    # For other systems, use platform info
+    # Other systems
     return f"{system} {platform.release()}"
 
 
 @functools.lru_cache(maxsize=1)
-def _get_macos_cpu_model() -> str | None:
-    """Get CPU model for macOS systems.
-
-    Cached since CPU model doesn't change during runtime.
-    """
-    # First try to get the specific chip model
-    try:
-        result = subprocess.run(
-            ["sysctl", "-n", "machdep.cpu.brand_string"],  # noqa: S607
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=1,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            cpu_brand = result.stdout.strip()
-            if cpu_brand:
-                return cpu_brand
-    except (OSError, subprocess.SubprocessError):
-        pass
-
-    # Check if it's Apple Silicon
-    try:
-        result = subprocess.run(
-            ["sysctl", "-n", "hw.optional.arm64"],  # noqa: S607
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=1,
-        )
-        if result.returncode == 0 and result.stdout.strip() == "1":
-            # Try to get the specific model from system_profiler
-            chip_info = _get_apple_silicon_chip_info()
-            if chip_info:
-                return chip_info
-            # Fallback to architecture-based detection
-            machine = platform.machine()
-            if machine == "arm64":
-                return "Apple Silicon"
-    except (OSError, subprocess.SubprocessError):
-        pass
-
-    return None
-
-
-@functools.lru_cache(maxsize=1)
-def _get_apple_silicon_chip_info() -> str | None:
-    """Get specific Apple Silicon chip information.
-
-    Cached since CPU model doesn't change during runtime.
-    """
-    try:
-        result = subprocess.run(
-            ["system_profiler", "SPHardwareDataType"],  # noqa: S607
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        if result.returncode == 0:
-            output = result.stdout
-            # Look for chip info in the output
-            for line in output.split("\n"):
-                if "Chip:" in line:
-                    # Extract chip name (e.g., "Apple M1", "Apple M2 Pro")
-                    chip = line.split(":", 1)[1].strip()
-                    if chip:
-                        return chip
-                elif "Processor Name:" in line:
-                    proc = line.split(":", 1)[1].strip()
-                    if proc:
-                        return proc
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return None
-
-
-@functools.lru_cache(maxsize=1)
-def _get_linux_cpu_model() -> str | None:
-    """Get CPU model for Linux systems.
-
-    Cached since CPU model doesn't change during runtime.
-    """
-    try:
-        cpuinfo_path = Path("/proc/cpuinfo")
-        if cpuinfo_path.exists():
-            with cpuinfo_path.open() as f:
-                for line in f:
-                    if line.startswith("model name"):
-                        return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
-    return None
-
-
-@functools.lru_cache(maxsize=1)
-def _get_windows_cpu_model() -> str | None:
-    """Get CPU model for Windows systems.
-
-    Cached since CPU model doesn't change during runtime.
-    """
-    try:
-        result = subprocess.run(
-            ["wmic", "cpu", "get", "name"],  # noqa: S607
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=1,
-        )
-        if result.returncode == 0:
-            lines = result.stdout.strip().split("\n")
-            if len(lines) > 1:
-                return lines[1].strip()
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return None
-
-
-@functools.lru_cache(maxsize=1)
 def get_cpu_model() -> str:
-    """Get CPU model name without external dependencies.
-
-    Cached since CPU model doesn't change during runtime.
-    """
-    system = platform.system()
-
-    # Special handling for macOS to detect Apple Silicon
-    if system == "Darwin":
-        macos_cpu = _get_macos_cpu_model()
-        if macos_cpu:
-            return macos_cpu
-
-    # Try generic platform.processor() first
+    """Get CPU model name in a simplified way."""
+    # First try platform.processor() - often gives good info
     processor = platform.processor()
-    if processor and processor not in ["", "unknown", "arm", "arm64", "x86_64", "i386"]:
+    if processor and processor not in ["", "unknown", "arm", "arm64", "x86_64", "i386", "AMD64", "aarch64"]:
         return processor
 
-    # OS-specific methods
-    if system == "Linux":
-        linux_cpu = _get_linux_cpu_model()
-        if linux_cpu:
-            return linux_cpu
-    elif system == "Windows":
-        windows_cpu = _get_windows_cpu_model()
-        if windows_cpu:
-            return windows_cpu
+    # Special handling for Apple Silicon on macOS
+    if platform.system() == "Darwin":
+        try:
+            # Check for Apple Silicon
+            result = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],  # noqa: S607
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=1,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
 
-    # Fallback to machine type with better formatting
+    # Fallback to machine architecture
     machine = platform.machine()
     if machine:
-        # Provide more meaningful names for common architectures
+        # Provide meaningful names for common architectures
         arch_names = {
             "arm64": "ARM64",
             "aarch64": "ARM64",
@@ -332,6 +188,7 @@ def get_cpu_model() -> str:
     return "Unknown"
 
 
+@functools.lru_cache(maxsize=1)
 def get_gpu_name() -> str | None:
     """Get GPU name if torch is available and CUDA is accessible."""
     try:
@@ -344,118 +201,94 @@ def get_gpu_name() -> str | None:
     return None
 
 
-def get_ram_size() -> float | None:  # noqa: C901
-    """Get RAM size in GB without external dependencies."""
-    try:
-        if platform.system() == "Linux":
-            # Try to read from /proc/meminfo
-            meminfo_path = Path("/proc/meminfo")
-            if meminfo_path.exists():
-                with meminfo_path.open() as f:
-                    for line in f:
-                        if line.startswith("MemTotal:"):
-                            # Extract value in kB and convert to GB
-                            kb = int(line.split()[1])
-                            return kb / (1024 * 1024)
-        elif platform.system() == "Darwin":  # macOS
-            result = subprocess.run(
-                ["sysctl", "-n", "hw.memsize"],  # noqa: S607
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=1,
-            )
-            if result.returncode == 0:
-                # Value is in bytes
-                bytes_val = int(result.stdout.strip())
-                return bytes_val / (1024**3)
-        elif platform.system() == "Windows":
-            result = subprocess.run(
-                ["wmic", "computersystem", "get", "TotalPhysicalMemory"],  # noqa: S607
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=1,
-            )
-            if result.returncode == 0:
-                lines = result.stdout.strip().split("\n")
-                if len(lines) > 1:
-                    # Value is in bytes
-                    bytes_val = int(lines[1].strip())
-                    return bytes_val / (1024**3)
-    except (OSError, ValueError, subprocess.SubprocessError):
-        pass
+def _get_ram_linux() -> float | None:
+    """Get RAM size on Linux."""
+    meminfo_path = Path("/proc/meminfo")
+    if meminfo_path.exists():
+        with meminfo_path.open() as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])
+                    return round(kb / (1024 * 1024), 1)
     return None
 
 
-def is_colab_environment() -> bool:
-    """Check if running in Google Colab."""
+def _get_ram_macos() -> float | None:
+    """Get RAM size on macOS."""
+    result = subprocess.run(
+        ["sysctl", "-n", "hw.memsize"],  # noqa: S607
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=1,
+    )
+    if result.returncode == 0:
+        bytes_val = int(result.stdout.strip())
+        return round(bytes_val / (1024**3), 1)
+    return None
+
+
+def _get_ram_windows() -> float | None:
+    """Get RAM size on Windows."""
+    result = subprocess.run(
+        ["wmic", "computersystem", "get", "TotalPhysicalMemory"],  # noqa: S607
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=1,
+    )
+    if result.returncode == 0:
+        lines = result.stdout.strip().split("\n")
+        if len(lines) > 1:
+            bytes_val = int(lines[1].strip())
+            return round(bytes_val / (1024**3), 1)
+    return None
+
+
+@functools.lru_cache(maxsize=1)
+def get_ram_size() -> float | None:
+    """Get RAM size in GB without external dependencies."""
     try:
-        # Use importlib to check if google.colab is available
-        import importlib.util
+        system = platform.system()
 
-        spec = importlib.util.find_spec("google.colab")
-    except ImportError:
-        return False
-    else:
-        return spec is not None
+        if system == "Linux":
+            return _get_ram_linux()
+        if system == "Darwin":  # macOS
+            return _get_ram_macos()
+        if system == "Windows":
+            return _get_ram_windows()
 
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
 
-def is_kaggle_environment() -> bool:
-    """Check if running in Kaggle."""
-    return Path("/kaggle/working").exists()
-
-
-def is_jupyter_environment() -> bool:
-    """Check if running in Jupyter notebook."""
-    try:
-        # Check if IPython is available and get_ipython exists
-        from IPython import get_ipython
-
-        ipython = get_ipython()
-        if ipython is None:
-            return False
-
-        # Check if it's a notebook environment
-    except (ImportError, NameError):
-        return False
-    else:
-        return ipython.__class__.__name__ in ["ZMQInteractiveShell", "TerminalInteractiveShell"]
-
-
-def is_docker_environment() -> bool:
-    """Check if running in Docker container."""
-    return Path("/.dockerenv").exists() or Path("/proc/self/cgroup").is_file()
+    return None
 
 
 def is_ci_environment() -> bool:
     """Check if running in a CI/CD environment.
-
-    Detects common CI environment variables used by various CI systems.
 
     Returns:
         True if any CI environment variable is detected
 
     """
     ci_env_vars = [
-        "CI",  # Generic CI indicator
-        "CONTINUOUS_INTEGRATION",  # Generic CI indicator
-        "GITHUB_ACTIONS",  # GitHub Actions
-        "GITLAB_CI",  # GitLab CI
-        "JENKINS_HOME",  # Jenkins
-        "TRAVIS",  # Travis CI
-        "CIRCLECI",  # CircleCI
-        "BUILDKITE",  # Buildkite
-        "DRONE",  # Drone CI
-        "TEAMCITY_VERSION",  # TeamCity
-        "BITBUCKET_BUILD_NUMBER",  # Bitbucket Pipelines
-        "SEMAPHORE",  # Semaphore CI
-        "APPVEYOR",  # AppVeyor
-        "CODEBUILD_BUILD_ID",  # AWS CodeBuild
-        "AZURE_PIPELINES_BUILD_ID",  # Azure Pipelines
-        "TF_BUILD",  # Azure DevOps
+        "CI",
+        "CONTINUOUS_INTEGRATION",
+        "GITHUB_ACTIONS",
+        "GITLAB_CI",
+        "JENKINS_HOME",
+        "TRAVIS",
+        "CIRCLECI",
+        "BUILDKITE",
+        "DRONE",
+        "TEAMCITY_VERSION",
+        "BITBUCKET_BUILD_NUMBER",
+        "SEMAPHORE",
+        "APPVEYOR",
+        "CODEBUILD_BUILD_ID",
+        "AZURE_PIPELINES_BUILD_ID",
+        "TF_BUILD",
     ]
-
     return any(os.getenv(var) for var in ci_env_vars)
 
 
@@ -497,7 +330,6 @@ def _extract_transform_names(transform: Any, transforms: list[str]) -> None:
     transforms.append(class_name)
 
     # Handle nested structures
-    # Check by class name to avoid circular imports
     compose_types = [
         "Compose",
         "ReplayCompose",
@@ -517,7 +349,6 @@ def _get_target_usage(compose: Compose) -> str:
     uses_keypoints = "keypoints" in compose.processors
     uses_bboxes = "bboxes" in compose.processors
 
-    # Generate targets string
     if uses_keypoints and uses_bboxes:
         return "bboxes_keypoints"
     if uses_bboxes:

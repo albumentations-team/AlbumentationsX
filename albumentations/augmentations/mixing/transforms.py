@@ -317,7 +317,12 @@ class OverlayElements(DualTransform):
 class Mosaic(DualTransform):
     """Combine multiple images and their annotations into a single image using a mosaic grid layout.
 
-    This transform takes a primary input image (and its annotations) and combines it with
+    Mosaic creates a grid of images by placing the primary image and additional images from metadata
+    into cells of a larger canvas, then crops a region to produce the final output. This is commonly
+    used in object detection training to increase data diversity and help models learn to detect
+    objects at different scales and contexts.
+
+    The transform takes a primary input image (and its annotations) and combines it with
     additional images/annotations provided via metadata. It calculates the geometry for
     a mosaic grid, selects additional items, preprocesses annotations consistently
     (handling label encoding updates), applies geometric transformations, and assembles
@@ -330,12 +335,18 @@ class Mosaic(DualTransform):
         target_size (tuple[int, int]): The desired output (height, width) for the final mosaic image.
             after cropping the mosaic grid.
         cell_shape (tuple[int, int]): cell shape of each cell in the mosaic grid.
+        fit_mode (Literal["cover", "contain"]): How to fit images into mosaic cells.
+            - "cover": Scale image to fill the entire cell, potentially cropping parts.
+            - "contain": Scale image to fit entirely within the cell, potentially adding padding.
+            Default: "cover".
         metadata_key (str): Key in the input dictionary specifying the list of additional data dictionaries
             for the mosaic. Each dictionary in the list should represent one potential additional item.
             Expected keys: 'image' (required, np.ndarray), and optionally 'mask' (np.ndarray),
-            'bboxes' (np.ndarray), 'keypoints' (np.ndarray), and any relevant label fields
-            (e.g., 'class_labels') corresponding to those specified in `Compose`'s `bbox_params` or
-            `keypoint_params`. Default: "mosaic_metadata".
+            'bboxes' (np.ndarray), 'keypoints' (np.ndarray), and their corresponding label fields.
+            Label field names must match those specified in `Compose`'s processor params:
+            - For bboxes: field name should match `bbox_params.label_fields`
+            - For keypoints: field name should match `keypoint_params.label_fields`
+            Default: "mosaic_metadata".
         center_range (tuple[float, float]): Range [0.0-1.0] to sample the center point of the mosaic view
             relative to the valid central region of the conceptual large grid. This affects which parts
             of the assembled grid are visible in the final crop. Default: (0.3, 0.7).
@@ -367,7 +378,9 @@ class Mosaic(DualTransform):
            replicated primary) that will be used.
         8. Assign Items to VISIBLE Grid Cells
         9. Process Geometry & Shift Coordinates: For each assigned item:
-            a. Apply geometric transforms (Crop, Resize, Pad) to image/mask.
+            a. Apply geometric transforms to image/mask based on `fit_mode`:
+               - "cover": Resize to smallest dimension covering the cell, then crop to cell size
+               - "contain": Resize to largest dimension fitting in the cell, then pad to cell size
             b. Apply geometric shift to the *preprocessed* bboxes/keypoints based on cell placement.
        10. Return Parameters: Return the processed cell data (image, mask, shifted bboxes, shifted kps)
            keyed by placement coordinates.
@@ -381,6 +394,12 @@ class Mosaic(DualTransform):
         - `Compose.postprocess` uses the final updated encoder state to decode all labels present
           in the mosaic output for the current `Compose` call.
         - The encoder state is transient per `Compose` call.
+
+    Note:
+        If fewer additional images are provided than needed to fill the grid, the primary image
+        will be replicated to fill the remaining cells. For example, with a 2x2 grid, if only
+        one additional image is provided, the mosaic will contain the primary image in two cells
+        and the additional image in one cell, with one visible cell selected from these three.
 
     Targets:
         image, mask, bboxes, keypoints
@@ -400,43 +419,58 @@ class Mosaic(DualTransform):
         >>> primary_image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> primary_mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
         >>> primary_bboxes = np.array([[10, 10, 40, 40], [50, 50, 90, 90]], dtype=np.float32)
-        >>> primary_labels = [1, 2]
+        >>> primary_bbox_classes = [1, 2]
+        >>> primary_keypoints = np.array([[25, 25], [75, 75]], dtype=np.float32)
+        >>> primary_keypoint_classes = ['eye', 'nose']
         >>>
         >>> # Prepare additional images for mosaic
         >>> additional_image1 = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> additional_mask1 = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
         >>> additional_bboxes1 = np.array([[20, 20, 60, 60]], dtype=np.float32)
-        >>> additional_labels1 = [3]
+        >>> additional_bbox_classes1 = [3]
+        >>> additional_keypoints1 = np.array([[40, 40]], dtype=np.float32)
+        >>> additional_keypoint_classes1 = ['mouth']
         >>>
         >>> additional_image2 = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> additional_mask2 = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
         >>> additional_bboxes2 = np.array([[30, 30, 70, 70]], dtype=np.float32)
-        >>> additional_labels2 = [4]
+        >>> additional_bbox_classes2 = [4]
+        >>> additional_keypoints2 = np.array([[50, 50], [65, 65]], dtype=np.float32)
+        >>> additional_keypoint_classes2 = ['eye', 'eye']
         >>>
         >>> additional_image3 = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> additional_mask3 = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
         >>> additional_bboxes3 = np.array([[5, 5, 45, 45]], dtype=np.float32)
-        >>> additional_labels3 = [5]
+        >>> additional_bbox_classes3 = [5]
+        >>> additional_keypoints3 = np.array([[25, 25]], dtype=np.float32)
+        >>> additional_keypoint_classes3 = ['nose']
         >>>
         >>> # Create metadata for additional images - structured as a list of dicts
+        >>> # Note: label field names must match those in bbox_params/keypoint_params
         >>> mosaic_metadata = [
         ...     {
         ...         'image': additional_image1,
         ...         'mask': additional_mask1,
         ...         'bboxes': additional_bboxes1,
-        ...         'labels': additional_labels1
+        ...         'bbox_classes': additional_bbox_classes1,
+        ...         'keypoints': additional_keypoints1,
+        ...         'keypoint_classes': additional_keypoint_classes1
         ...     },
         ...     {
         ...         'image': additional_image2,
         ...         'mask': additional_mask2,
         ...         'bboxes': additional_bboxes2,
-        ...         'labels': additional_labels2
+        ...         'bbox_classes': additional_bbox_classes2,
+        ...         'keypoints': additional_keypoints2,
+        ...         'keypoint_classes': additional_keypoint_classes2
         ...     },
         ...     {
         ...         'image': additional_image3,
         ...         'mask': additional_mask3,
         ...         'bboxes': additional_bboxes3,
-        ...         'labels': additional_labels3
+        ...         'bbox_classes': additional_bbox_classes3,
+        ...         'keypoints': additional_keypoints3,
+        ...         'keypoint_classes': additional_keypoint_classes3
         ...     }
         ... ]
         >>>
@@ -450,22 +484,27 @@ class Mosaic(DualTransform):
         ...         fit_mode="cover",
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
+        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_classes']),
+        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_classes']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
         ...     image=primary_image,
         ...     mask=primary_mask,
         ...     bboxes=primary_bboxes,
-        ...     labels=primary_labels,
+        ...     bbox_classes=primary_bbox_classes,
+        ...     keypoints=primary_keypoints,
+        ...     keypoint_classes=primary_keypoint_classes,
         ...     mosaic_metadata=mosaic_metadata  # Pass the metadata using the default key
         ... )
         >>>
         >>> # Access the transformed data
-        >>> mosaic_image = transformed['image']        # Combined mosaic image
-        >>> mosaic_mask = transformed['mask']          # Combined mosaic mask
-        >>> mosaic_bboxes = transformed['bboxes']      # Combined and repositioned bboxes
-        >>> mosaic_labels = transformed['labels']      # Combined labels from all images
+        >>> mosaic_image = transformed['image']                    # Combined mosaic image
+        >>> mosaic_mask = transformed['mask']                      # Combined mosaic mask
+        >>> mosaic_bboxes = transformed['bboxes']                  # Combined and repositioned bboxes
+        >>> mosaic_bbox_classes = transformed['bbox_classes']      # Combined bbox labels from all images
+        >>> mosaic_keypoints = transformed['keypoints']            # Combined and repositioned keypoints
+        >>> mosaic_keypoint_classes = transformed['keypoint_classes']  # Combined keypoint labels
 
     """
 
@@ -515,7 +554,7 @@ class Mosaic(DualTransform):
                 self.cell_shape[0] * self.grid_yx[0] < self.target_size[0]
                 or self.cell_shape[1] * self.grid_yx[1] < self.target_size[1]
             ):
-                raise ValueError("Target size should be smaller than cell cell_size * grid_yx")
+                raise ValueError("Target size should be smaller than cell_shape * grid_yx")
             return self
 
     def __init__(

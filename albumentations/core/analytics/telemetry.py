@@ -55,7 +55,7 @@ class TelemetryClient:
             return
 
         # Check global settings
-        if not settings.get("telemetry", True):
+        if not settings.telemetry_enabled:
             return
 
         # Get persistent user ID

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 import platform
 import subprocess
@@ -109,8 +110,12 @@ def _try_os_release_file() -> str | None:
     return None
 
 
+@functools.lru_cache(maxsize=1)
 def _get_linux_os_info() -> str:
-    """Get Linux distribution information."""
+    """Get Linux distribution information.
+
+    Cached since OS info doesn't change during runtime.
+    """
     # Try using platform.freedesktop_os_release() (Python 3.10+)
     info = _try_freedesktop_os_release()
     if info:
@@ -130,8 +135,12 @@ def _get_linux_os_info() -> str:
     return "Linux"
 
 
+@functools.lru_cache(maxsize=1)
 def get_os_info() -> str:
-    """Get detailed OS information including version."""
+    """Get detailed OS information including version.
+
+    Cached since OS info doesn't change during runtime.
+    """
     system = platform.system()
 
     if system == "Linux":
@@ -158,8 +167,12 @@ def get_os_info() -> str:
     return f"{system} {platform.release()}"
 
 
+@functools.lru_cache(maxsize=1)
 def _get_macos_cpu_model() -> str | None:
-    """Get CPU model for macOS systems."""
+    """Get CPU model for macOS systems.
+
+    Cached since CPU model doesn't change during runtime.
+    """
     # First try to get the specific chip model
     try:
         result = subprocess.run(
@@ -200,8 +213,12 @@ def _get_macos_cpu_model() -> str | None:
     return None
 
 
+@functools.lru_cache(maxsize=1)
 def _get_apple_silicon_chip_info() -> str | None:
-    """Get specific Apple Silicon chip information."""
+    """Get specific Apple Silicon chip information.
+
+    Cached since CPU model doesn't change during runtime.
+    """
     try:
         result = subprocess.run(
             ["system_profiler", "SPHardwareDataType"],  # noqa: S607
@@ -228,8 +245,12 @@ def _get_apple_silicon_chip_info() -> str | None:
     return None
 
 
+@functools.lru_cache(maxsize=1)
 def _get_linux_cpu_model() -> str | None:
-    """Get CPU model for Linux systems."""
+    """Get CPU model for Linux systems.
+
+    Cached since CPU model doesn't change during runtime.
+    """
     try:
         cpuinfo_path = Path("/proc/cpuinfo")
         if cpuinfo_path.exists():
@@ -242,8 +263,12 @@ def _get_linux_cpu_model() -> str | None:
     return None
 
 
+@functools.lru_cache(maxsize=1)
 def _get_windows_cpu_model() -> str | None:
-    """Get CPU model for Windows systems."""
+    """Get CPU model for Windows systems.
+
+    Cached since CPU model doesn't change during runtime.
+    """
     try:
         result = subprocess.run(
             ["wmic", "cpu", "get", "name"],  # noqa: S607
@@ -261,8 +286,12 @@ def _get_windows_cpu_model() -> str | None:
     return None
 
 
+@functools.lru_cache(maxsize=1)
 def get_cpu_model() -> str:
-    """Get CPU model name without external dependencies."""
+    """Get CPU model name without external dependencies.
+
+    Cached since CPU model doesn't change during runtime.
+    """
     system = platform.system()
 
     # Special handling for macOS to detect Apple Silicon

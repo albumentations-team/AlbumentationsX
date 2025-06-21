@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-__all__ = ["GoogleAnalyticsBackend"]
+__all__ = ["MixpanelBackend"]
 
-from .google import GoogleAnalyticsBackend
+from .mixpanel import MixpanelBackend

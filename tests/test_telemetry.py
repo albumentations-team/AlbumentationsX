@@ -2,22 +2,18 @@
 
 from __future__ import annotations
 
-import os
 import time
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pytest
 import numpy as np
 
 import albumentations as A
-from albumentations.core.settings import settings
-from albumentations.core.telemetry import TelemetryClient, get_telemetry_client, telemetry_client
+from albumentations.core.analytics.settings import settings
+from albumentations.core.analytics.telemetry import TelemetryClient, get_telemetry_client
 from albumentations.core.analytics.events import ComposeInitEvent
 from albumentations.core.analytics.collectors import (
     get_environment_info,
     collect_pipeline_info,
-    is_ci_environment,
-    is_pytest_running,
-    detect_environment,
 )
 
 
@@ -25,8 +21,8 @@ from albumentations.core.analytics.collectors import (
 def reset_telemetry_client():
     """Reset the telemetry client singleton between tests."""
     # Clear the global telemetry client
-    import albumentations.core.telemetry
-    albumentations.core.telemetry.telemetry_client = None
+    import albumentations.core.analytics.telemetry
+    albumentations.core.analytics.telemetry.telemetry_client = None
 
     # Clear the singleton instance
     TelemetryClient._instance = None
@@ -35,7 +31,7 @@ def reset_telemetry_client():
     yield
 
     # Clean up after test
-    albumentations.core.telemetry.telemetry_client = None
+    albumentations.core.analytics.telemetry.telemetry_client = None
     TelemetryClient._instance = None
     TelemetryClient._initialized = False
 
@@ -46,7 +42,7 @@ class TestTelemetrySettings:
     def test_telemetry_enabled_by_default(self):
         """Test that telemetry is enabled by default."""
         # Create fresh settings instance
-        from albumentations.core.settings import SettingsManager
+        from albumentations.core.analytics.settings import SettingsManager
         test_settings = SettingsManager()
         assert test_settings.telemetry_enabled is True
 
@@ -61,14 +57,14 @@ class TestTelemetrySettings:
         """Test disabling telemetry via environment variable."""
         monkeypatch.setenv("ALBUMENTATIONSX_NO_TELEMETRY", "1")
         # Create new settings instance to pick up env var
-        from albumentations.core.settings import SettingsManager
+        from albumentations.core.analytics.settings import SettingsManager
         test_settings = SettingsManager()
         assert test_settings.telemetry_enabled is False
 
     def test_offline_mode_disables_telemetry(self, monkeypatch):
         """Test that offline mode disables telemetry."""
         monkeypatch.setenv("ALBUMENTATIONSX_OFFLINE", "1")
-        from albumentations.core.settings import SettingsManager
+        from albumentations.core.analytics.settings import SettingsManager
         test_settings = SettingsManager()
         assert test_settings.telemetry_enabled is False
         assert test_settings.check_updates_enabled is False
@@ -502,9 +498,10 @@ class TestComposeInitEvent:
         # Different transforms should produce different hash
         assert hash1 != hash3
 
-    def test_to_ga4_params(self):
-        """Test conversion to GA4-compatible parameters."""
+    def test_event_data_for_mixpanel(self):
+        """Test event data structure is suitable for Mixpanel."""
         event = ComposeInitEvent(
+            user_id="test-user-123",
             session_id="test_session",
             albumentationsx_version="2.0.0",
             python_version="3.10",
@@ -518,34 +515,29 @@ class TestComposeInitEvent:
             pipeline_hash="abcdef1234567890" * 4,  # Long hash
         )
 
-        params = event.to_ga4_params()
+        # Get event dict
+        data = event.to_dict()
 
-        # Check basic params
-        assert params["version"] == "2.0.0"
-        assert params["python_version"] == "3.10"
-        assert params["os"] == "Ubuntu 22.04"
-        assert params["cpu"] == "Intel Core i7-9700K"
-        assert params["gpu"] == "NVIDIA RTX 3080"
-        assert params["ram_gb"] == 16.0
-        assert params["environment"] == "jupyter"
-        assert params["targets"] == "bboxes_keypoints"
-        assert params["num_transforms"] == 6
+        # Check that all transforms are included (no exclusions for Mixpanel!)
+        assert len(data["pipeline"]["transforms"]) == 6
+        assert "Normalize" in data["pipeline"]["transforms"]
+        assert "ToTensorV2" in data["pipeline"]["transforms"]
 
-        # Check pipeline hash is truncated
-        assert len(params["pipeline_hash"]) == 32
+        # Check environment data
+        env = data["environment"]
+        assert env["albumentationsx_version"] == "2.0.0"
+        assert env["python_version"] == "3.10"
+        assert env["os"] == "Ubuntu 22.04"
+        assert env["cpu"] == "Intel Core i7-9700K"
+        assert env["gpu"] == "NVIDIA RTX 3080"
+        assert env["ram_gb"] == 16.0
+        assert env["environment"] == "jupyter"
 
-        # Check transforms (Normalize and ToTensorV2 should be excluded)
-        assert params["transform_1"] == "RandomCrop"
-        assert params["transform_2"] == "HorizontalFlip"
-        assert params["transform_3"] == "Blur"
-        assert params["transform_4"] == "MedianBlur"
-        assert "transform_5" not in params  # Only 4 transforms after exclusion
+        # Check full pipeline hash is preserved
+        assert data["pipeline_hash"] == "abcdef1234567890" * 4
 
-        # Check total parameter count
-        assert len(params) <= 25  # GA4 limit
-
-    def test_to_ga4_params_minimal(self):
-        """Test GA4 params with minimal data."""
+    def test_event_minimal_data(self):
+        """Test event with minimal data."""
         event = ComposeInitEvent(
             albumentationsx_version="2.0.0",
             python_version="3.10",
@@ -555,19 +547,18 @@ class TestComposeInitEvent:
             transforms=[],
         )
 
-        params = event.to_ga4_params()
+        data = event.to_dict()
 
-        assert params["os"] == "macOS 14.2"
-        assert params["cpu"] == "Apple M1"
-        assert params["environment"] == "local"
-        assert params["targets"] == "None"  # Default value
-        assert params["num_transforms"] == 0
-        assert "transform_1" not in params
-        assert "gpu" not in params  # Not provided
-        assert "ram_gb" not in params  # Not provided
+        assert data["environment"]["os"] == "macOS 14.2"
+        assert data["environment"]["cpu"] == "Apple M1"
+        assert data["environment"]["environment"] == "local"
+        assert data["pipeline"]["targets"] == "None"  # Default value
+        assert len(data["pipeline"]["transforms"]) == 0
+        assert data["environment"]["gpu"] is None  # Not provided
+        assert data["environment"]["ram_gb"] is None  # Not provided
 
-    def test_to_ga4_params_many_transforms(self):
-        """Test GA4 params with many transforms (should be limited to 10)."""
+    def test_event_many_transforms(self):
+        """Test event with many transforms - no limits with Mixpanel!"""
         # Create 20 transforms
         transforms = [f"Transform{i}" for i in range(20)]
 
@@ -581,15 +572,12 @@ class TestComposeInitEvent:
             targets="None",
         )
 
-        params = event.to_ga4_params()
+        data = event.to_dict()
 
-        # Should have exactly 10 transform parameters (reduced from 15)
-        for i in range(1, 11):
-            assert f"transform_{i}" in params
-        assert "transform_11" not in params
-
-        # Total params should still be under 25
-        assert len(params) <= 25
+        # All 20 transforms should be included with Mixpanel!
+        assert len(data["pipeline"]["transforms"]) == 20
+        assert data["pipeline"]["transforms"][0] == "Transform0"
+        assert data["pipeline"]["transforms"][19] == "Transform19"
 
 
 class TestComplexPipelines:
@@ -707,7 +695,7 @@ def test_environment_variables(monkeypatch, env_var, env_value, expected):
     monkeypatch.setenv(env_var, env_value)
 
     # Create new settings instance to pick up env vars
-    from albumentations.core.settings import SettingsManager
+    from albumentations.core.analytics.settings import SettingsManager
     test_settings = SettingsManager()
 
     assert test_settings.telemetry_enabled == expected
@@ -715,7 +703,7 @@ def test_environment_variables(monkeypatch, env_var, env_value, expected):
 
 def test_settings_manager():
     """Test the SettingsManager functionality."""
-    from albumentations.core.settings import SettingsManager
+    from albumentations.core.analytics.settings import SettingsManager
     import tempfile
     from pathlib import Path
 
@@ -845,8 +833,8 @@ class TestTelemetryIntegration:
         assert 'RandomCrop' in info['transforms']
         assert 'HorizontalFlip' in info['transforms']
 
-    def test_normalize_totensor_in_ga4(self):
-        """Test that Normalize and ToTensorV2 are collected but excluded from GA4 params."""
+    def test_normalize_totensor_included(self):
+        """Test that Normalize and ToTensorV2 are included with Mixpanel."""
         # Create event with Normalize and ToTensorV2
         event = ComposeInitEvent(
             transforms=["RandomCrop", "Normalize", "HorizontalFlip", "ToTensorV2", "Blur"],
@@ -861,17 +849,15 @@ class TestTelemetryIntegration:
         assert "Normalize" in event.transforms
         assert "ToTensorV2" in event.transforms
 
-        # But excluded from GA4 params
-        params = event.to_ga4_params()
-        assert params["transform_1"] == "RandomCrop"
-        assert params["transform_2"] == "HorizontalFlip"
-        assert params["transform_3"] == "Blur"
-        assert "transform_4" not in params
-
-        # Verify Normalize and ToTensorV2 are not in any transform_N param
-        for key, value in params.items():
-            if key.startswith("transform_"):
-                assert value not in ["Normalize", "ToTensorV2"]
+        # With Mixpanel, all transforms are included
+        data = event.to_dict()
+        pipeline_transforms = data["pipeline"]["transforms"]
+        assert len(pipeline_transforms) == 5
+        assert "RandomCrop" in pipeline_transforms
+        assert "Normalize" in pipeline_transforms
+        assert "HorizontalFlip" in pipeline_transforms
+        assert "ToTensorV2" in pipeline_transforms
+        assert "Blur" in pipeline_transforms
 
     def test_serialization_with_telemetry(self):
         """Test that telemetry doesn't interfere with serialization."""

@@ -22,6 +22,7 @@ class ComposeInitEvent:
     event_type: str = "compose_init"
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = ""  # Persistent anonymous user ID
     pipeline_hash: str = ""
 
     # Environment info - kept as separate fields
@@ -39,56 +40,13 @@ class ComposeInitEvent:
     # Target usage - combined field
     targets: str = "None"  # None/bboxes/keypoints/bboxes_keypoints
 
-    def to_ga4_params(self) -> dict[str, Any]:
-        """Convert event to GA4-compatible parameters (max 25 params).
-
-        Returns compact dictionary suitable for GA4 event tracking.
-        """
-        params = {
-            "pipeline_hash": self.pipeline_hash[:32],  # Truncate hash for space
-            "version": self.albumentationsx_version,
-            "python_version": self.python_version,
-            "os": self.os,
-            "cpu": self.cpu,
-            "environment": self.environment,
-            "targets": self.targets,
-            "num_transforms": len(self.transforms),
-        }
-
-        # Add GPU if available
-        if self.gpu:
-            params["gpu"] = self.gpu
-
-        # Add RAM if available
-        if self.ram_gb is not None:
-            params["ram_gb"] = round(self.ram_gb, 1)
-
-        # Add individual transforms (up to 10 to leave room for other params)
-        # Skip Normalize and ToTensorV2 as suggested
-        excluded_transforms = {"Normalize", "ToTensorV2"}
-        filtered_transforms = [t for t in self.transforms if t not in excluded_transforms]
-
-        # Add comma-separated list of unique transforms for easier analysis
-        unique_transforms = sorted(set(filtered_transforms))
-        if unique_transforms:
-            # Truncate if too long (GA4 parameter value limit is 100 chars)
-            transform_list = ",".join(unique_transforms)
-            if len(transform_list) > 100:
-                # Take first 97 chars and add "..."
-                transform_list = transform_list[:97] + "..."
-            params["transform_types"] = transform_list
-
-        for i, transform in enumerate(filtered_transforms[:10], 1):
-            params[f"transform_{i}"] = transform
-
-        return params
-
     def to_dict(self) -> dict[str, Any]:
         """Convert event to dictionary for other uses (not GA4)."""
         return {
             "event_type": self.event_type,
             "timestamp": self.timestamp,
             "session_id": self.session_id,
+            "user_id": self.user_id,
             "pipeline_hash": self.pipeline_hash,
             "environment": {
                 "albumentationsx_version": self.albumentationsx_version,
@@ -119,17 +77,3 @@ class ComposeInitEvent:
         # Sort transforms to ensure consistent hashing
         pipeline_str = json.dumps(sorted(transforms), sort_keys=True)
         return hashlib.sha256(pipeline_str.encode()).hexdigest()
-
-    def anonymize(self) -> None:
-        """Anonymize any potentially sensitive data."""
-        # Session ID is already anonymized in telemetry client
-        # Transform names don't contain sensitive data as they're just class names
-
-    def _anonymize_params(self, params: dict[str, Any]) -> None:
-        """Recursively anonymize parameters.
-
-        Args:
-            params: Parameters dictionary to anonymize
-
-        """
-        # Not used anymore since we don't collect transform parameters

@@ -1,22 +1,25 @@
 """Telemetry client for tracking anonymous usage statistics."""
 
+import contextlib
 import time
+from threading import Thread
 from typing import Any
 
-from albumentations.core.analytics.backends.google import GoogleAnalyticsBackend
+from albumentations.core.analytics.backends.mixpanel import MixpanelBackend
 from albumentations.core.analytics.collectors import is_ci_environment, is_pytest_running
 from albumentations.core.analytics.events import ComposeInitEvent
 from albumentations.core.analytics.settings import settings
+from albumentations.core.analytics.user_id import get_user_id_manager
 
 
 class TelemetryClient:
     """Singleton client for collecting and sending telemetry data with rate limiting and deduplication.
 
-    The client ensures telemetry data fits within GA4's 25 parameter limit by:
-    - Combining environment info into a single string
-    - Using numbered transform parameters (transform_1, transform_2, etc.)
-    - Excluding common transforms like Normalize and ToTensorV2
-    - Limiting to 15 transforms to leave room for other parameters
+    Using Mixpanel backend for better library telemetry support:
+    - No parameter limits
+    - No web stream complications
+    - Full transform list tracking
+    - Better suited for custom events
     """
 
     _instance = None
@@ -30,20 +33,22 @@ class TelemetryClient:
 
     def __init__(self) -> None:
         if not self._initialized:
-            self.backend = GoogleAnalyticsBackend()
+            self.backend = MixpanelBackend()
             # Disable telemetry in CI/test environments
             self.enabled = not (is_ci_environment() or is_pytest_running())
             self.sent_pipelines: set[str] = set()  # Track sent pipeline hashes
             self.last_send_time: float = 0
             self.rate_limit: float = 30.0  # 30 seconds between sends
+            self.user_id_manager = get_user_id_manager()
             self._initialized = True
 
-    def track_compose_init(self, compose_data: dict[str, Any], telemetry: bool = True) -> None:
+    def track_compose_init(self, compose_data: dict[str, Any], telemetry: bool = True, use_thread: bool = True) -> None:
         """Track Compose initialization event with rate limiting and deduplication.
 
         Args:
             compose_data: Data collected from the Compose instance
             telemetry: Whether telemetry is enabled for this specific instance
+            use_thread: If True, send telemetry in background thread (default)
 
         """
         if not self.enabled or not telemetry:
@@ -51,6 +56,11 @@ class TelemetryClient:
 
         # Check global settings
         if not settings.get("telemetry", True):
+            return
+
+        # Get persistent user ID
+        user_id = self.user_id_manager.get_or_create_user_id()
+        if user_id is None:  # User opted out
             return
 
         # Deduplication check
@@ -63,10 +73,47 @@ class TelemetryClient:
         if current_time - self.last_send_time < self.rate_limit:
             return  # Skip if too soon
 
+        # Add user ID to event data
+        compose_data["user_id"] = user_id
+
         # Create event
         event = ComposeInitEvent(**compose_data)
 
         # Send event to backend
+        if use_thread:
+            # Send in background thread
+            thread = Thread(target=self._send_event_thread, args=(event,), daemon=True)
+            thread.start()
+        else:
+            # Send synchronously (mainly for testing)
+            self._send_event(event)
+
+        # Update tracking
+        if pipeline_hash:
+            self.sent_pipelines.add(pipeline_hash)
+        self.last_send_time = current_time
+
+    def _send_event_thread(self, event: ComposeInitEvent) -> None:
+        """Send event in thread with proper error handling.
+
+        Args:
+            event: The event to send
+
+        """
+        with contextlib.suppress(Exception):
+            # Silently ignore all errors in thread
+            self._send_event(event)
+
+    def _send_event(self, event: ComposeInitEvent) -> bool:
+        """Send event to backend.
+
+        Args:
+            event: The event to send
+
+        Returns:
+            True if event was sent successfully, False otherwise
+
+        """
         telemetry_sent = True
         try:
             self.backend.send_event(event)
@@ -76,11 +123,7 @@ class TelemetryClient:
             # ValueError: data validation issues
             telemetry_sent = False
 
-        # Update tracking only if telemetry was sent successfully
-        if telemetry_sent and pipeline_hash:
-            self.sent_pipelines.add(pipeline_hash)
-        if telemetry_sent:
-            self.last_send_time = current_time
+        return telemetry_sent
 
     def disable(self) -> None:
         """Disable telemetry collection."""

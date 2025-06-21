@@ -396,7 +396,7 @@ class MaxSizeTransform(DualTransform):
         ]
 
         @model_validator(mode="after")
-        def validate_size_parameters(self) -> Self:
+        def _validate_size_parameters(self) -> Self:
             if self.max_size is None and self.max_size_hw is None:
                 raise ValueError("Either max_size or max_size_hw must be specified")
             if self.max_size is not None and self.max_size_hw is not None:
@@ -480,10 +480,6 @@ class MaxSizeTransform(DualTransform):
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=False)
     def apply_to_images(self, images: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         return self.apply(images, *args, **params)
-
-    @batch_transform("spatial", has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        return self.apply(volume, *args, **params)
 
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:

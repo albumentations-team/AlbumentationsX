@@ -3917,7 +3917,7 @@ def generate_control_points(num_control_points: int) -> np.ndarray:
     return np.stack(np.meshgrid(x, y), axis=-1).reshape(-1, 2)
 
 
-def volume_hflip(volume: np.ndarray) -> np.ndarray:
+def hflip_images(volume: np.ndarray) -> np.ndarray:
     """Perform horizontal flip on a volume (numpy array).
 
     Flips the volume along the width axis (axis=2). Handles inputs with
@@ -3933,7 +3933,7 @@ def volume_hflip(volume: np.ndarray) -> np.ndarray:
     return np.flip(volume, axis=2)
 
 
-def volume_vflip(volume: np.ndarray) -> np.ndarray:
+def vflip_images(volume: np.ndarray) -> np.ndarray:
     """Perform vertical flip on a volume (numpy array).
 
     Flips the volume along the height axis (axis=1). Handles inputs with
@@ -3949,7 +3949,7 @@ def volume_vflip(volume: np.ndarray) -> np.ndarray:
     return np.flip(volume, axis=1)
 
 
-def volumes_hflip(volumes: np.ndarray) -> np.ndarray:
+def hflip_volumes(volumes: np.ndarray) -> np.ndarray:
     """Perform horizontal flip on a batch of volumes (numpy array).
 
     Flips the volumes along the width axis (axis=3). Handles inputs with
@@ -3966,7 +3966,7 @@ def volumes_hflip(volumes: np.ndarray) -> np.ndarray:
     return np.flip(volumes, axis=3)
 
 
-def volumes_vflip(volumes: np.ndarray) -> np.ndarray:
+def vflip_volumes(volumes: np.ndarray) -> np.ndarray:
     """Perform vertical flip on a batch of volumes (numpy array).
 
     Flips the volumes along the height axis (axis=2). Handles inputs with
@@ -3983,25 +3983,7 @@ def volumes_vflip(volumes: np.ndarray) -> np.ndarray:
     return np.flip(volumes, axis=2)
 
 
-def volume_rot90(volume: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:
-    """Rotate a volume 90 degrees counter-clockwise multiple times.
-
-    Rotates the volume in the height-width plane (axes 1 and 2).
-    Handles inputs with shapes (D, H, W) or (D, H, W, C).
-
-    Args:
-        volume (np.ndarray): Input volume.
-        factor (Literal[0, 1, 2, 3]): Number of 90-degree rotations.
-
-    Returns:
-        np.ndarray: Rotated volume.
-
-    """
-    # Axes 1 (height) and 2 (width) for rotation
-    return np.rot90(volume, k=factor, axes=(1, 2))
-
-
-def volumes_rot90(volumes: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:
+def rot90_volumes(volumes: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:
     """Rotate a batch of volumes 90 degrees counter-clockwise multiple times.
 
     Rotates the volumes in the height-width plane (axes 2 and 3).
@@ -4113,9 +4095,9 @@ D4_TRANSFORMATIONS_IMAGES = {
     "r90": lambda x: rot90_images(x, 1),  # Rotate 90 degrees
     "r180": lambda x: rot90_images(x, 2),  # Rotate 180 degrees
     "r270": lambda x: rot90_images(x, 3),  # Rotate 270 degrees
-    "v": vflip,  # Vertical flip (already batch-aware)
+    "v": vflip_images,  # Vertical flip (already batch-aware)
     "hvt": lambda x: transpose_images(rot90_images(x, 2)),  # Reflect over anti-diagonal
-    "h": hflip,  # Horizontal flip (already batch-aware)
+    "h": hflip_images,  # Horizontal flip (already batch-aware)
     "t": transpose_images,  # Transpose (reflect over main diagonal)
 }
 

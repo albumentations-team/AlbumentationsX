@@ -62,6 +62,13 @@ repos:
       types: [python]
       files: ^albumentations/
       pass_filenames: true
+    - id: check-method-docstrings
+      name: Check method docstrings (except apply methods, getters, and setters)
+      entry: python tools/check_method_docstrings.py
+      language: python
+      types: [python]
+      files: ^albumentations/
+      pass_filenames: true
   - repo: local
     hooks:
       - id: check-albucore-version

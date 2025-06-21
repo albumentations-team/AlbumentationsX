@@ -264,20 +264,6 @@ class Perspective(DualTransform):
         """
         return self.apply(images, **params)
 
-    @batch_transform("spatial", has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the perspective transform to a volume.
-
-        Args:
-            volume (np.ndarray): Volume to be distorted.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Distorted volume.
-
-        """
-        return self.apply(volume, **params)
-
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the perspective transform to a batch of volumes.
@@ -902,20 +888,6 @@ class Affine(DualTransform):
 
         """
         return self.apply(images, **params)
-
-    @batch_transform("spatial", has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the affine transform to a volume.
-
-        Args:
-            volume (np.ndarray): Volume to be distorted.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Distorted volume.
-
-        """
-        return self.apply(volume, **params)
 
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
@@ -1739,17 +1711,6 @@ class RandomGridShuffle(DualTransform):
 
         """
         return self.apply(images, **params)
-
-    @batch_transform("spatial", has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the RandomGridShuffle transform to a volume.
-
-        Args:
-            volume (np.ndarray): Volume to be transformed.
-            **params (Any): Additional parameters.
-
-        """
-        return self.apply(volume, **params)
 
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:

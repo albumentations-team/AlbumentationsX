@@ -193,20 +193,6 @@ class RandomRotate90(DualTransform):
         """
         return fgeometric.rot90_images(images, factor)
 
-    def apply_to_volume(self, volume: np.ndarray, factor: Literal[0, 1, 2, 3], **params: Any) -> np.ndarray:
-        """Apply rotation to the input volume.
-
-        Args:
-            volume (np.ndarray): Volume to rotate.
-            factor (Literal[0, 1, 2, 3]): Number of times to rotate by 90 degrees.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Rotated volume.
-
-        """
-        return self.apply_to_images(volume, factor, **params)
-
     def apply_to_volumes(self, volumes: np.ndarray, factor: Literal[0, 1, 2, 3], **params: Any) -> np.ndarray:
         """Apply rotation to the input volumes.
 
@@ -219,7 +205,7 @@ class RandomRotate90(DualTransform):
             np.ndarray: Rotated volumes.
 
         """
-        return fgeometric.volumes_rot90(volumes, factor)
+        return fgeometric.rot90_volumes(volumes, factor)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, factor: Literal[0, 1, 2, 3], **params: Any) -> np.ndarray:
         """Apply rotation to the input mask3d.

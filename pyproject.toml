@@ -204,6 +204,7 @@ lint.ignore = [
   "B006",
   "B008",
   "B027",
+  "D102",    # We handle method docstrings with custom hook
   "D104",
   "D105",
   "D106",

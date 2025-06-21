@@ -148,20 +148,7 @@ class VerticalFlip(DualTransform):
             np.ndarray: Flipped images.
 
         """
-        return fgeometric.volume_vflip(images)
-
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the vertical flip to a volume.
-
-        Args:
-            volume (np.ndarray): Volume to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped volume.
-
-        """
-        return self.apply_to_images(volume, **params)
+        return fgeometric.vflip_images(images)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the vertical flip to a batch of volumes.
@@ -174,7 +161,7 @@ class VerticalFlip(DualTransform):
             np.ndarray: Flipped volumes.
 
         """
-        return fgeometric.volumes_vflip(volumes)
+        return fgeometric.vflip_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the vertical flip to a 3D mask.
@@ -294,20 +281,7 @@ class HorizontalFlip(DualTransform):
             np.ndarray: Flipped images.
 
         """
-        return fgeometric.volume_hflip(images)
-
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the horizontal flip to a volume.
-
-        Args:
-            volume (np.ndarray): Volume to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped volume.
-
-        """
-        return self.apply_to_images(volume, **params)
+        return fgeometric.hflip_images(images)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the horizontal flip to a batch of volumes.
@@ -320,7 +294,7 @@ class HorizontalFlip(DualTransform):
             np.ndarray: Flipped volumes.
 
         """
-        return fgeometric.volumes_hflip(volumes)
+        return fgeometric.hflip_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the horizontal flip to a 3D mask.
@@ -446,19 +420,6 @@ class Transpose(DualTransform):
 
         """
         return fgeometric.transpose_images(images)
-
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the transpose to a volume.
-
-        Args:
-            volume (np.ndarray): Volume to be transposed.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transposed volume.
-
-        """
-        return self.apply_to_images(volume, **params)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the transpose to a batch of volumes.
@@ -629,22 +590,6 @@ class D4(DualTransform):
 
         """
         return fgeometric.d4_images(images, group_element)
-
-    def apply_to_volume(
-        self,
-        volume: np.ndarray,
-        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
-        **params: Any,
-    ) -> np.ndarray:
-        """Apply the D4 transform to a volume.
-
-        Args:
-            volume (np.ndarray): Volume to be transformed.
-            group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): Group element to apply.
-            **params (Any): Additional parameters.
-
-        """
-        return self.apply_to_images(volume, group_element, **params)
 
     def apply_to_volumes(
         self,

@@ -36,16 +36,62 @@ class BaseScaler:
         self.scale: np.ndarray | None = None
 
     def fit(self, x: np.ndarray) -> None:
+        """Fit the scaler to the data.
+
+        Args:
+            x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
+
+        Raises:
+            NotImplementedError: This is an abstract method that must be implemented by subclasses.
+
+        """
         raise NotImplementedError
 
     def transform(self, x: np.ndarray) -> np.ndarray:
+        """Transform the data using the fitted scaler.
+
+        Args:
+            x (np.ndarray): The data to transform. Expected shape is (n_samples, n_features).
+
+        Returns:
+            np.ndarray: The transformed data with the same shape as the input.
+
+        Raises:
+            NotImplementedError: This is an abstract method that must be implemented by subclasses.
+
+        """
         raise NotImplementedError
 
     def fit_transform(self, x: np.ndarray) -> np.ndarray:
+        """Fit the scaler to the data and then transform it.
+
+        This is a convenience method that combines fit and transform operations.
+
+        Args:
+            x (np.ndarray): The data to fit and transform. Expected shape is (n_samples, n_features).
+
+        Returns:
+            np.ndarray: The transformed data with the same shape as the input.
+
+        """
         self.fit(x)
         return self.transform(x)
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
+        """Apply the inverse transformation to the data.
+
+        This method reverses the transformation applied by transform().
+
+        Args:
+            x (np.ndarray): The transformed data to inverse transform. Expected shape is (n_samples, n_features).
+
+        Returns:
+            np.ndarray: The inverse transformed data with the same shape as the input.
+
+        Raises:
+            NotImplementedError: This is an abstract method that must be implemented by subclasses.
+
+        """
         raise NotImplementedError
 
 
@@ -57,6 +103,17 @@ class MinMaxScaler(BaseScaler):
         self.data_range: np.ndarray | None = None
 
     def fit(self, x: np.ndarray) -> None:
+        """Fit the MinMaxScaler to the data.
+
+        Computes the minimum and maximum values for each feature to be used for scaling.
+
+        Args:
+            x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
+
+        Note:
+            When data_min equals data_max for a feature, the range is set to 1 to avoid division by zero.
+
+        """
         self.data_min = np.min(x, axis=0)
         self.data_max = np.max(x, axis=0)
         self.data_range = self.data_max - self.data_min
@@ -64,6 +121,20 @@ class MinMaxScaler(BaseScaler):
         self.data_range[self.data_range == 0] = 1
 
     def transform(self, x: np.ndarray) -> np.ndarray:
+        """Transform features by scaling to the specified range.
+
+        The transformation is: X_scaled = (X - data_min) / data_range * (max - min) + min
+
+        Args:
+            x (np.ndarray): The data to transform. Expected shape is (n_samples, n_features).
+
+        Returns:
+            np.ndarray: The scaled data in the range [self.min, self.max].
+
+        Raises:
+            ValueError: If the scaler has not been fitted yet.
+
+        """
         if self.data_min is None or self.data_max is None or self.data_range is None:
             raise ValueError(
                 "This MinMaxScaler instance is not fitted yet. "
@@ -78,6 +149,18 @@ class MinMaxScaler(BaseScaler):
         return x_std
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
+        """Reverse the scaling operation.
+
+        Args:
+            x (np.ndarray): The scaled data to inverse transform. Expected shape is (n_samples, n_features).
+
+        Returns:
+            np.ndarray: The data in the original scale.
+
+        Raises:
+            ValueError: If the scaler has not been fitted yet.
+
+        """
         if self.data_min is None or self.data_max is None or self.data_range is None:
             raise ValueError(
                 "This MinMaxScaler instance is not fitted yet. "
@@ -92,6 +175,17 @@ class StandardScaler(BaseScaler):
         super().__init__()
 
     def fit(self, x: np.ndarray) -> None:
+        """Fit the StandardScaler to the data.
+
+        Computes the mean and standard deviation for each feature to be used for standardization.
+
+        Args:
+            x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
+
+        Note:
+            When variance is zero for a feature, the scale is set to 1 to avoid division by zero.
+
+        """
         self.mean = np.mean(x, axis=0)
         self.var = np.var(x, axis=0)
         self.scale = np.sqrt(self.var)
@@ -99,6 +193,20 @@ class StandardScaler(BaseScaler):
         self.scale[self.scale == 0] = 1
 
     def transform(self, x: np.ndarray) -> np.ndarray:
+        """Standardize features by removing the mean and scaling to unit variance.
+
+        The transformation is: z = (x - mean) / std
+
+        Args:
+            x (np.ndarray): The data to transform. Expected shape is (n_samples, n_features).
+
+        Returns:
+            np.ndarray: The standardized data with zero mean and unit variance.
+
+        Raises:
+            ValueError: If the scaler has not been fitted yet.
+
+        """
         if self.mean is None or self.scale is None:
             raise ValueError(
                 "This StandardScaler instance is not fitted yet. "
@@ -107,6 +215,20 @@ class StandardScaler(BaseScaler):
         return (x - self.mean) / self.scale
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
+        """Reverse the standardization operation.
+
+        The inverse transformation is: x = z * std + mean
+
+        Args:
+            x (np.ndarray): The standardized data to inverse transform. Expected shape is (n_samples, n_features).
+
+        Returns:
+            np.ndarray: The data in the original scale.
+
+        Raises:
+            ValueError: If the scaler has not been fitted yet.
+
+        """
         if self.mean is None or self.scale is None:
             raise ValueError(
                 "This StandardScaler instance is not fitted yet. "
@@ -117,13 +239,45 @@ class StandardScaler(BaseScaler):
 
 class TransformerInterface(Protocol):
     @abc.abstractmethod
-    def inverse_transform(self, x: np.ndarray) -> np.ndarray: ...
+    def inverse_transform(self, x: np.ndarray) -> np.ndarray:
+        """Apply the inverse transformation.
+
+        Args:
+            x (np.ndarray): The transformed data to inverse transform.
+
+        Returns:
+            np.ndarray: The inverse transformed data.
+
+        """
+        ...
 
     @abc.abstractmethod
-    def fit(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray: ...
+    def fit(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
+        """Fit the transformer to the data.
+
+        Args:
+            x (np.ndarray): The data to fit to.
+            y (np.ndarray | None): Optional target data (not used in most implementations).
+
+        Returns:
+            np.ndarray: The fitted transformer instance.
+
+        """
+        ...
 
     @abc.abstractmethod
-    def transform(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray: ...
+    def transform(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
+        """Transform the data.
+
+        Args:
+            x (np.ndarray): The data to transform.
+            y (np.ndarray | None): Optional target data (not used in most implementations).
+
+        Returns:
+            np.ndarray: The transformed data.
+
+        """
+        ...
 
 
 class DomainAdapter:
@@ -140,19 +294,64 @@ class DomainAdapter:
         self.target_transformer.fit(self.flatten(ref_img))
 
     def to_colorspace(self, img: np.ndarray) -> np.ndarray:
+        """Convert the image to the target color space.
+
+        Args:
+            img (np.ndarray): The input image to convert.
+
+        Returns:
+            np.ndarray: The image in the target color space, or the original image if no conversion is specified.
+
+        """
         return img if self.color_in is None else cv2.cvtColor(img, self.color_in)
 
     def from_colorspace(self, img: np.ndarray) -> np.ndarray:
+        """Convert the image back from the target color space.
+
+        Args:
+            img (np.ndarray): The image to convert back.
+
+        Returns:
+            np.ndarray: The image converted back to the original color space, or the original image
+                if no conversion is specified.
+
+        """
         if self.color_out is None:
             return img
         return cv2.cvtColor(clip(img, np.uint8, inplace=True), self.color_out)
 
     def flatten(self, img: np.ndarray) -> np.ndarray:
+        """Flatten the image into a 2D array of pixels.
+
+        Converts the image to the target color space, normalizes to float values,
+        and reshapes to (n_pixels, n_channels).
+
+        Args:
+            img (np.ndarray): The input image to flatten.
+
+        Returns:
+            np.ndarray: The flattened image with shape (n_pixels, n_channels).
+
+        """
         img = self.to_colorspace(img)
         img = to_float(img)
         return img.reshape(-1, self.num_channels)
 
     def reconstruct(self, pixels: np.ndarray, height: int, width: int) -> np.ndarray:
+        """Reconstruct an image from flattened pixels.
+
+        Reshapes the pixels back to image format and converts back to the original color space.
+
+        Args:
+            pixels (np.ndarray): The flattened pixels with shape (n_pixels, n_channels).
+            height (int): The height of the output image.
+            width (int): The width of the output image.
+
+        Returns:
+            np.ndarray: The reconstructed image with shape (height, width) for grayscale
+                or (height, width, n_channels) for color images.
+
+        """
         pixels = clip(pixels, np.uint8, inplace=True)
         if self.num_channels == 1:
             return self.from_colorspace(pixels.reshape(height, width))

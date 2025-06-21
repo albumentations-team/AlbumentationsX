@@ -208,14 +208,6 @@ class BaseCrop(DualTransform):
     ) -> np.ndarray:
         return fcrops.volume_crop_yx(images, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
 
-    def apply_to_volume(
-        self,
-        volume: np.ndarray,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> np.ndarray:
-        return self.apply_to_images(volume, crop_coords, **params)
-
     def apply_to_volumes(
         self,
         volumes: np.ndarray,
@@ -532,14 +524,6 @@ class BaseCropAndPad(BaseCrop):
                 pad_value=self.fill,
             )
         return BaseCrop.apply_to_images(self, images, crop_coords, **params)
-
-    def apply_to_volume(
-        self,
-        volume: np.ndarray,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> np.ndarray:
-        return self.apply_to_images(volume, crop_coords, **params)
 
     def apply_to_volumes(
         self,
@@ -1776,22 +1760,6 @@ class _BaseRandomSizedCrop(DualTransform):
 
         # Then resize the smaller cropped volume using the selected interpolation
         return np.stack([fgeometric.resize(crop[i], self.size, interpolation) for i in range(images.shape[0])])
-
-    def apply_to_volume(
-        self,
-        volume: np.ndarray,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> np.ndarray:
-        """Apply the crop and resize to a volume.
-
-        Args:
-            volume (np.ndarray): The volume to crop.
-            crop_coords (tuple[int, int, int, int]): The coordinates of the crop.
-            **params (Any): Additional parameters.
-
-        """
-        return self.apply_to_images(volume, crop_coords, **params)
 
     def apply_to_mask3d(
         self,

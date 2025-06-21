@@ -67,10 +67,24 @@ class SerializableMeta(ABCMeta):
 
     @classmethod
     def is_serializable(cls) -> bool:
+        """Check if the class should be registered as serializable.
+
+        Returns:
+            bool: False by default. Subclasses override this to return True if they
+                support serialization.
+
+        """
         return False
 
     @classmethod
     def get_class_fullname(cls) -> str:
+        """Get the full class name for serialization registry.
+
+        Returns:
+            str: The shortened class name that uniquely identifies this class
+                in the serialization registry.
+
+        """
         return get_shortest_class_fullname(cls)
 
     @classmethod
@@ -82,11 +96,38 @@ class Serializable(metaclass=SerializableMeta):
     @classmethod
     @abstractmethod
     def is_serializable(cls) -> bool:
+        """Check if this class is serializable.
+
+        Subclasses must implement this method to indicate whether they support
+        serialization. Classes that return True will be registered in SERIALIZABLE_REGISTRY.
+
+        Returns:
+            bool: True if the class supports serialization, False otherwise.
+
+        Raises:
+            NotImplementedError: This is an abstract method that must be implemented
+                by subclasses.
+
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def get_class_fullname(cls) -> str:
+        """Get the full class name used for serialization.
+
+        This method returns a unique identifier for the class that is used when
+        serializing and deserializing. The name must be unique across all
+        serializable classes.
+
+        Returns:
+            str: The full class name (typically module.ClassName format).
+
+        Raises:
+            NotImplementedError: This is an abstract method that must be implemented
+                by subclasses.
+
+        """
         raise NotImplementedError
 
     @abstractmethod

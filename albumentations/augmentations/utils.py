@@ -124,6 +124,40 @@ def check_range(value: tuple[float, float], lower_bound: float, upper_bound: flo
 
 
 class PCA:
+    """Principal Component Analysis (PCA) transformer.
+
+    This class provides a wrapper around OpenCV's PCA implementation for
+    dimensionality reduction. It can be used to project data onto a lower
+    dimensional space while preserving as much variance as possible.
+
+    Args:
+        n_components (int | None): Number of components to keep.
+            - If None: Keep all components (min of n_samples and n_features)
+            - If int: Keep the specified number of components
+            Must be greater than 0 if specified.
+
+    Raises:
+        ValueError: If n_components is specified and is less than or equal to 0.
+
+    Attributes:
+        n_components (int | None): Number of components to keep
+        mean (np.ndarray | None): Mean of the training data (set after fitting)
+        components_ (np.ndarray | None): Principal components (set after fitting)
+        explained_variance_ (np.ndarray | None): Explained variance for each component (set after fitting)
+
+    Examples:
+        >>> import numpy as np
+        >>> from albumentations.augmentations.utils import PCA
+        >>> # Create sample data
+        >>> data = np.random.randn(100, 10)  # 100 samples, 10 features
+        >>> # Initialize PCA to keep 3 components
+        >>> pca = PCA(n_components=3)
+        >>> # Fit and transform the data
+        >>> transformed = pca.fit_transform(data)
+        >>> print(transformed.shape)  # (100, 3)
+
+    """
+
     def __init__(self, n_components: int | None = None) -> None:
         if n_components is not None and n_components <= 0:
             raise ValueError("Number of components must be greater than zero.")
@@ -133,6 +167,30 @@ class PCA:
         self.explained_variance_: np.ndarray | None = None
 
     def fit(self, x: np.ndarray) -> None:
+        """Fit the PCA model to the input data.
+
+        Computes the mean, principal components, and explained variance
+        from the input data. The principal components are sorted by
+        explained variance in descending order.
+
+        Args:
+            x (np.ndarray): Training data of shape (n_samples, n_features).
+                Data will be automatically converted to float64 for computation.
+
+        Note:
+            - The data is automatically centered (mean-subtracted) during fitting
+            - Components are sorted by explained variance (highest first)
+            - Uses OpenCV's PCACompute2 for efficient computation
+
+        Examples:
+            >>> import numpy as np
+            >>> from albumentations.augmentations.utils import PCA
+            >>> data = np.random.randn(100, 10)
+            >>> pca = PCA(n_components=3)
+            >>> pca.fit(data)
+            >>> print(pca.components_.shape)  # (3, 10)
+
+        """
         x = x.astype(np.float64, copy=False)  # avoid unnecessary copy if already float64
         n_samples, n_features = x.shape
 
@@ -145,6 +203,36 @@ class PCA:
         self.explained_variance_ = eigenvalues.flatten()
 
     def transform(self, x: np.ndarray) -> np.ndarray:
+        """Transform data using the fitted PCA model.
+
+        Projects the input data onto the principal components learned during fitting.
+        The data is first centered using the mean computed during fitting.
+
+        Args:
+            x (np.ndarray): Data to transform of shape (n_samples, n_features).
+                Must have the same number of features as the data used for fitting.
+                Data will be automatically converted to float64 for computation.
+
+        Returns:
+            np.ndarray: Transformed data of shape (n_samples, n_components).
+                The transformed data is in the principal component space.
+
+        Raises:
+            ValueError: If the model has not been fitted yet (components_ is None).
+
+        Examples:
+            >>> import numpy as np
+            >>> from albumentations.augmentations.utils import PCA
+            >>> # Fit on training data
+            >>> train_data = np.random.randn(100, 10)
+            >>> pca = PCA(n_components=3)
+            >>> pca.fit(train_data)
+            >>> # Transform new data
+            >>> test_data = np.random.randn(20, 10)
+            >>> transformed = pca.transform(test_data)
+            >>> print(transformed.shape)  # (20, 3)
+
+        """
         if self.components_ is None:
             raise ValueError(
                 "This PCA instance is not fitted yet. "
@@ -154,10 +242,68 @@ class PCA:
         return cv2.PCAProject(x, self.mean, self.components_)
 
     def fit_transform(self, x: np.ndarray) -> np.ndarray:
+        """Fit the PCA model and transform the data in one step.
+
+        This is equivalent to calling fit(x) followed by transform(x),
+        but more convenient. Useful when you want to both learn the
+        principal components and transform the same data.
+
+        Args:
+            x (np.ndarray): Data to fit and transform of shape (n_samples, n_features).
+                Data will be automatically converted to float64 for computation.
+
+        Returns:
+            np.ndarray: Transformed data of shape (n_samples, n_components).
+                The data projected onto the principal components.
+
+        Examples:
+            >>> import numpy as np
+            >>> from albumentations.augmentations.utils import PCA
+            >>> data = np.random.randn(100, 10)
+            >>> pca = PCA(n_components=3)
+            >>> # Fit and transform in one step
+            >>> transformed = pca.fit_transform(data)
+            >>> print(transformed.shape)  # (100, 3)
+
+        """
         self.fit(x)
         return self.transform(x)
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
+        """Transform data back to the original space.
+
+        Reconstructs the original data from the principal component representation.
+        Note that if n_components < n_features, this will be a lossy reconstruction.
+
+        Args:
+            x (np.ndarray): Data in principal component space of shape (n_samples, n_components).
+                Must have the same number of components as used during fitting.
+
+        Returns:
+            np.ndarray: Reconstructed data of shape (n_samples, n_features).
+                The data transformed back to the original feature space.
+
+        Raises:
+            ValueError: If the model has not been fitted yet (components_ is None).
+
+        Note:
+            - The reconstruction is exact only if all components were kept (n_components = n_features)
+            - Otherwise, some information is lost and the reconstruction is approximate
+            - The reconstruction adds back the mean that was subtracted during fitting
+
+        Examples:
+            >>> import numpy as np
+            >>> from albumentations.augmentations.utils import PCA
+            >>> # Original data
+            >>> data = np.random.randn(100, 10)
+            >>> pca = PCA(n_components=3)  # Keep only 3 components
+            >>> # Transform and inverse transform
+            >>> transformed = pca.fit_transform(data)
+            >>> reconstructed = pca.inverse_transform(transformed)
+            >>> print(reconstructed.shape)  # (100, 10)
+            >>> # Note: reconstructed ≈ data (approximate due to dimensionality reduction)
+
+        """
         if self.components_ is None:
             raise ValueError(
                 "This PCA instance is not fitted yet. "
@@ -166,6 +312,37 @@ class PCA:
         return cv2.PCABackProject(x, self.mean, self.components_)
 
     def explained_variance_ratio(self) -> np.ndarray:
+        """Calculate the proportion of variance explained by each principal component.
+
+        The explained variance ratio indicates how much of the total variance
+        in the data is captured by each principal component. Higher values
+        indicate components that capture more variance.
+
+        Returns:
+            np.ndarray: Array of shape (n_components,) containing the fraction
+                of total variance explained by each component. Values sum to <= 1.0,
+                with equality when all components are kept.
+
+        Raises:
+            ValueError: If the model has not been fitted yet (explained_variance_ is None).
+
+        Note:
+            - Values are normalized so they sum to 1.0 if all components are kept
+            - The first component always explains the most variance
+            - Useful for determining how many components to keep
+
+        Examples:
+            >>> import numpy as np
+            >>> from albumentations.augmentations.utils import PCA
+            >>> data = np.random.randn(100, 10)
+            >>> pca = PCA(n_components=5)
+            >>> pca.fit(data)
+            >>> ratios = pca.explained_variance_ratio()
+            >>> print(ratios.shape)  # (5,)
+            >>> print(f"First component explains {ratios[0]:.2%} of variance")
+            >>> print(f"Total variance explained: {ratios.sum():.2%}")
+
+        """
         if self.explained_variance_ is None:
             raise ValueError(
                 "This PCA instance is not fitted yet. Call 'fit' with appropriate arguments before using this method.",
@@ -174,10 +351,87 @@ class PCA:
         return self.explained_variance_ / total_variance
 
     def cumulative_explained_variance_ratio(self) -> np.ndarray:
+        """Calculate the cumulative proportion of variance explained.
+
+        Returns the cumulative sum of explained variance ratios. This is useful
+        for determining how many components are needed to explain a desired
+        amount of variance in the data.
+
+        Returns:
+            np.ndarray: Array of shape (n_components,) containing the cumulative
+                fraction of variance explained. The i-th element is the total
+                variance explained by the first i+1 components.
+
+        Raises:
+            ValueError: If the model has not been fitted yet (via explained_variance_ratio).
+
+        Note:
+            - Values are monotonically increasing from 0 to <= 1.0
+            - Useful for choosing n_components to retain desired variance
+            - Common thresholds are 0.95 or 0.99 (95% or 99% of variance)
+
+        Examples:
+            >>> import numpy as np
+            >>> from albumentations.augmentations.utils import PCA
+            >>> data = np.random.randn(100, 10)
+            >>> pca = PCA()  # Keep all components
+            >>> pca.fit(data)
+            >>> cumsum = pca.cumulative_explained_variance_ratio()
+            >>> # Find how many components explain 95% of variance
+            >>> n_components_95 = np.argmax(cumsum >= 0.95) + 1
+            >>> print(f"Need {n_components_95} components for 95% variance")
+
+        """
         return np.cumsum(self.explained_variance_ratio())
 
 
 def handle_empty_array(param_name: str) -> Callable[[F], F]:
+    """Decorator to handle empty array inputs gracefully.
+
+    This decorator wraps a function to check if the specified array parameter
+    is empty. If the array is empty, it returns the empty array immediately
+    without calling the wrapped function. This prevents errors in functions
+    that cannot handle empty arrays.
+
+    Args:
+        param_name (str): Name of the parameter that should be checked for emptiness.
+            This parameter should be an array-like object with a `len()` method.
+
+    Returns:
+        Callable[[F], F]: A decorator function that can be applied to other functions
+            to add empty array handling.
+
+    Raises:
+        ValueError: If the specified parameter is not provided to the wrapped function.
+
+    Note:
+        - The decorator checks for the parameter as both a positional and keyword argument
+        - An empty array is defined as one with `len(array) == 0`
+        - If the array is empty, the original empty array is returned unmodified
+        - This is useful for functions that perform operations on arrays which
+          would fail or be meaningless on empty inputs
+
+    Examples:
+        >>> import numpy as np
+        >>> from albumentations.augmentations.utils import handle_empty_array
+        >>>
+        >>> @handle_empty_array("points")
+        ... def process_points(points):
+        ...     # This would fail on empty arrays
+        ...     return points.mean(axis=0)
+        >>>
+        >>> # Empty array is returned immediately
+        >>> empty = np.array([])
+        >>> result = process_points(empty)
+        >>> assert result is empty
+        >>>
+        >>> # Non-empty arrays are processed normally
+        >>> points = np.array([[1, 2], [3, 4]])
+        >>> result = process_points(points)
+        >>> assert np.array_equal(result, np.array([2., 3.]))
+
+    """
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:

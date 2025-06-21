@@ -100,6 +100,24 @@ class ValidatedTransformMeta(type):
             original_sig = signature(original_init)
 
             def custom_init(self: Any, *args: Any, **kwargs: Any) -> None:
+                """Custom initialization method that validates parameters.
+
+                This method wraps the original __init__ to add parameter validation
+                using the InitSchema Pydantic model. It processes arguments, validates
+                them against the schema, and handles invalid arguments based on the
+                strict mode setting.
+
+                Args:
+                    self: The instance being initialized.
+                    *args: Positional arguments passed to __init__.
+                    **kwargs: Keyword arguments passed to __init__, including optional
+                        'strict' parameter for validation mode.
+
+                Raises:
+                    ValueError: If parameters fail validation or if invalid arguments
+                        are provided in strict mode.
+
+                """
                 full_kwargs, param_names, strict = cls._process_init_parameters(original_init, args, kwargs)
 
                 validated_kwargs = cls._validate_parameters(

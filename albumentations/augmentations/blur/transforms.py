@@ -60,7 +60,7 @@ class BlurInitSchema(BaseTransformInitSchema):
 
     @field_validator("blur_limit")
     @classmethod
-    def process_blur(cls, value: tuple[int, int] | int, info: ValidationInfo) -> tuple[int, int]:
+    def _process_blur(cls, value: tuple[int, int] | int, info: ValidationInfo) -> tuple[int, int]:
         return fblur.process_blur_limit(value, info, min_value=3)
 
 

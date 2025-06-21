@@ -278,20 +278,6 @@ class BaseDistortion(DualTransform):
         """
         return self.apply(images, **params)
 
-    @batch_transform("spatial", has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the distortion to a volume.
-
-        Args:
-            volume (np.ndarray): Volume to be distorted.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Distorted volume.
-
-        """
-        return self.apply(volume, **params)
-
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the distortion to a batch of volumes.

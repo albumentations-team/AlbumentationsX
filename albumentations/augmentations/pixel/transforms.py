@@ -254,19 +254,6 @@ class Normalize(ImageOnlyTransform):
         return normalize_per_image(img, self.normalization)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply normalization to a batch of images.
-
-        Args:
-            images (np.ndarray): Batch of images to normalize with shape:
-                - (N, H, W) for grayscale images
-                - (N, H, W, C) for multi-channel images
-                where N is the batch size
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Normalized batch of images.
-
-        """
         # For batch of images: spatial axes are (1, 2) - H and W dimensions
         return fpixel.normalize_dispatch(
             images,
@@ -275,22 +262,6 @@ class Normalize(ImageOnlyTransform):
             mean=self.mean_np,
             denominator=self.denominator,
         )
-
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply normalization to a 3D volume.
-
-        Args:
-            volume (np.ndarray): 3D volume to normalize with shape:
-                - (D, H, W) for grayscale volumes
-                - (D, H, W, C) for multi-channel volumes
-                where D is the depth
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Normalized 3D volume.
-
-        """
-        return self.apply_to_images(volume, **params)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply normalization to a batch of 3D volumes.
@@ -1783,29 +1754,6 @@ class RandomToneCurve(ImageOnlyTransform):
         """
         return fpixel.move_tone_curve(images, low_y, high_y, num_channels)
 
-    def apply_to_volume(
-        self,
-        volume: np.ndarray,
-        low_y: float | np.ndarray,
-        high_y: float | np.ndarray,
-        num_channels: int,
-        **params: Any,
-    ) -> np.ndarray:
-        """Apply the tone curve to the input volume.
-
-        Args:
-            volume (np.ndarray): The input volume to apply the tone curve to.
-            low_y (float | np.ndarray): The lower control point of the tone curve.
-            high_y (float | np.ndarray): The upper control point of the tone curve.
-            num_channels (int): The number of channels in the input volume.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The volume with the applied tone curve.
-
-        """
-        return fpixel.move_tone_curve(volume, low_y, high_y, num_channels)
-
     def apply_to_volumes(
         self,
         volumes: np.ndarray,
@@ -2557,20 +2505,6 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         """
         return self.apply(volumes, *args, **params)
 
-    def apply_to_volume(self, volume: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        """Apply the brightness and contrast adjustment to a single volume.
-
-        Args:
-            volume (np.ndarray): The volume to apply the brightness and contrast adjustment to.
-            *args (Any): Additional arguments.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The volume with the applied brightness and contrast adjustment.
-
-        """
-        return self.apply(volume, *args, **params)
-
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
@@ -2713,17 +2647,6 @@ class GaussNoise(ImageOnlyTransform):
 
         """
         return fpixel.add_noise(images, noise_map)
-
-    def apply_to_volume(self, volume: np.ndarray, noise_map: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the Gaussian noise to a single volume.
-
-        Args:
-            volume (np.ndarray): The volume to apply the Gaussian noise to.
-            noise_map (np.ndarray): The noise map to apply to the volume.
-            **params (Any): Additional parameters (not used in this transform).
-
-        """
-        return fpixel.add_noise(volume, noise_map)
 
     def apply_to_volumes(self, volumes: np.ndarray, noise_map: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the Gaussian noise to a batch of volumes.
@@ -3086,20 +3009,6 @@ class ChannelShuffle(ImageOnlyTransform):
             return volumes
         return fpixel.volumes_channel_shuffle(volumes, channels_shuffled)
 
-    def apply_to_volume(self, volume: np.ndarray, channels_shuffled: list[int] | None, **params: Any) -> np.ndarray:
-        """Apply the ChannelShuffle transform to the input volume.
-
-        Args:
-            volume (np.ndarray): The input volume to apply the ChannelShuffle transform to.
-            channels_shuffled (list[int] | None): The channels to shuffle.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The volume with the applied ChannelShuffle transform.
-
-        """
-        return self.apply_to_images(volume, channels_shuffled, **params)
-
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
@@ -3204,20 +3113,6 @@ class InvertImg(ImageOnlyTransform):
         """
         return self.apply(volumes, *args, **params)
 
-    def apply_to_volume(self, volume: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        """Apply the InvertImg transform to the input volume.
-
-        Args:
-            volume (np.ndarray): The input volume to apply the InvertImg transform to.
-            *args (Any): Additional arguments (not used in this transform).
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The volume with the applied InvertImg transform.
-
-        """
-        return self.apply(volume, *args, **params)
-
 
 class RandomGamma(ImageOnlyTransform):
     """Applies random gamma correction to the input image.
@@ -3315,20 +3210,6 @@ class RandomGamma(ImageOnlyTransform):
 
         """
         return fpixel.gamma_transform(img, gamma=gamma)
-
-    def apply_to_volume(self, volume: np.ndarray, gamma: float, **params: Any) -> np.ndarray:
-        """Apply the RandomGamma transform to the input volume.
-
-        Args:
-            volume (np.ndarray): The input volume to apply the RandomGamma transform to.
-            gamma (float): The gamma value.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The volume with the applied RandomGamma transform.
-
-        """
-        return self.apply(volume, gamma=gamma)
 
     def apply_to_volumes(self, volumes: np.ndarray, gamma: float, **params: Any) -> np.ndarray:
         """Apply the RandomGamma transform to the input volumes.
@@ -3580,23 +3461,6 @@ class ToGray(ImageOnlyTransform):
 
         return fpixel.to_gray(images, self.num_output_channels, self.method)
 
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply ToGray to a single volume.
-
-        Args:
-            volume (np.ndarray): Volume with shape (D, H, W, C) or (D, H, W).
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Grayscale volume.
-
-        """
-        if is_grayscale_image(volume, has_depth_dim=True):
-            warnings.warn("The volume is already gray.", stacklevel=2)
-            return volume
-
-        return fpixel.to_gray(volume, self.num_output_channels, self.method)
-
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply ToGray to a batch of volumes.
 
@@ -3698,19 +3562,6 @@ class ToRGB(ImageOnlyTransform):
 
         """
         return self.apply(images, **params)
-
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply ToRGB to a single volume.
-
-        Args:
-            volume (np.ndarray): Volume with shape (D, H, W, C) or (D, H, W).
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Grayscale volume.
-
-        """
-        return self.apply(volume, **params)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply ToRGB to a batch of volumes.
@@ -5941,7 +5792,7 @@ class UniformParams(NoiseParamsBase):
 
     @field_validator("ranges", mode="after")
     @classmethod
-    def validate_ranges(cls, v: list[Sequence[float]]) -> list[tuple[float, float]]:
+    def _validate_ranges(cls, v: list[Sequence[float]]) -> list[tuple[float, float]]:
         result = []
         for range_values in v:
             if len(range_values) != PAIR:
@@ -6679,17 +6530,6 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         """
         return self.apply(images, **params)
 
-    @batch_transform("spatial", keep_depth_dim=True, has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the PlasmaBrightnessContrast transform to a volume.
-
-        Args:
-            volume (np.ndarray): The input volume to apply the PlasmaBrightnessContrast transform to.
-            **params (Any): Additional parameters for the transform.
-
-        """
-        return self.apply(volume, **params)
-
     @batch_transform("spatial", keep_depth_dim=True, has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the PlasmaBrightnessContrast transform to a batch of volumes.
@@ -6872,17 +6712,6 @@ class PlasmaShadow(ImageOnlyTransform):
 
         """
         return self.apply(images, **params)
-
-    @batch_transform("spatial", keep_depth_dim=True, has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the PlasmaShadow transform to a batch of volume.
-
-        Args:
-            volume (np.ndarray): The input volume to apply the PlasmaShadow transform to.
-            **params (Any): Additional parameters for the transform.
-
-        """
-        return self.apply(volume, **params)
 
     @batch_transform("spatial", keep_depth_dim=True, has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
@@ -7226,17 +7055,6 @@ class AutoContrast(ImageOnlyTransform):
         """
         return self.apply(images, **params)
 
-    @batch_transform("channel", has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the AutoContrast transform to a batch of volumes.
-
-        Args:
-            volume (np.ndarray): The input volume to apply the AutoContrast transform to.
-            **params (Any): Additional parameters for the transform.
-
-        """
-        return self.apply(volume, **params)
-
     @batch_transform("channel", has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         """Apply the AutoContrast transform to a batch of volumes.
@@ -7499,17 +7317,6 @@ class HEStain(ImageOnlyTransform):
 
         """
         return self.apply(images, **params)
-
-    @batch_transform("channel", has_batch_dim=False, has_depth_dim=True)
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the HEStain transform to a batch of volumes.
-
-        Args:
-            volume (np.ndarray): The input volumes to apply the HEStain transform to.
-            **params (Any): Additional parameters for the transform.
-
-        """
-        return self.apply(volume, **params)
 
     @batch_transform("channel", has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:

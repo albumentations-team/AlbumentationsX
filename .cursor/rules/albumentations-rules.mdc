@@ -12,4 +12,4 @@ alwaysApply: true
 - We do not have ANY default values in the InitSchema class
 - Use pytest.mark.parametrize for parameterized tests
 - In the code, when need default value use 137, not 42
-- When you want to create a "temporary test" to check something. This means, that existing tests are not good enough. Instead of creating a new one just extend the existing test suite.
+- NEVER create temporary tests. If you need to create a test, it mean that existing test suite is not good enough => add permanent test to tests.

@@ -1329,7 +1329,10 @@ def to_gray_weighted_average(img: np.ndarray) -> np.ndarray:
         3
 
     """
-    return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    if img.ndim == 3:
+        return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+    return img[..., 0] * 0.299 + img[..., 1] * 0.587 + img[..., 2] * 0.114
 
 
 @uint8_io
@@ -1423,13 +1426,12 @@ def to_gray_from_lab(img: np.ndarray) -> np.ndarray:
 
     lab = cv2.cvtColor(flattened, cv2.COLOR_RGB2LAB)
 
-    grayscale_flat = lab[..., 0]
     grayscale = restore_from_channel(
-        grayscale_flat,
+        lab,
         original_shape,
         has_batch_dim=has_batch_dim,
         has_depth_dim=has_depth_dim,
-    )
+    )[..., 0]
 
     return grayscale / 100.0 if original_dtype == np.float32 else grayscale
 

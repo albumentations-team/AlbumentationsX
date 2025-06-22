@@ -67,6 +67,7 @@ def test_rotate_crop_border(image):
             A.VerticalFlip,
             A.HorizontalFlip,
             A.Transpose,
+            A.MaskDropout,
         },
     ),
 )
@@ -76,7 +77,7 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
     params["fill_mask"] = 0
 
     aug = augmentation_cls(p=1, **params)
-    mask = cv2.randu(np.zeros((100, 100), dtype=np.uint8), 0, 2)
+    mask = cv2.randu(np.zeros((100, 100, 1), dtype=np.uint8), 0, 2)
     data = {
         "image": image,
         "mask": mask,
@@ -140,7 +141,7 @@ def test_semantic_mask_interpolation(augmentation_cls, params, image):
     params["mask_interpolation"] = cv2.INTER_NEAREST
     params["fill_mask"] = 0
 
-    mask = cv2.randu(np.zeros((100, 100), dtype=np.uint8), 0, 4) * 64
+    mask = cv2.randu(np.zeros((100, 100, 1), dtype=np.uint8), 0, 4) * 64
 
     data = A.Compose([augmentation_cls(p=1, **params)], seed=seed, strict=False)(image=image, mask=mask)
 
@@ -351,7 +352,7 @@ def test_equalize():
     b = fpixel.equalize(img)
     assert np.all(a == b)
 
-    mask = cv2.randu(np.zeros((256, 256), dtype=np.uint8), 0, 2)
+    mask = cv2.randu(np.zeros((256, 256, 1), dtype=np.uint8), 0, 2)
     aug = A.Equalize(mask=mask, p=1)
     a = aug(image=img)["image"]
     b = fpixel.equalize(img, mask=mask)
@@ -427,8 +428,6 @@ def test_crop_non_empty_mask():
 @pytest.mark.parametrize(
     "image",
     [
-        cv2.randu(np.zeros((256, 320), dtype=np.uint8), 0, 255),
-        cv2.randu(np.zeros((256, 320), dtype=np.float32), 0, 1),
         cv2.randu(np.zeros((256, 320, 1), dtype=np.uint8), 0, 255),
         cv2.randu(np.zeros((256, 320, 1), dtype=np.float32), 0, 1),
     ],
@@ -492,7 +491,7 @@ def test_multiplicative_noise_rgb(image, elementwise):
 def test_mask_dropout():
     # In this case we have mask with all ones, so MaskDropout wipe entire mask and image
     img = cv2.randu(np.zeros((50, 10, 3), dtype=np.uint8), 0, 255)
-    mask = np.ones([50, 10], dtype=np.int64)
+    mask = np.ones((50, 10, 1), dtype=np.int64)
 
     aug = A.MaskDropout(p=1)
     result = aug(image=img, mask=mask)
@@ -501,7 +500,7 @@ def test_mask_dropout():
 
     # In this case we have mask with zeros , so MaskDropout will make no changes
     img = cv2.randu(np.zeros((50, 10, 3), dtype=np.uint8), 0, 255)
-    mask = np.zeros([50, 10], dtype=np.int64)
+    mask = np.zeros((50, 10, 1), dtype=np.int64)
 
     aug = A.MaskDropout(p=1)
     result = aug(image=img, mask=mask)
@@ -511,10 +510,10 @@ def test_mask_dropout():
 
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
 def test_unsharp_mask_float_uint8_diff_less_than_two(val_uint8):
-    x_uint8 = np.zeros((5, 5)).astype(np.uint8)
+    x_uint8 = np.zeros((5, 5, 3)).astype(np.uint8)
     x_uint8[2, 2] = val_uint8
 
-    x_float32 = np.zeros((5, 5)).astype(np.float32)
+    x_float32 = np.zeros((5, 5, 3)).astype(np.float32)
     x_float32[2, 2] = val_uint8 / 255.0
 
     unsharpmask = A.UnsharpMask(blur_limit=3, p=1)
@@ -621,12 +620,12 @@ def test_perspective_keep_size():
 
 
 def test_longest_max_size_list():
-    img = cv2.randu(np.zeros((50, 10), dtype=np.uint8), 0, 255)
+    img = cv2.randu(np.zeros((50, 10, 1), dtype=np.uint8), 0, 255)
     keypoints = np.array([(9, 5, 33, 0, 0)])
 
     aug = A.LongestMaxSize(max_size=[5, 10], p=1)
     result = aug(image=img, keypoints=keypoints)
-    assert result["image"].shape in [(10, 2), (5, 1)]
+    assert result["image"].shape in [(10, 2, 1), (5, 1, 1)]
     assert tuple(result["keypoints"][0].tolist()) in [
         (0.9, 0.5, 33, 0, 0),
         (1.8, 1.0, 33, 0, 0),
@@ -634,12 +633,12 @@ def test_longest_max_size_list():
 
 
 def test_smallest_max_size_list():
-    img = cv2.randu(np.zeros((50, 10), dtype=np.uint8), 0, 255)
+    img = cv2.randu(np.zeros((50, 10, 1), dtype=np.uint8), 0, 255)
     keypoints = np.array([(9, 5, 33, 0, 0)])
 
     aug = A.SmallestMaxSize(max_size=[50, 100], p=1)
     result = aug(image=img, keypoints=keypoints)
-    assert result["image"].shape in [(250, 50), (500, 100)]
+    assert result["image"].shape in [(250, 50, 1), (500, 100, 1)]
     assert tuple(result["keypoints"][0].tolist()) in [
         (45.0, 25.0, 33, 0, 0),
         (90.0, 50.0, 33, 0, 0),
@@ -1288,7 +1287,7 @@ def test_dual_transforms_methods(augmentation_cls, params):
     aug.set_random_seed(42)
 
     image = SQUARE_UINT8_IMAGE
-    mask = cv2.randu(np.zeros((100, 100), dtype=np.uint8), 0, 4) * 64
+    mask = cv2.randu(np.zeros((100, 100, 1), dtype=np.uint8), 0, 4) * 64
 
     arg = {
         "images": np.stack([image] * 4),

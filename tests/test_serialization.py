@@ -95,7 +95,7 @@ def test_augmentations_serialization_with_custom_parameters(
     seed,
     image,
 ):
-    mask = image[:, :, 0].copy()
+    mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
     aug = augmentation_cls(p=p, **params)
     aug.set_random_seed(seed)
     transforms3d = {A.PadIfNeeded3D, A.RandomCrop3D, A.CenterCrop3D, A.CoarseDropout3D, A.Pad3D, A.CubicSymmetry}
@@ -160,7 +160,7 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
     data_format,
 ):
     transforms3d = {A.PadIfNeeded3D, A.RandomCrop3D, A.CenterCrop3D, A.CoarseDropout3D, A.Pad3D, A.CubicSymmetry}
-    mask = image[:, :, 0].copy()
+    mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
 
     # Create in-memory file objects
     yaml_buffer = StringIO()
@@ -290,7 +290,7 @@ def test_augmentations_for_keypoints_serialization(
     aug.set_random_seed(seed)
     data = {"image": image, "keypoints": keypoints}
     if augmentation_cls == A.MaskDropout:
-        mask = np.zeros_like(image)[:, :, 0]
+        mask = np.zeros((image.shape[0], image.shape[1], 1))
         mask[:20, :20] = 1
         data["mask"] = mask
     elif augmentation_cls == A.RandomCropNearBBox:

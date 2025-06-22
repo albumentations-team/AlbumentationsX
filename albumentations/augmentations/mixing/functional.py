@@ -217,20 +217,24 @@ def _check_data_compatibility(
     primary_ndim = primary_data.ndim
     item_ndim = item_data.ndim
 
+    # Special handling for masks: allow 2D masks from metadata to be compatible with 3D primary masks with 1 channel
+    # Primary is always 3D after Compose preprocessing, but metadata items might have 2D masks
+    if data_key == "mask" and item_ndim == 2 and primary_data.shape[-1] == 1:
+        return True, None
+
     if primary_ndim != item_ndim:
         return False, (
             f"Item '{data_key}' has {item_ndim} dimensions, but primary has {primary_ndim}. "
             f"Primary shape: {primary_data.shape}, Item shape: {item_data.shape}"
         )
 
-    if primary_ndim == 3:
-        primary_channels = primary_data.shape[-1]
-        item_channels = item_data.shape[-1]
-        if primary_channels != item_channels:
-            return False, (
-                f"Item '{data_key}' has {item_channels} channels, but primary has {primary_channels}. "
-                f"Primary shape: {primary_data.shape}, Item shape: {item_data.shape}"
-            )
+    primary_channels = primary_data.shape[-1]
+    item_channels = item_data.shape[-1]
+    if primary_channels != item_channels:
+        return False, (
+            f"Item '{data_key}' has {item_channels} channels, but primary has {primary_channels}. "
+            f"Primary shape: {primary_data.shape}, Item shape: {item_data.shape}"
+        )
 
     # Dimensions match (either both 2D or both 3D with same channels)
     return True, None
@@ -669,6 +673,11 @@ def assemble_mosaic_from_processed_cells(
         if segment is not None:
             tgt_x1, tgt_y1, tgt_x2, tgt_y2 = placement_coords
 
+            # Handle dimension mismatch for masks:
+            # If canvas is 3D but segment is 2D, expand segment
+            if data_key == "mask" and len(target_shape) == 3 and segment.ndim == 2:
+                segment = np.expand_dims(segment, axis=-1)
+
             canvas[tgt_y1:tgt_y2, tgt_x1:tgt_x2] = segment
 
     return canvas
@@ -852,11 +861,11 @@ def shift_all_coordinates(
         # Perform shifting if data exists
         if bboxes_geom is not None and bboxes_geom.size > 0:
             bboxes_geom_arr = np.asarray(bboxes_geom)
-            bbox_denoramlized = denormalize_bboxes(bboxes_geom_arr, {"height": cell_height, "width": cell_width})
+            bbox_denoramlized = denormalize_bboxes(bboxes_geom_arr, (cell_height, cell_width))
             bbox_shift_vector = np.array([tgt_x1, tgt_y1, tgt_x1, tgt_y1], dtype=np.float32)
 
             shifted_bboxes_denormalized = fgeometric.shift_bboxes(bbox_denoramlized, bbox_shift_vector)
-            shifted_bboxes = normalize_bboxes(shifted_bboxes_denormalized, {"height": canvas_h, "width": canvas_w})
+            shifted_bboxes = normalize_bboxes(shifted_bboxes_denormalized, (canvas_h, canvas_w))
             final_cell_data["bboxes"] = shifted_bboxes
         else:
             final_cell_data["bboxes"] = np.empty((0, NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS))

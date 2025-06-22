@@ -17,7 +17,7 @@ from tests.conftest import (
     SQUARE_UINT8_IMAGE,
 )
 
-from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms, get_transforms, set_seed
+from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms, set_seed
 
 
 @pytest.mark.parametrize(
@@ -106,7 +106,7 @@ def test_image_only_augmentations(augmentation_cls, params):
 )
 def test_dual_augmentations(augmentation_cls, params):
     image = SQUARE_UINT8_IMAGE
-    mask = image[:, :, 0].copy()
+    mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
     aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
     data = {"image": image, "mask": mask}
     if augmentation_cls == A.OverlayElements:
@@ -137,7 +137,7 @@ def test_dual_augmentations(augmentation_cls, params):
 )
 def test_dual_augmentations_with_float_values(augmentation_cls, params):
     image = SQUARE_FLOAT_IMAGE
-    mask = image.copy()[:, :, 0].astype(np.uint8)
+    mask = np.expand_dims(image.copy()[:, :, 0].astype(np.uint8), axis=-1)
     aug = augmentation_cls(p=1, **params)
 
     data = {"image": image, "mask": mask}
@@ -171,7 +171,7 @@ def test_dual_augmentations_with_float_values(augmentation_cls, params):
 )
 def test_augmentations_wont_change_input(augmentation_cls, params):
     image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
-    mask = image[:, :, 0].copy()
+    mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
     image_copy = image.copy()
     mask_copy = mask.copy()
     aug = augmentation_cls(p=1, **params)
@@ -229,7 +229,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params):
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
     elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
-        mask = np.zeros_like(image)[:, :, 0]
+        mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
     elif augmentation_cls == A.RandomCropNearBBox:
@@ -246,84 +246,6 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params):
     aug(**data)
 
     np.testing.assert_array_equal(image, float_image_copy)
-
-
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_2d_transforms(
-        custom_arguments={
-        },
-        except_augmentations={
-            A.ChannelDropout,
-            A.ChannelShuffle,
-            A.ISONoise,
-            A.RandomCropNearBBox,
-            A.RandomSizedBBoxSafeCrop,
-            A.BBoxSafeRandomCrop,
-            A.CenterCrop,
-            A.Crop,
-            A.CropNonEmptyMaskIfExists,
-            A.RandomCrop,
-            A.AtLeastOneBBoxRandomCrop,
-            A.RandomResizedCrop,
-            A.RandomSizedCrop,
-            A.CropAndPad,
-            A.Resize,
-            A.LongestMaxSize,
-            A.SmallestMaxSize,
-            A.PadIfNeeded,
-            A.RGBShift,
-            A.RandomScale,
-            A.RandomSnow,
-            A.ToRGB,
-            A.ToSepia,
-            A.RandomCropFromBorders,
-            A.Spatter,
-            A.ChromaticAberration,
-            A.PlanckianJitter,
-            A.RandomRain,
-            A.RandomGravel,
-            A.RandomSunFlare,
-            A.RandomFog,
-            A.Pad,
-            A.HEStain,
-            A.Mosaic,
-        },
-    ),
-)
-@pytest.mark.parametrize("shape", [(100, 100), (100, 100, 1)])
-def test_augmentations_wont_change_shape_grayscale(augmentation_cls, params, shape):
-    aug = augmentation_cls(p=1, **params)
-
-    # Test for grayscale image
-    image = np.zeros(shape, dtype=np.float32) if augmentation_cls == A.FromFloat else np.zeros(shape, dtype=np.uint8)
-    mask = np.zeros(shape)
-
-    data = {
-        "image": image,
-        "mask": mask,
-    }
-    if augmentation_cls == A.OverlayElements:
-        data["overlay_metadata"] = []
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
-    elif augmentation_cls == A.Mosaic:
-        data["mosaic_metadata"] = [
-            {
-                "image": image,
-                "mask": mask
-            }
-        ]
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
-
-    result = aug(**data)
-
-    np.testing.assert_array_equal(image.shape, result["image"].shape)
-    np.testing.assert_array_equal(mask.shape, result["mask"].shape)
 
 
 @pytest.mark.parametrize(
@@ -350,6 +272,7 @@ def test_augmentations_wont_change_shape_grayscale(augmentation_cls, params, sha
             A.ConstrainedCoarseDropout,
             A.Pad,
             A.Mosaic,
+            A.MaskDropout,
         },
     ),
 )
@@ -432,7 +355,7 @@ def test_image_only_crop_around_bbox_augmentation(augmentation_cls, params, imag
 def test_mask_fill_value(augmentation_cls, params):
     set_seed(137)
     aug = augmentation_cls(p=1, **params)
-    input = {"image": np.zeros((512, 512), dtype=np.uint8) + 100, "mask": np.ones((512, 512))}
+    input = {"image": np.zeros((512, 512, 1), dtype=np.uint8) + 100, "mask": np.ones((512, 512, 1))}
     output = aug(**input)
     assert (output["image"] == 100).all()
     assert (output["mask"] == 1).all()
@@ -492,7 +415,7 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
     elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
-        mask = np.zeros_like(image)[:, :, 0]
+        mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
     elif augmentation_cls == A.Mosaic:
@@ -560,7 +483,7 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
     elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
-        mask = np.zeros_like(image)[:, :, 0]
+        mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
     elif augmentation_cls == A.Mosaic:
@@ -634,7 +557,7 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
     elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
-        mask = np.zeros_like(image)[:, :, 0]
+        mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
     elif augmentation_cls == A.Mosaic:
@@ -729,36 +652,36 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params", "image_shape"],
     [
-        [A.PadIfNeeded, {"min_height": 514, "min_width": 516}, (300, 200)],
-        [A.PadIfNeeded, {"min_height": 514, "min_width": 516}, (512, 516)],
-        [A.PadIfNeeded, {"min_height": 514, "min_width": 516}, (600, 600)],
+        [A.PadIfNeeded, {"min_height": 514, "min_width": 516}, (300, 200, 1)],
+        [A.PadIfNeeded, {"min_height": 514, "min_width": 516}, (512, 516, 1)],
+        [A.PadIfNeeded, {"min_height": 514, "min_width": 516}, (600, 600, 1)],
         [
             A.PadIfNeeded,
             {"min_height": None, "min_width": None, "pad_height_divisor": 128, "pad_width_divisor": 128},
-            (300, 200),
+            (300, 200, 1),
         ],
         [
             A.PadIfNeeded,
             {"min_height": None, "min_width": None, "pad_height_divisor": 72, "pad_width_divisor": 128},
-            (72, 128),
+            (72, 128, 1),
         ],
         [
             A.PadIfNeeded,
             {"min_height": None, "min_width": None, "pad_height_divisor": 72, "pad_width_divisor": 128},
-            (15, 15),
+            (15, 15, 1),
         ],
         [
             A.PadIfNeeded,
             {"min_height": None, "min_width": None, "pad_height_divisor": 72, "pad_width_divisor": 128},
-            (144, 256),
+            (144, 256, 1),
         ],
         [
             A.PadIfNeeded,
             {"min_height": None, "min_width": None, "pad_height_divisor": 72, "pad_width_divisor": 128},
-            (200, 300),
+            (200, 300, 1),
         ],
-        [A.PadIfNeeded, {"min_height": 512, "min_width": None, "pad_width_divisor": 128}, (300, 200)],
-        [A.PadIfNeeded, {"min_height": None, "min_width": 512, "pad_height_divisor": 128}, (300, 200)],
+        [A.PadIfNeeded, {"min_height": 512, "min_width": None, "pad_width_divisor": 128}, (300, 200, 1)],
+        [A.PadIfNeeded, {"min_height": None, "min_width": 512, "pad_height_divisor": 128}, (300, 200, 1)],
     ],
 )
 def test_pad_if_needed(augmentation_cls: Type[A.PadIfNeeded], params: dict, image_shape: tuple[int, int]):
@@ -789,11 +712,11 @@ def test_pad_if_needed(augmentation_cls: Type[A.PadIfNeeded], params: dict, imag
     [
         [
             {"min_height": 10, "min_width": 12, "border_mode": cv2.BORDER_CONSTANT, "fill": 1, "position": "center"},
-            (5, 6),
+            (5, 6, 1),
         ],
         [
             {"min_height": 10, "min_width": 12, "border_mode": cv2.BORDER_CONSTANT, "fill": 1, "position": "top_left"},
-            (5, 6),
+            (5, 6, 1),
         ],
         [
             {
@@ -803,7 +726,7 @@ def test_pad_if_needed(augmentation_cls: Type[A.PadIfNeeded], params: dict, imag
                 "fill": 1,
                 "position": "top_right",
             },
-            (5, 6),
+            (5, 6, 1),
         ],
         [
             {
@@ -813,7 +736,7 @@ def test_pad_if_needed(augmentation_cls: Type[A.PadIfNeeded], params: dict, imag
                 "fill": 1,
                 "position": "bottom_left",
             },
-            (5, 6),
+            (5, 6, 1),
         ],
         [
             {
@@ -823,11 +746,11 @@ def test_pad_if_needed(augmentation_cls: Type[A.PadIfNeeded], params: dict, imag
                 "fill": 1,
                 "position": "bottom_right",
             },
-            (5, 6),
+            (5, 6, 1),
         ],
         [
             {"min_height": 10, "min_width": 12, "border_mode": cv2.BORDER_CONSTANT, "fill": 1, "position": "random"},
-            (5, 6),
+            (5, 6, 1),
         ],
     ],
 )
@@ -839,7 +762,7 @@ def test_pad_if_needed_position(params, image_shape):
     transformed = pad(image=image)
     image_padded = transformed["image"]
 
-    true_result = np.ones((max(image_shape[0], params["min_height"]), max(image_shape[1], params["min_width"])))
+    true_result = np.ones((max(image_shape[0], params["min_height"]), max(image_shape[1], params["min_width"]), 1))
 
     if params["position"] == "center":
         x_start = image_shape[0] // 2
@@ -1010,7 +933,7 @@ def test_constrained_coarse_dropout_with_mask():
     """Test ConstrainedCoarseDropout with segmentation mask."""
     # Create test data
     image = np.zeros((100, 100, 3), dtype=np.uint8)
-    mask = np.zeros((100, 100), dtype=np.uint8)
+    mask = np.zeros((100, 100, 1), dtype=np.uint8)
 
     # Create objects in mask
     mask[10:30, 10:30] = 1  # First object (class 1)

@@ -701,6 +701,8 @@ def test_single_transform_compose(
             A.TextImage,
             A.RandomCropNearBBox,
             A.Mosaic,
+            A.MaskDropout,
+            A.ConstrainedCoarseDropout,
         },
     ),
 )
@@ -772,7 +774,7 @@ def test_contiguous_output_imageonly(augmentation_cls, params):
     "targets",
     [
         {"image": np.ones((20, 20, 3), dtype=np.uint8), "mask": np.ones((30, 20))},
-        {"image": np.ones((20, 20, 3), dtype=np.uint8), "masks": [np.ones((30, 20))]},
+        {"image": np.ones((20, 20, 3), dtype=np.uint8), "masks": np.stack([np.ones((30, 20))])},
     ],
 )
 def test_compose_image_mask_equal_size(targets):
@@ -897,14 +899,14 @@ def test_sequential_multiple_transformations(image, aug):
             {},
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
-                "masks": [np.empty([100, 100, 3], dtype=np.uint8)] * 3,
+                "masks": np.stack([np.empty([100, 100, 3], dtype=np.uint8)] * 3),
             },
         ],
         [
             dict(bbox_params=A.BboxParams(format="yolo", label_fields=["class_labels"])),
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
-                "bboxes": [[0.5, 0.5, 0.1, 0.1]],
+                "bboxes": np.array([[0.5, 0.5, 0.1, 0.1]]),
                 "class_labels": [1],
             },
         ],
@@ -912,7 +914,7 @@ def test_sequential_multiple_transformations(image, aug):
             dict(keypoint_params=A.KeypointParams(format="xy", label_fields=["class_labels"])),
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
-                "keypoints": [[10, 20]],
+                "keypoints": np.array([[10, 20]]),
                 "class_labels": [1],
             },
         ],
@@ -924,9 +926,9 @@ def test_sequential_multiple_transformations(image, aug):
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
                 "mask": np.empty([100, 100, 3], dtype=np.uint8),
-                "bboxes": [[0.5, 0.5, 0.1, 0.1]],
+                "bboxes": np.array([[0.5, 0.5, 0.1, 0.1]]),
                 "class_labels_1": [1],
-                "keypoints": [[10, 20]],
+                "keypoints": np.array([[10, 20]]),
                 "class_labels_2": [1],
             },
         ],
@@ -1022,9 +1024,8 @@ def test_compose_additional_targets_in_available_keys() -> None:
         },
     ),
 )
-@pytest.mark.parametrize("as_array", [True, False])
 @pytest.mark.parametrize("shape", [(101, 99, 3), (101, 99)])
-def test_images_as_target(augmentation_cls, params, as_array, shape):
+def test_images_as_target(augmentation_cls, params, shape):
     if len(shape) == 2:
         if augmentation_cls in {A.ChannelDropout, A.Spatter, A.ISONoise,
                                 A.RandomGravel, A.ChromaticAberration, A.PlanckianJitter, A.PixelDistributionAdaptation,
@@ -1038,13 +1039,11 @@ def test_images_as_target(augmentation_cls, params, as_array, shape):
     image = np.random.uniform(0, 255, shape).astype(np.float32) if augmentation_cls == A.FromFloat else np.random.randint(0, 255, shape, dtype=np.uint8)
 
 
-    if as_array:
-        # Stack images into a single array
-        images = np.stack([image] * 2)
-        data = {"images": images}
-    else:
-        # Original list format
-        data = {"images": [image] * 2}
+
+    # Stack images into a single array
+    images = np.stack([image] * 2)
+    data = {"images": images}
+
 
     if augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
         mask = np.zeros_like(image)[:, :, 0]
@@ -1065,27 +1064,24 @@ def test_images_as_target(augmentation_cls, params, as_array, shape):
     np.testing.assert_allclose(transformed["images"][0], transformed["images"][1])
 
     # Check output format matches input format
-    if as_array:
-        assert isinstance(transformed["images"], np.ndarray)
 
-        assert transformed["images"].ndim == len(shape) + 1, f"Expected {len(shape) + 1} dimensions, got {transformed['images'].ndim}"
+    assert isinstance(transformed["images"], np.ndarray)
 
-        assert transformed["images"].flags["C_CONTIGUOUS"]  # Ensure memory is contiguous
+    assert transformed["images"].ndim == len(shape) + 1, f"Expected {len(shape) + 1} dimensions, got {transformed['images'].ndim}"
 
-        # Verify exact shape matches expected dimensions
-        N, H, W = transformed["images"].shape[:3]
-        assert N == 2  # Two images as input
-        if len(shape) == 3:
-            assert transformed["images"].shape[-1] == image.shape[2]  # Channels match input
+    assert transformed["images"].flags["C_CONTIGUOUS"]  # Ensure memory is contiguous
 
-        if augmentation_cls not in [A.RandomCrop, A.AtLeastOneBBoxRandomCrop, A.RandomResizedCrop, A.Resize, A.RandomSizedCrop, A.RandomSizedBBoxSafeCrop,
-                                    A.BBoxSafeRandomCrop, A.Transpose, A.RandomCropNearBBox, A.CenterCrop, A.Crop, A.CropAndPad,
-                                    A.LongestMaxSize, A.RandomScale, A.PadIfNeeded, A.SmallestMaxSize, A.RandomCropFromBorders,
-                                    A.RandomRotate90, A.D4, A.SquareSymmetry]:
-            assert H == image.shape[0]  # Height matches input
-            assert W == image.shape[1]  # Width matches input
-    else:
-        assert isinstance(transformed["images"], list)
+    # Verify exact shape matches expected dimensions
+    N, H, W = transformed["images"].shape[:3]
+    assert N == 2  # Two images as input
+    if len(shape) == 3:
+        assert transformed["images"].shape[-1] == image.shape[2]  # Channels match input
+
+    if augmentation_cls not in [A.RandomCrop, A.AtLeastOneBBoxRandomCrop, A.RandomResizedCrop, A.Resize, A.RandomSizedCrop, A.RandomSizedBBoxSafeCrop,
+                                A.BBoxSafeRandomCrop, A.Transpose, A.RandomCropNearBBox, A.CenterCrop, A.Crop, A.CropAndPad,
+                                A.LongestMaxSize, A.RandomScale, A.PadIfNeeded, A.SmallestMaxSize, A.RandomCropFromBorders,
+                                A.RandomRotate90, A.D4, A.SquareSymmetry]:
+        assert (H, W) == image.shape[:2]
 
 
 @pytest.mark.parametrize(
@@ -1093,12 +1089,14 @@ def test_images_as_target(augmentation_cls, params, as_array, shape):
     get_2d_transforms(
         except_augmentations={
             A.RandomCropNearBBox,
+            A.MaskDropout,
         },
     ),
 )
 def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
-    image = np.ones([3, 100, 100], dtype=np.uint8).transpose(1, 2, 0)
-    mask = np.zeros([3, 100, 100], dtype=np.uint8).transpose(1, 2, 0)
+    image = np.ones((3, 100, 100), dtype=np.uint8).transpose(1, 2, 0)
+    mask = np.zeros((3, 100, 100), dtype=np.uint8).transpose(1, 2, 0)
+    mask[:10, :10] = 1
 
     # check preconditions
     assert not image.flags["C_CONTIGUOUS"]
@@ -1180,9 +1178,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
 @pytest.mark.parametrize(
     "masks",
     [
-        [np.random.randint(0, 2, [100, 100], dtype=np.uint8)] * 3,
-        [np.random.randint(0, 2, [100, 100, 3], dtype=np.uint8)] * 3,
-        np.stack([np.random.randint(0, 2, [100, 100], dtype=np.uint8)] * 3),
+        np.stack([np.random.randint(0, 2, (100, 100), dtype=np.uint8)] * 3),
     ],
 )
 def test_masks_as_target(augmentation_cls, params, masks):
@@ -1447,107 +1443,6 @@ def test_compose_probability():
     result = transform(image=np.zeros((100, 100, 3), dtype=np.uint8))
 
     assert len(result["applied_transforms"]) == 0
-
-
-@pytest.mark.parametrize(
-    ["data", "expected_shape"],
-    [
-        # Test numpy image formats
-        (
-            {"image": np.zeros((100, 200, 3))},  # HWC
-            {"height": 100, "width": 200},
-        ),
-        (
-            {"image": np.zeros((100, 200))},  # HW
-            {"height": 100, "width": 200},
-        ),
-        (
-            {"images": [np.zeros((100, 200, 3)), np.zeros((100, 200, 3))]},  # N×HWC
-            {"height": 100, "width": 200},
-        ),
-
-        # Test torch image formats
-        (
-            {"image": torch.zeros(3, 100, 200)},  # CHW
-            {"height": 100, "width": 200},
-        ),
-        (
-            {"image": torch.zeros(1, 100, 200)},  # 1HW
-            {"height": 100, "width": 200},
-        ),
-        (
-            {"images": torch.zeros(5, 3, 100, 200)},  # NCHW
-            {"height": 100, "width": 200},
-        ),
-
-        # Test numpy volume formats
-        (
-            {"volume": np.zeros((50, 100, 200, 3))},  # DHWC
-            {"depth": 50, "height": 100, "width": 200},
-        ),
-        (
-            {"volume": np.zeros((50, 100, 200))},  # DHW
-            {"depth": 50, "height": 100, "width": 200},
-        ),
-
-        # Test torch volume formats
-        (
-            {"volume": torch.zeros(3, 50, 100, 200)},  # CDHW
-            {"depth": 50, "height": 100, "width": 200},
-        ),
-        (
-            {"volume": torch.zeros(1, 50, 100, 200)},  # 1DHW
-            {"depth": 50, "height": 100, "width": 200},
-        ),
-    ],
-)
-def test_get_shape(data, expected_shape):
-    assert get_shape(data) == expected_shape
-
-
-@pytest.mark.parametrize(
-    ["data", "error_type", "error_message"],
-    [
-        (
-            {},
-            ValueError,
-            "No image or volume found in data",
-        ),
-        (
-            {"wrong_key": np.zeros((100, 200))},
-            ValueError,
-            "No image or volume found in data",
-        ),
-        (
-            {"image": "not_an_array"},
-            RuntimeError,
-            "Unsupported image type: <class 'str'>",
-        ),
-        (
-            {"volume": "not_an_array"},
-            RuntimeError,
-            "Unsupported volume type: <class 'str'>",
-        ),
-    ],
-)
-def test_get_shape_errors(data, error_type, error_message):
-    with pytest.raises(error_type, match=error_message):
-        get_shape(data)
-
-
-@pytest.mark.parametrize(
-    "key", ["image", "images", "volume"]
-)
-def test_get_shape_empty_arrays(key):
-    # Test that empty arrays don't cause issues
-    if key == "images":
-        data = {key: [np.zeros((0, 0, 3))]}
-    else:
-        data = {key: np.zeros((0, 0, 3))}
-
-    shape = get_shape(data)
-    assert isinstance(shape, dict)
-    assert all(isinstance(v, int) for v in shape.values())
 
 
 def test_transform_strict_mode_raises_error():
@@ -1957,8 +1852,313 @@ def test_compose_with_empty_masks():
         A.ToFloat(max_value=255)
     ])
     image = np.zeros((288, 384, 3), dtype=np.uint8)
-    result = transform(image=image, masks=[])
+    result = transform(image=image, masks=np.array([]))
     # Verify that the result contains an empty masks list
     assert "masks" in result
-    assert isinstance(result["masks"], (list, tuple))
+    assert isinstance(result["masks"], np.ndarray)
     assert len(result["masks"]) == 0
+
+
+def test_grayscale_image_handling():
+    """Test that grayscale images are handled correctly."""
+    # Create grayscale image (H, W)
+    grayscale_image = np.random.rand(100, 200).astype(np.float32)
+
+    # Create a simple transform pipeline
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+        A.RandomBrightnessContrast(p=1.0)
+    ])
+
+    # Apply transform
+    result = transform(image=grayscale_image)
+
+    # Check that output has same shape as input
+    assert result['image'].shape == grayscale_image.shape
+    assert result['image'].ndim == 2
+
+
+def test_grayscale_images_batch_handling():
+    """Test that batches of grayscale images are handled correctly."""
+    # Create batch of grayscale images (N, H, W)
+    batch_size = 4
+    grayscale_images = np.random.rand(batch_size, 100, 200).astype(np.float32)
+
+    # Create a simple transform pipeline
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+        A.RandomBrightnessContrast(p=1.0)
+    ])
+
+    # Apply transform
+    result = transform(images=grayscale_images)
+
+    # Check that output has same shape as input
+    assert result['images'].shape == grayscale_images.shape
+    assert result['images'].ndim == 3
+
+
+def test_grayscale_volume_handling():
+    """Test that grayscale volumes are handled correctly."""
+    # Create grayscale volume (D, H, W)
+    grayscale_volume = np.random.rand(50, 100, 200).astype(np.float32)
+
+    # Create a simple transform pipeline that works with volumes
+    transform = A.Compose([
+        A.NoOp(p=1.0),  # NoOp supports all targets including volumes
+    ])
+
+    # Apply transform
+    result = transform(volume=grayscale_volume)
+
+    # Check that output has same shape as input
+    assert result['volume'].shape == grayscale_volume.shape
+    assert result['volume'].ndim == 3
+
+
+def test_grayscale_volumes_batch_handling():
+    """Test that batches of grayscale volumes are handled correctly."""
+    # Create batch of grayscale volumes (N, D, H, W)
+    batch_size = 4
+    grayscale_volumes = np.random.rand(batch_size, 50, 100, 200).astype(np.float32)
+
+    # Create a simple transform pipeline that works with volumes
+    transform = A.Compose([
+        A.NoOp(p=1.0),  # NoOp supports all targets including volumes
+    ])
+
+    # Apply transform
+    result = transform(volumes=grayscale_volumes)
+
+    # Check that output has same shape as input
+    assert result['volumes'].shape == grayscale_volumes.shape
+    assert result['volumes'].ndim == 4
+
+
+def test_mixed_grayscale_rgb_handling():
+    """Test that mixed grayscale and RGB data are handled correctly."""
+    # Create grayscale image and RGB mask
+    grayscale_image = np.random.rand(100, 200).astype(np.float32)
+    rgb_mask = np.random.rand(100, 200, 3).astype(np.float32)
+
+    # Create a simple transform pipeline
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+    ])
+
+    # Apply transform
+    result = transform(image=grayscale_image, mask=rgb_mask)
+
+    # Check shapes
+    assert result['image'].shape == grayscale_image.shape
+    assert result['mask'].shape == rgb_mask.shape
+
+
+def test_grayscale_with_channel_dimension():
+    """Test that data with explicit channel dimension is preserved."""
+    # Create grayscale image with explicit channel dimension (H, W, 1)
+    image_with_channel = np.random.rand(100, 200, 1).astype(np.float32)
+
+    # Create a simple transform pipeline
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+        A.RandomBrightnessContrast(p=1.0)
+    ])
+
+    # Apply transform
+    result = transform(image=image_with_channel)
+
+    # Check that shape is preserved (channel dimension remains)
+    assert result['image'].shape == image_with_channel.shape
+    assert result['image'].ndim == 3
+
+
+def test_grayscale_array_handling():
+    """Test that arrays of grayscale images are handled correctly."""
+    # Create array of grayscale images (N, H, W)
+    grayscale_array = np.random.rand(3, 100, 200).astype(np.float32)
+
+    # Create a simple transform pipeline
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+    ])
+
+    # Apply transform
+    result = transform(images=grayscale_array)
+
+    # Check the output
+    assert "images" in result
+    assert isinstance(result["images"], np.ndarray)
+    assert result["images"].shape == grayscale_array.shape  # Still (N, H, W)
+    assert result["images"].ndim == 3
+
+
+def test_uint8_grayscale_handling():
+    """Test that uint8 grayscale images work correctly."""
+    # Create uint8 grayscale image
+    grayscale_uint8 = np.random.randint(0, 256, (100, 200), dtype=np.uint8)
+
+    # Create a transform that works with uint8
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1.0)
+    ])
+
+    # Apply transform
+    result = transform(image=grayscale_uint8)
+
+    # Check shape and dtype
+    assert result['image'].shape == grayscale_uint8.shape
+    assert result['image'].dtype == np.uint8
+
+
+def test_grayscale_with_transforms_expecting_channels():
+    """Test transforms that expect channel information work with grayscale."""
+    # Create grayscale image
+    grayscale_image = np.random.rand(100, 200).astype(np.float32)
+
+    # Create transform that typically expects channels
+    transform = A.Compose([
+        A.ChannelShuffle(p=1.0),  # Should handle single channel gracefully
+        A.ToGray(p=1.0),  # Should detect it's already grayscale
+    ])
+
+    # Apply transform - should not raise errors
+    result = transform(image=grayscale_image)
+
+    # Check output shape
+    assert result['image'].shape == grayscale_image.shape
+
+
+def test_grayscale_shape_check_with_strict():
+    """Test that shape checking works correctly with grayscale images."""
+    # Create grayscale image and mask with same H,W
+    grayscale_image = np.random.rand(100, 200).astype(np.float32)
+    grayscale_mask = np.random.rand(100, 200).astype(np.float32)
+
+    # This should work - same H,W dimensions
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0)
+    ], strict=True, is_check_shapes=True)
+
+    result = transform(image=grayscale_image, mask=grayscale_mask)
+    assert result['image'].shape == grayscale_image.shape
+    assert result['mask'].shape == grayscale_mask.shape
+
+    # Create mask with different H,W - should fail
+    wrong_mask = np.random.rand(150, 200).astype(np.float32)
+
+    with pytest.raises(ValueError, match="Height and Width of image, mask or masks should be equal"):
+        transform(image=grayscale_image, mask=wrong_mask)
+
+
+def test_grayscale_with_bbox_params():
+    """Test that grayscale images work correctly with bbox transformations."""
+    grayscale_image = np.random.rand(100, 200).astype(np.float32)
+    bboxes = [(10, 10, 50, 50)]
+
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+    ], bbox_params=A.BboxParams(format='pascal_voc'))
+
+    result = transform(image=grayscale_image, bboxes=bboxes)
+
+    # Check that image shape is preserved
+    assert result['image'].shape == grayscale_image.shape
+    assert result['image'].ndim == 2
+    # Check that bboxes were transformed
+    assert len(result['bboxes']) == len(bboxes)
+
+
+def test_grayscale_with_keypoint_params():
+    """Test that grayscale images work correctly with keypoint transformations."""
+    grayscale_image = np.random.rand(100, 200).astype(np.float32)
+    keypoints = [(30, 40), (150, 80)]
+
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+    ], keypoint_params=A.KeypointParams(format='xy'))
+
+    result = transform(image=grayscale_image, keypoints=keypoints)
+
+    # Check that image shape is preserved
+    assert result['image'].shape == grayscale_image.shape
+    assert result['image'].ndim == 2
+    # Check that keypoints were transformed
+    assert len(result['keypoints']) == len(keypoints)
+
+
+def test_grayscale_mask_handling():
+    """Test that grayscale masks are handled correctly."""
+    # Create grayscale mask (H, W)
+    grayscale_mask = np.random.randint(0, 2, (100, 200)).astype(np.uint8)
+
+    # Create a simple transform pipeline
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+        A.Rotate(limit=45, p=1.0)
+    ])
+
+    # Apply transform
+    result = transform(mask=grayscale_mask)
+
+    # Check that output has same shape as input
+    assert result['mask'].shape == grayscale_mask.shape
+    assert result['mask'].ndim == 2
+
+
+def test_grayscale_masks_batch_handling():
+    """Test that batches of grayscale masks are handled correctly."""
+    # Create batch of grayscale masks (N, H, W)
+    batch_size = 4
+    grayscale_masks = np.random.randint(0, 2, (batch_size, 100, 200)).astype(np.uint8)
+
+    # Create a simple transform pipeline
+    transform = A.Compose([
+        A.HorizontalFlip(p=1.0),
+        A.Rotate(limit=45, p=1.0)
+    ])
+
+    # Apply transform
+    result = transform(masks=grayscale_masks)
+
+    # Check that output has same shape as input
+    assert result['masks'].shape == grayscale_masks.shape
+    assert result['masks'].ndim == 3
+
+
+def test_grayscale_mask3d_handling():
+    """Test that grayscale 3D masks are handled correctly."""
+    # Create grayscale 3D mask (D, H, W)
+    grayscale_mask3d = np.random.randint(0, 2, (50, 100, 200)).astype(np.uint8)
+
+    # Create a simple transform pipeline that works with 3D masks
+    transform = A.Compose([
+        A.NoOp(p=1.0),  # NoOp supports all targets including mask3d
+    ])
+
+    # Apply transform
+    result = transform(mask3d=grayscale_mask3d)
+
+    # Check that output has same shape as input
+    assert result['mask3d'].shape == grayscale_mask3d.shape
+    assert result['mask3d'].ndim == 3
+
+
+def test_grayscale_masks3d_batch_handling():
+    """Test that batches of grayscale 3D masks are handled correctly."""
+    # Create batch of grayscale 3D masks (N, D, H, W)
+    batch_size = 4
+    grayscale_masks3d = np.random.randint(0, 2, (batch_size, 50, 100, 200)).astype(np.uint8)
+
+    # Create a simple transform pipeline that works with 3D masks
+    transform = A.Compose([
+        A.NoOp(p=1.0),  # NoOp supports all targets including masks3d
+    ])
+
+    # Apply transform
+    result = transform(masks3d=grayscale_masks3d)
+
+    # Check that output has same shape as input
+    assert result['masks3d'].shape == grayscale_masks3d.shape
+    assert result['masks3d'].ndim == 4

@@ -67,15 +67,9 @@ MASK_KEYS = (
 
 # Keys related to image data
 IMAGE_KEYS = {"image", "images"}
-CHECKED_SINGLE = {"image", "mask"}
-CHECKED_MULTI = {"masks", "images", "volumes", "masks3d"}
 CHECK_BBOX_PARAM = {"bboxes"}
 CHECK_KEYPOINTS_PARAM = {"keypoints"}
 VOLUME_KEYS = {"volume", "volumes"}
-CHECKED_VOLUME = {"volume"}
-CHECKED_VOLUMES = {"volumes"}
-CHECKED_MASK3D = {"mask3d"}
-CHECKED_MASKS3D = {"masks3d"}
 
 
 class BaseCompose(Serializable):
@@ -982,35 +976,81 @@ class Compose(BaseCompose, HubMixin):
         """Preprocess input data before applying transforms."""
         # Always validate shapes if is_check_shapes is True, regardless of strict mode
         if self.is_check_shapes:
-            shapes = []  # For H,W checks
-            volume_shapes = []  # For D,H,W checks
-
-            for data_name, data_value in data.items():
-                internal_name = self._additional_targets.get(data_name, data_name)
-
-                # Skip empty data
-                if data_value is None:
-                    continue
-
-                shape = self._get_data_shape(data_name, internal_name, data_value)
-                if shape is not None:
-                    if internal_name in CHECKED_VOLUME | CHECKED_MASK3D:
-                        shapes.append(shape[1:3])  # H,W from (D,H,W)
-                        volume_shapes.append(shape[:3])  # D,H,W
-                    elif internal_name in {"volumes", "masks3d"}:
-                        shapes.append(shape[2:4])  # H,W from (N,D,H,W)
-                        volume_shapes.append(shape[1:4])  # D,H,W from (N,D,H,W)
-                    else:
-                        shapes.append(shape[:2])  # H,W
-
+            shapes, volume_shapes = self._gather_shapes_from_data(data)
             self._check_shape_consistency(shapes, volume_shapes)
 
         # Do strict validation only if enabled
         if self.strict:
             self._validate_data(data)
 
-        self._preprocess_processors(data)
+        # Add channel dimensions first, before processors run
         self._preprocess_arrays(data)
+        self._preprocess_processors(data)
+
+    def _gather_shapes_from_data(self, data: dict[str, Any]) -> tuple[list[tuple[int, ...]], list[tuple[int, ...]]]:
+        """Gather shapes from various data types for validation.
+
+        Args:
+            data: Data dictionary containing various arrays
+
+        Returns:
+            Tuple of (2D shapes list, 3D shapes list)
+
+        """
+        shapes: list[tuple[int, ...]] = []  # For H,W checks
+        volume_shapes: list[tuple[int, ...]] = []  # For D,H,W checks
+
+        # List of targets to check shapes for
+        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks", "masks3d"}
+
+        for data_name, data_value in data.items():
+            # Skip if not in our check list
+            if data_name not in shape_check_targets:
+                continue
+
+            # Skip empty data
+            if data_value is None or not isinstance(data_value, np.ndarray):
+                continue
+
+            # Skip arrays with size 0 (empty arrays)
+            if data_value.size == 0:
+                continue
+
+            self._process_data_shape(data_name, data_value, shapes, volume_shapes)
+
+        return shapes, volume_shapes
+
+    def _process_data_shape(
+        self,
+        data_name: str,
+        data_value: np.ndarray,
+        shapes: list[tuple[int, ...]],
+        volume_shapes: list[tuple[int, ...]],
+    ) -> None:
+        """Process shape of a single data item."""
+        # Handle 2D single data
+        if data_name in {"image", "mask"}:
+            shapes.append(data_value.shape[:2])  # H,W
+
+        # Handle 2D batch data
+        elif data_name in {"images", "masks"}:
+            if data_value.ndim not in {3, 4}:  # (N,H,W) or (N,H,W,C)
+                raise TypeError(f"{data_name} must be 3D or 4D array")
+            shapes.append(data_value.shape[1:3])  # H,W from (N,H,W)
+
+        # Handle 3D single data
+        elif data_name in {"volume", "mask3d"}:
+            if data_value.ndim not in {3, 4}:  # (D,H,W) or (D,H,W,C)
+                raise TypeError(f"{data_name} must be 3D or 4D array")
+            shapes.append(data_value.shape[1:3])  # H,W
+            volume_shapes.append(data_value.shape[:3])  # D,H,W
+
+        # Handle 3D batch data
+        elif data_name in {"volumes", "masks3d"}:
+            if data_value.ndim not in {4, 5}:  # (N,D,H,W) or (N,D,H,W,C)
+                raise TypeError(f"{data_name} must be 4D or 5D array")
+            shapes.append(data_value.shape[2:4])  # H,W from (N,D,H,W)
+            volume_shapes.append(data_value.shape[1:4])  # D,H,W from (N,D,H,W)
 
     def _validate_data(self, data: dict[str, Any]) -> None:
         """Validate input data keys and arguments."""
@@ -1039,37 +1079,40 @@ class Compose(BaseCompose, HubMixin):
             processor.preprocess(data)
 
     def _preprocess_arrays(self, data: dict[str, Any]) -> None:
-        """Convert lists to numpy arrays for images and masks, and ensure contiguity."""
-        self._preprocess_images(data)
-        self._preprocess_masks(data)
+        """Ensure all arrays are contiguous and add channel dimensions to grayscale data."""
+        self._ensure_contiguous(data)
+        self._add_grayscale_channels(data)
 
-    def _preprocess_images(self, data: dict[str, Any]) -> None:
-        """Convert image lists to numpy arrays."""
-        if "images" not in data:
-            return
+    def _ensure_contiguous(self, data: dict[str, Any]) -> None:
+        """Ensure all numpy arrays are contiguous."""
+        for key, value in data.items():
+            if isinstance(value, np.ndarray):
+                data[key] = np.ascontiguousarray(value)
 
-        if isinstance(data["images"], (list, tuple)):
-            self._images_was_list = True
-            # Skip stacking for empty lists
-            if not data["images"]:
-                return
-            data["images"] = np.stack(data["images"])
-        else:
-            self._images_was_list = False
+    def _add_grayscale_channels(self, data: dict[str, Any]) -> None:
+        """Add channel dimension to grayscale data if missing."""
+        # Track which data had channel dimensions added
+        self._added_channel_dim = {}
 
-    def _preprocess_masks(self, data: dict[str, Any]) -> None:
-        """Convert mask lists to numpy arrays."""
-        if "masks" not in data:
-            return
+        # Keys that should have channel dimension added when grayscale
+        grayscale_keys = {
+            "image": 2,  # (H, W) => (H, W, 1)
+            "images": 3,  # (N, H, W) => (N, H, W, 1)
+            "mask": 2,  # (H, W) => (H, W, 1)
+            "masks": 3,  # (N, H, W) => (N, H, W, 1)
+            "volume": 3,  # (D, H, W) => (D, H, W, 1)
+            "volumes": 4,  # (N, D, H, W) => (N, D, H, W, 1)
+            "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
+            "masks3d": 4,  # (N, D, H, W) => (N, D, H, W, 1)
+        }
 
-        if isinstance(data["masks"], (list, tuple)):
-            self._masks_was_list = True
-            # Skip stacking for empty lists
-            if not data["masks"]:
-                return
-            data["masks"] = np.stack(data["masks"])
-        else:
-            self._masks_was_list = False
+        for key, expected_ndim in grayscale_keys.items():
+            if key in data and isinstance(data[key], np.ndarray):
+                if data[key].ndim == expected_ndim:
+                    data[key] = np.expand_dims(data[key], axis=-1)
+                    self._added_channel_dim[key] = True
+                else:
+                    self._added_channel_dim[key] = False
 
     def postprocess(self, data: dict[str, Any]) -> dict[str, Any]:
         """Apply post-processing to data after all transforms have been applied.
@@ -1085,22 +1128,41 @@ class Compose(BaseCompose, HubMixin):
             for p in self.processors.values():
                 p.postprocess(data)
 
-            # Convert back to list if original input was a list
-            if "images" in data and self._images_was_list:
-                data["images"] = list(data["images"])
-
-            if "masks" in data and self._masks_was_list:
-                data["masks"] = list(data["masks"])
+            # Remove channel dimensions that were added during preprocessing
+            self._remove_grayscale_channels(data)
 
         return data
 
+    def _remove_grayscale_channels(self, data: dict[str, Any]) -> None:
+        """Remove channel dimensions that were added during preprocessing."""
+        if not hasattr(self, "_added_channel_dim"):
+            return
+
+        for key, was_added in self._added_channel_dim.items():
+            if was_added and key in data:
+                value = data[key]
+
+                # Handle numpy arrays
+                if isinstance(value, np.ndarray):
+                    if value.shape[-1] == 1:
+                        data[key] = np.squeeze(value, axis=-1)
+
+                # Handle torch tensors
+                elif hasattr(value, "__module__") and "torch" in value.__module__:
+                    # Import torch only if we have a torch tensor
+                    import torch
+
+                    if isinstance(value, torch.Tensor):
+                        # For torch tensors, we need to handle different cases
+                        # ToTensorV2 transposes image tensors but not mask tensors
+                        if key in {"image", "images"} and len(value.shape) >= 3 and value.shape[0] == 1:
+                            # Image tensor with shape (1, H, W) -> (H, W) is not typical, skip
+                            pass
+                        elif key in {"mask", "masks", "mask3d", "masks3d"} and value.shape[-1] == 1:
+                            # Mask tensor with shape (..., H, W, 1) -> (..., H, W)
+                            data[key] = torch.squeeze(value, dim=-1)
+
     def to_dict_private(self) -> dict[str, Any]:
-        """Convert the composition to a dictionary for serialization.
-
-        Returns:
-            dict[str, Any]: Dictionary representation of the composition.
-
-        """
         dictionary = super().to_dict_private()
         bbox_processor = self.processors.get("bboxes")
         keypoints_processor = self.processors.get("keypoints")
@@ -1143,63 +1205,24 @@ class Compose(BaseCompose, HubMixin):
         return data.shape[:2]
 
     @staticmethod
-    def _check_masks_data(data_name: str, data: Any) -> tuple[int, int] | None:
-        """Check masks data format and return shape.
-
-        Args:
-            data_name (str): Name of the data field being checked
-            data (Any): Input data in one of these formats:
-                - List of numpy arrays, each of shape (H, W) or (H, W, C)
-                - Numpy array of shape (N, H, W) or (N, H, W, C)
-                - Empty list for cases where no masks are present
-
-        Returns:
-            tuple[int, int] | None: (height, width) of the first mask, or None if masks list is empty
-        Raises:
-            TypeError: If data format is invalid
-
-        """
-        if isinstance(data, np.ndarray):
-            if data.ndim not in [3, 4]:  # (N,H,W) or (N,H,W,C)
-                raise TypeError(f"{data_name} as numpy array must be 3D or 4D")
-            return data.shape[1:3]  # Return (H,W)
-
-        if isinstance(data, (list, tuple)):
-            if not data:
-                # Allow empty list/tuple of masks
-                return None
-            if not all(isinstance(m, np.ndarray) for m in data):
-                raise TypeError(f"All elements in {data_name} must be numpy arrays")
-            if any(m.ndim not in {2, 3} for m in data):
-                raise TypeError(f"All masks in {data_name} must be 2D or 3D numpy arrays")
-            return data[0].shape[:2]
-
-        raise TypeError(f"{data_name} must be either a numpy array or a sequence of numpy arrays")
-
-    @staticmethod
     def _check_multi_data(data_name: str, data: Any) -> tuple[int, int]:
-        """Check multi-image data format and return shape.
+        """Check multi-item data format and return shape.
 
         Args:
             data_name (str): Name of the data field being checked
-            data (Any): Input data in one of these formats:
-                - List-like of numpy arrays
-                - Numpy array of shape (N, H, W, C) or (N, H, W)
+            data (Any): Input numpy array of shape (N, H, W, C) or (N, H, W)
 
         Returns:
-            tuple[int, int]: (height, width) of the first image
+            tuple[int, int]: (height, width) of the first item
         Raises:
             TypeError: If data format is invalid
 
         """
-        if isinstance(data, np.ndarray):
-            if data.ndim not in {3, 4}:  # (N,H,W) or (N,H,W,C)
-                raise TypeError(f"{data_name} as numpy array must be 3D or 4D")
-            return data.shape[1:3]  # Return (H,W)
-
-        if not isinstance(data, Sequence) or not isinstance(data[0], np.ndarray):
-            raise TypeError(f"{data_name} must be either a numpy array or a list of numpy arrays")
-        return data[0].shape[:2]
+        if not isinstance(data, np.ndarray):
+            raise TypeError(f"{data_name} must be numpy array type")
+        if data.ndim not in {3, 4}:  # (N,H,W) or (N,H,W,C)
+            raise TypeError(f"{data_name} must be 3D or 4D array")
+        return data.shape[1:3]  # Return (H,W)
 
     @staticmethod
     def _check_bbox_keypoint_params(internal_data_name: str, processors: dict[str, Any]) -> None:
@@ -1218,84 +1241,54 @@ class Compose(BaseCompose, HubMixin):
             )
 
     def _check_args(self, **kwargs: Any) -> None:
-        shapes = []  # For H,W checks
-        volume_shapes = []  # For D,H,W checks
+        shapes: list[tuple[int, ...]] = []  # For H,W checks
+        volume_shapes: list[tuple[int, ...]] = []  # For D,H,W checks
 
         for data_name, data in kwargs.items():
+            # Get internal name for additional targets
             internal_name = self._additional_targets.get(data_name, data_name)
 
-            # For CHECKED_SINGLE, we must validate even if None
-            if internal_name in CHECKED_SINGLE:
-                if not isinstance(data, np.ndarray):
-                    raise TypeError(f"{data_name} must be numpy array type")
-                shapes.append(data.shape[:2])
-                continue
-
-            # Skip empty data or non-array/list inputs for other types
-            if data is None:
-                continue
-            if not isinstance(data, (np.ndarray, list)):
-                continue
-
+            # Always check bbox/keypoint params for all data items
             self._check_bbox_keypoint_params(internal_name, self.processors)
 
-            shape = self._get_data_shape(data_name, internal_name, data)
-            if shape is None:
-                continue
-
-            # Handle different shape types
-            if internal_name in CHECKED_VOLUME | CHECKED_MASK3D:
-                shapes.append(shape[1:3])  # H,W from (D,H,W)
-                volume_shapes.append(shape[:3])  # D,H,W
-            elif internal_name in {"volumes", "masks3d"}:
-                shapes.append(shape[2:4])  # H,W from (N,D,H,W)
-                volume_shapes.append(shape[1:4])  # D,H,W from (N,D,H,W)
-            else:
-                shapes.append(shape[:2])  # H,W
+            # Process and validate the data
+            self._check_and_process_single_arg(data_name, internal_name, data, shapes, volume_shapes)
 
         self._check_shape_consistency(shapes, volume_shapes)
 
-    def _get_data_shape(self, data_name: str, internal_name: str, data: Any) -> tuple[int, ...] | None:
-        """Get shape of data based on its type."""
-        # Handle single images and masks
-        if internal_name in CHECKED_SINGLE:
-            return self._get_single_data_shape(data_name, data)
-
-        # Handle volumes
-        if internal_name in CHECKED_VOLUME:
-            return self._check_volume_data(data_name, data)
-
-        # Handle 3D masks
-        if internal_name in CHECKED_MASK3D:
-            return self._check_mask3d_data(data_name, data)
-
-        # Handle multi-item data (masks, images, volumes)
-        if internal_name in CHECKED_MULTI:
-            return self._get_multi_data_shape(data_name, internal_name, data)
-
-        return None
-
-    def _get_single_data_shape(self, data_name: str, data: np.ndarray) -> tuple[int, ...]:
-        """Get shape of single image or mask."""
-        if not isinstance(data, np.ndarray):
-            raise TypeError(f"{data_name} must be numpy array type")
-        return data.shape
-
-    def _get_multi_data_shape(self, data_name: str, internal_name: str, data: Any) -> tuple[int, ...] | None:
-        """Get shape of multi-item data (masks, images, volumes)."""
-        if internal_name == "masks":
-            shape = self._check_masks_data(data_name, data)
-            # Skip empty masks lists when returning shape
-            return None if shape is None else shape
-
-        if internal_name in {"volumes", "masks3d"}:  # Group these together
+    def _check_and_process_single_arg(
+        self,
+        data_name: str,
+        internal_name: str,
+        data: Any,
+        shapes: list[tuple[int, ...]],
+        volume_shapes: list[tuple[int, ...]],
+    ) -> None:
+        """Check and process a single argument from _check_args."""
+        # For single items (image, mask), we must validate even if None
+        if internal_name in {"image", "mask"}:
             if not isinstance(data, np.ndarray):
                 raise TypeError(f"{data_name} must be numpy array type")
-            if data.ndim not in {4, 5}:  # (N,D,H,W) or (N,D,H,W,C)
-                raise TypeError(f"{data_name} must be 4D or 5D array")
-            return data.shape  # Return full shape
+            shapes.append(data.shape[:2])
+            return
 
-        return self._check_multi_data(data_name, data)
+        # List of targets to check shapes for
+        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks", "masks3d"}
+
+        # Skip if not in our check list
+        if data_name not in shape_check_targets:
+            return
+
+        # Skip empty data or non-array inputs
+        if data is None or not isinstance(data, np.ndarray):
+            return
+
+        # Skip arrays with size 0 (empty arrays)
+        if data.size == 0:
+            return
+
+        # Process the shape based on data type
+        self._process_data_shape(data_name, data, shapes, volume_shapes)
 
     def _check_shape_consistency(self, shapes: list[tuple[int, ...]], volume_shapes: list[tuple[int, ...]]) -> None:
         """Check consistency of shapes."""
@@ -1308,32 +1301,6 @@ class Compose(BaseCompose, HubMixin):
                 "Depth, Height and Width of volume, mask3d, volumes and masks3d should be equal. "
                 "You can disable shapes check by setting is_check_shapes=False.",
             )
-
-    @staticmethod
-    def _check_volume_data(data_name: str, data: np.ndarray) -> tuple[int, int, int]:
-        if data.ndim not in {3, 4}:  # (D,H,W) or (D,H,W,C)
-            raise TypeError(f"{data_name} must be 3D or 4D array")
-        return data.shape[:3]  # Return (D,H,W)
-
-    @staticmethod
-    def _check_volumes_data(data_name: str, data: np.ndarray) -> tuple[int, int, int]:
-        if data.ndim not in {4, 5}:  # (N,D,H,W) or (N,D,H,W,C)
-            raise TypeError(f"{data_name} must be 4D or 5D array")
-        return data.shape[1:4]  # Return (D,H,W)
-
-    @staticmethod
-    def _check_mask3d_data(data_name: str, data: np.ndarray) -> tuple[int, int, int]:
-        """Check single volumetric mask data format and return shape."""
-        if data.ndim not in {3, 4}:  # (D,H,W) or (D,H,W,C)
-            raise TypeError(f"{data_name} must be 3D or 4D array")
-        return data.shape[:3]  # Return (D,H,W)
-
-    @staticmethod
-    def _check_masks3d_data(data_name: str, data: np.ndarray) -> tuple[int, int, int]:
-        """Check multiple volumetric masks data format and return shape."""
-        if data.ndim not in [4, 5]:  # (N,D,H,W) or (N,D,H,W,C)
-            raise TypeError(f"{data_name} must be 4D or 5D array")
-        return data.shape[1:4]  # Return (D,H,W)
 
     def _get_init_params(self) -> dict[str, Any]:
         """Get parameters needed to recreate this Compose instance.
@@ -1511,23 +1478,11 @@ class SomeOf(BaseCompose):
         return idx
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Convert the SomeOf composition to a dictionary for serialization.
-
-        Returns:
-            dict[str, Any]: Dictionary representation of the composition.
-
-        """
         dictionary = super().to_dict_private()
         dictionary.update({"n": self.n, "replace": self.replace})
         return dictionary
 
     def _get_init_params(self) -> dict[str, Any]:
-        """Get parameters needed to recreate this SomeOf instance.
-
-        Returns:
-            dict[str, Any]: Dictionary of initialization parameters
-
-        """
         base_params = super()._get_init_params()
         base_params.update(
             {
@@ -1845,23 +1800,11 @@ class ReplayCompose(Compose):
         return serialized["applied"]
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Convert the ReplayCompose to a dictionary for serialization.
-
-        Returns:
-            dict[str, Any]: Dictionary representation of the composition.
-
-        """
         dictionary = super().to_dict_private()
         dictionary.update({"save_key": self.save_key})
         return dictionary
 
     def _get_init_params(self) -> dict[str, Any]:
-        """Get parameters needed to recreate this ReplayCompose instance.
-
-        Returns:
-            dict[str, Any]: Dictionary of initialization parameters
-
-        """
         base_params = super()._get_init_params()
         base_params.update(
             {

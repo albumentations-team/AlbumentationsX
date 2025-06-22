@@ -13,7 +13,6 @@ from tests.conftest import SQUARE_UINT8_IMAGE
 
 # Define your parameter sets
 image_shapes = [
-    (100, 100),
     (100, 100, 1),
     (100, 100, 2),
     (100, 100, 3),
@@ -271,7 +270,6 @@ def calculate_iou(img1, img2):
 @pytest.mark.parametrize(
     "image_shape",
     [
-        (100, 100),
         (100, 100, 1),
         (100, 100, 3),
     ],
@@ -544,7 +542,6 @@ def test_translate_with_warp_affine(img, expected, translate):
 @pytest.mark.parametrize(
     "image_shape",
     [
-        (100, 100),
         (100, 100, 1),
         (100, 100, 3),
     ],
@@ -614,7 +611,6 @@ def test_inverse_shear(image_shape, shear, shape):
 @pytest.mark.parametrize(
     "image_shape",
     [
-        (100, 100),
         (100, 100, 1),
         (100, 100, 3),
     ],

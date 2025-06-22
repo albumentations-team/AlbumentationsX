@@ -53,7 +53,7 @@ def test_pad_if_needed_3d_positions(position):
 def test_pad_if_needed_3d_2d_equivalence():
     """Test that PadIfNeeded3D behaves like PadIfNeeded when no z-padding is needed"""
     # Create a volume with multiple identical slices
-    slice_2d = np.random.randint(0, 256, (100, 100), dtype=np.uint8)
+    slice_2d = np.random.randint(0, 256, (100, 100, 1), dtype=np.uint8)
     volume_3d = np.stack([slice_2d] * 10)
 
     # Apply 3D padding with no z-axis changes

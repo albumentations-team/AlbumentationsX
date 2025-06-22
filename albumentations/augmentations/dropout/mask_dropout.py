@@ -133,12 +133,8 @@ class MaskDropout(DualTransform):
         self.fill = fill  # type: ignore[assignment]
         self.fill_mask = fill_mask
 
-    @property
-    def targets_as_params(self) -> list[str]:
-        return ["mask"]
-
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        mask = data["mask"]
+        mask = np.squeeze(data["mask"], axis=2)
 
         label_image, num_labels = fdropout.label(mask, return_num=True)
 
@@ -169,6 +165,7 @@ class MaskDropout(DualTransform):
             return cv2.inpaint(img, dropout_mask, radius, cast("Literal['inpaint_telea', 'inpaint_ns']", self.fill))
 
         img = img.copy()
+
         img[dropout_mask] = self.fill
 
         return img
@@ -178,6 +175,7 @@ class MaskDropout(DualTransform):
             return mask
 
         mask = mask.copy()
+
         mask[dropout_mask] = self.fill_mask
         return mask
 

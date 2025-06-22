@@ -728,13 +728,9 @@ class Mosaic(DualTransform):
         # Apply filtering using processor parameters
         bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
         # Assume processor exists if bboxes are being processed
-        shape_dict: dict[Literal["depth", "height", "width"], int] = {
-            "height": self.target_size[0],
-            "width": self.target_size[1],
-        }
         return filter_bboxes(
             combined_bboxes,
-            shape_dict,
+            self.target_size,
             min_area=bbox_processor.params.min_area,
             min_visibility=bbox_processor.params.min_visibility,
             min_width=bbox_processor.params.min_width,

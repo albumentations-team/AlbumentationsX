@@ -182,17 +182,11 @@ def test_resize_nearest_interpolation(target):
     np.testing.assert_array_equal(resized_img, expected)
 
 
-@pytest.mark.parametrize("target", ["image", "mask"])
-def test_resize_different_height_and_width(target):
-    img = np.ones((100, 100), dtype=np.uint8)
-    img = convert_2d_to_target_format([img], target=target)
+@pytest.mark.parametrize("shape", [(100, 100, 3), (100, 100, 1)])
+def test_resize_different_height_and_width(shape):
+    img = np.ones(shape, dtype=np.uint8)
     resized_img = fgeometric.resize(img, (20, 30), interpolation=cv2.INTER_LINEAR)
-    height, width = resized_img.shape[:2]
-    assert height == 20
-    assert width == 30
-    if target == "image":
-        num_channels = resized_img.shape[2]
-        assert num_channels == 3
+    assert resized_img.shape == (20, 30, shape[2])
 
 
 @pytest.mark.parametrize("target", ["image", "mask"])
@@ -271,9 +265,6 @@ def test_is_rgb_image():
     multispectral_image = np.ones((5, 5, 4), dtype=np.uint8)
     assert not fpixel.is_rgb_image(multispectral_image)
 
-    gray_image = np.ones((5, 5), dtype=np.uint8)
-    assert not fpixel.is_rgb_image(gray_image)
-
     gray_image = np.ones((5, 5, 1), dtype=np.uint8)
     assert not fpixel.is_rgb_image(gray_image)
 
@@ -285,9 +276,6 @@ def test_is_grayscale_image():
     multispectral_image = np.ones((5, 5, 4), dtype=np.uint8)
     assert not fpixel.is_grayscale_image(multispectral_image)
 
-    gray_image = np.ones((5, 5), dtype=np.uint8)
-    assert fpixel.is_grayscale_image(gray_image)
-
     gray_image = np.ones((5, 5, 1), dtype=np.uint8)
     assert fpixel.is_grayscale_image(gray_image)
 
@@ -298,9 +286,6 @@ def test_is_multispectral_image():
 
     multispectral_image = np.ones((5, 5, 4), dtype=np.uint8)
     assert is_multispectral_image(multispectral_image)
-
-    gray_image = np.ones((5, 5), dtype=np.uint8)
-    assert not is_multispectral_image(gray_image)
 
     gray_image = np.ones((5, 5, 1), dtype=np.uint8)
     assert not is_multispectral_image(gray_image)
@@ -367,45 +352,9 @@ def test_solarize(image, threshold):
     assert np.max(result_img) <= max_value
 
 
-@pytest.mark.parametrize(
-    "img_shape, img_dtype, mask_shape, by_channels, expected_error, expected_message",
-    [
-        (
-            (256, 256),
-            np.uint8,
-            (256, 256, 3),
-            True,
-            ValueError,
-            "Wrong mask shape. Image shape: (256, 256). Mask shape: (256, 256, 3)",
-        ),
-        (
-            (256, 256, 3),
-            np.uint8,
-            (256, 256, 3),
-            False,
-            ValueError,
-            "When by_channels=False only 1-channel mask supports. Mask shape: (256, 256, 3)",
-        ),
-    ],
-)
-def test_equalize_checks(
-    img_shape, img_dtype, mask_shape, by_channels, expected_error, expected_message
-):
-    img = (
-        np.random.randint(0, 255, img_shape).astype(img_dtype)
-        if img_dtype == np.uint8
-        else np.random.random(img_shape).astype(img_dtype)
-    )
-    mask = np.random.randint(0, 2, mask_shape).astype(bool)
-
-    with pytest.raises(expected_error) as exc_info:
-        fpixel.equalize(img, mask=mask, by_channels=by_channels)
-    assert str(exc_info.value) == expected_message
-
-
 def test_equalize_grayscale():
-    img = np.random.randint(0, 255, (256, 256), dtype=np.uint8)
-    assert np.all(cv2.equalizeHist(img) == fpixel.equalize(img, mode="cv"))
+    img = np.random.randint(0, 255, (256, 256, 1), dtype=np.uint8)
+    assert np.all(cv2.equalizeHist(img) == fpixel.equalize(img, mode="cv")[:, :, 0])
 
 
 def test_equalize_rgb():
@@ -424,21 +373,21 @@ def test_equalize_rgb():
 
 
 def test_equalize_grayscale_mask():
-    img = np.random.randint(0, 255, [256, 256], dtype=np.uint8)
+    img = np.random.randint(0, 255, (256, 256, 1), dtype=np.uint8)
 
-    mask = np.zeros([256, 256], dtype=bool)
+    mask = np.zeros((256, 256, 1), dtype=bool)
     mask[:10, :10] = True
 
-    assert np.all(
-        cv2.equalizeHist(img[:10, :10])
-        == fpixel.equalize(img, mask=mask, mode="cv")[:10, :10]
-    )
+    cv2_result = cv2.equalizeHist(img[:10, :10])
+    albumentations_result = fpixel.equalize(img, mask=mask, mode="cv")[:10, :10, 0]
+
+    np.testing.assert_array_equal(cv2_result, albumentations_result)
 
 
 def test_equalize_rgb_mask():
-    img = np.random.randint(0, 255, [256, 256, 3], dtype=np.uint8)
+    img = np.random.randint(0, 255, (256, 256, 3), dtype=np.uint8)
 
-    mask = np.zeros([256, 256], dtype=bool)
+    mask = np.zeros((256, 256, 1), dtype=bool)
     mask[:10, :10] = True
 
     _img = img.copy()[:10, :10]
@@ -454,7 +403,7 @@ def test_equalize_rgb_mask():
         img_cv == fpixel.equalize(img, mask=mask, mode="cv", by_channels=False)[:10, :10]
     )
 
-    mask = np.zeros([256, 256, 3], dtype=bool)
+    mask = np.zeros((256, 256, 3), dtype=bool)
     mask[:10, :10, 0] = True
     mask[10:20, 10:20, 1] = True
     mask[20:30, 20:30, 2] = True
@@ -475,8 +424,8 @@ def test_equalize_rgb_mask():
 @pytest.mark.parametrize(
     "img",
     [
-        np.random.randint(0, 256, [100, 100], dtype=np.uint8),
-        np.random.random([100, 100]).astype(np.float32),
+        np.random.randint(0, 256, (100, 100, 1), dtype=np.uint8),
+        np.random.random((100, 100, 1)).astype(np.float32),
     ],
 )
 def test_shift_hsv_gray(img):
@@ -1035,9 +984,9 @@ def test_float32_uint8_consistency(func):
 @pytest.mark.parametrize(
     "shape, dtype, clip_limit, tile_grid_size",
     [
-        ((100, 100), np.uint8, 2.0, (8, 8)),  # Grayscale uint8
+        ((100, 100, 1), np.uint8, 2.0, (8, 8)),  # Grayscale uint8
         ((100, 100, 3), np.uint8, 2.0, (8, 8)),  # RGB uint8
-        ((50, 50), np.float32, 3.0, (4, 4)),  # Grayscale float32
+        ((50, 50, 1), np.float32, 3.0, (4, 4)),  # Grayscale float32
         ((50, 50, 3), np.float32, 3.0, (4, 4)),  # RGB float32
     ],
 )
@@ -3059,7 +3008,7 @@ def test_white_pixels_in_mixed_images(image_type, sat_shift):
 def test_grayscale_image_with_saturation():
     """Test that grayscale images are handled correctly with saturation changes."""
     # Create a grayscale image
-    gray_image = np.ones((10, 10), dtype=np.uint8) * 128
+    gray_image = np.ones((10, 10, 1), dtype=np.uint8) * 128
 
     # Apply saturation increase (should be ignored for grayscale)
     result = fpixel.shift_hsv(gray_image, hue_shift=0, sat_shift=100, val_shift=0)

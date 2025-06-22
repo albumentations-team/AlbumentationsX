@@ -25,7 +25,7 @@ def get_upscale_image():
 
 def get_mask(size):
     """Create a mask of the specified size."""
-    mask = np.zeros((size, size), dtype=np.uint8)
+    mask = np.zeros((size, size, 1), dtype=np.uint8)
     # Add a simple pattern
     center = size // 2
     mask[center - size//4:center + size//4, center - size//4:center + size//4] = 1

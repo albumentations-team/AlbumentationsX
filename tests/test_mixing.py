@@ -6,11 +6,10 @@ import pytest
 from deepdiff import DeepDiff
 
 import albumentations as A
-from tests.conftest import UINT8_IMAGES, FLOAT32_IMAGES, MULTI_IMAGES
 
 
 def image_generator():
-    yield {"image": np.random.randint(0, 256, [100, 100, 3], dtype=np.uint8)}
+    yield {"image": np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)}
 
 
 def complex_image_generator():

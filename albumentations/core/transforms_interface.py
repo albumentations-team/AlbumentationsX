@@ -389,28 +389,49 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             dict[str, Any]: Updated parameters dictionary with shape and transform-specific params
 
         """
-        # Extract shape from volume, volumes, image, or images
-        if "volume" in data:
-            shape = data["volume"][0].shape  # Take first slice of volume
-        elif "volumes" in data:
-            shape = data["volumes"][0][0].shape  # Take first slice of first volume
-        elif "image" in data:
-            shape = data["image"].shape
-        else:
-            shape = data["images"][0].shape
-
-        # For volumes/images, shape will be either (H, W) or (H, W, C)
-        params["shape"] = shape
+        # Extract shape from any available data source
+        shape = self._extract_shape_from_data(data)
+        if shape is not None:
+            params["shape"] = shape
 
         # Add transform-specific params
+        self._add_transform_specific_params(params)
+
+        return params
+
+    def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
+        """Extract shape information from various data types."""
+        # Check images/volumes first (most common)
+        if "image" in data:
+            return data["image"].shape
+        if "images" in data:
+            return data["images"][0].shape
+        if "volume" in data:
+            # For volumes, take a slice to get 2D shape
+            return data["volume"][0].shape  # Take first slice (works for both DHWC and DHW)
+        if "volumes" in data:
+            # For batch of volumes
+            return data["volumes"][0][0].shape  # Take first slice of first volume (works for both NDHWC and NDHW)
+        if "mask" in data:
+            return data["mask"].shape
+        if "masks" in data:
+            return data["masks"][0].shape
+        if "mask3d" in data:
+            # For 3D masks, take a slice to get 2D shape
+            return data["mask3d"][0].shape  # Take first slice (works for both DHWC and DHW)
+        if "masks3d" in data:
+            # For batch of 3D masks
+            return data["masks3d"][0][0].shape  # Take first slice of first mask (works for both NDHWC and NDHW)
+        return None
+
+    def _add_transform_specific_params(self, params: dict[str, Any]) -> None:
+        """Add transform-specific parameters to params dict."""
         if hasattr(self, "interpolation"):
             params["interpolation"] = self.interpolation
         if hasattr(self, "fill"):
             params["fill"] = self.fill
         if hasattr(self, "fill_mask"):
             params["fill_mask"] = self.fill_mask
-
-        return params
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         """Returns parameters dependent on input."""
@@ -655,101 +676,31 @@ class DualTransform(BasicTransform):
             "masks3d": self.apply_to_masks3d,
             "bboxes": self.apply_to_bboxes,
             "keypoints": self.apply_to_keypoints,
-            "volume": self.apply_to_volume,
+            "volume": self.apply_to_images,
             "volumes": self.apply_to_volumes,
         }
 
     def apply_to_keypoints(self, keypoints: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        """Apply transform to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Array of keypoints of shape (N, 2+).
-            *args (Any): Additional positional arguments.
-            **params (Any): Additional parameters.
-
-        Raises:
-            NotImplementedError: This method must be implemented by subclass.
-
-        Returns:
-            np.ndarray: Transformed keypoints.
-
-        """
         msg = f"Method apply_to_keypoints is not implemented in class {self.__class__.__name__}"
         raise NotImplementedError(msg)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        """Apply transform to bounding boxes.
-
-        Args:
-            bboxes (np.ndarray): Array of bounding boxes of shape (N, 4+).
-            *args (Any): Additional positional arguments.
-            **params (Any): Additional parameters.
-
-        Raises:
-            NotImplementedError: This method must be implemented by subclass.
-
-        Returns:
-            np.ndarray: Transformed bounding boxes.
-
-        """
         raise NotImplementedError(f"BBoxes not implemented for {self.__class__.__name__}")
 
     def apply_to_mask(self, mask: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        """Apply transform to mask.
-
-        Args:
-            mask (np.ndarray): Input mask.
-            *args (Any): Additional positional arguments.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transformed mask.
-
-        """
         return self.apply(mask, *args, **params)
 
     def apply_to_masks(self, masks: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        """Apply transform to multiple masks.
-
-        Args:
-            masks (np.ndarray): Input masks as numpy array
-            *args (Any): Additional positional arguments
-            **params (Any): Additional parameters specific to the transform
-
-        Returns:
-            np.ndarray: Transformed masks as numpy array
-
-        """
+        if masks.size == 0:
+            return masks
         return np.stack([self.apply_to_mask(mask, **params) for mask in masks])
 
-    @batch_transform("spatial", has_batch_dim=False, has_depth_dim=True)
+    @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        """Apply transform to a 3D mask.
-
-        Args:
-            mask3d (np.ndarray): Input 3D mask as numpy array
-            *args (Any): Additional positional arguments
-            **params (Any): Additional parameters specific to the transform
-
-        Returns:
-            np.ndarray: Transformed 3D mask as numpy array
-
-        """
         return self.apply_to_mask(mask3d, **params)
 
-    @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial")
     def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        """Apply transform to multiple 3D masks.
-
-        Args:
-            masks3d (np.ndarray): Input 3D masks as numpy array
-            *args (Any): Additional positional arguments
-            **params (Any): Additional parameters specific to the transform
-
-        Returns:
-            np.ndarray: Transformed 3D masks as numpy array
-
-        """
         return np.stack([self.apply_to_mask3d(mask3d, **params) for mask3d in masks3d])
 
 
@@ -828,107 +779,27 @@ class NoOp(DualTransform):
     _targets = ALL_TARGETS
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply transform to keypoints (identity operation).
-
-        Args:
-            keypoints (np.ndarray): Array of keypoints.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Unchanged keypoints array.
-
-        """
         return keypoints
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply transform to bounding boxes (identity operation).
-
-        Args:
-            bboxes (np.ndarray): Array of bounding boxes.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Unchanged bounding boxes array.
-
-        """
         return bboxes
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply transform to image (identity operation).
-
-        Args:
-            img (np.ndarray): Input image.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Unchanged image.
-
-        """
         return img
 
     def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply transform to mask (identity operation).
-
-        Args:
-            mask (np.ndarray): Input mask.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Unchanged mask.
-
-        """
         return mask
 
     def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply transform to volume (identity operation).
-
-        Args:
-            volume (np.ndarray): Input volume.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Unchanged volume.
-
-        """
         return volume
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply transform to multiple volumes (identity operation).
-
-        Args:
-            volumes (np.ndarray): Input volumes.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Unchanged volumes.
-
-        """
         return volumes
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply transform to 3D mask (identity operation).
-
-        Args:
-            mask3d (np.ndarray): Input 3D mask.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Unchanged 3D mask.
-
-        """
         return mask3d
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply transform to multiple 3D masks (identity operation).
-
-        Args:
-            masks3d (np.ndarray): Input 3D masks.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Unchanged 3D masks.
-
-        """
         return masks3d
 
 
@@ -950,7 +821,7 @@ class Transform3D(DualTransform):
         """Apply transform to single 3D volume."""
         raise NotImplementedError
 
-    @batch_transform("spatial", keep_depth_dim=True, has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial", keep_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         """Apply transform to batch of 3D volumes."""
         return self.apply_to_volume(volumes, *args, **params)
@@ -959,14 +830,13 @@ class Transform3D(DualTransform):
         """Apply transform to single 3D mask."""
         return self.apply_to_volume(mask3d, *args, **params)
 
-    @batch_transform("spatial", keep_depth_dim=True, has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial", keep_depth_dim=True)
     def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         """Apply transform to batch of 3D masks."""
         return self.apply_to_mask3d(masks3d, *args, **params)
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
-        """Define valid targets for 3D transforms."""
         return {
             "volume": self.apply_to_volume,
             "volumes": self.apply_to_volumes,

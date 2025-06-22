@@ -187,13 +187,13 @@ def test_color_jitter(brightness, contrast, saturation, hue):
 
 def test_post_data_check():
     img = np.empty([100, 100, 3], dtype=np.uint8)
-    bboxes = [
+    bboxes = np.array([
         [0, 0, 90, 90, 0],
-    ]
-    keypoints = [
+    ])
+    keypoints = np.array([
         [90, 90],
         [50, 50],
-    ]
+    ])
 
     transform = A.Compose(
         [
@@ -208,7 +208,6 @@ def test_post_data_check():
     )
 
     res = transform(image=img, keypoints=keypoints, bboxes=bboxes)
-    assert len(res["keypoints"]) != 0 and len(res["bboxes"]) != 0
     np.testing.assert_array_equal(res["keypoints"], [(45, 45), (25, 25)])
     # Use assert_allclose instead of assert_array_equal
     np.testing.assert_allclose(res["bboxes"], [(0, 0, 45, 45, 0)], rtol=1e-5, atol=1e-5)
@@ -249,7 +248,7 @@ def test_to_tensor_v2_on_non_contiguous_array_with_horizontal_flip():
 
     image = RECTANGULAR_UINT8_IMAGE
 
-    masks = [image[:, :, 0]] * 2
+    masks = np.stack([image[:, :, 0]] * 2)
 
     transform(image=image, masks=masks)
 
@@ -264,7 +263,7 @@ def test_to_tensor_v2_on_non_contiguous_array_with_random_rotate90():
     )
 
     img = np.random.randint(0, 256, (640, 480, 3)).astype(np.uint8)
-    masks = [np.random.randint(0, 2, (640, 480)).astype(np.uint8) for _ in range(4)]
+    masks = np.stack([np.random.randint(0, 2, (640, 480)).astype(np.uint8)] * 4)
     for _ in range(10):
         transformed = transforms(image=img, masks=masks)
         assert isinstance(transformed["image"], torch.Tensor)

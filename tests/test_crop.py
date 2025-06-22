@@ -228,7 +228,7 @@ def test_base_crop_and_pad_fill():
     c1 = A.CenterCrop(4, 4, pad_if_needed=True, fill=201)
 
     im = np.zeros((2, 6, 3)).astype(np.float32)
-    msk = np.zeros((2, 6)).astype(np.uint8)
+    msk = np.zeros((2, 6, 1)).astype(np.uint8)
 
     out = c(image=im, mask=msk)
     out1 = c1(image=im, mask=msk)
@@ -236,7 +236,7 @@ def test_base_crop_and_pad_fill():
     expected_img = np.ones((4, 4, 3)).astype(np.float32)
     expected_img[1:3, ...] = 0
 
-    expected_msk = np.ones((4, 4)).astype(np.uint8)
+    expected_msk = np.ones((4, 4, 1)).astype(np.uint8)
     expected_msk[1:3, ...] = 0
 
     assert np.all(out["image"] == expected_img * 100)

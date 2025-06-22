@@ -582,8 +582,7 @@ def apply_histogram(img: np.ndarray, reference_image: np.ndarray, blend_ratio: f
     if img.shape[:2] != reference_image.shape[:2]:
         reference_image = cv2.resize(reference_image, dsize=(img.shape[1], img.shape[0]))
 
-    img = np.squeeze(img)
-    reference_image = np.squeeze(reference_image)
+    reference_image = reference_image.reshape(img.shape)
 
     # Match histograms between the images
     matched = match_histograms(img, reference_image)
@@ -593,7 +592,6 @@ def apply_histogram(img: np.ndarray, reference_image: np.ndarray, blend_ratio: f
 
 
 @uint8_io
-@preserve_channel_dim
 def match_histograms(image: np.ndarray, reference: np.ndarray) -> np.ndarray:
     """Adjust an image so that its cumulative histogram matches that of another.
 
@@ -614,15 +612,6 @@ def match_histograms(image: np.ndarray, reference: np.ndarray) -> np.ndarray:
     """
     if reference.dtype != np.uint8:
         reference = from_float(reference, np.uint8)
-
-    if image.ndim != reference.ndim:
-        raise ValueError("Image and reference must have the same number of dimensions.")
-
-    # Expand dimensions for grayscale images
-    if image.ndim == 2:
-        image = np.expand_dims(image, axis=-1)
-    if reference.ndim == 2:
-        reference = np.expand_dims(reference, axis=-1)
 
     matched = np.empty(image.shape, dtype=np.uint8)
 

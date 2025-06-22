@@ -19,7 +19,6 @@ import cv2
 import numpy as np
 from albucore import (
     MAX_VALUES_BY_DTYPE,
-    NUM_MULTI_CHANNEL_DIMENSIONS,
     batch_transform,
     get_image_data,
     get_num_channels,
@@ -2857,14 +2856,16 @@ class ToGray(ImageOnlyTransform):
         return fpixel.to_gray(img, self.num_output_channels, self.method)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        if is_grayscale_image(images, has_batch_dim=True):
+        # Check if images are already grayscale by checking number of channels
+        if images.shape[-1] == 1:
             warnings.warn("The image is already gray.", stacklevel=2)
             return images
 
         return fpixel.to_gray(images, self.num_output_channels, self.method)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        if is_grayscale_image(volumes, has_batch_dim=True, has_depth_dim=True):
+        # Check if volumes are already grayscale by checking number of channels
+        if volumes.shape[-1] == 1:
             warnings.warn("The volumes are already gray.", stacklevel=2)
             return volumes
 
@@ -3339,7 +3340,8 @@ class FancyPCA(ImageOnlyTransform):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         shape = params["shape"]
-        num_channels = shape[-1] if len(shape) == NUM_MULTI_CHANNEL_DIMENSIONS else 1
+        # All images now have channel dimension
+        num_channels = shape[-1]
         alpha_vector = self.random_generator.normal(0, self.alpha, num_channels).astype(
             np.float32,
         )
@@ -5597,11 +5599,11 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
             plasma_pattern,
         )
 
-    @batch_transform("spatial", keep_depth_dim=False, has_batch_dim=True, has_depth_dim=False)
+    @batch_transform("spatial")
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(images, **params)
 
-    @batch_transform("spatial", keep_depth_dim=True, has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial", keep_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(volumes, **params)
 
@@ -5750,11 +5752,11 @@ class PlasmaShadow(ImageOnlyTransform):
     ) -> np.ndarray:
         return fpixel.apply_plasma_shadow(img, intensity, plasma_pattern)
 
-    @batch_transform("spatial", keep_depth_dim=False, has_batch_dim=True, has_depth_dim=False)
+    @batch_transform("spatial")
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(images, **params)
 
-    @batch_transform("spatial", keep_depth_dim=True, has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial", keep_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(volumes, **params)
 
@@ -6057,11 +6059,11 @@ class AutoContrast(ImageOnlyTransform):
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
         return fpixel.auto_contrast(img, self.cutoff, self.ignore, self.method)
 
-    @batch_transform("channel", has_batch_dim=True, has_depth_dim=False)
+    @batch_transform("channel")
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(images, **params)
 
-    @batch_transform("channel", has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("channel")
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(volumes, **params)
 
@@ -6296,11 +6298,11 @@ class HEStain(ImageOnlyTransform):
             augment_background=self.augment_background,
         )
 
-    @batch_transform("channel", has_batch_dim=True, has_depth_dim=False)
+    @batch_transform("channel")
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(images, **params)
 
-    @batch_transform("channel", has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("channel")
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(volumes, **params)
 

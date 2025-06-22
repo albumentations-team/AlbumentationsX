@@ -334,7 +334,12 @@ def equalize(
     result_img = np.empty_like(img)
     for i in range(NUM_RGB_CHANNELS):
         _mask = _handle_mask(mask, i)
-        result_img[..., i] = function(img[..., i], _mask)
+        # Extract channel, process, and ensure we maintain 2D shape
+        channel_result = function(img[..., i], _mask)
+        # Remove any extra dimensions that might have been added
+        if channel_result.ndim > 2:
+            channel_result = channel_result.squeeze()
+        result_img[..., i] = channel_result
 
     return result_img
 
@@ -2004,16 +2009,19 @@ def unsharp_mask(
         np.ndarray: The unsharp mask applied to the image.
 
     """
+    num_channels = get_num_channels(image)
+
     blur_fn = maybe_process_in_chunks(
         cv2.GaussianBlur,
         ksize=(ksize, ksize),
         sigmaX=sigma,
     )
 
-    if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and get_num_channels(image) == 1:
+    blur = blur_fn(image)
+
+    if num_channels == 1:
         image = np.squeeze(image, axis=-1)
 
-    blur = blur_fn(image)
     residual = image - blur
 
     # Do not sharpen noise
@@ -2023,6 +2031,9 @@ def unsharp_mask(
     sharp = image + alpha * residual
     # Avoid color noise artefacts.
     sharp = np.clip(sharp, 0, 1, out=sharp)
+
+    if num_channels == 1:
+        mask = np.expand_dims(mask, axis=-1)
 
     soft_mask = blur_fn(mask)
 
@@ -3529,9 +3540,10 @@ def get_rain_params(
     )
     dist = clip(dist, np.uint8, inplace=True)
 
+    dist = dist[..., np.newaxis]
+
     # Enhance contrast in the distance map
     dist = equalize(dist)
-
     # Modified kernel for more natural drop shapes
     ker = np.array(
         [

@@ -14,7 +14,6 @@ import cv2
 import numpy as np
 from albucore import (
     MAX_VALUES_BY_DTYPE,
-    NUM_MULTI_CHANNEL_DIMENSIONS,
     get_num_channels,
     is_grayscale_image,
     preserve_channel_dim,
@@ -23,7 +22,6 @@ from albucore import (
 
 from albumentations.augmentations.geometric.functional import split_uniform_grid
 from albumentations.augmentations.utils import handle_empty_array
-from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS
 
 __all__ = [
     "calculate_grid_dimensions",
@@ -130,15 +128,11 @@ def apply_inpainting(img: np.ndarray, holes: np.ndarray, method: Literal["inpain
 
     # Handle grayscale images by converting to 3 channels and back
     if num_channels == 1:
-        if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-            img = img.squeeze()
+        img = img.squeeze()  # Remove channel dimension for OpenCV
         img_3ch = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
         result = cv2.inpaint(img_3ch, mask, 3, inpaint_method)
-        return (
-            cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None]
-            if num_channels == NUM_MULTI_CHANNEL_DIMENSIONS
-            else cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
-        )
+        # Always add channel dimension back since all images now have channel dimension
+        return cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None]
 
     return cv2.inpaint(img, mask, 3, inpaint_method)
 
@@ -202,8 +196,8 @@ def fill_holes_with_random(
     """
     for x_min, y_min, x_max, y_max in holes:
         shape = (1,) if uniform else (y_max - y_min, x_max - x_min)
-        if img.ndim != MONO_CHANNEL_DIMENSIONS:
-            shape = (1, img.shape[2]) if uniform else (*shape, img.shape[2])
+        # All images now have channel dimension at img.shape[2]
+        shape = (1, img.shape[2]) if uniform else (*shape, img.shape[2])
 
         random_fill = generate_random_fill(img.dtype, shape, random_generator)
         img[y_min:y_max, x_min:x_max] = random_fill
@@ -309,14 +303,12 @@ def cutout(
     # Handle sequence fill values
     fill_array = np.array(fill, dtype=img.dtype)
 
-    # For multi-channel images, verify fill matches number of channels
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        fill_array = fill_array.ravel()
-        if fill_array.size != img.shape[2]:
-            raise ValueError(
-                f"Fill value must have same number of channels as image. "
-                f"Got {fill_array.size}, expected {img.shape[2]}",
-            )
+    # For images (which all have channel dimension), verify fill matches number of channels
+    fill_array = fill_array.ravel()
+    if fill_array.size != img.shape[2]:
+        raise ValueError(
+            f"Fill value must have same number of channels as image. Got {fill_array.size}, expected {img.shape[2]}",
+        )
 
     return fill_holes_with_value(img, holes, fill_array)
 
@@ -963,7 +955,7 @@ def get_holes_from_mask(
 ) -> np.ndarray:
     """Generate holes based on segmentation mask."""
     # Create binary mask for target indices
-    binary_mask = np.isin(mask, np.array(mask_indices))
+    binary_mask = np.isin(mask[:, :, 0], np.array(mask_indices))
     if not np.any(binary_mask):  # If no target objects found
         return np.array([], dtype=np.int32).reshape((0, 4))
 

@@ -249,7 +249,7 @@ def create_reference_image(shape, dtype=np.uint8):
     "img_shape, ref_shape, dtype",
     [
         ((100, 100, 3), (100, 100, 3), np.uint8),
-        ((100, 100), (100, 100), np.uint8),
+        ((100, 100, 1), (100, 100, 1), np.uint8),
         ((50, 50, 3), (100, 100, 3), np.uint8),
         ((100, 100, 3), (50, 50, 3), np.uint8),
         ((100, 100, 3), (50, 50, 3), np.float32),
@@ -283,14 +283,13 @@ def test_apply_histogram_blend_ratio(blend_ratio):
 
 
 def test_apply_histogram_grayscale():
-    img = create_reference_image((100, 100))
-    reference_image = create_reference_image((100, 100))
+    img = create_reference_image((100, 100, 1))
+    reference_image = create_reference_image((100, 100, 1))
     blend_ratio = 0.5
 
     result = apply_histogram(img, reference_image, blend_ratio)
 
-    assert result.shape == (100, 100)
-    assert len(result.shape) == 2  # Ensure it remains grayscale
+    assert result.shape == (100, 100, 1)
 
 
 def test_apply_histogram_multichannel():
@@ -301,7 +300,6 @@ def test_apply_histogram_multichannel():
     result = apply_histogram(img, reference_image, blend_ratio)
 
     assert result.shape == (100, 100, 3)
-    assert len(result.shape) == 3  # Ensure it remains multichannel
 
 
 def test_apply_histogram_resize():
@@ -318,7 +316,7 @@ def test_apply_histogram_resize():
     "img_shape, ref_shape",
     [
         ((100, 100, 3), (100, 100, 3)),
-        ((100, 100), (100, 100)),
+        ((100, 100, 1), (100, 100, 1)),
         ((50, 50, 3), (100, 100, 3)),
     ],
 )
@@ -407,7 +405,7 @@ def test_match_histograms(shape, channel_axis):
 
 
 @pytest.mark.parametrize("shape, dtype", [
-    ((100, 100), np.uint8),
+    ((100, 100, 1), np.uint8),
     ((100, 100, 3), np.uint8),
 ])
 def test_match_histograms_identity(shape, dtype):

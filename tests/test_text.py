@@ -97,7 +97,6 @@ def test_insert_random_stopwords(sentence, num_insertions, stopwords, expected_l
 @pytest.mark.parametrize(
     "image_shape",
     [
-        (100, 100),  # Grayscale image
         (100, 100, 1),  # Single channel image
         (100, 100, 3),  # RGB image
     ],
@@ -119,19 +118,8 @@ dummy_metadata = {
 
 
 @pytest.mark.parametrize(
-    "image_shape, metadata_list",
-    [
-        (
-            (100, 100),
-            [
-                {
-                    "bbox_coords": (10, 10, 100, 50),
-                    "text": "Test",
-                    "font": font,
-                    "font_color": (127,),  # Grayscale color
-                },
-            ],
-        ),  # Grayscale image
+    "image_shape, metadata_list", [
+
         (
             (100, 100, 1),
             [

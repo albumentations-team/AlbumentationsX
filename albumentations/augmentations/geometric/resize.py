@@ -428,19 +428,19 @@ class MaxSizeTransform(DualTransform):
     ) -> np.ndarray:
         return fgeometric.keypoints_scale(keypoints, scale, scale)
 
-    @batch_transform("spatial", has_batch_dim=True, has_depth_dim=False)
+    @batch_transform("spatial")
     def apply_to_images(self, images: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         return self.apply(images, *args, **params)
 
-    @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial")
     def apply_to_volumes(self, volumes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         return self.apply(volumes, *args, **params)
 
-    @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         return self.apply_to_mask(mask3d, *args, **params)
 
-    @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial")
     def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         return self.apply_to_mask(masks3d, *args, **params)
 

@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING, Any
 import cv2
 import numpy as np
 from albucore import (
-    MONO_CHANNEL_DIMENSIONS,
-    NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
     preserve_channel_dim,
     uint8_io,
@@ -116,11 +114,10 @@ def convert_image_to_pil(image: np.ndarray) -> Image:
     except ImportError:
         raise ImportError("Pillow is not installed") from ImportError
 
-    if image.ndim == MONO_CHANNEL_DIMENSIONS:  # (height, width)
-        return Image.fromarray(image)
-    if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 1:  # (height, width, 1)
+    # All images now have channel dimension (H, W, C)
+    if image.shape[2] == 1:  # Grayscale (height, width, 1)
         return Image.fromarray(image[:, :, 0], mode="L")
-    if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == NUM_RGB_CHANNELS:  # (height, width, 3)
+    if image.shape[2] == NUM_RGB_CHANNELS:  # RGB (height, width, 3)
         return Image.fromarray(image)
 
     raise TypeError(f"Unsupported image shape: {image.shape}")
@@ -222,9 +219,8 @@ def render_text(image: np.ndarray, metadata_list: list[dict[str, Any]], clear_bg
     if clear_bg:
         image = inpaint_text_background(image, metadata_list)
 
-    if len(image.shape) == MONO_CHANNEL_DIMENSIONS or (
-        len(image.shape) == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] in {1, NUM_RGB_CHANNELS}
-    ):
+    # All images now have channel dimension (H, W, C)
+    if image.shape[-1] in {1, NUM_RGB_CHANNELS}:
         pil_image = convert_image_to_pil(image)
         pil_image = draw_text_on_pil_image(pil_image, metadata_list)
         return np.array(pil_image)

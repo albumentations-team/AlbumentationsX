@@ -130,9 +130,9 @@ def test_cutout_with_various_fill_values(img, fill):
 @pytest.mark.parametrize(
     "img_shape, fill",
     [
-        ((10, 10), "random"),
+        ((10, 10, 1), "random"),
         ((10, 10, 3), "random"),
-        ((10, 10), "random_uniform"),
+        ((10, 10, 1), "random_uniform"),
         ((10, 10, 3), "random_uniform"),
     ],
 )
@@ -154,7 +154,6 @@ def test_cutout_with_random_fills(img_shape, fill):
 @pytest.mark.parametrize(
     "shape",
     [
-        (100, 100),
         (100, 100, 1),
         (100, 100, 3),
         (100, 100, 7),

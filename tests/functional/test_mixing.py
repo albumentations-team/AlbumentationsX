@@ -215,7 +215,7 @@ def test_filter_valid_metadata_tuple_input(valid_item_1, valid_item_2) -> None:
 
 @pytest.fixture
 def primary_data_rgb_mask_grayscale() -> dict[str, Any]:
-    return {"image": np.zeros((100, 100, 3), dtype=np.uint8), "mask": np.zeros((100, 100), dtype=np.uint8)}
+    return {"image": np.zeros((100, 100, 3), dtype=np.uint8), "mask": np.zeros((100, 100, 1), dtype=np.uint8)}
 
 @pytest.fixture
 def primary_data_rgb_mask_single_channel() -> dict[str, Any]:
@@ -255,14 +255,6 @@ def test_filter_valid_metadata_image_compatible_channels(primary_data_rgb_mask_g
     # No warning expected
     result = filter_valid_metadata(metadata, "test", primary_data_rgb_mask_grayscale)
     assert result == [item_rgb_mask_grayscale]
-
-
-def test_filter_valid_metadata_mask_incompatible_dims(primary_data_rgb_mask_grayscale, item_rgb_mask_single_channel):
-    """Test mask incompatibility: primary 2D, item 3D."""
-    metadata = [item_rgb_mask_single_channel]
-    with pytest.warns(UserWarning, match="incompatibility in 'mask'.*Item 'mask' has 3 dimensions, but primary has 2"):
-        result = filter_valid_metadata(metadata, "test", primary_data_rgb_mask_grayscale)
-    assert result == []
 
 def test_filter_valid_metadata_mask_incompatible_channels(primary_data_rgb_mask_single_channel, item_rgb_mask_multi_channel):
     """Test mask incompatibility: both 3D, different channels."""

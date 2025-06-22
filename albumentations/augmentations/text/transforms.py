@@ -115,12 +115,6 @@ class TextImage(ImageOnlyTransform):
 
     @property
     def targets_as_params(self) -> list[str]:
-        """Get list of targets that should be passed as parameters to transforms.
-
-        Returns:
-            list[str]: List containing the metadata key name
-
-        """
         return [self.metadata_key]
 
     def random_aug(
@@ -216,16 +210,6 @@ class TextImage(ImageOnlyTransform):
         }
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Generate parameters based on input data.
-
-        Args:
-            params (dict[str, Any]): Dictionary of existing parameters
-            data (dict[str, Any]): Dictionary containing input data with image and metadata
-
-        Returns:
-            dict[str, Any]: Dictionary containing the overlay data for text rendering
-
-        """
         image = data["image"] if "image" in data else data["images"][0]
 
         metadata = data[self.metadata_key]
@@ -259,17 +243,6 @@ class TextImage(ImageOnlyTransform):
         overlay_data: list[dict[str, Any]],
         **params: Any,
     ) -> np.ndarray:
-        """Apply text rendering to the input image.
-
-        Args:
-            img (np.ndarray): Input image
-            overlay_data (list[dict[str, Any]]): List of dictionaries containing text rendering information
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Image with rendered text
-
-        """
         return ftext.render_text(img, overlay_data, clear_bg=self.clear_bg)
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:

@@ -34,10 +34,10 @@ def test_blur_kernel_generation(
 
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
 def test_glass_blur_float_uint8_diff_less_than_two(val_uint8: list[int]) -> None:
-    x_uint8 = np.zeros((5, 5)).astype(np.uint8)
+    x_uint8 = np.zeros((5, 5, 1)).astype(np.uint8)
     x_uint8[2, 2] = val_uint8
 
-    x_float32 = np.zeros((5, 5)).astype(np.float32)
+    x_float32 = np.zeros((5, 5, 1)).astype(np.float32)
     x_float32[2, 2] = val_uint8 / 255.0
 
     glassblur = A.GlassBlur(p=1, max_delta=1)
@@ -57,10 +57,10 @@ def test_glass_blur_float_uint8_diff_less_than_two(val_uint8: list[int]) -> None
 
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
 def test_advanced_blur_float_uint8_diff_less_than_two(val_uint8: list[int]) -> None:
-    x_uint8 = np.zeros((5, 5)).astype(np.uint8)
+    x_uint8 = np.zeros((5, 5, 1)).astype(np.uint8)
     x_uint8[2, 2] = val_uint8
 
-    x_float32 = np.zeros((5, 5)).astype(np.float32)
+    x_float32 = np.zeros((5, 5, 1)).astype(np.float32)
     x_float32[2, 2] = val_uint8 / 255.0
 
     adv_blur = A.AdvancedBlur(blur_limit=(3, 5), p=1)
@@ -206,7 +206,7 @@ def compute_sharpness(image: np.ndarray) -> float:
 
 def test_gaussian_blur_matches_pil():
     # Create a test image with high-frequency details
-    image = np.zeros((100, 100), dtype=np.uint8)
+    image = np.zeros((100, 100, 1), dtype=np.uint8)
     image[::10, :] = 255  # horizontal lines
     image[:, ::10] = 255  # vertical lines
 
@@ -217,7 +217,7 @@ def test_gaussian_blur_matches_pil():
     pil_sharpness = []
     alb_sharpness = []
 
-    pil_image = Image.fromarray(image)
+    pil_image = Image.fromarray(image[:, :, 0])
 
     for sigma in sigmas:
         # PIL blur

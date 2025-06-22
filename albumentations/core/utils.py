@@ -12,7 +12,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from numbers import Real
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import Any, Literal, cast, overload
 
 import numpy as np
 
@@ -21,87 +21,91 @@ from albumentations.core.label_manager import LabelManager
 from .serialization import Serializable
 from .type_definitions import PAIR, Number
 
-if TYPE_CHECKING:
-    import torch
 
-ShapeType = dict[Literal["depth", "height", "width"], int]
+def get_shape(data: dict[str, Any]) -> tuple[int, int]:
+    """Extract height and width dimensions from input data dictionary.
 
-
-def get_image_shape(img: np.ndarray | torch.Tensor) -> tuple[int, int]:
-    """Extract height and width dimensions from an image.
-
-    Args:
-        img (np.ndarray | torch.Tensor): Image as either numpy array (HWC format)
-            or torch tensor (CHW format).
-
-    Returns:
-        tuple[int, int]: Image dimensions as (height, width).
-
-    Raises:
-        RuntimeError: If the image type is not supported.
-
-    """
-    if isinstance(img, np.ndarray):
-        return img.shape[:2]  # HWC format
-    try:
-        import torch
-
-        if torch.is_tensor(img):
-            return img.shape[-2:]  # CHW format
-    except ImportError:
-        pass
-    raise RuntimeError(f"Unsupported image type: {type(img)}")
-
-
-def get_volume_shape(vol: np.ndarray | torch.Tensor) -> tuple[int, int, int]:
-    """Extract depth, height, and width dimensions from a volume.
-
-    Args:
-        vol (np.ndarray | torch.Tensor): Volume as either numpy array (DHWC format)
-            or torch tensor (CDHW format).
-
-    Returns:
-        tuple[int, int, int]: Volume dimensions as (depth, height, width).
-
-    Raises:
-        RuntimeError: If the volume type is not supported.
-
-    """
-    if isinstance(vol, np.ndarray):
-        return vol.shape[:3]  # DHWC format
-    try:
-        import torch
-
-        if torch.is_tensor(vol):
-            return vol.shape[-3:]  # CDHW format
-    except ImportError:
-        pass
-    raise RuntimeError(f"Unsupported volume type: {type(vol)}")
-
-
-def get_shape(data: dict[str, Any]) -> ShapeType:
-    """Extract spatial dimensions from input data dictionary containing image or volume.
+    After grayscale preprocessing, all data has channel dimension at the end.
 
     Args:
         data (dict[str, Any]): Dictionary containing image or volume data with one of:
-            - 'volume': 3D array of shape (D, H, W, C) [numpy] or (C, D, H, W) [torch]
-            - 'image': 2D array of shape (H, W, C) [numpy] or (C, H, W) [torch]
-            - 'images': Batch of arrays of shape (N, H, W, C) [numpy] or (N, C, H, W) [torch]
+            - 'volume': 3D array of shape (D, H, W, C)
+            - 'volumes': Batch of 3D arrays of shape (N, D, H, W, C)
+            - 'image': 2D array of shape (H, W, C)
+            - 'images': Batch of arrays of shape (N, H, W, C)
 
     Returns:
-        dict[Literal["depth", "height", "width"], int]: Dictionary containing spatial dimensions
+        tuple[int, int]: (height, width) dimensions
 
     """
-    if "volume" in data:
-        depth, height, width = get_volume_shape(data["volume"])
-        return {"depth": depth, "height": height, "width": width}
+    # After preprocessing, all data has channel dimension at the end
     if "image" in data:
-        height, width = get_image_shape(data["image"])
-        return {"height": height, "width": width}
+        return _get_shape_from_image(data["image"])
     if "images" in data:
-        height, width = get_image_shape(data["images"][0])
-        return {"height": height, "width": width}
+        return _get_shape_from_images(data["images"])
+    if "volume" in data:
+        return _get_shape_from_volume(data["volume"])
+    if "volumes" in data:
+        return _get_shape_from_volumes(data["volumes"])
+
     raise ValueError("No image or volume found in data", data.keys())
+
+
+def _is_torch_tensor(obj: Any) -> bool:
+    """Check if an object is a PyTorch tensor."""
+    return hasattr(obj, "__module__") and "torch" in obj.__module__
+
+
+def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
+    """Extract shape from a single image."""
+    # Check if it's a torch tensor that has been transposed to CHW format
+    if _is_torch_tensor(img):
+        # PyTorch tensor in CHW format
+        if len(img.shape) == 3:  # (C, H, W)
+            return int(img.shape[1]), int(img.shape[2])
+        if len(img.shape) == 2:  # (H, W) - grayscale without channel
+            return int(img.shape[0]), int(img.shape[1])
+    # Regular numpy array in HWC format
+    return img.shape[0], img.shape[1]
+
+
+def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
+    """Extract shape from a batch of images."""
+    # Check if it's a torch tensor batch
+    if _is_torch_tensor(imgs):
+        # PyTorch tensor batch in NCHW format
+        if len(imgs.shape) == 4:  # (N, C, H, W)
+            return int(imgs.shape[2]), int(imgs.shape[3])
+        if len(imgs.shape) == 3:  # (N, H, W) - grayscale batch without channel
+            return int(imgs.shape[1]), int(imgs.shape[2])
+    # Regular numpy array batch in NHWC format - take first image
+    return imgs[0].shape[0], imgs[0].shape[1]
+
+
+def _get_shape_from_volume(vol: np.ndarray) -> tuple[int, int]:
+    """Extract shape from a single volume."""
+    # Check if it's a torch tensor
+    if _is_torch_tensor(vol):
+        # PyTorch 3D tensor in CDHW format
+        if len(vol.shape) == 4:  # (C, D, H, W)
+            return int(vol.shape[2]), int(vol.shape[3])
+        if len(vol.shape) == 3:  # (D, H, W) - grayscale volume without channel
+            return int(vol.shape[1]), int(vol.shape[2])
+    # Regular numpy array in DHWC format
+    return vol.shape[1], vol.shape[2]
+
+
+def _get_shape_from_volumes(vols: np.ndarray) -> tuple[int, int]:
+    """Extract shape from a batch of volumes."""
+    # Check if it's a torch tensor batch
+    if _is_torch_tensor(vols):
+        # PyTorch 3D tensor batch in NCDHW format
+        if len(vols.shape) == 5:  # (N, C, D, H, W)
+            return int(vols.shape[3]), int(vols.shape[4])
+        if len(vols.shape) == 4:  # (N, D, H, W) - grayscale volume batch without channel
+            return int(vols.shape[2]), int(vols.shape[3])
+    # Regular numpy array batch in NDHWC format - take first volume
+    return vols[0].shape[1], vols[0].shape[2]
 
 
 def format_args(args_dict: dict[str, Any]) -> str:
@@ -213,12 +217,12 @@ class DataProcessor(ABC):
         data = self.remove_label_fields_from_data(data)
         return self._convert_sequence_inputs(data)
 
-    def _process_data_fields(self, data: dict[str, Any], shape: ShapeType) -> dict[str, Any]:
+    def _process_data_fields(self, data: dict[str, Any], shape: tuple[int, int]) -> dict[str, Any]:
         for data_name in set(self.data_fields) & set(data.keys()):
             data[data_name] = self._process_single_field(data_name, data[data_name], shape)
         return data
 
-    def _process_single_field(self, data_name: str, field_data: Any, shape: ShapeType) -> Any:
+    def _process_single_field(self, data_name: str, field_data: Any, shape: tuple[int, int]) -> Any:
         field_data = self.filter(field_data, shape)
 
         if data_name == "keypoints" and len(field_data) == 0:
@@ -258,14 +262,14 @@ class DataProcessor(ABC):
     def check_and_convert(
         self,
         data: np.ndarray,
-        shape: ShapeType,
+        shape: tuple[int, int],
         direction: Literal["to", "from"] = "to",
     ) -> np.ndarray:
         """Check and convert data between Albumentations and external formats.
 
         Args:
             data (np.ndarray): Input data array.
-            shape (ShapeType): Shape information containing dimensions.
+            shape (tuple[int, int]): Shape information containing dimensions.
             direction (Literal["to", "from"], optional): Conversion direction.
                 "to" converts to Albumentations format, "from" converts from it.
                 Defaults to "to".
@@ -283,12 +287,12 @@ class DataProcessor(ABC):
         return process_func(data, shape)
 
     @abstractmethod
-    def filter(self, data: np.ndarray, shape: ShapeType) -> np.ndarray:
+    def filter(self, data: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
         """Filter data based on shapes.
 
         Args:
             data (np.ndarray): Data to filter.
-            shape (ShapeType): Shape information containing dimensions.
+            shape (tuple[int, int]): Shape information containing dimensions.
 
         Returns:
             np.ndarray: Filtered data.
@@ -296,12 +300,12 @@ class DataProcessor(ABC):
         """
 
     @abstractmethod
-    def check(self, data: np.ndarray, shape: ShapeType) -> None:
+    def check(self, data: np.ndarray, shape: tuple[int, int]) -> None:
         """Validate data structure against shape requirements.
 
         Args:
             data (np.ndarray): Data to validate.
-            shape (ShapeType): Shape information containing dimensions.
+            shape (tuple[int, int]): Shape information containing dimensions.
 
         """
 
@@ -309,13 +313,13 @@ class DataProcessor(ABC):
     def convert_to_albumentations(
         self,
         data: np.ndarray,
-        shape: ShapeType,
+        shape: tuple[int, int],
     ) -> np.ndarray:
         """Convert data from external format to Albumentations internal format.
 
         Args:
             data (np.ndarray): Data in external format.
-            shape (ShapeType): Shape information containing dimensions.
+            shape (tuple[int, int]): Shape information containing dimensions.
 
         Returns:
             np.ndarray: Data in Albumentations format.
@@ -326,13 +330,13 @@ class DataProcessor(ABC):
     def convert_from_albumentations(
         self,
         data: np.ndarray,
-        shape: ShapeType,
+        shape: tuple[int, int],
     ) -> np.ndarray:
         """Convert data from Albumentations internal format to external format.
 
         Args:
             data (np.ndarray): Data in Albumentations format.
-            shape (ShapeType): Shape information containing dimensions.
+            shape (tuple[int, int]): Shape information containing dimensions.
 
         Returns:
             np.ndarray: Data in external format.

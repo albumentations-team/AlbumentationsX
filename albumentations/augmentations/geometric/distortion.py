@@ -252,15 +252,15 @@ class BaseDistortion(DualTransform):
             self.fill,
         )
 
-    @batch_transform("spatial", has_batch_dim=True, has_depth_dim=False)
+    @batch_transform("spatial")
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(images, **params)
 
-    @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
+    @batch_transform("spatial")
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(volumes, **params)
 
-    @batch_transform("spatial", has_batch_dim=True, has_depth_dim=False)
+    @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply_to_mask(mask3d, **params)
 

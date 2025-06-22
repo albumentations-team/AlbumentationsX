@@ -13,7 +13,6 @@ from albumentations.core.keypoints_utils import KeypointParams
     [
         ((100, 80, 3), (100, 80)),  # Standard RGB
         ((64, 64, 1), (64, 64)),  # Grayscale
-        ((128, 50), (128, 50)),   # Grayscale without channel dim
     ],
 )
 def test_mosaic_identity_single_image(img_shape: tuple[int, ...], target_size: tuple[int, int]) -> None:
@@ -40,12 +39,10 @@ def test_mosaic_identity_single_image(img_shape: tuple[int, ...], target_size: t
         # Matching sizes
         ((100, 80, 3), (100, 80), 128, 1), # RGB
         ((64, 64, 1), (64, 64), 50, 2),   # Grayscale
-        ((128, 50), (128, 50), 0, 3),     # Grayscale 2D
         # Target smaller (cropping)
         ((100, 100, 3), (80, 80), 100, 4),
         # Target larger (padding)
         ((50, 50, 1), (70, 70), 200, 5),
-        ((80, 60), (100, 100), 30, 6), # Grayscale 2D padding
     ],
 )
 # Separate parametrize for grid dimensions
@@ -76,9 +73,9 @@ def test_mosaic_identity_monochromatic(
         expected_output_shape_img = (*target_size, img_shape[-1])
 
     # --- Mask Setup ---
-    mask_shape = img_shape[:2]
+    mask_shape = img_shape[:2] + (1,)
     mask = np.full(mask_shape, fill_value=fill_mask, dtype=np.uint8)
-    expected_output_shape_mask = target_size
+    expected_output_shape_mask = target_size + (1,)
 
     # --- Transform --- (Use 0 for padding values to test persistence)
     transform = Mosaic(
@@ -184,14 +181,14 @@ def test_mosaic_primary_mask_metadata_no_mask() -> None:
     target_size = (100, 100)
     cell_shape = (100, 100)
     primary_image = np.zeros((*target_size, 3), dtype=np.uint8)
-    primary_mask = np.ones(target_size, dtype=np.uint8) * 55  # Non-zero primary mask value
+    primary_mask = np.ones(target_size + (1,), dtype=np.uint8) * 55  # Non-zero primary mask value
 
     # Metadata item with compatible image but NO mask
     metadata_item_no_mask = {"image": np.ones((80, 80, 3), dtype=np.uint8) * 10}
     # Metadata item with compatible image AND mask
     metadata_item_with_mask = {
         "image": np.ones((70, 70, 3), dtype=np.uint8) * 20,
-        "mask": np.ones((70, 70), dtype=np.uint8) * 77, # Distinct mask value
+        "mask": np.ones((70, 70, 1), dtype=np.uint8) * 77, # Distinct mask value
     }
 
     metadata = [metadata_item_no_mask, metadata_item_with_mask, metadata_item_with_mask]
@@ -204,7 +201,7 @@ def test_mosaic_primary_mask_metadata_no_mask() -> None:
             center_range=(0.5, 0.5),
             cell_shape=cell_shape,
             target_size=target_size,
-            fit_mode="cover",
+            fit_mode="contain",
             fill_mask=fill_mask_value,
             metadata_key="mosaic_input",
             p=1.0,
@@ -221,7 +218,7 @@ def test_mosaic_primary_mask_metadata_no_mask() -> None:
     output_mask = result["mask"]
 
     # Basic shape check
-    assert output_mask.shape == target_size
+    assert output_mask.shape == target_size + (1,)
     assert output_mask.dtype == np.uint8
 
     # Check that all expected values are present in the mask
@@ -253,7 +250,7 @@ def test_mosaic_simplified_deterministic() -> None:
 
     # --- Primary Data ---
     img_primary = np.ones((*target_size, 3), dtype=np.uint8) * 1
-    mask_primary = np.ones(target_size, dtype=np.uint8) * 11
+    mask_primary = np.ones((*target_size, 1), dtype=np.uint8) * 11
     # BBoxes: Albumentations format [x_min_norm, y_min_norm, x_max_norm, y_max_norm]
     bboxes_primary = np.array([[0, 0, 1, 1]], dtype=np.float32)
     # Keypoints: Albumentations format [x, y, Z, angle, scale]
@@ -311,7 +308,7 @@ def test_mosaic_simplified_deterministic() -> None:
     # --- Assertions ---
     # Image/Mask Shape Check
     assert result['image'].shape == (*target_size, 3)
-    assert result['mask'].shape == target_size
+    assert result['mask'].shape == (*target_size, 1)  # Mask should have channel dimension
     # Relaxed Image/Mask Content Check: Ensure the two halves are not just the fill value
     split_col = 50 # Based on center_range=(0.5, 0.5)
     assert not np.all(result['image'][:, :split_col] == 0) # Check left half

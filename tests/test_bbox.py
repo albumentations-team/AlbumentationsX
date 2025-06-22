@@ -37,22 +37,22 @@ from albumentations.augmentations.dropout.functional import resize_boxes_to_visi
     [
         (
             np.array([[10, 20, 30, 40], [50, 60, 70, 80]]),
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[0.05, 0.2, 0.15, 0.4], [0.25, 0.6, 0.35, 0.8]]),
         ),
         (
             np.array([[0, 0, 200, 100]]),
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[0, 0, 1, 1]]),
         ),
         (
             np.array([[50, 50, 150, 150, 1], [25, 25, 75, 75, 2]]),
-            {"height": 200, "width": 200},
+            (200, 200),
             np.array([[0.25, 0.25, 0.75, 0.75, 1], [0.125, 0.125, 0.375, 0.375, 2]]),
         ),
         (
             np.array([]),
-            {"height": 100, "width": 100},
+            (100, 100),
             np.array([]),
         ),
     ],
@@ -64,7 +64,7 @@ def test_normalize_bboxes(bboxes, image_shape, expected):
 
 def test_normalize_bboxes_preserves_input():
     bboxes = np.array([[10, 20, 30, 40], [50, 60, 70, 80]])
-    image_shape = {"height": 100, "width": 200}
+    image_shape = (100, 200)
     original_bboxes = bboxes.copy()
 
     normalize_bboxes(bboxes, image_shape)
@@ -74,7 +74,7 @@ def test_normalize_bboxes_preserves_input():
 
 def test_normalize_bboxes_output_type():
     bboxes = np.array([[10, 20, 30, 40], [50, 60, 70, 80]])
-    image_shape = {"height": 100, "width": 200}
+    image_shape = (100, 200)
 
     result = normalize_bboxes(bboxes, image_shape)
 
@@ -87,22 +87,22 @@ def test_normalize_bboxes_output_type():
     [
         (
             np.array([[0.05, 0.2, 0.15, 0.4], [0.25, 0.6, 0.35, 0.8]]),
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[10, 20, 30, 40], [50, 60, 70, 80]]),
         ),
         (
             np.array([[0, 0, 1, 1]]),
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[0, 0, 200, 100]]),
         ),
         (
             np.array([[0.25, 0.25, 0.75, 0.75, 1], [0.125, 0.125, 0.375, 0.375, 2]]),
-            {"height": 200, "width": 200},
+            (200, 200),
             np.array([[50, 50, 150, 150, 1], [25, 25, 75, 75, 2]]),
         ),
         (
             np.array([]),
-            {"height": 100, "width": 100},
+            (100, 100),
             np.array([]),
         ),
     ],
@@ -114,7 +114,7 @@ def test_denormalize_bboxes(bboxes, image_shape, expected):
 
 def test_denormalize_bboxes_preserves_input():
     bboxes = np.array([[0.05, 0.2, 0.15, 0.4], [0.25, 0.6, 0.35, 0.8]])
-    image_shape = {"height": 100, "width": 200}
+    image_shape = (100, 200)
     original_bboxes = bboxes.copy()
 
     denormalize_bboxes(bboxes, image_shape)
@@ -124,7 +124,7 @@ def test_denormalize_bboxes_preserves_input():
 
 def test_denormalize_bboxes_output_type():
     bboxes = np.array([[0.05, 0.2, 0.15, 0.4], [0.25, 0.6, 0.35, 0.8]])
-    image_shape = {"height": 100, "width": 200}
+    image_shape = (100, 200)
 
     result = denormalize_bboxes(bboxes, image_shape)
 
@@ -135,10 +135,10 @@ def test_denormalize_bboxes_output_type():
 @pytest.mark.parametrize(
     "bboxes, image_shape",
     [
-        (np.array([[10, 20, 30, 40], [50, 60, 70, 80]]), {"height": 100, "width": 200}),
-        (np.array([[0, 0, 200, 100]]), {"height": 100, "width": 200}),
-        (np.array([[50, 50, 150, 150, 1], [25, 25, 75, 75, 2]]), {"height": 200, "width": 200}),
-        (np.array([]), {"height": 100, "width": 100}),
+        (np.array([[10, 20, 30, 40], [50, 60, 70, 80]]), (100, 200)),
+        (np.array([[0, 0, 200, 100]]), (100, 200)),
+        (np.array([[50, 50, 150, 150, 1], [25, 25, 75, 75, 2]]), (200, 200)),
+        (np.array([]), (100, 100)),
     ],
 )
 def test_normalize_denormalize_roundtrip(bboxes, image_shape):
@@ -150,10 +150,10 @@ def test_normalize_denormalize_roundtrip(bboxes, image_shape):
 @pytest.mark.parametrize(
     "bboxes, image_shape",
     [
-        (np.array([[0.05, 0.2, 0.15, 0.4], [0.25, 0.6, 0.35, 0.8]]), {"height": 100, "width": 200}),
-        (np.array([[0, 0, 1, 1]]), {"height": 100, "width": 200}),
-        (np.array([[0.25, 0.25, 0.75, 0.75, 1], [0.125, 0.125, 0.375, 0.375, 2]]), {"height": 200, "width": 200}),
-        (np.array([]), {"height": 100, "width": 100}),
+        (np.array([[0.05, 0.2, 0.15, 0.4], [0.25, 0.6, 0.35, 0.8]]), (100, 200)),
+        (np.array([[0, 0, 1, 1]]), (100, 200)),
+        (np.array([[0.25, 0.25, 0.75, 0.75, 1], [0.125, 0.125, 0.375, 0.375, 2]]), (200, 200)),
+        (np.array([]), (100, 100)),
     ],
 )
 def test_denormalize_normalize_roundtrip(bboxes, image_shape):
@@ -167,27 +167,27 @@ def test_denormalize_normalize_roundtrip(bboxes, image_shape):
     [
         (
             np.array([[0.1, 0.1, 0.5, 0.5], [0.2, 0.2, 0.8, 0.8]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             np.array([1600, 3600]),
         ),
         (
             np.array([[0, 0, 1, 1]]),
-            {"height": 200, "width": 300},
+            (200, 300),
             np.array([60000]),
         ),
         (
             np.array([[0.25, 0.25, 0.75, 0.75, 1], [0.1, 0.1, 0.9, 0.9, 2]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             np.array([2500, 6400]),
         ),
         (
             np.array([]),
-            {"height": 100, "width": 100},
+            (100, 100),
             np.array([]),
         ),
         (
             np.array([[0.1, 0.1, 0.3, 0.3], [0.4, 0.4, 0.6, 0.6]]),
-            {"height": 50, "width": 200},
+            (50, 200),
             np.array([400, 400]),
         ),
     ],
@@ -199,7 +199,7 @@ def test_calculate_bbox_areas(bboxes, image_shape, expected):
 
 def test_calculate_bbox_areas_preserves_input():
     bboxes = np.array([[0.1, 0.1, 0.5, 0.5], [0.2, 0.2, 0.8, 0.8]])
-    image_shape = {"height": 100, "width": 100}
+    image_shape = (100, 100)
     original_bboxes = bboxes.copy()
 
     calculate_bbox_areas_in_pixels(bboxes, image_shape)
@@ -209,7 +209,7 @@ def test_calculate_bbox_areas_preserves_input():
 
 def test_calculate_bbox_areas_output_type():
     bboxes = np.array([[0.1, 0.1, 0.5, 0.5], [0.2, 0.2, 0.8, 0.8]])
-    image_shape = {"height": 100, "width": 100}
+    image_shape = (100, 100)
 
     result = calculate_bbox_areas_in_pixels(bboxes, image_shape)
 
@@ -219,7 +219,7 @@ def test_calculate_bbox_areas_output_type():
 
 def test_calculate_bbox_areas_zero_area():
     bboxes = np.array([[0.1, 0.1, 0.1, 0.2], [0.3, 0.3, 0.4, 0.3]])  # Zero width and zero height
-    image_shape = {"height": 100, "width": 100}
+    image_shape = (100, 100)
     result = calculate_bbox_areas_in_pixels(bboxes, image_shape)
     np.testing.assert_allclose(result, [0, 0], atol=1e-10)
 
@@ -231,35 +231,35 @@ def test_calculate_bbox_areas_zero_area():
         (
             np.array([[10, 20, 30, 40], [50, 60, 20, 30]]),
             "coco",
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[0.05, 0.2, 0.2, 0.6], [0.25, 0.6, 0.35, 0.9]]),
         ),
         # Pascal VOC format
         (
             np.array([[10, 20, 40, 60], [50, 60, 70, 90]]),
             "pascal_voc",
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[0.05, 0.2, 0.2, 0.6], [0.25, 0.6, 0.35, 0.9]]),
         ),
         # YOLO format
         (
             np.array([[0.25, 0.5, 0.2, 0.4], [0.7, 0.8, 0.2, 0.3]]),
             "yolo",
-            {"height": 100, "width": 200},  # image shape doesn't matter for YOLO
+            (100, 200),  # image shape doesn't matter for YOLO
             np.array([[0.15, 0.3, 0.35, 0.7], [0.6, 0.65, 0.8, 0.95]]),
         ),
         # With additional columns
         (
             np.array([[10, 20, 30, 40, 1], [50, 60, 20, 30, 2]]),
             "coco",
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[0.05, 0.2, 0.2, 0.6, 1], [0.25, 0.6, 0.35, 0.9, 2]]),
         ),
         # Empty array
         (
             np.array([]).reshape(0, 4),
             "coco",
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([]).reshape(0, 4),
         ),
     ],
@@ -272,13 +272,13 @@ def test_convert_bboxes_to_albumentations(bboxes, source_format, image_shape, ex
 def test_convert_bboxes_to_albumentations_preserves_input():
     bboxes = np.array([[10, 20, 30, 40], [50, 60, 20, 30]])
     original_bboxes = bboxes.copy()
-    convert_bboxes_to_albumentations(bboxes, "coco", {"height": 100, "width": 200})
+    convert_bboxes_to_albumentations(bboxes, "coco", (100, 200))
     np.testing.assert_array_equal(bboxes, original_bboxes)
 
 
 def test_convert_bboxes_to_albumentations_output_type():
     bboxes = np.array([[10, 20, 30, 40], [50, 60, 20, 30]], dtype=np.float32)
-    result = convert_bboxes_to_albumentations(bboxes, "coco", {"height": 100, "width": 200})
+    result = convert_bboxes_to_albumentations(bboxes, "coco", (100, 200))
     assert isinstance(result, np.ndarray)
     assert result.dtype == bboxes.dtype
 
@@ -335,35 +335,35 @@ def test_convert_bboxes_to_albumentations_yolo_does_not_call_normalize(mocker):
         (
             np.array([[0.05, 0.2, 0.2, 0.6], [0.25, 0.6, 0.35, 0.9]]),
             "coco",
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[10, 20, 30, 40], [50, 60, 20, 30]]),
         ),
         # Albumentations to Pascal VOC format
         (
             np.array([[0.05, 0.2, 0.2, 0.6], [0.25, 0.6, 0.35, 0.9]]),
             "pascal_voc",
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[10, 20, 40, 60], [50, 60, 70, 90]]),
         ),
         # Albumentations to YOLO format
         (
             np.array([[0.15, 0.3, 0.35, 0.7], [0.6, 0.65, 0.8, 0.95]]),
             "yolo",
-            {"height": 100, "width": 200},  # image shape doesn't matter for YOLO
+            (100, 200),  # image shape doesn't matter for YOLO
             np.array([[0.25, 0.5, 0.2, 0.4], [0.7, 0.8, 0.2, 0.3]]),
         ),
         # With additional columns
         (
             np.array([[0.05, 0.2, 0.2, 0.6, 1], [0.25, 0.6, 0.35, 0.9, 2]]),
             "coco",
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([[10, 20, 30, 40, 1], [50, 60, 20, 30, 2]]),
         ),
         # Empty array
         (
             np.array([]).reshape(0, 4),
             "coco",
-            {"height": 100, "width": 200},
+            (100, 200),
             np.array([]).reshape(0, 4),
         ),
     ],
@@ -376,13 +376,13 @@ def test_convert_bboxes_from_albumentations(bboxes, target_format, image_shape, 
 def test_convert_bboxes_from_albumentations_preserves_input():
     bboxes = np.array([[0.05, 0.2, 0.2, 0.6], [0.25, 0.6, 0.35, 0.9]])
     original_bboxes = bboxes.copy()
-    convert_bboxes_from_albumentations(bboxes, "coco", {"height": 100, "width": 200})
+    convert_bboxes_from_albumentations(bboxes, "coco", (100, 200))
     np.testing.assert_array_equal(bboxes, original_bboxes)
 
 
 def test_convert_bboxes_from_albumentations_output_type():
     bboxes = np.array([[0.05, 0.2, 0.2, 0.6], [0.25, 0.6, 0.35, 0.9]])
-    result = convert_bboxes_from_albumentations(bboxes, "coco", {"height": 100, "width": 200})
+    result = convert_bboxes_from_albumentations(bboxes, "coco", (100, 200))
     assert isinstance(result, np.ndarray)
     assert result.dtype == bboxes.dtype
 
@@ -391,7 +391,7 @@ def test_convert_bboxes_from_albumentations_output_type():
 def test_convert_bboxes_from_albumentations_invalid_format(target_format):
     bboxes = np.array([[0.05, 0.2, 0.2, 0.6]])
     with pytest.raises(ValueError, match="Unknown target_format"):
-        convert_bboxes_from_albumentations(bboxes, target_format, {"height": 100, "width": 200})
+        convert_bboxes_from_albumentations(bboxes, target_format, (100, 200))
 
 
 def test_convert_bboxes_from_albumentations_check_validity(mocker):
@@ -407,7 +407,7 @@ def test_convert_bboxes_from_albumentations_check_validity(mocker):
 @pytest.mark.parametrize("target_format", ["coco", "pascal_voc"])
 def test_convert_bboxes_from_albumentations_calls_denormalize(target_format, mocker):
     bboxes = np.array([[0.05, 0.2, 0.2, 0.6]])
-    image_shape = {"height": 100, "width": 200}
+    image_shape = (100, 200)
     mock_denormalize_bboxes = mocker.patch("albumentations.core.bbox_utils.denormalize_bboxes", return_value=bboxes)
 
     convert_bboxes_from_albumentations(bboxes, target_format, image_shape)
@@ -417,7 +417,7 @@ def test_convert_bboxes_from_albumentations_calls_denormalize(target_format, moc
 
 def test_convert_bboxes_from_albumentations_yolo_does_not_call_denormalize(mocker):
     bboxes = np.array([[0.1, 0.2, 0.3, 0.4]])
-    image_shape = {"height": 100, "width": 200}
+    image_shape = (100, 200)
     mock_denormalize_bboxes = mocker.patch("albumentations.core.bbox_utils.denormalize_bboxes")
 
     convert_bboxes_from_albumentations(bboxes, "yolo", image_shape)
@@ -428,9 +428,9 @@ def test_convert_bboxes_from_albumentations_yolo_does_not_call_denormalize(mocke
 @pytest.mark.parametrize(
     "original_format, image_shape",
     [
-        ("coco", {"height": 100, "width": 200}),
-        ("pascal_voc", {"height": 100, "width": 200}),
-        ("yolo", {"height": 100, "width": 200}),
+        ("coco", (100, 200)),
+        ("pascal_voc", (100, 200)),
+        ("yolo", (100, 200)),
     ],
 )
 def test_round_trip_to_from_albumentations(original_format, image_shape):
@@ -450,9 +450,9 @@ def test_round_trip_to_from_albumentations(original_format, image_shape):
 @pytest.mark.parametrize(
     "target_format, image_shape",
     [
-        ("coco", {"height": 100, "width": 200}),
-        ("pascal_voc", {"height": 100, "width": 200}),
-        ("yolo", {"height": 100, "width": 200}),
+        ("coco", (100, 200)),
+        ("pascal_voc", (100, 200)),
+        ("yolo", (100, 200)),
     ],
 )
 def test_round_trip_from_to_albumentations(target_format, image_shape):
@@ -562,7 +562,7 @@ def test_check_bboxes_additional_columns():
     [
         (
             np.array([[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4], [0.5, 0.5, 0.6, 0.6]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             0,
             0,
             0,
@@ -571,7 +571,7 @@ def test_check_bboxes_additional_columns():
         ),
         (
             np.array([[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4], [0.5, 0.5, 0.6, 0.6]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             200,
             0,
             0,
@@ -580,7 +580,7 @@ def test_check_bboxes_additional_columns():
         ),
         (
             np.array([[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4], [0.5, 0.5, 0.6, 0.6]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             0,
             0.5,
             0,
@@ -589,7 +589,7 @@ def test_check_bboxes_additional_columns():
         ),
         (
             np.array([[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.5, 0.4], [0.5, 0.5, 0.7, 0.6]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             0,
             0,
             15,
@@ -598,7 +598,7 @@ def test_check_bboxes_additional_columns():
         ),
         (
             np.array([[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.5], [0.5, 0.5, 0.6, 0.7]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             0,
             0,
             0,
@@ -607,7 +607,7 @@ def test_check_bboxes_additional_columns():
         ),
         (
             np.array([[0.1, 0.1, 0.2, 0.2, 1], [0.3, 0.3, 0.4, 0.4, 2], [0.5, 0.5, 0.6, 0.7, 3]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             200,
             0,
             0,
@@ -616,7 +616,7 @@ def test_check_bboxes_additional_columns():
         ),
         (
             np.array([[0.1, 0.1, 0.2, 0.2, 1], [0.3, 0.3, 0.4, 0.4, 2], [0.5, 0.5, 0.6, 0.7, 3]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             300,
             0,
             0,
@@ -625,7 +625,7 @@ def test_check_bboxes_additional_columns():
         ),
         (
             np.array([]),
-            {"height": 100, "width": 100},
+            (100, 100),
             0,
             0,
             0,
@@ -634,7 +634,7 @@ def test_check_bboxes_additional_columns():
         ),
         (
             np.array([[0.1, 0.1, 0.2, 0.2]]),
-            {"height": 100, "width": 100},
+            (100, 100),
             101,
             0,
             0,
@@ -651,7 +651,7 @@ def test_filter_bboxes(bboxes, image_shape, min_area, min_visibility, min_width,
 def test_filter_bboxes_preserves_input():
     bboxes = np.array([[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4], [0.5, 0.5, 0.6, 0.6]])
     original_bboxes = bboxes.copy()
-    image_shape = {"height": 100, "width": 100}
+    image_shape = (100, 100)
 
     filter_bboxes(bboxes, image_shape)
 
@@ -660,7 +660,7 @@ def test_filter_bboxes_preserves_input():
 
 def test_filter_bboxes_output_type():
     bboxes = np.array([[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4], [0.5, 0.5, 0.6, 0.6]])
-    image_shape = {"height": 100, "width": 100}
+    image_shape = (100, 100)
 
     result = filter_bboxes(bboxes, image_shape)
 
@@ -670,7 +670,7 @@ def test_filter_bboxes_output_type():
 
 def test_filter_bboxes_clipping():
     bboxes = np.array([[-0.1, -0.1, 1.1, 1.1], [0.3, 0.3, 0.4, 0.4]])
-    image_shape = {"height": 100, "width": 100}
+    image_shape = (100, 100)
 
     result = filter_bboxes(bboxes, image_shape)
 
@@ -1927,7 +1927,7 @@ def test_bbox_processor_filter_invalid(bbox_format, bboxes, expected_bboxes):
         data["bboxes"] = convert_bboxes_from_albumentations(
             data["bboxes"],
             bbox_format,
-            {"height": 100, "width": 100}
+            (100, 100)
         )
 
     # Check that invalid bboxes were filtered out
@@ -1958,7 +1958,7 @@ def test_bbox_processor_clip_and_filter():
     result = convert_bboxes_from_albumentations(
         data["bboxes"],
         "pascal_voc",
-        {"height": 100, "width": 100}
+        (100, 100)
     )
 
     # After clipping, the bbox should be valid and preserved
@@ -2224,21 +2224,21 @@ MAX_ACCEPT_RATIO_TEST_CASES = [
     # Normal aspect ratios (should pass)
     (
         np.array([[0.1, 0.1, 0.2, 0.2]], dtype=np.float32),  # 1:1 ratio
-        {"height": 100, "width": 100},
+        (100, 100),
         2.0,
         np.array([[0.1, 0.1, 0.2, 0.2]], dtype=np.float32),
     ),
     # Too wide box (should be filtered)
     (
         np.array([[0.1, 0.1, 0.9, 0.2]], dtype=np.float32),  # 8:1 ratio
-        {"height": 100, "width": 100},
+        (100, 100),
         2.0,
         np.zeros((0, 4), dtype=np.float32),
     ),
     # Too tall box (should be filtered)
     (
         np.array([[0.1, 0.1, 0.2, 0.9]], dtype=np.float32),  # 1:8 ratio
-        {"height": 100, "width": 100},
+        (100, 100),
         2.0,
         np.zeros((0, 4), dtype=np.float32),
     ),
@@ -2249,7 +2249,7 @@ MAX_ACCEPT_RATIO_TEST_CASES = [
             [0.3, 0.3, 0.9, 0.4],  # 6:1 ratio (filter)
             [0.5, 0.5, 0.6, 0.6],  # 1:1 ratio (keep)
         ], dtype=np.float32),
-        {"height": 100, "width": 100},
+        (100, 100),
         2.0,
         np.array([
             [0.1, 0.1, 0.2, 0.2],
@@ -2259,7 +2259,7 @@ MAX_ACCEPT_RATIO_TEST_CASES = [
     # None max_ratio (should not filter)
     (
         np.array([[0.1, 0.1, 0.9, 0.2]], dtype=np.float32),
-        {"height": 100, "width": 100},
+        (100, 100),
         None,
         np.array([[0.1, 0.1, 0.9, 0.2]], dtype=np.float32),
     ),
@@ -2279,7 +2279,7 @@ def test_filter_bboxes_aspect_ratio(bboxes, shape, max_accept_ratio, expected):
 )
 def test_bbox_processor_max_accept_ratio(bboxes, shape, max_accept_ratio, expected):
     data = {
-        "image": np.zeros((shape["height"], shape["width"], 3), dtype=np.uint8),
+        "image": np.zeros((shape[0], shape[1], 3), dtype=np.uint8),
         "bboxes": bboxes,
     }
 
@@ -2314,7 +2314,7 @@ def test_compose_with_max_accept_ratio(bboxes, shape, max_accept_ratio, expected
     )
 
     data = {
-        "image": np.zeros((shape["height"], shape["width"], 3), dtype=np.uint8),
+        "image": np.zeros((shape[0], shape[1], 3), dtype=np.uint8),
         "bboxes": bboxes,
     }
     result = transform(**data)
@@ -2329,7 +2329,7 @@ def test_compose_with_max_accept_ratio(bboxes, shape, max_accept_ratio, expected
         (
             "coco",
             np.array([[10, 10, 50, 10]], dtype=np.float32),
-            {"height": 100, "width": 100},
+            (100, 100),
             2.0,
             np.zeros((0, 4), dtype=np.float32),
         ),
@@ -2338,7 +2338,7 @@ def test_compose_with_max_accept_ratio(bboxes, shape, max_accept_ratio, expected
         (
             "pascal_voc",
             np.array([[10, 10, 60, 20]], dtype=np.float32),
-            {"height": 100, "width": 100},
+            (100, 100),
             2.0,
             np.zeros((0, 4), dtype=np.float32),
         ),
@@ -2347,7 +2347,7 @@ def test_compose_with_max_accept_ratio(bboxes, shape, max_accept_ratio, expected
         (
             "yolo",
             np.array([[0.5, 0.5, 0.5, 0.1]], dtype=np.float32),
-            {"height": 100, "width": 100},
+            (100, 100),
             2.0,
             np.zeros((0, 4), dtype=np.float32),
         ),
@@ -2356,7 +2356,7 @@ def test_compose_with_max_accept_ratio(bboxes, shape, max_accept_ratio, expected
         (
             "albumentations",
             np.array([[0.1, 0.1, 0.6, 0.2]], dtype=np.float32),
-            {"height": 100, "width": 100},
+            (100, 100),
             2.0,
             np.zeros((0, 4), dtype=np.float32),
         ),
@@ -2374,7 +2374,7 @@ def test_compose_max_accept_ratio_all_formats(bbox_format, bboxes, shape, max_ac
     )
 
     data = {
-        "image": np.zeros((shape["height"], shape["width"], 3), dtype=np.uint8),
+        "image": np.zeros((shape[0], shape[1], 3), dtype=np.uint8),
         "bboxes": bboxes,
     }
 

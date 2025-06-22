@@ -126,16 +126,6 @@ class XYMasking(BaseDropout):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, np.ndarray]:
-        """Get parameters dependent on the data.
-
-        Args:
-            params (dict[str, Any]): Dictionary containing parameters.
-            data (dict[str, Any]): Dictionary containing data.
-
-        Returns:
-            dict[str, np.ndarray]: Dictionary with parameters for transformation.
-
-        """
         image_shape = params["shape"][:2]
 
         height, width = image_shape

@@ -21,6 +21,8 @@ OPTIONAL_DOCSTRING_METHODS: set[str] = {
     "get_params_dependent_on_data",
     "to_dict_private",
     "targets_as_params",
+    "get_params",
+    "get_transform_init_args",
 }
 
 

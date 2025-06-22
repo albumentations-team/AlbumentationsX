@@ -87,58 +87,18 @@ class Lambda(NoOp):
                 self.custom_apply_fns[target_name] = custom_apply_fn
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the Lambda transform to the input image.
-
-        Args:
-            img (np.ndarray): The input image to apply the Lambda transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The image with the applied Lambda transform.
-
-        """
         fn = self.custom_apply_fns["image"]
         return fn(img, **params)
 
     def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the Lambda transform to the input mask.
-
-        Args:
-            mask (np.ndarray): The input mask to apply the Lambda transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The mask with the applied Lambda transform.
-
-        """
         fn = self.custom_apply_fns["mask"]
         return fn(mask, **params)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the Lambda transform to the input bounding boxes.
-
-        Args:
-            bboxes (np.ndarray): The input bounding boxes to apply the Lambda transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The bounding boxes with the applied Lambda transform.
-
-        """
         fn = self.custom_apply_fns["bboxes"]
         return fn(bboxes, **params)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the Lambda transform to the input keypoints.
-
-        Args:
-            keypoints (np.ndarray): The input keypoints to apply the Lambda transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The keypoints with the applied Lambda transform.
-
-        """
         fn = self.custom_apply_fns["keypoints"]
         return fn(keypoints, **params)
 
@@ -153,12 +113,6 @@ class Lambda(NoOp):
         return False
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Convert the Lambda transform to a dictionary.
-
-        Returns:
-            dict[str, Any]: The dictionary representation of the transform.
-
-        """
         if self.name is None:
             msg = (
                 "To make a Lambda transform serializable you should provide the `name` argument, "

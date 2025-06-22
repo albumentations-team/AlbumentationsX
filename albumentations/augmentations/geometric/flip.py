@@ -99,94 +99,24 @@ class VerticalFlip(DualTransform):
     _targets = ALL_TARGETS
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the vertical flip to an image.
-
-        Args:
-            img (np.ndarray): Image to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped image.
-
-        """
         return vflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the vertical flip to bounding boxes.
-
-        Args:
-            bboxes (np.ndarray): Bounding boxes to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped bounding boxes.
-
-        """
         return fgeometric.bboxes_vflip(bboxes)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the vertical flip to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Keypoints to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped keypoints.
-
-        """
         return fgeometric.keypoints_vflip(keypoints, params["shape"][0])
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the vertical flip to a batch of images.
-
-        Args:
-            images (np.ndarray): Images to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped images.
-
-        """
         return fgeometric.vflip_images(images)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the vertical flip to a batch of volumes.
-
-        Args:
-            volumes (np.ndarray): Volumes to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped volumes.
-
-        """
         return fgeometric.vflip_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the vertical flip to a 3D mask.
-
-        Args:
-            mask3d (np.ndarray): 3D mask to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped 3D mask.
-
-        """
         return self.apply_to_images(mask3d, **params)
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the vertical flip to a 3D mask.
-
-        Args:
-            masks3d (np.ndarray): 3D masks to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped 3D mask.
-
-        """
         return self.apply_to_volumes(masks3d, **params)
 
 
@@ -232,88 +162,24 @@ class HorizontalFlip(DualTransform):
     _targets = ALL_TARGETS
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the horizontal flip to an image.
-
-        Args:
-            img (np.ndarray): Image to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped image.
-
-        """
         return hflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the horizontal flip to bounding boxes.
-
-        Args:
-            bboxes (np.ndarray): Bounding boxes to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped bounding boxes.
-
-        """
         return fgeometric.bboxes_hflip(bboxes)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the horizontal flip to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Keypoints to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped keypoints.
-
-        """
         return fgeometric.keypoints_hflip(keypoints, params["shape"][1])
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the horizontal flip to a batch of images.
-
-        Args:
-            images (np.ndarray): Images to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped images.
-
-        """
         return fgeometric.hflip_images(images)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the horizontal flip to a batch of volumes.
-
-        Args:
-            volumes (np.ndarray): Volumes to be flipped.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Flipped volumes.
-
-        """
         return fgeometric.hflip_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the horizontal flip to a 3D mask.
-
-        Args:
-            mask3d (np.ndarray): 3D mask to be flipped.
-            **params (Any): Additional parameters.
-
-        """
         return self.apply_to_images(mask3d, **params)
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the horizontal flip to a 3D mask.
-
-        Args:
-            masks3d (np.ndarray): 3D masks to be flipped.
-            **params (Any): Additional parameters.
-
-        """
         return self.apply_to_volumes(masks3d, **params)
 
 
@@ -370,94 +236,24 @@ class Transpose(DualTransform):
     _targets = ALL_TARGETS
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the transpose to an image.
-
-        Args:
-            img (np.ndarray): Image to be transposed.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transposed image.
-
-        """
         return fgeometric.transpose(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the transpose to bounding boxes.
-
-        Args:
-            bboxes (np.ndarray): Bounding boxes to be transposed.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transposed bounding boxes.
-
-        """
         return fgeometric.bboxes_transpose(bboxes)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the transpose to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Keypoints to be transposed.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transposed keypoints.
-
-        """
         return fgeometric.keypoints_transpose(keypoints)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the transpose to a batch of images.
-
-        Args:
-            images (np.ndarray): Images to be transposed.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transposed images.
-
-        """
         return fgeometric.transpose_images(images)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the transpose to a batch of volumes.
-
-        Args:
-            volumes (np.ndarray): Volumes to be transposed.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transposed volumes.
-
-        """
         return fgeometric.transpose_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the transpose to a 3D mask.
-
-        Args:
-            mask3d (np.ndarray): 3D mask to be transposed.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transposed 3D mask.
-
-        """
         return self.apply_to_images(mask3d, **params)
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the transpose to a batch of 3D masks.
-
-        Args:
-            masks3d (np.ndarray): 3D masks to be transposed.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transposed 3D masks.
-
-        """
         return self.apply_to_volumes(masks3d, **params)
 
 
@@ -527,17 +323,6 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
-        """Apply the D4 transform to an image.
-
-        Args:
-            img (np.ndarray): Image to be transformed.
-            group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): Group element to apply.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transformed image.
-
-        """
         return fgeometric.d4(img, group_element)
 
     def apply_to_bboxes(
@@ -546,17 +331,6 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
-        """Apply the D4 transform to bounding boxes.
-
-        Args:
-            bboxes (np.ndarray): Bounding boxes to be transformed.
-            group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): Group element to apply.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Transformed bounding boxes.
-
-        """
         return fgeometric.bboxes_d4(bboxes, group_element)
 
     def apply_to_keypoints(
@@ -565,14 +339,6 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
-        """Apply the D4 transform to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Keypoints to be transformed.
-            group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): Group element to apply.
-            **params (Any): Additional parameters.
-
-        """
         return fgeometric.keypoints_d4(keypoints, group_element, params["shape"])
 
     def apply_to_images(
@@ -581,14 +347,6 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
-        """Apply the D4 transform to a batch of images.
-
-        Args:
-            images (np.ndarray): Images to be transformed.
-            group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): Group element to apply.
-            **params (Any): Additional parameters.
-
-        """
         return fgeometric.d4_images(images, group_element)
 
     def apply_to_volumes(
@@ -597,14 +355,6 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
-        """Apply the D4 transform to a batch of volumes.
-
-        Args:
-            volumes (np.ndarray): Volumes to be transformed.
-            group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): Group element to apply.
-            **params (Any): Additional parameters.
-
-        """
         return fgeometric.d4_images(volumes, group_element)
 
     def apply_to_mask3d(
@@ -613,14 +363,6 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
-        """Apply the D4 transform to a 3D mask.
-
-        Args:
-            mask3d (np.ndarray): 3D mask to be transformed.
-            group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): Group element to apply.
-            **params (Any): Additional parameters.
-
-        """
         return self.apply_to_images(mask3d, group_element, **params)
 
     def apply_to_masks3d(
@@ -629,23 +371,9 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
-        """Apply the D4 transform to a batch of 3D masks.
-
-        Args:
-            masks3d (np.ndarray): 3D masks to be transformed.
-            group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): Group element to apply.
-            **params (Any): Additional parameters.
-
-        """
         return self.apply_to_volumes(masks3d, group_element, **params)
 
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
-        """Get the parameters for the D4 transform.
-
-        Returns:
-            dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]: Parameters.
-
-        """
         return {
             "group_element": self.random_generator.choice(d4_group_elements),
         }

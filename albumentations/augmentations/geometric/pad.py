@@ -214,17 +214,6 @@ class Pad(DualTransform):
         pad_right: int,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the Pad transform to an image.
-
-        Args:
-            img (np.ndarray): Image to be transformed.
-            pad_top (int): Top padding.
-            pad_bottom (int): Bottom padding.
-            pad_left (int): Left padding.
-            pad_right (int): Right padding.
-            **params (Any): Additional parameters.
-
-        """
         return fgeometric.pad_with_params(
             img,
             pad_top,
@@ -244,17 +233,6 @@ class Pad(DualTransform):
         pad_right: int,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the Pad transform to a mask.
-
-        Args:
-            mask (np.ndarray): Mask to be transformed.
-            pad_top (int): Top padding.
-            pad_bottom (int): Bottom padding.
-            pad_left (int): Left padding.
-            pad_right (int): Right padding.
-            **params (Any): Additional parameters.
-
-        """
         return fgeometric.pad_with_params(
             mask,
             pad_top,
@@ -274,17 +252,6 @@ class Pad(DualTransform):
         pad_right: int,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the Pad transform to bounding boxes.
-
-        Args:
-            bboxes (np.ndarray): Bounding boxes to be transformed.
-            pad_top (int): Top padding.
-            pad_bottom (int): Bottom padding.
-            pad_left (int): Left padding.
-            pad_right (int): Right padding.
-            **params (Any): Additional parameters.
-
-        """
         image_shape = params["shape"][:2]
         bboxes_np = denormalize_bboxes(bboxes, params["shape"])
 
@@ -313,17 +280,6 @@ class Pad(DualTransform):
         pad_right: int,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the Pad transform to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Keypoints to be transformed.
-            pad_top (int): Top padding.
-            pad_bottom (int): Bottom padding.
-            pad_left (int): Left padding.
-            pad_right (int): Right padding.
-            **params (Any): Additional parameters.
-
-        """
         return fgeometric.pad_keypoints(
             keypoints,
             pad_top,
@@ -343,17 +299,6 @@ class Pad(DualTransform):
         pad_right: int,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the Pad transform to a batch of images.
-
-        Args:
-            images (np.ndarray): Batch of images to be transformed.
-            pad_top (int): Top padding.
-            pad_bottom (int): Bottom padding.
-            pad_left (int): Left padding.
-            pad_right (int): Right padding.
-            **params (Any): Additional parameters.
-
-        """
         return fgeometric.pad_images_with_params(
             images,
             pad_top,
@@ -369,16 +314,6 @@ class Pad(DualTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Get the parameters dependent on the data.
-
-        Args:
-            params (dict[str, Any]): Parameters.
-            data (dict[str, Any]): Data.
-
-        Returns:
-            dict[str, Any]: Parameters.
-
-        """
         if isinstance(self.padding, Real):
             pad_top = pad_bottom = pad_left = pad_right = self.padding
         elif isinstance(self.padding, (tuple, list)):
@@ -641,16 +576,6 @@ class PadIfNeeded(Pad):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Get the parameters dependent on the data.
-
-        Args:
-            params (dict[str, Any]): Parameters.
-            data (dict[str, Any]): Data.
-
-        Returns:
-            dict[str, Any]: Parameters.
-
-        """
         h_pad_top, h_pad_bottom, w_pad_left, w_pad_right = fgeometric.get_padding_params(
             image_shape=params["shape"][:2],
             min_height=self.min_height,

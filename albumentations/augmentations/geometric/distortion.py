@@ -243,18 +243,6 @@ class BaseDistortion(DualTransform):
         map_y: np.ndarray,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the distortion to the input image.
-
-        Args:
-            img (np.ndarray): Input image to be distorted.
-            map_x (np.ndarray): X-coordinate map of the distortion.
-            map_y (np.ndarray): Y-coordinate map of the distortion.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Distorted image.
-
-        """
         return fgeometric.remap(
             img,
             map_x,
@@ -266,44 +254,14 @@ class BaseDistortion(DualTransform):
 
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=False)
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the distortion to a batch of images.
-
-        Args:
-            images (np.ndarray): Batch of images to be distorted.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Batch of distorted images.
-
-        """
         return self.apply(images, **params)
 
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=True)
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the distortion to a batch of volumes.
-
-        Args:
-            volumes (np.ndarray): Batch of volumes to be distorted.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Batch of distorted volumes.
-
-        """
         return self.apply(volumes, **params)
 
     @batch_transform("spatial", has_batch_dim=True, has_depth_dim=False)
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the distortion to a 3D mask.
-
-        Args:
-            mask3d (np.ndarray): 3D mask to be distorted.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Distorted 3D mask.
-
-        """
         return self.apply_to_mask(mask3d, **params)
 
     def apply_to_mask(
@@ -313,18 +271,6 @@ class BaseDistortion(DualTransform):
         map_y: np.ndarray,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the distortion to a mask.
-
-        Args:
-            mask (np.ndarray): Mask to be distorted.
-            map_x (np.ndarray): X-coordinate map of the distortion.
-            map_y (np.ndarray): Y-coordinate map of the distortion.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Distorted mask.
-
-        """
         return fgeometric.remap(
             mask,
             map_x,
@@ -341,18 +287,6 @@ class BaseDistortion(DualTransform):
         map_y: np.ndarray,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the distortion to bounding boxes.
-
-        Args:
-            bboxes (np.ndarray): Bounding boxes to be distorted.
-            map_x (np.ndarray): X-coordinate map of the distortion.
-            map_y (np.ndarray): Y-coordinate map of the distortion.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Distorted bounding boxes.
-
-        """
         image_shape = params["shape"][:2]
         bboxes_denorm = denormalize_bboxes(bboxes, image_shape)
         bboxes_returned = fgeometric.remap_bboxes(
@@ -370,18 +304,6 @@ class BaseDistortion(DualTransform):
         map_y: np.ndarray,
         **params: Any,
     ) -> np.ndarray:
-        """Apply the distortion to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Keypoints to be distorted.
-            map_x (np.ndarray): X-coordinate map of the distortion.
-            map_y (np.ndarray): Y-coordinate map of the distortion.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Distorted keypoints.
-
-        """
         if self.keypoint_remapping_method == "direct":
             return fgeometric.remap_keypoints(keypoints, map_x, map_y, params["shape"])
         return fgeometric.remap_keypoints_via_mask(keypoints, map_x, map_y, params["shape"])
@@ -514,16 +436,6 @@ class ElasticTransform(BaseDistortion):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Generate displacement fields for the elastic transform.
-
-        Args:
-            params (dict[str, Any]): Dictionary containing parameters for the transform.
-            data (dict[str, Any]): Dictionary containing data for the transform.
-
-        Returns:
-            dict[str, Any]: Dictionary containing displacement fields for the elastic transform.
-
-        """
         height, width = params["shape"][:2]
         kernel_size = (17, 17) if self.approximate else (0, 0)
 
@@ -684,16 +596,6 @@ class PiecewiseAffine(BaseDistortion):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Get the parameters dependent on the data.
-
-        Args:
-            params (dict[str, Any]): Parameters.
-            data (dict[str, Any]): Data.
-
-        Returns:
-            dict[str, Any]: Parameters.
-
-        """
         image_shape = params["shape"][:2]
 
         nb_rows = np.clip(self.py_random.randint(*self.nb_rows), 2, None)
@@ -825,16 +727,6 @@ class OpticalDistortion(BaseDistortion):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Get the parameters dependent on the data.
-
-        Args:
-            params (dict[str, Any]): Parameters.
-            data (dict[str, Any]): Data.
-
-        Returns:
-            dict[str, Any]: Parameters.
-
-        """
         image_shape = params["shape"][:2]
 
         # Get distortion coefficient
@@ -977,16 +869,6 @@ class GridDistortion(BaseDistortion):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Get the parameters dependent on the data.
-
-        Args:
-            params (dict[str, Any]): Parameters.
-            data (dict[str, Any]): Data.
-
-        Returns:
-            dict[str, Any]: Parameters.
-
-        """
         image_shape = params["shape"][:2]
         steps_x = [1 + self.py_random.uniform(*self.distort_limit) for _ in range(self.num_steps + 1)]
         steps_y = [1 + self.py_random.uniform(*self.distort_limit) for _ in range(self.num_steps + 1)]
@@ -1181,16 +1063,6 @@ class ThinPlateSpline(BaseDistortion):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Get the parameters dependent on the data.
-
-        Args:
-            params (dict[str, Any]): Parameters.
-            data (dict[str, Any]): Data.
-
-        Returns:
-            dict[str, Any]: Parameters.
-
-        """
         height, width = params["shape"][:2]
         src_points = fgeometric.generate_control_points(self.num_control_points)
 

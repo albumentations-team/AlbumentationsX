@@ -95,30 +95,9 @@ class ChannelDropout(ImageOnlyTransform):
         self.fill = fill
 
     def apply(self, img: np.ndarray, channels_to_drop: list[int], **params: Any) -> np.ndarray:
-        """Apply channel dropout to the image.
-
-        Args:
-            img (np.ndarray): Image to apply channel dropout to.
-            channels_to_drop (list[int]): List of channel indices to drop.
-            **params (Any): Additional parameters.
-
-        Returns:
-            np.ndarray: Image with dropped channels.
-
-        """
         return channel_dropout(img, channels_to_drop, self.fill)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, list[int]]:
-        """Get parameters that depend on input data.
-
-        Args:
-            params (dict[str, Any]): Parameters.
-            data (dict[str, Any]): Input data.
-
-        Returns:
-            dict[str, list[int]]: Dictionary with channels to drop.
-
-        """
         image = data["image"] if "image" in data else data["images"][0]
         num_channels = get_num_channels(image)
         if num_channels == 1:

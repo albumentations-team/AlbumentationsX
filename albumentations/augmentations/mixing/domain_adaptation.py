@@ -292,16 +292,6 @@ class HistogramMatching(BaseDomainAdaptation):
         self.blend_ratio = blend_ratio
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Generate parameters for the transform based on input data.
-
-        Args:
-            params (dict[str, Any]): Parameters from the previous transform in the pipeline
-            data (dict[str, Any]): Input data dictionary containing the image and metadata
-
-        Returns:
-            dict[str, Any]: Dictionary containing the reference image and blend ratio
-
-        """
         reference_image = self._get_reference_image(data)
         return {
             "reference_image": reference_image,
@@ -315,18 +305,6 @@ class HistogramMatching(BaseDomainAdaptation):
         blend_ratio: float,
         **params: Any,
     ) -> np.ndarray:
-        """Apply histogram matching to the input image.
-
-        Args:
-            img (np.ndarray): Input image to be transformed
-            reference_image (np.ndarray): Reference image for histogram matching
-            blend_ratio (float): Blending factor between the original and matched image
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Transformed image with histogram matched to the reference image
-
-        """
         return apply_histogram(img, reference_image, blend_ratio)
 
 
@@ -488,7 +466,6 @@ class FDA(BaseDomainAdaptation):
         self.beta_limit = cast("tuple[float, float]", beta_limit)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Generate parameters for the transform based on input data."""
         target_image = self._get_reference_image(data)
         height, width = params["shape"][:2]
 
@@ -504,18 +481,6 @@ class FDA(BaseDomainAdaptation):
         beta: float,
         **params: Any,
     ) -> np.ndarray:
-        """Apply Fourier Domain Adaptation to the input image.
-
-        Args:
-            img (np.ndarray): Input image to be transformed
-            target_image (np.ndarray): Target domain image for adaptation
-            beta (float): Coefficient controlling the extent of frequency component swapping
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Transformed image with adapted frequency components
-
-        """
         return fourier_domain_adaptation(img, target_image, beta)
 
 
@@ -677,26 +642,12 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
         self.transform_type = transform_type
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Get parameters for the transform."""
-        reference_image = self._get_reference_image(data)
         return {
-            "reference_image": reference_image,
+            "reference_image": self._get_reference_image(data),
             "blend_ratio": self.py_random.uniform(*self.blend_ratio),
         }
 
     def apply(self, img: np.ndarray, reference_image: np.ndarray, blend_ratio: float, **params: Any) -> np.ndarray:
-        """Apply pixel distribution adaptation to the input image.
-
-        Args:
-            img (np.ndarray): Input image to be transformed
-            reference_image (np.ndarray): Reference image for distribution adaptation
-            blend_ratio (float): Blending factor between the original and adapted image
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Transformed image with pixel distribution adapted to the reference image
-
-        """
         return adapt_pixel_distribution(
             img,
             ref=reference_image,

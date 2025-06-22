@@ -132,16 +132,6 @@ class GridDropout(BaseDropout):
         self.shift_xy = shift_xy
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Get parameters dependent on the data.
-
-        Args:
-            params (dict[str, Any]): Dictionary containing parameters.
-            data (dict[str, Any]): Dictionary containing data.
-
-        Returns:
-            dict[str, Any]: Dictionary with parameters for transformation.
-
-        """
         image_shape = params["shape"]
         if self.holes_number_xy:
             grid = self.holes_number_xy

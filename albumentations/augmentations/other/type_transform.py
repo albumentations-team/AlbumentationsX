@@ -103,42 +103,12 @@ class ToFloat(ImageOnlyTransform):
         self.max_value = max_value
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the ToFloat transform to the input image.
-
-        Args:
-            img (np.ndarray): The input image to apply the ToFloat transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The image with the applied ToFloat transform.
-
-        """
         return to_float(img, self.max_value)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the ToFloat transform to the input batch of images.
-
-        Args:
-            images (np.ndarray): The input batch of images to apply the ToFloat transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The batch of images with the applied ToFloat transform.
-
-        """
         return to_float(images, self.max_value)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the ToFloat transform to the input volumes.
-
-        Args:
-            volumes (np.ndarray): The input volumes to apply the ToFloat transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The volumes with the applied ToFloat transform.
-
-        """
         return self.apply_to_images(volumes, **params)
 
 
@@ -205,34 +175,10 @@ class FromFloat(ImageOnlyTransform):
         self.max_value = max_value
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the FromFloat transform to the input image.
-
-        Args:
-            img (np.ndarray): The input image to apply the FromFloat transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        Returns:
-            np.ndarray: The image with the applied FromFloat transform.
-
-        """
         return from_float(img, np.dtype(self.dtype), self.max_value)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the FromFloat transform to the input images.
-
-        Args:
-            images (np.ndarray): The input images to apply the FromFloat transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        """
         return from_float(images, np.dtype(self.dtype), self.max_value)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply the FromFloat transform to the input volumes.
-
-        Args:
-            volumes (np.ndarray): The input volumes to apply the FromFloat transform to.
-            **params (Any): Additional parameters (not used in this transform).
-
-        """
         return self.apply_to_images(volumes, **params)

@@ -38,8 +38,10 @@ from albucore import (
     normalize_per_image,
     power,
     preserve_channel_dim,
-    reshape_for_channel,
-    restore_from_channel,
+    reshape_ndhwc_channel,
+    reshape_xhwc_channel,
+    restore_ndhwc_channel,
+    restore_xhwc_channel,
     sz_lut,
     uint8_io,
 )
@@ -1315,14 +1317,21 @@ def iso_noise(
 
 
 def to_gray_weighted_average(img: np.ndarray) -> np.ndarray:
-    """Convert an RGB image to grayscale using the weighted average method.
+    """Convert RGB image(s) to grayscale using the weighted average method.
 
     This function uses OpenCV's cvtColor function with COLOR_RGB2GRAY conversion,
     which applies the following formula:
     Y = 0.299*R + 0.587*G + 0.114*B
 
+    The function efficiently handles batches and volumes by reshaping them into
+    a tall 2D image for processing, then restoring the original shape structure.
+
     Args:
-        img (np.ndarray): Input RGB image as a numpy array.
+        img (np.ndarray): Input RGB image(s) as a numpy array. Supported shapes:
+            - Single image: (H, W, 3)
+            - Batch of images: (N, H, W, 3)
+            - Volume: (D, H, W, 3)
+            - Batch of volumes: (N, D, H, W, 3)
 
     Returns:
         np.ndarray: Grayscale image as a 2D numpy array.
@@ -1336,12 +1345,26 @@ def to_gray_weighted_average(img: np.ndarray) -> np.ndarray:
     """
     if img.ndim == 3:
         return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    if img.ndim == 4:
+        im, original_shape = reshape_xhwc_channel(img)
+        im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
 
-    return img[..., 0] * 0.299 + img[..., 1] * 0.587 + img[..., 2] * 0.114
+        new_shape = (*original_shape[:-1], 1)
+
+        return restore_xhwc_channel(im, new_shape)
+
+    if img.ndim == 5:
+        img, original_shape = reshape_ndhwc_channel(img)
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+        new_shape = (*original_shape[:-1], 1)
+
+        return restore_ndhwc_channel(img, new_shape)
+
+    raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 
 
 @uint8_io
-@clipped
 def to_gray_from_lab(img: np.ndarray) -> np.ndarray:
     """Convert an RGB image or batch of images to grayscale using LAB color space.
 
@@ -1408,37 +1431,25 @@ def to_gray_from_lab(img: np.ndarray) -> np.ndarray:
         better than simple RGB averaging or other methods.
 
     """
-    original_dtype = img.dtype
-    ndim = img.ndim
-
-    # Handle single image case by adding a batch dimension
-    if ndim == 3:
-        # Add batch dimension to make it (1, H, W, C)
+    if img.ndim == 3:
         return cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0]
+    if img.ndim == 4:
+        im, original_shape = reshape_xhwc_channel(img)
+        im = cv2.cvtColor(im, cv2.COLOR_RGB2LAB)[..., 0]
 
-    # Determine dimensions for reshape_for_channel
-    if ndim == 4:
-        # Batch of images (N, H, W, C) or single image with added batch dimension
-        has_batch_dim = True
-        has_depth_dim = False
-    elif ndim == 5:
-        # Batch of volumes (N, D, H, W, C)
-        has_batch_dim = True
-        has_depth_dim = True
+        new_shape = (*original_shape[:-1], 1)
 
-    # Use reshape utilities from albucore for efficient batch processing
-    flattened, original_shape = reshape_for_channel(img, has_batch_dim=has_batch_dim, has_depth_dim=has_depth_dim)
+        return restore_xhwc_channel(im, new_shape)
 
-    lab = cv2.cvtColor(flattened, cv2.COLOR_RGB2LAB)
+    if img.ndim == 5:
+        img, original_shape = reshape_ndhwc_channel(img)
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0]
 
-    grayscale = restore_from_channel(
-        lab,
-        original_shape,
-        has_batch_dim=has_batch_dim,
-        has_depth_dim=has_depth_dim,
-    )[..., 0]
+        new_shape = (*original_shape[:-1], 1)
 
-    return grayscale / 100.0 if original_dtype == np.float32 else grayscale
+        return restore_ndhwc_channel(img, new_shape)
+
+    raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 
 
 @clipped

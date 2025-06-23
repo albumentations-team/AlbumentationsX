@@ -11,7 +11,6 @@ import math
 import numbers
 import warnings
 from collections.abc import Sequence
-from functools import partial
 from typing import Annotated, Any, Callable, Union, cast
 
 import albucore
@@ -27,7 +26,6 @@ from albucore import (
     multiply,
     normalize,
     normalize_per_image,
-    normalize_per_image_batch,
 )
 from pydantic import (
     AfterValidator,
@@ -243,24 +241,10 @@ class Normalize(ImageOnlyTransform):
         return normalize_per_image(img, self.normalization)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        # For batch of images: spatial axes are (1, 2) - H and W dimensions
-        return fpixel.normalize_dispatch(
-            images,
-            self.normalization,
-            partial(normalize_per_image_batch, spatial_axes=(0, 1, 2)),
-            mean=self.mean_np,
-            denominator=self.denominator,
-        )
+        return self.apply(images, **params)
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
-        # For batch of volumes: spatial axes are (2, 3) - H and W dimensions
-        return fpixel.normalize_dispatch(
-            volumes,
-            self.normalization,
-            partial(normalize_per_image_batch, spatial_axes=(0, 1, 2, 3)),
-            mean=self.mean_np,
-            denominator=self.denominator,
-        )
+        return self.apply(volumes, **params)
 
 
 class ImageCompression(ImageOnlyTransform):

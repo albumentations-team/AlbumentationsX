@@ -873,7 +873,7 @@ def test_3d_transforms_keypoint_positions(augmentation_cls, params):
     # Apply transform
     transform = A.Compose([
         augmentation_cls(p=1, **params)
-    ], keypoint_params={"format": "xyz"})
+    ], keypoint_params={"format": "xyz"}, seed=137)
 
     transformed = transform(volume=volume, keypoints=keypoints)
 

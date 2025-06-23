@@ -257,21 +257,23 @@ class BboxProcessor(DataProcessor):
             msg = "Your 'label_fields' are not valid - them must have same names as params in dict"
             raise ValueError(msg)
 
-    def filter(self, data: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    def filter(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
         """Filter bounding boxes based on size and visibility criteria.
 
         Args:
             data (np.ndarray): Array of bounding boxes in Albumentations format.
-            shape (tuple[int, int]): Shape information for validation.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information for validation.
 
         Returns:
             np.ndarray: Filtered bounding boxes that meet the criteria.
 
         """
         self.params: BboxParams
+        # BboxProcessor only works with 2D shapes
+        shape_2d = shape[:2] if len(shape) == 3 else shape
         return filter_bboxes(
             data,
-            shape,
+            shape_2d,
             min_area=self.params.min_area,
             min_visibility=self.params.min_visibility,
             min_width=self.params.min_width,
@@ -282,14 +284,14 @@ class BboxProcessor(DataProcessor):
     def check_and_convert(
         self,
         data: np.ndarray,
-        shape: tuple[int, int],
+        shape: tuple[int, int] | tuple[int, int, int],
         direction: Literal["to", "from"] = "to",
     ) -> np.ndarray:
         """Converts bounding boxes between formats and applies preprocessing/postprocessing.
 
         Args:
             data (np.ndarray): Array of bounding boxes to process.
-            shape (tuple[int, int]): Image shape as (height, width).
+            shape (tuple[int, int] | tuple[int, int, int]): Image shape as (height, width) or (depth, height, width).
             direction (Literal["to", "from"]): Direction of conversion:
                 - "to": Convert from original format to albumentations format
                 - "from": Convert from albumentations format to original format
@@ -310,6 +312,9 @@ class BboxProcessor(DataProcessor):
             2. Converts back to original format
 
         """
+        # BboxProcessor only works with 2D shapes
+        shape_2d = shape[:2] if len(shape) == 3 else shape
+
         if direction == "to":
             # First convert to albumentations format
             if self.params.format == "albumentations":
@@ -318,7 +323,7 @@ class BboxProcessor(DataProcessor):
                 converted_data = convert_bboxes_to_albumentations(
                     data,
                     self.params.format,
-                    shape,
+                    shape_2d,
                     check_validity=False,  # Don't check validity yet
                 )
 
@@ -329,7 +334,7 @@ class BboxProcessor(DataProcessor):
             if self.params.filter_invalid_bboxes:
                 converted_data = filter_bboxes(
                     converted_data,
-                    shape,
+                    shape_2d,
                     min_area=0,
                     min_visibility=0,
                     min_width=0,
@@ -342,52 +347,61 @@ class BboxProcessor(DataProcessor):
         self.check(data, shape)
         if self.params.format == "albumentations":
             return data
-        return convert_bboxes_from_albumentations(data, self.params.format, shape)
+        return convert_bboxes_from_albumentations(data, self.params.format, shape_2d)
 
-    def check(self, data: np.ndarray, shape: tuple[int, int]) -> None:
+    def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
         """Check if bounding boxes are valid.
 
         Args:
             data (np.ndarray): Array of bounding boxes to validate.
-            shape (tuple[int, int]): Shape to check against.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape to check against.
 
         """
         check_bboxes(data)
 
-    def convert_from_albumentations(self, data: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    def convert_from_albumentations(
+        self,
+        data: np.ndarray,
+        shape: tuple[int, int] | tuple[int, int, int],
+    ) -> np.ndarray:
         """Convert bounding boxes from internal Albumentations format to the specified format.
 
         Args:
             data (np.ndarray): Bounding boxes in Albumentations format.
-            shape (tuple[int, int]): Shape information for validation.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information for validation.
 
         Returns:
             np.ndarray: Converted bounding boxes in the target format.
 
         """
+        # BboxProcessor only works with 2D shapes
+        shape_2d = shape[:2] if len(shape) == 3 else shape
         return np.array(
-            convert_bboxes_from_albumentations(data, self.params.format, shape, check_validity=True),
+            convert_bboxes_from_albumentations(data, self.params.format, shape_2d, check_validity=True),
             dtype=data.dtype,
         )
 
-    def convert_to_albumentations(self, data: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    def convert_to_albumentations(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
         """Convert bounding boxes from the specified format to internal Albumentations format.
 
         Args:
             data (np.ndarray): Bounding boxes in source format.
-            shape (tuple[int, int]): Shape information for validation.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information for validation.
 
         Returns:
             np.ndarray: Converted bounding boxes in Albumentations format.
 
         """
+        # BboxProcessor only works with 2D shapes
+        shape_2d = shape[:2] if len(shape) == 3 else shape
+
         if self.params.clip:
-            data_np = convert_bboxes_to_albumentations(data, self.params.format, shape, check_validity=False)
-            data_np = filter_bboxes(data_np, shape, min_area=0, min_visibility=0, min_width=0, min_height=0)
+            data_np = convert_bboxes_to_albumentations(data, self.params.format, shape_2d, check_validity=False)
+            data_np = filter_bboxes(data_np, shape_2d, min_area=0, min_visibility=0, min_width=0, min_height=0)
             check_bboxes(data_np)
             return data_np
 
-        return convert_bboxes_to_albumentations(data, self.params.format, shape, check_validity=True)
+        return convert_bboxes_to_albumentations(data, self.params.format, shape_2d, check_validity=True)
 
 
 @handle_empty_array("bboxes")

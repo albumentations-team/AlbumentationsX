@@ -51,6 +51,41 @@ def get_shape(data: dict[str, Any]) -> tuple[int, int]:
     raise ValueError("No image or volume found in data", data.keys())
 
 
+def get_volume_shape(data: dict[str, Any]) -> tuple[int, int, int] | None:
+    """Extract depth, height, and width dimensions from volume data.
+
+    Args:
+        data (dict[str, Any]): Dictionary containing volume data
+
+    Returns:
+        tuple[int, int, int] | None: (depth, height, width) dimensions if volume data exists, None otherwise
+
+    """
+    if "volume" in data:
+        vol = data["volume"]
+        # Handle PyTorch tensors
+        if _is_torch_tensor(vol):
+            if len(vol.shape) == 4:  # (C, D, H, W)
+                return int(vol.shape[1]), int(vol.shape[2]), int(vol.shape[3])
+            if len(vol.shape) == 3:  # (D, H, W)
+                return int(vol.shape[0]), int(vol.shape[1]), int(vol.shape[2])
+        # Regular numpy array
+        return vol.shape[0], vol.shape[1], vol.shape[2]
+
+    if "volumes" in data:
+        vols = data["volumes"]
+        # Handle PyTorch tensors
+        if _is_torch_tensor(vols):
+            if len(vols.shape) == 5:  # (N, C, D, H, W)
+                return int(vols.shape[2]), int(vols.shape[3]), int(vols.shape[4])
+            if len(vols.shape) == 4:  # (N, D, H, W)
+                return int(vols.shape[1]), int(vols.shape[2]), int(vols.shape[3])
+        # Regular numpy array - take first volume
+        return vols[0].shape[0], vols[0].shape[1], vols[0].shape[2]
+
+    return None
+
+
 def _is_torch_tensor(obj: Any) -> bool:
     """Check if an object is a PyTorch tensor."""
     return hasattr(obj, "__module__") and "torch" in obj.__module__
@@ -212,17 +247,33 @@ class DataProcessor(ABC):
             dict[str, Any]: Processed data dictionary.
 
         """
-        shape = get_shape(data)
+        shape: tuple[int, int] | tuple[int, int, int] = get_shape(data)
+
+        # For xyz keypoints, get full 3D shape if available
+        if hasattr(self.params, "format") and self.params.format == "xyz":
+            volume_shape = get_volume_shape(data)
+            if volume_shape is not None:
+                shape = volume_shape
+
         data = self._process_data_fields(data, shape)
         data = self.remove_label_fields_from_data(data)
         return self._convert_sequence_inputs(data)
 
-    def _process_data_fields(self, data: dict[str, Any], shape: tuple[int, int]) -> dict[str, Any]:
+    def _process_data_fields(
+        self,
+        data: dict[str, Any],
+        shape: tuple[int, int] | tuple[int, int, int],
+    ) -> dict[str, Any]:
         for data_name in set(self.data_fields) & set(data.keys()):
             data[data_name] = self._process_single_field(data_name, data[data_name], shape)
         return data
 
-    def _process_single_field(self, data_name: str, field_data: Any, shape: tuple[int, int]) -> Any:
+    def _process_single_field(
+        self,
+        data_name: str,
+        field_data: Any,
+        shape: tuple[int, int] | tuple[int, int, int],
+    ) -> Any:
         field_data = self.filter(field_data, shape)
 
         if data_name == "keypoints" and len(field_data) == 0:
@@ -262,14 +313,14 @@ class DataProcessor(ABC):
     def check_and_convert(
         self,
         data: np.ndarray,
-        shape: tuple[int, int],
+        shape: tuple[int, int] | tuple[int, int, int],
         direction: Literal["to", "from"] = "to",
     ) -> np.ndarray:
         """Check and convert data between Albumentations and external formats.
 
         Args:
             data (np.ndarray): Input data array.
-            shape (tuple[int, int]): Shape information containing dimensions.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information containing dimensions.
             direction (Literal["to", "from"], optional): Conversion direction.
                 "to" converts to Albumentations format, "from" converts from it.
                 Defaults to "to".
@@ -287,12 +338,12 @@ class DataProcessor(ABC):
         return process_func(data, shape)
 
     @abstractmethod
-    def filter(self, data: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    def filter(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
         """Filter data based on shapes.
 
         Args:
             data (np.ndarray): Data to filter.
-            shape (tuple[int, int]): Shape information containing dimensions.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information containing dimensions.
 
         Returns:
             np.ndarray: Filtered data.
@@ -300,12 +351,12 @@ class DataProcessor(ABC):
         """
 
     @abstractmethod
-    def check(self, data: np.ndarray, shape: tuple[int, int]) -> None:
+    def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
         """Validate data structure against shape requirements.
 
         Args:
             data (np.ndarray): Data to validate.
-            shape (tuple[int, int]): Shape information containing dimensions.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information containing dimensions.
 
         """
 
@@ -313,13 +364,13 @@ class DataProcessor(ABC):
     def convert_to_albumentations(
         self,
         data: np.ndarray,
-        shape: tuple[int, int],
+        shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
         """Convert data from external format to Albumentations internal format.
 
         Args:
             data (np.ndarray): Data in external format.
-            shape (tuple[int, int]): Shape information containing dimensions.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information containing dimensions.
 
         Returns:
             np.ndarray: Data in Albumentations format.
@@ -330,13 +381,13 @@ class DataProcessor(ABC):
     def convert_from_albumentations(
         self,
         data: np.ndarray,
-        shape: tuple[int, int],
+        shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
         """Convert data from Albumentations internal format to external format.
 
         Args:
             data (np.ndarray): Data in Albumentations format.
-            shape (tuple[int, int]): Shape information containing dimensions.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information containing dimensions.
 
         Returns:
             np.ndarray: Data in external format.

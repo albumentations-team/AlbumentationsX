@@ -172,13 +172,14 @@ class KeypointsProcessor(DataProcessor):
     def filter(
         self,
         data: np.ndarray,
-        shape: tuple[int, int],
+        shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
         """Filter keypoints based on visibility within given shape.
 
         Args:
             data (np.ndarray): Keypoints in [x, y, z, angle, scale] format
-            shape (tuple[int, int]): Shape to check against as (height, width)
+            shape (tuple[int, int] | tuple[int, int, int]): Shape to check against as (height, width) or
+                (depth, height, width)
 
         Returns:
             np.ndarray: Filtered keypoints
@@ -187,12 +188,12 @@ class KeypointsProcessor(DataProcessor):
         self.params: KeypointParams
         return filter_keypoints(data, shape, remove_invisible=self.params.remove_invisible)
 
-    def check(self, data: np.ndarray, shape: tuple[int, int]) -> None:
+    def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
         """Check if keypoints are valid within the given shape.
 
         Args:
             data (np.ndarray): Keypoints to validate.
-            shape (tuple[int, int]): Shape to check against.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape to check against.
 
         """
         check_keypoints(data, shape)
@@ -200,13 +201,13 @@ class KeypointsProcessor(DataProcessor):
     def convert_from_albumentations(
         self,
         data: np.ndarray,
-        shape: tuple[int, int],
+        shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
         """Convert keypoints from internal Albumentations format to the specified format.
 
         Args:
             data (np.ndarray): Keypoints in Albumentations format.
-            shape (tuple[int, int]): Shape information for validation.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information for validation.
 
         Returns:
             np.ndarray: Converted keypoints in the target format.
@@ -219,7 +220,7 @@ class KeypointsProcessor(DataProcessor):
         return convert_keypoints_from_albumentations(
             data,
             params.format,
-            shape,
+            shape[:2],  # Only use height, width for conversion
             check_validity=params.remove_invisible,
             angle_in_degrees=params.angle_in_degrees,
         )
@@ -227,13 +228,13 @@ class KeypointsProcessor(DataProcessor):
     def convert_to_albumentations(
         self,
         data: np.ndarray,
-        shape: tuple[int, int],
+        shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
         """Convert keypoints from the specified format to internal Albumentations format.
 
         Args:
             data (np.ndarray): Keypoints in source format.
-            shape (tuple[int, int]): Shape information for validation.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information for validation.
 
         Returns:
             np.ndarray: Converted keypoints in Albumentations format.
@@ -245,27 +246,30 @@ class KeypointsProcessor(DataProcessor):
         return convert_keypoints_to_albumentations(
             data,
             params.format,
-            shape,
+            shape[:2],  # Only use height, width for conversion
             check_validity=params.remove_invisible,
             angle_in_degrees=params.angle_in_degrees,
         )
 
 
-def check_keypoints(keypoints: np.ndarray, shape: tuple[int, int]) -> None:
+def check_keypoints(keypoints: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
     """Check if keypoint coordinates are within valid ranges for the given shape.
 
     This function validates that:
     1. All x-coordinates are within [0, width)
     2. All y-coordinates are within [0, height)
-    3. Angles are within the range [0, 2π)
+    3. For 3D keypoints: All z-coordinates are within [0, depth)
+    4. Angles are within the range [0, 2π)
 
     Args:
-        keypoints (np.ndarray): Array of keypoints with shape (N, 5+), where N is the number of keypoints.
+        keypoints (np.ndarray): Array of keypoints with shape (N, 3+) for 3D or (N, 2+) for 2D.
             - First 2 columns are always x, y
-            - Column 3 (if present) is z
-            - Column 4 (if present) is angle
+            - Column 3 (if present) is z for 3D or angle for 2D
+            - Column 4 (if present) is angle for 3D or scale for 2D
             - Column 5+ (if present) are additional attributes
-        shape (tuple[int, int]): The shape of the image (height, width)
+        shape (tuple[int, int] | tuple[int, int, int]): The shape of the image/volume
+            - (height, width) for 2D
+            - (depth, height, width) for 3D
 
     Raises:
         ValueError: If any keypoint coordinate is outside the valid range, or if angles are invalid.
@@ -276,7 +280,12 @@ def check_keypoints(keypoints: np.ndarray, shape: tuple[int, int]) -> None:
         - Angles are in radians
 
     """
-    height, width = shape
+    # Handle 3D case
+    if len(shape) == 3:
+        depth, height, width = shape
+    else:
+        height, width = shape
+        depth = None
 
     # Check x and y coordinates (always present)
     x, y = keypoints[:, 0], keypoints[:, 1]
@@ -296,9 +305,18 @@ def check_keypoints(keypoints: np.ndarray, shape: tuple[int, int]) -> None:
                 f"Expected y for keypoint {keypoints[idx]} to be in range [0, {height}), got {y[idx]}",
             )
 
-    # Check angles only if keypoints have angle column
-    if keypoints.shape[1] > 3:
-        angles = keypoints[:, 3]
+    # For 3D keypoints, check z coordinates
+    if depth is not None and keypoints.shape[1] > 2:
+        z = keypoints[:, 2]
+        invalid_z = np.where((z < 0) | (z >= depth))[0]
+        error_messages.extend(
+            f"Expected z for keypoint {keypoints[idx]} to be in range [0, {depth}), got {z[idx]}" for idx in invalid_z
+        )
+
+    # Check angles - for 2D it's column 3, for 3D it's column 4
+    angle_col = 3 if depth is None else 4
+    if keypoints.shape[1] > angle_col:
+        angles = keypoints[:, angle_col]
         invalid_angles = np.where((angles < 0) | (angles >= 2 * math.pi))[0]
         error_messages.extend(
             f"Expected angle for keypoint {keypoints[idx]} to be in range [0, 2π), got {angles[idx]}"
@@ -311,15 +329,16 @@ def check_keypoints(keypoints: np.ndarray, shape: tuple[int, int]) -> None:
 
 def filter_keypoints(
     keypoints: np.ndarray,
-    shape: tuple[int, int],
+    shape: tuple[int, int] | tuple[int, int, int],
     remove_invisible: bool,
 ) -> np.ndarray:
     """Filter keypoints to remove those outside the boundaries.
 
     Args:
-        keypoints (np.ndarray): A numpy array of shape (N, 5+) where N is the number of keypoints.
-                               Each row represents a keypoint (x, y, z, angle, scale, ...).
-        shape (tuple[int, int]): Shape to check against as (height, width).
+        keypoints (np.ndarray): A numpy array of shape (N, 3+) where N is the number of keypoints.
+                               Each row represents a keypoint (x, y, z, ...) for 3D or (x, y, ...) for 2D.
+        shape (tuple[int, int] | tuple[int, int, int]): Shape to check against as (height, width) for 2D
+                                                        or (depth, height, width) for 3D.
         remove_invisible (bool): If True, remove keypoints outside the boundaries.
 
     Returns:
@@ -332,11 +351,20 @@ def filter_keypoints(
     if not keypoints.size:
         return keypoints
 
-    height, width = shape
+    # Handle 3D case (depth, height, width)
+    if len(shape) == 3:
+        depth, height, width = shape
 
-    # Create boolean mask for visible keypoints
-    x, y = keypoints[:, 0], keypoints[:, 1]
-    visible = (x >= 0) & (x < width) & (y >= 0) & (y < height)
+        # Create boolean mask for visible keypoints
+        x, y, z = keypoints[:, 0], keypoints[:, 1], keypoints[:, 2]
+        visible = (x >= 0) & (x < width) & (y >= 0) & (y < height) & (z >= 0) & (z < depth)
+    else:
+        # Handle 2D case (height, width)
+        height, width = shape
+
+        # Create boolean mask for visible keypoints
+        x, y = keypoints[:, 0], keypoints[:, 1]
+        visible = (x >= 0) & (x < width) & (y >= 0) & (y < height)
 
     # Apply the mask to filter keypoints
     return keypoints[visible]
@@ -345,7 +373,7 @@ def filter_keypoints(
 def convert_keypoints_to_albumentations(
     keypoints: np.ndarray,
     source_format: Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"],
-    shape: tuple[int, int],
+    shape: tuple[int, int] | tuple[int, int, int],
     check_validity: bool = False,
     angle_in_degrees: bool = True,
 ) -> np.ndarray:
@@ -366,9 +394,10 @@ def convert_keypoints_to_albumentations(
             - "xyas": [x, y, angle, scale]
             - "xysa": [x, y, scale, angle]
             - "xyz": [x, y, z]
-        shape (tuple[int, int]): The shape of the image (height, width).
-        check_validity (bool, optional): If True, check if the converted keypoints are within the image boundaries.
-                                         Defaults to False.
+        shape (tuple[int, int] | tuple[int, int, int]): The shape of the image (height, width) or
+            volume (depth, height, width).
+        check_validity (bool, optional): If True, check if the converted keypoints are within the
+            image/volume boundaries. Defaults to False.
         angle_in_degrees (bool, optional): If True, convert input angles from degrees to radians.
                                            Defaults to True.
 
@@ -425,7 +454,7 @@ def convert_keypoints_to_albumentations(
 def convert_keypoints_from_albumentations(
     keypoints: np.ndarray,
     target_format: Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"],
-    shape: tuple[int, int],
+    shape: tuple[int, int] | tuple[int, int, int],
     check_validity: bool = False,
     angle_in_degrees: bool = True,
 ) -> np.ndarray:
@@ -446,9 +475,10 @@ def convert_keypoints_from_albumentations(
             - "xyas": [x, y, angle, scale]
             - "xysa": [x, y, scale, angle]
             - "xyz": [x, y, z]
-        shape (tuple[int, int]): The shape of the image (height, width).
-        check_validity (bool, optional): If True, check if the keypoints are within the image boundaries.
-                                         Defaults to False.
+        shape (tuple[int, int] | tuple[int, int, int]): The shape of the image (height, width) or
+            volume (depth, height, width).
+        check_validity (bool, optional): If True, check if the keypoints are within the
+            image/volume boundaries. Defaults to False.
         angle_in_degrees (bool, optional): If True, convert output angles to degrees.
                                            If False, angles remain in radians.
                                            Defaults to True.

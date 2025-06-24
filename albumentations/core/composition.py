@@ -661,7 +661,7 @@ class Compose(BaseCompose, HubMixin):
             This collects anonymous usage data including pipeline configuration, environment info,
             and common parameter patterns. No image data or personal information is collected.
             Telemetry can be disabled globally via settings.telemetry_enabled = False or by
-            setting the environment variable ALBUMENTATIONSX_NO_TELEMETRY=1. Default is True.
+            setting the environment variable ALBUMENTATIONS_NO_TELEMETRY=1. Default is True.
 
     Examples:
         >>> # Basic usage:

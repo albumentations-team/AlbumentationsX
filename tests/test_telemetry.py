@@ -55,7 +55,7 @@ class TestTelemetrySettings:
 
     def test_telemetry_disable_via_env_var(self, monkeypatch):
         """Test disabling telemetry via environment variable."""
-        monkeypatch.setenv("ALBUMENTATIONSX_NO_TELEMETRY", "1")
+        monkeypatch.setenv("ALBUMENTATIONS_NO_TELEMETRY", "1")
         # Create new settings instance to pick up env var
         from albumentations.core.analytics.settings import SettingsManager
         test_settings = SettingsManager()
@@ -63,7 +63,7 @@ class TestTelemetrySettings:
 
     def test_offline_mode_disables_telemetry(self, monkeypatch):
         """Test that offline mode disables telemetry."""
-        monkeypatch.setenv("ALBUMENTATIONSX_OFFLINE", "1")
+        monkeypatch.setenv("ALBUMENTATIONS_OFFLINE", "1")
         from albumentations.core.analytics.settings import SettingsManager
         test_settings = SettingsManager()
         assert test_settings.telemetry_enabled is False
@@ -679,18 +679,18 @@ class TestComplexPipelines:
 
 
 @pytest.mark.parametrize("env_var,env_value,expected", [
-    ("ALBUMENTATIONSX_NO_TELEMETRY", "1", False),
-    ("ALBUMENTATIONSX_NO_TELEMETRY", "true", False),
-    ("ALBUMENTATIONSX_NO_TELEMETRY", "TRUE", False),
-    ("ALBUMENTATIONSX_NO_TELEMETRY", "0", True),
-    ("ALBUMENTATIONSX_NO_TELEMETRY", "false", True),
-    ("ALBUMENTATIONSX_OFFLINE", "1", False),
+            ("ALBUMENTATIONS_NO_TELEMETRY", "1", False),
+        ("ALBUMENTATIONS_NO_TELEMETRY", "true", False),
+        ("ALBUMENTATIONS_NO_TELEMETRY", "TRUE", False),
+        ("ALBUMENTATIONS_NO_TELEMETRY", "0", True),
+        ("ALBUMENTATIONS_NO_TELEMETRY", "false", True),
+            ("ALBUMENTATIONS_OFFLINE", "1", False),
     ("NO_ALBUMENTATIONS_UPDATE", "1", True),  # Only affects updates, not telemetry
 ])
 def test_environment_variables(monkeypatch, env_var, env_value, expected):
     """Test various environment variable configurations."""
     # Clear all relevant env vars first
-    for var in ["ALBUMENTATIONSX_NO_TELEMETRY", "ALBUMENTATIONSX_OFFLINE", "NO_ALBUMENTATIONS_UPDATE"]:
+    for var in ["ALBUMENTATIONS_NO_TELEMETRY", "ALBUMENTATIONS_OFFLINE", "NO_ALBUMENTATIONS_UPDATE"]:
         monkeypatch.delenv(var, raising=False)
 
     # Set the test env var

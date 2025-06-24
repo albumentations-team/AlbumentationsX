@@ -49,10 +49,10 @@ class SettingsManager:
                 pass
 
         # Override with environment variables
-        if os.environ.get("ALBUMENTATIONSX_NO_TELEMETRY", "").lower() in ("1", "true"):
+        if os.environ.get("ALBUMENTATIONS_NO_TELEMETRY", "").lower() in ("1", "true"):
             settings["telemetry"] = False
 
-        if os.environ.get("ALBUMENTATIONSX_OFFLINE", "").lower() in ("1", "true"):
+        if os.environ.get("ALBUMENTATIONS_OFFLINE", "").lower() in ("1", "true"):
             settings["telemetry"] = False
             settings["check_updates"] = False
 

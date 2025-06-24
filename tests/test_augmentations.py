@@ -213,13 +213,12 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
         },
     ),
 )
-def test_augmentations_wont_change_float_input(augmentation_cls, params):
-    image = SQUARE_FLOAT_IMAGE
-    float_image_copy = image.copy()
+def test_augmentations_wont_change_float_input(augmentation_cls, params, image_float32):
+    float_image_copy = image_float32.copy()
 
     aug = augmentation_cls(p=1, **params)
 
-    data = {"image": image}
+    data = {"image": image_float32}
 
     if augmentation_cls == A.OverlayElements:
         data["overlay_metadata"] = []
@@ -229,7 +228,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params):
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
     elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
-        mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
+        mask = np.zeros((image_float32.shape[0], image_float32.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
     elif augmentation_cls == A.RandomCropNearBBox:
@@ -237,15 +236,15 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params):
     elif augmentation_cls == A.Mosaic:
         data["mosaic_metadata"] = [
             {
-                "image": image,
+                "image": image_float32,
             }
         ]
     elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+        data[transforms2metadata_key[augmentation_cls]] = [image_float32    ]
 
     aug(**data)
 
-    np.testing.assert_array_equal(image, float_image_copy)
+    np.testing.assert_array_equal(image_float32, float_image_copy)
 
 
 @pytest.mark.parametrize(

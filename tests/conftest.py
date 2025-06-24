@@ -84,3 +84,7 @@ SQUARE_MULTI_UINT8_IMAGE = np.random.randint(low=0, high=256, size=(100, 100, 5)
 SQUARE_MULTI_FLOAT_IMAGE = np.random.uniform(low=0.0, high=1.0, size=(100, 100, 5)).astype(np.float32)
 
 MULTI_IMAGES = [SQUARE_MULTI_UINT8_IMAGE, SQUARE_MULTI_FLOAT_IMAGE]
+
+@pytest.fixture
+def image_float32():
+    return cv2.randu(np.zeros((100, 100, 3), dtype=np.float32), 0, 1)

@@ -43,7 +43,7 @@ suggests:
 
 test:
   imports:
-    - albumentationsx
+    - albumentations
 
 about:
   home: {{ data['url'] }}

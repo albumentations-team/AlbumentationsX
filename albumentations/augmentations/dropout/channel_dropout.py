@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 import numpy as np
-from albucore import get_num_channels
+from albucore import get_image_data
 from pydantic import AfterValidator
 
 from albumentations.core.pydantic import check_range_bounds
@@ -98,8 +98,8 @@ class ChannelDropout(ImageOnlyTransform):
         return channel_dropout(img, channels_to_drop, self.fill)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, list[int]]:
-        image = data["image"] if "image" in data else data["images"][0]
-        num_channels = get_num_channels(image)
+        metadata = get_image_data(data)
+        num_channels = metadata["num_channels"]
         if num_channels == 1:
             msg = "Images has one channel. ChannelDropout is not defined."
             raise NotImplementedError(msg)

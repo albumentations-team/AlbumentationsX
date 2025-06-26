@@ -614,7 +614,8 @@ class RandomGravel(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, np.ndarray]:
-        height, width = params["shape"][:2]
+        metadata = get_image_data(data)
+        height, width = (metadata["height"], metadata["width"])
 
         # Calculate ROI in pixels
         x_min, y_min, x_max, y_max = (
@@ -791,7 +792,8 @@ class RandomRain(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+        metadata = get_image_data(data)
+        height, width = (metadata["height"], metadata["width"])
 
         # Simpler calculations, directly following Kornia
         if self.rain_type == "drizzle":
@@ -1203,7 +1205,8 @@ class RandomSunFlare(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+        metadata = get_image_data(data)
+        height, width = (metadata["height"], metadata["width"])
         diagonal = math.sqrt(height**2 + width**2)
 
         angle = 2 * math.pi * self.py_random.uniform(*self.angle_range)
@@ -1382,7 +1385,8 @@ class RandomShadow(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, list[np.ndarray]]:
-        height, width = params["shape"][:2]
+        metadata = get_image_data(data)
+        height, width = (metadata["height"], metadata["width"])
 
         num_shadows = self.py_random.randint(*self.num_shadows_limit)
 
@@ -2116,6 +2120,18 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         beta: float,
         **params: Any,
     ) -> np.ndarray:
+        max_value = MAX_VALUES_BY_DTYPE[img.dtype]
+        # Scale beta according to brightness_by_max setting
+        beta = beta * max_value if self.brightness_by_max else beta * np.mean(img)
+
+        # Clip values to safe ranges if needed
+        if self.ensure_safe_range:
+            alpha, beta = fpixel.get_safe_brightness_contrast_params(
+                alpha,
+                beta,
+                max_value,
+            )
+
         return albucore.multiply_add(img, alpha, beta, inplace=False)
 
     def apply_to_images(self, images: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
@@ -2129,23 +2145,9 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, float]:
-        image = data["image"] if "image" in data else data["images"][0]
-
         # Sample initial values
         alpha = 1.0 + self.py_random.uniform(*self.contrast_limit)
         beta = self.py_random.uniform(*self.brightness_limit)
-
-        max_value = MAX_VALUES_BY_DTYPE[image.dtype]
-        # Scale beta according to brightness_by_max setting
-        beta = beta * max_value if self.brightness_by_max else beta * np.mean(image)
-
-        # Clip values to safe ranges if needed
-        if self.ensure_safe_range:
-            alpha, beta = fpixel.get_safe_brightness_contrast_params(
-                alpha,
-                beta,
-                max_value,
-            )
 
         return {
             "alpha": alpha,
@@ -3227,19 +3229,19 @@ class MultiplicativeNoise(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        image = data["image"] if "image" in data else data["images"][0]
-
-        num_channels = get_num_channels(image)
+        metadata = get_image_data(data)
+        image_shape = (metadata["height"], metadata["width"], metadata["num_channels"])
+        num_channels = image_shape[-1]
 
         if self.elementwise:
-            shape = image.shape if self.per_channel else (*image.shape[:2], 1)
+            multiplier_shape: tuple[int, ...] = image_shape if self.per_channel else (*image_shape[:2], 1)
         else:
-            shape = (num_channels,) if self.per_channel else (1,)
+            multiplier_shape = (num_channels,) if self.per_channel else (1,)
 
         multiplier = self.random_generator.uniform(
             self.multiplier[0],
             self.multiplier[1],
-            shape,
+            multiplier_shape,
         ).astype(np.float32)
 
         if not self.per_channel and num_channels > 1:
@@ -3250,7 +3252,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
             # Reshape to broadcast correctly when not elementwise but per_channel
             multiplier = multiplier.reshape(1, 1, -1)
 
-        if multiplier.shape != image.shape:
+        if multiplier.shape != image_shape:
             multiplier = multiplier.squeeze()
 
         return {"multiplier": multiplier}
@@ -4355,7 +4357,8 @@ class Spatter(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+        metadata = get_image_data(data)
+        height, width = (metadata["height"], metadata["width"])
 
         mean = self.py_random.uniform(*self.mean)
         std = self.py_random.uniform(*self.std)
@@ -5368,7 +5371,8 @@ class SaltAndPepper(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+        metadata = get_image_data(data)
+        height, width = (metadata["height"], metadata["width"])
 
         total_amount = self.py_random.uniform(*self.amount)
         salt_ratio = self.py_random.uniform(*self.salt_vs_pepper)
@@ -5406,6 +5410,12 @@ class SaltAndPepper(ImageOnlyTransform):
         **params: Any,
     ) -> np.ndarray:
         return fpixel.apply_salt_and_pepper(img, salt_mask, pepper_mask)
+
+    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+        return self.apply(images, **params)
+
+    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+        return self.apply(volumes, **params)
 
 
 class PlasmaBrightnessContrast(ImageOnlyTransform):
@@ -6292,7 +6302,14 @@ class HEStain(ImageOnlyTransform):
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         # Get stain matrix
-        image = data["image"] if "image" in data else data["images"][0]
+        if "image" in data:
+            image = data["image"]
+        elif "images" in data:
+            image = data["images"][0]
+        elif "volume" in data:
+            image = data["volume"][0]
+        elif "volumes" in data:
+            image = data["volumes"][0][0]
 
         stain_matrix = self._get_stain_matrix(image)
 

@@ -542,6 +542,38 @@ def test_image_volume_matching(image, augmentation_cls, params):
     np.testing.assert_allclose(transformed["image"], transformed["volume"][0], atol=4, rtol=1e-1), f"Image shape = {transformed['image'].shape}, Volume shape = {transformed['volume'].shape}"
     np.testing.assert_allclose(transformed["volume"], transformed["volumes"][0], atol=1, rtol=1e-3), f"Volume shape = {transformed['volume'].shape}, Volumes shape = {transformed['volumes'].shape}"
 
+@pytest.mark.parametrize(
+    ["augmentation_cls", "params"],
+    get_2d_transforms(
+        custom_arguments={
+        },
+        except_augmentations={
+            A.RandomSizedBBoxSafeCrop,
+            A.PixelDropout,
+            A.FDA,
+            A.MaskDropout,
+            A.CropNonEmptyMaskIfExists,
+            A.BBoxSafeRandomCrop,
+            A.TextImage,
+            A.OverlayElements,
+            A.PixelDistributionAdaptation,
+            A.HistogramMatching,
+            A.RandomCropNearBBox,
+            A.Mosaic,
+        },
+    ),
+)
+def test_image_transforms_matching(image, augmentation_cls, params):
+    # Use the same data for both to ensure transforms that depend on image content produce identical results
+    test_data = np.random.RandomState(42).randint(0, 256, (5, 100, 100, 3), dtype=np.uint8)
+
+    aug_1 = A.Compose([augmentation_cls(**params, p=1)], seed=137)
+    aug_2 = A.Compose([augmentation_cls(**params, p=1)], seed=137)
+
+    transformed_1 = aug_1(images=test_data.copy())
+    transformed_2 = aug_2(volume=test_data.copy())
+
+    np.testing.assert_allclose(transformed_1["images"], transformed_2["volume"], atol=10, rtol=0.2, err_msg=f"Shape mismatch: images {transformed_1['images'].shape} vs volume {transformed_2['volume'].shape}")
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],

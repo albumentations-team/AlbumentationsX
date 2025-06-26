@@ -2856,23 +2856,22 @@ def apply_salt_and_pepper(
     """Apply salt and pepper noise to an image.
 
     This function applies salt and pepper noise to an image using pre-computed masks.
+    Salt pixels are set to maximum value, pepper pixels are set to 0.
 
     Args:
-        img (np.ndarray): The image to apply salt and pepper noise to.
-        salt_mask (np.ndarray): The salt mask to use for the salt and pepper noise.
-        pepper_mask (np.ndarray): The pepper mask to use for the salt and pepper noise.
+        img (np.ndarray): Input image of any dtype and dimensions:
+            - 2D: (H, W) - grayscale
+            - 3D: (H, W, C) - RGB/multi-channel
+            - 4D: (D, H, W, C) - volume with depth
+        salt_mask (np.ndarray): Boolean mask indicating salt pixels (H, W)
+        pepper_mask (np.ndarray): Boolean mask indicating pepper pixels (H, W)
 
     Returns:
         np.ndarray: The image with salt and pepper noise applied.
 
     """
-    # Add channel dimension to masks if image is 3D
-    if img.ndim == 3:
-        salt_mask = salt_mask[..., None]
-        pepper_mask = pepper_mask[..., None]
-
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
-    return np.where(salt_mask, max_value, np.where(pepper_mask, 0, img))
+    return np.where(salt_mask[..., None], max_value, np.where(pepper_mask[..., None], 0, img))
 
 
 # Pre-compute constant kernels

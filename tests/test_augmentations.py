@@ -1164,7 +1164,7 @@ def test_salt_and_pepper_float_image():
 
 def test_salt_and_pepper_grayscale():
     """Test salt and pepper noise on single-channel images"""
-    image = np.zeros((100, 100), dtype=np.uint8)
+    image = np.zeros((100, 100, 1), dtype=np.uint8)
     image[25:75, 25:75] = 128
 
     transform = A.SaltAndPepper(

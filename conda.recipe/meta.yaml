@@ -1,7 +1,7 @@
 {% set data = load_setup_py_data() %}
 
 package:
-  name: albumentations
+  name: albumentationsx
   version: {{ data['version'] }}
 
 source:
@@ -34,7 +34,7 @@ requirements:
     - pydantic>=2.9.2
     - typing-extensions>=4.9.0
     - opencv-python-headless>=4.9.0.80
-    - albucore==0.0.22
+    - albucore==0.0.33
 
 suggests:
   - pytorch

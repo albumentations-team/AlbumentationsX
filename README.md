@@ -59,7 +59,7 @@ transform = A.Compose([
 ])
 ```
 
-For commercial licensing inquiries, please visit [our pricing page](https://albumentations.ai/pricing) (coming soon).
+For commercial licensing inquiries, please visit [our pricing page](https://albumentations.ai/pricing).
 
 ---
 

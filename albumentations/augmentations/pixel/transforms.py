@@ -4760,11 +4760,11 @@ class PlanckianJitter(ImageOnlyTransform):
 
     def apply_to_images(self, images: np.ndarray, temperature: int, **params: Any) -> np.ndarray:
         non_rgb_error(images)
-        return fpixel.planckian_jitter(images, temperature, mode=self.mode)
+        return self.apply(images, temperature, **params)
 
     def apply_to_volumes(self, volumes: np.ndarray, temperature: int, **params: Any) -> np.ndarray:
         non_rgb_error(volumes)
-        return fpixel.planckian_jitter(volumes, temperature, mode=self.mode)
+        return self.apply(volumes, temperature, **params)
 
     def get_params(self) -> dict[str, Any]:
         sampling_prob_boundary = PLANKIAN_JITTER_CONST["SAMPLING_TEMP_PROB"]

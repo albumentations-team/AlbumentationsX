@@ -2308,13 +2308,13 @@ def planckian_jitter(
             PLANCKIAN_COEFFS[mode][t_right],
         )
 
-    img[:, :, 0] = multiply_by_constant(
-        img[:, :, 0],
+    img[..., 0] = multiply_by_constant(
+        img[..., 0],
         coeffs[0] / coeffs[1],
         inplace=True,
     )
-    img[:, :, 2] = multiply_by_constant(
-        img[:, :, 2],
+    img[..., 2] = multiply_by_constant(
+        img[..., 2],
         coeffs[2] / coeffs[1],
         inplace=True,
     )

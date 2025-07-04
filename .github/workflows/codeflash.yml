@@ -1,0 +1,45 @@
+name: Codeflash Optimization
+on:
+  pull_request:
+    paths:
+      - 'albumentations/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  optimize:
+    name: Optimize new Python code
+    if: ${{ github.actor != 'codeflash-ai[bot]' }}
+    runs-on: ubuntu-latest
+    env:
+      CODEFLASH_API_KEY: ${{ secrets.CODEFLASH_API_KEY }}
+
+    steps:
+    - name: 🛎️ Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12.9'
+
+    - name: 🧴 Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: 🔦 Install PyTorch
+      run: |
+          uv pip install --system torch==2.7.1+cpu torchvision==0.22.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+      shell: bash
+
+    - name: 📦 Install all dependencies
+      run: |
+        uv pip install --system wheel
+        uv pip install --system -r requirements-dev.txt
+        uv pip install --system .
+
+    - name: ⚡️Codeflash Optimization
+      run: uv run codeflash
+

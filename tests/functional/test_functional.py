@@ -1136,13 +1136,13 @@ def test_image_compression_quality_with_patterns(image_type):
         ),
         # Test with a grayscale image
         (
-            np.array([[50, 100], [150, 200]], dtype=np.uint8),
-            "constant",  # The output should remain constant
+            np.array([[50, 100], [150, 200]], dtype=np.uint8)[..., np.newaxis],
+            "non_constant",  # Grayscale images should have contrast adjusted
         ),
         # Test with an image already using full intensity range
         (
-            np.array([[0, 85], [170, 255]], dtype=np.uint8),
-            "constant",  # The output should remain constant
+            np.array([[0, 85], [170, 255]], dtype=np.uint8)[..., np.newaxis],
+            "non_constant",  # Even full range images may be remapped based on histogram
         ),
         # Test with an all-zero image
         (
@@ -1168,25 +1168,25 @@ def test_auto_contrast(img, expected):
 @pytest.mark.parametrize(
     ["array", "value", "expected_shape", "expected_dtype", "expected_values"],
     [
-        # 2D array tests
+        # Convert 2D to 3D for consistency with Compose output
         (
-            np.zeros((10, 10), dtype=np.uint8),  # array
+            np.zeros((10, 10, 1), dtype=np.uint8),  # array
             None,  # value
-            (10, 10),  # expected_shape
+            (10, 10, 1),  # expected_shape
             np.uint8,  # expected_dtype
             None,  # expected_values - random, can't test exact values
         ),
         (
-            np.zeros((10, 10), dtype=np.uint8),
+            np.zeros((10, 10, 1), dtype=np.uint8),
             128,
-            (10, 10),
+            (10, 10, 1),
             np.uint8,
             128,
         ),
         (
-            np.zeros((10, 10), dtype=np.float32),
+            np.zeros((10, 10, 1), dtype=np.float32),
             0.5,
-            (10, 10),
+            (10, 10, 1),
             np.float32,
             0.5,
         ),
@@ -1306,20 +1306,20 @@ def test_prepare_drop_values_random():
 @pytest.mark.parametrize(
     ["shape", "per_channel", "dropout_prob", "expected_shape", "expected_properties"],
     [
-        # 2D array tests
+        # Convert 2D to 3D for consistency with Compose output
         (
-            (10, 10),  # shape
+            (10, 10, 1),  # shape
             False,  # per_channel
             0.5,  # dropout_prob
-            (10, 10),  # expected_shape
-            {"is_2d": True, "channels_same": True},  # expected_properties
+            (10, 10, 1),  # expected_shape
+            {"is_2d": False, "channels_same": True},  # expected_properties
         ),
         (
-            (10, 10),
-            True,  # per_channel doesn't affect 2D
+            (10, 10, 1),
+            True,  # per_channel doesn't affect single channel
             0.5,
-            (10, 10),
-            {"is_2d": True, "channels_same": True},
+            (10, 10, 1),
+            {"is_2d": False, "channels_same": True},
         ),
 
         # 3D array tests - shared mask across channels

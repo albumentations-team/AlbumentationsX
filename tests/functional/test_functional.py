@@ -1136,13 +1136,13 @@ def test_image_compression_quality_with_patterns(image_type):
         ),
         # Test with a grayscale image
         (
-            np.array([[50, 100], [150, 200]], dtype=np.uint8),
-            "constant",  # The output should remain constant
+            np.array([[50, 100], [150, 200]], dtype=np.uint8)[..., np.newaxis],
+            "non_constant",  # Grayscale images should have contrast adjusted
         ),
         # Test with an image already using full intensity range
         (
-            np.array([[0, 85], [170, 255]], dtype=np.uint8),
-            "constant",  # The output should remain constant
+            np.array([[0, 85], [170, 255]], dtype=np.uint8)[..., np.newaxis],
+            "non_constant",  # Even full range images may be remapped based on histogram
         ),
         # Test with an all-zero image
         (
@@ -1168,25 +1168,25 @@ def test_auto_contrast(img, expected):
 @pytest.mark.parametrize(
     ["array", "value", "expected_shape", "expected_dtype", "expected_values"],
     [
-        # 2D array tests
+        # Convert 2D to 3D for consistency with Compose output
         (
-            np.zeros((10, 10), dtype=np.uint8),  # array
+            np.zeros((10, 10, 1), dtype=np.uint8),  # array
             None,  # value
-            (10, 10),  # expected_shape
+            (10, 10, 1),  # expected_shape
             np.uint8,  # expected_dtype
             None,  # expected_values - random, can't test exact values
         ),
         (
-            np.zeros((10, 10), dtype=np.uint8),
+            np.zeros((10, 10, 1), dtype=np.uint8),
             128,
-            (10, 10),
+            (10, 10, 1),
             np.uint8,
             128,
         ),
         (
-            np.zeros((10, 10), dtype=np.float32),
+            np.zeros((10, 10, 1), dtype=np.float32),
             0.5,
-            (10, 10),
+            (10, 10, 1),
             np.float32,
             0.5,
         ),
@@ -1306,20 +1306,20 @@ def test_prepare_drop_values_random():
 @pytest.mark.parametrize(
     ["shape", "per_channel", "dropout_prob", "expected_shape", "expected_properties"],
     [
-        # 2D array tests
+        # Convert 2D to 3D for consistency with Compose output
         (
-            (10, 10),  # shape
+            (10, 10, 1),  # shape
             False,  # per_channel
             0.5,  # dropout_prob
-            (10, 10),  # expected_shape
-            {"is_2d": True, "channels_same": True},  # expected_properties
+            (10, 10, 1),  # expected_shape
+            {"is_2d": False, "channels_same": True},  # expected_properties
         ),
         (
-            (10, 10),
-            True,  # per_channel doesn't affect 2D
+            (10, 10, 1),
+            True,  # per_channel doesn't affect single channel
             0.5,
-            (10, 10),
-            {"is_2d": True, "channels_same": True},
+            (10, 10, 1),
+            {"is_2d": False, "channels_same": True},
         ),
 
         # 3D array tests - shared mask across channels
@@ -3102,3 +3102,264 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
                 assert actual_sat > orig_sat or actual_sat == 255, \
                     f"Saturation did not increase at ({y},{x}) in {image_type} image. " \
                     f"Original: {orig_sat}, Actual: {actual_sat}"
+
+
+@pytest.mark.parametrize(
+    ["shape", "dtype", "method", "num_output_channels"],
+    [
+        # Test grayscale output (num_output_channels=1)
+        ((100, 100, 3), np.uint8, "weighted_average", 1),
+        ((100, 100, 3), np.float32, "weighted_average", 1),
+        ((50, 75, 3), np.uint8, "from_lab", 1),
+        ((50, 75, 3), np.float32, "from_lab", 1),
+        ((80, 60, 3), np.uint8, "desaturation", 1),
+        ((80, 60, 3), np.float32, "desaturation", 1),
+        ((70, 90, 3), np.uint8, "average", 1),
+        ((70, 90, 3), np.float32, "average", 1),
+        ((65, 85, 3), np.uint8, "max", 1),
+        ((65, 85, 3), np.float32, "max", 1),
+        ((100, 100, 3), np.uint8, "pca", 1),
+        ((100, 100, 3), np.float32, "pca", 1),
+
+        # Test multi-channel output
+        ((100, 100, 3), np.uint8, "weighted_average", 3),
+        ((100, 100, 3), np.float32, "weighted_average", 3),
+        ((50, 75, 3), np.uint8, "from_lab", 2),
+        ((50, 75, 3), np.float32, "from_lab", 2),
+        ((80, 60, 3), np.uint8, "desaturation", 4),
+        ((80, 60, 3), np.float32, "desaturation", 4),
+        ((70, 90, 3), np.uint8, "average", 3),
+        ((70, 90, 3), np.float32, "average", 3),
+        ((65, 85, 3), np.uint8, "max", 5),
+        ((65, 85, 3), np.float32, "max", 5),
+        ((100, 100, 3), np.uint8, "pca", 3),
+        ((100, 100, 3), np.float32, "pca", 3),
+
+        # Test different input channel counts
+        ((100, 100, 4), np.uint8, "average", 1),
+        ((100, 100, 5), np.uint8, "max", 3),
+        ((100, 100, 4), np.float32, "desaturation", 2),
+        ((100, 100, 5), np.float32, "pca", 4),
+    ],
+)
+def test_to_gray_preserves_original_image(shape, dtype, method, num_output_channels):
+    """Test that to_gray doesn't modify the original image."""
+    # Create test image
+    if dtype == np.uint8:
+        original_img = np.random.randint(0, 256, shape, dtype=dtype)
+    else:
+        original_img = np.random.random(shape).astype(dtype)
+
+    # Make a copy for comparison
+    img_copy = original_img.copy()
+
+    # Apply to_gray
+    result = fpixel.to_gray(original_img, num_output_channels, method)
+
+    # Check that original image is unchanged
+    np.testing.assert_array_equal(original_img, img_copy,
+                                  err_msg=f"to_gray modified the original image with method={method}")
+
+    # Check that result has correct shape
+    if num_output_channels == 1:
+        expected_shape = shape[:2]  # Remove channel dimension
+    else:
+        expected_shape = shape[:2] + (num_output_channels,)
+
+    assert result.shape == expected_shape, (
+        f"Expected shape {expected_shape}, got {result.shape} for method={method}"
+    )
+
+    # Check that result has same dtype as input
+    assert result.dtype == dtype, f"Expected dtype {dtype}, got {result.dtype}"
+
+
+@pytest.mark.parametrize(
+    ["input_shape", "num_output_channels", "expected_shape"],
+    [
+        # 2D input (grayscale without channel dimension)
+        ((100, 100), 1, (100, 100)),
+        ((100, 100), 3, (100, 100, 3)),
+        ((50, 75), 4, (50, 75, 4)),
+        ((80, 60), 2, (80, 60, 2)),
+
+        # 3D input with single channel
+        ((100, 100, 1), 1, (100, 100, 1)),
+        ((100, 100, 1), 3, (100, 100, 3)),
+        ((50, 75, 1), 4, (50, 75, 4)),
+        ((80, 60, 1), 2, (80, 60, 2)),
+
+        # Test edge cases
+        ((10, 10), 5, (10, 10, 5)),
+        ((10, 10, 1), 10, (10, 10, 10)),
+    ],
+)
+def test_grayscale_to_multichannel_output_channels(input_shape, num_output_channels, expected_shape):
+    """Test that grayscale_to_multichannel returns correct number of channels."""
+    # Create grayscale image
+    grayscale_img = np.random.random(input_shape).astype(np.float32)
+
+    # Apply grayscale_to_multichannel
+    result = fpixel.grayscale_to_multichannel(grayscale_img, num_output_channels)
+
+    # Check output shape
+    assert result.shape == expected_shape, (
+        f"Expected shape {expected_shape}, got {result.shape}"
+    )
+
+    # Check that all channels have the same values (replicated from grayscale)
+    if num_output_channels > 1 and len(result.shape) > 2:
+        for i in range(1, num_output_channels):
+            np.testing.assert_array_equal(
+                result[..., 0], result[..., i],
+                err_msg=f"Channel {i} doesn't match channel 0"
+            )
+
+
+@pytest.mark.parametrize(
+    ["method"],
+    [
+        ("weighted_average",),
+        ("from_lab",),
+        ("desaturation",),
+        ("average",),
+        ("max",),
+        ("pca",),
+    ],
+)
+def test_to_gray_all_methods_consistency(method):
+    """Test that all to_gray methods produce valid grayscale images."""
+    # Create test images
+    rgb_img_uint8 = np.random.randint(0, 256, (50, 50, 3), dtype=np.uint8)
+    rgb_img_float32 = rgb_img_uint8.astype(np.float32) / 255.0
+
+    # Test with single output channel
+    gray_uint8 = fpixel.to_gray(rgb_img_uint8, 1, method)
+    gray_float32 = fpixel.to_gray(rgb_img_float32, 1, method)
+
+    # Check shapes
+    assert gray_uint8.shape == (50, 50), f"Incorrect shape for uint8 with method={method}"
+    assert gray_float32.shape == (50, 50), f"Incorrect shape for float32 with method={method}"
+
+    # Check dtypes
+    assert gray_uint8.dtype == np.uint8, f"Incorrect dtype for uint8 with method={method}"
+    assert gray_float32.dtype == np.float32, f"Incorrect dtype for float32 with method={method}"
+
+    # Check value ranges
+    assert gray_uint8.min() >= 0 and gray_uint8.max() <= 255, (
+        f"uint8 values out of range for method={method}"
+    )
+    assert gray_float32.min() >= 0 and gray_float32.max() <= 1.0, (
+        f"float32 values out of range for method={method}"
+    )
+
+    # Test with multiple output channels
+    gray_multi_uint8 = fpixel.to_gray(rgb_img_uint8, 3, method)
+    gray_multi_float32 = fpixel.to_gray(rgb_img_float32, 3, method)
+
+    # Check shapes for multi-channel output
+    assert gray_multi_uint8.shape == (50, 50, 3), (
+        f"Incorrect multi-channel shape for uint8 with method={method}"
+    )
+    assert gray_multi_float32.shape == (50, 50, 3), (
+        f"Incorrect multi-channel shape for float32 with method={method}"
+    )
+
+    # Check that all channels are identical
+    for i in range(1, 3):
+        np.testing.assert_array_equal(
+            gray_multi_uint8[..., 0], gray_multi_uint8[..., i],
+            err_msg=f"Channels not identical for uint8 with method={method}"
+        )
+        np.testing.assert_array_equal(
+            gray_multi_float32[..., 0], gray_multi_float32[..., i],
+            err_msg=f"Channels not identical for float32 with method={method}"
+        )
+
+
+def test_grayscale_to_multichannel_preserves_values():
+    """Test that grayscale_to_multichannel preserves original grayscale values."""
+    # Create test grayscale images
+    gray_2d = np.array([[0, 128, 255], [64, 192, 32]], dtype=np.uint8)
+    gray_3d = gray_2d[..., np.newaxis]
+
+    # Test with different number of output channels
+    for num_channels in [1, 2, 3, 4, 5]:
+        result_2d = fpixel.grayscale_to_multichannel(gray_2d, num_channels)
+        result_3d = fpixel.grayscale_to_multichannel(gray_3d, num_channels)
+
+        if num_channels == 1:
+            # Should return unchanged for single channel
+            np.testing.assert_array_equal(result_2d, gray_2d)
+            np.testing.assert_array_equal(result_3d, gray_3d)
+        else:
+            # Check that values are replicated across channels
+            assert result_2d.shape == (2, 3, num_channels)
+            assert result_3d.shape == (2, 3, num_channels)
+
+            for i in range(num_channels):
+                np.testing.assert_array_equal(result_2d[..., i], gray_2d)
+                np.testing.assert_array_equal(result_3d[..., i], gray_2d)
+
+
+def test_grayscale_to_multichannel_float_values():
+    """Test grayscale_to_multichannel with float values."""
+    # Create float grayscale image
+    gray_float = np.array([[0.0, 0.5, 1.0], [0.25, 0.75, 0.1]], dtype=np.float32)
+
+    # Test with 3 channels
+    result = fpixel.grayscale_to_multichannel(gray_float, 3)
+
+    # Check shape and values
+    assert result.shape == (2, 3, 3)
+    assert result.dtype == np.float32
+
+    # Check all channels have same values
+    for i in range(3):
+        np.testing.assert_array_almost_equal(result[..., i], gray_float)
+
+
+@pytest.mark.parametrize(
+    ["method", "expected_property"],
+    [
+        ("weighted_average", "uses_opencv_coefficients"),  # 0.299*R + 0.587*G + 0.114*B
+        ("from_lab", "uses_lightness_channel"),  # L from LAB
+        ("desaturation", "uses_min_max_average"),  # (min + max) / 2
+        ("average", "uses_simple_mean"),  # (R + G + B) / 3
+        ("max", "uses_maximum_value"),  # max(R, G, B)
+        ("pca", "uses_principal_component"),  # First principal component
+    ],
+)
+def test_to_gray_method_properties(method, expected_property):
+    """Test that each to_gray method has expected properties."""
+    # Create a specific test image to verify method behavior
+    # Red channel = 255, Green channel = 128, Blue channel = 0
+    test_img = np.zeros((10, 10, 3), dtype=np.uint8)
+    test_img[..., 0] = 255  # Red
+    test_img[..., 1] = 128  # Green
+    test_img[..., 2] = 0    # Blue
+
+    result = fpixel.to_gray(test_img, 1, method)
+
+    # Verify method-specific properties
+    if method == "weighted_average":
+        # Should be close to OpenCV formula: 0.299*255 + 0.587*128 + 0.114*0 ≈ 151
+        expected = int(0.299 * 255 + 0.587 * 128 + 0.114 * 0)
+        assert np.abs(result[0, 0] - expected) <= 1, f"weighted_average result {result[0, 0]} != {expected}"
+
+    elif method == "average":
+        # Should be (255 + 128 + 0) / 3 ≈ 127.67
+        expected = int((255 + 128 + 0) / 3)
+        assert np.abs(result[0, 0] - expected) <= 1, f"average result {result[0, 0]} != {expected}"
+
+    elif method == "max":
+        # Should be max(255, 128, 0) = 255
+        assert result[0, 0] == 255, f"max result {result[0, 0]} != 255"
+
+    elif method == "desaturation":
+        # Should be (max + min) / 2 = (255 + 0) / 2 = 127.5
+        expected = int((255 + 0) / 2)
+        assert np.abs(result[0, 0] - expected) <= 1, f"desaturation result {result[0, 0]} != {expected}"
+
+    # All methods should produce values in valid range
+    assert result.min() >= 0 and result.max() <= 255, f"Result out of range for method={method}"

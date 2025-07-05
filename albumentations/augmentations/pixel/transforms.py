@@ -1859,6 +1859,9 @@ class Posterize(ImageOnlyTransform):
     ) -> np.ndarray:
         return fpixel.posterize(img, num_bits)
 
+    def apply_to_images(self, images: list[np.ndarray], **params: Any) -> list[np.ndarray]:
+        return self.apply(images, **params)
+
     def get_params(self) -> dict[str, Any]:
         if isinstance(self.num_bits, list):
             num_bits = [self.py_random.randint(*i) for i in self.num_bits]
@@ -2253,7 +2256,7 @@ class GaussNoise(ImageOnlyTransform):
         sigma = self.py_random.uniform(*self.std_range)
         mean = self.py_random.uniform(*self.mean_range)
 
-        noise_map = fpixel.generate_noise(
+        noise_map = fpixel.generate_spatial_noise(
             noise_type="gaussian",
             spatial_mode="per_pixel" if self.per_channel else "shared",
             shape=shape,
@@ -5134,6 +5137,9 @@ class AdditiveNoise(ImageOnlyTransform):
     ) -> np.ndarray:
         return fpixel.add_noise(img, noise_map)
 
+    def apply_to_images(self, images: list[np.ndarray], **params: Any) -> list[np.ndarray]:
+        return self.apply(images, **params)
+
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
@@ -5143,15 +5149,24 @@ class AdditiveNoise(ImageOnlyTransform):
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
         shape = (metadata["height"], metadata["width"], metadata["num_channels"])
 
-        noise_map = fpixel.generate_noise(
-            noise_type=self.noise_type,
-            spatial_mode=self.spatial_mode,
-            shape=shape,
-            params=self.noise_params,
-            max_value=max_value,
-            approximation=self.approximation,
-            random_generator=self.random_generator,
-        )
+        if self.spatial_mode == "constant":
+            noise_map = fpixel.generate_constant_noise_with_py_random(
+                noise_type=self.noise_type,
+                shape=shape,
+                params=self.noise_params,
+                max_value=max_value,
+                py_random=self.py_random,
+            )
+        else:
+            noise_map = fpixel.generate_spatial_noise(
+                noise_type=self.noise_type,
+                spatial_mode=self.spatial_mode,
+                shape=shape,
+                params=self.noise_params,
+                max_value=max_value,
+                approximation=self.approximation,
+                random_generator=self.random_generator,
+            )
         return {"noise_map": noise_map}
 
 

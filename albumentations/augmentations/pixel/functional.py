@@ -9,6 +9,7 @@ the core functionality for manipulating image data during the augmentation proce
 from __future__ import annotations
 
 import math
+import random
 from collections.abc import Sequence
 from typing import Any, Literal
 from warnings import warn
@@ -20,6 +21,7 @@ from albucore import (
     add,
     add_array,
     add_constant,
+    add_vector,
     add_weighted,
     clip,
     clipped,
@@ -1662,6 +1664,9 @@ def grayscale_to_multichannel(
     if num_output_channels == 1:
         return grayscale_image
 
+    if num_output_channels == 3 and grayscale_image.ndim == 2:
+        return cv2.cvtColor(grayscale_image, cv2.COLOR_GRAY2RGB)
+
     squeezed = np.squeeze(grayscale_image)
     # For multi-channel output, use tile for better performance
     return np.tile(squeezed[..., np.newaxis], (1,) * squeezed.ndim + (num_output_channels,))
@@ -1956,9 +1961,6 @@ def superpixels(
     min_value = 0
     max_value = MAX_VALUES_BY_DTYPE[image.dtype]
     image = np.copy(image)
-
-    if image.ndim == MONO_CHANNEL_DIMENSIONS:
-        image = np.expand_dims(image, axis=-1)
 
     num_channels = get_num_channels(image)
 
@@ -2336,6 +2338,9 @@ def add_noise(img: np.ndarray, noise: np.ndarray) -> np.ndarray:
         np.ndarray: The noise added to the image.
 
     """
+    if img.ndim == 3 and noise.ndim == 1:
+        return add_vector(img, noise, inplace=False)
+
     n_tiles = np.prod(img.shape) // np.prod(noise.shape)
     noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
 
@@ -2351,7 +2356,7 @@ def slic(
     """Simple Linear Iterative Clustering (SLIC) superpixel segmentation using OpenCV and NumPy.
 
     Args:
-        image (np.ndarray): Input image (2D or 3D numpy array).
+        image (np.ndarray): Input image (3D numpy array with shape (H, W, C)).
         n_segments (int): Approximate number of superpixels to generate.
         compactness (float): Balance between color proximity and space proximity.
         max_iterations (int): Maximum number of iterations for k-means.
@@ -2360,9 +2365,6 @@ def slic(
         np.ndarray: Segmentation mask where each superpixel has a unique label.
 
     """
-    if image.ndim == MONO_CHANNEL_DIMENSIONS:
-        image = image[..., np.newaxis]
-
     height, width = image.shape[:2]
     num_pixels = height * width
 
@@ -2479,22 +2481,119 @@ def get_safe_brightness_contrast_params(
     return safe_alpha, safe_beta
 
 
-def generate_noise(
+def generate_constant_noise_with_py_random(
     noise_type: Literal["uniform", "gaussian", "laplace", "beta"],
-    spatial_mode: Literal["constant", "per_pixel", "shared"],
+    shape: tuple[int, ...],
+    params: dict[str, Any] | None,
+    max_value: float,
+    py_random: random.Random,
+) -> np.ndarray:
+    """Generate constant noise using Python's random generator (faster for small arrays).
+
+    This function generates constant noise using Python's random generator, which is
+    more efficient for generating a small number of values (one per channel).
+
+    Args:
+        noise_type (Literal["uniform", "gaussian", "laplace", "beta"]): The type of noise to generate.
+        shape (tuple[int, ...]): The shape of the noise to generate.
+        params (dict[str, Any] | None): The parameters of the noise to generate.
+        max_value (float): The maximum value of the noise to generate.
+        py_random (random.Random): Python's random generator to use.
+
+    Returns:
+        np.ndarray: The noise generated.
+
+    """
+    if params is None:
+        return np.zeros(shape[-1], dtype=np.float32)
+
+    num_channels = shape[-1]
+
+    if noise_type == "uniform":
+        ranges = params["ranges"]
+        if len(ranges) == 1:
+            ranges = ranges * num_channels
+        elif len(ranges) < num_channels:
+            raise ValueError(
+                f"Not enough ranges provided. Expected {num_channels}, got {len(ranges)}",
+            )
+        # Use py_random for constant mode (faster for small number of values)
+        return (
+            np.array(
+                [py_random.uniform(low, high) for low, high in ranges[:num_channels]],
+                dtype=np.float32,
+            )
+            * max_value
+        )
+
+    if noise_type == "gaussian":
+        # Sample mean and std once for all channels
+        mean = py_random.uniform(*params["mean_range"])
+        std = py_random.uniform(*params["std_range"])
+        # Python's random has gauss() method
+        return (
+            np.array(
+                [py_random.gauss(mean, std) for _ in range(num_channels)],
+                dtype=np.float32,
+            )
+            * max_value
+        )
+
+    if noise_type == "laplace":
+        # Sample location and scale once for all channels
+        loc = py_random.uniform(*params["mean_range"])
+        scale = py_random.uniform(*params["scale_range"])
+
+        # Implement laplace using inverse transform method
+        # Laplace CDF inverse: F^(-1)(p) = loc - scale * sign(p - 0.5) * ln(1 - 2*|p - 0.5|)
+        def laplace_sample() -> float:
+            u = py_random.random()
+            if u < 0.5:
+                return loc + scale * math.log(2 * u)
+            return loc - scale * math.log(2 * (1 - u))
+
+        return (
+            np.array(
+                [laplace_sample() for _ in range(num_channels)],
+                dtype=np.float32,
+            )
+            * max_value
+        )
+
+    if noise_type == "beta":
+        # Sample alpha, beta, and scale once for all channels
+        alpha = py_random.uniform(*params["alpha_range"])
+        beta = py_random.uniform(*params["beta_range"])
+        scale = py_random.uniform(*params["scale_range"])
+        # Python's random has betavariate() method
+        # Transform from [0,1] to [-scale, scale]
+        return (
+            np.array(
+                [(2 * py_random.betavariate(alpha, beta) - 1) * scale for _ in range(num_channels)],
+                dtype=np.float32,
+            )
+            * max_value
+        )
+
+    raise ValueError(f"Unknown noise type: {noise_type}")
+
+
+def generate_spatial_noise(
+    noise_type: Literal["uniform", "gaussian", "laplace", "beta"],
+    spatial_mode: Literal["per_pixel", "shared"],
     shape: tuple[int, ...],
     params: dict[str, Any] | None,
     max_value: float,
     approximation: float,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate noise with optional approximation for speed.
+    """Generate spatial noise (per_pixel or shared) with optional approximation for speed.
 
-    This function generates noise with optional approximation for speed.
+    This function generates spatial noise with optional approximation for speed.
 
     Args:
         noise_type (Literal["uniform", "gaussian", "laplace", "beta"]): The type of noise to generate.
-        spatial_mode (Literal["constant", "per_pixel", "shared"]): The spatial mode to use.
+        spatial_mode (Literal["per_pixel", "shared"]): The spatial mode to use.
         shape (tuple[int, ...]): The shape of the noise to generate.
         params (dict[str, Any] | None): The parameters of the noise to generate.
         max_value (float): The maximum value of the noise to generate.
@@ -2510,15 +2609,6 @@ def generate_noise(
 
     cv2_seed = random_generator.integers(0, 2**16)
     cv2.setRNGSeed(cv2_seed)
-
-    if spatial_mode == "constant":
-        return generate_constant_noise(
-            noise_type,
-            shape,
-            params,
-            max_value,
-            random_generator,
-        )
 
     if approximation == 1.0:
         if spatial_mode == "shared":
@@ -2563,38 +2653,6 @@ def generate_noise(
 
     # Resize noise to original size using existing resize function
     return fgeometric.resize(noise, (height, width), interpolation=cv2.INTER_LINEAR)
-
-
-def generate_constant_noise(
-    noise_type: Literal["uniform", "gaussian", "laplace", "beta"],
-    shape: tuple[int, ...],
-    params: dict[str, Any],
-    max_value: float,
-    random_generator: np.random.Generator,
-) -> np.ndarray:
-    """Generate constant noise.
-
-    This function generates constant noise by sampling from the noise distribution.
-
-    Args:
-        noise_type (Literal["uniform", "gaussian", "laplace", "beta"]): The type of noise to generate.
-        shape (tuple[int, ...]): The shape of the noise to generate.
-        params (dict[str, Any]): The parameters of the noise to generate.
-        max_value (float): The maximum value of the noise to generate.
-        random_generator (np.random.Generator): The random number generator to use.
-
-    Returns:
-        np.ndarray: The constant noise generated.
-
-    """
-    num_channels = shape[-1] if len(shape) > MONO_CHANNEL_DIMENSIONS else 1
-    return sample_noise(
-        noise_type,
-        (num_channels,),
-        params,
-        max_value,
-        random_generator,
-    )
 
 
 def generate_per_pixel_noise(
@@ -2660,8 +2718,8 @@ def sample_uniform(
     size: tuple[int, ...],
     params: dict[str, Any],
     random_generator: np.random.Generator,
-) -> np.ndarray | float:
-    """Sample from uniform distribution.
+) -> np.ndarray:
+    """Sample from uniform distribution for spatial noise.
 
     Args:
         size (tuple[int, ...]): Size of the output array
@@ -2669,24 +2727,9 @@ def sample_uniform(
         random_generator (np.random.Generator): Random number generator
 
     Returns:
-        np.ndarray | float: Sampled values
+        np.ndarray: Sampled values
 
     """
-    if len(size) == 1:  # constant mode
-        ranges = params["ranges"]
-        num_channels = size[0]
-
-        if len(ranges) == 1:
-            ranges = ranges * num_channels
-        elif len(ranges) < num_channels:
-            raise ValueError(
-                f"Not enough ranges provided. Expected {num_channels}, got {len(ranges)}",
-            )
-
-        return np.array(
-            [random_generator.uniform(low, high) for low, high in ranges[:num_channels]],
-        )
-
     # use first range for spatial noise
     low, high = params["ranges"][0]
     return random_generator.uniform(low, high, size=size)
@@ -3250,32 +3293,26 @@ def auto_contrast(
 
     """
     result = img.copy()
-    num_channels = get_num_channels(img)
+    num_channels = img.shape[-1]
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
 
     # Pre-compute histograms using cv2.calcHist - much faster than np.histogram
-    if img.ndim > MONO_CHANNEL_DIMENSIONS:
-        channels = cv2.split(img)
-        hists: list[np.ndarray] = []
-        for i, channel in enumerate(channels):
-            if ignore is not None and i == ignore:
-                hists.append(None)
-                continue
-            mask = None if ignore is None else (channel != ignore)
-            hist = cv2.calcHist([channel], [0], mask, [256], [0, max_value])
-            hists.append(hist.ravel())
+    channels = cv2.split(img)
+    hists: list[np.ndarray] = []
+    for i, channel in enumerate(channels):
+        if ignore is not None and i == ignore:
+            hists.append(None)
+            continue
+        mask = None if ignore is None else (channel != ignore)
+        hist = cv2.calcHist([channel], [0], mask, [256], [0, max_value])
+        hists.append(hist.ravel())
 
     for i in range(num_channels):
         if ignore is not None and i == ignore:
             continue
 
-        if img.ndim > MONO_CHANNEL_DIMENSIONS:
-            hist = hists[i]
-            channel = channels[i]
-        else:
-            mask = None if ignore is None else (img != ignore)
-            hist = cv2.calcHist([img], [0], mask, [256], [0, max_value]).ravel()
-            channel = img
+        hist = hists[i]
+        channel = channels[i]
 
         lo, hi = get_histogram_bounds(hist, cutoff)
         if hi <= lo:
@@ -3285,10 +3322,7 @@ def auto_contrast(
         if ignore is not None:
             lut[ignore] = ignore
 
-        if img.ndim > MONO_CHANNEL_DIMENSIONS:
-            result[..., i] = sz_lut(channel, lut)
-        else:
-            result = sz_lut(channel, lut)
+        result[..., i] = sz_lut(channel, lut)
 
     return result
 

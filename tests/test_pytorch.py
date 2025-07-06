@@ -223,12 +223,17 @@ def test_to_tensor_v2_on_non_contiguous_array():
     assert not non_contiguous_img.flags["C_CONTIGUOUS"]
 
     transform = A.Compose([A.ToTensorV2()], strict=True)
-    transformed = transform(image=non_contiguous_img, masks=[non_contiguous_img] * 2)
+    transformed = transform(image=non_contiguous_img, masks=np.stack([non_contiguous_img] * 2))
 
     # Additional checks to ensure the transformation worked correctly
     assert isinstance(transformed["image"], torch.Tensor)
     assert transformed["image"].shape == (3, 50, 50)  # Shape changed due to slicing
     assert transformed["image"].dtype == torch.uint8
+
+    # Check masks
+    assert isinstance(transformed["masks"], torch.Tensor)
+    assert transformed["masks"].shape == (2, 50, 50, 3)  # (N, H, W, C) - masks remain in original format
+    assert transformed["masks"].dtype == torch.uint8
 
     # Optional: Check that the content is correct
     np_transformed = transformed["image"].numpy()

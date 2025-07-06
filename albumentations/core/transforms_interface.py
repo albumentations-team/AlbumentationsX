@@ -572,7 +572,7 @@ class DualTransform(BasicTransform):
         apply(img: np.ndarray, **params: Any) -> np.ndarray:
             Apply the transform to the image.
 
-            img: Input image of shape (H, W, C) or (H, W) for grayscale.
+            img: Input image of shape (H, W, C).
             **params: Additional parameters specific to the transform.
 
             Returns Transformed image of the same shape as input.
@@ -580,7 +580,7 @@ class DualTransform(BasicTransform):
         apply_to_images(images: np.ndarray, **params: Any) -> np.ndarray:
             Apply the transform to multiple images.
 
-            images: Input images of shape (N, H, W, C) or (N, H, W) for grayscale.
+            images: Input images of shape (N, H, W, C).
             **params: Additional parameters specific to the transform.
 
             Returns Transformed images in the same format as input.
@@ -593,7 +593,7 @@ class DualTransform(BasicTransform):
 
             Returns Transformed mask in the same format as input.
 
-        apply_to_masks(masks: np.ndarray, **params: Any) -> np.ndarray | list[np.ndarray]:
+        apply_to_masks(masks: np.ndarray, **params: Any) -> np.ndarray:
             Apply the transform to multiple masks.
 
             masks: Array of shape (N, H, W) or (N, H, W, C) where N is number of masks
@@ -619,7 +619,7 @@ class DualTransform(BasicTransform):
         apply_to_volume(volume: np.ndarray, **params: Any) -> np.ndarray:
             Apply the transform to a volume.
 
-            volume: Input volume of shape (D, H, W) or (D, H, W, C).
+            volume: Input volume of shape (D, H, W, C).
             **params: Additional parameters specific to the transform.
 
             Returns Transformed volume of the same shape as input.
@@ -627,7 +627,7 @@ class DualTransform(BasicTransform):
         apply_to_volumes(volumes: np.ndarray, **params: Any) -> np.ndarray:
             Apply the transform to multiple volumes.
 
-            volumes: Input volumes of shape (N, D, H, W) or (N, D, H, W, C).
+            volumes: Input volumes of shape (N, D, H, W, C).
             **params: Additional parameters specific to the transform.
 
             Returns Transformed volumes in the same format as input.
@@ -810,10 +810,10 @@ class Transform3D(DualTransform):
     volumes and masks, similar to how 2D DualTransforms work with images and masks.
 
     Targets:
-        volume: 3D numpy array of shape (D, H, W) or (D, H, W, C)
-        volumes: Batch of 3D arrays of shape (N, D, H, W) or (N, D, H, W, C)
-        mask: 3D numpy array of shape (D, H, W)
-        masks: Batch of 3D arrays of shape (N, D, H, W)
+        volume: 3D numpy array of shape (D, H, W, C)
+        volumes: Batch of 3D arrays of shape (N, D, H, W, C)
+        mask: 3D numpy array of shape (D, H, W) or (D, H, W, C)
+        masks: Batch of 3D arrays of shape (N, D, H, W) or (N, D, H, W, C)
         keypoints: 3D numpy array of shape (N, 3)
     """
 

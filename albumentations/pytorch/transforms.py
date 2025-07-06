@@ -9,7 +9,7 @@ step in an augmentation pipeline before feeding data to a PyTorch model.
 
 from __future__ import annotations
 
-from typing import Any, overload
+from typing import Any
 
 import numpy as np
 import torch
@@ -28,8 +28,7 @@ __all__ = ["ToTensor3D", "ToTensorV2"]
 class ToTensorV2(BasicTransform):
     """Converts images/masks to PyTorch Tensors, inheriting from BasicTransform.
     For images:
-        - If input is in `HWC` format, converts to PyTorch `CHW` format
-        - If input is in `HW` format, converts to PyTorch `1HW` format (adds channel dimension)
+        Converts `HWC` format to PyTorch `CHW` format
 
     Attributes:
         transpose_mask (bool): If True, transposes 3D input mask dimensions from `[height, width, num_channels]` to
@@ -66,7 +65,7 @@ class ToTensorV2(BasicTransform):
         single-channel and multi-channel images.
 
         Args:
-            img (np.ndarray): Image as a numpy array of shape (H,W) or (H,W,C)
+            img (np.ndarray): Image as a numpy array of shape (H,W,C)
             **params (Any): Additional parameters
 
         Returns:
@@ -103,37 +102,25 @@ class ToTensorV2(BasicTransform):
             mask = mask.transpose(2, 0, 1)
         return torch.from_numpy(mask)
 
-    @overload
-    def apply_to_masks(self, masks: list[np.ndarray], **params: Any) -> list[torch.Tensor]: ...
-
-    @overload
-    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> torch.Tensor: ...
-
-    def apply_to_masks(self, masks: np.ndarray | list[np.ndarray], **params: Any) -> torch.Tensor | list[torch.Tensor]:
+    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> torch.Tensor:
         """Convert numpy array or list of numpy array masks to torch tensor(s).
 
         Args:
-            masks (np.ndarray | list[np.ndarray]): Numpy array of shape (N, H, W) or (N, H, W, C),
-                or a list of numpy arrays with shape (H, W) or (H, W, C).
-            **params (Any): Additional parameters.
+            masks (np.ndarray): Numpy array of shape (N, H, W) or (N, H, W, C),
+            params (Any): Additional parameters.
 
         Returns:
-            torch.Tensor | list[torch.Tensor]: If transpose_mask is True and input is (N, H, W, C),
-                returns tensor of shape (N, C, H, W). If transpose_mask is True and input is (H, W, C), r
-                eturns a list of tensors with shape (C, H, W). Otherwise, returns tensors with the same shape as input.
+            torch.Tensor: If transpose_mask is True and input is (N, H, W, C),
+                returns tensor of shape (N, C, H, W). If transpose_mask is True and input is (H, W, C),
+                returns a tensor with shape (C, H, W). Otherwise, returns tensors with the same shape as input.
 
         """
-        if isinstance(masks, list):
-            return [self.apply_to_mask(mask, **params) for mask in masks]
-
         if self.transpose_mask and masks.ndim == NUM_VOLUME_DIMENSIONS:  # (N, H, W, C)
             masks = np.transpose(masks, (0, 3, 1, 2))  # -> (N, C, H, W)
         return torch.from_numpy(masks)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> torch.Tensor:
         """Convert batch of images from (N, H, W, C) to (N, C, H, W)."""
-        if images.ndim != NUM_VOLUME_DIMENSIONS:  # N,H,W,C
-            raise ValueError(f"Expected 4D array (N,H,W,C), got {images.ndim}D array")
         return torch.from_numpy(images.transpose(0, 3, 1, 2))  # -> (N,C,H,W)
 
 

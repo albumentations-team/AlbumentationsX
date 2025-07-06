@@ -1859,8 +1859,11 @@ class Posterize(ImageOnlyTransform):
     ) -> np.ndarray:
         return fpixel.posterize(img, num_bits)
 
-    def apply_to_images(self, images: list[np.ndarray], **params: Any) -> list[np.ndarray]:
+    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(images, **params)
+
+    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+        return self.apply(volumes, **params)
 
     def get_params(self) -> dict[str, Any]:
         if isinstance(self.num_bits, list):
@@ -5137,8 +5140,11 @@ class AdditiveNoise(ImageOnlyTransform):
     ) -> np.ndarray:
         return fpixel.add_noise(img, noise_map)
 
-    def apply_to_images(self, images: list[np.ndarray], **params: Any) -> list[np.ndarray]:
+    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return self.apply(images, **params)
+
+    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+        return self.apply(volumes, **params)
 
     def get_params_dependent_on_data(
         self,

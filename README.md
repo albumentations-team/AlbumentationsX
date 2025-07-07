@@ -12,6 +12,9 @@
 
 **AlbumentationsX is a drop-in replacement for Albumentations** - a Python library for image augmentation. It maintains 100% API compatibility while providing improved performance, bug fixes, and new features. Image augmentation is used in deep learning and computer vision tasks to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
 
+## GitAds Sponsored
+[![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=albumentations-team/albumentationsx@github)](https://gitads.dev/v1/ad-track?source=albumentations-team/albumentationsx@github)
+
 ## 📢 Important: AlbumentationsX - Dual Licensed Fork
 
 AlbumentationsX is a fork of the original Albumentations library with dual licensing:

@@ -304,6 +304,15 @@ class PixelDropout(DualTransform):
     ) -> np.ndarray:
         return fpixel.pixel_dropout(img, drop_mask, drop_values)
 
+    def apply_to_images(
+        self,
+        images: np.ndarray,
+        drop_mask: np.ndarray,
+        drop_values: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        return self.apply(images, drop_mask, drop_values, **params)
+
     def apply_to_mask(
         self,
         mask: np.ndarray,

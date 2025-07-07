@@ -16,7 +16,7 @@ from tests.conftest import (
     SQUARE_MULTI_UINT8_IMAGE,
     SQUARE_UINT8_IMAGE,
 )
-
+from albumentations.augmentations.pixel import functional as fpixel
 from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms, set_seed
 
 
@@ -1105,6 +1105,24 @@ def test_pixel_dropout_per_channel():
         assert drop_val in unique_values
         assert 255 in unique_values
 
+def test_pixel_dropout_multiple_images():
+    # I actually don't care about these params, I just need a transform instance.
+    transform = A.PixelDropout(
+        dropout_prob=0.5,
+        drop_value=0,
+        per_channel=True,
+        p=1.0
+    )
+
+    # Prepare inputs:
+    images = np.ones((2, 10, 10, 3), dtype=np.uint8) * 255
+    rng = np.random.default_rng(42)
+    drop_mask = fpixel.get_drop_mask(images.shape, True, 0.5, rng)
+    drop_values = fpixel.prepare_drop_values(images, 0, rng)
+
+    result = transform.apply_to_images(images, drop_mask, drop_values)
+    assert result.shape == images.shape # Check that original shape is preserved
+    assert np.all([np.any(image == 0) for image in result]) # Each image should have some dropped pixels
 
 
 def test_salt_and_pepper_noise():

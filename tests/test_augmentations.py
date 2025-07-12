@@ -1293,3 +1293,31 @@ def test_random_rain_visual_effect(slant):
             # The slant direction should match the expected direction
             assert observed_slant == expected_slant, \
                 f"Rain drops slant direction {observed_slant} doesn't match expected {expected_slant}"
+
+
+def test_to_sepia_rgb():
+    transform = A.ToSepia(p=1.0)
+    # White image to see some effect:
+    image = np.ones((10, 10, 3), dtype=np.uint8) * 255
+
+    transformed = transform(image=image)["image"]
+
+    assert image.shape == transformed.shape
+    assert not np.array_equal(image, transformed)
+
+@pytest.mark.parametrize("image", [np.random.randint(low=0, high=255, size=(10, 10, 1), dtype=np.uint8), np.random.randint(low=0, high=255, size=(2, 10, 10, 1), dtype=np.uint8)])
+def test_to_sepia_gray(image: np.ndarray):
+    transform = A.ToSepia(p=1.0)
+
+    transformed = transform(image=image)["image"]
+
+    assert np.array_equal(image, transformed)
+
+def test_to_sepia_rgb_multiple_images():
+    transform = A.ToSepia(p=1.0)
+    images = np.ones((2, 10, 10, 3), dtype=np.uint8) * 255
+
+    transformed = transform.apply_to_images(images)
+
+    assert images.shape == transformed.shape
+    assert np.all([not np.array_equal(im, tr) for im, tr in zip(images, transformed)])

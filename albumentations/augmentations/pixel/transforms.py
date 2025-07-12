@@ -3019,6 +3019,14 @@ class ToSepia(ImageOnlyTransform):
             raise TypeError(msg)
         return fpixel.linear_transformation_rgb(img, self.sepia_transformation_matrix)
 
+    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+        out = np.empty_like(images)
+
+        for i, image in enumerate(images):
+            out[i] = self.apply(image, **params)
+
+        return out
+
 
 class InterpolationPydantic(BaseModel):
     upscale: Literal[

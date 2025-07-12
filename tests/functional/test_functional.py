@@ -3363,3 +3363,68 @@ def test_to_gray_method_properties(method, expected_property):
 
     # All methods should produce values in valid range
     assert result.min() >= 0 and result.max() <= 255, f"Result out of range for method={method}"
+
+
+@pytest.mark.parametrize("img,M", [
+    (
+        np.random.randint(low=0, high=256, size=(10, 10, 3), dtype=np.uint8),
+        np.eye(3)
+    ),
+    (
+        np.random.randint(low=0, high=256, size=(1, 10, 10, 3), dtype=np.uint8),
+        np.eye(3)[None, :, :]
+    )
+])
+def test_linear_transformation_rgb_no_transformation(img: np.ndarray, M: np.ndarray):
+    actual = fpixel.linear_transformation_rgb(img, M)
+
+    np.testing.assert_array_equal(actual, img)
+
+
+@pytest.mark.parametrize("img,M", [
+    (
+        np.random.randint(low=0, high=256, size=(10, 10, 3), dtype=np.uint8),
+        np.eye(3)
+    ),
+    (
+        np.random.randint(low=0, high=256, size=(1, 10, 10, 3), dtype=np.uint8),
+        np.eye(3)[None, :, :]
+    )
+])
+def test_linear_transformation_rgb_no_transformation(img: np.ndarray, M: np.ndarray):
+    actual = fpixel.linear_transformation_rgb(img, M)
+
+    np.testing.assert_array_equal(actual, img)
+
+@pytest.mark.parametrize("img, M", [
+    (
+        np.array([[[255, 0, 0], [0, 255, 0], [0, 0, 255]]], dtype=np.uint8),
+        np.array([
+            [0, 0, 1],
+            [0, 1, 0],
+            [1, 0, 0],
+        ], dtype=np.float32),
+    ),
+    (
+        np.array([
+            [[[10, 20, 30], [40, 50, 60]]],
+            [[[70, 80, 90], [100, 110, 120]]]
+        ], dtype=np.uint8).reshape(2, 1, 2, 3),
+        np.array([
+            [[0, 0, 1],
+             [0, 1, 0],
+             [1, 0, 0]],
+            [[0, 0, 1],
+             [0, 1, 0],
+             [1, 0, 0]]
+        ], dtype=np.float32),
+    )
+])
+def test_linear_transformation_rgb_channel_swap(img: np.ndarray, M: np.ndarray):
+    actual = fpixel.linear_transformation_rgb(img, M)
+
+    expected = img[..., [2, 1, 0]]
+    np.testing.assert_array_equal(actual, expected)
+
+def test_linear_transformation_invalid_input(img: np.ndarray, M: np.ndarray):
+    pass

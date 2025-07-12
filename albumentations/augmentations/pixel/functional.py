@@ -413,20 +413,40 @@ def linear_transformation_rgb(
     img: np.ndarray,
     transformation_matrix: np.ndarray,
 ) -> np.ndarray:
-    """Apply a linear transformation to the RGB channels of an image.
+    """Apply a linear transformation to the RGB channels of an image or batch of images.
 
-    This function applies a linear transformation matrix to the RGB channels of an image.
-    The transformation matrix is a 3x3 matrix that maps the RGB values to new values.
+    This function applies a 3x3 linear transformation matrix (or batch of matrices)
+    to the RGB channels of either a single image or a batch of images.
+
+    Supported input shapes:
+    - Single image: (H, W, 3) with transformation matrix of shape (3, 3)
+    - Batch of images: (B, H, W, 3) with transformation matrices of shape (B, 3, 3)
 
     Args:
-        img (np.ndarray): Input image. Can be grayscale (2D array) or RGB (3D array).
-        transformation_matrix (np.ndarray): 3x3 transformation matrix.
+        img (np.ndarray): Input image or batch of images.
+            Must have 3 channels in the last dimension.
+            Shape should be either `(H, W, 3)` or `(B, H, W, 3)`.
+        transformation_matrix (np.ndarray): Transformation matrix or batch of matrices.
+            Shape should be `(3, 3)` for a single image or `(B, 3, 3)` for batch processing.
 
     Returns:
-        np.ndarray: Image with the linear transformation applied. The output has the same dtype as the input.
+        np.ndarray: Transformed image or batch of images, matching the input shape and dtype.
+
+    Raises:
+        ValueError: If input shapes do not conform to the supported configurations.
 
     """
-    return cv2.transform(img, transformation_matrix)
+    original_shape = img.shape
+
+    if img.ndim == 3 and transformation_matrix.ndim == 2:
+        out_flat = img.reshape(-1, 3) @ transformation_matrix.T
+    elif img.ndim == 4 and transformation_matrix.ndim == 3:
+        batch = img.shape[0]
+        out_flat = np.matmul(img.reshape(batch, -1, 3), transformation_matrix.transpose(0, 2, 1))
+    else:
+        raise ValueError("Invalid input combination: expected (H,W,3) with (3,3) or (B,H,W,3) with (B,3,3)")
+
+    return out_flat.reshape(*original_shape)
 
 
 @uint8_io

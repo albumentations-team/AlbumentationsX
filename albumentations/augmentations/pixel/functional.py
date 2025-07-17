@@ -419,8 +419,9 @@ def linear_transformation_rgb(
     to the RGB channels of either a single image or a batch of images.
 
     Args:
-        img (np.ndarray): A single RGB image of shape (H, W, 3), or a batch of images (B, H, W, 3).
-        transformation_matrix (np.ndarray): A 3x3 matrix or a batch of matrices of shape (1, 3, 3) or (B, 3, 3).
+        img (np.ndarray): A single RGB image of shape (H, W, 3), or a batch of images (B, H, W, 3),
+            or a batch of volumes (B, D, H, W, 3).
+        transformation_matrix (np.ndarray): A 3x3 matrix
 
     Returns:
         np.ndarray: Transformed image or batch of images, matching the input shape and dtype.
@@ -430,24 +431,16 @@ def linear_transformation_rgb(
 
     """
     if img.ndim == 3:
-        if transformation_matrix.shape != (3, 3):
-            if transformation_matrix.shape == (1, 3, 3):
-                transformation_matrix = transformation_matrix[0]
-            else:
-                raise ValueError("For a single image, transformation_matrix must be (3, 3) or (1, 3, 3).")
         return cv2.transform(img, transformation_matrix)
-
-    batch, height, width, channels = img.shape
-    if transformation_matrix.shape in {(3, 3), (1, 3, 3)}:
-        if transformation_matrix.shape == (1, 3, 3):
-            transformation_matrix = transformation_matrix[0]
-        transformed = cv2.transform(img.reshape(batch * height, width, channels), transformation_matrix)
-        return transformed.reshape(batch, height, width, channels)
-    if transformation_matrix.shape == (batch, 3, 3):
-        return np.stack([cv2.transform(img[idx], transformation_matrix[idx]) for idx in range(batch)])
-    raise ValueError(
-        f"Expected transformation_matrix shape (3, 3), (1, 3, 3) or ({batch}, 3, 3), got {transformation_matrix.shape}",
-    )
+    if img.ndim == 4:
+        transformed, original_shape = reshape_xhwc_channel(img)
+        transformed = cv2.transform(transformed, transformation_matrix)
+        return restore_xhwc_channel(transformed, original_shape)
+    if img.ndim == 5:
+        transformed, original_shape = reshape_ndhwc_channel(img)
+        transformed = cv2.transform(transformed, transformation_matrix)
+        return restore_ndhwc_channel(transformed, original_shape)
+    raise ValueError(f"Expected input shape (H, W, 3), (B, H, W, 3), (B, D, H, W, 3), got {img.shape}")
 
 
 @uint8_io

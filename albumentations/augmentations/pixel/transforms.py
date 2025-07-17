@@ -3020,12 +3020,10 @@ class ToSepia(ImageOnlyTransform):
         return fpixel.linear_transformation_rgb(img, self.sepia_transformation_matrix)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
-        out = np.empty_like(images)
+        return self.apply(images, **params)
 
-        for i, image in enumerate(images):
-            out[i] = self.apply(image, **params)
-
-        return out
+    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+        return self.apply(volumes, **params)
 
 
 class InterpolationPydantic(BaseModel):

@@ -1639,11 +1639,13 @@ class HueSaturationValue(ImageOnlyTransform):
         sat_shift_limit: tuple[float, float] | float = (-30, 30),
         val_shift_limit: tuple[float, float] | float = (-20, 20),
         p: float = 0.5,
+        apply_to_images: bool = False,
     ):
         super().__init__(p=p)
         self.hue_shift_limit = cast("tuple[float, float]", hue_shift_limit)
         self.sat_shift_limit = cast("tuple[float, float]", sat_shift_limit)
         self.val_shift_limit = cast("tuple[float, float]", val_shift_limit)
+        self._apply_to_images_flag = apply_to_images
 
     def apply(
         self,
@@ -1664,6 +1666,20 @@ class HueSaturationValue(ImageOnlyTransform):
             "sat_shift": self.py_random.uniform(*self.sat_shift_limit),
             "val_shift": self.py_random.uniform(*self.val_shift_limit),
         }
+
+    def apply_to_images(self, images: Sequence[np.ndarray], **params: Any) -> list[np.ndarray]:
+        """Apply the Hue-Saturation-Value (HSV) transformation to a list of images.
+
+        Args:
+            images: Sequence of images to augment.
+            **params: Additional transformation parameters
+                (hue_shift, sat_shift, val_shift) sampled for this augmentation.
+
+        Returns:
+            list[np.ndarray]: Augmented images.
+
+        """
+        return [self.apply(img, **params) for img in images]
 
 
 class Solarize(ImageOnlyTransform):

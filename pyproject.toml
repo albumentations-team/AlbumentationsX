@@ -125,6 +125,7 @@ classifiers = [
 
 dynamic = [ "dependencies" ]
 optional-dependencies.hub = [ "huggingface-hub" ]
+optional-dependencies.pillow = [ "pillow" ]
 optional-dependencies.pytorch = [ "torch" ]
 
 optional-dependencies.pyvips = [ "pyvips[binary]" ]

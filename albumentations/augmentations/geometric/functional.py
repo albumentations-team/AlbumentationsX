@@ -232,6 +232,8 @@ def _get_resize_backend() -> str:
     env_backend = os.environ.get("ALBUMENTATIONS_RESIZE", default="opencv").lower()
     if env_backend == "pyvips" and _can_import("pyvips"):
         return env_backend
+    if env_backend == "pillow" and _can_import("PIL"):
+        return env_backend
     return "opencv"
 
 
@@ -243,6 +245,8 @@ def resize(
 ) -> np.ndarray:
     """Resize an image to the specified target shape using the backend
     chosen via the ALBUMENTATIONS_RESIZE environment variable.
+
+    If the image is already the target size, it is returned unchanged.
 
     Args:
         img (np.ndarray): Input image.
@@ -256,6 +260,9 @@ def resize(
         NotImplementedError: If the selected backend is not supported.
 
     """
+    if target_shape == img.shape[:2]:
+        return img
+
     backend = _get_resize_backend()
     if backend == "opencv":
         return resize_cv2(img, target_shape, interpolation)
@@ -270,10 +277,9 @@ def resize_pyvips(
     target_shape: tuple[int, int],
     interpolation: int = 1,
 ) -> np.ndarray:
-    """Resize an image to the specified dimensions.
+    """Resize an image to the specified dimensions using pyvips.
 
-    This function resizes an input image to the target shape using the specified
-    interpolation method. If the image is already the target size, it is returned unchanged.
+    This function resizes an input image to the target shape using the specified interpolation method.
 
     Args:
         img (np.ndarray): The input image as a NumPy array.
@@ -289,9 +295,6 @@ def resize_pyvips(
     """
     # At this stage, the library's installation and importability have already been verified.
     import pyvips
-
-    if target_shape == img.shape[:2]:
-        return img
 
     height, width = img.shape[:2]
     target_height, target_width = target_shape
@@ -325,10 +328,9 @@ def resize_cv2(
     target_shape: tuple[int, int],
     interpolation: int,
 ) -> np.ndarray:
-    """Resize an image to the specified dimensions.
+    """Resize an image to the specified dimensions using cv2.
 
-    This function resizes an input image to the target shape using the specified
-    interpolation method. If the image is already the target size, it is returned unchanged.
+    This function resizes an input image to the target shape using the specified interpolation method.
 
     Args:
         img (np.ndarray): Input image to resize.
@@ -340,9 +342,6 @@ def resize_cv2(
         np.ndarray: Resized image with shape target_shape + original channel dimensions.
 
     """
-    if target_shape == img.shape[:2]:
-        return img
-
     height, width = target_shape[:2]
     resize_fn = maybe_process_in_chunks(
         cv2.resize,
@@ -350,6 +349,46 @@ def resize_cv2(
         interpolation=interpolation,
     )
     return resize_fn(img)
+
+
+def resize_pil(
+    img: np.ndarray,
+    target_shape: tuple[int, int],
+    interpolation: int,
+) -> np.ndarray:
+    """Resizes an image (NumPy array) using PIL's resize method.
+
+    This function resizes an input image to the target shape using the specified interpolation method.
+
+    Args:
+        img (np.ndarray): The input image as a NumPy array.
+        target_shape (tuple[int, int]): The desired output shape (height, width).
+        interpolation (int): The PIL interpolation filter to use.
+            0: NEAREST
+            1: LANCZOS (alias of ANTIALIAS filter)
+            2: BILINEAR
+            3: BICUBIC
+            4: BOX
+            5: HAMMING
+
+    Returns:
+        np.ndarray: The resized image as a NumPy array.
+
+    """
+    # At this stage, the library's installation and importability have already been verified.
+    from PIL import Image
+
+    target_height, target_width = target_shape
+    original_dtype = img.dtype
+
+    pil_img = Image.fromarray(img)
+
+    resized_pil_img = pil_img.resize(
+        (target_width, target_height),
+        resample=interpolation,
+    )
+
+    return np.array(resized_pil_img, dtype=original_dtype)
 
 
 @preserve_channel_dim

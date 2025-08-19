@@ -7,9 +7,12 @@ bounding boxes and keypoints.
 
 from __future__ import annotations
 
+import importlib
 import math
+import os
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from typing import Any, Literal, cast
 from warnings import warn
 
@@ -217,8 +220,107 @@ def keypoints_d4(
     raise ValueError(f"Invalid group member: {group_member}")
 
 
+def _can_import(library_name: str) -> bool:
+    try:
+        return importlib.import_module(library_name) is not None
+    except ImportError:
+        return False
+
+
+@lru_cache(maxsize=1)
+def _get_resize_backend() -> str:
+    env_backend = os.environ.get("ALBUMENTATIONS_RESIZE", default="opencv").lower()
+    if env_backend == "pyvips" and _can_import("pyvips"):
+        return env_backend
+    return "opencv"
+
+
 @preserve_channel_dim
 def resize(
+    img: np.ndarray,
+    target_shape: tuple[int, int],
+    interpolation: int,
+) -> np.ndarray:
+    """Resize an image to the specified target shape using the backend
+    chosen via the ALBUMENTATIONS_RESIZE environment variable.
+
+    Args:
+        img (np.ndarray): Input image.
+        target_shape (tuple[int, int]): Target (height, width) dimensions.
+        interpolation (int): Interpolation method.
+
+    Returns:
+        np.ndarray: Resized image with shape target_shape + original channel dimensions.
+
+    Raises:
+        NotImplementedError: If the selected backend is not supported.
+
+    """
+    backend = _get_resize_backend()
+    if backend == "opencv":
+        return resize_cv2(img, target_shape, interpolation)
+    if backend == "pyvips":
+        return resize_pyvips(img, target_shape, interpolation)
+
+    raise NotImplementedError(f"The provided backend '{backend}' is not supported yet.")
+
+
+def resize_pyvips(
+    img: np.ndarray,
+    target_shape: tuple[int, int],
+    interpolation: int = 1,
+) -> np.ndarray:
+    """Resize an image to the specified dimensions.
+
+    This function resizes an input image to the target shape using the specified
+    interpolation method. If the image is already the target size, it is returned unchanged.
+
+    Args:
+        img (np.ndarray): The input image as a NumPy array.
+        target_shape (tuple[int, int]): The desired output shape (height, width).
+        interpolation (int): The interpolation method to use.
+            0: Nearest-neighbor
+            1: Bilinear
+            2: Bicubic
+
+    Returns:
+        np.ndarray: The resized image as a NumPy array with the original dtype.
+
+    """
+    # At this stage, the library's installation and importability have already been verified.
+    import pyvips
+
+    if target_shape == img.shape[:2]:
+        return img
+
+    height, width = img.shape[:2]
+    target_height, target_width = target_shape
+    original_dtype = img.dtype
+
+    img_vips = pyvips.Image.new_from_array(img)
+
+    scale_x = target_width / width
+    scale_y = target_height / height
+
+    interpolation_map = {
+        0: pyvips.Kernel.NEAREST,
+        1: pyvips.Kernel.LINEAR,
+        2: pyvips.Kernel.CUBIC,
+    }
+    interpolation_method = interpolation_map.get(interpolation)
+    if interpolation_method is None:
+        raise ValueError(f"Unsupported interpolation method: {interpolation}")
+
+    resized_img_vips = img_vips.resize(
+        scale_x,
+        vscale=scale_y,
+        kernel=interpolation_method,
+    )
+
+    return resized_img_vips.numpy().astype(original_dtype)
+
+
+def resize_cv2(
     img: np.ndarray,
     target_shape: tuple[int, int],
     interpolation: int,

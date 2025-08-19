@@ -1,8 +1,10 @@
+import os
 import numpy as np
 import pytest
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.geometric.functional import (
+    _can_import,
     from_distance_maps,
     to_distance_maps,
 )
@@ -620,3 +622,40 @@ def test_memory_efficiency(random_generator):
     assert total_memory <= expected_size, "Memory usage is higher than expected"
 
     tracemalloc.stop()
+
+@pytest.mark.parametrize("input_shape,target_shape", [
+    ((100, 100), (200, 200)),
+    ((200, 200), (100, 100)),
+    ((150, 100), (150, 200)),
+])
+def test_resize_cv2(input_shape, target_shape):
+    img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
+
+    resized = fgeometric.resize_cv2(img, target_shape, interpolation=0)
+
+    assert resized.shape == (*target_shape, 3)
+
+@pytest.mark.skipif(not _can_import("pyvips"), reason="pyvips is not installed")
+@pytest.mark.parametrize("input_shape,target_shape", [
+    ((100, 100), (200, 200)),
+    ((200, 200), (100, 100)),
+    ((150, 100), (150, 200)),
+])
+def test_resize_pyvips(input_shape, target_shape):
+    img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
+
+    resized = fgeometric.resize_pyvips(img, target_shape, interpolation=0)
+    assert resized.shape == (*target_shape, 3)
+
+@pytest.mark.skipif(not _can_import("pyvips"), reason="pyvips is not installed")
+@pytest.mark.parametrize("interpolation", [0, 1, 2])
+@pytest.mark.parametrize("input_shape,target_shape", [
+    ((100, 100), (200, 200)),
+    ((200, 200), (100, 100)),
+])
+def test_resize_cv2_vs_pyvips(input_shape, target_shape, interpolation):
+    img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
+
+    resized_cv2 = fgeometric.resize_cv2(img, target_shape, interpolation=interpolation)
+    resized_pyvips = fgeometric.resize_pyvips(img, target_shape, interpolation=interpolation)
+    np.testing.assert_allclose(resized_cv2, resized_pyvips, atol=1)

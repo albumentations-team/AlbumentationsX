@@ -25,13 +25,11 @@ jobs:
           fetch-depth: 0  # Get full history for better context
 
       - name: Claude PR Review
-        uses: getclaudeapp/claude-code-action@v1
+        uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          max_turns: 3
-          timeout_minutes: 30
-          prompt: |
+          direct_prompt: |
             Please perform a comprehensive code review of this pull request focusing on:
 
             ## Critical Analysis Areas:
@@ -99,10 +97,7 @@ jobs:
           fetch-depth: 0
 
       - name: Claude Manual Review
-        uses: getclaudeapp/claude-code-action@v1
+        uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          trigger_phrase: "@claude"
-          max_turns: 5
-          timeout_minutes: 60

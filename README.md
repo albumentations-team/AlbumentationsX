@@ -179,6 +179,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [ChromaticAberration](https://explore.albumentations.ai/transform/ChromaticAberration)
 - [ColorJitter](https://explore.albumentations.ai/transform/ColorJitter)
 - [Defocus](https://explore.albumentations.ai/transform/Defocus)
+- [Dithering](https://explore.albumentations.ai/transform/Dithering)
 - [Downscale](https://explore.albumentations.ai/transform/Downscale)
 - [Emboss](https://explore.albumentations.ai/transform/Emboss)
 - [Equalize](https://explore.albumentations.ai/transform/Equalize)

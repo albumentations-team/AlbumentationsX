@@ -21,13 +21,11 @@ jobs:
           fetch-depth: 0
 
       - name: Performance Review
-        uses: getclaudeapp/claude-code-action@v1
+        uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          max_turns: 2
-          timeout_minutes: 15
-          prompt: |
+          direct_prompt: |
             Analyze this PR specifically for performance implications:
 
             1. **Algorithmic Complexity**:

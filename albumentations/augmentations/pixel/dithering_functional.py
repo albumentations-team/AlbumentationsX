@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 from typing import Any, cast
 
 import cv2
@@ -191,6 +192,7 @@ ERROR_DIFFUSION_KERNELS = {
 }
 
 
+@functools.lru_cache(maxsize=16)
 def generate_bayer_matrix(size: int) -> np.ndarray:
     """Generate Bayer threshold matrix of given size (cached).
 
@@ -234,7 +236,9 @@ def generate_bayer_matrix(size: int) -> np.ndarray:
         raise ValueError(msg)
 
     # Normalize to [0, 1]
-    return matrix / (size * size)
+    result = matrix / (size * size)
+    # Return copy to prevent cache pollution since numpy arrays are mutable
+    return result.copy()
 
 
 def quantize_value(value: float, n_levels: int) -> float:
@@ -278,39 +282,76 @@ def quantize_array(arr: np.ndarray, n_levels: int) -> np.ndarray:
     return quantized.astype(np.float32)
 
 
-@float32_io
+def random_dither_uint8(
+    img: np.ndarray,
+    n_colors: int,
+    noise_range: tuple[float, float],
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Apply random dithering optimized for uint8 images.
+
+    Args:
+        img: Input uint8 image with shape (H, W, C) in [0, 255] range.
+        n_colors: Number of colors per channel after quantization.
+        noise_range: Range of noise to add (min_noise, max_noise) in [0, 1] range.
+        random_generator: Random number generator for reproducible results.
+
+    Returns:
+        Dithered uint8 image in [0, 255] range.
+
+    """
+    # Add random noise (scale noise_range to uint8 range)
+    noise_uint8 = random_generator.uniform(
+        noise_range[0] * 255,
+        noise_range[1] * 255,
+        size=img.shape,
+    ).astype(np.int16)  # Use int16 to avoid overflow
+
+    # Add noise and clip to valid range
+    noisy = np.clip(img.astype(np.int16) + noise_uint8, 0, 255).astype(np.uint8)
+
+    # Quantize using LUT for maximum performance
+    if n_colors == 2:
+        return (noisy >= 128).astype(np.uint8) * 255
+
+    # Create LUT for quantization directly in uint8 space
+    lut = np.round(np.arange(256) * (n_colors - 1) / 255) / (n_colors - 1) * 255
+    lut = lut.astype(np.uint8)
+
+    # Apply LUT directly - this is the fastest path
+    return cv2.LUT(noisy, lut)
+
+
 def random_dither(
     img: np.ndarray,
     n_colors: int,
     noise_range: tuple[float, float],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Apply random noise dithering.
+    """Apply random dithering for float32 images.
 
     Args:
-        img: Input image in [0, 1] range with shape (H, W, C).
-        n_colors: Number of colors per channel.
-        noise_range: Range of noise to add.
-        random_generator: Random number generator.
+        img: Input float32 image with shape (H, W, C) in [0, 1] range.
+        n_colors: Number of colors per channel after quantization.
+        noise_range: Range of noise to add (min_noise, max_noise).
+        random_generator: Random number generator for reproducible results.
 
     Returns:
-        Dithered image in [0, 1] range.
+        Dithered float32 image in [0, 1] range.
 
     """
     # Add random noise
     noise = random_generator.uniform(noise_range[0], noise_range[1], size=img.shape)
     noisy = np.clip(img + noise, 0, 1)
 
-    # Quantize
+    # Quantize using vectorized numpy operations
     if n_colors == 2:
         return (noisy >= 0.5).astype(np.float32)
 
-    result = np.empty_like(img)
-    for channel_idx in range(img.shape[2]):
-        channel = noisy[:, :, channel_idx]
-        result[:, :, channel_idx] = quantize_array(channel, n_colors)
-
-    return result
+    # Vectorized quantization for float32
+    scaled = noisy * (n_colors - 1)
+    quantized = np.round(scaled) / (n_colors - 1)
+    return quantized.astype(np.float32)
 
 
 def ordered_dither_uint8(
@@ -344,9 +385,15 @@ def ordered_dither_uint8(
         for channel_idx in range(img.shape[2]):
             result[:, :, channel_idx] = (img[:, :, channel_idx] > tiled) * 255
         return result.astype(np.uint8)
-    # Multi-level: Create LUT for each threshold level
+    # Multi-level: Create LUT once outside channel loop
     result = np.zeros_like(img)
     levels = np.linspace(0, 255, n_colors).astype(np.uint8)
+
+    # Create LUT once - same for all channels
+    lut = np.zeros(256, dtype=np.uint8)
+    for i in range(256):
+        level_idx = min(i * n_colors // 256, n_colors - 1)
+        lut[i] = levels[level_idx]
 
     for channel_idx in range(img.shape[2]):
         channel = img[:, :, channel_idx]
@@ -354,18 +401,12 @@ def ordered_dither_uint8(
         dithered = channel.astype(np.int16) + (tiled.astype(np.int16) - 128) // n_colors
         dithered = np.clip(dithered, 0, 255)
 
-        # Quantize to n_colors levels
-        lut = np.zeros(256, dtype=np.uint8)
-        for i in range(256):
-            level_idx = min(i * n_colors // 256, n_colors - 1)
-            lut[i] = levels[level_idx]
-
+        # Reuse the same LUT for all channels
         result[:, :, channel_idx] = cv2.LUT(dithered.astype(np.uint8), lut)
 
     return result
 
 
-@float32_io
 def ordered_dither(
     img: np.ndarray,
     n_colors: int,
@@ -405,16 +446,11 @@ def ordered_dither(
     # Add dither noise to the image
     dithered = np.clip(img + dither_noise, 0, 1)
 
-    # Quantize to n_colors levels
-    result = np.empty_like(img)
-    for channel_idx in range(img.shape[2]):
-        channel = dithered[:, :, channel_idx]
-        quantized = np.floor(channel * n_colors) / n_colors
-        # Ensure the result is in [0, 1] and properly quantized
-        quantized = np.clip(quantized, 0, (n_colors - 1) / n_colors)
-        result[:, :, channel_idx] = quantized
-
-    return result
+    # Quantize to n_colors levels using vectorized numpy operations
+    # Since @float32_io guarantees float32 input, use direct numpy operations
+    quantized = np.floor(dithered * n_colors) / n_colors
+    # Ensure proper clipping to max quantized value
+    return np.clip(quantized, 0, (n_colors - 1) / n_colors).astype(np.float32)
 
 
 @float32_io
@@ -528,6 +564,17 @@ def _apply_single_dithering_method(
     # Choose optimized uint8 versions when possible
     if img.dtype == np.uint8 and method == "ordered":
         return ordered_dither_uint8(img, n_colors, kwargs.get("matrix_size", 4))
+    if img.dtype == np.uint8 and method == "random":
+        random_generator = kwargs.get("random_generator")
+        if random_generator is None:
+            msg = "random_generator is required for random dithering method"
+            raise ValueError(msg)
+        return random_dither_uint8(
+            img,
+            n_colors,
+            kwargs.get("noise_range", (-0.5, 0.5)),
+            random_generator,
+        )
 
     # Use float32 versions
     if method == "random":

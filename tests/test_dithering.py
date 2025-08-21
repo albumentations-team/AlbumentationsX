@@ -13,7 +13,6 @@ from albumentations.augmentations.pixel.dithering_functional import (
     ordered_dither,
     quantize_value,
     random_dither,
-    threshold_dither,
 )
 
 
@@ -58,24 +57,6 @@ class TestDitheringFunctional:
         # Test invalid size
         with pytest.raises(ValueError):
             generate_bayer_matrix(3)
-
-    def test_threshold_dither(self):
-        """Test threshold dithering."""
-        # Create gradient image
-        img = np.linspace(0, 1, 100).reshape(10, 10, 1).astype(np.float32)
-
-        # Test binary dithering
-        result = threshold_dither(img, n_colors=2, threshold=0.5)
-        np.testing.assert_equal(result.shape, img.shape)
-        assert np.all((result == 0) | (result == 1))
-        assert np.sum(result == 0) > 0
-        assert np.sum(result == 1) > 0
-
-        # Test multi-level dithering
-        result = threshold_dither(img, n_colors=4, threshold=0.5)
-        np.testing.assert_equal(result.shape, img.shape)
-        unique_values = np.unique(result)
-        assert len(unique_values) <= 4
 
     def test_random_dither(self):
         """Test random noise dithering."""
@@ -142,7 +123,7 @@ class TestDitheringFunctional:
 
         # Test grayscale mode
         result = apply_dithering(
-            img, method="threshold", n_colors=2, color_mode="grayscale", threshold=0.5
+            img, method="random", n_colors=2, color_mode="grayscale", noise_range=(-0.5, 0.5), random_generator=rng
         )
         np.testing.assert_equal(result.shape, img.shape)
         # All channels should be identical after grayscale conversion
@@ -168,7 +149,7 @@ class TestDitheringTransform:
     """Test Dithering transform class."""
 
     @pytest.mark.parametrize(
-        "method", ["threshold", "random", "ordered", "error_diffusion"]
+        "method", ["random", "ordered", "error_diffusion"]
     )
     @pytest.mark.parametrize("n_colors", [2, 4, 16])
     @pytest.mark.parametrize("img_dtype", [np.uint8, np.float32])
@@ -303,7 +284,6 @@ class TestDitheringTransform:
             bayer_matrix_size=8,
             serpentine=True,
             noise_range=(-0.3, 0.3),
-            threshold_value=0.6,
             p=0.7
         )
 
@@ -320,7 +300,6 @@ class TestDitheringTransform:
         np.testing.assert_equal(deserialized.bayer_matrix_size, transform.bayer_matrix_size)
         np.testing.assert_equal(deserialized.serpentine, transform.serpentine)
         np.testing.assert_equal(deserialized.noise_range, transform.noise_range)
-        np.testing.assert_equal(deserialized.threshold_value, transform.threshold_value)
         np.testing.assert_equal(deserialized.p, transform.p)
 
     def test_invalid_color_mode(self):
@@ -411,12 +390,12 @@ class TestDitheringTransform:
                 assert unique_vals <= 4, f"Channel {ch} has too many unique values"
 
     def test_uint8_optimization(self):
-        """Test that uint8 images use optimized paths for threshold and ordered dithering."""
+        """Test that uint8 images use optimized paths for ordered dithering."""
         img_uint8 = np.random.randint(0, 256, (50, 50, 3), dtype=np.uint8)
         img_float32 = img_uint8.astype(np.float32) / 255.0
 
-        # Test threshold dithering
-        transform = A.Dithering(method="threshold", n_colors=2, p=1.0)
+        # Test ordered dithering
+        transform = A.Dithering(method="ordered", n_colors=2, p=1.0)
 
         result_uint8 = transform(image=img_uint8)["image"]
         result_float32 = transform(image=img_float32)["image"]
@@ -426,7 +405,6 @@ class TestDitheringTransform:
         np.testing.assert_equal(result_float32.dtype, np.float32)
 
         # Compare normalized results
-        # Allow for threshold differences (127/255 vs 0.5)
         result_uint8_norm = result_uint8.astype(np.float32) / 255.0
         # Both should be binary (0 or 1)
         assert np.all((result_uint8_norm == 0) | (result_uint8_norm == 1))
@@ -462,12 +440,9 @@ class TestDitheringTransform:
             )
             result = transform(image=img)["image"]
 
-            # Grayscale mode always outputs 3 channels (RGB)
-            if n_channels == 3:
-                np.testing.assert_equal(result.shape, img.shape)
-            else:
-                np.testing.assert_equal(result.shape, (30, 30, 3)), f"Grayscale output shape wrong for {n_channels} input channels"
+            # Grayscale mode preserves original number of channels
+            np.testing.assert_equal(result.shape, img.shape), f"Grayscale output shape wrong for {n_channels} input channels"
 
-            # All RGB channels should be identical in grayscale mode
-            np.testing.assert_allclose(result[:, :, 0], result[:, :, 1])
-            np.testing.assert_allclose(result[:, :, 1], result[:, :, 2])
+            # All channels should be identical in grayscale mode
+            for ch in range(1, n_channels):
+                np.testing.assert_allclose(result[:, :, 0], result[:, :, ch])

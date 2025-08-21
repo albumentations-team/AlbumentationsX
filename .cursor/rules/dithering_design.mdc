@@ -21,19 +21,13 @@ Dithering is an intentionally applied form of noise used to randomize quantizati
 
 Based on the Wikipedia article and common usage, we should implement these dithering methods:
 
-### 1. Threshold Dithering (Baseline)
-- **Method**: Simple threshold at 0.5 (or configurable)
-- **Pros**: Fast, simple
-- **Cons**: Produces harsh edges, loses detail
-- **Parameters**: `threshold_value: float = 0.5`
-
-### 2. Random Dithering (White Noise)
+### 1. Random Dithering (White Noise)
 - **Method**: Add random noise before quantization
 - **Pros**: Simple, no patterns
 - **Cons**: Grainy appearance
 - **Parameters**: `noise_range: tuple[float, float]`
 
-### 3. Ordered Dithering (Bayer Matrix)
+### 2. Ordered Dithering (Bayer Matrix)
 - **Method**: Use repeating threshold matrices (Bayer patterns)
 - **Common Matrices**:
   - 2x2 Bayer matrix
@@ -44,7 +38,7 @@ Based on the Wikipedia article and common usage, we should implement these dithe
 - **Cons**: Visible crosshatch patterns
 - **Parameters**: `matrix_size: Literal[2, 4, 8, 16]`
 
-### 4. Error Diffusion Dithering
+### 3. Error Diffusion Dithering
 Multiple algorithms that propagate quantization error to neighboring pixels:
 
 #### Floyd-Steinberg (Most Common)
@@ -75,13 +69,13 @@ Multiple algorithms that propagate quantization error to neighboring pixels:
 - `algorithm: Literal["floyd_steinberg", "jarvis", "stucki", "atkinson", "burkes", "sierra", "sierra_2row", "sierra_lite"]`
 - `serpentine: bool = False` (bidirectional scanning to reduce artifacts)
 
-### 5. Pattern Dithering
+### 4. Pattern Dithering
 - **Method**: Use predefined patterns for different gray levels
 - **Pros**: Predictable results
 - **Cons**: Very visible patterns
 - **Parameters**: `pattern_size: int`
 
-### 6. Void-and-Cluster Dithering
+### 5. Void-and-Cluster Dithering
 - **Method**: Blue-noise dithering that minimizes low-frequency noise
 - **Pros**: Visually pleasing, no visible patterns
 - **Cons**: More complex to implement
@@ -106,14 +100,13 @@ class Dithering(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        method: Literal["threshold", "random", "ordered", "error_diffusion", "pattern", "void_cluster"]
+        method: Literal["random", "ordered", "error_diffusion", "pattern", "void_cluster"]
         n_colors: int = Field(ge=2, le=256)
         color_mode: Literal["rgb", "per_channel", "grayscale"] = "per_channel"
         error_diffusion_algorithm: Literal["floyd_steinberg", "jarvis", "stucki", "atkinson", "burkes", "sierra", "sierra_2row", "sierra_lite"] = "floyd_steinberg"
         bayer_matrix_size: Literal[2, 4, 8, 16] = 4
         serpentine: bool = False
         noise_range: tuple[float, float] = (-0.5, 0.5)
-        threshold_value: float = Field(ge=0, le=1, default=0.5)
 ```
 
 ### Functional Implementation Structure
@@ -126,9 +119,6 @@ def quantize_colors(img: np.ndarray, n_colors: int) -> tuple[np.ndarray, np.ndar
     """Quantize image to n colors, return quantized and palette"""
 
 # Individual algorithm implementations
-def threshold_dither(img: np.ndarray, n_colors: int, threshold: float) -> np.ndarray:
-    """Simple threshold dithering"""
-
 def random_dither(img: np.ndarray, n_colors: int, noise_range: tuple[float, float]) -> np.ndarray:
     """Random noise dithering"""
 
@@ -230,11 +220,10 @@ dithered = transform(image=image)["image"]
 1. **Phase 1** (Core):
    - Floyd-Steinberg error diffusion (most common)
    - Ordered dithering with Bayer matrix
-   - Basic threshold dithering
+   - Random dithering
 
 2. **Phase 2** (Extended):
    - Other error diffusion algorithms
-   - Random dithering
    - Serpentine scanning
 
 3. **Phase 3** (Advanced):

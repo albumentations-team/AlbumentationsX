@@ -278,67 +278,6 @@ def quantize_array(arr: np.ndarray, n_levels: int) -> np.ndarray:
     return quantized.astype(np.float32)
 
 
-def threshold_dither_uint8(
-    img: np.ndarray,
-    n_colors: int,
-    threshold: int = 127,
-) -> np.ndarray:
-    """Apply threshold dithering optimized for uint8 images using cv2.LUT.
-
-    Args:
-        img: Input uint8 image with shape (H, W, C).
-        n_colors: Number of colors per channel.
-        threshold: Threshold value in [0, 255].
-
-    Returns:
-        Dithered uint8 image.
-
-    """
-    if n_colors == 2:
-        # Simple binary threshold
-        lut = np.zeros(256, dtype=np.uint8)
-        lut[threshold:] = 255
-    else:
-        # Multi-level quantization
-        lut = np.zeros(256, dtype=np.uint8)
-        step = 256 // n_colors
-        for i in range(256):
-            level = min(i // step, n_colors - 1)
-            lut[i] = level * (255 // (n_colors - 1))
-
-    # Apply LUT to each channel
-    return cv2.LUT(img, lut)
-
-
-@float32_io
-def threshold_dither(
-    img: np.ndarray,
-    n_colors: int,
-    threshold: float = 0.5,
-) -> np.ndarray:
-    """Apply simple threshold dithering.
-
-    Args:
-        img: Input image in [0, 1] range with shape (H, W, C).
-        n_colors: Number of colors per channel.
-        threshold: Threshold value in [0, 1].
-
-    Returns:
-        Dithered image in [0, 1] range.
-
-    """
-    if n_colors == 2:
-        return (img >= threshold).astype(np.float32)
-
-    # For multi-level, use efficient array quantization
-    result = np.empty_like(img)
-    for channel_idx in range(img.shape[2]):
-        channel = img[:, :, channel_idx]
-        result[:, :, channel_idx] = quantize_array(channel, n_colors)
-
-    return result
-
-
 @float32_io
 def random_dither(
     img: np.ndarray,
@@ -555,6 +494,9 @@ def _apply_dithering_to_grayscale(
     **kwargs: Any,
 ) -> np.ndarray:
     """Apply dithering to grayscale image."""
+    # Store original number of channels
+    original_channels = img.shape[2]
+
     # Convert to grayscale
     if img.shape[2] == 3:
         gray = to_gray_weighted_average(img)
@@ -570,10 +512,10 @@ def _apply_dithering_to_grayscale(
     # Apply dithering method
     dithered = _apply_single_dithering_method(gray, method, n_colors, **kwargs)
 
-    # Expand back to RGB (handle both 2D and 3D cases)
+    # Expand back to original number of channels (handle both 2D and 3D cases)
     if dithered.ndim == 2:
         dithered = dithered[:, :, np.newaxis]
-    return np.repeat(dithered, 3, axis=2)
+    return np.repeat(dithered, original_channels, axis=2)
 
 
 def _apply_single_dithering_method(
@@ -584,22 +526,20 @@ def _apply_single_dithering_method(
 ) -> np.ndarray:
     """Apply a single dithering method to an image."""
     # Choose optimized uint8 versions when possible
-    if img.dtype == np.uint8 and method in ["threshold", "ordered"]:
-        if method == "threshold":
-            threshold_uint8 = int(kwargs.get("threshold", 0.5) * 255)
-            return threshold_dither_uint8(img, n_colors, threshold_uint8)
-        if method == "ordered":
-            return ordered_dither_uint8(img, n_colors, kwargs.get("matrix_size", 4))
+    if img.dtype == np.uint8 and method == "ordered":
+        return ordered_dither_uint8(img, n_colors, kwargs.get("matrix_size", 4))
 
     # Use float32 versions
-    if method == "threshold":
-        return threshold_dither(img, n_colors, kwargs.get("threshold", 0.5))
     if method == "random":
+        random_generator = kwargs.get("random_generator")
+        if random_generator is None:
+            msg = "random_generator is required for random dithering method"
+            raise ValueError(msg)
         return random_dither(
             img,
             n_colors,
             kwargs.get("noise_range", (-0.5, 0.5)),
-            kwargs.get("random_generator"),
+            random_generator,
         )
     if method == "ordered":
         return ordered_dither(img, n_colors, kwargs.get("matrix_size", 4))

@@ -6390,9 +6390,7 @@ class Dithering(ImageOnlyTransform):
 
     Args:
         method(str): Which dithering algorithm to use. Each has different characteristics:
-            - "threshold": Simplest method. Pixels above a threshold become white, below become black.
-                          Fast but creates harsh edges. Like using a rubber stamp.
-            - "random": Adds random noise before thresholding. Creates a grainy, film-like texture.
+            - "random": Adds random noise before quantization. Creates a grainy, film-like texture.
                        Good for artistic effects or simulating old photographs.
             - "ordered": Uses a repeating pattern (Bayer matrix) to decide which pixels to darken.
                         Creates distinctive crosshatch patterns. Fast and predictable.
@@ -6414,11 +6412,11 @@ class Dithering(ImageOnlyTransform):
                            Maintains color relationships but each channel gets its own pattern.
                            Works with any number of channels.
             - "grayscale": First converts the image to grayscale (using standard luminance weights),
-                          then applies dithering, then expands back to RGB. All color information
-                          is lost, but the dithering pattern is consistent across channels.
-            Default: "per_channel"
+                          then applies dithering, then expands back to the original number of channels.
+                          All color information is lost, but the dithering pattern is consistent across channels.
+            Default: "grayscale"
 
-        error_diffusion_algorithm(str): When using "error_diffusion" method, which specific algorithm:
+        error_diffusion_algorithm(str): Used only in "error_diffusion" method. Which specific algorithm:
             - "floyd_steinberg": The classic, invented in 1976. Spreads error to 4 neighbors.
                                Good balance of quality and speed. Industry standard.
             - "jarvis": Jarvis-Judice-Ninke algorithm. Spreads error to 12 neighbors.
@@ -6432,24 +6430,20 @@ class Dithering(ImageOnlyTransform):
             - "sierra_lite": Minimal Sierra using only 3 neighbors. Very fast.
             Default: "floyd_steinberg"
 
-        bayer_matrix_size(int): For "ordered" method, the size of the repeating pattern (2, 4, 8, or 16).
+        bayer_matrix_size(int): Used only in "ordered" method. The size of the repeating pattern (2, 4, 8, or 16).
             - 2x2: Very visible checkerboard pattern
             - 4x4: Standard, good balance
             - 8x8: Finer pattern, less visible
             - 16x16: Very fine pattern, almost noise-like
             Default: 4
 
-        serpentine(bool): For "error_diffusion" method, whether to process rows in alternating directions
+        serpentine(bool): Used only in "error_diffusion" method. Whether to process rows in alternating directions
                    (left-to-right, then right-to-left). This can reduce visible "worm" artifacts
                    that sometimes appear as diagonal lines. Slightly slower. Default: False
 
-        noise_range(tuple[float, float]): For "random" method, how much random noise to add before thresholding.
-                    Larger range = more variation in the dithering pattern.
+        noise_range(tuple[float, float]): Used only in "random" method. How much random noise to add before
+                    quantization. Larger range = more variation in the dithering pattern.
                     Range: (-1.0, 1.0). Default: (-0.5, 0.5)
-
-        threshold_value(float): For "threshold" method, the cutoff value (0.0 to 1.0).
-                        Pixels above this become white, below become black.
-                        0.5 = middle gray. Lower values create brighter images. Default: 0.5
 
         p(float): Probability of applying this transform. Default: 0.5
 
@@ -6515,7 +6509,7 @@ class Dithering(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        method: Literal["threshold", "random", "ordered", "error_diffusion"]
+        method: Literal["random", "ordered", "error_diffusion"]
         n_colors: int = Field(ge=2, le=256)
         color_mode: Literal["grayscale", "per_channel"]
         error_diffusion_algorithm: Literal[
@@ -6531,13 +6525,12 @@ class Dithering(ImageOnlyTransform):
         bayer_matrix_size: Literal[2, 4, 8, 16]
         serpentine: bool
         noise_range: Annotated[tuple[float, float], AfterValidator(check_range_bounds(-1, 1))]
-        threshold_value: float = Field(ge=0, le=1)
 
     def __init__(
         self,
-        method: Literal["threshold", "random", "ordered", "error_diffusion"] = "error_diffusion",
+        method: Literal["random", "ordered", "error_diffusion"] = "error_diffusion",
         n_colors: int = 2,
-        color_mode: Literal["grayscale", "per_channel"] = "per_channel",
+        color_mode: Literal["grayscale", "per_channel"] = "grayscale",
         error_diffusion_algorithm: Literal[
             "floyd_steinberg",
             "jarvis",
@@ -6551,7 +6544,6 @@ class Dithering(ImageOnlyTransform):
         bayer_matrix_size: Literal[2, 4, 8, 16] = 4,
         serpentine: bool = False,
         noise_range: tuple[float, float] = (-0.5, 0.5),
-        threshold_value: float = 0.5,
         p: float = 0.5,
     ):
         super().__init__(p=p)
@@ -6562,7 +6554,6 @@ class Dithering(ImageOnlyTransform):
         self.bayer_matrix_size = bayer_matrix_size
         self.serpentine = serpentine
         self.noise_range = noise_range
-        self.threshold_value = threshold_value
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
         from albumentations.augmentations.pixel import dithering_functional as fdither
@@ -6576,6 +6567,5 @@ class Dithering(ImageOnlyTransform):
             matrix_size=self.bayer_matrix_size,
             serpentine=self.serpentine,
             noise_range=self.noise_range,
-            threshold=self.threshold_value,
             random_generator=self.random_generator,
         )

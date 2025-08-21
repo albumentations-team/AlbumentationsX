@@ -446,6 +446,46 @@ def test_batched_multiplicative_noise(images: np.ndarray):
     assert not np.array_equal(images[1], expected)
     np.testing.assert_allclose(actual[1], expected)
 
+@pytest.mark.parametrize("images", [
+    cv2.randu(np.zeros((2, 256, 320, 1), dtype=np.uint8), 0, 255),
+    cv2.randu(np.zeros((2, 256, 320, 1), dtype=np.float32), 0, 1),
+    cv2.randu(np.zeros((2, 256, 320, 3), dtype=np.uint8), 0, 255),
+    cv2.randu(np.zeros((2, 256, 320, 3), dtype=np.float32), 0, 1),
+])
+def test_batched_hue_saturation_value(images: np.ndarray):
+    # Fixed params so results are deterministic across single/batch paths
+    hue_shift=10
+    sat_shift=20
+    val_shift=-15
+
+    aug = A.HueSaturationValue(p=1)
+    
+    actual = aug.apply_to_images(images,
+        hue_shift=hue_shift,
+        sat_shift=sat_shift,
+        val_shift=val_shift,)
+    assert actual.shape == images.shape
+
+    expected0 = aug.apply(
+        images[0],
+        hue_shift=hue_shift,
+        sat_shift=sat_shift,
+        val_shift=val_shift,
+    )
+    expected1 = aug.apply(
+        images[1],
+        hue_shift=hue_shift,
+        sat_shift=sat_shift,
+        val_shift=val_shift,
+    )
+
+    # Ensure transform changed something (sanity check)
+    assert not np.array_equal(images[0], expected0)
+    assert not np.array_equal(images[1], expected1)
+
+    # Batch must equal per-image results
+    np.testing.assert_allclose(actual[0], expected0)
+    np.testing.assert_allclose(actual[1], expected1)
 
 @pytest.mark.parametrize(
     "image",

@@ -72,6 +72,7 @@ __all__ = [
     "ChannelShuffle",
     "ChromaticAberration",
     "ColorJitter",
+    "Dithering",
     "Downscale",
     "Emboss",
     "Equalize",
@@ -6370,3 +6371,211 @@ class HEStain(ImageOnlyTransform):
             "scale_factors": scale_factors,
             "shift_values": shift_values,
         }
+
+
+class Dithering(ImageOnlyTransform):
+    """Reduce the number of colors in an image using dithering techniques.
+
+    Dithering is like creating a newspaper photo - it uses patterns of dots to create the illusion
+    of more colors than are actually present. When you have a limited color palette (like only
+    black and white), dithering arranges these limited colors in patterns that trick your eye
+    into seeing intermediate shades.
+
+    Think of it like pointillist paintings - up close you see individual dots, but from a distance
+    they blend together to create smooth gradients and subtle color variations.
+
+    This transform works with ANY number of channels - it processes each channel independently,
+    whether you have a standard RGB image (3 channels), RGBA with transparency (4 channels),
+    multispectral satellite imagery (dozens of channels), or even single-channel grayscale images.
+
+    Args:
+        method(str): Which dithering algorithm to use. Each has different characteristics:
+            - "threshold": Simplest method. Pixels above a threshold become white, below become black.
+                          Fast but creates harsh edges. Like using a rubber stamp.
+            - "random": Adds random noise before thresholding. Creates a grainy, film-like texture.
+                       Good for artistic effects or simulating old photographs.
+            - "ordered": Uses a repeating pattern (Bayer matrix) to decide which pixels to darken.
+                        Creates distinctive crosshatch patterns. Fast and predictable.
+                        Common in old computer graphics and newspaper printing.
+            - "error_diffusion": Most sophisticated method. When a pixel is made darker or lighter
+                                than it should be, the "error" is spread to neighboring pixels.
+                                Creates the most natural-looking results. Like using a fine brush.
+            Default: "error_diffusion"
+
+        n_colors(int): How many different color levels to keep per channel. Must be between 2 and 256.
+            - 2 = only black and white (or min/max values for each channel)
+            - 4 = 4 levels of gray (or 4 levels per color channel)
+            - 16 = 16 shades, creating a retro computer graphics look
+            - 256 = full range, no reduction (but patterns still visible from dithering process)
+            Lower values create more dramatic effects. Default: 2
+
+        color_mode(str): How to handle color channels:
+            - "per_channel": Each color channel (R, G, B, etc.) is dithered separately.
+                           Maintains color relationships but each channel gets its own pattern.
+                           Works with any number of channels.
+            - "grayscale": First converts the image to grayscale (using standard luminance weights),
+                          then applies dithering, then expands back to RGB. All color information
+                          is lost, but the dithering pattern is consistent across channels.
+            Default: "per_channel"
+
+        error_diffusion_algorithm(str): When using "error_diffusion" method, which specific algorithm:
+            - "floyd_steinberg": The classic, invented in 1976. Spreads error to 4 neighbors.
+                               Good balance of quality and speed. Industry standard.
+            - "jarvis": Jarvis-Judice-Ninke algorithm. Spreads error to 12 neighbors.
+                       Higher quality but 3x slower than Floyd-Steinberg.
+            - "stucki": Similar to Jarvis but with different weights. Also 12 neighbors.
+            - "atkinson": Created by Bill Atkinson for original Macintosh. Only spreads 75% of
+                         error, creating lighter images with more contrast.
+            - "burkes": Spreads to 7 neighbors. Faster than Jarvis, better than Floyd-Steinberg.
+            - "sierra": Spreads to 10 neighbors. Good quality, moderate speed.
+            - "sierra_2row": Simplified Sierra using only 2 rows. Faster.
+            - "sierra_lite": Minimal Sierra using only 3 neighbors. Very fast.
+            Default: "floyd_steinberg"
+
+        bayer_matrix_size(int): For "ordered" method, the size of the repeating pattern (2, 4, 8, or 16).
+            - 2x2: Very visible checkerboard pattern
+            - 4x4: Standard, good balance
+            - 8x8: Finer pattern, less visible
+            - 16x16: Very fine pattern, almost noise-like
+            Default: 4
+
+        serpentine(bool): For "error_diffusion" method, whether to process rows in alternating directions
+                   (left-to-right, then right-to-left). This can reduce visible "worm" artifacts
+                   that sometimes appear as diagonal lines. Slightly slower. Default: False
+
+        noise_range(tuple[float, float]): For "random" method, how much random noise to add before thresholding.
+                    Larger range = more variation in the dithering pattern.
+                    Range: (-1.0, 1.0). Default: (-0.5, 0.5)
+
+        threshold_value(float): For "threshold" method, the cutoff value (0.0 to 1.0).
+                        Pixels above this become white, below become black.
+                        0.5 = middle gray. Lower values create brighter images. Default: 0.5
+
+        p(float): Probability of applying this transform. Default: 0.5
+
+    Targets:
+        image
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> # Prepare sample data
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>>
+        >>> # Black and white dithering with Floyd-Steinberg
+        >>> transform = A.Compose([
+        ...     A.Dithering(
+        ...         method="error_diffusion",
+        ...         n_colors=2,
+        ...         error_diffusion_algorithm="floyd_steinberg",
+        ...         color_mode="grayscale",
+        ...         p=1.0
+        ...     )
+        ... ])
+        >>> transformed = transform(image=image)
+        >>> dithered_image = transformed['image']  # Black and white dithered image
+        >>>
+        >>> # Ordered dithering with 16 colors per channel
+        >>> transform = A.Compose([
+        ...     A.Dithering(
+        ...         method="ordered",
+        ...         n_colors=16,
+        ...         bayer_matrix_size=8,
+        ...         color_mode="per_channel",
+        ...         p=1.0
+        ...     )
+        ... ])
+        >>> transformed = transform(image=image)
+        >>> dithered_image = transformed['image']  # Reduced color depth with Bayer pattern
+        >>>
+        >>> # Random dithering
+        >>> transform = A.Compose([
+        ...     A.Dithering(
+        ...         method="random",
+        ...         n_colors=4,
+        ...         noise_range=(-0.3, 0.3),
+        ...         p=1.0
+        ...     )
+        ... ])
+        >>> transformed = transform(image=image)
+        >>> dithered_image = transformed['image']  # Noisy dithered appearance
+
+    References:
+        - Wikipedia: https://en.wikipedia.org/wiki/Dither
+        - Floyd-Steinberg dithering: https://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering
+        - Ordered dithering: https://en.wikipedia.org/wiki/Ordered_dithering
+        - Error diffusion dithering: https://en.wikipedia.org/wiki/Error_diffusion
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        method: Literal["threshold", "random", "ordered", "error_diffusion"]
+        n_colors: int = Field(ge=2, le=256)
+        color_mode: Literal["grayscale", "per_channel"]
+        error_diffusion_algorithm: Literal[
+            "floyd_steinberg",
+            "jarvis",
+            "stucki",
+            "atkinson",
+            "burkes",
+            "sierra",
+            "sierra_2row",
+            "sierra_lite",
+        ]
+        bayer_matrix_size: Literal[2, 4, 8, 16]
+        serpentine: bool
+        noise_range: Annotated[tuple[float, float], AfterValidator(check_range_bounds(-1, 1))]
+        threshold_value: float = Field(ge=0, le=1)
+
+    def __init__(
+        self,
+        method: Literal["threshold", "random", "ordered", "error_diffusion"] = "error_diffusion",
+        n_colors: int = 2,
+        color_mode: Literal["grayscale", "per_channel"] = "per_channel",
+        error_diffusion_algorithm: Literal[
+            "floyd_steinberg",
+            "jarvis",
+            "stucki",
+            "atkinson",
+            "burkes",
+            "sierra",
+            "sierra_2row",
+            "sierra_lite",
+        ] = "floyd_steinberg",
+        bayer_matrix_size: Literal[2, 4, 8, 16] = 4,
+        serpentine: bool = False,
+        noise_range: tuple[float, float] = (-0.5, 0.5),
+        threshold_value: float = 0.5,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.method = method
+        self.n_colors = n_colors
+        self.color_mode = color_mode
+        self.error_diffusion_algorithm = error_diffusion_algorithm
+        self.bayer_matrix_size = bayer_matrix_size
+        self.serpentine = serpentine
+        self.noise_range = noise_range
+        self.threshold_value = threshold_value
+
+    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+        from albumentations.augmentations.pixel import dithering_functional as fdither
+
+        return fdither.apply_dithering(
+            img=img,
+            method=self.method,
+            n_colors=self.n_colors,
+            color_mode=self.color_mode,
+            error_diffusion_algorithm=self.error_diffusion_algorithm,
+            matrix_size=self.bayer_matrix_size,
+            serpentine=self.serpentine,
+            noise_range=self.noise_range,
+            threshold=self.threshold_value,
+            random_generator=self.random_generator,
+        )

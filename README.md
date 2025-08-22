@@ -161,7 +161,7 @@ transformed = transform(image=image)
 transformed_image = transformed["image"]
 ```
 
-AlbumentationsX checks for updates on import and collects anonymous usage statistics to improve the library. Both features can be disabled with `ALBUMENTATIONS_OFFLINE=1`, or individually with `NO_ALBUMENTATIONS_UPDATE=1` (version check) and `ALBUMENTATIONS_NO_TELEMETRY=1` (telemetry).
+AlbumentationsX collects anonymous usage statistics to improve the library. This can be disabled with `ALBUMENTATIONS_OFFLINE=1` or `ALBUMENTATIONS_NO_TELEMETRY=1`.
 
 ## List of augmentations
 

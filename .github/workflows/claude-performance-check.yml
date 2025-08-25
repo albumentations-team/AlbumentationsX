@@ -2,6 +2,7 @@ name: Claude Performance Analysis
 
 on:
   pull_request:
+    types: [opened]
     paths:
       - 'albumentations/augmentations/**/*.py'
       - 'albumentations/core/**/*.py'

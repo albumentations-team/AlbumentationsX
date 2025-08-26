@@ -66,22 +66,24 @@ def shift_hsv(
     sat_shift: float,
     val_shift: float,
 ) -> np.ndarray:
-    """Shift the hue, saturation, and value of an image.
+    """Shift the hue, saturation, and value of an image (or batch).
 
-    Args:
-        img (np.ndarray): The image to shift.
-        hue_shift (float): The amount to shift the hue.
-        sat_shift (float): The amount to shift the saturation.
-        val_shift (float): The amount to shift the value.
-
-    Returns:
-        np.ndarray: The shifted image.
-
+    Supports (..., H, W, C) with C in {1, 3}.
     """
+
+    # Fast path
     if hue_shift == 0 and sat_shift == 0 and val_shift == 0:
         return img
 
-    is_gray = is_grayscale_image(img)
+    if img.ndim < 3:
+        raise ValueError(f"Expected at least 3 dims (..., H, W, C); got {img.shape}")
+
+    H, W, C = img.shape[-3], img.shape[-2], img.shape[-1]
+    if C not in (1, 3):
+        raise ValueError(f"Expected channels-last C in {{1,3}}, got C={C}")
+
+    # Treat C==1 as grayscale batch/single
+    is_gray = (C == 1)
 
     if is_gray:
         if hue_shift != 0 or sat_shift != 0:
@@ -92,34 +94,50 @@ def shift_hsv(
                 "Set them to 0 or use RGB image",
                 stacklevel=2,
             )
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        # Expand to RGB for HSV ops
+        img_rgb = np.repeat(img, 3, axis=-1)  # (..., H, W, 3)
+    else:
+        img_rgb = img
 
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-    hue, sat, val = cv2.split(img)
+    # Collapse leading batch dims to run cvtColor in one go
+    leading = img_rgb.shape[:-3]
+    B = int(np.prod(leading)) if leading else 1
+
+    flat_rgb = img_rgb.reshape(B * H, W, 3) if B > 1 else img_rgb.reshape(H, W, 3)
+    flat_hsv = cv2.cvtColor(flat_rgb, cv2.COLOR_RGB2HSV)
+    hsv = flat_hsv.reshape((*leading, H, W, 3))
+
+    hue = hsv[..., 0]
+    sat = hsv[..., 1]
+    val = hsv[..., 2]
 
     if hue_shift != 0:
-        lut_hue = np.arange(0, 256, dtype=np.int16)
-        lut_hue = np.mod(lut_hue + hue_shift, 180).astype(np.uint8)
+        lut_hue = np.arange(256, dtype=np.int16)
+        lut_hue = np.mod(lut_hue + int(hue_shift), 180).astype(np.uint8)
         hue = sz_lut(hue, lut_hue, inplace=False)
 
     if sat_shift != 0:
-        # Create a mask for all grayscale pixels (S=0)
-        # These should remain grayscale regardless of saturation change
-        grayscale_mask = sat == 0
-
-        # Apply saturation shift only to non-white pixels
-        sat = add_constant(sat, sat_shift, inplace=True)
-
-        # Reset saturation for white pixels
+        grayscale_mask = (sat == 0)
+        # Use non-inplace to avoid OpenCV dst-layout issues on views
+        sat = add_constant(sat, sat_shift, inplace=False)
         sat[grayscale_mask] = 0
 
     if val_shift != 0:
-        val = add_constant(val, val_shift, inplace=True)
+        val = add_constant(val, val_shift, inplace=False)
 
-    img = cv2.merge((hue, sat, val))
-    img = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+    hsv = np.stack((hue, sat, val), axis=-1)
 
-    return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if is_gray else img
+    flat_hsv = hsv.reshape(B * H, W, 3) if B > 1 else hsv.reshape(H, W, 3)
+    flat_rgb = cv2.cvtColor(flat_hsv, cv2.COLOR_HSV2RGB)
+    out_rgb = flat_rgb.reshape((*leading, H, W, 3)) if B > 1 else flat_rgb.reshape(H, W, 3)
+
+    # Return grayscale if input was grayscale
+    if is_gray:
+        flat_gray = cv2.cvtColor(out_rgb.reshape(B * H, W, 3) if B > 1 else out_rgb.reshape(H, W, 3),
+                                 cv2.COLOR_RGB2GRAY)
+        return flat_gray.reshape((*leading, H, W, 1)) if B > 1 else flat_gray.reshape(H, W, 1)
+
+    return out_rgb
 
 
 @clipped

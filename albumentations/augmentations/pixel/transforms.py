@@ -1658,10 +1658,11 @@ class HueSaturationValue(ImageOnlyTransform):
             raise TypeError(msg)
         return fpixel.shift_hsv(img, hue_shift, sat_shift, val_shift)
 
-    def apply_to_images(self, images: np.ndarray, hue_shift: int, sat_shift: int, val_shift: int, **params: Any) -> np.ndarray:
-        return np.stack([self.apply(img, hue_shift=hue_shift, sat_shift=sat_shift, val_shift=val_shift, **params)
-            for img in images], axis=0)
-        
+    def apply_to_images(
+        self, images: np.ndarray, hue_shift: int, sat_shift: int, val_shift: int, **params: Any
+    ) -> np.ndarray:
+        return fpixel.shift_hsv(images, hue_shift, sat_shift, val_shift, **params)
+    
     def get_params(self) -> dict[str, float]:
         return {
             "hue_shift": self.py_random.uniform(*self.hue_shift_limit),

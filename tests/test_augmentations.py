@@ -886,6 +886,7 @@ def test_pad_if_needed_position(params, image_shape):
             A.HueSaturationValue,
             A.ColorJitter,
             A.Mosaic,
+            A.Dithering,  # Error diffusion is sensitive to floating-point precision
         },
     ),
 )

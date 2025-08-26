@@ -21,7 +21,7 @@ class DefaultValueChecker(ast.NodeVisitor):
         self.basemodel_classes: set[str] = set()
         self.class_inheritance: dict[str, list[str]] = {}
 
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
         """Visit a class definition node to check for BaseModel inheritance."""
         # Track class inheritance
         base_names = []

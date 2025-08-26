@@ -10,52 +10,30 @@
 
 [Docs](https://albumentations.ai/docs/) | [Discord](https://discord.gg/AKPrrDYNAt) | [Twitter](https://twitter.com/albumentations) | [LinkedIn](https://www.linkedin.com/company/100504475/)
 
-**AlbumentationsX is a drop-in replacement for Albumentations** - a Python library for image augmentation. It maintains 100% API compatibility while providing improved performance, bug fixes, and new features. Image augmentation is used in deep learning and computer vision tasks to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
+**AlbumentationsX** is a Python library for image augmentation. It provides high-performance, robust implementations and cutting-edge features for computer vision tasks. Image augmentation is used in deep learning and computer vision to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
 
 ## GitAds Sponsored
 
 [![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=albumentations-team/albumentationsx@github)](https://gitads.dev/v1/ad-track?source=albumentations-team/albumentationsx@github)
 
-## 📢 Important: AlbumentationsX - Dual Licensed Fork
+## 📢 Important: AlbumentationsX Licensing
 
-AlbumentationsX is a fork of the original Albumentations library with dual licensing:
+AlbumentationsX offers dual licensing:
 
 - **AGPL-3.0 License**: Free for open-source projects
 - **Commercial License**: For proprietary/commercial use (contact for pricing)
 
-### About the Original Albumentations
-
-The original [Albumentations library](https://github.com/albumentations-team/albumentations) is MIT licensed, supports Python 3.9-3.13, and can be used freely for all purposes including commercial applications without any restrictions or licensing fees. If its current functionality meets your needs, that's great!
-
-However, please note that the original library is no longer actively maintained. All new bug fixes, performance improvements, and features will be exclusively developed in AlbumentationsX.
-
-### Migration from Albumentations - It's a Drop-In Replacement
-
-AlbumentationsX is designed as a **100% compatible drop-in replacement** for the original Albumentations library. This means:
-
-- ✅ **No code changes required** - Your existing code will work without any modifications
-- ✅ **Same API** - All functions, classes, and parameters remain identical
-- ✅ **Same import statement** - Keep using `import albumentations as A`
-- ✅ **Better performance** - Get speed improvements without changing anything
-- ✅ **Bug fixes included** - Benefit from fixes not available in the original
-
-**Simple migration process:**
+### Quick Start
 
 ```bash
-# Uninstall original
-pip uninstall albumentations
-
 # Install AlbumentationsX
 pip install albumentationsx
 ```
 
-That's it! Your code continues to work exactly as before:
-
 ```python
-# No changes needed - same import!
 import albumentations as A
 
-# All your existing code works unchanged
+# Create your augmentation pipeline
 transform = A.Compose([
     A.RandomCrop(width=256, height=256),
     A.HorizontalFlip(p=0.5),
@@ -67,13 +45,12 @@ For commercial licensing inquiries, please visit [our pricing page](https://albu
 
 ---
 
-Here is an example of how you can apply some [pixel-level](#pixel-level-transforms) augmentations from Albumentations to create new images from the original one:
+Here is an example of how you can apply some [pixel-level](#pixel-level-transforms) augmentations to create new images from the original one:
 ![parrot](https://habrastorage.org/webt/bd/ne/rv/bdnerv5ctkudmsaznhw4crsdfiw.jpeg)
 
 ## Why AlbumentationsX
 
-- **Drop-In Replacement**: 100% API compatible with original Albumentations - no code changes needed!
-- **Complete Computer Vision Support**: Works with [all major CV tasks]
+- **Complete Computer Vision Support**: Works with all major CV tasks
 - **Simple, Unified API**: [One consistent interface](#a-simple-example) for all data types - RGB/grayscale/multispectral images, masks, bounding boxes, and keypoints.
 - **Rich Augmentation Library**: [70+ high-quality augmentations](https://albumentations.ai/docs/reference/supported-targets-by-transform/) to enhance your training data.
 - **Fast**: Consistently benchmarked as the [fastest augmentation library](https://albumentations.ai/docs/benchmarks/image-benchmarks/) also shown [below section](#performance-comparison), with optimizations for production use.
@@ -161,7 +138,7 @@ transformed = transform(image=image)
 transformed_image = transformed["image"]
 ```
 
-AlbumentationsX checks for updates on import and collects anonymous usage statistics to improve the library. Both features can be disabled with `ALBUMENTATIONS_OFFLINE=1`, or individually with `NO_ALBUMENTATIONS_UPDATE=1` (version check) and `ALBUMENTATIONS_NO_TELEMETRY=1` (telemetry).
+AlbumentationsX collects anonymous usage statistics to improve the library. This can be disabled with `ALBUMENTATIONS_OFFLINE=1` or `ALBUMENTATIONS_NO_TELEMETRY=1`.
 
 ## List of augmentations
 
@@ -179,6 +156,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [ChromaticAberration](https://explore.albumentations.ai/transform/ChromaticAberration)
 - [ColorJitter](https://explore.albumentations.ai/transform/ColorJitter)
 - [Defocus](https://explore.albumentations.ai/transform/Defocus)
+- [Dithering](https://explore.albumentations.ai/transform/Dithering)
 - [Downscale](https://explore.albumentations.ai/transform/Downscale)
 - [Emboss](https://explore.albumentations.ai/transform/Emboss)
 - [Equalize](https://explore.albumentations.ai/transform/Equalize)
@@ -354,7 +332,7 @@ Where:
 ## Performance Comparison
 
 Number shows how many uint8 images per second can be processed on one CPU thread. Larger is better.
-The Speedup column shows how many times faster Albumentations is compared to the fastest other
+The Speedup column shows how many times faster AlbumentationsX is compared to the fastest other
 library for each transform.
 
 | Transform            | albumentationsx<br>2.0.8   | augly<br>1.0.0   | imgaug<br>0.4.0   | kornia<br>0.8.0   | torchvision<br>0.20.1   | Speedup<br>(AlbX/fastest other)   |

@@ -452,4 +452,5 @@ AUGMENTATION_CLS_PARAMS = [
     [A.HistogramMatching, {"blend_ratio": (0.5, 1.0), "metadata_key": "hm_metadata"}],
     [A.PixelDistributionAdaptation, {"blend_ratio": (0.25, 1.0), "transform_type": "pca", "metadata_key": "pda_metadata"}],
     [A.Mosaic, {"grid_yx": (2, 2), "target_size": (256, 256), "cell_shape": (128, 128), "metadata_key": "mosaic_metadata"}],
+    [A.Dithering, {"method": "error_diffusion", "n_colors": 2}],
 ]

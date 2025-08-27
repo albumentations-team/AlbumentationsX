@@ -78,12 +78,12 @@ def shift_hsv(
     if img.ndim < 3:
         raise ValueError(f"Expected at least 3 dims (..., H, W, C); got {img.shape}")
 
-    H, W, C = img.shape[-3], img.shape[-2], img.shape[-1]
-    if C not in (1, 3):
-        raise ValueError(f"Expected channels-last C in {{1,3}}, got C={C}")
+    hue, width, channel = img.shape[-3], img.shape[-2], img.shape[-1]
+    if channel not in (1, 3):
+        raise ValueError(f"Expected channels-last C in {{1,3}}, got C={channel}")
 
     # Treat C==1 as grayscale batch/single
-    is_gray = (C == 1)
+    is_gray = (channel == 1)
 
     if is_gray:
         if hue_shift != 0 or sat_shift != 0:
@@ -101,11 +101,11 @@ def shift_hsv(
 
     # Collapse leading batch dims to run cvtColor in one go
     leading = img_rgb.shape[:-3]
-    B = int(np.prod(leading)) if leading else 1
+    batches = int(np.prod(leading)) if leading else 1
 
-    flat_rgb = img_rgb.reshape(B * H, W, 3) if B > 1 else img_rgb.reshape(H, W, 3)
+    flat_rgb = img_rgb.reshape(batches * hue, width, 3) if batches > 1 else img_rgb.reshape(hue, width, 3)
     flat_hsv = cv2.cvtColor(flat_rgb, cv2.COLOR_RGB2HSV)
-    hsv = flat_hsv.reshape((*leading, H, W, 3))
+    hsv = flat_hsv.reshape((*leading, hue, width, 3))
 
     hue = hsv[..., 0]
     sat = hsv[..., 1]
@@ -127,15 +127,15 @@ def shift_hsv(
 
     hsv = np.stack((hue, sat, val), axis=-1)
 
-    flat_hsv = hsv.reshape(B * H, W, 3) if B > 1 else hsv.reshape(H, W, 3)
+    flat_hsv = hsv.reshape(batches * hue, width, 3) if batches > 1 else hsv.reshape(hue, width, 3)
     flat_rgb = cv2.cvtColor(flat_hsv, cv2.COLOR_HSV2RGB)
-    out_rgb = flat_rgb.reshape((*leading, H, W, 3)) if B > 1 else flat_rgb.reshape(H, W, 3)
+    out_rgb = flat_rgb.reshape((*leading, hue, width, 3)) if batches > 1 else flat_rgb.reshape(hue, width, 3)
 
     # Return grayscale if input was grayscale
     if is_gray:
-        flat_gray = cv2.cvtColor(out_rgb.reshape(B * H, W, 3) if B > 1 else out_rgb.reshape(H, W, 3),
+        flat_gray = cv2.cvtColor(out_rgb.reshape(batches * hue, width, 3) if batches > 1 else out_rgb.reshape(hue, width, 3),
                                  cv2.COLOR_RGB2GRAY)
-        return flat_gray.reshape((*leading, H, W, 1)) if B > 1 else flat_gray.reshape(H, W, 1)
+        return flat_gray.reshape((*leading, hue, width, 1)) if batches > 1 else flat_gray.reshape(hue, width, 1)
 
     return out_rgb
 

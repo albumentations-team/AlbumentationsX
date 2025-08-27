@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from albumentations.check_version import get_cache_dir
+from albumentations.core.cache_utils import get_cache_dir
 
 
 class SettingsManager:
@@ -31,7 +31,6 @@ class SettingsManager:
         self.settings_file = settings_file or (get_cache_dir() / "settings.json")
         self.defaults = {
             "telemetry": True,
-            "check_updates": True,
         }
         self._settings = self._load_settings()
 
@@ -54,10 +53,6 @@ class SettingsManager:
 
         if os.environ.get("ALBUMENTATIONS_OFFLINE", "").lower() in ("1", "true"):
             settings["telemetry"] = False
-            settings["check_updates"] = False
-
-        if os.environ.get("NO_ALBUMENTATIONS_UPDATE", "").lower() in ("1", "true"):
-            settings["check_updates"] = False
 
         return settings
 
@@ -97,11 +92,6 @@ class SettingsManager:
     def telemetry_enabled(self) -> bool:
         """Check if telemetry is enabled."""
         return self.get("telemetry", True)
-
-    @property
-    def check_updates_enabled(self) -> bool:
-        """Check if update checking is enabled."""
-        return self.get("check_updates", True)
 
 
 # Global settings instance

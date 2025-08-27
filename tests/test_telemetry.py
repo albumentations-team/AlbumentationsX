@@ -67,7 +67,6 @@ class TestTelemetrySettings:
         from albumentations.core.analytics.settings import SettingsManager
         test_settings = SettingsManager()
         assert test_settings.telemetry_enabled is False
-        assert test_settings.check_updates_enabled is False
 
 
 class TestTelemetryClient:
@@ -685,12 +684,12 @@ class TestComplexPipelines:
         ("ALBUMENTATIONS_NO_TELEMETRY", "0", True),
         ("ALBUMENTATIONS_NO_TELEMETRY", "false", True),
             ("ALBUMENTATIONS_OFFLINE", "1", False),
-    ("NO_ALBUMENTATIONS_UPDATE", "1", True),  # Only affects updates, not telemetry
+
 ])
 def test_environment_variables(monkeypatch, env_var, env_value, expected):
     """Test various environment variable configurations."""
     # Clear all relevant env vars first
-    for var in ["ALBUMENTATIONS_NO_TELEMETRY", "ALBUMENTATIONS_OFFLINE", "NO_ALBUMENTATIONS_UPDATE"]:
+    for var in ["ALBUMENTATIONS_NO_TELEMETRY", "ALBUMENTATIONS_OFFLINE"]:
         monkeypatch.delenv(var, raising=False)
 
     # Set the test env var
@@ -719,7 +718,6 @@ def test_settings_manager():
 
         # Test defaults
         assert settings.get("telemetry") is True
-        assert settings.get("check_updates") is True
 
         # Test update
         settings.update(telemetry=False)

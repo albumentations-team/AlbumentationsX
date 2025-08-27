@@ -34,7 +34,7 @@ class DocstringChecker(ast.NodeVisitor):
         self.errors: list[str] = []
         self.current_class = None
 
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
         """Visit class definition."""
         old_class = self.current_class
         self.current_class = node.name
@@ -52,7 +52,7 @@ class DocstringChecker(ast.NodeVisitor):
                 return True
         return False
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         """Check if function/method has a docstring."""
         # Skip if not in a class (not a method)
         if not self.current_class:

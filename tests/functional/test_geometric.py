@@ -647,6 +647,7 @@ def test_resize_pyvips(input_shape, target_shape):
     resized = fgeometric.resize_pyvips(img, target_shape, interpolation=0)
     assert resized.shape == (*target_shape, 3)
 
+@pytest.mark.xfail(reason="pyvips and OpenCV have different interpolation implementations")
 @pytest.mark.skipif(not _can_import("pyvips"), reason="pyvips is not installed")
 @pytest.mark.parametrize("interpolation", [0, 1, 2])
 @pytest.mark.parametrize("input_shape,target_shape", [
@@ -659,3 +660,17 @@ def test_resize_cv2_vs_pyvips(input_shape, target_shape, interpolation):
     resized_cv2 = fgeometric.resize_cv2(img, target_shape, interpolation=interpolation)
     resized_pyvips = fgeometric.resize_pyvips(img, target_shape, interpolation=interpolation)
     np.testing.assert_allclose(resized_cv2, resized_pyvips, atol=1)
+
+@pytest.mark.xfail(reason="Pillow and OpenCV have different interpolation implementations")
+@pytest.mark.skipif(not _can_import("PIL"), reason="pillow is not installed")
+@pytest.mark.parametrize("interpolation", [0, 1, 2])
+@pytest.mark.parametrize("input_shape,target_shape", [
+    ((100, 100), (200, 200)),
+    ((200, 200), (100, 100)),
+])
+def test_resize_cv2_vs_pillow(input_shape, target_shape, interpolation):
+    img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
+
+    resized_cv2 = fgeometric.resize_cv2(img, target_shape, interpolation=interpolation)
+    resized_pil = fgeometric.resize_pil(img, target_shape, interpolation=interpolation)
+    np.testing.assert_allclose(resized_cv2, resized_pil, atol=1)

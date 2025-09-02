@@ -1487,6 +1487,14 @@ class ZoomBlur(ImageOnlyTransform):
     ) -> np.ndarray:
         return fblur.zoom_blur(img, zoom_factors)
 
+    def apply_to_images(self, images: np.ndarray, zoom_factors: np.ndarray, **params: Any) -> np.ndarray:
+        out = np.empty_like(images)
+
+        for i, image in enumerate(images):
+            out[i] = self.apply(image, zoom_factors, **params)
+
+        return out
+
     def get_params(self) -> dict[str, Any]:
         step_factor = self.py_random.uniform(*self.step_factor)
         max_factor = max(1 + step_factor, self.py_random.uniform(*self.max_factor))

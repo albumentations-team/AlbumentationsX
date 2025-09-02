@@ -994,6 +994,31 @@ def test_motion_blur_allow_shifted_true():
     assert len(unique_kernels) > 1, "allow_shifted=True should produce some variation in kernel positions"
 
 
+@pytest.mark.parametrize("images", [
+    cv2.randu(np.zeros((2, 228, 256, 1), dtype=np.uint8), 0, 255),
+    cv2.randu(np.zeros((2, 228, 256, 1), dtype=np.float32), 0, 1),
+    cv2.randu(np.zeros((2, 228, 256, 3), dtype=np.uint8), 0, 255),
+    cv2.randu(np.zeros((2, 228, 256, 3), dtype=np.float32), 0, 1),
+])
+def test_batched_zoom_blur(images: np.ndarray):
+    max_factor=(1.15, 1.25)
+    step_factor=0.02
+
+    aug = A.ZoomBlur(max_factor, step_factor, p=1.0)
+    zoom_factors = aug.get_params()["zoom_factors"]
+
+    actual = aug.apply_to_images(images, zoom_factors)
+
+    assert actual.shape == images.shape
+    assert actual.dtype == images.dtype
+
+    expected = aug(image=images[0])["image"]
+    assert not np.array_equal(images[0], expected)
+
+    expected = aug(image=images[-1])["image"]
+    assert not np.array_equal(images[1], expected)
+
+
 @pytest.mark.parametrize(
     "augmentation",
     [

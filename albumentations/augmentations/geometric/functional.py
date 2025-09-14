@@ -7,7 +7,6 @@ bounding boxes and keypoints.
 
 from __future__ import annotations
 
-import importlib
 import math
 import os
 from collections import defaultdict
@@ -25,6 +24,21 @@ from albucore import (
     preserve_channel_dim,
     vflip,
 )
+
+# Optional dependencies
+try:
+    from PIL import Image
+
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
+try:
+    import pyvips
+
+    _PYVIPS_AVAILABLE = True
+except ImportError:
+    _PYVIPS_AVAILABLE = False
 
 from albumentations.augmentations.utils import angle_2pi_range, handle_empty_array
 from albumentations.core.bbox_utils import (
@@ -220,19 +234,12 @@ def keypoints_d4(
     raise ValueError(f"Invalid group member: {group_member}")
 
 
-def _can_import(library_name: str) -> bool:
-    try:
-        return importlib.import_module(library_name) is not None
-    except ImportError:
-        return False
-
-
 @lru_cache(maxsize=1)
 def _get_resize_backend() -> str:
-    env_backend = os.environ.get("ALBUMENTATIONS_RESIZE", default="opencv").lower()
-    if env_backend == "pyvips" and _can_import("pyvips"):
+    env_backend = os.environ.get("ALBUMENTATIONS_RESIZE", "opencv").lower()
+    if env_backend == "pyvips" and _PYVIPS_AVAILABLE:
         return env_backend
-    if env_backend == "pillow" and _can_import("PIL"):
+    if env_backend == "pillow" and _PIL_AVAILABLE:
         return env_backend
     return "opencv"
 
@@ -296,7 +303,6 @@ def resize_pyvips(
 
     """
     # At this stage, the library's installation and importability have already been verified.
-    import pyvips
 
     height, width = img.shape[:2]
     target_height, target_width = target_shape
@@ -372,8 +378,6 @@ def resize_pil(
         np.ndarray: The resized image as a NumPy array.
 
     """
-    from PIL import Image
-
     target_height, target_width = target_shape
     original_dtype = img.dtype
 

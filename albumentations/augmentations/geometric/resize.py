@@ -125,7 +125,7 @@ class RandomScale(DualTransform):
 
     class InitSchema(BaseTransformInitSchema):
         scale_limit: tuple[float, float] | float
-        area_for_downscale: Literal[None, "image", "image_mask"]
+        area_for_downscale: Literal["image", "image_mask"] | None
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_NEAREST_EXACT,
@@ -171,7 +171,7 @@ class RandomScale(DualTransform):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ] = cv2.INTER_NEAREST,
-        area_for_downscale: Literal[None, "image", "image_mask"] = None,
+        area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 0.5,
     ):
         super().__init__(p=p)
@@ -326,7 +326,7 @@ class MaxSizeTransform(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         max_size: int | list[int] | None
         max_size_hw: tuple[int | None, int | None] | None
-        area_for_downscale: Literal[None, "image", "image_mask"]
+        area_for_downscale: Literal["image", "image_mask"] | None
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_NEAREST_EXACT,
@@ -376,7 +376,7 @@ class MaxSizeTransform(DualTransform):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ] = cv2.INTER_NEAREST,
-        area_for_downscale: Literal[None, "image", "image_mask"] = None,
+        area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1,
     ):
         super().__init__(p=p)
@@ -760,7 +760,7 @@ class Resize(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         height: int = Field(ge=1)
         width: int = Field(ge=1)
-        area_for_downscale: Literal[None, "image", "image_mask"]
+        area_for_downscale: Literal["image", "image_mask"] | None
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_NEAREST_EXACT,
@@ -802,7 +802,7 @@ class Resize(DualTransform):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ] = cv2.INTER_NEAREST,
-        area_for_downscale: Literal[None, "image", "image_mask"] = None,
+        area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1,
     ):
         super().__init__(p=p)

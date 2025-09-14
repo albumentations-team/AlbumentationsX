@@ -1487,7 +1487,7 @@ class _BaseRandomSizedCrop(DualTransform):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ]
-        area_for_downscale: Literal[None, "image", "image_mask"]
+        area_for_downscale: Literal["image", "image_mask"] | None
 
     def __init__(
         self,
@@ -1510,7 +1510,7 @@ class _BaseRandomSizedCrop(DualTransform):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ] = cv2.INTER_NEAREST,
-        area_for_downscale: Literal[None, "image", "image_mask"] = None,
+        area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1.0,
     ):
         super().__init__(p=p)
@@ -1735,7 +1735,7 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
         min_max_height: OnePlusIntRangeType
         w2h_ratio: Annotated[float, Field(gt=0)]
         size: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
-        area_for_downscale: Literal[None, "image", "image_mask"]
+        area_for_downscale: Literal["image", "image_mask"] | None
 
     def __init__(
         self,
@@ -1760,7 +1760,7 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ] = cv2.INTER_NEAREST,
-        area_for_downscale: Literal[None, "image", "image_mask"] = None,
+        area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1.0,
     ):
         super().__init__(
@@ -1925,7 +1925,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ]
-        area_for_downscale: Literal[None, "image", "image_mask"]
+        area_for_downscale: Literal["image", "image_mask"] | None
 
     def __init__(
         self,
@@ -1950,7 +1950,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ] = cv2.INTER_NEAREST,
-        area_for_downscale: Literal[None, "image", "image_mask"] = None,
+        area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1.0,
     ):
         super().__init__(

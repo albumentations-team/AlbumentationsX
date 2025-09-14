@@ -1242,9 +1242,6 @@ class ThinPlateSpline(BaseDistortion):
                 (height, width),
                 self.interpolation,
             )
-        else:
-            map_x = transformed[:, 0].reshape(height, width).astype(np.float32)
-            map_y = transformed[:, 1].reshape(height, width).astype(np.float32)
 
         return {
             "map_x": map_x,

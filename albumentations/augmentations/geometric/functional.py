@@ -268,6 +268,8 @@ def resize(
         return resize_cv2(img, target_shape, interpolation)
     if backend == "pyvips":
         return resize_pyvips(img, target_shape, interpolation)
+    if backend == "pillow":
+        return resize_pil(img, target_shape, interpolation)
 
     raise NotImplementedError(f"The provided backend '{backend}' is not supported yet.")
 
@@ -363,32 +365,80 @@ def resize_pil(
     Args:
         img (np.ndarray): The input image as a NumPy array.
         target_shape (tuple[int, int]): The desired output shape (height, width).
-        interpolation (int): The PIL interpolation filter to use.
-            0: NEAREST
-            1: LANCZOS (alias of ANTIALIAS filter)
-            2: BILINEAR
-            3: BICUBIC
-            4: BOX
-            5: HAMMING
+        interpolation (int): The cv2 interpolation flag that will be mapped to PIL interpolation.
+            Maps cv2 constants to PIL.Image.Resampling constants.
 
     Returns:
         np.ndarray: The resized image as a NumPy array.
 
     """
-    # At this stage, the library's installation and importability have already been verified.
     from PIL import Image
 
     target_height, target_width = target_shape
     original_dtype = img.dtype
 
-    pil_img = Image.fromarray(img)
+    # Map cv2 interpolation constants to PIL.Image.Resampling constants
+    cv2_to_pil_interpolation = {
+        cv2.INTER_NEAREST: Image.Resampling.NEAREST,
+        cv2.INTER_NEAREST_EXACT: Image.Resampling.NEAREST,  # PIL doesn't have exact variant
+        cv2.INTER_LINEAR: Image.Resampling.BILINEAR,
+        cv2.INTER_CUBIC: Image.Resampling.BICUBIC,
+        cv2.INTER_AREA: Image.Resampling.BOX,  # BOX is similar to INTER_AREA for downscaling
+        cv2.INTER_LANCZOS4: Image.Resampling.LANCZOS,
+        cv2.INTER_LINEAR_EXACT: Image.Resampling.BILINEAR,  # PIL doesn't have exact variant
+    }
 
-    resized_pil_img = pil_img.resize(
-        (target_width, target_height),
-        resample=interpolation,
-    )
+    pil_interpolation = cv2_to_pil_interpolation.get(interpolation)
+    if pil_interpolation is None:
+        # Fallback to BILINEAR for unknown interpolation methods
+        warn(f"Interpolation method {interpolation} is not supported by PIL backend, using BILINEAR", stacklevel=2)
+        pil_interpolation = Image.Resampling.BILINEAR
 
-    return np.array(resized_pil_img, dtype=original_dtype)
+    # Convert numpy array to PIL Image
+    # Images always have ndim=3 in albumentations
+    if img.ndim != 3:
+        raise ValueError(f"Expected 3D array, got shape: {img.shape}")
+
+    num_channels = img.shape[2]
+
+    if num_channels == 1:
+        # Grayscale image (H, W, 1) -> squeeze to (H, W) for PIL
+        pil_img = Image.fromarray(img[:, :, 0], mode="L")
+        resized_pil_img = pil_img.resize(
+            (target_width, target_height),
+            resample=pil_interpolation,
+        )
+        # Convert back to (H, W, 1)
+        result = np.array(resized_pil_img)[:, :, np.newaxis]
+    elif num_channels == 3:
+        # RGB image
+        pil_img = Image.fromarray(img, mode="RGB")
+        resized_pil_img = pil_img.resize(
+            (target_width, target_height),
+            resample=pil_interpolation,
+        )
+        result = np.array(resized_pil_img)
+    elif num_channels == 4:
+        # RGBA image
+        pil_img = Image.fromarray(img, mode="RGBA")
+        resized_pil_img = pil_img.resize(
+            (target_width, target_height),
+            resample=pil_interpolation,
+        )
+        result = np.array(resized_pil_img)
+    else:
+        # For other channel counts, process each channel separately
+        channels = []
+        for i in range(num_channels):
+            channel_img = Image.fromarray(img[:, :, i], mode="L")
+            resized_channel = channel_img.resize(
+                (target_width, target_height),
+                resample=pil_interpolation,
+            )
+            channels.append(np.array(resized_channel))
+        result = np.stack(channels, axis=-1)
+
+    return result.astype(original_dtype)
 
 
 @preserve_channel_dim

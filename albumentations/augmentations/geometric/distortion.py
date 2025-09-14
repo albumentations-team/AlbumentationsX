@@ -50,6 +50,7 @@ from albumentations.core.pydantic import (
     NonNegativeFloatRangeType,
     SymmetricRangeType,
     check_range_bounds,
+    nondecreasing,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -206,6 +207,7 @@ class BaseDistortion(DualTransform):
         map_resolution_range: Annotated[
             tuple[float, float],
             AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+            AfterValidator(nondecreasing),
         ]
 
     def __init__(
@@ -476,12 +478,10 @@ class ElasticTransform(BaseDistortion):
             noise_distribution=self.noise_distribution,
         )
 
-        # Vectorized map generation at scaled resolution
-        coords = np.stack(np.meshgrid(np.arange(scaled_width), np.arange(scaled_height)))
-        maps = coords + np.stack([dx, dy])
-
-        map_x = maps[0].astype(np.float32)
-        map_y = maps[1].astype(np.float32)
+        # Generate coordinate grids and apply displacement
+        y_coords, x_coords = np.meshgrid(np.arange(scaled_height), np.arange(scaled_width), indexing="ij")
+        map_x = (x_coords + dx).astype(np.float32)
+        map_y = (y_coords + dy).astype(np.float32)
 
         # Upscale maps to original resolution if needed
         if map_resolution < 1.0:

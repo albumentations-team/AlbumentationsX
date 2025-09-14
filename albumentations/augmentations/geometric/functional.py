@@ -2032,6 +2032,48 @@ def generate_inverse_distortion_map(
     return inv_map_x, inv_map_y
 
 
+def upscale_distortion_maps(
+    map_x: np.ndarray,
+    map_y: np.ndarray,
+    target_shape: tuple[int, int],
+    interpolation: int = cv2.INTER_LINEAR,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Upscale distortion maps from lower resolution to target resolution.
+
+    This is used when distortion maps are generated at a lower resolution for performance,
+    then upscaled to the original image size.
+
+    Args:
+        map_x: X-coordinate distortion map (generated at lower resolution)
+        map_y: Y-coordinate distortion map (generated at lower resolution)
+        target_shape: Target shape (height, width) to upscale to
+        interpolation: OpenCV interpolation method
+
+    Returns:
+        Upscaled distortion maps with target_shape
+
+    """
+    h, w = target_shape
+    small_h, small_w = map_x.shape[:2]
+
+    if (small_h, small_w) == (h, w):
+        return map_x, map_y
+
+    # Calculate scaling factors
+    scale_y = small_h / h
+    scale_x = small_w / w
+
+    # Upscale the maps
+    map_x_scaled = cv2.resize(map_x, (w, h), interpolation=interpolation)
+    map_y_scaled = cv2.resize(map_y, (w, h), interpolation=interpolation)
+
+    # Adjust coordinate values for the new scale
+    map_x_scaled = map_x_scaled / scale_x
+    map_y_scaled = map_y_scaled / scale_y
+
+    return map_x_scaled, map_y_scaled
+
+
 @handle_empty_array("bboxes")
 def remap_bboxes(
     bboxes: np.ndarray,

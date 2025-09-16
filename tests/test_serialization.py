@@ -10,7 +10,7 @@ from deepdiff import DeepDiff
 import albumentations as A
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.core.serialization import SERIALIZABLE_REGISTRY, shorten_class_name
-from albumentations.core.transforms_interface import ImageOnlyTransform
+from albumentations.core.transforms_interface import ImageOnlyTransform, Transform3D
 from tests.aug_definitions import AUGMENTATION_CLS_PARAMS
 from tests.conftest import (
     FLOAT32_IMAGES,
@@ -98,7 +98,8 @@ def test_augmentations_serialization_with_custom_parameters(
     mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
     aug = augmentation_cls(p=p, **params)
     aug.set_random_seed(seed)
-    transforms3d = {A.PadIfNeeded3D, A.RandomCrop3D, A.CenterCrop3D, A.CoarseDropout3D, A.Pad3D, A.CubicSymmetry}
+    # Automatically detect Transform3D descendants
+    is_transform3d = issubclass(augmentation_cls, Transform3D)
 
     serialized_aug = A.to_dict(aug)
     deserialized_aug = A.from_dict(serialized_aug)
@@ -114,7 +115,7 @@ def test_augmentations_serialization_with_custom_parameters(
         data["cropping_bbox"] = [10, 20, 40, 50]
     elif augmentation_cls == A.TextImage:
         data["textimage_metadata"] = {"text": "Test", "bbox": (0.1, 0.1, 0.9, 0.2)}
-    elif augmentation_cls in transforms3d:
+    elif is_transform3d:
         data["volume"] = np.array([image] * 10)
         data["mask"] = np.array([mask] * 10)
     elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop}:
@@ -131,7 +132,7 @@ def test_augmentations_serialization_with_custom_parameters(
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
 
-    if augmentation_cls not in transforms3d:
+    if not is_transform3d:
         np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
         np.testing.assert_array_equal(aug_data["mask"], deserialized_aug_data["mask"])
     else:
@@ -159,7 +160,8 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
     image,
     data_format,
 ):
-    transforms3d = {A.PadIfNeeded3D, A.RandomCrop3D, A.CenterCrop3D, A.CoarseDropout3D, A.Pad3D, A.CubicSymmetry}
+    # Automatically detect Transform3D descendants
+    is_transform3d = issubclass(augmentation_cls, Transform3D)
     mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
 
     # Create in-memory file objects
@@ -192,7 +194,7 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
         data["cropping_bbox"] = [10, 20, 40, 50]
     elif augmentation_cls == A.TextImage:
         data["textimage_metadata"] = {"text": "Test", "bbox": (0.1, 0.1, 0.9, 0.2)}
-    elif augmentation_cls in transforms3d:
+    elif is_transform3d:
         data = {"volume": np.array([image] * 10), "mask3d": np.array([mask] * 10)}
     elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop}:
         data["bboxes"] = np.array([[10, 20, 40, 50]])
@@ -208,7 +210,7 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
 
-    if augmentation_cls not in transforms3d:
+    if not is_transform3d:
         np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
         np.testing.assert_array_equal(aug_data["mask"], deserialized_aug_data["mask"])
     else:

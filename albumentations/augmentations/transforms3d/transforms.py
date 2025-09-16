@@ -22,7 +22,15 @@ from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D
 from albumentations.core.type_definitions import Targets
 
-__all__ = ["CenterCrop3D", "CoarseDropout3D", "CubicSymmetry", "Pad3D", "PadIfNeeded3D", "RandomCrop3D"]
+__all__ = [
+    "CenterCrop3D",
+    "CoarseDropout3D",
+    "CubicSymmetry",
+    "GridShuffle3D",
+    "Pad3D",
+    "PadIfNeeded3D",
+    "RandomCrop3D",
+]
 
 NUM_DIMENSIONS = 3
 
@@ -1420,3 +1428,124 @@ class CubicSymmetry(Transform3D):
 
         """
         return f3d.transform_cube_keypoints(keypoints, index, volume_shape=params["volume_shape"])
+
+
+class GridShuffle3D(Transform3D):
+    """Randomly shuffles the grid's cells on a 3D volume, mask3d, or keypoints,
+    effectively rearranging patches within the volume.
+
+    This transformation divides the volume into a 3D grid and then permutes these grid cells based on a random mapping.
+    Unlike the 2D version, this does not support bounding boxes as 3D bounding boxes are not yet implemented.
+
+    Args:
+        grid_zyx (tuple[int, int, int]): Size of the grid for splitting the volume into cells along (Z, Y, X) axes,
+            corresponding to (depth, height, width) dimensions. Each cell is shuffled randomly.
+            For example, (2, 3, 3) will divide the volume into 2 slices along Z, 3 along Y, and 3 along X,
+            resulting in 18 cells to be shuffled.
+            Default: (2, 2, 2)
+        p (float): Probability that the transform will be applied. Should be in the range [0, 1].
+            Default: 0.5
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Note:
+        - This transform maintains consistency across all targets. If applied to a volume and its corresponding
+          mask3d or keypoints, the same shuffling will be applied to all.
+        - The number of cells in the grid should be at least 2 (i.e., grid_zyx should be at least (1, 1, 2), (1, 2, 1),
+          (2, 1, 1) or larger) for the transform to have any effect.
+        - Keypoints are moved along with their corresponding grid cell.
+        - The grid_zyx parameter corresponds to volume dimensions: Z (depth), Y (height), X (width).
+
+    Mathematical Formulation:
+        1. The volume is divided into a grid of size (d, m, n) as specified by the 'grid_zyx' parameter.
+        2. A random permutation P of integers from 0 to (d*m*n - 1) is generated.
+        3. Each cell in the grid is assigned a number from 0 to (d*m*n - 1) in depth-row-column-major order.
+        4. The cells are then rearranged according to the permutation P.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> # Prepare sample data
+        >>> volume = np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)  # (D, H, W)
+        >>> mask3d = np.random.randint(0, 2, (10, 100, 100), dtype=np.uint8)    # (D, H, W)
+        >>> keypoints = np.array([[20, 30, 5], [60, 70, 8]], dtype=np.float32)  # (x, y, z)
+        >>> keypoint_labels = [1, 2]  # Labels for each keypoint
+        >>>
+        >>> # Define transform with grid_zyx as a tuple (Z, Y, X)
+        >>> transform = A.Compose([
+        ...     A.GridShuffle3D(grid_zyx=(2, 3, 3), p=1.0),
+        ... ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+        >>>
+        >>> # Apply the transform
+        >>> transformed = transform(
+        ...     volume=volume,
+        ...     mask3d=mask3d,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels
+        ... )
+        >>>
+        >>> # Get the transformed data
+        >>> transformed_volume = transformed['volume']           # Grid-shuffled volume
+        >>> transformed_mask3d = transformed['mask3d']           # Grid-shuffled mask
+        >>> transformed_keypoints = transformed['keypoints']     # Grid-shuffled keypoints
+        >>> transformed_keypoint_labels = transformed['keypoint_labels']  # Labels remain unchanged
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        grid_zyx: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+
+    def __init__(
+        self,
+        grid_zyx: tuple[int, int, int] = (2, 2, 2),
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.grid_zyx = grid_zyx
+
+    def apply_to_volume(
+        self,
+        volume: np.ndarray,
+        tiles: np.ndarray,
+        mapping: list[int],
+        **params: Any,
+    ) -> np.ndarray:
+        return f3d.swap_tiles_on_volume(volume, tiles, mapping)
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        tiles: np.ndarray,
+        mapping: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        return f3d.swap_tiles_on_keypoints_3d(keypoints, tiles, mapping)
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
+        # Get volume shape directly from data
+        if "volume" in data:
+            volume_shape = data["volume"].shape[:3]  # Get (D, H, W) from volume
+        elif "mask3d" in data:
+            volume_shape = data["mask3d"].shape[:3]  # Fallback to mask3d if no volume
+        else:
+            raise ValueError("No volume or mask3d found in data")
+
+        original_tiles = f3d.split_uniform_grid_3d(
+            volume_shape,
+            self.grid_zyx,
+            self.random_generator,
+        )
+        shape_groups = f3d.create_shape_groups_3d(original_tiles)
+        mapping = f3d.shuffle_tiles_within_shape_groups_3d(
+            shape_groups,
+            self.random_generator,
+        )
+
+        return {"tiles": original_tiles, "mapping": mapping}

@@ -220,7 +220,7 @@ class KeypointsProcessor(DataProcessor):
         return convert_keypoints_from_albumentations(
             data,
             params.format,
-            shape[:2],  # Only use height, width for conversion
+            shape,  # Pass full shape for proper 3D keypoint validation
             check_validity=params.remove_invisible,
             angle_in_degrees=params.angle_in_degrees,
         )

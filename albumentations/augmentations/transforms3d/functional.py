@@ -391,3 +391,205 @@ def transform_cube_keypoints(
     result[:, :3] = xyz
 
     return result
+
+
+def split_uniform_grid_3d(
+    volume_shape: tuple[int, int, int],
+    grid: tuple[int, int, int],
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Splits a 3D volume shape into a uniform grid specified by the grid dimensions.
+
+    Args:
+        volume_shape (tuple[int, int, int]): The shape of the volume as (depth, height, width).
+        grid (tuple[int, int, int]): The grid size as (depth_slices, rows, columns).
+        random_generator (np.random.Generator): The random generator to use for shuffling the splits.
+
+    Returns:
+        np.ndarray: An array containing the tiles' coordinates in the format
+                    (z_start, y_start, x_start, z_end, y_end, x_end).
+
+    """
+    from albumentations.augmentations.geometric.functional import generate_shuffled_splits
+
+    n_depth, n_rows, n_cols = grid
+
+    depth_splits = generate_shuffled_splits(
+        volume_shape[0],
+        grid[0],
+        random_generator=random_generator,
+    )
+    height_splits = generate_shuffled_splits(
+        volume_shape[1],
+        grid[1],
+        random_generator=random_generator,
+    )
+    width_splits = generate_shuffled_splits(
+        volume_shape[2],
+        grid[2],
+        random_generator=random_generator,
+    )
+
+    # Calculate tiles coordinates
+    tiles = [
+        (
+            depth_splits[d],
+            height_splits[i],
+            width_splits[j],
+            depth_splits[d + 1],
+            height_splits[i + 1],
+            width_splits[j + 1],
+        )
+        for d in range(n_depth)
+        for i in range(n_rows)
+        for j in range(n_cols)
+    ]
+
+    return np.array(tiles, dtype=np.int16)
+
+
+def create_shape_groups_3d(tiles: np.ndarray) -> dict[tuple[int, int, int], list[int]]:
+    """Groups 3D tiles by their shape and stores the indices for each shape."""
+    from collections import defaultdict
+
+    shape_groups = defaultdict(list)
+    for index, (z1, y1, x1, z2, y2, x2) in enumerate(tiles):
+        shape = (z2 - z1, y2 - y1, x2 - x1)
+        shape_groups[shape].append(index)
+    return shape_groups
+
+
+def shuffle_tiles_within_shape_groups_3d(
+    shape_groups: dict[tuple[int, int, int], list[int]],
+    random_generator: np.random.Generator,
+) -> list[int]:
+    """Shuffles indices within each group of similar shapes and creates a list where each
+    index points to the index of the tile it should be mapped to.
+
+    Args:
+        shape_groups: Dictionary mapping shapes to list of tile indices with that shape
+        random_generator: Random number generator for shuffling
+
+    Returns:
+        List where index i contains the new position for tile i
+
+    """
+    num_tiles = sum(len(indices) for indices in shape_groups.values())
+    mapping = list(range(num_tiles))
+
+    for indices in shape_groups.values():
+        shuffled = indices.copy()
+        random_generator.shuffle(shuffled)
+        for old_idx, new_idx in zip(indices, shuffled):
+            mapping[old_idx] = new_idx
+
+    return mapping
+
+
+def swap_tiles_on_volume(
+    volume: np.ndarray,
+    tiles: np.ndarray,
+    mapping: list[int] | None = None,
+) -> np.ndarray:
+    """Swap tiles on the 3D volume according to the mapping.
+
+    Args:
+        volume (np.ndarray): Input volume with shape (D, H, W) or (D, H, W, C).
+        tiles (np.ndarray): Array of tiles with each tile as [z_start, y_start, x_start, z_end, y_end, x_end].
+        mapping (list[int] | None): List of new tile indices.
+
+    Returns:
+        np.ndarray: Output volume with tiles swapped according to the random shuffle.
+
+    """
+    # If no tiles are provided, return a copy of the original volume
+    if tiles.size == 0 or mapping is None:
+        return volume.copy()
+
+    # Create a copy of the volume to retain original for reference
+    new_volume = np.empty_like(volume)
+    for num, new_index in enumerate(mapping):
+        z1, y1, x1, z2, y2, x2 = tiles[new_index]
+        z1_orig, y1_orig, x1_orig, z2_orig, y2_orig, x2_orig = tiles[num]
+        # Assign the corresponding tile from the original volume to the new volume
+        new_volume[z1:z2, y1:y2, x1:x2] = volume[
+            z1_orig:z2_orig,
+            y1_orig:y2_orig,
+            x1_orig:x2_orig,
+        ]
+
+    return new_volume
+
+
+@handle_empty_array("keypoints")
+def swap_tiles_on_keypoints_3d(
+    keypoints: np.ndarray,
+    tiles: np.ndarray,
+    mapping: np.ndarray,
+) -> np.ndarray:
+    """Swap the positions of 3D keypoints based on a tile mapping.
+
+    Args:
+        keypoints (np.ndarray): A 2D numpy array of shape (N, 3+) where N is the number of keypoints.
+                                Each row represents a keypoint's (x, y, z) coordinates plus other data.
+        tiles (np.ndarray): A 2D numpy array of shape (M, 6) where M is the number of tiles.
+                            Each row represents a tile's (z_start, y_start, x_start, z_end, y_end, x_end).
+        mapping (np.ndarray): A 1D numpy array of shape (M,) where M is the number of tiles.
+                              Each element i contains the index of the tile that tile i should be swapped with.
+
+    Returns:
+        np.ndarray: A 2D numpy array of the same shape as the input keypoints, containing the new positions
+                    of the keypoints after the tile swap.
+
+    """
+    if not keypoints.size:
+        return keypoints
+
+    # Broadcast keypoints and tiles for vectorized comparison
+    kp_x = keypoints[:, 0][:, np.newaxis]  # Shape: (num_keypoints, 1)
+    kp_y = keypoints[:, 1][:, np.newaxis]  # Shape: (num_keypoints, 1)
+    kp_z = keypoints[:, 2][:, np.newaxis]  # Shape: (num_keypoints, 1)
+
+    z_start, y_start, x_start, z_end, y_end, x_end = tiles.T  # Each shape: (num_tiles,)
+
+    # Check if each keypoint is inside each tile
+    in_tile = (
+        (kp_z >= z_start) & (kp_z < z_end) & (kp_y >= y_start) & (kp_y < y_end) & (kp_x >= x_start) & (kp_x < x_end)
+    )
+
+    # Find which tile each keypoint belongs to
+    tile_indices = np.argmax(in_tile, axis=1)
+
+    # Check if any keypoint is not in any tile
+    not_in_any_tile = ~np.any(in_tile, axis=1)
+    if np.any(not_in_any_tile):
+        from warnings import warn
+
+        warn(
+            "Some keypoints are not in any tile. They will be returned unchanged. This is unexpected and should be "
+            "investigated.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+    # Get the new tile indices
+    new_tile_indices = np.array(mapping)[tile_indices]
+
+    # Calculate the offsets
+    old_start_x = tiles[tile_indices, 2]
+    old_start_y = tiles[tile_indices, 1]
+    old_start_z = tiles[tile_indices, 0]
+    new_start_x = tiles[new_tile_indices, 2]
+    new_start_y = tiles[new_tile_indices, 1]
+    new_start_z = tiles[new_tile_indices, 0]
+
+    # Apply the transformation
+    new_keypoints = keypoints.copy()
+    new_keypoints[:, 0] = (keypoints[:, 0] - old_start_x) + new_start_x
+    new_keypoints[:, 1] = (keypoints[:, 1] - old_start_y) + new_start_y
+    new_keypoints[:, 2] = (keypoints[:, 2] - old_start_z) + new_start_z
+
+    # Keep original coordinates for keypoints not in any tile
+    new_keypoints[not_in_any_tile] = keypoints[not_in_any_tile]
+
+    return new_keypoints

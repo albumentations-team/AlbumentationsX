@@ -915,3 +915,147 @@ def test_3d_transforms_keypoint_positions(augmentation_cls, params):
             f"Keypoint at ({x}, {y}, {z}) should match marked point in volume "
             f"after {augmentation_cls.__name__} transform"
         )
+
+
+def test_grid_shuffle_3d_basic():
+    """Test basic functionality of GridShuffle3D"""
+    volume = np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)
+    mask3d = np.random.randint(0, 2, (10, 100, 100), dtype=np.uint8)
+
+    transform = A.Compose([
+        A.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0)
+    ], seed=137, strict=True)
+
+    transformed = transform(volume=volume, mask3d=mask3d)
+
+    # Check that shape is preserved
+    assert transformed['volume'].shape == volume.shape
+    assert transformed['mask3d'].shape == mask3d.shape
+
+    # Check that content is shuffled (not equal to original)
+    assert not np.array_equal(transformed['volume'], volume)
+    assert not np.array_equal(transformed['mask3d'], mask3d)
+
+    # Check that total sum is preserved (no data loss)
+    np.testing.assert_allclose(
+        transformed['volume'].sum(), volume.sum(), rtol=1e-5
+    )
+    np.testing.assert_allclose(
+        transformed['mask3d'].sum(), mask3d.sum(), rtol=1e-5
+    )
+
+
+@pytest.mark.parametrize(
+    "grid_zyx",
+    [
+        (2, 2, 2),
+        (1, 3, 3),
+        (3, 1, 3),
+        (3, 3, 1),
+        (2, 3, 4),
+    ]
+)
+def test_grid_shuffle_3d_various_grids(grid_zyx):
+    """Test GridShuffle3D with various grid configurations"""
+    volume = np.random.randint(0, 256, (12, 96, 96), dtype=np.uint8)
+
+    transform = A.GridShuffle3D(grid_zyx=grid_zyx, p=1.0)
+    transformed = transform(volume=volume)
+
+    # Check shape preservation
+    assert transformed['volume'].shape == volume.shape
+
+    # Check content preservation
+    np.testing.assert_allclose(
+        transformed['volume'].sum(), volume.sum(), rtol=1e-5
+    )
+
+
+def test_grid_shuffle_3d_with_keypoints():
+    """Test GridShuffle3D with keypoints"""
+    volume = np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)
+    keypoints = np.array(
+        [[20, 30, 2], [60, 70, 7], [10, 10, 1], [80, 90, 8]],
+        dtype=np.float32
+    )
+    keypoint_labels = [0, 1, 2, 3]
+
+    transform = A.Compose([
+        A.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0)
+    ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+
+    # Use seed for reproducibility
+    np.random.seed(137)
+    transformed = transform(
+        volume=volume,
+        keypoints=keypoints,
+        keypoint_labels=keypoint_labels
+    )
+
+    # Check that keypoints are transformed
+    assert not np.array_equal(transformed['keypoints'], keypoints)
+
+    # Check that all keypoints are still within bounds
+    for kp in transformed['keypoints']:
+        assert 0 <= kp[0] < 100  # x
+        assert 0 <= kp[1] < 100  # y
+        assert 0 <= kp[2] < 10   # z
+
+    # Check that labels are preserved
+    assert transformed['keypoint_labels'] == keypoint_labels
+
+
+def test_grid_shuffle_3d_consistency():
+    """Test that GridShuffle3D applies the same shuffle to all targets"""
+    # Create a volume with distinct patterns in each grid cell
+    volume = np.zeros((8, 80, 80), dtype=np.uint8)
+
+    # Fill different grid cells with different values
+    # (assuming 2x2x2 grid = 8 cells)
+    volume[:4, :40, :40] = 1    # cell (0,0,0)
+    volume[:4, :40, 40:] = 2    # cell (0,0,1)
+    volume[:4, 40:, :40] = 3    # cell (0,1,0)
+    volume[:4, 40:, 40:] = 4    # cell (0,1,1)
+    volume[4:, :40, :40] = 5    # cell (1,0,0)
+    volume[4:, :40, 40:] = 6    # cell (1,0,1)
+    volume[4:, 40:, :40] = 7    # cell (1,1,0)
+    volume[4:, 40:, 40:] = 8    # cell (1,1,1)
+
+    # Use same pattern for mask
+    mask3d = volume.copy()
+
+    transform = A.Compose([
+        A.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0)
+    ], seed=137)
+
+    transformed = transform(volume=volume, mask3d=mask3d)
+
+    # Check that volume and mask received the same shuffle
+    np.testing.assert_array_equal(
+        transformed['volume'],
+        transformed['mask3d']
+    )
+
+
+def test_grid_shuffle_3d_probability():
+    """Test that GridShuffle3D respects probability parameter"""
+    volume = np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)
+
+    # With p=0, should not transform
+    transform = A.GridShuffle3D(grid_zyx=(2, 2, 2), p=0.0)
+    transformed = transform(volume=volume)
+    np.testing.assert_array_equal(transformed['volume'], volume)
+
+    # With p=1, should always transform
+    transform = A.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0)
+
+    # Run multiple times to ensure it transforms
+    num_transforms = 10
+    transform_count = 0
+    for _ in range(num_transforms):
+        transformed = transform(volume=volume)
+        if not np.array_equal(transformed['volume'], volume):
+            transform_count += 1
+
+    # Should transform at least once (very high probability)
+    assert transform_count > 0

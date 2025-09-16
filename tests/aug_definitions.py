@@ -453,4 +453,5 @@ AUGMENTATION_CLS_PARAMS = [
     [A.PixelDistributionAdaptation, {"blend_ratio": (0.25, 1.0), "transform_type": "pca", "metadata_key": "pda_metadata"}],
     [A.Mosaic, {"grid_yx": (2, 2), "target_size": (256, 256), "cell_shape": (128, 128), "metadata_key": "mosaic_metadata"}],
     [A.Dithering, {"method": "error_diffusion", "n_colors": 2}],
+    [A.GridShuffle3D, {"grid_zyx": (2, 2, 2)}],
 ]

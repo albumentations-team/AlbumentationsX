@@ -489,33 +489,48 @@ def shuffle_tiles_within_shape_groups_3d(
 def swap_tiles_on_volume(
     volume: np.ndarray,
     tiles: np.ndarray,
-    mapping: list[int] | None = None,
+    mapping: list[int],
 ) -> np.ndarray:
     """Swap tiles on the 3D volume according to the mapping.
 
     Args:
         volume (np.ndarray): Input volume with shape (D, H, W) or (D, H, W, C).
         tiles (np.ndarray): Array of tiles with each tile as [z_start, y_start, x_start, z_end, y_end, x_end].
-        mapping (list[int] | None): List of new tile indices.
+        mapping (list[int]): List of new tile indices. Must have the same length as tiles.
 
     Returns:
         np.ndarray: Output volume with tiles swapped according to the random shuffle.
 
+    Note:
+        This implementation uses a loop rather than vectorized operations because tiles may have
+        variable sizes in the general case (e.g., when the volume dimensions aren't evenly divisible
+        by the grid size). Advanced indexing with variable-sized slices isn't possible in NumPy,
+        making this loop-based approach the most efficient solution.
+
     """
     # If no tiles are provided, return a copy of the original volume
-    if tiles.size == 0 or mapping is None:
+    if tiles.size == 0:
         return volume.copy()
 
     # Create a copy of the volume to retain original for reference
     new_volume = np.empty_like(volume)
-    for num, new_index in enumerate(mapping):
-        z1, y1, x1, z2, y2, x2 = tiles[new_index]
-        z1_orig, y1_orig, x1_orig, z2_orig, y2_orig, x2_orig = tiles[num]
-        # Assign the corresponding tile from the original volume to the new volume
-        new_volume[z1:z2, y1:y2, x1:x2] = volume[
-            z1_orig:z2_orig,
-            y1_orig:y2_orig,
-            x1_orig:x2_orig,
+
+    # Note: Loop is necessary as tiles may have different sizes (edge tiles can be smaller)
+    # Vectorized fancy indexing doesn't support variable-sized slices
+    for dest_idx, src_idx in enumerate(mapping):
+        # mapping[dest_idx] = src_idx means:
+        # "position dest_idx in output gets content from position src_idx in input"
+
+        # Get the destination tile position in the output volume
+        z1_dest, y1_dest, x1_dest, z2_dest, y2_dest, x2_dest = tiles[dest_idx]
+        # Get the source tile position in the input volume
+        z1_src, y1_src, x1_src, z2_src, y2_src, x2_src = tiles[src_idx]
+
+        # Copy tile from source position in input to destination position in output
+        new_volume[z1_dest:z2_dest, y1_dest:y2_dest, x1_dest:x2_dest] = volume[
+            z1_src:z2_src,
+            y1_src:y2_src,
+            x1_src:x2_src,
         ]
 
     return new_volume
@@ -545,23 +560,24 @@ def swap_tiles_on_keypoints_3d(
     if not keypoints.size:
         return keypoints
 
-    # Broadcast keypoints and tiles for vectorized comparison
-    kp_x = keypoints[:, 0][:, np.newaxis]  # Shape: (num_keypoints, 1)
-    kp_y = keypoints[:, 1][:, np.newaxis]  # Shape: (num_keypoints, 1)
-    kp_z = keypoints[:, 2][:, np.newaxis]  # Shape: (num_keypoints, 1)
+    # Initialize tile indices for each keypoint (-1 means not in any tile)
+    tile_indices = np.full(len(keypoints), -1, dtype=np.int32)
 
-    z_start, y_start, x_start, z_end, y_end, x_end = tiles.T  # Each shape: (num_tiles,)
-
-    # Check if each keypoint is inside each tile
-    in_tile = (
-        (kp_z >= z_start) & (kp_z < z_end) & (kp_y >= y_start) & (kp_y < y_end) & (kp_x >= x_start) & (kp_x < x_end)
-    )
-
-    # Find which tile each keypoint belongs to
-    tile_indices = np.argmax(in_tile, axis=1)
+    # Sequential tile processing - O(k) per tile instead of O(k*t) matrix
+    # This avoids memory explosion with large numbers of keypoints and tiles
+    for i, (z_start, y_start, x_start, z_end, y_end, x_end) in enumerate(tiles):
+        mask = (
+            (keypoints[:, 2] >= z_start)
+            & (keypoints[:, 2] < z_end)
+            & (keypoints[:, 1] >= y_start)
+            & (keypoints[:, 1] < y_end)
+            & (keypoints[:, 0] >= x_start)
+            & (keypoints[:, 0] < x_end)
+        )
+        tile_indices[mask] = i
 
     # Check if any keypoint is not in any tile
-    not_in_any_tile = ~np.any(in_tile, axis=1)
+    not_in_any_tile = tile_indices < 0
     if np.any(not_in_any_tile):
         from warnings import warn
 
@@ -572,24 +588,31 @@ def swap_tiles_on_keypoints_3d(
             stacklevel=2,
         )
 
-    # Get the new tile indices
-    new_tile_indices = np.array(mapping)[tile_indices]
-
-    # Calculate the offsets
-    old_start_x = tiles[tile_indices, 2]
-    old_start_y = tiles[tile_indices, 1]
-    old_start_z = tiles[tile_indices, 0]
-    new_start_x = tiles[new_tile_indices, 2]
-    new_start_y = tiles[new_tile_indices, 1]
-    new_start_z = tiles[new_tile_indices, 0]
-
-    # Apply the transformation
+    # Vectorized coordinate transformation
     new_keypoints = keypoints.copy()
-    new_keypoints[:, 0] = (keypoints[:, 0] - old_start_x) + new_start_x
-    new_keypoints[:, 1] = (keypoints[:, 1] - old_start_y) + new_start_y
-    new_keypoints[:, 2] = (keypoints[:, 2] - old_start_z) + new_start_z
+    valid_mask = tile_indices >= 0
 
-    # Keep original coordinates for keypoints not in any tile
-    new_keypoints[not_in_any_tile] = keypoints[not_in_any_tile]
+    if np.any(valid_mask):
+        # Create inverse mapping: inverse[j] = i means tile j's content goes to position i
+        inverse_mapping = np.zeros(len(mapping), dtype=np.int32)
+        for dest_idx, src_idx in enumerate(mapping):
+            inverse_mapping[src_idx] = dest_idx
+
+        valid_tile_indices = tile_indices[valid_mask]
+        # For each keypoint in tile i, it moves to wherever tile i's content goes
+        new_tile_indices = inverse_mapping[valid_tile_indices]
+
+        # Calculate the offsets (tiles are in z,y,x order)
+        old_starts_z = tiles[valid_tile_indices, 0]
+        old_starts_y = tiles[valid_tile_indices, 1]
+        old_starts_x = tiles[valid_tile_indices, 2]
+        new_starts_z = tiles[new_tile_indices, 0]
+        new_starts_y = tiles[new_tile_indices, 1]
+        new_starts_x = tiles[new_tile_indices, 2]
+
+        # Apply the transformation
+        new_keypoints[valid_mask, 0] += new_starts_x - old_starts_x
+        new_keypoints[valid_mask, 1] += new_starts_y - old_starts_y
+        new_keypoints[valid_mask, 2] += new_starts_z - old_starts_z
 
     return new_keypoints

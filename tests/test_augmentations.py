@@ -1126,6 +1126,45 @@ def test_pixel_dropout_multiple_images():
     assert np.all([np.any(image == 0) for image in result]) # Each image should have some dropped pixels
 
 
+@pytest.mark.parametrize(
+    ["drop_value", "channels", "expected_values"],
+    [
+        # Matching dimensions
+        ((255, 0, 127), 3, [255, 0, 127]),
+        # Fewer values than channels - should cycle
+        ((255, 0), 3, [255, 0, 255]),
+        ((255,), 3, [255, 255, 255]),
+        # More values than channels - should use first N
+        ((255, 0, 127, 64), 3, [255, 0, 127]),
+        ((255, 0, 127, 64, 32), 3, [255, 0, 127]),
+        # 4-channel RGBA
+        ((255, 0), 4, [255, 0, 255, 0]),
+        ((255, 0, 127, 64), 4, [255, 0, 127, 64]),
+    ],
+)
+def test_pixel_dropout_mismatched_tuple_dimensions(drop_value, channels, expected_values):
+    """Test that PixelDropout handles mismatched tuple dimensions correctly."""
+    # Create image with specified number of channels
+    shape = (10, 10, channels) if channels > 1 else (10, 10)
+    image = np.ones(shape, dtype=np.uint8) * 128
+
+    # Apply transform with 100% dropout to test all pixels
+    transform = A.PixelDropout(dropout_prob=1.0, drop_value=drop_value, p=1.0)
+    result = transform(image=image)["image"]
+
+    # Check shape is preserved
+    assert result.shape == image.shape
+
+    # Check values are as expected
+    if channels == 1:
+        # Grayscale - should use first value
+        assert np.all(result == expected_values[0])
+    else:
+        # Multi-channel - check each channel
+        for channel_idx in range(channels):
+            assert np.all(result[:, :, channel_idx] == expected_values[channel_idx])
+
+
 def test_salt_and_pepper_noise():
     # Test image setup - create all gray image instead of black with gray square
     image = np.full((100, 100, 3), 128, dtype=np.uint8)  # All gray image

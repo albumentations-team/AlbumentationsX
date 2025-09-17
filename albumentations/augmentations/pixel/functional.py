@@ -3550,8 +3550,21 @@ def prepare_drop_values(
     if array.ndim == 2:
         return np.full(array.shape, values[0], dtype=array.dtype)
 
-    # For multichannel input, broadcast values to full shape
-    return np.full((*array.shape[:2], len(values)), values, dtype=array.dtype)
+    # For multichannel input, broadcast values to match image shape
+    channels = array.shape[2]
+    if len(values) != channels:
+        # If number of values doesn't match channels, use the first value for all channels
+        # or cycle through values if there are multiple
+        if len(values) == 1:
+            # Single value for all channels
+            broadcast_values = np.full(channels, values[0], dtype=array.dtype)
+        else:
+            # Cycle through values to match channel count
+            broadcast_values = np.array([values[i % len(values)] for i in range(channels)], dtype=array.dtype)
+    else:
+        broadcast_values = values
+
+    return np.full(array.shape, broadcast_values, dtype=array.dtype)
 
 
 def get_mask_array(data: dict[str, Any]) -> np.ndarray | None:

@@ -602,6 +602,15 @@ class Affine(DualTransform):
 
             return self
 
+        @model_validator(mode="after")
+        def _validate_keep_ratio_scale_compatibility(self) -> Self:
+            """Validate that when keep_ratio is True, x and y scale ranges are identical."""
+            if self.keep_ratio and isinstance(self.scale, dict) and self.scale["x"] != self.scale["y"]:
+                raise ValueError(
+                    f"When keep_ratio is True, the x and y scale range should be identical. got {self.scale}",
+                )
+            return self
+
         @staticmethod
         def _handle_dict_arg(
             val: tuple[float, float]
@@ -676,11 +685,6 @@ class Affine(DualTransform):
         self.keep_ratio = keep_ratio
         self.rotate_method = rotate_method
         self.balanced_scale = balanced_scale
-
-        if self.keep_ratio and self.scale["x"] != self.scale["y"]:
-            raise ValueError(
-                f"When keep_ratio is True, the x and y scale range should be identical. got {self.scale}",
-            )
 
     def apply(
         self,
@@ -1066,7 +1070,7 @@ class ShiftScaleRotate(Affine):
             fill_mask=fill_mask,
             border_mode=border_mode,
             fit_output=False,
-            keep_ratio=False,  # Explicitly set to False for backward compatibility
+            keep_ratio=True,
             rotate_method=rotate_method,
             p=p,
         )

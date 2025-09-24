@@ -794,9 +794,9 @@ def test_affine_keep_ratio_with_single_scale_value():
     assert apply_params["scale"]["y"] == 1.5, f"Expected scale_y=1.5 but got {apply_params['scale']['y']}"
 
 
-def test_shift_scale_rotate_keeps_old_behavior():
-    """Test that ShiftScaleRotate explicitly sets keep_ratio=False for backward compatibility."""
-    # ShiftScaleRotate is deprecated but should maintain its old behavior
+def test_shift_scale_rotate_uses_keep_ratio_true():
+    """Test that ShiftScaleRotate now uses keep_ratio=True like Affine."""
+    # ShiftScaleRotate is deprecated but now uses the new default behavior
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -806,8 +806,8 @@ def test_shift_scale_rotate_keeps_old_behavior():
             rotate_limit=45,
             p=1.0
         )
-    # ShiftScaleRotate explicitly sets keep_ratio=False in its __init__
-    assert transform.keep_ratio == False, "ShiftScaleRotate should maintain keep_ratio=False for backward compatibility"
+    # ShiftScaleRotate now uses keep_ratio=True
+    assert transform.keep_ratio == True, "ShiftScaleRotate should now use keep_ratio=True"
 
 
 @pytest.mark.parametrize(

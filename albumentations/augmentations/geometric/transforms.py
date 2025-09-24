@@ -427,7 +427,7 @@ class Affine(DualTransform):
             Fitting the output shape can be useful to avoid corners of the image being outside the image plane
             after applying rotations. Default: False
         keep_ratio (bool): When True, the original aspect ratio will be kept when the random scale is applied.
-            Default: False.
+            Default: True.
         rotate_method (Literal["largest_box", "ellipse"]): rotation method used for the bounding boxes.
             Should be one of "largest_box" or "ellipse"[1]. Default: "largest_box"
         balanced_scale (bool): When True, scaling factors are chosen to be either entirely below or above 1,
@@ -646,7 +646,7 @@ class Affine(DualTransform):
             cv2.INTER_LANCZOS4,
         ] = cv2.INTER_NEAREST,
         fit_output: bool = False,
-        keep_ratio: bool = False,
+        keep_ratio: bool = True,
         rotate_method: Literal["largest_box", "ellipse"] = "largest_box",
         balanced_scale: bool = False,
         border_mode: Literal[
@@ -1066,7 +1066,7 @@ class ShiftScaleRotate(Affine):
             fill_mask=fill_mask,
             border_mode=border_mode,
             fit_output=False,
-            keep_ratio=False,
+            keep_ratio=False,  # Explicitly set to False for backward compatibility
             rotate_method=rotate_method,
             p=p,
         )

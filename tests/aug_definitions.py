@@ -260,6 +260,7 @@ AUGMENTATION_CLS_PARAMS = [
             "fill_mask": 1,
             "border_mode": cv2.BORDER_REFLECT,
             "fit_output": False,
+            "keep_ratio": False,  # Explicitly set to False since x and y scale ranges are different
         }
         ]
     ],

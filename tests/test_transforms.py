@@ -688,8 +688,8 @@ def test_affine_scale_ratio(params):
     apply_params = aug.get_params_dependent_on_data(params=call_params, data=data)
 
     if "keep_ratio" not in params:
-        # default(keep_ratio=False)
-        assert apply_params["scale"]["x"] != apply_params["scale"]["y"]
+        # default(keep_ratio=True)
+        assert apply_params["scale"]["x"] == apply_params["scale"]["y"]
     elif not params["keep_ratio"]:
         # keep_ratio=False
         assert apply_params["scale"]["x"] != apply_params["scale"]["y"]
@@ -708,6 +708,106 @@ def test_affine_scale_ratio(params):
 def test_affine_incorrect_scale_range(params):
     with pytest.raises(ValueError):
         A.Affine(**params)
+
+
+def test_affine_default_keep_ratio_behavior():
+    """Test that Affine transform preserves aspect ratio by default (keep_ratio=True)."""
+    # Test with tuple scale
+    transform = A.Affine(scale=(0.5, 1.5), p=1.0)
+    assert transform.keep_ratio == True, "Default keep_ratio should be True"
+
+    transform.set_random_seed(137)
+    image = SQUARE_UINT8_IMAGE
+    data = {"image": image}
+    params = transform.get_params()
+    params = transform.update_transform_params(params, data)
+    apply_params = transform.get_params_dependent_on_data(params=params, data=data)
+
+    assert apply_params["scale"]["x"] == apply_params["scale"]["y"], \
+        f"With default keep_ratio=True, scales should be equal but got x={apply_params['scale']['x']}, y={apply_params['scale']['y']}"
+
+
+def test_affine_explicit_keep_ratio_false():
+    """Test that setting keep_ratio=False allows different x/y scales."""
+    transform = A.Affine(scale=(0.5, 1.5), keep_ratio=False, p=1.0)
+    assert transform.keep_ratio == False, "keep_ratio should be False when explicitly set"
+
+    transform.set_random_seed(137)
+    image = SQUARE_UINT8_IMAGE
+    data = {"image": image}
+    params = transform.get_params()
+    params = transform.update_transform_params(params, data)
+    apply_params = transform.get_params_dependent_on_data(params=params, data=data)
+
+    # With keep_ratio=False, x and y can be different (not always will be, but can be)
+    # Let's test multiple seeds to ensure we get different values at least once
+    found_different = False
+    for seed in range(10):
+        transform.set_random_seed(seed)
+        params = transform.get_params()
+        params = transform.update_transform_params(params, data)
+        apply_params = transform.get_params_dependent_on_data(params=params, data=data)
+        if apply_params["scale"]["x"] != apply_params["scale"]["y"]:
+            found_different = True
+            break
+
+    assert found_different, "With keep_ratio=False, should be able to get different x and y scales"
+
+
+def test_affine_with_dict_scale_keep_ratio_true():
+    """Test that dict scale with same ranges and keep_ratio=True works correctly."""
+    transform = A.Affine(
+        scale={"x": (0.5, 1.5), "y": (0.5, 1.5)},
+        keep_ratio=True,
+        p=1.0
+    )
+    transform.set_random_seed(137)
+    image = SQUARE_UINT8_IMAGE
+    data = {"image": image}
+    params = transform.get_params()
+    params = transform.update_transform_params(params, data)
+    apply_params = transform.get_params_dependent_on_data(params=params, data=data)
+
+    assert apply_params["scale"]["x"] == apply_params["scale"]["y"], \
+        "With keep_ratio=True and dict scale, x and y should be equal"
+
+
+def test_safe_rotate_inherits_keep_ratio_default():
+    """Test that SafeRotate inherits the new default keep_ratio=True behavior."""
+    transform = A.SafeRotate(limit=45, p=1.0)
+    # SafeRotate inherits from Affine and doesn't override keep_ratio
+    assert transform.keep_ratio == True, "SafeRotate should inherit keep_ratio=True default"
+
+
+def test_affine_keep_ratio_with_single_scale_value():
+    """Test that a single scale value works correctly with keep_ratio=True."""
+    transform = A.Affine(scale=1.5, keep_ratio=True, p=1.0)
+    transform.set_random_seed(137)
+    image = SQUARE_UINT8_IMAGE
+    data = {"image": image}
+    params = transform.get_params()
+    params = transform.update_transform_params(params, data)
+    apply_params = transform.get_params_dependent_on_data(params=params, data=data)
+
+    # With a single scale value, both x and y should be that value
+    assert apply_params["scale"]["x"] == 1.5, f"Expected scale_x=1.5 but got {apply_params['scale']['x']}"
+    assert apply_params["scale"]["y"] == 1.5, f"Expected scale_y=1.5 but got {apply_params['scale']['y']}"
+
+
+def test_shift_scale_rotate_keeps_old_behavior():
+    """Test that ShiftScaleRotate explicitly sets keep_ratio=False for backward compatibility."""
+    # ShiftScaleRotate is deprecated but should maintain its old behavior
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        transform = A.ShiftScaleRotate(
+            shift_limit=0.1,
+            scale_limit=(-0.1, 0.1),
+            rotate_limit=45,
+            p=1.0
+        )
+    # ShiftScaleRotate explicitly sets keep_ratio=False in its __init__
+    assert transform.keep_ratio == False, "ShiftScaleRotate should maintain keep_ratio=False for backward compatibility"
 
 
 @pytest.mark.parametrize(

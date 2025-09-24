@@ -714,7 +714,7 @@ def test_affine_default_keep_ratio_behavior():
     """Test that Affine transform preserves aspect ratio by default (keep_ratio=True)."""
     # Test with tuple scale
     transform = A.Affine(scale=(0.5, 1.5), p=1.0)
-    assert transform.keep_ratio == True, "Default keep_ratio should be True"
+    assert transform.keep_ratio, "Default keep_ratio should be True"
 
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
@@ -730,7 +730,7 @@ def test_affine_default_keep_ratio_behavior():
 def test_affine_explicit_keep_ratio_false():
     """Test that setting keep_ratio=False allows different x/y scales."""
     transform = A.Affine(scale=(0.5, 1.5), keep_ratio=False, p=1.0)
-    assert transform.keep_ratio == False, "keep_ratio should be False when explicitly set"
+    assert not transform.keep_ratio, "keep_ratio should be False when explicitly set"
 
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
@@ -776,7 +776,7 @@ def test_safe_rotate_inherits_keep_ratio_default():
     """Test that SafeRotate inherits the new default keep_ratio=True behavior."""
     transform = A.SafeRotate(limit=45, p=1.0)
     # SafeRotate inherits from Affine and doesn't override keep_ratio
-    assert transform.keep_ratio == True, "SafeRotate should inherit keep_ratio=True default"
+    assert transform.keep_ratio, "SafeRotate should inherit keep_ratio=True default"
 
 
 def test_affine_keep_ratio_with_single_scale_value():
@@ -807,7 +807,7 @@ def test_shift_scale_rotate_uses_keep_ratio_true():
             p=1.0
         )
     # ShiftScaleRotate now uses keep_ratio=True
-    assert transform.keep_ratio == True, "ShiftScaleRotate should now use keep_ratio=True"
+    assert transform.keep_ratio, "ShiftScaleRotate should now use keep_ratio=True"
 
 
 @pytest.mark.parametrize(

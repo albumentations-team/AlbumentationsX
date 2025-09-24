@@ -366,50 +366,50 @@ class Affine(DualTransform):
     `mask_interpolation` deals with the method of interpolation used for this.
 
     Args:
-        scale (number, tuple of number or dict): Scaling factor to use, where ``1.0`` denotes "no change" and
-            ``0.5`` is zoomed out to ``50`` percent of the original size.
+        scale (number, tuple of number or dict): Scaling factor to use, where `1.0` denotes "no change" and
+            `0.5` is zoomed out to `50` percent of the original size.
                 * If a single number, then that value will be used for all images.
-                * If a tuple ``(a, b)``, then a value will be uniformly sampled per image from the interval ``[a, b]``.
+                * If a tuple `(a, b)`, then a value will be uniformly sampled per image from the interval `[a, b]`.
                   That the same range will be used for both x- and y-axis. To keep the aspect ratio, set
-                  ``keep_ratio=True``, then the same value will be used for both x- and y-axis.
-                * If a dictionary, then it is expected to have the keys ``x`` and/or ``y``.
+                  `keep_ratio=True`, then the same value will be used for both x- and y-axis.
+                * If a dictionary, then it is expected to have the keys `x` and/or `y`.
                   Each of these keys can have the same values as described above.
                   Using a dictionary allows to set different values for the two axis and sampling will then happen
                   *independently* per axis, resulting in samples that differ between the axes. Note that when
-                  the ``keep_ratio=True``, the x- and y-axis ranges should be the same.
+                  the `keep_ratio=True`, the x- and y-axis ranges should be the same.
         translate_percent (None, number, tuple of number or dict): Translation as a fraction of the image height/width
-            (x-translation, y-translation), where ``0`` denotes "no change"
-            and ``0.5`` denotes "half of the axis size".
-                * If ``None`` then equivalent to ``0.0`` unless `translate_px` has a value other than ``None``.
+            (x-translation, y-translation), where `0` denotes "no change"
+            and `0.5` denotes "half of the axis size".
+                * If `None` then equivalent to `0.0` unless `translate_px` has a value other than `None`.
                 * If a single number, then that value will be used for all images.
-                * If a tuple ``(a, b)``, then a value will be uniformly sampled per image from the interval ``[a, b]``.
+                * If a tuple `(a, b)`, then a value will be uniformly sampled per image from the interval `[a, b]`.
                   That sampled fraction value will be used identically for both x- and y-axis.
-                * If a dictionary, then it is expected to have the keys ``x`` and/or ``y``.
+                * If a dictionary, then it is expected to have the keys `x` and/or `y`.
                   Each of these keys can have the same values as described above.
                   Using a dictionary allows to set different values for the two axis and sampling will then happen
                   *independently* per axis, resulting in samples that differ between the axes.
         translate_px (None, int, tuple of int or dict): Translation in pixels.
-                * If ``None`` then equivalent to ``0`` unless `translate_percent` has a value other than ``None``.
+                * If `None` then equivalent to `0` unless `translate_percent` has a value other than `None`.
                 * If a single int, then that value will be used for all images.
-                * If a tuple ``(a, b)``, then a value will be uniformly sampled per image from
-                  the discrete interval ``[a..b]``. That number will be used identically for both x- and y-axis.
-                * If a dictionary, then it is expected to have the keys ``x`` and/or ``y``.
+                * If a tuple `(a, b)`, then a value will be uniformly sampled per image from
+                  the discrete interval `[a..b]`. That number will be used identically for both x- and y-axis.
+                * If a dictionary, then it is expected to have the keys `x` and/or `y`.
                   Each of these keys can have the same values as described above.
                   Using a dictionary allows to set different values for the two axis and sampling will then happen
                   *independently* per axis, resulting in samples that differ between the axes.
         rotate (number or tuple of number): Rotation in degrees (**NOT** radians), i.e. expected value range is
-            around ``[-360, 360]``. Rotation happens around the *center* of the image,
+            around `[-360, 360]`. Rotation happens around the *center* of the image,
             not the top left corner as in some other frameworks.
                 * If a number, then that value will be used for all images.
-                * If a tuple ``(a, b)``, then a value will be uniformly sampled per image from the interval ``[a, b]``
+                * If a tuple `(a, b)`, then a value will be uniformly sampled per image from the interval `[a, b]`
                   and used as the rotation value.
         shear (number, tuple of number or dict): Shear in degrees (**NOT** radians), i.e. expected value range is
-            around ``[-360, 360]``, with reasonable values being in the range of ``[-45, 45]``.
+            around `[-360, 360]`, with reasonable values being in the range of `[-45, 45]`.
                 * If a number, then that value will be used for all images as
                   the shear on the x-axis (no shear on the y-axis will be done).
-                * If a tuple ``(a, b)``, then two value will be uniformly sampled per image
-                  from the interval ``[a, b]`` and be used as the x- and y-shear value.
-                * If a dictionary, then it is expected to have the keys ``x`` and/or ``y``.
+                * If a tuple `(a, b)`, then two value will be uniformly sampled per image
+                  from the interval `[a, b]` and be used as the x- and y-shear value.
+                * If a dictionary, then it is expected to have the keys `x` and/or `y`.
                   Each of these keys can have the same values as described above.
                   Using a dictionary allows to set different values for the two axis and sampling will then happen
                   *independently* per axis, resulting in samples that differ between the axes.
@@ -418,12 +418,12 @@ class Affine(DualTransform):
         fill (tuple[float, ...] | float): The constant value to use when filling in newly created pixels.
             (E.g. translating by 1px to the right will create a new 1px-wide column of pixels
             on the left of the image).
-            The value is only used when `mode=constant`. The expected value range is ``[0, 255]`` for ``uint8`` images.
+            The value is only used when `mode=constant`. The expected value range is `[0, 255]` for `uint8` images.
         fill_mask (tuple[float, ...] | float): Same as fill but only for masks.
         border_mode (int): OpenCV border flag.
         fit_output (bool): If True, the image plane size and position will be adjusted to tightly capture
             the whole image after affine transformation (`translate_percent` and `translate_px` are ignored).
-            Otherwise (``False``),  parts of the transformed image may end up outside the image plane.
+            Otherwise (`False`),  parts of the transformed image may end up outside the image plane.
             Fitting the output shape can be useful to avoid corners of the image being outside the image plane
             after applying rotations. Default: False
         keep_ratio (bool): When True, the original aspect ratio will be kept when the random scale is applied.

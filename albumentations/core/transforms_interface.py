@@ -667,6 +667,8 @@ class DualTransform(BasicTransform):
             dict[str, Callable[..., Any]]: Dictionary mapping target keys to their processing functions.
 
         """
+        # Note: keypoint label swapping is handled within apply_to_keypoints
+        # No separate targets needed for label fields
         return {
             "image": self.apply,
             "images": self.apply_to_images,
@@ -702,6 +704,139 @@ class DualTransform(BasicTransform):
     @batch_transform("spatial")
     def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         return np.stack([self.apply_to_mask3d(mask3d, **params) for mask3d in masks3d])
+
+    def apply_to_keypoint_labels(self, labels: np.ndarray, **params: Any) -> np.ndarray:
+        """Apply label transformation for keypoint labels.
+
+        Works with encoded integer labels - no encoding/decoding during transformation.
+
+        Args:
+            labels: Array of encoded keypoint labels (integers)
+            **params: Additional parameters
+
+        Returns:
+            np.ndarray: Transformed labels with same length as input
+
+        """
+        # Get the keypoint processor
+        processor = self.processors.get("keypoints")
+        if not processor or not hasattr(processor, "encoded_label_mappings"):
+            return labels
+
+        transform_name = self._get_label_transform_name(**params)
+
+        # Use pre-computed encoded mapping for fast integer swapping
+        if transform_name is not None and transform_name in processor.encoded_label_mappings:
+            field_mappings = processor.encoded_label_mappings[transform_name]
+            # Use the first label field mapping (works for single field case)
+            if field_mappings:
+                first_mapping = next(iter(field_mappings.values()))
+                transformed_labels = labels.copy()
+
+                # Apply mapping to encoded integers
+                for i, label in enumerate(labels):
+                    label_int = int(label)
+                    transformed_labels[i] = first_mapping.get(label_int, label)
+
+                return transformed_labels
+
+        # No mapping defined, return labels unchanged
+        return labels
+
+    def _get_label_transform_name(self, **params: Any) -> str | None:
+        """Get the transform name to use for label mapping.
+
+        For most transforms, this is just the class name. For D4/SquareSymmetry,
+        we map the group element to the corresponding base transform name.
+
+        Args:
+            **params: Transform parameters, may contain group_element for D4 transforms
+
+        Returns:
+            str | None: Transform name to use for label mapping, or None if no mapping should be applied
+
+        """
+        class_name = self.__class__.__name__
+
+        # Handle D4 and SquareSymmetry transforms (including subclasses)
+        if class_name in ("D4", "SquareSymmetry") or any(
+            base.__name__ in ("D4", "SquareSymmetry") for base in self.__class__.__mro__
+        ):
+            group_element = params.get("group_element", "e")
+            # Map D4 group elements to base transform names
+            d4_to_base_transform = {
+                "h": "HorizontalFlip",
+                "v": "VerticalFlip",
+                "t": "Transpose",
+                "hvt": "Transpose",  # Anti-diagonal is also a transpose-like operation
+                "e": None,  # Identity - no label swapping
+                "r90": None,  # Rotations don't change semantic labels
+                "r180": None,
+                "r270": None,
+            }
+            mapped_name = d4_to_base_transform.get(group_element)
+            return mapped_name if mapped_name else class_name
+
+        # Only parity-changing transforms should apply label mappings
+        parity_changing_transforms = {"HorizontalFlip", "VerticalFlip", "Transpose"}
+        if class_name in parity_changing_transforms:
+            return class_name
+
+        # Non-parity-changing transforms don't affect semantic labels
+        return None
+
+    def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
+        """Apply label mapping to the label columns in the keypoints array.
+
+        Args:
+            keypoints: Keypoints array with potential label columns attached
+            **params: Transform parameters
+
+        Returns:
+            np.ndarray: Keypoints array with label columns transformed
+
+        """
+        # Get the keypoint processor
+        processor = self.processors.get("keypoints") if hasattr(self, "processors") else None
+        if not processor or not hasattr(processor, "encoded_label_mappings"):
+            return keypoints
+
+        # Check if there are label fields and the array has extra columns
+        if not processor.params.label_fields or keypoints.shape[1] <= 5:
+            return keypoints
+
+        transform_name = self._get_label_transform_name(**params)
+        if transform_name is None or transform_name not in processor.encoded_label_mappings:
+            return keypoints
+
+        # Work on a copy
+        result = keypoints.copy()
+
+        # Apply label mappings to the appropriate columns
+        field_mappings = processor.encoded_label_mappings[transform_name]
+        label_col_start = 5  # After [x, y, z, angle, scale]
+
+        for i, label_field in enumerate(processor.params.label_fields):
+            if label_field in field_mappings:
+                col_idx = label_col_start + i
+                if col_idx < result.shape[1]:
+                    # Apply mapping to this label column
+                    mapping = field_mappings[label_field]
+                    for row_idx in range(result.shape[0]):
+                        current_label = int(result[row_idx, col_idx])
+                        result[row_idx, col_idx] = mapping.get(current_label, current_label)
+
+        return result
+
+    def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Apply transforms with parameters, including automatic keypoint label swapping."""
+        res = super().apply_with_params(params, *args, **kwargs)
+
+        # Apply label mapping to keypoints if they were transformed
+        if "keypoints" in res and res["keypoints"] is not None:
+            res["keypoints"] = self._apply_label_mapping_to_keypoints(res["keypoints"], **params)
+
+        return res
 
 
 class ImageOnlyTransform(BasicTransform):

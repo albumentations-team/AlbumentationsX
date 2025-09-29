@@ -70,6 +70,11 @@ class KeypointParams(Params):
         angle_in_degrees (bool): angle in degrees or radians in 'xya', 'xyas', 'xysa' keypoints
         check_each_transform (bool): if `True`, then keypoints will be checked after each dual transform.
             Default: `True`
+        label_mapping (dict[str, dict[str, dict[Any, Any]]] | None): Dictionary mapping transform names
+            to label field mappings. Structure: {transform_name: {label_field: {from_label: to_label}}}.
+            For example: {'HorizontalFlip': {'keypoint_labels': {'left_eye': 'right_eye', 'right_eye': 'left_eye'}}}
+            or {'HorizontalFlip': {'keypoint_labels': {0: 1, 1: 0}}}. Works with any hashable label type.
+            Can map multiple label fields per transform. Default: None.
 
     Note:
         The internal Albumentations format is [x, y, z, angle, scale]. For 2D formats (xy, yx, xya, xys, xyas, xysa),
@@ -84,11 +89,13 @@ class KeypointParams(Params):
         remove_invisible: bool = True,
         angle_in_degrees: bool = True,
         check_each_transform: bool = True,
+        label_mapping: dict[str, dict[str, dict[Any, Any]]] | None = None,
     ):
         super().__init__(format, label_fields)
         self.remove_invisible = remove_invisible
         self.angle_in_degrees = angle_in_degrees
         self.check_each_transform = check_each_transform
+        self.label_mapping = label_mapping or {}
 
     def to_dict_private(self) -> dict[str, Any]:
         """Get the private dictionary representation of keypoint parameters.
@@ -103,6 +110,7 @@ class KeypointParams(Params):
                 "remove_invisible": self.remove_invisible,
                 "angle_in_degrees": self.angle_in_degrees,
                 "check_each_transform": self.check_each_transform,
+                "label_mapping": self.label_mapping,
             },
         )
         return data
@@ -131,7 +139,7 @@ class KeypointParams(Params):
         return (
             f"KeypointParams(format={self.format}, label_fields={self.label_fields},"
             f" remove_invisible={self.remove_invisible}, angle_in_degrees={self.angle_in_degrees},"
-            f" check_each_transform={self.check_each_transform})"
+            f" check_each_transform={self.check_each_transform}, label_mapping={self.label_mapping})"
         )
 
 
@@ -150,6 +158,8 @@ class KeypointsProcessor(DataProcessor):
 
     def __init__(self, params: KeypointParams, additional_targets: dict[str, str] | None = None):
         super().__init__(params, additional_targets)
+        # Store encoded mappings for transforms - will be populated during preprocessing
+        self.encoded_label_mappings: dict[str, dict[str, dict[int, int]]] = {}
 
     @property
     def default_data_name(self) -> str:
@@ -197,6 +207,71 @@ class KeypointsProcessor(DataProcessor):
 
         """
         check_keypoints(data, shape)
+
+    def convert_label_mappings_to_encoded(self) -> None:
+        """Convert string-based label mappings to encoded integer mappings.
+
+        This should be called after labels are encoded during preprocessing.
+        """
+        if not self.params.label_mapping or not self.params.label_fields:
+            return
+
+        self.encoded_label_mappings = {}
+
+        # First, update encoders with all labels from mappings
+        self._update_encoders_with_mapping_labels()
+
+        # Then convert mappings to encoded integers
+        self._convert_mappings_to_encoded()
+
+    def _update_encoders_with_mapping_labels(self) -> None:
+        """Update encoders with all labels from mappings."""
+        for field_mappings in self.params.label_mapping.values():
+            for label_field, mapping in field_mappings.items():
+                metadata = self.label_manager.metadata.get("keypoints", {}).get(label_field)
+                if metadata and metadata.encoder is not None:
+                    # Collect all labels (both from and to) from the mapping
+                    all_mapping_labels = set(mapping.keys()) | set(mapping.values())
+                    # Update encoder with all labels that might be needed
+                    metadata.encoder.update(list(all_mapping_labels))
+
+    def _convert_mappings_to_encoded(self) -> None:
+        """Convert mappings to encoded integers."""
+        for transform_name, field_mappings in self.params.label_mapping.items():
+            encoded_mappings = {}
+
+            for label_field, mapping in field_mappings.items():
+                metadata = self.label_manager.metadata.get("keypoints", {}).get(label_field)
+                if metadata:
+                    encoded_mapping = self._convert_single_mapping(mapping, metadata)
+                    encoded_mappings[label_field] = encoded_mapping
+
+            self.encoded_label_mappings[transform_name] = encoded_mappings
+
+    def _convert_single_mapping(self, mapping: dict[Any, Any], metadata: Any) -> dict[int, int]:
+        """Convert a single mapping to encoded integers."""
+        encoded_mapping = {}
+
+        if metadata.encoder is not None:
+            # Convert string mapping to encoded integers
+            for from_label, to_label in mapping.items():
+                # Pre-check if labels exist to avoid try/except in loop
+                if from_label in metadata.encoder.classes_ and to_label in metadata.encoder.classes_:
+                    from_encoded = metadata.encoder.transform([from_label])[0]
+                    to_encoded = metadata.encoder.transform([to_label])[0]
+                    encoded_mapping[from_encoded] = to_encoded
+        else:
+            # Numerical labels, use mapping as-is
+            encoded_mapping.update(mapping)
+
+        return encoded_mapping
+
+    def add_label_fields_to_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Add label fields to data arrays and convert label mappings to encoded form."""
+        result = super().add_label_fields_to_data(data)
+        # After labels are encoded, convert the mappings to work with encoded integers
+        self.convert_label_mappings_to_encoded()
+        return result
 
     def convert_from_albumentations(
         self,

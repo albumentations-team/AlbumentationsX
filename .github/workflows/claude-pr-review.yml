@@ -47,6 +47,7 @@ jobs:
                - Consistent parameter naming (_range suffix for intervals, no "Random" prefix for transforms)
                - No default values in InitSchema classes
                - Use of @uint8_io and @float32_io decorators where appropriate
+               - Dead code identification (unused methods, imports, variables)
 
             3. **Performance Optimizations**:
                - cv2.LUT opportunities for lookup-based operations (highest priority)
@@ -55,6 +56,7 @@ jobs:
                - In-place operations to reduce memory allocations
                - Redundant computations that could be cached
                - Memory allocation patterns and unnecessary copies
+               - Dead code removal (methods, classes, imports that are never used)
 
             4. **AlbumentationsX Specific**:
                - Proper transform structure (apply, apply_to_mask, get_params_dependent_on_data)
@@ -72,8 +74,8 @@ jobs:
             ## Review Format:
 
             Start with a brief summary, then provide specific feedback organized by severity:
-            - 🔴 **Critical**: Must fix before merge (bugs, security issues)
-            - 🟡 **Important**: Should fix (performance issues, code quality)
+            - 🔴 **Critical**: Must fix before merge (bugs, security issues, dead code)
+            - 🟡 **Important**: Should fix (performance issues, code quality, unused imports)
             - 🟢 **Suggestion**: Nice to have (style improvements, minor optimizations)
 
             For each issue, provide:

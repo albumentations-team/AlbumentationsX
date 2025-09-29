@@ -726,19 +726,20 @@ class DualTransform(BasicTransform):
         transform_name = self._get_label_transform_name(**params)
 
         # Use pre-computed encoded mapping for fast integer swapping
-        if transform_name is not None and transform_name in processor.encoded_label_mappings:
-            field_mappings = processor.encoded_label_mappings[transform_name]
-            # Use the first label field mapping (works for single field case)
-            if field_mappings:
-                first_mapping = next(iter(field_mappings.values()))
-                transformed_labels = labels.copy()
+        if (
+            transform_name is not None
+            and transform_name in processor.encoded_label_mappings
+            and (field_mappings := processor.encoded_label_mappings[transform_name])
+        ):
+            first_mapping = next(iter(field_mappings.values()))
+            transformed_labels = labels.copy()
 
-                # Apply mapping to encoded integers
-                for i, label in enumerate(labels):
-                    label_int = int(label)
-                    transformed_labels[i] = first_mapping.get(label_int, label)
+            # Apply mapping to encoded integers
+            for i, label in enumerate(labels):
+                label_int = int(label)
+                transformed_labels[i] = first_mapping.get(label_int, label)
 
-                return transformed_labels
+            return transformed_labels
 
         # No mapping defined, return labels unchanged
         return labels
@@ -775,15 +776,11 @@ class DualTransform(BasicTransform):
                 "r270": None,
             }
             mapped_name = d4_to_base_transform.get(group_element)
-            return mapped_name if mapped_name else class_name
+            return mapped_name or class_name
 
         # Only parity-changing transforms should apply label mappings
         parity_changing_transforms = {"HorizontalFlip", "VerticalFlip", "Transpose"}
-        if class_name in parity_changing_transforms:
-            return class_name
-
-        # Non-parity-changing transforms don't affect semantic labels
-        return None
+        return class_name if class_name in parity_changing_transforms else None
 
     def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         """Apply label mapping to the label columns in the keypoints array.
@@ -802,14 +799,18 @@ class DualTransform(BasicTransform):
             return keypoints
 
         # Check if there are label fields and the array has extra columns
-        if not processor.params.label_fields or keypoints.shape[1] <= 5:
+        if not processor.params.label_fields or keypoints.size == 0 or keypoints.shape[1] <= 5:
             return keypoints
 
         transform_name = self._get_label_transform_name(**params)
         if transform_name is None or transform_name not in processor.encoded_label_mappings:
             return keypoints
 
-        # Work on a copy
+        # Only copy if we actually have mappings to apply
+        field_mappings = processor.encoded_label_mappings[transform_name]
+        if not field_mappings:
+            return keypoints
+
         result = keypoints.copy()
 
         # Apply label mappings to the appropriate columns
@@ -820,11 +821,15 @@ class DualTransform(BasicTransform):
             if label_field in field_mappings:
                 col_idx = label_col_start + i
                 if col_idx < result.shape[1]:
-                    # Apply mapping to this label column
+                    # Apply mapping to this label column using vectorized approach
                     mapping = field_mappings[label_field]
-                    for row_idx in range(result.shape[0]):
-                        current_label = int(result[row_idx, col_idx])
-                        result[row_idx, col_idx] = mapping.get(current_label, current_label)
+                    if mapping:  # Only process if mapping is not empty
+                        col_data = result[:, col_idx].astype(int)
+                        # Use numpy indexing for vectorized mapping
+                        mapped_values = col_data.copy()
+                        for from_val, to_val in mapping.items():
+                            mapped_values[col_data == from_val] = to_val
+                        result[:, col_idx] = mapped_values
 
         return result
 

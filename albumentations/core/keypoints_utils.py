@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 import numpy as np
 
+from albumentations.core.label_manager import LabelMetadata
 from albumentations.core.type_definitions import NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS
 
 from .utils import DataProcessor, Params
@@ -95,7 +96,19 @@ class KeypointParams(Params):
         self.remove_invisible = remove_invisible
         self.angle_in_degrees = angle_in_degrees
         self.check_each_transform = check_each_transform
-        self.label_mapping = label_mapping or {}
+
+        # Warn about potential misconfiguration
+        if label_fields and label_mapping is None:
+            import warnings
+
+            msg = (
+                "label_fields are set but label_mapping is not provided. "
+                "If you don't need label swapping, remove label_fields. "
+                "If you need label swapping, provide label_mapping."
+            )
+            warnings.warn(msg, UserWarning, stacklevel=2)
+
+        self.label_mapping = label_mapping if label_mapping is not None else {}
 
     def to_dict_private(self) -> dict[str, Any]:
         """Get the private dictionary representation of keypoint parameters.
@@ -241,28 +254,57 @@ class KeypointsProcessor(DataProcessor):
             encoded_mappings = {}
 
             for label_field, mapping in field_mappings.items():
-                metadata = self.label_manager.metadata.get("keypoints", {}).get(label_field)
-                if metadata:
+                if metadata := self.label_manager.metadata.get("keypoints", {}).get(label_field):
                     encoded_mapping = self._convert_single_mapping(mapping, metadata)
                     encoded_mappings[label_field] = encoded_mapping
 
             self.encoded_label_mappings[transform_name] = encoded_mappings
 
-    def _convert_single_mapping(self, mapping: dict[Any, Any], metadata: Any) -> dict[int, int]:
+    def _convert_single_mapping(self, mapping: dict[Any, Any], metadata: LabelMetadata) -> dict[int, int]:
         """Convert a single mapping to encoded integers."""
         encoded_mapping = {}
 
         if metadata.encoder is not None:
             # Convert string mapping to encoded integers
+            # Pre-filter valid labels to avoid repeated lookups
+            encoder_classes = set(metadata.encoder.classes_)
+            valid_from_labels = set(mapping.keys()) & encoder_classes
+            valid_to_labels = set(mapping.values()) & encoder_classes
+
+            # Filter to only valid mappings where both from and to exist
+            valid_mappings = {k: v for k, v in mapping.items() if k in valid_from_labels and v in valid_to_labels}
+
+            # Convert valid mappings in batch
+            if valid_mappings:
+                from_labels = list(valid_mappings.keys())
+                to_labels = list(valid_mappings.values())
+                from_encoded = metadata.encoder.transform(from_labels)
+                to_encoded = metadata.encoder.transform(to_labels)
+
+                encoded_mapping.update(dict(zip(from_encoded, to_encoded)))
+
+            # Track missing labels for warning
+            missing_labels = []
             for from_label, to_label in mapping.items():
-                # Pre-check if labels exist to avoid try/except in loop
-                if from_label in metadata.encoder.classes_ and to_label in metadata.encoder.classes_:
-                    from_encoded = metadata.encoder.transform([from_label])[0]
-                    to_encoded = metadata.encoder.transform([to_label])[0]
-                    encoded_mapping[from_encoded] = to_encoded
+                if from_label not in encoder_classes:
+                    missing_labels.append(from_label)
+                if to_label not in encoder_classes:
+                    missing_labels.append(to_label)
+
+            # Warn about missing labels
+            if missing_labels:
+                import warnings
+
+                unique_missing = list(set(missing_labels))
+                warnings.warn(
+                    f"Labels {unique_missing} in label_mapping are not found in the dataset. "
+                    "These mappings will be ignored. Check your label_mapping configuration.",
+                    UserWarning,
+                    stacklevel=3,
+                )
         else:
             # Numerical labels, use mapping as-is
-            encoded_mapping.update(mapping)
+            encoded_mapping |= mapping
 
         return encoded_mapping
 

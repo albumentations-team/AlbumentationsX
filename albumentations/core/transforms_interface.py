@@ -705,45 +705,6 @@ class DualTransform(BasicTransform):
     def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         return np.stack([self.apply_to_mask3d(mask3d, **params) for mask3d in masks3d])
 
-    def apply_to_keypoint_labels(self, labels: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply label transformation for keypoint labels.
-
-        Works with encoded integer labels - no encoding/decoding during transformation.
-
-        Args:
-            labels: Array of encoded keypoint labels (integers)
-            **params: Additional parameters
-
-        Returns:
-            np.ndarray: Transformed labels with same length as input
-
-        """
-        # Get the keypoint processor
-        processor = self.processors.get("keypoints")
-        if not processor or not hasattr(processor, "encoded_label_mappings"):
-            return labels
-
-        transform_name = self._get_label_transform_name(**params)
-
-        # Use pre-computed encoded mapping for fast integer swapping
-        if (
-            transform_name is not None
-            and transform_name in processor.encoded_label_mappings
-            and (field_mappings := processor.encoded_label_mappings[transform_name])
-        ):
-            first_mapping = next(iter(field_mappings.values()))
-            transformed_labels = labels.copy()
-
-            # Apply mapping to encoded integers
-            for i, label in enumerate(labels):
-                label_int = int(label)
-                transformed_labels[i] = first_mapping.get(label_int, label)
-
-            return transformed_labels
-
-        # No mapping defined, return labels unchanged
-        return labels
-
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping.
 

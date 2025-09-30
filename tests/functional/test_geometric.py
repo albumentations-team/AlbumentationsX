@@ -636,6 +636,21 @@ def test_resize_cv2(input_shape, target_shape):
 
     assert resized.shape == (*target_shape, 3)
 
+@pytest.mark.parametrize("input_shape,target_shape", [
+    ((100, 100), (200, 200)),
+    ((256, 256), (512, 512)),
+    ((200, 200), (100, 100)),
+    ((150, 100), (150, 200)),
+])
+def test_resize_cv2_2d_mask(input_shape, target_shape):
+    """Test that resize_cv2 handles 2D arrays (masks) correctly."""
+    mask = np.random.randint(0, 2, input_shape, dtype=np.uint8)
+
+    resized = fgeometric.resize_cv2(mask, target_shape, interpolation=cv2.INTER_NEAREST)
+
+    assert resized.shape == target_shape
+    assert resized.ndim == 2
+
 @pytest.mark.skipif(not _PYVIPS_AVAILABLE, reason="pyvips is not installed")
 @pytest.mark.parametrize("input_shape,target_shape", [
     ((100, 100), (200, 200)),

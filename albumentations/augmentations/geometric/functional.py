@@ -351,6 +351,10 @@ def resize_cv2(
 
     """
     height, width = target_shape[:2]
+    # Handle 2D arrays (masks) directly without chunking
+    if img.ndim == 2:
+        return cv2.resize(img, (width, height), interpolation=interpolation)
+
     resize_fn = maybe_process_in_chunks(
         cv2.resize,
         dsize=(width, height),

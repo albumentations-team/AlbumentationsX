@@ -272,6 +272,28 @@ def test_additional_targets_for_image_only(augmentation_cls, params):
         np.testing.assert_array_equal(aug1, aug2)
 
 
+def test_resize_with_additional_targets_mask():
+    """Test that Resize works correctly with additional_targets for 2D masks.
+
+    Regression test for issue where 2D masks passed via additional_targets
+    would fail with IndexError in resize_cv2 due to maybe_process_in_chunks
+    expecting 3D arrays.
+    """
+    image = np.zeros((256, 256, 3), dtype=np.uint8)
+    mask = np.ones((256, 256), dtype=np.uint8)
+
+    transform = A.Compose(
+        [A.Resize(height=512, width=512)],
+        additional_targets={"semantic_mask": "mask"},
+    )
+
+    augmented = transform(image=image, semantic_mask=mask)
+
+    assert augmented["image"].shape == (512, 512, 3)
+    assert augmented["semantic_mask"].shape == (512, 512)
+    assert augmented["semantic_mask"].ndim == 2
+
+
 def test_image_invert():
     for _ in range(10):
         # test for np.uint8 dtype

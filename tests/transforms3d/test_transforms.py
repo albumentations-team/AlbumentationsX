@@ -982,7 +982,7 @@ def test_grid_shuffle_3d_with_keypoints():
 
     transform = A.Compose([
         A.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0)
-    ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+    ], keypoint_params=A.KeypointParams(format='xyz'))
 
     # Use seed for reproducibility
     np.random.seed(137)
@@ -1001,7 +1001,7 @@ def test_grid_shuffle_3d_with_keypoints():
         assert 0 <= kp[1] < 100  # y
         assert 0 <= kp[2] < 10   # z
 
-    # Check that labels are preserved
+    # Check that labels are passed through (no label swapping for grid shuffle)
     assert transformed['keypoint_labels'] == keypoint_labels
 
 

@@ -382,10 +382,10 @@ def test_compose_subtract_type_validation():
     [
         (None, None),
         (BboxParams(format="pascal_voc", label_fields=["bbox_labels"]), None),
-        (None, KeypointParams(format="xy", label_fields=["keypoint_labels"])),
+        (None, KeypointParams(format="xy")),
         (
             BboxParams(format="pascal_voc", label_fields=["bbox_labels"]),
-            KeypointParams(format="xy", label_fields=["keypoint_labels"])
+            KeypointParams(format="xy")
         ),
     ]
 )

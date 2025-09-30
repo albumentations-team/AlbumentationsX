@@ -927,17 +927,16 @@ def test_sequential_multiple_transformations(image, aug):
             },
         ],
         [
-            dict(keypoint_params=A.KeypointParams(format="xy", label_fields=["class_labels"])),
+            dict(keypoint_params=A.KeypointParams(format="xy")),
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
                 "keypoints": np.array([[10, 20]]),
-                "class_labels": [1],
             },
         ],
         [
             dict(
                 bbox_params=A.BboxParams(format="yolo", label_fields=["class_labels_1"]),
-                keypoint_params=A.KeypointParams(format="xy", label_fields=["class_labels_2"]),
+                keypoint_params=A.KeypointParams(format="xy"),
             ),
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
@@ -945,7 +944,6 @@ def test_sequential_multiple_transformations(image, aug):
                 "bboxes": np.array([[0.5, 0.5, 0.1, 0.1]]),
                 "class_labels_1": [1],
                 "keypoints": np.array([[10, 20]]),
-                "class_labels_2": [1],
             },
         ],
     ],

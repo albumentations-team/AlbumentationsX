@@ -15,11 +15,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class TestTransform(HubMixin):
-    """Test class for HubMixin."""
+class DummyTransform(HubMixin):
+    """Dummy class for testing HubMixin."""
 
     def __init__(self):
-        """Initialize test transform."""
+        """Initialize dummy transform."""
         pass
 
 
@@ -46,10 +46,10 @@ def test_windows_path_handling(path_string, expected_posix):
         mock_download.return_value = "config.json"
 
         # Also mock _from_pretrained to avoid file operations
-        with patch.object(TestTransform, "_from_pretrained") as mock_from_pretrained:
+        with patch.object(DummyTransform, "_from_pretrained") as mock_from_pretrained:
             mock_from_pretrained.return_value = "mocked_transform"
 
-            transform = TestTransform()
+            transform = DummyTransform()
             transform.from_pretrained(path_string)
 
             # Check that the repo_id argument was properly formatted
@@ -65,12 +65,12 @@ def test_real_windows_paths():
     with patch("albumentations.core.hub_mixin.hf_hub_download") as mock_download:
         mock_download.return_value = "mocked_file_path"
 
-        with patch.object(TestTransform, "_from_pretrained") as mock_from_pretrained:
+        with patch.object(DummyTransform, "_from_pretrained") as mock_from_pretrained:
             mock_from_pretrained.return_value = "mocked_transform"
 
             # Use a Windows-style path string
             windows_path = "C:\\Users\\test\\models\\my_model"
-            TestTransform.from_pretrained(windows_path)
+            DummyTransform.from_pretrained(windows_path)
 
             # Verify the repo_id
             repo_id = mock_download.call_args[1]["repo_id"]

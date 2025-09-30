@@ -3917,27 +3917,30 @@ class SimpleNMF:
         # Initialize concentrations based on projection onto initial colors
         # This gives us a physically meaningful starting point
         stain_colors_normalized = normalize_vectors(stain_colors)
-        stain_concentrations = np.maximum(optical_density @ stain_colors_normalized.T, 0)
 
-        # Iterative updates with careful normalization
-        eps = 1e-6
-        for _ in range(self.n_iter):
-            # Update concentrations
-            numerator = optical_density @ stain_colors.T
-            denominator = stain_concentrations @ (stain_colors @ stain_colors.T)
-            stain_concentrations *= numerator / (denominator + eps)
+        # Suppress numerical warnings for edge cases (handled by eps)
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            stain_concentrations = np.maximum(optical_density @ stain_colors_normalized.T, 0)
 
-            # Ensure non-negativity
-            stain_concentrations = np.maximum(stain_concentrations, 0)
+            # Iterative updates with careful normalization
+            eps = 1e-6
+            for _ in range(self.n_iter):
+                # Update concentrations
+                numerator = optical_density @ stain_colors.T
+                denominator = stain_concentrations @ (stain_colors @ stain_colors.T)
+                stain_concentrations *= numerator / (denominator + eps)
 
-            # Update colors
-            numerator = stain_concentrations.T @ optical_density
-            denominator = (stain_concentrations.T @ stain_concentrations) @ stain_colors
-            stain_colors *= numerator / (denominator + eps)
+                # Ensure non-negativity
+                stain_concentrations = np.maximum(stain_concentrations, 0)
 
-            # Ensure non-negativity and normalize
-            stain_colors = np.maximum(stain_colors, 0)
-            stain_colors = normalize_vectors(stain_colors)
+                # Update colors
+                numerator = stain_concentrations.T @ optical_density
+                denominator = (stain_concentrations.T @ stain_concentrations) @ stain_colors
+                stain_colors *= numerator / (denominator + eps)
+
+                # Ensure non-negativity and normalize
+                stain_colors = np.maximum(stain_colors, 0)
+                stain_colors = normalize_vectors(stain_colors)
 
         return stain_concentrations, stain_colors
 
@@ -4100,7 +4103,10 @@ class MacenkoNormalizer(StainNormalizer):
 
         # Add small epsilon to tissue_density to avoid numerical issues
         safe_tissue_density = tissue_density + epsilon
-        plane_coordinates = safe_tissue_density @ principal_eigenvectors
+
+        # Suppress numerical warnings for edge cases with extreme optical densities
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            plane_coordinates = safe_tissue_density @ principal_eigenvectors
 
         # Step 6: Find angles of extreme points
         polar_angles = np.arctan2(
@@ -4193,32 +4199,35 @@ def apply_he_stain_augmentation(
 
     # Add small regularization term for numerical stability
     regularization = 1e-6
-    stain_correlation = stain_matrix @ stain_matrix.T + regularization * np.eye(2)
-    density_projection = stain_matrix @ optical_density.T
 
-    try:
-        # Solve for stain concentrations
-        stain_concentrations = np.linalg.solve(stain_correlation, density_projection).T
-    except np.linalg.LinAlgError:
-        # Fallback to pseudo-inverse if direct solve fails
-        stain_concentrations = np.linalg.lstsq(
-            stain_matrix.T,
-            optical_density,
-            rcond=regularization,
-        )[0].T
+    # Suppress numerical warnings for edge cases with extreme optical densities
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        stain_correlation = stain_matrix @ stain_matrix.T + regularization * np.eye(2)
+        density_projection = stain_matrix @ optical_density.T
 
-    # Step 3: Apply concentration adjustments
-    if not augment_background:
-        # Only modify tissue regions
-        tissue_mask = get_tissue_mask(img).reshape(-1)
-        stain_concentrations[tissue_mask] = stain_concentrations[tissue_mask] * scale_factors + shift_values
-    else:
-        # Modify all pixels
-        stain_concentrations = stain_concentrations * scale_factors + shift_values
+        try:
+            # Solve for stain concentrations
+            stain_concentrations = np.linalg.solve(stain_correlation, density_projection).T
+        except np.linalg.LinAlgError:
+            # Fallback to pseudo-inverse if direct solve fails
+            stain_concentrations = np.linalg.lstsq(
+                stain_matrix.T,
+                optical_density,
+                rcond=regularization,
+            )[0].T
 
-    # Step 4: Reconstruct RGB image
-    optical_density_result = stain_concentrations @ stain_matrix
-    rgb_result = np.exp(-optical_density_result)
+        # Step 3: Apply concentration adjustments
+        if not augment_background:
+            # Only modify tissue regions
+            tissue_mask = get_tissue_mask(img).reshape(-1)
+            stain_concentrations[tissue_mask] = stain_concentrations[tissue_mask] * scale_factors + shift_values
+        else:
+            # Modify all pixels
+            stain_concentrations = stain_concentrations * scale_factors + shift_values
+
+        # Step 4: Reconstruct RGB image
+        optical_density_result = stain_concentrations @ stain_matrix
+        rgb_result = np.exp(-optical_density_result)
 
     return rgb_result.reshape(img.shape)
 

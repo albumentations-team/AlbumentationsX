@@ -145,10 +145,9 @@ def test_bbox_params_edges(
         strict=True,
     )
     res = aug(image=image, bboxes=bboxes)["bboxes"]
-
-    # Handle empty bbox comparison properly
-    if len(res) == 0 and len(expected_bboxes) == 0:
-        pass  # Both empty
+    # Handle comparison when expected is empty list vs result is empty array with shape
+    if len(expected_bboxes) == 0:
+        assert len(res) == 0
     else:
         np.testing.assert_allclose(res, expected_bboxes, rtol=1e-6, atol=1e-6)
 

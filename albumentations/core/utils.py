@@ -291,15 +291,14 @@ class DataProcessor(ABC):
         """
         shape = get_shape(data)
 
-        # Convert non-empty lists to numpy arrays
-        # Empty lists are handled in check_and_convert to get correct shape
+        # Convert all sequences (including empty lists) to numpy arrays with proper shape
         for data_name in set(self.data_fields) & set(data.keys()):
-            if (
-                isinstance(data[data_name], Sequence)
-                and not isinstance(data[data_name], np.ndarray)
-                and len(data[data_name]) > 0
-            ):
-                data[data_name] = np.array(data[data_name], dtype=np.float32)
+            if isinstance(data[data_name], Sequence) and not isinstance(data[data_name], np.ndarray):
+                if len(data[data_name]) > 0:
+                    data[data_name] = np.array(data[data_name], dtype=np.float32)
+                else:
+                    # Convert empty list to properly shaped empty array
+                    data[data_name] = self._create_empty_array()
 
         data = self.add_label_fields_to_data(data)
         for data_name in set(self.data_fields) & set(data.keys()):
@@ -307,14 +306,14 @@ class DataProcessor(ABC):
 
     def check_and_convert(
         self,
-        data: np.ndarray | Sequence[Any],
+        data: np.ndarray,
         shape: tuple[int, int] | tuple[int, int, int],
         direction: Literal["to", "from"] = "to",
     ) -> np.ndarray:
         """Check and convert data between Albumentations and external formats.
 
         Args:
-            data (np.ndarray | Sequence): Input data array or sequence.
+            data (np.ndarray): Input data array.
             shape (tuple[int, int] | tuple[int, int, int]): Shape information containing dimensions.
             direction (Literal["to", "from"], optional): Conversion direction.
                 "to" converts to Albumentations format, "from" converts from it.
@@ -324,14 +323,6 @@ class DataProcessor(ABC):
             np.ndarray: Converted data array.
 
         """
-        # Handle empty sequences by creating properly shaped empty arrays
-        if isinstance(data, Sequence) and not isinstance(data, np.ndarray):
-            if len(data) == 0:
-                # Create empty array with correct shape based on format
-                return self._create_empty_array()
-            # Convert non-empty sequences
-            data = np.array(data, dtype=np.float32)
-
         if self.params.format == "albumentations":
             self.check(data, shape)
             return data

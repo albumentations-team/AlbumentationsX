@@ -873,9 +873,9 @@ def test_compose_with_bbox_noop_label_outside(
     )
     transformed = aug(image=image, bboxes=bboxes, **labels)
     assert np.array_equal(transformed["image"], image)
-    # Handle empty bbox comparison properly
-    if len(bboxes) == 0 and len(transformed["bboxes"]) == 0:
-        assert True  # Both empty
+    # Handle comparison when input is empty list vs output is empty array with shape
+    if len(bboxes) == 0:
+        assert len(transformed["bboxes"]) == 0
     else:
         assert np.allclose(transformed["bboxes"], bboxes)
     for k, v in labels.items():
@@ -1065,9 +1065,9 @@ def test_bbox_clipping(
     )
 
     res = aug(image=image, bboxes=bboxes)["bboxes"]
-    # Handle empty bbox comparison properly
-    if len(res) == 0 and len(expected) == 0:
-        pass  # Both empty
+    # Handle comparison when expected is empty list vs result is empty array with shape
+    if len(expected) == 0:
+        assert len(res) == 0
     else:
         np.testing.assert_allclose(res, expected, rtol=1e-5, atol=1e-5)
 

@@ -10,6 +10,7 @@ and serialization capabilities that are inherited by concrete transform implemen
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 from copy import deepcopy
 from typing import Any, Callable
 from warnings import warn
@@ -744,14 +745,18 @@ class DualTransform(BasicTransform):
         return class_name if class_name in parity_changing_transforms else None
 
     def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply label mapping to the label columns in the keypoints array.
+        """Apply label mapping by reordering entire keypoint rows.
+
+        For keypoint regression tasks, the row index encodes semantic meaning
+        (e.g., row 0 = left eye heatmap). On transforms like HorizontalFlip,
+        we need to swap entire rows, not just relabel them.
 
         Args:
             keypoints: Keypoints array with potential label columns attached
             **params: Transform parameters
 
         Returns:
-            np.ndarray: Keypoints array with label columns transformed
+            np.ndarray: Keypoints array with rows reordered based on label mapping
 
         """
         # Get the keypoint processor
@@ -772,27 +777,82 @@ class DualTransform(BasicTransform):
         if not field_mappings:
             return keypoints
 
-        result = keypoints.copy()
+        return self._swap_keypoint_rows_by_labels(keypoints, processor.params.label_fields, field_mappings)
 
-        # Apply label mappings to the appropriate columns
-        field_mappings = processor.encoded_label_mappings[transform_name]
+    def _swap_keypoint_rows_by_labels(
+        self,
+        keypoints: np.ndarray,
+        label_fields: Sequence[str],
+        field_mappings: dict[str, dict[int, int]],
+    ) -> np.ndarray:
+        """Swap keypoint rows based on label mappings.
+
+        Args:
+            keypoints: Keypoints array with label columns
+            label_fields: List of label field names
+            field_mappings: Mapping of field names to label swaps
+
+        Returns:
+            np.ndarray: Keypoints array with rows swapped
+
+        """
+        result = keypoints.copy()
         label_col_start = 5  # After [x, y, z, angle, scale]
 
-        for i, label_field in enumerate(processor.params.label_fields):
+        # For each label field with mapping, perform row swapping
+        for i, label_field in enumerate(label_fields):
             if label_field in field_mappings:
                 col_idx = label_col_start + i
-                if col_idx < result.shape[1]:
-                    # Apply mapping to this label column using vectorized approach
+                if col_idx < keypoints.shape[1]:
                     mapping = field_mappings[label_field]
                     if mapping:  # Only process if mapping is not empty
-                        col_data = result[:, col_idx].astype(int)
-                        # Use numpy indexing for vectorized mapping
-                        mapped_values = col_data.copy()
-                        for from_val, to_val in mapping.items():
-                            mapped_values[col_data == from_val] = to_val
-                        result[:, col_idx] = mapped_values
+                        result = self._apply_single_field_mapping(result, col_idx, mapping)
+                        # Only apply mapping for the first label field that has mappings
+                        break
 
         return result
+
+    def _apply_single_field_mapping(
+        self,
+        keypoints: np.ndarray,
+        col_idx: int,
+        mapping: dict[int, int],
+    ) -> np.ndarray:
+        """Apply label mapping to a single label column.
+
+        Args:
+            keypoints: Keypoints array
+            col_idx: Column index of the label field
+            mapping: Label swap mapping
+
+        Returns:
+            np.ndarray: Keypoints array with rows swapped
+
+        """
+        col_data = keypoints[:, col_idx].astype(int)
+        processed_labels = set()
+
+        for from_label, to_label in mapping.items():
+            if from_label in processed_labels or to_label in processed_labels:
+                continue
+
+            from_indices = np.where(col_data == from_label)[0]
+            to_indices = np.where(col_data == to_label)[0]
+
+            # If both labels exist in data, swap entire rows
+            if len(from_indices) > 0 and len(to_indices) > 0:
+                # Swap entire rows (coordinates + all labels)
+                temp_rows = keypoints[from_indices].copy()
+                keypoints[from_indices] = keypoints[to_indices]
+                keypoints[to_indices] = temp_rows
+                processed_labels.add(from_label)
+                processed_labels.add(to_label)
+            # If only from_label exists (unpaired), just update its label
+            elif len(from_indices) > 0:
+                keypoints[from_indices, col_idx] = to_label
+                processed_labels.add(from_label)
+
+        return keypoints
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Apply transforms with parameters, including automatic keypoint label swapping."""

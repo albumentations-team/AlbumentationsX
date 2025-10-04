@@ -873,7 +873,11 @@ def test_compose_with_bbox_noop_label_outside(
     )
     transformed = aug(image=image, bboxes=bboxes, **labels)
     assert np.array_equal(transformed["image"], image)
-    assert np.allclose(transformed["bboxes"], bboxes)
+    # Handle empty bbox comparison properly
+    if len(bboxes) == 0 and len(transformed["bboxes"]) == 0:
+        assert True  # Both empty
+    else:
+        assert np.allclose(transformed["bboxes"], bboxes)
     for k, v in labels.items():
         assert transformed[k] == v
 
@@ -1061,8 +1065,11 @@ def test_bbox_clipping(
     )
 
     res = aug(image=image, bboxes=bboxes)["bboxes"]
-    # Use assert_allclose instead of assert_almost_equal
-    np.testing.assert_allclose(res, expected, rtol=1e-5, atol=1e-5)
+    # Handle empty bbox comparison properly
+    if len(res) == 0 and len(expected) == 0:
+        pass  # Both empty
+    else:
+        np.testing.assert_allclose(res, expected, rtol=1e-5, atol=1e-5)
 
 
 def test_bbox_clipping_perspective() -> None:

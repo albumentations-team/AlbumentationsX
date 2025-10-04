@@ -239,6 +239,10 @@ class BboxProcessor(DataProcessor):
         """
         return "bboxes"
 
+    def _create_empty_array(self) -> np.ndarray:
+        """Create an empty bbox array with shape (0, 4)."""
+        return np.array([], dtype=np.float32).reshape(0, NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS)
+
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
         """Validates the input bounding box data.
 

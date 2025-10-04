@@ -77,7 +77,7 @@ repos:
         language: system
         files: setup.py
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.2
+    rev: v0.13.3
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -101,7 +101,7 @@ repos:
     hooks:
       - id: markdownlint
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "v2.6.0"
+    rev: "v2.7.0"
     hooks:
       - id: pyproject-fmt
   - repo: https://github.com/pre-commit/mirrors-mypy

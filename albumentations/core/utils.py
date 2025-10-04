@@ -198,7 +198,6 @@ class DataProcessor(ABC):
     def __init__(self, params: Params, additional_targets: dict[str, str] | None = None):
         self.params = params
         self.data_fields = [self.default_data_name]
-        self.is_sequence_input: dict[str, bool] = {}
         self.label_manager = LabelManager()
 
         if additional_targets is not None:
@@ -256,8 +255,7 @@ class DataProcessor(ABC):
                 shape = volume_shape
 
         data = self._process_data_fields(data, shape)
-        data = self.remove_label_fields_from_data(data)
-        return self._convert_sequence_inputs(data)
+        return self.remove_label_fields_from_data(data)
 
     def _process_data_fields(
         self,
@@ -284,12 +282,6 @@ class DataProcessor(ABC):
     def _create_empty_keypoints_array(self) -> np.ndarray:
         return np.array([], dtype=np.float32).reshape(0, len(self.params.format))
 
-    def _convert_sequence_inputs(self, data: dict[str, Any]) -> dict[str, Any]:
-        for data_name in set(self.data_fields) & set(data.keys()):
-            if self.is_sequence_input.get(data_name, False):
-                data[data_name] = data[data_name].tolist()
-        return data
-
     def preprocess(self, data: dict[str, Any]) -> None:
         """Process data before transformation.
 
@@ -299,12 +291,15 @@ class DataProcessor(ABC):
         """
         shape = get_shape(data)
 
-        for data_name in set(self.data_fields) & set(data.keys()):  # Convert list of lists to numpy array if necessary
-            if isinstance(data[data_name], Sequence):
-                self.is_sequence_input[data_name] = True
+        # Convert non-empty lists to numpy arrays
+        # Empty lists are handled in check_and_convert to get correct shape
+        for data_name in set(self.data_fields) & set(data.keys()):
+            if (
+                isinstance(data[data_name], Sequence)
+                and not isinstance(data[data_name], np.ndarray)
+                and len(data[data_name]) > 0
+            ):
                 data[data_name] = np.array(data[data_name], dtype=np.float32)
-            else:
-                self.is_sequence_input[data_name] = False
 
         data = self.add_label_fields_to_data(data)
         for data_name in set(self.data_fields) & set(data.keys()):
@@ -312,14 +307,14 @@ class DataProcessor(ABC):
 
     def check_and_convert(
         self,
-        data: np.ndarray,
+        data: np.ndarray | Sequence[Any],
         shape: tuple[int, int] | tuple[int, int, int],
         direction: Literal["to", "from"] = "to",
     ) -> np.ndarray:
         """Check and convert data between Albumentations and external formats.
 
         Args:
-            data (np.ndarray): Input data array.
+            data (np.ndarray | Sequence): Input data array or sequence.
             shape (tuple[int, int] | tuple[int, int, int]): Shape information containing dimensions.
             direction (Literal["to", "from"], optional): Conversion direction.
                 "to" converts to Albumentations format, "from" converts from it.
@@ -329,6 +324,14 @@ class DataProcessor(ABC):
             np.ndarray: Converted data array.
 
         """
+        # Handle empty sequences by creating properly shaped empty arrays
+        if isinstance(data, Sequence) and not isinstance(data, np.ndarray):
+            if len(data) == 0:
+                # Create empty array with correct shape based on format
+                return self._create_empty_array()
+            # Convert non-empty sequences
+            data = np.array(data, dtype=np.float32)
+
         if self.params.format == "albumentations":
             self.check(data, shape)
             return data
@@ -336,6 +339,16 @@ class DataProcessor(ABC):
         process_func = self.convert_to_albumentations if direction == "to" else self.convert_from_albumentations
 
         return process_func(data, shape)
+
+    def _create_empty_array(self) -> np.ndarray:
+        """Create an empty array with the appropriate shape for this data type.
+
+        Returns:
+            np.ndarray: Empty array with correct shape.
+
+        """
+        # Default implementation - subclasses can override
+        return np.array([], dtype=np.float32)
 
     @abstractmethod
     def filter(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
@@ -410,7 +423,10 @@ class DataProcessor(ABC):
             return data
 
         for data_name in set(self.data_fields) & set(data.keys()):
-            if not data[data_name].size:
+            # Skip empty sequences (will be converted to proper empty arrays in check_and_convert)
+            if isinstance(data[data_name], Sequence) and len(data[data_name]) == 0:
+                continue
+            if isinstance(data[data_name], np.ndarray) and not data[data_name].size:
                 continue
             data[data_name] = self._process_label_fields(data, data_name)
 

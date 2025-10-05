@@ -2194,6 +2194,9 @@ class GaussNoise(ImageOnlyTransform):
           * For float32 images, they are used directly
         - Setting per_channel=False is faster but applies the same noise to all channels
         - The noise_scale_factor parameter allows for a trade-off between transform speed and noise granularity
+        - pr_channel=False (default) is faster and applies same noise to all channels
+        - per_channel=True is slower but creates more diverse noise patterns across channels
+        - For RGB images: per_channel=False creates grayscale-like noise, per_channel=True creates colored noise
 
     Examples:
         >>> import numpy as np

@@ -2173,7 +2173,7 @@ class GaussNoise(ImageOnlyTransform):
             of the maximum value (255 for uint8 images or 1.0 for float images).
             Values should be in range [-1, 1]. Default: (0.0, 0.0).
         per_channel (bool): If True, noise will be sampled for each channel independently.
-            Otherwise, the noise will be sampled once for all channels. Default: True.
+            Otherwise, the noise will be sampled once for all channels. Default: False.
         noise_scale_factor (float): Scaling factor for noise generation. Value should be in the range (0, 1].
             When set to 1, noise is sampled for each pixel independently. If less, noise is sampled for a smaller size
             and resized to fit the shape of the image. Smaller values make the transform faster. Default: 1.0.
@@ -2224,7 +2224,7 @@ class GaussNoise(ImageOnlyTransform):
         self,
         std_range: tuple[float, float] = (0.2, 0.44),  # sqrt(10 / 255), sqrt(50 / 255)
         mean_range: tuple[float, float] = (0.0, 0.0),
-        per_channel: bool = True,
+        per_channel: bool = False,
         noise_scale_factor: float = 1,
         p: float = 0.5,
     ):

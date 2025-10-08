@@ -77,7 +77,7 @@ repos:
         language: system
         files: setup.py
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.3
+    rev: v0.14.0
     hooks:
       - id: ruff
         exclude: '__pycache__/'

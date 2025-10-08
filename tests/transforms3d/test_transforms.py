@@ -982,10 +982,9 @@ def test_grid_shuffle_3d_with_keypoints():
 
     transform = A.Compose([
         A.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0)
-    ], keypoint_params=A.KeypointParams(format='xyz'))
+    ], keypoint_params=A.KeypointParams(format='xyz'), seed=137)
 
     # Use seed for reproducibility
-    np.random.seed(137)
     transformed = transform(
         volume=volume,
         keypoints=keypoints,

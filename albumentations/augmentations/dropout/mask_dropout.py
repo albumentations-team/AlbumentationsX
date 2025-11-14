@@ -6,8 +6,6 @@ segmentation and object detection tasks, as it simulates occlusions or missing o
 semantically meaningful way, rather than dropping out random pixels or regions.
 """
 
-from __future__ import annotations
-
 from typing import Any, Literal, cast
 
 import cv2

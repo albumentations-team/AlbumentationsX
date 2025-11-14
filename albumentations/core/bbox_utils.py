@@ -7,8 +7,6 @@ image augmentations. It forms the core functionality for all bounding box-relate
 in the albumentations library.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from typing import Any, Literal
 
@@ -820,7 +818,7 @@ def bboxes_from_masks(masks: np.ndarray) -> np.ndarray:
 
     bboxes = np.zeros((masks.shape[0], 4), dtype=np.int32)
 
-    for i, (row, col) in enumerate(zip(rows, cols)):
+    for i, (row, col) in enumerate(zip(rows, cols, strict=True)):
         if not np.any(row) or not np.any(col):
             bboxes[i] = [-1, -1, -1, -1]
         else:

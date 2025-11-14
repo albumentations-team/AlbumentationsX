@@ -5,10 +5,8 @@ rendering text onto images. Includes functions for word manipulation, text drawi
 and handling text regions in images.
 """
 
-from __future__ import annotations
-
 import random
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import cv2
 import numpy as np
@@ -17,12 +15,9 @@ from albucore import (
     preserve_channel_dim,
     uint8_io,
 )
+from PIL import Image
 
 from albumentations.core.type_definitions import PAIR
-
-# Importing wordnet and other dependencies only for type checking
-if TYPE_CHECKING:
-    from PIL import Image
 
 
 def delete_random_words(words: list[str], num_words: int, py_random: random.Random) -> str:

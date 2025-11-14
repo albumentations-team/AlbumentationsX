@@ -6,8 +6,6 @@ robust to missing or corrupted channel information and encourage learning from a
 channels rather than relying on a subset.
 """
 
-from __future__ import annotations
-
 from typing import Annotated, Any
 
 import numpy as np

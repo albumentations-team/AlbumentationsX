@@ -7,8 +7,6 @@ transformations to keypoints. The module supports different keypoint formats inc
 xy, yx, and those with additional angle or size information.
 """
 
-from __future__ import annotations
-
 import math
 from collections.abc import Sequence
 from typing import Any, Literal
@@ -281,7 +279,7 @@ class KeypointsProcessor(DataProcessor):
                 from_encoded = metadata.encoder.transform(from_labels)
                 to_encoded = metadata.encoder.transform(to_labels)
 
-                encoded_mapping.update(dict(zip(from_encoded, to_encoded)))
+                encoded_mapping.update(dict(zip(from_encoded, to_encoded, strict=True)))
 
             # Track missing labels for warning
             missing_labels = []

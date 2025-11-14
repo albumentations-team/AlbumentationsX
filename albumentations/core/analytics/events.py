@@ -1,7 +1,5 @@
 """Event definitions for telemetry data."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import uuid

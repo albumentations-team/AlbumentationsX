@@ -5,8 +5,6 @@ between images. It includes implementations for histogram matching, Fourier doma
 and pixel distribution matching with various normalization techniques.
 """
 
-from __future__ import annotations
-
 import abc
 from copy import deepcopy
 from typing import Literal

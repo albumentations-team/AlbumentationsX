@@ -6,10 +6,8 @@ functions for ensuring numeric ranges are valid, handling type conversions, and 
 standardized validation patterns that are reused across the codebase.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
-from typing import Annotated, TypeVar, Union, overload
+from typing import Annotated, TypeVar, overload
 
 from pydantic.functional_validators import AfterValidator
 
@@ -72,13 +70,13 @@ def float2int(value: tuple[float, float]) -> tuple[int, int]:
 
 
 NonNegativeFloatRangeType = Annotated[
-    Union[tuple[float, float], float],
+    tuple[float, float] | float,
     AfterValidator(process_non_negative_range),
     AfterValidator(nondecreasing),
 ]
 
 NonNegativeIntRangeType = Annotated[
-    Union[tuple[int, int], int],
+    tuple[int, int] | int,
     AfterValidator(process_non_negative_range),
     AfterValidator(nondecreasing),
     AfterValidator(float2int),
@@ -108,7 +106,7 @@ def create_symmetric_range(value: tuple[float, float] | float) -> tuple[float, f
     return to_tuple(value)
 
 
-SymmetricRangeType = Annotated[Union[tuple[float, float], float], AfterValidator(create_symmetric_range)]
+SymmetricRangeType = Annotated[tuple[float, float] | float, AfterValidator(create_symmetric_range)]
 
 
 def convert_to_1plus_range(value: tuple[float, float] | float) -> tuple[float, float]:
@@ -212,7 +210,7 @@ def check_range_bounds(
 
 
 ZeroOneRangeType = Annotated[
-    Union[tuple[float, float], float],
+    tuple[float, float] | float,
     AfterValidator(convert_to_0plus_range),
     AfterValidator(check_range_bounds(0, 1)),
     AfterValidator(nondecreasing),
@@ -220,12 +218,12 @@ ZeroOneRangeType = Annotated[
 
 
 OnePlusFloatRangeType = Annotated[
-    Union[tuple[float, float], float],
+    tuple[float, float] | float,
     AfterValidator(convert_to_1plus_range),
     AfterValidator(check_range_bounds(1, None)),
 ]
 OnePlusIntRangeType = Annotated[
-    Union[tuple[float, float], float],
+    tuple[float, float] | float,
     AfterValidator(convert_to_1plus_range),
     AfterValidator(check_range_bounds(1, None)),
     AfterValidator(float2int),

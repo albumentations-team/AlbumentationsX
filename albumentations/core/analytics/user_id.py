@@ -4,8 +4,6 @@ This module provides functionality to manage persistent anonymous user IDs
 for telemetry purposes, similar to how iterative-telemetry handles it.
 """
 
-from __future__ import annotations
-
 import contextlib
 import json
 import os

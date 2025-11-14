@@ -6,8 +6,6 @@ grid dropout enforces a structured pattern of occlusions that can help models le
 relationships and context across the entire image space.
 """
 
-from __future__ import annotations
-
 from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, Field

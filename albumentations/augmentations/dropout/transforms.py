@@ -6,8 +6,6 @@ PixelDropout. These transforms randomly remove or modify pixels, channels, or re
 in images, which can help models become more robust to occlusions and missing information.
 """
 
-from __future__ import annotations
-
 from typing import Any, Literal, cast
 
 import numpy as np

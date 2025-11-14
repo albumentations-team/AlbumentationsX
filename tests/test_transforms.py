@@ -1,4 +1,3 @@
-from __future__ import annotations
 import random
 from functools import partial
 from typing import Any

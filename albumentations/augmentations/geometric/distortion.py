@@ -26,8 +26,6 @@ type, and characteristics of the distortion, as well as interpolation methods fo
 target types.
 """
 
-from __future__ import annotations
-
 from typing import Annotated, Any, Literal, cast
 from warnings import warn
 

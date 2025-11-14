@@ -7,8 +7,6 @@ and Erasing for random erasing augmentation. These techniques help models become
 robust to occlusions and varying object completeness.
 """
 
-from __future__ import annotations
-
 from typing import Annotated, Any, Literal
 from warnings import warn
 

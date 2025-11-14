@@ -4,8 +4,6 @@ This module provides transform classes for resizing operations, including unifor
 scaling with aspect ratio preservation, and size-constrained transformations.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from typing import Any, Literal, cast
 

@@ -5,13 +5,11 @@ Includes transforms for adjusting color, brightness, contrast, adding noise, sim
 and other pixel-level manipulations.
 """
 
-from __future__ import annotations
-
 import math
 import numbers
 import warnings
-from collections.abc import Sequence
-from typing import Annotated, Any, Callable, Union, cast
+from collections.abc import Callable, Sequence
+from typing import Annotated, Any, Literal, cast
 
 import albucore
 import cv2
@@ -37,7 +35,7 @@ from pydantic import (
     model_validator,
 )
 from scipy import special
-from typing_extensions import Literal, Self
+from typing_extensions import Self
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.blur import functional as fblur
@@ -620,7 +618,7 @@ class RandomGravel(ImageOnlyTransform):
 
         # Calculate ROI in pixels
         x_min, y_min, x_max, y_max = (
-            int(coord * dim) for coord, dim in zip(self.gravel_roi, [width, height, width, height])
+            int(coord * dim) for coord, dim in zip(self.gravel_roi, [width, height, width, height], strict=True)
         )
 
         roi_width = x_max - x_min
@@ -1850,7 +1848,7 @@ class Posterize(ImageOnlyTransform):
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.num_bits = cast("Union[tuple[int, int], list[tuple[int, int]]]", num_bits)
+        self.num_bits = cast("tuple[int, int] | list[tuple[int, int]]", num_bits)
 
     def apply(
         self,
@@ -4987,7 +4985,7 @@ class BetaParams(NoiseParamsBase):
 
 
 NoiseParams = Annotated[
-    Union[UniformParams, GaussianParams, LaplaceParams, BetaParams],
+    UniformParams | GaussianParams | LaplaceParams | BetaParams,
     Field(discriminator="noise_type"),
 ]
 

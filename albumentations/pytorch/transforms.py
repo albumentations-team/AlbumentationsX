@@ -7,8 +7,6 @@ expected format (channels first). These transforms are typically used as the fin
 step in an augmentation pipeline before feeding data to a PyTorch model.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import numpy as np

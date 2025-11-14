@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import inspect
 import os
@@ -113,17 +111,21 @@ def make_transforms_targets_table(transforms_info, header, targets_to_check=None
         row = [info["docs_link"] or transform, *transform_targets]
         rows.append(row)
 
-    column_widths = [max(len(r) for r in column) for column in zip(*rows)]
+    column_widths = [max(len(r) for r in column) for column in zip(*rows, strict=True)]
     lines = [
         " | ".join(
-            "{title: <{width}}".format(width=width, title=title) for width, title in zip(column_widths, rows[0])
+            "{title: <{width}}".format(width=width, title=title)
+            for width, title in zip(column_widths, rows[0], strict=True)
         ),
         " | ".join(
             make_separator(width, align_center=column_index > 0) for column_index, width in enumerate(column_widths)
         ),
     ]
     lines.extend(
-        " | ".join("{column: <{width}}".format(width=width, column=column) for width, column in zip(column_widths, row))
+        " | ".join(
+            "{column: <{width}}".format(width=width, column=column)
+            for width, column in zip(column_widths, row, strict=True)
+        )
         for row in rows[1:]
     )
     return "\n".join(f"| {line} |" for line in lines)

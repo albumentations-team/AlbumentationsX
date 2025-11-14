@@ -4,8 +4,6 @@ This module provides transforms for adding and manipulating text on images,
 including text augmentation techniques like word insertion, deletion, and swapping.
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 from typing import Annotated, Any, Literal

@@ -6,8 +6,6 @@ These functions create and apply dropout patterns to images, masks, bounding box
 keypoints, with support for different filling methods and hole generation strategies.
 """
 
-from __future__ import annotations
-
 from typing import Literal, cast
 
 import cv2
@@ -487,7 +485,7 @@ def resize_boxes_to_visible_area(
     regions = [hole_mask[y1[i] : y2[i], x1[i] : x2[i]] for i in range(len(boxes))]
     visible_areas = [1 - region for region in regions]
 
-    for i, (visible, box) in enumerate(zip(visible_areas, boxes)):
+    for i, (visible, box) in enumerate(zip(visible_areas, boxes, strict=True)):
         if not visible.any():
             continue
 

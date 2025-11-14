@@ -7,10 +7,9 @@ providing type conversion capabilities. This validation layer helps prevent runt
 by catching configuration issues at initialization time.
 """
 
-from __future__ import annotations
-
+from collections.abc import Callable
 from inspect import Parameter, signature
-from typing import Any, Callable
+from typing import Any
 from warnings import warn
 
 from pydantic import BaseModel, ValidationError
@@ -37,7 +36,8 @@ class ValidatedTransformMeta(type):
     ) -> tuple[dict[str, Any], list[str], bool]:
         init_params = signature(original_init).parameters
         param_names = list(init_params.keys())[1:]  # Exclude 'self'
-        full_kwargs: dict[str, Any] = dict(zip(param_names, args)) | kwargs
+        # Note: Cannot use strict=True here because args may be shorter than param_names (defaults)
+        full_kwargs: dict[str, Any] = dict(zip(param_names, args)) | kwargs  # noqa: B905
 
         # Get strict value before validation
         strict = full_kwargs.pop("strict", False)

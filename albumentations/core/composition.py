@@ -7,8 +7,6 @@ composition classes handle the coordination between different transforms, ensuri
 proper data flow and maintaining consistent behavior across the augmentation pipeline.
 """
 
-from __future__ import annotations
-
 import contextlib
 import random
 import warnings
@@ -428,7 +426,7 @@ class BaseCompose(Serializable):
                     f"All elements must be instances of BasicTransform, got {type(t).__name__}",
                 )
 
-    def _combine_transforms(self, other: TransformType | TransformsSeqType, *, prepend: bool = False) -> BaseCompose:
+    def _combine_transforms(self, other: TransformType | TransformsSeqType, *, prepend: bool = False) -> "BaseCompose":
         """Combine transforms with the current compose.
 
         Args:
@@ -453,7 +451,7 @@ class BaseCompose(Serializable):
 
         return self._create_new_instance(new_transforms)
 
-    def __add__(self, other: TransformType | TransformsSeqType) -> BaseCompose:
+    def __add__(self, other: TransformType | TransformsSeqType) -> "BaseCompose":
         """Add transform(s) to the end of this compose.
 
         Args:
@@ -472,7 +470,7 @@ class BaseCompose(Serializable):
         """
         return self._combine_transforms(other, prepend=False)
 
-    def __radd__(self, other: TransformType | TransformsSeqType) -> BaseCompose:
+    def __radd__(self, other: TransformType | TransformsSeqType) -> "BaseCompose":
         """Add transform(s) to the beginning of this compose.
 
         Args:
@@ -491,7 +489,7 @@ class BaseCompose(Serializable):
         """
         return self._combine_transforms(other, prepend=True)
 
-    def __sub__(self, other: type[BasicTransform]) -> BaseCompose:
+    def __sub__(self, other: type[BasicTransform]) -> "BaseCompose":
         """Remove transform from this compose by class type.
 
         Removes the first transform in the compose that matches the provided transform class.
@@ -537,7 +535,7 @@ class BaseCompose(Serializable):
         class_name = other.__name__
         raise ValueError(f"No transform of type {class_name} found in the compose pipeline")
 
-    def _create_new_instance(self, new_transforms: TransformsSeqType) -> BaseCompose:
+    def _create_new_instance(self, new_transforms: TransformsSeqType) -> "BaseCompose":
         """Create a new instance of the same class with new transforms.
 
         Args:
@@ -1640,7 +1638,7 @@ class SelectiveChannelTransform(BaseCompose):
             transformed_channels = cv2.split(sub_image)
             output_img = image.copy()
 
-            for idx, channel in zip(self.channels, transformed_channels):
+            for idx, channel in zip(self.channels, transformed_channels, strict=True):
                 output_img[:, :, idx] = channel
 
             data["image"] = np.ascontiguousarray(output_img)

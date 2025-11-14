@@ -7,8 +7,6 @@ processors that implement the conversion logic between different data formats us
 the transformation pipeline.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from numbers import Real

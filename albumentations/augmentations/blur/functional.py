@@ -5,8 +5,6 @@ to images, including standard blur, median blur, glass blur, defocus, and zoom e
 These functions form the foundation for the corresponding transform classes.
 """
 
-from __future__ import annotations
-
 import random
 from collections.abc import Sequence
 from itertools import product

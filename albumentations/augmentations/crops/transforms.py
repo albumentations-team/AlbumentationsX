@@ -7,11 +7,9 @@ that maintain the integrity of bounding boxes. These transforms are designed to 
 the albumentations pipeline and can be used for data augmentation in computer vision tasks.
 """
 
-from __future__ import annotations
-
 import math
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, Union, cast
+from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
@@ -2868,7 +2866,7 @@ class CropAndPad(DualTransform):
             "fill": None if pad_params is None else self._get_pad_value(self.fill),
             "fill_mask": None
             if pad_params is None
-            else self._get_pad_value(cast("Union[tuple[float, ...], float]", self.fill_mask)),
+            else self._get_pad_value(cast("tuple[float, ...] | float", self.fill_mask)),
             "result_shape": (result_rows, result_cols),
         }
 

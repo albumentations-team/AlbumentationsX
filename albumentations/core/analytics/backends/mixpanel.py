@@ -1,15 +1,12 @@
 """Mixpanel backend for telemetry."""
 
-from __future__ import annotations
-
 import base64
 import json
 import urllib.request
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from albumentations.core.analytics.events import ComposeInitEvent
+from albumentations.core.analytics.events import ComposeInitEvent
 
 
 class MixpanelBackend:

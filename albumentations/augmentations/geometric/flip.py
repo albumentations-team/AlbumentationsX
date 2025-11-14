@@ -22,8 +22,6 @@ keypoints, volumes, and 3D masks, ensuring consistent transformation across
 different data modalities.
 """
 
-from __future__ import annotations
-
 from typing import Any, Literal
 
 import numpy as np

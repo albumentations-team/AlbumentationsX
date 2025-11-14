@@ -1,7 +1,5 @@
 """Data collectors for telemetry."""
 
-from __future__ import annotations
-
 import functools
 import os
 import platform
@@ -343,7 +341,7 @@ def _extract_transform_names(transform: Any, transforms: list[str]) -> None:
         _extract_transforms_from_compose(transform, transforms)
 
 
-def _get_target_usage(compose: Compose) -> str:
+def _get_target_usage(compose: "Compose") -> str:
     """Determine target usage from compose processors."""
     uses_keypoints = "keypoints" in compose.processors
     uses_bboxes = "bboxes" in compose.processors
@@ -357,7 +355,7 @@ def _get_target_usage(compose: Compose) -> str:
     return "None"
 
 
-def collect_pipeline_info(compose: Compose) -> dict[str, Any]:
+def collect_pipeline_info(compose: "Compose") -> dict[str, Any]:
     """Collect information about the pipeline structure.
 
     Args:

@@ -6,8 +6,6 @@ algorithms for operations like padding, cropping, rotation, and other spatial ma
 specifically designed for 3D data.
 """
 
-from __future__ import annotations
-
 import random
 from typing import Literal
 
@@ -480,7 +478,7 @@ def shuffle_tiles_within_shape_groups_3d(
     for indices in shape_groups.values():
         shuffled = indices.copy()
         random_generator.shuffle(shuffled)
-        for old_idx, new_idx in zip(indices, shuffled):
+        for old_idx, new_idx in zip(indices, shuffled, strict=True):
             mapping[old_idx] = new_idx
 
     return mapping

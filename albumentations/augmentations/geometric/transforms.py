@@ -6,8 +6,6 @@ for flipping, transposing, affine transformations, distortions, padding, and mor
 transformations like grid shuffling and thin plate splines.
 """
 
-from __future__ import annotations
-
 import random
 from typing import Annotated, Any, Literal, cast
 from warnings import warn

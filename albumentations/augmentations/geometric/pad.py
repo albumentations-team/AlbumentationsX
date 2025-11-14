@@ -12,8 +12,6 @@ Padding transformations in this module support various border modes (constant, r
 and properly handle all target types including images, masks, bounding boxes, and keypoints.
 """
 
-from __future__ import annotations
-
 from numbers import Real
 from typing import Any, Literal
 

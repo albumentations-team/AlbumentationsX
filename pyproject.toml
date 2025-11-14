@@ -79,7 +79,7 @@ license = { file = "LICENSE" }
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 
 authors = [ { name = "Vladimir Iglovikov" } ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 classifiers = [
   # Development Status
@@ -100,11 +100,11 @@ classifiers = [
   # Python Versions
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   # Topics - Scientific
   "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -151,12 +151,12 @@ package-data = { albumentations = [ "*.txt", "*.md" ] }
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-target-version = "py39"
+target-version = "py310"
 
 line-length = 120
 indent-width = 4
 
-# Assume Python 3.9
+# Assume Python 3.10
 exclude = [
   ".bzr",
   ".direnv",
@@ -250,7 +250,7 @@ lint.per-file-ignores."tools/*" = [
 [tool.mypy]
 plugins = [ "pydantic.mypy" ]
 
-python_version = "3.9"
+python_version = "3.10"
 ignore_missing_imports = true
 follow_imports = "silent"
 warn_redundant_casts = true

@@ -7,9 +7,7 @@ such as spatial dimensions, apply dropout effects, and perform symmetry operatio
 interface and implements specific 3D augmentation logic.
 """
 
-from __future__ import annotations
-
-from typing import Annotated, Any, Literal, Union, cast
+from typing import Annotated, Any, Literal, cast
 
 import numpy as np
 from pydantic import AfterValidator, field_validator, model_validator
@@ -173,7 +171,7 @@ class BasePad3D(Transform3D):
         return f3d.pad_3d_with_params(
             volume=mask3d,
             padding=padding,
-            value=cast("Union[tuple[float, ...], float]", self.fill_mask),
+            value=cast("tuple[float, ...] | float", self.fill_mask),
         )
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
@@ -730,7 +728,7 @@ class BaseCropAndPad3D(Transform3D):
             return f3d.pad_3d_with_params(
                 cropped,
                 padding=padding,
-                value=cast("Union[tuple[float, ...], float]", self.fill_mask),
+                value=cast("tuple[float, ...] | float", self.fill_mask),
             )
 
         return cropped

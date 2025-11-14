@@ -6,8 +6,6 @@ Examples include overlaying elements (`OverlayElements`) or creating complex com
 like `Mosaic`.
 """
 
-from __future__ import annotations
-
 import random
 from copy import deepcopy
 from typing import Annotated, Any, Literal, cast

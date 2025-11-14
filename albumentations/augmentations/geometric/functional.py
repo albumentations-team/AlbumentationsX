@@ -5,8 +5,6 @@ resizing, flipping, perspective transforms, and affine transformations on images
 bounding boxes and keypoints.
 """
 
-from __future__ import annotations
-
 import math
 import os
 from collections import defaultdict
@@ -18,10 +16,12 @@ from warnings import warn
 import cv2
 import numpy as np
 from albucore import (
+    from_float,
     get_num_channels,
     hflip,
     maybe_process_in_chunks,
     preserve_channel_dim,
+    to_float,
     vflip,
 )
 
@@ -385,6 +385,11 @@ def resize_pil(
     target_height, target_width = target_shape
     original_dtype = img.dtype
 
+    # PIL doesn't support float32 RGB images, convert to uint8 if needed
+    needs_conversion = img.dtype == np.float32
+    if needs_conversion:
+        img = from_float(img, target_dtype=np.uint8)
+
     # Map cv2 interpolation constants to PIL.Image.Resampling constants
     cv2_to_pil_interpolation = {
         cv2.INTER_NEAREST: Image.Resampling.NEAREST,
@@ -446,7 +451,13 @@ def resize_pil(
             channels.append(np.array(resized_channel))
         result = np.stack(channels, axis=-1)
 
-    return result.astype(original_dtype)
+    # Convert back to original dtype
+    if needs_conversion:
+        result = to_float(result)
+    elif result.dtype != original_dtype:
+        result = result.astype(original_dtype)
+
+    return result
 
 
 @preserve_channel_dim
@@ -3934,7 +3945,7 @@ def shuffle_tiles_within_shape_groups(
         shuffled_indices = indices.copy()
         random_generator.shuffle(shuffled_indices)
 
-        for old, new in zip(indices, shuffled_indices):
+        for old, new in zip(indices, shuffled_indices, strict=True):
             mapping[old] = new
 
     return mapping

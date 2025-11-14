@@ -7,8 +7,6 @@ over a network. This is particularly useful for saving augmentation pipelines an
 restoring them later with the exact same configuration.
 """
 
-from __future__ import annotations
-
 import importlib.util
 import json
 import warnings
@@ -32,8 +30,8 @@ from albumentations import __version__
 __all__ = ["from_dict", "load", "save", "to_dict"]
 
 
-SERIALIZABLE_REGISTRY: dict[str, SerializableMeta] = {}
-NON_SERIALIZABLE_REGISTRY: dict[str, SerializableMeta] = {}
+SERIALIZABLE_REGISTRY: dict[str, "SerializableMeta"] = {}
+NON_SERIALIZABLE_REGISTRY: dict[str, "SerializableMeta"] = {}
 
 # Cache for default p values to avoid repeated inspect.signature calls
 _default_p_cache: dict[type, float] = {}
@@ -56,7 +54,7 @@ class SerializableMeta(ABCMeta):
     so they can be found later while deserializing transformation pipeline using classes full names.
     """
 
-    def __new__(cls, name: str, bases: tuple[type, ...], *args: Any, **kwargs: Any) -> SerializableMeta:
+    def __new__(cls, name: str, bases: tuple[type, ...], *args: Any, **kwargs: Any) -> "SerializableMeta":
         cls_obj = super().__new__(cls, name, bases, *args, **kwargs)
         if name != "Serializable" and ABC not in bases:
             if cls_obj.is_serializable():

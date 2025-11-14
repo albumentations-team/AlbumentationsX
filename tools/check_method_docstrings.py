@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Check that all public methods have docstrings, except for apply methods, getters, and setters."""
 
-from __future__ import annotations
-
 import ast
 import sys
 from pathlib import Path

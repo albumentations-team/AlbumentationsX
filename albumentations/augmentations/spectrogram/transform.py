@@ -5,8 +5,6 @@ in audio processing tasks. Includes time reversal, time masking, and frequency
 masking transforms commonly used in audio machine learning applications.
 """
 
-from __future__ import annotations
-
 from warnings import warn
 
 from pydantic import Field

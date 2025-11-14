@@ -6,8 +6,6 @@ and other grid-like data representations where masking in specific directions (t
 can improve model robustness and generalization.
 """
 
-from __future__ import annotations
-
 from typing import Any, Literal, cast
 
 import numpy as np

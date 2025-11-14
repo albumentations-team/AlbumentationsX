@@ -7,8 +7,6 @@ mixed label types. The module supports automatic encoding of string labels to nu
 values and restoration of original data types after processing.
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -65,7 +63,7 @@ class LabelEncoder:
         self.num_classes: int = 0
         self.is_numerical: bool = True
 
-    def fit(self, y: Sequence[Any] | np.ndarray) -> LabelEncoder:
+    def fit(self, y: Sequence[Any] | np.ndarray) -> "LabelEncoder":
         """Fit the encoder to the input labels.
 
         Args:
@@ -145,7 +143,7 @@ class LabelEncoder:
 
         return np.array([self.inverse_classes_[label] for label in y])
 
-    def update(self, y: Sequence[Any] | np.ndarray) -> LabelEncoder:
+    def update(self, y: Sequence[Any] | np.ndarray) -> "LabelEncoder":
         """Update the encoder with new labels encountered after initial fitting.
 
         This method identifies labels in the input sequence that are not already

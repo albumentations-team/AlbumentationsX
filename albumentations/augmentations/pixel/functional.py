@@ -6,8 +6,6 @@ modifications. These functions form the foundation for the transform classes and
 the core functionality for manipulating image data during the augmentation process.
 """
 
-from __future__ import annotations
-
 import math
 import random
 from collections.abc import Sequence
@@ -870,7 +868,7 @@ def add_fog(
     result = img.copy()
 
     # Apply fog particles progressively like in old version
-    for (x, y), radius in zip(fog_particle_positions, fog_particle_radiuses):
+    for (x, y), radius in zip(fog_particle_positions, fog_particle_radiuses, strict=True):
         overlay = result.copy()
         cv2.circle(
             overlay,
@@ -1142,7 +1140,7 @@ def add_shadow(
     img_shadowed = img.copy()
 
     # Iterate over the vertices and intensity list
-    for vertices, shadow_intensity in zip(vertices_list, intensities):
+    for vertices, shadow_intensity in zip(vertices_list, intensities, strict=True):
         # Create mask for the current shadow polygon
         mask = np.zeros((img.shape[0], img.shape[1], 1), dtype=np.uint8)
         cv2.fillPoly(mask, [vertices], (max_value,))
@@ -3823,7 +3821,7 @@ def normalize_vectors(vectors: np.ndarray) -> np.ndarray:
     return vectors / norms
 
 
-def get_normalizer(method: Literal["vahadane", "macenko"]) -> StainNormalizer:
+def get_normalizer(method: Literal["vahadane", "macenko"]) -> "StainNormalizer":
     """Get stain normalizer based on method.
 
     This function gets a stain normalizer based on a method.

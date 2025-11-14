@@ -13,7 +13,6 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 
 ### Type Hints
 
-- **MUST** use Python 3.10+ typing: `list` not `List`, `tuple` not `Tuple`, `| None` not `Optional`
 - All functions must have complete type hints
 - Use `np.ndarray` with proper shape annotations where possible
 
@@ -128,7 +127,6 @@ Examples:
 ### Type Safety
 
 - Missing type hints
-- Using old typing syntax (`List`, `Tuple`, `Optional`, `Union`)
 - Incorrect numpy dtype handling
 - Unsafe type conversions
 
@@ -189,4 +187,3 @@ print(f"Speedup: {old_time/new_time:.2f}x")
 - Creating temporary test files (add permanent tests instead)
 - Renaming existing transforms (breaks backward compatibility)
 - Changing existing parameter names (breaks backward compatibility)
-- Using capital-case types (`List`, `Tuple`, `Optional`, `Union`)

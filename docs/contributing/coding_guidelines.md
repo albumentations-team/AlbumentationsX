@@ -14,7 +14,7 @@ These guidelines represent our current best practices, developed through experie
 
 **For existing code:**
 
-- You may encounter patterns that don't match these guidelines (e.g., transforms with "Random" prefix or Union types for parameters)
+- You may encounter patterns that don't match these guidelines (e.g., transforms with "Random" prefix)
 - These are considered technical debt that we're working to address
 - When modifying existing code, take the opportunity to align it with current standards where possible
 
@@ -39,26 +39,8 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 
 ### Python Version and Type Hints
 
-- Use Python 3.9+ features and syntax
-- Always include type hints using Python 3.10+ typing syntax:
-
-  ```python
-  # Correct
-  def transform(self, value: float, range: tuple[float, float]) -> float:
-
-  # Incorrect - don't use capital-case types
-  def transform(self, value: float, range: Tuple[float, float]) -> Float:
-  ```
-
-- Use `|` instead of `Union` and for optional types:
-
-  ```python
-  # Correct
-  def process(value: int | float | None) -> str:
-
-  # Incorrect
-  def process(value: Optional[Union[int, float]) -> str:
-  ```
+- Use Python 3.10+ features and syntax
+- Always include type hints for all functions
 
 ## Naming Conventions
 

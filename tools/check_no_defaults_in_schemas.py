@@ -6,8 +6,6 @@ This enforces the albumentations coding guideline:
 "We do not have ANY default values in the InitSchema class"
 """
 
-from __future__ import annotations
-
 import argparse
 import ast
 import sys

@@ -6,8 +6,6 @@ and handle the corresponding transformations for bounding boxes and keypoints to
 consistency between different data types during cropping operations.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from typing import Any
 

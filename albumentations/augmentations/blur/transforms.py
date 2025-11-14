@@ -6,8 +6,6 @@ and zoom blur. These transforms are designed to work within the albumentations p
 and support parameters for controlling the intensity and properties of the blur effects.
 """
 
-from __future__ import annotations
-
 from typing import Annotated, Any, Literal, cast
 
 import numpy as np

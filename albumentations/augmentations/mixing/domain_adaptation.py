@@ -6,8 +6,6 @@ from a target domain. Adaptations are based on matching statistical properties
 like histograms, frequency spectra, or overall pixel distributions.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 

@@ -1,7 +1,5 @@
 """Functional implementations of dithering algorithms for color depth reduction."""
 
-from __future__ import annotations
-
 import functools
 from typing import Any, cast
 
@@ -511,7 +509,7 @@ def error_diffusion_dither(
                 error = old_val - new_val
 
                 # Distribute error to neighbors
-                for (offset_x, offset_y), weight in zip(x_offsets, weights):
+                for (offset_x, offset_y), weight in zip(x_offsets, weights, strict=True):
                     neighbor_x, neighbor_y = col_idx + offset_x, row_idx + offset_y
                     if 0 <= neighbor_x < width and 0 <= neighbor_y < height:
                         channel[neighbor_y, neighbor_x] += error * weight

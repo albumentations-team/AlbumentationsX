@@ -4,8 +4,6 @@ This module provides centralized configuration management for telemetry,
 version checking, and other library-wide settings.
 """
 
-from __future__ import annotations
-
 import json
 import os
 from pathlib import Path

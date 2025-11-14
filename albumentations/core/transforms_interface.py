@@ -7,12 +7,10 @@ The interfaces handle parameter validation, random state management, target type
 and serialization capabilities that are inherited by concrete transform implementations.
 """
 
-from __future__ import annotations
-
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from copy import deepcopy
-from typing import Any, Callable
+from typing import Any
 from warnings import warn
 
 import cv2
@@ -314,7 +312,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
                 res[key] = arg
         return res
 
-    def set_deterministic(self, flag: bool, save_key: str = "replay") -> BasicTransform:
+    def set_deterministic(self, flag: bool, save_key: str = "replay") -> "BasicTransform":
         """Set transform to be deterministic."""
         if save_key == "params":
             msg = "params save_key is reserved"

@@ -23,6 +23,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
+from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "FromFloat",
@@ -100,7 +101,7 @@ class ToFloat(ImageOnlyTransform):
         super().__init__(p=p)
         self.max_value = max_value
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         return to_float(img, self.max_value)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
@@ -172,7 +173,7 @@ class FromFloat(ImageOnlyTransform):
         self.dtype = dtype
         self.max_value = max_value
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         return from_float(img, np.dtype(self.dtype), self.max_value)
 
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:

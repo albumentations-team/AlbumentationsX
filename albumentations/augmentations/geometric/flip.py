@@ -33,6 +33,7 @@ from albumentations.core.transforms_interface import (
 )
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
+    ImageType,
     d4_group_elements,
 )
 
@@ -96,7 +97,7 @@ class VerticalFlip(DualTransform):
 
     _targets = ALL_TARGETS
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         return vflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
@@ -159,7 +160,7 @@ class HorizontalFlip(DualTransform):
 
     _targets = ALL_TARGETS
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         return hflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
@@ -233,7 +234,7 @@ class Transpose(DualTransform):
 
     _targets = ALL_TARGETS
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         return fgeometric.transpose(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:

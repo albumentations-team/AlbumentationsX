@@ -8,12 +8,12 @@ channels rather than relying on a subset.
 
 from typing import Annotated, Any
 
-import numpy as np
 from albucore import get_image_data
 from pydantic import AfterValidator
 
 from albumentations.core.pydantic import check_range_bounds
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
+from albumentations.core.type_definitions import ImageType
 
 from .functional import channel_dropout
 
@@ -92,7 +92,7 @@ class ChannelDropout(ImageOnlyTransform):
         self.channel_drop_range = channel_drop_range
         self.fill = fill
 
-    def apply(self, img: np.ndarray, channels_to_drop: list[int], **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, channels_to_drop: list[int], **params: Any) -> ImageType:
         return channel_dropout(img, channels_to_drop, self.fill)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, list[int]]:

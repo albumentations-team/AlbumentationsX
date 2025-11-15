@@ -16,7 +16,7 @@ from albucore import (
     uint8_io,
 )
 
-from albumentations.core.type_definitions import PAIR
+from albumentations.core.type_definitions import PAIR, ImageType
 
 if TYPE_CHECKING:
     from PIL import Image
@@ -112,7 +112,7 @@ def insert_random_stopwords(
     return " ".join(words)
 
 
-def convert_image_to_pil(image: np.ndarray) -> "Image":
+def convert_image_to_pil(image: ImageType) -> "Image":
     """Convert a NumPy array image to a PIL image."""
     try:
         from PIL import Image
@@ -160,7 +160,7 @@ def draw_text_on_pil_image(pil_image: "Image", metadata_list: list[dict[str, Any
     return pil_image
 
 
-def draw_text_on_multi_channel_image(image: np.ndarray, metadata_list: list[dict[str, Any]]) -> np.ndarray:
+def draw_text_on_multi_channel_image(image: ImageType, metadata_list: list[dict[str, Any]]) -> ImageType:
     """Draw text on a multi-channel image with more than three channels."""
     try:
         from PIL import Image, ImageDraw
@@ -200,7 +200,7 @@ def draw_text_on_multi_channel_image(image: np.ndarray, metadata_list: list[dict
 
 @uint8_io
 @preserve_channel_dim
-def render_text(image: np.ndarray, metadata_list: list[dict[str, Any]], clear_bg: bool) -> np.ndarray:
+def render_text(image: ImageType, metadata_list: list[dict[str, Any]], clear_bg: bool) -> ImageType:
     """Render text onto an image based on provided metadata.
 
     This function draws text on an image using metadata that specifies text content,

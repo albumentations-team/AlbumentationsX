@@ -53,17 +53,19 @@ from albumentations.core.type_definitions import (
     MONO_CHANNEL_DIMENSIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
+    ImageType,
+    ImageUInt8,
 )
 
 
 @uint8_io
 @preserve_channel_dim
 def shift_hsv(
-    img: np.ndarray,
+    img: ImageType,
     hue_shift: float,
     sat_shift: float,
     val_shift: float,
-) -> np.ndarray:
+) -> ImageType:
     """Shift the hue, saturation, and value of an image.
 
     Args:
@@ -121,7 +123,7 @@ def shift_hsv(
 
 
 @clipped
-def solarize(img: np.ndarray, threshold: float) -> np.ndarray:
+def solarize(img: ImageType, threshold: float) -> ImageType:
     """Invert all pixel values above a threshold.
 
     Args:
@@ -154,7 +156,7 @@ def solarize(img: np.ndarray, threshold: float) -> np.ndarray:
 
 @uint8_io
 @clipped
-def posterize(img: np.ndarray, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]]) -> np.ndarray:
+def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]]) -> ImageType:
     """Reduce the number of bits for each color channel by keeping only the highest N bits.
 
     Args:
@@ -206,7 +208,7 @@ def posterize(img: np.ndarray, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal
     return result_img
 
 
-def _equalize_pil(img: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
+def _equalize_pil(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     histogram = cv2.calcHist([img], [0], mask, [256], (0, 256)).ravel()
     h = np.array([_f for _f in histogram if _f])
 
@@ -222,7 +224,7 @@ def _equalize_pil(img: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray
     return sz_lut(img, lut, inplace=True)
 
 
-def _equalize_cv(img: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
+def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if mask is None:
         return cv2.equalizeHist(img)
 
@@ -277,11 +279,11 @@ def _handle_mask(
 @uint8_io
 @preserve_channel_dim
 def equalize(
-    img: np.ndarray,
+    img: ImageType,
     mask: np.ndarray | None = None,
     mode: Literal["cv", "pil"] = "cv",
     by_channels: bool = True,
-) -> np.ndarray:
+) -> ImageType:
     """Apply histogram equalization to the input image.
 
     This function enhances the contrast of the input image by equalizing its histogram.
@@ -367,11 +369,11 @@ def evaluate_bez(
 
 @uint8_io
 def move_tone_curve(
-    img: np.ndarray,
+    img: ImageType,
     low_y: float | np.ndarray,
     high_y: float | np.ndarray,
     num_channels: int,
-) -> np.ndarray:
+) -> ImageType:
     """Rescales the relationship between bright and dark areas of the image by manipulating its tone curve.
 
     Args:
@@ -408,9 +410,9 @@ def move_tone_curve(
 
 @clipped
 def linear_transformation_rgb(
-    img: np.ndarray,
+    img: ImageType,
     transformation_matrix: np.ndarray,
-) -> np.ndarray:
+) -> ImageType:
     """Apply a linear transformation to the RGB channels of an image or batch of images.
 
     This function applies a 3x3 linear transformation matrix (or batch of matrices)
@@ -444,10 +446,10 @@ def linear_transformation_rgb(
 @uint8_io
 @preserve_channel_dim
 def clahe(
-    img: np.ndarray,
+    img: ImageType,
     clip_limit: float,
     tile_grid_size: tuple[int, int],
-) -> np.ndarray:
+) -> ImageType:
     """Apply Contrast Limited Adaptive Histogram Equalization (CLAHE) to the input image.
 
     This function enhances the contrast of the input image using CLAHE. For color images,
@@ -493,10 +495,10 @@ def clahe(
 @uint8_io
 @preserve_channel_dim
 def image_compression(
-    img: np.ndarray,
+    img: ImageType,
     quality: int,
     image_type: Literal[".jpg", ".webp"],
-) -> np.ndarray:
+) -> ImageType:
     """Compress the image using JPEG or WebP compression.
 
     Args:
@@ -541,10 +543,10 @@ def image_compression(
 
 @uint8_io
 def add_snow_bleach(
-    img: np.ndarray,
+    img: ImageType,
     snow_point: float,
     brightness_coeff: float,
-) -> np.ndarray:
+) -> ImageType:
     """Adds a simple snow effect to the image by bleaching out pixels.
 
     This function simulates a basic snow effect by increasing the brightness of pixels
@@ -641,12 +643,12 @@ def generate_snow_textures(
 
 @uint8_io
 def add_snow_texture(
-    img: np.ndarray,
+    img: ImageType,
     snow_point: float,
     brightness_coeff: float,
     snow_texture: np.ndarray,
     sparkle_mask: np.ndarray,
-) -> np.ndarray:
+) -> ImageType:
     """Add a realistic snow effect to the input image.
 
     This function simulates snowfall by applying multiple visual effects to the image,
@@ -752,7 +754,7 @@ def add_snow_texture(
 @uint8_io
 @preserve_channel_dim
 def add_rain(
-    img: np.ndarray,
+    img: ImageType,
     slant: float,
     drop_length: int,
     drop_width: int,
@@ -760,7 +762,7 @@ def add_rain(
     blur_value: int,
     brightness_coefficient: float,
     rain_drops: np.ndarray,
-) -> np.ndarray:
+) -> ImageType:
     """Add rain to an image.
 
     This function adds rain to an image by drawing rain drops on the image.
@@ -843,12 +845,12 @@ def get_fog_particle_radiuses(
 @clipped
 @preserve_channel_dim
 def add_fog(
-    img: np.ndarray,
+    img: ImageType,
     fog_intensity: float,
     alpha_coef: float,
     fog_particle_positions: list[tuple[int, int]],
     fog_particle_radiuses: list[int],
-) -> np.ndarray:
+) -> ImageType:
     """Add fog to an image.
 
     This function adds fog to an image by drawing fog particles on the image.
@@ -896,12 +898,12 @@ def add_fog(
 @preserve_channel_dim
 @maybe_process_in_chunks
 def add_sun_flare_overlay(
-    img: np.ndarray,
+    img: ImageType,
     flare_center: tuple[float, float],
     src_radius: int,
     src_color: tuple[int, ...],
     circles: list[Any],
-) -> np.ndarray:
+) -> ImageType:
     """Add a sun flare effect to an image using a simple overlay technique.
 
     This function creates a basic sun flare effect by overlaying multiple semi-transparent
@@ -993,12 +995,12 @@ def add_sun_flare_overlay(
 @uint8_io
 @clipped
 def add_sun_flare_physics_based(
-    img: np.ndarray,
+    img: ImageType,
     flare_center: tuple[int, int],
     src_radius: int,
     src_color: tuple[int, int, int],
     circles: list[Any],
-) -> np.ndarray:
+) -> ImageType:
     """Add a more realistic sun flare effect to the image.
 
     This function creates a complex sun flare effect by simulating various optical phenomena
@@ -1116,10 +1118,10 @@ def add_sun_flare_physics_based(
 @uint8_io
 @preserve_channel_dim
 def add_shadow(
-    img: np.ndarray,
+    img: ImageType,
     vertices_list: list[np.ndarray],
     intensities: np.ndarray,
-) -> np.ndarray:
+) -> ImageType:
     """Add shadows to the image by reducing the intensity of the pixel values in specified regions.
 
     Args:
@@ -1164,7 +1166,7 @@ def add_shadow(
 @uint8_io
 @clipped
 @preserve_channel_dim
-def add_gravel(img: np.ndarray, gravels: list[Any]) -> np.ndarray:
+def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
     """Add gravel to an image.
 
     This function adds gravel to an image by drawing gravel particles on the image.
@@ -1188,7 +1190,7 @@ def add_gravel(img: np.ndarray, gravels: list[Any]) -> np.ndarray:
     return cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB)
 
 
-def invert(img: np.ndarray) -> np.ndarray:
+def invert(img: ImageType) -> ImageType:
     """Invert the colors of an image.
 
     This function inverts the colors of an image by subtracting each pixel value from the maximum possible value.
@@ -1206,7 +1208,7 @@ def invert(img: np.ndarray) -> np.ndarray:
     return MAX_VALUES_BY_DTYPE[img.dtype] - img
 
 
-def channel_shuffle(img: np.ndarray, channels_shuffled: list[int]) -> np.ndarray:
+def channel_shuffle(img: ImageType, channels_shuffled: list[int]) -> ImageType:
     """Shuffle the channels of an image.
 
     This function shuffles the channels of an image by using the cv2.mixChannels function.
@@ -1256,7 +1258,7 @@ def volumes_channel_shuffle(volumes: np.ndarray, channels_shuffled: Sequence[int
     return volumes.copy()[..., channels_shuffled] if volumes.ndim == 5 else volumes
 
 
-def gamma_transform(img: np.ndarray, gamma: float) -> np.ndarray:
+def gamma_transform(img: ImageType, gamma: float) -> ImageType:
     """Apply gamma transformation to an image.
 
     This function applies gamma transformation to an image by raising each pixel value to the power of gamma.
@@ -1328,7 +1330,7 @@ def iso_noise(
     return np.clip(noised_hls, 0, 1, out=noised_hls)  # Ensure output is in [0, 1] range
 
 
-def to_gray_weighted_average(img: np.ndarray) -> np.ndarray:
+def to_gray_weighted_average(img: ImageType) -> ImageType:
     """Convert RGB image(s) to grayscale using the weighted average method.
 
     This function uses OpenCV's cvtColor function with COLOR_RGB2GRAY conversion,
@@ -1377,7 +1379,7 @@ def to_gray_weighted_average(img: np.ndarray) -> np.ndarray:
 
 
 @uint8_io
-def to_gray_from_lab(img: np.ndarray) -> np.ndarray:
+def to_gray_from_lab(img: ImageType) -> ImageType:
     """Convert an RGB image or batch of images to grayscale using LAB color space.
 
     This function converts RGB images to grayscale by first converting to LAB color space
@@ -1465,7 +1467,7 @@ def to_gray_from_lab(img: np.ndarray) -> np.ndarray:
 
 
 @clipped
-def to_gray_desaturation(img: np.ndarray) -> np.ndarray:
+def to_gray_desaturation(img: ImageType) -> ImageType:
     """Convert an image to grayscale using the desaturation method.
 
     Args:
@@ -1485,7 +1487,7 @@ def to_gray_desaturation(img: np.ndarray) -> np.ndarray:
     return (np.max(float_image, axis=-1) + np.min(float_image, axis=-1)) / 2
 
 
-def to_gray_average(img: np.ndarray) -> np.ndarray:
+def to_gray_average(img: ImageType) -> ImageType:
     """Convert an image to grayscale using the average method.
 
     This function computes the arithmetic mean across all channels for each pixel,
@@ -1519,7 +1521,7 @@ def to_gray_average(img: np.ndarray) -> np.ndarray:
     return np.mean(img, axis=-1).astype(img.dtype)
 
 
-def to_gray_max(img: np.ndarray) -> np.ndarray:
+def to_gray_max(img: ImageType) -> ImageType:
     """Convert an image to grayscale using the maximum channel value method.
 
     This function takes the maximum value across all channels for each pixel,
@@ -1556,7 +1558,7 @@ def to_gray_max(img: np.ndarray) -> np.ndarray:
 
 
 @clipped
-def to_gray_pca(img: np.ndarray) -> np.ndarray:
+def to_gray_pca(img: ImageType) -> ImageType:
     """Convert an image to grayscale using Principal Component Analysis (PCA).
 
     This function applies PCA to reduce a multi-channel image to a single channel,
@@ -1603,7 +1605,7 @@ def to_gray_pca(img: np.ndarray) -> np.ndarray:
 
 
 def to_gray(
-    img: np.ndarray,
+    img: ImageType,
     num_output_channels: int,
     method: Literal[
         "weighted_average",
@@ -1613,7 +1615,7 @@ def to_gray(
         "max",
         "pca",
     ],
-) -> np.ndarray:
+) -> ImageType:
     """Convert an image to grayscale using a specified method.
 
     This function converts an image to grayscale using a specified method.
@@ -1687,11 +1689,11 @@ def grayscale_to_multichannel(
 @preserve_channel_dim
 @uint8_io
 def downscale(
-    img: np.ndarray,
+    img: ImageType,
     scale: float,
     down_interpolation: int,
     up_interpolation: int,
-) -> np.ndarray:
+) -> ImageType:
     """Downscale and upscale an image.
 
     This function downscales and upscales an image using the specified interpolation methods.
@@ -1739,7 +1741,7 @@ def noop(input_obj: Any, **params: Any) -> Any:
 @float32_io
 @clipped
 @preserve_channel_dim
-def fancy_pca(img: np.ndarray, alpha_vector: np.ndarray) -> np.ndarray:
+def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     """Perform 'Fancy PCA' augmentation on an image with any number of channels.
 
     Args:
@@ -1813,7 +1815,7 @@ def fancy_pca(img: np.ndarray, alpha_vector: np.ndarray) -> np.ndarray:
 
 
 @preserve_channel_dim
-def adjust_brightness_torchvision(img: np.ndarray, factor: np.ndarray) -> np.ndarray:
+def adjust_brightness_torchvision(img: ImageType, factor: np.ndarray) -> ImageType:
     """Adjust the brightness of an image.
 
     This function adjusts the brightness of an image by multiplying each pixel value by a factor.
@@ -1836,7 +1838,7 @@ def adjust_brightness_torchvision(img: np.ndarray, factor: np.ndarray) -> np.nda
 
 
 @preserve_channel_dim
-def adjust_contrast_torchvision(img: np.ndarray, factor: float) -> np.ndarray:
+def adjust_contrast_torchvision(img: ImageType, factor: float) -> ImageType:
     """Adjust the contrast of an image.
 
     This function adjusts the contrast of an image by multiplying each pixel value by a factor.
@@ -1866,10 +1868,10 @@ def adjust_contrast_torchvision(img: np.ndarray, factor: float) -> np.ndarray:
 @clipped
 @preserve_channel_dim
 def adjust_saturation_torchvision(
-    img: np.ndarray,
+    img: ImageType,
     factor: float,
     gamma: float = 0,
-) -> np.ndarray:
+) -> ImageType:
     """Adjust the saturation of an image.
 
     This function adjusts the saturation of an image by multiplying each pixel value by a factor.
@@ -1893,7 +1895,7 @@ def adjust_saturation_torchvision(
     return gray if factor == 0 else cv2.addWeighted(img, factor, gray, 1 - factor, gamma=gamma)
 
 
-def _adjust_hue_torchvision_uint8(img: np.ndarray, factor: float) -> np.ndarray:
+def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
     img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
     lut = np.arange(0, 256, dtype=np.int16)
@@ -1903,7 +1905,7 @@ def _adjust_hue_torchvision_uint8(img: np.ndarray, factor: float) -> np.ndarray:
     return cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
 
 
-def adjust_hue_torchvision(img: np.ndarray, factor: float) -> np.ndarray:
+def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     """Adjust the hue of an image.
 
     This function adjusts the hue of an image by adding a factor to the hue value.
@@ -2090,7 +2092,7 @@ def pixel_dropout(
 @float32_io
 @clipped
 @preserve_channel_dim
-def spatter_rain(img: np.ndarray, rain: np.ndarray) -> np.ndarray:
+def spatter_rain(img: ImageType, rain: np.ndarray) -> ImageType:
     """Apply spatter rain to an image.
 
     This function applies spatter rain to an image by adding the rain to the image.
@@ -2109,7 +2111,7 @@ def spatter_rain(img: np.ndarray, rain: np.ndarray) -> np.ndarray:
 @float32_io
 @clipped
 @preserve_channel_dim
-def spatter_mud(img: np.ndarray, non_mud: np.ndarray, mud: np.ndarray) -> np.ndarray:
+def spatter_mud(img: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageType:
     """Apply spatter mud to an image.
 
     This function applies spatter mud to an image by adding the mud to the image.
@@ -2129,13 +2131,13 @@ def spatter_mud(img: np.ndarray, non_mud: np.ndarray, mud: np.ndarray) -> np.nda
 @uint8_io
 @clipped
 def chromatic_aberration(
-    img: np.ndarray,
+    img: ImageType,
     primary_distortion_red: float,
     secondary_distortion_red: float,
     primary_distortion_blue: float,
     secondary_distortion_blue: float,
     interpolation: int,
-) -> np.ndarray:
+) -> ImageType:
     """Apply chromatic aberration to an image.
 
     This function applies chromatic aberration to an image by distorting the red and blue channels.
@@ -2275,10 +2277,10 @@ PLANCKIAN_COEFFS: dict[str, dict[int, list[float]]] = {
 
 @clipped
 def planckian_jitter(
-    img: np.ndarray,
+    img: ImageType,
     temperature: int,
     mode: Literal["blackbody", "cied"],
-) -> np.ndarray:
+) -> ImageType:
     """Apply Planckian jitter to an image.
 
     This function applies Planckian jitter to an image by linearly interpolating
@@ -2337,7 +2339,7 @@ def planckian_jitter(
 
 
 @clipped
-def add_noise(img: np.ndarray, noise: np.ndarray) -> np.ndarray:
+def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
     """Add noise to an image.
 
     This function adds noise to an image by adding the noise to the image.
@@ -2429,10 +2431,10 @@ def slic(
 @preserve_channel_dim
 @float32_io
 def shot_noise(
-    img: np.ndarray,
+    img: ImageType,
     scale: float,
     random_generator: np.random.Generator,
-) -> np.ndarray:
+) -> ImageType:
     """Apply shot noise to the image.
 
     Args:
@@ -2873,11 +2875,11 @@ def generate_shared_noise(
 @clipped
 @preserve_channel_dim
 def sharpen_gaussian(
-    img: np.ndarray,
+    img: ImageType,
     alpha: float,
     kernel_size: int,
     sigma: float,
-) -> np.ndarray:
+) -> ImageType:
     """Sharpen image using Gaussian blur.
 
     This function sharpens an image using a Gaussian blur.
@@ -2904,10 +2906,10 @@ def sharpen_gaussian(
 
 
 def apply_salt_and_pepper(
-    img: np.ndarray,
+    img: ImageType,
     salt_mask: np.ndarray,
     pepper_mask: np.ndarray,
-) -> np.ndarray:
+) -> ImageType:
     """Apply salt and pepper noise to an image.
 
     This function applies salt and pepper noise to an image using pre-computed masks.
@@ -3020,11 +3022,11 @@ def generate_plasma_pattern(
 @clipped
 @float32_io
 def apply_plasma_brightness_contrast(
-    img: np.ndarray,
+    img: ImageType,
     brightness_factor: float,
     contrast_factor: float,
     plasma_pattern: np.ndarray,
-) -> np.ndarray:
+) -> ImageType:
     """Apply plasma-based brightness and contrast adjustments.
 
     This function applies plasma-based brightness and contrast adjustments to an image.
@@ -3069,10 +3071,10 @@ def apply_plasma_brightness_contrast(
 
 @clipped
 def apply_plasma_shadow(
-    img: np.ndarray,
+    img: ImageType,
     intensity: float,
     plasma_pattern: np.ndarray,
-) -> np.ndarray:
+) -> ImageType:
     """Apply plasma shadow to the image.
 
     Args:
@@ -3150,7 +3152,7 @@ def create_directional_gradient(height: int, width: int, angle: float) -> np.nda
 
 
 @float32_io
-def apply_linear_illumination(img: np.ndarray, intensity: float, angle: float) -> np.ndarray:
+def apply_linear_illumination(img: ImageType, intensity: float, angle: float) -> ImageType:
     """Apply linear illumination to the image.
 
     Args:
@@ -3183,10 +3185,10 @@ def apply_linear_illumination(img: np.ndarray, intensity: float, angle: float) -
 
 @clipped
 def apply_corner_illumination(
-    img: np.ndarray,
+    img: ImageType,
     intensity: float,
     corner: Literal[0, 1, 2, 3],
-) -> np.ndarray:
+) -> ImageType:
     """Apply corner illumination to the image.
 
     Args:
@@ -3234,11 +3236,11 @@ def apply_corner_illumination(
 
 @clipped
 def apply_gaussian_illumination(
-    img: np.ndarray,
+    img: ImageType,
     intensity: float,
     center: tuple[float, float],
     sigma: float,
-) -> np.ndarray:
+) -> ImageType:
     """Apply gaussian illumination to the image.
 
     Args:
@@ -3287,11 +3289,11 @@ def apply_gaussian_illumination(
 
 @uint8_io
 def auto_contrast(
-    img: np.ndarray,
+    img: ImageType,
     cutoff: float,
     ignore: int | None,
     method: Literal["cdf", "pil"],
-) -> np.ndarray:
+) -> ImageType:
     """Apply automatic contrast enhancement.
 
     Args:
@@ -3786,7 +3788,7 @@ STAIN_MATRICES = {
 }
 
 
-def rgb_to_optical_density(img: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> ImageType:
     """Convert RGB image to optical density.
 
     This function converts an RGB image to optical density.
@@ -4145,7 +4147,7 @@ class MacenkoNormalizer(StainNormalizer):
         self.stain_matrix_target = stain_vectors if stain_vectors[0, 0] > stain_vectors[1, 0] else stain_vectors[::-1]
 
 
-def get_tissue_mask(img: np.ndarray, threshold: float = 0.85) -> np.ndarray:
+def get_tissue_mask(img: ImageType, threshold: float = 0.85) -> ImageType:
     """Get tissue mask from image.
 
     Args:
@@ -4168,12 +4170,12 @@ def get_tissue_mask(img: np.ndarray, threshold: float = 0.85) -> np.ndarray:
 @clipped
 @float32_io
 def apply_he_stain_augmentation(
-    img: np.ndarray,
+    img: ImageType,
     stain_matrix: np.ndarray,
     scale_factors: np.ndarray,
     shift_values: np.ndarray,
     augment_background: bool,
-) -> np.ndarray:
+) -> ImageType:
     """Apply HE stain augmentation to an image.
 
     This function applies HE stain augmentation to an image.
@@ -4232,7 +4234,7 @@ def apply_he_stain_augmentation(
 
 @clipped
 @preserve_channel_dim
-def convolve(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     """Convolve an image with a kernel.
 
     This function convolves an image with a kernel.
@@ -4251,7 +4253,7 @@ def convolve(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
 
 @clipped
 @preserve_channel_dim
-def separable_convolve(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     """Convolve an image with a separable kernel.
 
     This function convolves an image with a separable kernel.

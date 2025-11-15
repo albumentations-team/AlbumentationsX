@@ -16,7 +16,7 @@ from typing_extensions import Protocol
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.utils import PCA
-from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS
+from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS, ImageType
 
 __all__ = [
     "adapt_pixel_distribution",
@@ -282,7 +282,7 @@ class DomainAdapter:
     def __init__(
         self,
         transformer: TransformerInterface,
-        ref_img: np.ndarray,
+        ref_img: ImageType,
         color_conversions: tuple[None, None] = (None, None),
     ):
         self.color_in, self.color_out = color_conversions
@@ -291,7 +291,7 @@ class DomainAdapter:
         self.num_channels = get_num_channels(ref_img)
         self.target_transformer.fit(self.flatten(ref_img))
 
-    def to_colorspace(self, img: np.ndarray) -> np.ndarray:
+    def to_colorspace(self, img: ImageType) -> ImageType:
         """Convert the image to the target color space.
 
         Args:
@@ -303,7 +303,7 @@ class DomainAdapter:
         """
         return img if self.color_in is None else cv2.cvtColor(img, self.color_in)
 
-    def from_colorspace(self, img: np.ndarray) -> np.ndarray:
+    def from_colorspace(self, img: ImageType) -> ImageType:
         """Convert the image back from the target color space.
 
         Args:
@@ -318,7 +318,7 @@ class DomainAdapter:
             return img
         return cv2.cvtColor(clip(img, np.uint8, inplace=True), self.color_out)
 
-    def flatten(self, img: np.ndarray) -> np.ndarray:
+    def flatten(self, img: ImageType) -> np.ndarray:
         """Flatten the image into a 2D array of pixels.
 
         Converts the image to the target color space, normalizes to float values,
@@ -359,7 +359,7 @@ class DomainAdapter:
     def _pca_sign(x: np.ndarray) -> np.ndarray:
         return np.sign(np.trace(x.components_))
 
-    def __call__(self, image: np.ndarray) -> np.ndarray:
+    def __call__(self, image: ImageType) -> ImageType:
         height, width = image.shape[:2]
         pixels = self.flatten(image)
         self.source_transformer.fit(pixels)
@@ -379,11 +379,11 @@ class DomainAdapter:
 @clipped
 @preserve_channel_dim
 def adapt_pixel_distribution(
-    img: np.ndarray,
+    img: ImageType,
     ref: np.ndarray,
     transform_type: Literal["pca", "standard", "minmax"],
     weight: float,
-) -> np.ndarray:
+) -> ImageType:
     """Adapt the pixel distribution of an image to match a reference image.
 
     This function adapts the pixel distribution of an image to match a reference image
@@ -449,7 +449,7 @@ def low_freq_mutate(amp_src: np.ndarray, amp_trg: np.ndarray, beta: float) -> np
 
 @clipped
 @preserve_channel_dim
-def fourier_domain_adaptation(img: np.ndarray, target_img: np.ndarray, beta: float) -> np.ndarray:
+def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float) -> ImageType:
     """Apply Fourier Domain Adaptation to the input image using a target image.
 
     This function performs domain adaptation in the frequency domain by modifying the amplitude
@@ -544,7 +544,7 @@ def fourier_domain_adaptation(img: np.ndarray, target_img: np.ndarray, beta: flo
 
 @clipped
 @preserve_channel_dim
-def apply_histogram(img: np.ndarray, reference_image: np.ndarray, blend_ratio: float) -> np.ndarray:
+def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: float) -> ImageType:
     """Apply histogram matching to an input image using a reference image and blend the result.
 
     This function performs histogram matching between the input image and a reference image,
@@ -590,7 +590,7 @@ def apply_histogram(img: np.ndarray, reference_image: np.ndarray, blend_ratio: f
 
 
 @uint8_io
-def match_histograms(image: np.ndarray, reference: np.ndarray) -> np.ndarray:
+def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
     """Adjust an image so that its cumulative histogram matches that of another.
 
     The adjustment is applied separately for each channel.

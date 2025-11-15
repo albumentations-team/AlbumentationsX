@@ -8,11 +8,12 @@ and provide a centralized location for commonly used values.
 """
 
 from enum import Enum
-from typing import TypeVar
+from typing import TypeAlias, TypeVar
 
 import cv2
 import numpy as np
 from albucore.utils import MAX_VALUES_BY_DTYPE
+from numpy import float32, uint8
 from numpy.typing import NDArray
 from typing_extensions import NotRequired, TypedDict
 
@@ -20,6 +21,15 @@ Number = TypeVar("Number", float, int)
 
 IntNumType = np.integer | NDArray[np.integer]
 FloatNumType = np.floating | NDArray[np.floating]
+
+# Core image types - restrict to uint8 and float32 only
+ImageUInt8: TypeAlias = NDArray[uint8]
+ImageFloat32: TypeAlias = NDArray[float32]
+ImageType: TypeAlias = ImageUInt8 | ImageFloat32
+
+# Image and Volume types - restrict to uint8 and float32 only
+# VolumeType is same as ImageType (volumes are also uint8/float32)
+VolumeType: TypeAlias = ImageType
 
 d4_group_elements = ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]
 
@@ -32,14 +42,14 @@ class ReferenceImage(TypedDict):
     and keypoints.
 
     Args:
-        image (np.ndarray): The reference image array.
+        image (ImageType): The reference image array (uint8 or float32).
         mask (np.ndarray | None): Optional mask array.
         bbox (tuple[float, ...] | np.ndarray | None): Optional bounding box coordinates.
         keypoints (tuple[float, ...] | np.ndarray | None): Optional keypoint coordinates.
 
     """
 
-    image: np.ndarray
+    image: ImageType
     mask: NotRequired[np.ndarray]
     bbox: NotRequired[tuple[float, ...] | np.ndarray]
     keypoints: NotRequired[tuple[float, ...] | np.ndarray]

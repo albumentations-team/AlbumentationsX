@@ -18,7 +18,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 
 from . import functional as fgeometric
 
@@ -114,7 +114,7 @@ class RandomRotate90(DualTransform):
     ):
         super().__init__(p=p)
 
-    def apply(self, img: np.ndarray, factor: Literal[0, 1, 2, 3], **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, factor: Literal[0, 1, 2, 3], **params: Any) -> ImageType:
         return fgeometric.rot90(img, factor)
 
     def get_params(self) -> dict[str, int]:

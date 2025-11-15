@@ -29,6 +29,7 @@ import numpy as np
 
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.transforms_interface import NoOp
+from albumentations.core.type_definitions import ImageType
 from albumentations.core.utils import format_args
 
 __all__ = ["Lambda"]
@@ -85,7 +86,7 @@ class Lambda(NoOp):
 
                 self.custom_apply_fns[target_name] = custom_apply_fn
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         fn = self.custom_apply_fns["image"]
         return fn(img, **params)
 

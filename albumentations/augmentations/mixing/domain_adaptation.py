@@ -20,6 +20,7 @@ from albumentations.augmentations.mixing.domain_adaptation_functional import (
 )
 from albumentations.core.pydantic import ZeroOneRangeType, check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
+from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "FDA",
@@ -645,7 +646,7 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
             "blend_ratio": self.py_random.uniform(*self.blend_ratio),
         }
 
-    def apply(self, img: np.ndarray, reference_image: np.ndarray, blend_ratio: float, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, reference_image: np.ndarray, blend_ratio: float, **params: Any) -> ImageType:
         return adapt_pixel_distribution(
             img,
             ref=reference_image,

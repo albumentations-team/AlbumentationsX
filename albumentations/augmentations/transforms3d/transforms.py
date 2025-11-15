@@ -18,7 +18,7 @@ from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D
-from albumentations.core.type_definitions import Targets
+from albumentations.core.type_definitions import Targets, VolumeType
 
 __all__ = [
     "CenterCrop3D",
@@ -1254,7 +1254,7 @@ class CoarseDropout3D(Transform3D):
 
         return {"holes": holes}
 
-    def apply_to_volume(self, volume: np.ndarray, holes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volume(self, volume: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
         """Apply dropout to a 3D volume.
 
         Args:
@@ -1398,7 +1398,7 @@ class CubicSymmetry(Transform3D):
         volume_shape = data["volume"].shape
         return {"index": self.py_random.randint(0, 47), "volume_shape": volume_shape}
 
-    def apply_to_volume(self, volume: np.ndarray, index: int, **params: Any) -> np.ndarray:
+    def apply_to_volume(self, volume: VolumeType, index: int, **params: Any) -> VolumeType:
         """Apply cubic symmetry transformation to a 3D volume.
 
         Args:

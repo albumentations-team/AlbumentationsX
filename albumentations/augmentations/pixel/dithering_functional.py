@@ -8,6 +8,7 @@ import numpy as np
 from albucore import float32_io
 
 from albumentations.augmentations.pixel.functional import to_gray_average, to_gray_weighted_average
+from albumentations.core.type_definitions import ImageFloat32, ImageType, ImageUInt8
 
 # Error diffusion kernels
 FLOYD_STEINBERG_KERNEL = {
@@ -281,11 +282,11 @@ def quantize_array(arr: np.ndarray, n_levels: int) -> np.ndarray:
 
 
 def random_dither_uint8(
-    img: np.ndarray,
+    img: ImageUInt8,
     n_colors: int,
     noise_range: tuple[float, float],
     random_generator: np.random.Generator,
-) -> np.ndarray:
+) -> ImageUInt8:
     """Apply random dithering optimized for uint8 images.
 
     Args:
@@ -321,11 +322,11 @@ def random_dither_uint8(
 
 
 def random_dither(
-    img: np.ndarray,
+    img: ImageFloat32,
     n_colors: int,
     noise_range: tuple[float, float],
     random_generator: np.random.Generator,
-) -> np.ndarray:
+) -> ImageFloat32:
     """Apply random dithering for float32 images.
 
     Args:
@@ -353,10 +354,10 @@ def random_dither(
 
 
 def ordered_dither_uint8(
-    img: np.ndarray,
+    img: ImageUInt8,
     n_colors: int,
     matrix_size: int = 4,
-) -> np.ndarray:
+) -> ImageUInt8:
     """Apply ordered dithering optimized for uint8 images.
 
     Args:
@@ -406,10 +407,10 @@ def ordered_dither_uint8(
 
 
 def ordered_dither(
-    img: np.ndarray,
+    img: ImageFloat32,
     n_colors: int,
     matrix_size: int = 4,
-) -> np.ndarray:
+) -> ImageFloat32:
     """Apply ordered dithering using Bayer matrix.
 
     Args:
@@ -453,11 +454,11 @@ def ordered_dither(
 
 @float32_io
 def error_diffusion_dither(
-    img: np.ndarray,
+    img: ImageType,
     n_colors: int,
     algorithm: str = "floyd_steinberg",
     serpentine: bool = False,
-) -> np.ndarray:
+) -> ImageType:
     """Apply error diffusion dithering.
 
     Args:
@@ -522,11 +523,11 @@ def error_diffusion_dither(
 
 
 def _apply_dithering_to_grayscale(
-    img: np.ndarray,
+    img: ImageType,
     method: str,
     n_colors: int,
     **kwargs: Any,
-) -> np.ndarray:
+) -> ImageType:
     """Apply dithering to grayscale image."""
     # Store original number of channels
     original_channels = img.shape[2]
@@ -553,11 +554,11 @@ def _apply_dithering_to_grayscale(
 
 
 def _apply_single_dithering_method(
-    img: np.ndarray,
+    img: ImageType,
     method: str,
     n_colors: int,
     **kwargs: Any,
-) -> np.ndarray:
+) -> ImageType:
     """Apply a single dithering method to an image."""
     # Choose optimized uint8 versions when possible
     if img.dtype == np.uint8 and method == "ordered":
@@ -601,12 +602,12 @@ def _apply_single_dithering_method(
 
 
 def apply_dithering(
-    img: np.ndarray,
+    img: ImageType,
     method: str,
     n_colors: int,
     color_mode: str = "per_channel",
     **kwargs: Any,
-) -> np.ndarray:
+) -> ImageType:
     """Apply dithering to an image.
 
     Args:

@@ -19,13 +19,13 @@ from pydantic import ValidationInfo
 
 from albumentations.augmentations.geometric.functional import scale
 from albumentations.augmentations.pixel.functional import convolve
-from albumentations.core.type_definitions import EIGHT
+from albumentations.core.type_definitions import EIGHT, ImageType
 
 __all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "median_blur", "zoom_blur"]
 
 
 @preserve_channel_dim
-def box_blur(img: np.ndarray, ksize: int) -> np.ndarray:
+def box_blur(img: ImageType, ksize: int) -> ImageType:
     """Blur an image.
 
     This function applies a blur to an image.
@@ -44,7 +44,7 @@ def box_blur(img: np.ndarray, ksize: int) -> np.ndarray:
 
 @preserve_channel_dim
 @uint8_io
-def median_blur(img: np.ndarray, ksize: int) -> np.ndarray:
+def median_blur(img: ImageType, ksize: int) -> ImageType:
     """Median blur an image.
 
     This function applies a median blur to an image.
@@ -63,13 +63,13 @@ def median_blur(img: np.ndarray, ksize: int) -> np.ndarray:
 
 @preserve_channel_dim
 def glass_blur(
-    img: np.ndarray,
+    img: ImageType,
     sigma: float,
     max_delta: int,
     iterations: int,
     dxy: np.ndarray,
     mode: Literal["fast", "exact"],
-) -> np.ndarray:
+) -> ImageType:
     """Glass blur an image.
 
     This function applies a glass blur to an image.
@@ -117,7 +117,7 @@ def glass_blur(
     return cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0))
 
 
-def defocus(img: np.ndarray, radius: int, alias_blur: float) -> np.ndarray:
+def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
     """Defocus an image.
 
     This function defocuses an image.
@@ -143,7 +143,7 @@ def defocus(img: np.ndarray, radius: int, alias_blur: float) -> np.ndarray:
     return convolve(img, kernel=kernel)
 
 
-def central_zoom(img: np.ndarray, zoom_factor: int) -> np.ndarray:
+def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:
     """Central zoom an image.
 
     This function zooms an image.
@@ -167,7 +167,7 @@ def central_zoom(img: np.ndarray, zoom_factor: int) -> np.ndarray:
 
 @float32_io
 @clipped
-def zoom_blur(img: np.ndarray, zoom_factors: np.ndarray | Sequence[int]) -> np.ndarray:
+def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> ImageType:
     """Zoom blur an image.
 
     This function zooms and blurs an image.

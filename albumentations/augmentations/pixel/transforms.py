@@ -60,6 +60,7 @@ from albumentations.core.type_definitions import (
     NUM_RGB_CHANNELS,
     PAIR,
     SEVEN,
+    ImageType,
 )
 from albumentations.core.utils import to_tuple
 
@@ -230,7 +231,7 @@ class Normalize(ImageOnlyTransform):
         self.max_pixel_value = max_pixel_value
         self.normalization = normalization
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         if self.normalization == "standard":
             return normalize(
                 img,
@@ -1750,7 +1751,7 @@ class Solarize(ImageOnlyTransform):
         super().__init__(p=p)
         self.threshold_range = threshold_range
 
-    def apply(self, img: np.ndarray, threshold: float, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, threshold: float, **params: Any) -> ImageType:
         return fpixel.solarize(img, threshold)
 
     def get_params(self) -> dict[str, float]:
@@ -1973,7 +1974,7 @@ class Equalize(ImageOnlyTransform):
         self.mask = mask
         self.mask_params = mask_params
 
-    def apply(self, img: np.ndarray, mask: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, mask: np.ndarray, **params: Any) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             raise ValueError("Equalize transform is only supported for RGB and grayscale images.")
         return fpixel.equalize(
@@ -2440,7 +2441,7 @@ class CLAHE(ImageOnlyTransform):
         self.clip_limit = cast("tuple[float, float]", clip_limit)
         self.tile_grid_size = tile_grid_size
 
-    def apply(self, img: np.ndarray, clip_limit: float, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, clip_limit: float, **params: Any) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "CLAHE transformation expects 1-channel or 3-channel images."
             raise TypeError(msg)
@@ -2563,7 +2564,7 @@ class InvertImg(ImageOnlyTransform):
 
     """
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         return fpixel.invert(img)
 
     def apply_to_images(self, images: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
@@ -2656,7 +2657,7 @@ class RandomGamma(ImageOnlyTransform):
         super().__init__(p=p)
         self.gamma_limit = cast("tuple[float, float]", gamma_limit)
 
-    def apply(self, img: np.ndarray, gamma: float, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, gamma: float, **params: Any) -> ImageType:
         return fpixel.gamma_transform(img, gamma=gamma)
 
     def apply_to_volumes(self, volumes: np.ndarray, gamma: float, **params: Any) -> np.ndarray:
@@ -2831,7 +2832,7 @@ class ToGray(ImageOnlyTransform):
         self.num_output_channels = num_output_channels
         self.method = method
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         if is_grayscale_image(img):
             warnings.warn("The image is already gray.", stacklevel=2)
             return img
@@ -2914,7 +2915,7 @@ class ToRGB(ImageOnlyTransform):
 
         self.num_output_channels = num_output_channels
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         if is_rgb_image(img):
             warnings.warn("The image is already an RGB.", stacklevel=2)
             return np.ascontiguousarray(img)
@@ -3012,7 +3013,7 @@ class ToSepia(ImageOnlyTransform):
             [[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]],
         )
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         if is_grayscale_image(img):
             return img
 
@@ -3144,7 +3145,7 @@ class Downscale(ImageOnlyTransform):
         self.scale_range = scale_range
         self.interpolation_pair = interpolation_pair
 
-    def apply(self, img: np.ndarray, scale: float, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, scale: float, **params: Any) -> ImageType:
         return fpixel.downscale(
             img,
             scale=scale,
@@ -4072,7 +4073,7 @@ class RingingOvershoot(ImageOnlyTransform):
 
         return {"kernel": kernel}
 
-    def apply(self, img: np.ndarray, kernel: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel)
 
 
@@ -4771,7 +4772,7 @@ class PlanckianJitter(ImageOnlyTransform):
         self.temperature_limit = cast("tuple[int, int]", temperature_limit)
         self.sampling_method = sampling_method
 
-    def apply(self, img: np.ndarray, temperature: int, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, temperature: int, **params: Any) -> ImageType:
         non_rgb_error(img)
         return fpixel.planckian_jitter(img, temperature, mode=self.mode)
 
@@ -5998,7 +5999,7 @@ class Illumination(ImageOnlyTransform):
             "sigma": sigma,
         }
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         if self.mode == "linear":
             return fpixel.apply_linear_illumination(
                 img,
@@ -6090,7 +6091,7 @@ class AutoContrast(ImageOnlyTransform):
         self.ignore = ignore
         self.method = method
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         return fpixel.auto_contrast(img, self.cutoff, self.ignore, self.method)
 
     @batch_transform("channel")
@@ -6556,7 +6557,7 @@ class Dithering(ImageOnlyTransform):
         self.serpentine = serpentine
         self.noise_range = noise_range
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         from albumentations.augmentations.pixel import dithering_functional as fdither
 
         return fdither.apply_dithering(

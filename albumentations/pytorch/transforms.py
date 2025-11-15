@@ -17,7 +17,9 @@ from albumentations.core.type_definitions import (
     MONO_CHANNEL_DIMENSIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_VOLUME_DIMENSIONS,
+    ImageType,
     Targets,
+    VolumeType,
 )
 
 __all__ = ["ToTensor3D", "ToTensorV2"]
@@ -56,7 +58,7 @@ class ToTensorV2(BasicTransform):
             "masks": self.apply_to_masks,
         }
 
-    def apply(self, img: np.ndarray, **params: Any) -> torch.Tensor:
+    def apply(self, img: ImageType, **params: Any) -> torch.Tensor:
         """Convert a 2D image array to a PyTorch tensor.
 
         Converts image from HWC or HW format to CHW format, handling both
@@ -161,7 +163,7 @@ class ToTensor3D(BasicTransform):
             "mask3d": self.apply_to_mask3d,
         }
 
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> torch.Tensor:
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> torch.Tensor:
         """Convert 3D volume to channels-first tensor."""
         if volume.ndim == NUM_VOLUME_DIMENSIONS:  # D,H,W,C
             return torch.from_numpy(volume.transpose(3, 0, 1, 2))

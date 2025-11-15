@@ -12,7 +12,7 @@ from typing import Literal
 import numpy as np
 
 from albumentations.augmentations.utils import handle_empty_array
-from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS
+from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType
 
 
 def adjust_padding_by_position3d(
@@ -58,10 +58,10 @@ def adjust_padding_by_position3d(
 
 
 def pad_3d_with_params(
-    volume: np.ndarray,
+    volume: ImageType,
     padding: tuple[int, int, int, int, int, int],
     value: tuple[float, ...] | float,
-) -> np.ndarray:
+) -> ImageType:
     """Pad 3D volume with given parameters.
 
     Args:
@@ -109,9 +109,9 @@ def pad_3d_with_params(
 
 
 def crop3d(
-    volume: np.ndarray,
+    volume: ImageType,
     crop_coords: tuple[int, int, int, int, int, int],
-) -> np.ndarray:
+) -> ImageType:
     """Crop 3D volume using coordinates.
 
     Args:
@@ -128,7 +128,7 @@ def crop3d(
     return volume[z_min:z_max, y_min:y_max, x_min:x_max]
 
 
-def cutout3d(volume: np.ndarray, holes: np.ndarray, fill: tuple[float, ...] | float) -> np.ndarray:
+def cutout3d(volume: ImageType, holes: np.ndarray, fill: tuple[float, ...] | float) -> ImageType:
     """Cut out holes in 3D volume and fill them with a given value.
 
     Args:
@@ -485,10 +485,10 @@ def shuffle_tiles_within_shape_groups_3d(
 
 
 def swap_tiles_on_volume(
-    volume: np.ndarray,
+    volume: ImageType,
     tiles: np.ndarray,
     mapping: list[int],
-) -> np.ndarray:
+) -> ImageType:
     """Swap tiles on the 3D volume according to the mapping.
 
     Args:

@@ -16,7 +16,7 @@ from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, no
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import OnePlusIntRangeType
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ALL_TARGETS
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 
 __all__ = ["MaskDropout"]
 
@@ -152,7 +152,7 @@ class MaskDropout(DualTransform):
 
         return {"dropout_mask": dropout_mask}
 
-    def apply(self, img: np.ndarray, dropout_mask: np.ndarray | None, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, dropout_mask: np.ndarray | None, **params: Any) -> ImageType:
         if dropout_mask is None:
             return img
 

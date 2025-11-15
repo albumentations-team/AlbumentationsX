@@ -33,6 +33,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
+from albumentations.core.type_definitions import ImageType
 from albumentations.core.utils import to_tuple
 
 from . import functional as fblur
@@ -157,7 +158,7 @@ class Blur(ImageOnlyTransform):
         super().__init__(p=p)
         self.blur_limit = cast("tuple[int, int]", blur_limit)
 
-    def apply(self, img: np.ndarray, kernel: int, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return fblur.box_blur(img, kernel)
 
     def get_params(self) -> dict[str, Any]:
@@ -404,7 +405,7 @@ class MotionBlur(Blur):
         self.angle_range = angle_range
         self.direction_range = direction_range
 
-    def apply(self, img: np.ndarray, kernel: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel=kernel)
 
     def get_params(self) -> dict[str, Any]:
@@ -562,7 +563,7 @@ class MedianBlur(Blur):
     ):
         super().__init__(blur_limit=blur_limit, p=p)
 
-    def apply(self, img: np.ndarray, kernel: int, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return fblur.median_blur(img, kernel)
 
 
@@ -1191,7 +1192,7 @@ class AdvancedBlur(ImageOnlyTransform):
         self.beta_limit = cast("tuple[float, float]", beta_limit)
         self.noise_limit = cast("tuple[float, float]", noise_limit)
 
-    def apply(self, img: np.ndarray, kernel: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel=kernel)
 
     def get_params(self) -> dict[str, np.ndarray]:

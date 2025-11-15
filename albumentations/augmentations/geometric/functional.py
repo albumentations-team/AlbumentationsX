@@ -54,6 +54,7 @@ from albumentations.core.type_definitions import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     REFLECT_BORDER_MODES,
+    ImageType,
 )
 
 PAIR = 2
@@ -461,7 +462,7 @@ def resize_pil(
 
 
 @preserve_channel_dim
-def scale(img: np.ndarray, scale: float, interpolation: int) -> np.ndarray:
+def scale(img: ImageType, scale: float, interpolation: int) -> ImageType:
     """Scale an image by a factor while preserving aspect ratio.
 
     This function scales both height and width dimensions of the image by the same factor.
@@ -1380,7 +1381,7 @@ def from_distance_maps(
 D4_GROUP_ELEMENTS = ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]
 
 
-def d4(img: np.ndarray, group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]) -> np.ndarray:
+def d4(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]) -> ImageType:
     """Applies a `D_4` symmetry group transformation to an image array.
 
     This function manipulates an image using transformations such as rotations and flips,
@@ -1408,7 +1409,7 @@ def d4(img: np.ndarray, group_member: Literal["e", "r90", "r180", "r270", "v", "
     return D4_TRANSFORMATIONS[group_member](img)
 
 
-def transpose(img: np.ndarray) -> np.ndarray:
+def transpose(img: ImageType) -> ImageType:
     """Transposes the first two dimensions of an array of any dimensionality.
     Retains the order of any additional dimensions.
 
@@ -1487,7 +1488,7 @@ def transpose_volumes(volumes: np.ndarray) -> np.ndarray:
     return volumes.transpose(new_axes)
 
 
-def rot90(img: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:
+def rot90(img: ImageType, factor: Literal[0, 1, 2, 3]) -> ImageType:
     """Rotate an image 90 degrees counterclockwise.
 
     Args:
@@ -4254,7 +4255,7 @@ def rot90_volumes(volumes: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarra
 
 
 @preserve_channel_dim
-def erode(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
     """Apply erosion to an image.
 
     This function applies erosion to an image using the cv2.erode function.
@@ -4271,7 +4272,7 @@ def erode(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
 
 
 @preserve_channel_dim
-def dilate(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
     """Apply dilation to an image.
 
     This function applies dilation to an image using the cv2.dilate function.

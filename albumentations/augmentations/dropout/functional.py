@@ -20,6 +20,7 @@ from albucore import (
 
 from albumentations.augmentations.geometric.functional import split_uniform_grid
 from albumentations.augmentations.utils import handle_empty_array
+from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "calculate_grid_dimensions",
@@ -34,10 +35,10 @@ __all__ = [
 
 @preserve_channel_dim
 def channel_dropout(
-    img: np.ndarray,
+    img: ImageType,
     channels_to_drop: int | tuple[int, ...] | np.ndarray,
     fill: tuple[float, ...] | float = 0,
-) -> np.ndarray:
+) -> ImageType:
     """Drop channels from an image.
 
     This function drops channels from an image.
@@ -101,7 +102,7 @@ def generate_random_fill(
 
 
 @uint8_io
-def apply_inpainting(img: np.ndarray, holes: np.ndarray, method: Literal["inpaint_telea", "inpaint_ns"]) -> np.ndarray:
+def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint_telea", "inpaint_ns"]) -> ImageType:
     """Apply OpenCV inpainting to fill the holes in the image.
 
     Args:
@@ -135,7 +136,7 @@ def apply_inpainting(img: np.ndarray, holes: np.ndarray, method: Literal["inpain
     return cv2.inpaint(img, mask, 3, inpaint_method)
 
 
-def fill_holes_with_value(img: np.ndarray, holes: np.ndarray, fill: np.ndarray) -> np.ndarray:
+def fill_holes_with_value(img: ImageType, holes: np.ndarray, fill: np.ndarray) -> ImageType:
     """Fill holes with a constant value.
 
     Args:
@@ -149,7 +150,7 @@ def fill_holes_with_value(img: np.ndarray, holes: np.ndarray, fill: np.ndarray) 
     return img
 
 
-def fill_volume_holes_with_value(volume: np.ndarray, holes: np.ndarray, fill: np.ndarray) -> np.ndarray:
+def fill_volume_holes_with_value(volume: ImageType, holes: np.ndarray, fill: np.ndarray) -> ImageType:
     """Fill holes in a volume with a constant value.
 
     Args:
@@ -178,11 +179,11 @@ def fill_volumes_holes_with_value(volumes: np.ndarray, holes: np.ndarray, fill: 
 
 
 def fill_holes_with_random(
-    img: np.ndarray,
+    img: ImageType,
     holes: np.ndarray,
     random_generator: np.random.Generator,
     uniform: bool,
-) -> np.ndarray:
+) -> ImageType:
     """Fill holes with random values.
 
     Args:
@@ -203,11 +204,11 @@ def fill_holes_with_random(
 
 
 def fill_volume_holes_with_random(
-    volume: np.ndarray,
+    volume: ImageType,
     holes: np.ndarray,
     random_generator: np.random.Generator,
     uniform: bool,
-) -> np.ndarray:
+) -> ImageType:
     """Fill holes in a volume with random values.
 
     Args:
@@ -258,11 +259,11 @@ def fill_volumes_holes_with_random(
 
 
 def cutout(
-    img: np.ndarray,
+    img: ImageType,
     holes: np.ndarray,
     fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
     random_generator: np.random.Generator,
-) -> np.ndarray:
+) -> ImageType:
     """Apply cutout augmentation to the image by cutting out holes and filling them.
 
     Args:
@@ -312,11 +313,11 @@ def cutout(
 
 
 def cutout_on_volume(
-    volume: np.ndarray,
+    volume: ImageType,
     holes: np.ndarray,
     fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
     random_generator: np.random.Generator,
-) -> np.ndarray:
+) -> ImageType:
     """Apply cutout augmentation to a volume of shape (D, H, W) or (D, H, W, C) by cutting out holes and filling them.
 
     Args:

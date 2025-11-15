@@ -24,7 +24,7 @@ from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, normalize_bboxes
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ALL_TARGETS, Targets
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
 
 __all__ = ["PixelDropout"]
 
@@ -124,7 +124,7 @@ class BaseDropout(DualTransform):
         self.fill = fill  # type: ignore[assignment]
         self.fill_mask = fill_mask
 
-    def apply(self, img: np.ndarray, holes: np.ndarray, seed: int, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:
             return img
         if self.fill in {"inpaint_telea", "inpaint_ns"}:
@@ -143,7 +143,7 @@ class BaseDropout(DualTransform):
         # Images (N, H, W, C) have the same structure as volumes (D, H, W, C)
         return cutout_on_volume(images, holes, self.fill, np.random.default_rng(seed))
 
-    def apply_to_volume(self, volume: np.ndarray, holes: np.ndarray, seed: int, **params: Any) -> np.ndarray:
+    def apply_to_volume(self, volume: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
         # Volume (D, H, W, C) has the same structure as images (N, H, W, C)
         # We can reuse the same logic
         return self.apply_to_images(volume, holes, seed, **params)

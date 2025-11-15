@@ -14,7 +14,7 @@ from pydantic import Field, field_validator, model_validator
 from typing_extensions import Self
 
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ALL_TARGETS
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 from albumentations.core.utils import to_tuple
 
 from . import functional as fgeometric
@@ -810,7 +810,7 @@ class Resize(DualTransform):
         self.mask_interpolation = mask_interpolation
         self.area_for_downscale = area_for_downscale
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         height, width = img.shape[:2]
         is_downscale = (self.height < height) or (self.width < width)
 

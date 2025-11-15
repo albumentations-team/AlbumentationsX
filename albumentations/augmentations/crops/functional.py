@@ -16,6 +16,7 @@ from albucore import maybe_process_in_chunks, preserve_channel_dim
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
+from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "crop",
@@ -173,7 +174,7 @@ def get_center_crop_coords(image_shape: tuple[int, int], crop_shape: tuple[int, 
     return x_min, y_min, x_max, y_max
 
 
-def crop(img: np.ndarray, x_min: int, y_min: int, x_max: int, y_max: int) -> np.ndarray:
+def crop(img: ImageType, x_min: int, y_min: int, x_max: int, y_max: int) -> ImageType:
     """Crop an image.
 
     This function crops an image.
@@ -208,7 +209,7 @@ def crop(img: np.ndarray, x_min: int, y_min: int, x_max: int, y_max: int) -> np.
 
 @preserve_channel_dim
 def crop_and_pad(
-    img: np.ndarray,
+    img: ImageType,
     crop_params: tuple[int, int, int, int] | None,
     pad_params: tuple[int, int, int, int] | None,
     pad_value: tuple[float, ...] | float | None,
@@ -216,7 +217,7 @@ def crop_and_pad(
     interpolation: int,
     pad_mode: int,
     keep_size: bool,
-) -> np.ndarray:
+) -> ImageType:
     """Crop and pad an image.
 
     This function crops and pads an image.
@@ -347,12 +348,12 @@ def crop_and_pad_keypoints(
 
 
 def volume_crop_yx(
-    volume: np.ndarray,
+    volume: ImageType,
     x_min: int,
     y_min: int,
     x_max: int,
     y_max: int,
-) -> np.ndarray:
+) -> ImageType:
     """Crop a single volume along Y (height) and X (width) axes only.
 
     Args:

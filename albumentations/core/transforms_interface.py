@@ -23,7 +23,7 @@ from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.validation import ValidatedTransformMeta
 
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
-from .type_definitions import ALL_TARGETS, Targets
+from .type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
 from .utils import ensure_contiguous_output, format_args
 
 __all__ = ["BasicTransform", "DualTransform", "ImageOnlyTransform", "NoOp", "Transform3D"]
@@ -333,7 +333,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         state.update(self.get_transform_init_args())
         return f"{self.__class__.__name__}({format_args(state)})"
 
-    def apply(self, img: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, *args: Any, **params: Any) -> ImageType:
         """Apply transform on image."""
         raise NotImplementedError
 
@@ -355,16 +355,16 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         transformed = np.stack([self.apply(image, **params) for image in images])
         return np.require(transformed, requirements=["C_CONTIGUOUS"])
 
-    def apply_to_volume(self, volume: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform slice by slice to a volume.
 
         Args:
-            volume (np.ndarray): Input volume of shape (depth, height, width) or (depth, height, width, channels)
+            volume (VolumeType): Input volume of shape (depth, height, width) or (depth, height, width, channels)
             *args (Any): Additional positional arguments
             **params (Any): Additional parameters specific to the transform
 
         Returns:
-            np.ndarray: Transformed volume as numpy array in the same format as input
+            VolumeType: Transformed volume as numpy array in the same format as input
 
         """
         return self.apply_to_images(volume, *args, **params)
@@ -943,13 +943,13 @@ class NoOp(DualTransform):
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
         return bboxes
 
-    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+    def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
 
     def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
         return mask
 
-    def apply_to_volume(self, volume: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return volume
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
@@ -976,7 +976,7 @@ class Transform3D(DualTransform):
         keypoints: 3D numpy array of shape (N, 3)
     """
 
-    def apply_to_volume(self, volume: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to single 3D volume."""
         raise NotImplementedError
 

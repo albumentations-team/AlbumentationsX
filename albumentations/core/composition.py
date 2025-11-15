@@ -489,7 +489,7 @@ class BaseCompose(Serializable):
         """
         return self._combine_transforms(other, prepend=True)
 
-    def __sub__(self, other: type[BasicTransform]) -> "BaseCompose":
+    def __sub__(self, other: type[BasicTransform]) -> "BaseCompose | type[NotImplemented]":
         """Remove transform from this compose by class type.
 
         Removes the first transform in the compose that matches the provided transform class.
@@ -499,9 +499,9 @@ class BaseCompose(Serializable):
 
         Returns:
             BaseCompose: New compose instance with transform removed
+            NotImplemented: If other is not a BasicTransform class
 
         Raises:
-            TypeError: If other is not a BasicTransform class
             ValueError: If no transform of that type is found in the compose
 
         Note:
@@ -518,11 +518,9 @@ class BaseCompose(Serializable):
             >>> len(result.transforms)  # 2 (VerticalFlip and second HorizontalFlip remain)
 
         """
-        # Validate that other is a BasicTransform class
+        # Return NotImplemented for unsupported operand types (Python data model convention)
         if not (isinstance(other, type) and issubclass(other, BasicTransform)):
-            raise TypeError(
-                f"Can only remove BasicTransform classes, got {type(other).__name__}",
-            )
+            return NotImplemented
 
         # Find first transform of matching class
         new_transforms = list(self.transforms)

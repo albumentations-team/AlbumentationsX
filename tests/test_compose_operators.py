@@ -354,17 +354,17 @@ def test_compose_subtract_type_validation():
     """Test that __sub__ validates input types and rejects invalid objects."""
     base_compose = A.Compose([A.HorizontalFlip(p=1.0)], p=1.0)
 
-    # Test __sub__ with invalid types
-    with pytest.raises(TypeError, match="Can only remove BasicTransform classes, got str"):
+    # Test __sub__ with invalid types - now returns NotImplemented, which causes Python to raise TypeError
+    with pytest.raises(TypeError, match="unsupported operand type"):
         base_compose - "invalid"
 
-    with pytest.raises(TypeError, match="Can only remove BasicTransform classes, got int"):
+    with pytest.raises(TypeError, match="unsupported operand type"):
         base_compose - 42
 
-    with pytest.raises(TypeError, match="Can only remove BasicTransform classes, got HorizontalFlip"):
+    with pytest.raises(TypeError, match="unsupported operand type"):
         base_compose - A.HorizontalFlip(p=1.0)  # Instance not allowed
 
-    with pytest.raises(TypeError, match="Can only remove BasicTransform classes, got Sequential"):
+    with pytest.raises(TypeError, match="unsupported operand type"):
         base_compose - A.Sequential([A.VerticalFlip(p=1.0)])
 
     # Test that valid cases still work

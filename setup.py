@@ -7,7 +7,7 @@ INSTALL_REQUIRES = [
     "scipy>=1.10.0",
     "PyYAML",
     "pydantic>=2.12.4",
-    "albucore==0.0.33",
+    "albucore==0.0.34",
 ]
 
 MIN_OPENCV_VERSION = "4.9.0.80"

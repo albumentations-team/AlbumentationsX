@@ -67,6 +67,10 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         applied_in_replay (bool, optional): Whether the transform was applied in replay.
         p (float): Probability of applying the transform.
 
+    Note:
+        The base class methods use *args to allow subclasses to add specific named parameters
+        (e.g., def apply(self, img, gamma, **params) is a valid override of apply(self, img, *args, **params)).
+
     """
 
     _targets: tuple[Targets, ...] | Targets  # targets that this transform can work on
@@ -698,7 +702,7 @@ class DualTransform(BasicTransform):
 
     @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
-        return self.apply_to_mask(mask3d, **params)
+        return self.apply_to_mask(mask3d, *args, **params)
 
     @batch_transform("spatial")
     def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:

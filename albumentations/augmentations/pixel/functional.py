@@ -3788,7 +3788,7 @@ STAIN_MATRICES = {
 }
 
 
-def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> ImageType:
+def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
     """Convert RGB image to optical density.
 
     This function converts an RGB image to optical density.
@@ -4147,7 +4147,7 @@ class MacenkoNormalizer(StainNormalizer):
         self.stain_matrix_target = stain_vectors if stain_vectors[0, 0] > stain_vectors[1, 0] else stain_vectors[::-1]
 
 
-def get_tissue_mask(img: ImageType, threshold: float = 0.85) -> ImageType:
+def get_tissue_mask(img: ImageType, threshold: float = 0.85) -> np.ndarray:
     """Get tissue mask from image.
 
     Args:

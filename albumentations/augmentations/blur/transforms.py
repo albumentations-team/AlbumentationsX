@@ -904,7 +904,6 @@ class GlassBlur(ImageOnlyTransform):
     def apply(
         self,
         img: np.ndarray,
-        *args: Any,
         dxy: np.ndarray,
         **params: Any,
     ) -> np.ndarray:

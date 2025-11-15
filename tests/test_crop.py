@@ -293,3 +293,85 @@ def test_crop_pad_if_needed(image_shape, crop_coords, pad_position):
     transformed_image = result["image"]
 
     assert transformed_image.shape == expected_shape
+
+
+def test_at_least_one_bbox_random_crop_with_multiple_bboxes():
+    """Test that AtLeastOneBBoxRandomCrop works with multiple bboxes without ValueError.
+
+    Regression test for issue #104: py_random.choice(numpy_array) raises ValueError
+    in Python 3.11 when array has more than one element.
+    """
+    image = np.random.randint(0, 256, (300, 300, 3), dtype=np.uint8)
+    mask = np.random.randint(0, 2, (300, 300), dtype=np.uint8)
+
+    # Create multiple bounding boxes to trigger the bug
+    bboxes = np.array([
+        [30, 50, 100, 140],
+        [150, 120, 270, 250],
+        [200, 30, 280, 90]
+    ], dtype=np.float32)
+    bbox_labels = [1, 2, 3]
+
+    keypoints = np.array([
+        [50, 70],
+        [190, 170],
+        [240, 60]
+    ], dtype=np.float32)
+    keypoint_labels = [0, 1, 2]
+
+    transform = A.Compose([
+        A.AtLeastOneBBoxRandomCrop(
+            height=200,
+            width=200,
+            erosion_factor=0.2,
+            p=1.0
+        ),
+    ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
+       keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+
+    # This should not raise ValueError
+    transformed = transform(
+        image=image,
+        mask=mask,
+        bboxes=bboxes,
+        bbox_labels=bbox_labels,
+        keypoints=keypoints,
+        keypoint_labels=keypoint_labels
+    )
+
+    # Verify that at least one bounding box was preserved
+    assert len(transformed['bboxes']) > 0
+    assert len(transformed['bbox_labels']) > 0
+    assert transformed['image'].shape == (200, 200, 3)
+    assert transformed['mask'].shape == (200, 200)
+
+
+@pytest.mark.parametrize("num_bboxes", [1, 10, 100, 1000])
+def test_at_least_one_bbox_random_crop_efficiency(num_bboxes):
+    """Test that AtLeastOneBBoxRandomCrop efficiently handles varying numbers of bboxes."""
+    image = np.random.randint(0, 256, (300, 300, 3), dtype=np.uint8)
+
+    # Generate random valid bboxes
+    np.random.seed(137)
+    x1 = np.random.randint(10, 250, num_bboxes).astype(np.float32)
+    y1 = np.random.randint(10, 250, num_bboxes).astype(np.float32)
+    x2 = (x1 + np.random.randint(20, 40, num_bboxes)).astype(np.float32)
+    y2 = (y1 + np.random.randint(20, 40, num_bboxes)).astype(np.float32)
+    bboxes = np.stack([x1, y1, x2, y2], axis=1)
+    bbox_labels = list(range(num_bboxes))
+
+    transform = A.Compose([
+        A.AtLeastOneBBoxRandomCrop(
+            height=200,
+            width=200,
+            erosion_factor=0.2,
+            p=1.0
+        ),
+    ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']))
+
+    # Should work efficiently without converting to list
+    transformed = transform(image=image, bboxes=bboxes, bbox_labels=bbox_labels)
+
+    assert len(transformed['bboxes']) > 0
+    assert len(transformed['bbox_labels']) > 0
+    assert transformed['image'].shape == (200, 200, 3)

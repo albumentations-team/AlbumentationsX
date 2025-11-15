@@ -474,7 +474,10 @@ class LongestMaxSize(MaxSizeTransform):
         uint8, float32
 
     Note:
-        - If the longest side of the image is already equal to max_size, the image will not be resized.
+        - This transform scales images based on their longest side:
+            * If the longest side is **smaller** than max_size: the image will be **upscaled** (scale > 1.0)
+            * If the longest side is **equal** to max_size: the image will **not be resized** (scale = 1.0)
+            * If the longest side is **larger** than max_size: the image will be **downscaled** (scale < 1.0)
         - This transform will not crop the image. The resulting image may be smaller than specified in both dimensions.
         - For non-square images, both sides will be scaled proportionally to maintain the aspect ratio.
         - Bounding boxes and keypoints are scaled accordingly.
@@ -591,7 +594,10 @@ class SmallestMaxSize(MaxSizeTransform):
         uint8, float32
 
     Note:
-        - If the smallest side of the image is already equal to max_size, the image will not be resized.
+        - This transform scales images based on their smallest side:
+            * If the smallest side is **smaller** than max_size: the image will be **upscaled** (scale > 1.0)
+            * If the smallest side is **equal** to max_size: the image will **not be resized** (scale = 1.0)
+            * If the smallest side is **larger** than max_size: the image will be **downscaled** (scale < 1.0)
         - This transform will not crop the image. The resulting image may be larger than specified in both dimensions.
         - For non-square images, both sides will be scaled proportionally to maintain the aspect ratio.
         - Bounding boxes and keypoints are scaled accordingly.

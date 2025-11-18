@@ -106,6 +106,18 @@ class VerticalFlip(DualTransform):
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.keypoints_vflip(keypoints, params["shape"][0])
 
+    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+        if mask.size == 0:
+            # Assume mask shape is (H, W, C) - return empty array with same shape
+            return mask
+        return self.apply(mask, **params)
+
+    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> np.ndarray:
+        if masks.size == 0:
+            # Assume masks shape is (N, H, W, C) - return empty array with same shape
+            return masks
+        return self.apply_to_images(masks, **params)
+
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.vflip_images(images)
 
@@ -113,9 +125,15 @@ class VerticalFlip(DualTransform):
         return fgeometric.vflip_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+        if mask3d.size == 0:
+            # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
+            return mask3d
         return self.apply_to_images(mask3d, **params)
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
+        if masks3d.size == 0:
+            # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
+            return masks3d
         return self.apply_to_volumes(masks3d, **params)
 
 
@@ -169,6 +187,18 @@ class HorizontalFlip(DualTransform):
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.keypoints_hflip(keypoints, params["shape"][1])
 
+    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+        if mask.size == 0:
+            # Assume mask shape is (H, W, C) - return empty array with same shape
+            return mask
+        return self.apply(mask, **params)
+
+    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> np.ndarray:
+        if masks.size == 0:
+            # Assume masks shape is (N, H, W, C) - return empty array with same shape
+            return masks
+        return self.apply_to_images(masks, **params)
+
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.hflip_images(images)
 
@@ -176,9 +206,15 @@ class HorizontalFlip(DualTransform):
         return fgeometric.hflip_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+        if mask3d.size == 0:
+            # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
+            return mask3d
         return self.apply_to_images(mask3d, **params)
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
+        if masks3d.size == 0:
+            # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
+            return masks3d
         return self.apply_to_volumes(masks3d, **params)
 
 
@@ -243,6 +279,20 @@ class Transpose(DualTransform):
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.keypoints_transpose(keypoints)
 
+    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+        if mask.size == 0:
+            # Transpose swaps H and W
+            # Assume mask shape is (H, W, C) -> (W, H, C)
+            return np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype)
+        return self.apply(mask, **params)
+
+    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> np.ndarray:
+        if masks.size == 0:
+            # Transpose swaps H and W
+            # Assume masks shape is (N, H, W, C) -> (N, W, H, C)
+            return np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype)
+        return self.apply_to_images(masks, **params)
+
     def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.transpose_images(images)
 
@@ -250,9 +300,20 @@ class Transpose(DualTransform):
         return fgeometric.transpose_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+        if mask3d.size == 0:
+            # Transpose swaps H and W
+            # Assume mask3d shape is (D, H, W, C) -> (D, W, H, C)
+            return np.empty((mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]), dtype=mask3d.dtype)
         return self.apply_to_images(mask3d, **params)
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
+        if masks3d.size == 0:
+            # Transpose swaps H and W
+            # Assume masks3d shape is (N, D, H, W, C) -> (N, D, W, H, C)
+            return np.empty(
+                (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
+                dtype=masks3d.dtype,
+            )
         return self.apply_to_volumes(masks3d, **params)
 
 
@@ -340,6 +401,38 @@ class D4(DualTransform):
     ) -> np.ndarray:
         return fgeometric.keypoints_d4(keypoints, group_element, params["shape"])
 
+    def apply_to_mask(
+        self,
+        mask: np.ndarray,
+        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        **params: Any,
+    ) -> np.ndarray:
+        if mask.size == 0:
+            # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
+            # Assume mask shape is (H, W, C)
+            if group_element in {"r90", "r270", "t", "hvt"}:
+                # These swap H and W: (H, W, C) -> (W, H, C)
+                return np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype)
+            # Other elements preserve dimensions: "e", "r180", "v", "h"
+            return mask
+        return self.apply(mask, group_element, **params)
+
+    def apply_to_masks(
+        self,
+        masks: np.ndarray,
+        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        **params: Any,
+    ) -> np.ndarray:
+        if masks.size == 0:
+            # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
+            # Assume masks shape is (N, H, W, C)
+            if group_element in {"r90", "r270", "t", "hvt"}:
+                # These swap H and W: (N, H, W, C) -> (N, W, H, C)
+                return np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype)
+            # Other elements preserve dimensions: "e", "r180", "v", "h"
+            return masks
+        return self.apply_to_images(masks, group_element, **params)
+
     def apply_to_images(
         self,
         images: np.ndarray,
@@ -362,6 +455,17 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
+        if mask3d.size == 0:
+            # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
+            # Assume mask3d shape is (D, H, W, C)
+            if group_element in {"r90", "r270", "t", "hvt"}:
+                # These swap H and W: (D, H, W, C) -> (D, W, H, C)
+                return np.empty(
+                    (mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]),
+                    dtype=mask3d.dtype,
+                )
+            # Other elements preserve dimensions: "e", "r180", "v", "h"
+            return mask3d
         return self.apply_to_images(mask3d, group_element, **params)
 
     def apply_to_masks3d(
@@ -370,6 +474,17 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
+        if masks3d.size == 0:
+            # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
+            # Assume masks3d shape is (N, D, H, W, C)
+            if group_element in {"r90", "r270", "t", "hvt"}:
+                # These swap H and W: (N, D, H, W, C) -> (N, D, W, H, C)
+                return np.empty(
+                    (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
+                    dtype=masks3d.dtype,
+                )
+            # Other elements preserve dimensions: "e", "r180", "v", "h"
+            return masks3d
         return self.apply_to_volumes(masks3d, group_element, **params)
 
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:

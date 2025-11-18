@@ -165,6 +165,34 @@ class BaseCrop(DualTransform):
     ) -> np.ndarray:
         return fcrops.crop_keypoints_by_coords(keypoints, crop_coords)
 
+    def apply_to_mask(
+        self,
+        mask: np.ndarray,
+        crop_coords: tuple[int, int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        if mask.size == 0:
+            # Return empty array with cropped dimensions
+            # Assume mask shape is (H, W, C)
+            crop_height = crop_coords[3] - crop_coords[1]
+            crop_width = crop_coords[2] - crop_coords[0]
+            return np.empty((crop_height, crop_width, mask.shape[2]), dtype=mask.dtype)
+        return self.apply(mask, crop_coords, **params)
+
+    def apply_to_masks(
+        self,
+        masks: np.ndarray,
+        crop_coords: tuple[int, int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        if masks.size == 0:
+            # Return empty array with cropped dimensions
+            # Assume masks shape is (N, H, W, C)
+            crop_height = crop_coords[3] - crop_coords[1]
+            crop_width = crop_coords[2] - crop_coords[0]
+            return np.empty((0, crop_height, crop_width, masks.shape[3]), dtype=masks.dtype)
+        return self.apply_to_images(masks, crop_coords, **params)
+
     def apply_to_images(
         self,
         images: np.ndarray,
@@ -187,6 +215,12 @@ class BaseCrop(DualTransform):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> np.ndarray:
+        if mask3d.size == 0:
+            # Return empty array with cropped dimensions
+            # Assume mask3d shape is (D, H, W, C)
+            crop_height = crop_coords[3] - crop_coords[1]
+            crop_width = crop_coords[2] - crop_coords[0]
+            return np.empty((mask3d.shape[0], crop_height, crop_width, mask3d.shape[3]), dtype=mask3d.dtype)
         return self.apply_to_images(mask3d, crop_coords, **params)
 
     def apply_to_masks3d(
@@ -195,6 +229,12 @@ class BaseCrop(DualTransform):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> np.ndarray:
+        if masks3d.size == 0:
+            # Return empty array with cropped dimensions
+            # Assume masks3d shape is (N, D, H, W, C)
+            crop_height = crop_coords[3] - crop_coords[1]
+            crop_width = crop_coords[2] - crop_coords[0]
+            return np.empty((0, masks3d.shape[1], crop_height, crop_width, masks3d.shape[4]), dtype=masks3d.dtype)
         return self.apply_to_volumes(masks3d, crop_coords, **params)
 
     @staticmethod

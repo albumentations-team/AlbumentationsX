@@ -1425,7 +1425,7 @@ def transpose(img: ImageType) -> ImageType:
     new_axes[0], new_axes[1] = 1, 0  # Swap the first two dimensions
 
     # Transpose the array using the new axes order
-    return np.ascontiguousarray(img.transpose(new_axes))
+    return img.transpose(new_axes)
 
 
 D4_TRANSFORMATIONS = {
@@ -1461,7 +1461,7 @@ def transpose_images(images: np.ndarray) -> np.ndarray:
     new_axes[1], new_axes[2] = 2, 1
 
     # Transpose the array using the new axes order
-    return np.ascontiguousarray(images.transpose(new_axes))
+    return images.transpose(new_axes)
 
 
 def transpose_volumes(volumes: np.ndarray) -> np.ndarray:
@@ -1499,7 +1499,7 @@ def rot90(img: ImageType, factor: Literal[0, 1, 2, 3]) -> ImageType:
         np.ndarray: The rotated image.
 
     """
-    return np.ascontiguousarray(np.rot90(img, factor))
+    return np.rot90(img, factor)
 
 
 def rot90_images(images: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:
@@ -1521,7 +1521,7 @@ def rot90_images(images: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:
 
     """
     # Axes 1 (height) and 2 (width) for rotation, preserving batch dimension
-    return np.ascontiguousarray(np.rot90(images, k=factor, axes=(1, 2)))
+    return np.rot90(images, k=factor, axes=(1, 2))
 
 
 @handle_empty_array("bboxes")
@@ -4183,7 +4183,7 @@ def hflip_images(volume: np.ndarray) -> np.ndarray:
         np.ndarray: Horizontally flipped volume.
 
     """
-    return np.ascontiguousarray(np.flip(volume, axis=2))
+    return np.flip(volume, axis=2)
 
 
 def vflip_images(volume: np.ndarray) -> np.ndarray:
@@ -4199,7 +4199,7 @@ def vflip_images(volume: np.ndarray) -> np.ndarray:
         np.ndarray: Vertically flipped volume.
 
     """
-    return np.ascontiguousarray(np.flip(volume, axis=1))
+    return np.flip(volume, axis=1)
 
 
 def hflip_volumes(volumes: np.ndarray) -> np.ndarray:
@@ -4216,7 +4216,7 @@ def hflip_volumes(volumes: np.ndarray) -> np.ndarray:
 
     """
     # Width axis is 3 for both (B, D, H, W) and (B, D, H, W, C)
-    return np.ascontiguousarray(np.flip(volumes, axis=3))
+    return np.flip(volumes, axis=3)
 
 
 def vflip_volumes(volumes: np.ndarray) -> np.ndarray:
@@ -4233,7 +4233,7 @@ def vflip_volumes(volumes: np.ndarray) -> np.ndarray:
 
     """
     # Height axis is 2 for both (B, D, H, W) and (B, D, H, W, C)
-    return np.ascontiguousarray(np.flip(volumes, axis=2))
+    return np.flip(volumes, axis=2)
 
 
 def rot90_volumes(volumes: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:

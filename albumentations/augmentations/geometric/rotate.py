@@ -362,6 +362,7 @@ class Rotate(DualTransform):
         **params: Any,
     ) -> np.ndarray:
         image_shape = params["shape"][:2]
+        bbox_type = params.get("bbox_type", "hbb")
         bboxes_out = fgeometric.bboxes_affine(
             bboxes,
             bbox_matrix,
@@ -369,6 +370,7 @@ class Rotate(DualTransform):
             image_shape,
             self.border_mode,
             image_shape,
+            bbox_type=bbox_type,
         )
         if self.crop_border:
             return fcrops.crop_bboxes_by_coords(

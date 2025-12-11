@@ -397,6 +397,10 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         if shape is not None:
             params["shape"] = shape
 
+        bbox_processor = self.processors.get("bboxes")
+        if isinstance(bbox_processor, BboxProcessor):
+            params["bbox_type"] = bbox_processor.params.bbox_type
+
         # Add transform-specific params
         self._add_transform_specific_params(params)
 

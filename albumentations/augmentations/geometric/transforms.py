@@ -284,6 +284,7 @@ class Perspective(DualTransform):
         max_width: int,
         **params: Any,
     ) -> np.ndarray:
+        bbox_type = params.get("bbox_type", "hbb")
         return fgeometric.perspective_bboxes(
             bboxes,
             params["shape"],
@@ -291,6 +292,7 @@ class Perspective(DualTransform):
             max_width,
             max_height,
             self.keep_size,
+            bbox_type=bbox_type,
         )
 
     def apply_to_keypoints(
@@ -723,6 +725,7 @@ class Affine(DualTransform):
         output_shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
+        bbox_type = params.get("bbox_type", "hbb")
         return fgeometric.bboxes_affine(
             bboxes,
             bbox_matrix,
@@ -730,6 +733,7 @@ class Affine(DualTransform):
             params["shape"][:2],
             self.border_mode,
             output_shape,
+            bbox_type=bbox_type,
         )
 
     def apply_to_keypoints(
@@ -1439,6 +1443,7 @@ class RandomGridShuffle(DualTransform):
         processor = cast("BboxProcessor", self.get_processor("bboxes"))
         if processor is None:
             return bboxes
+        bbox_type = processor.params.bbox_type
         bboxes_returned = fgeometric.bboxes_grid_shuffle(
             bboxes_denorm,
             tiles,
@@ -1446,6 +1451,7 @@ class RandomGridShuffle(DualTransform):
             image_shape,
             min_area=processor.params.min_area,
             min_visibility=processor.params.min_visibility,
+            bbox_type=bbox_type,
         )
         return normalize_bboxes(bboxes_returned, image_shape)
 

@@ -64,13 +64,6 @@ from albumentations.core.type_definitions import (
 PAIR = 2
 
 
-def _raise_if_obb(bboxes: np.ndarray, transform_name: str) -> None:
-    """Raise clear error while OBB support is not yet implemented for given transform."""
-    if bboxes.shape[1] > NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS:
-        msg = f"OBB bboxes (5+ columns) are not yet supported for {transform_name}"
-        raise NotImplementedError(msg)
-
-
 def _split_polygons_and_extras(bboxes: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
     polygons = obb_to_polygons(bboxes)
     extras = bboxes[:, 5:] if bboxes.shape[1] > BBOX_WITH_LABEL_SHAPE else None
@@ -109,42 +102,6 @@ def _merge_obb_params(
     if extras is not None:
         obb = np.concatenate([obb, extras], axis=1)
     return normalize_bbox_angles(obb)
-
-
-def _polygons_vflip(polygons: np.ndarray) -> np.ndarray:
-    flipped = polygons.copy()
-    flipped[..., 1] = 1 - flipped[..., 1]
-    return flipped
-
-
-def _polygons_hflip(polygons: np.ndarray) -> np.ndarray:
-    flipped = polygons.copy()
-    flipped[..., 0] = 1 - flipped[..., 0]
-    return flipped
-
-
-def _polygons_transpose(polygons: np.ndarray) -> np.ndarray:
-    transposed = polygons.copy()
-    transposed[..., [0, 1]] = transposed[..., [1, 0]]
-    return transposed
-
-
-def _polygons_rot90(polygons: np.ndarray, factor: int) -> np.ndarray:
-    if factor == 0:
-        return polygons
-    rotated = polygons.copy()
-    x = polygons[..., 0]
-    y = polygons[..., 1]
-    if factor == 1:
-        rotated[..., 0] = y
-        rotated[..., 1] = 1 - x
-    elif factor == ROT90_180_FACTOR:
-        rotated[..., 0] = 1 - x
-        rotated[..., 1] = 1 - y
-    elif factor == ROT90_270_FACTOR:
-        rotated[..., 0] = 1 - y
-        rotated[..., 1] = x
-    return rotated
 
 
 ROT90_180_FACTOR = 2

@@ -70,10 +70,6 @@ def _split_polygons_and_extras(bboxes: np.ndarray) -> tuple[np.ndarray, np.ndarr
     return polygons, extras
 
 
-def _merge_polygons_to_obb(polygons: np.ndarray, extras: np.ndarray | None) -> np.ndarray:
-    return polygons_to_obb(polygons, extra_fields=extras)
-
-
 def _split_obb_params(
     bboxes: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
@@ -712,7 +708,7 @@ def perspective_bboxes(
 
         transformed[..., 0] /= output_shape[1]
         transformed[..., 1] /= output_shape[0]
-        return _merge_polygons_to_obb(transformed, extras)
+        return polygons_to_obb(transformed, extra_fields=extras)
 
     denormalized_coords = denormalize_bboxes(bboxes[:, :4], image_shape)
 
@@ -1144,7 +1140,7 @@ def bboxes_affine_largest_box(
     if bbox_type == "obb":
         polygons, extras = _split_polygons_and_extras(bboxes)
         transformed = apply_affine_to_points(polygons.reshape(-1, 2), matrix).reshape(polygons.shape)
-        return _merge_polygons_to_obb(transformed, extras)
+        return polygons_to_obb(transformed, extra_fields=extras)
 
     # Extract corners of all bboxes
     x_min, y_min, x_max, y_max = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
@@ -1202,7 +1198,7 @@ def bboxes_affine_ellipse(
     if bbox_type == "obb":
         polygons, extras = _split_polygons_and_extras(bboxes)
         transformed = apply_affine_to_points(polygons.reshape(-1, 2), matrix).reshape(polygons.shape)
-        return _merge_polygons_to_obb(transformed, extras)
+        return polygons_to_obb(transformed, extra_fields=extras)
     x_min, y_min, x_max, y_max = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
     bbox_width = (x_max - x_min) / 2
     bbox_height = (y_max - y_min) / 2
@@ -1282,7 +1278,7 @@ def bboxes_affine(
         transformed_polygons = apply_affine_to_points(polygons.reshape(-1, 2), matrix).reshape(polygons.shape)
         transformed_polygons[..., 0] /= output_shape[1]
         transformed_polygons[..., 1] /= output_shape[0]
-        transformed_bboxes = _merge_polygons_to_obb(transformed_polygons, extras)
+        transformed_bboxes = polygons_to_obb(transformed_polygons, extra_fields=extras)
         validated_bboxes = validate_bboxes(transformed_bboxes, output_shape)
         return normalize_bboxes(validated_bboxes, output_shape)
 

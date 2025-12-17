@@ -33,7 +33,7 @@ __all__ = [
     "union_of_bboxes",
 ]
 
-BBOX_WITH_LABEL_SHAPE = 5
+BBOX_OBB_MIN_COLUMNS = 5
 DEFAULT_BBOX_ANGLE_RANGE = (-180.0, 180.0)
 
 
@@ -252,7 +252,7 @@ class BboxProcessor(DataProcessor):
 
     def _create_empty_array(self) -> np.ndarray:
         """Create an empty bbox array with shape based on bbox type."""
-        cols = NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS if self.params.bbox_type == "hbb" else BBOX_WITH_LABEL_SHAPE
+        cols = NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS if self.params.bbox_type == "hbb" else BBOX_OBB_MIN_COLUMNS
         return np.array([], dtype=np.float32).reshape(0, cols)
 
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
@@ -463,7 +463,7 @@ def normalize_bbox_angles(
         np.ndarray: Bounding boxes with angle column wrapped into the provided range.
 
     """
-    if bboxes.shape[1] < BBOX_WITH_LABEL_SHAPE:
+    if bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
         return bboxes
 
     normalized = bboxes.copy()
@@ -475,10 +475,18 @@ def normalize_bbox_angles(
 def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
     """Convert oriented bounding boxes to corner polygons (normalized coords).
 
-    Expects bboxes as `[x_min, y_min, x_max, y_max, angle_deg, ...]` with normalized coords.
-    Returns array of shape (N, 4, 2) with corners ordered clockwise starting top-left relative to rotation.
+    Args:
+        bboxes (np.ndarray): Array of shape (N, >=5) where each row is
+            [x_min, y_min, x_max, y_max, angle_deg, ...] with normalized coordinates.
+            Additional columns beyond the first 5 are preserved but not used.
+
+    Returns:
+        np.ndarray: Array of shape (N, 4, 2) containing the corner coordinates of each bounding box,
+            ordered clockwise starting from the top-left corner relative to the rotation.
+            Each corner is represented as [x, y] in normalized coordinates.
+
     """
-    if bboxes.shape[1] < BBOX_WITH_LABEL_SHAPE:
+    if bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
         return np.zeros((len(bboxes), 0, 2), dtype=bboxes.dtype)
 
     width = bboxes[:, 2] - bboxes[:, 0]
@@ -529,9 +537,9 @@ def polygons_to_obb(
     """
     if polygons.size == 0:
         if extra_fields is None:
-            return np.zeros((0, BBOX_WITH_LABEL_SHAPE), dtype=polygons.dtype)
+            return np.zeros((0, BBOX_OBB_MIN_COLUMNS), dtype=polygons.dtype)
         return np.zeros(
-            (0, BBOX_WITH_LABEL_SHAPE + extra_fields.shape[1]),
+            (0, BBOX_OBB_MIN_COLUMNS + extra_fields.shape[1]),
             dtype=polygons.dtype,
         )
 
@@ -673,7 +681,7 @@ def convert_bboxes_to_albumentations(
     if source_format != "yolo":
         converted_bboxes[:, :4] = normalize_bboxes(converted_bboxes[:, :4], shape)
 
-    if converted_bboxes.shape[1] >= BBOX_WITH_LABEL_SHAPE:
+    if converted_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS:
         converted_bboxes[:, 4] = _canonicalize_angles(converted_bboxes[:, 4], DEFAULT_BBOX_ANGLE_RANGE)
 
     if check_validity:
@@ -731,7 +739,7 @@ def convert_bboxes_from_albumentations(
     else:  # pascal_voc
         converted_bboxes[:, :4] = denormalized_bboxes
 
-    if converted_bboxes.shape[1] >= BBOX_WITH_LABEL_SHAPE:
+    if converted_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS:
         converted_bboxes[:, 4] = _canonicalize_angles(converted_bboxes[:, 4], DEFAULT_BBOX_ANGLE_RANGE)
 
     return converted_bboxes

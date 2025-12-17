@@ -566,35 +566,20 @@ def test_obb_to_polygons_and_back_preserves_extra():
 )
 def test_obb_flip_matches_polygon_transform(fn: Callable[[np.ndarray], np.ndarray], transform_poly: Callable[[np.ndarray], np.ndarray]):
     bboxes = np.array([[0.1, 0.2, 0.4, 0.5, 25.0, 3.0]], dtype=np.float32)
+
+    # Direct OBB transformation
     after_bboxes = fn(bboxes, bbox_type="obb")
 
-    # Expected via param math
-    cx = (bboxes[:, 0] + bboxes[:, 2]) * 0.5
-    cy = (bboxes[:, 1] + bboxes[:, 3]) * 0.5
-    w = bboxes[:, 2] - bboxes[:, 0]
-    h = bboxes[:, 3] - bboxes[:, 1]
-    angle = bboxes[:, 4]
+    # Polygon-based transformation path (convert OBB -> polygons -> transform -> OBB)
+    polys = obb_to_polygons(bboxes)
+    transformed_polys = transform_poly(polys)
+    expected_bboxes = polygons_to_obb(transformed_polys, extra_fields=bboxes[:, 5:])
 
-    if fn is fgeometric.bboxes_hflip:
-        exp_cx = 1 - cx
-        exp_cy = cy
-        exp_angle = 180.0 - angle
-    else:
-        exp_cx = cx
-        exp_cy = 1 - cy
-        exp_angle = -angle
+    # Compare polygon representations (more robust since angle can have multiple equivalent representations)
+    after_polys = np.stack([_sort_polygon(poly) for poly in obb_to_polygons(after_bboxes)])
+    expected_polys = np.stack([_sort_polygon(poly) for poly in transformed_polys])
 
-    expected = np.column_stack(
-        [
-            exp_cx - w * 0.5,
-            exp_cy - h * 0.5,
-            exp_cx + w * 0.5,
-            exp_cy + h * 0.5,
-            exp_angle,
-            bboxes[:, 5:],
-        ],
-    )
-    np.testing.assert_allclose(after_bboxes, expected, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(after_polys, expected_polys, rtol=1e-5, atol=1e-5)
 
 
 def test_obb_rot90_updates_corners():
@@ -635,7 +620,7 @@ def test_obb_rot90_updates_corners():
     ],
 )
 def test_bbox_processor_roundtrip_with_angle_and_labels(bbox_format, bboxes, labels, expected_angle):
-    params = BboxParams(format=bbox_format, label_fields=["labels"])
+    params = BboxParams(format=bbox_format, label_fields=["labels"], bbox_type="obb")
     processor = BboxProcessor(params)
 
     data = {
@@ -659,11 +644,11 @@ def test_bbox_processor_roundtrip_with_angle_and_labels(bbox_format, bboxes, lab
         A.Perspective(scale=(0.05, 0.05), p=1.0),
     ],
 )
-def test_obb_not_supported_errors(transform):
+def test_obb_supported_for_perspective(transform):
+    """Smoke test: verify OBB works with Perspective transform."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     bboxes = [(0.1, 0.2, 0.3, 0.4, 10.0)]
     aug = A.Compose([transform], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"), strict=True)
-    # Smoke test: should run without raising for perspective with OBB
     aug(image=image, bboxes=bboxes)
 
 

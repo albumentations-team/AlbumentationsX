@@ -42,7 +42,7 @@ except ImportError:
 
 from albumentations.augmentations.utils import angle_2pi_range, handle_empty_array
 from albumentations.core.bbox_utils import (
-    BBOX_WITH_LABEL_SHAPE,
+    BBOX_OBB_MIN_COLUMNS,
     bboxes_from_masks,
     bboxes_to_mask,
     denormalize_bboxes,
@@ -66,7 +66,7 @@ PAIR = 2
 
 def _split_polygons_and_extras(bboxes: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
     polygons = obb_to_polygons(bboxes)
-    extras = bboxes[:, 5:] if bboxes.shape[1] > BBOX_WITH_LABEL_SHAPE else None
+    extras = bboxes[:, 5:] if bboxes.shape[1] > BBOX_OBB_MIN_COLUMNS else None
     return polygons, extras
 
 
@@ -82,7 +82,7 @@ def _split_obb_params(
     center_x = (bboxes[:, 0] + bboxes[:, 2]) * 0.5
     center_y = (bboxes[:, 1] + bboxes[:, 3]) * 0.5
     angle = bboxes[:, 4]
-    extras = bboxes[:, 5:] if bboxes.shape[1] > BBOX_WITH_LABEL_SHAPE else None
+    extras = bboxes[:, 5:] if bboxes.shape[1] > BBOX_OBB_MIN_COLUMNS else None
     return center_x, center_y, width, height, angle, extras
 
 
@@ -1141,6 +1141,11 @@ def bboxes_affine_largest_box(
          [ 65.  65.  85.  85.   2.]]
 
     """
+    if bbox_type == "obb":
+        polygons, extras = _split_polygons_and_extras(bboxes)
+        transformed = apply_affine_to_points(polygons.reshape(-1, 2), matrix).reshape(polygons.shape)
+        return _merge_polygons_to_obb(transformed, extras)
+
     # Extract corners of all bboxes
     x_min, y_min, x_max, y_max = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
 
@@ -1251,11 +1256,13 @@ def bboxes_affine(
     Args:
         bboxes (np.ndarray): Input bounding boxes
         matrix (np.ndarray): Affine transformation matrix
-        rotate_method (str): Method for rotating bounding boxes ('largest_box' or 'ellipse')
+        rotate_method (str): Method for rotating bounding boxes ('largest_box' or 'ellipse').
+            Only applies to HBB (axis-aligned) bounding boxes. Ignored for OBB.
         image_shape (Sequence[int]): Shape of the input image
         border_mode (int): OpenCV border mode
         output_shape (Sequence[int]): Shape of the output image
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB path uses polygons.
+        bbox_type (Literal["hbb", "obb"]): Bounding box type. OBB uses polygon transformation
+            regardless of rotate_method.
 
     Returns:
         np.ndarray: Transformed and normalized bounding boxes
@@ -1302,11 +1309,7 @@ def bboxes_affine(
         )
 
     # Apply affine transform
-    if bbox_type == "obb":
-        polygons, extras = _split_polygons_and_extras(bboxes)
-        transformed_polygons = apply_affine_to_points(polygons.reshape(-1, 2), matrix).reshape(polygons.shape)
-        transformed_bboxes = _merge_polygons_to_obb(transformed_polygons, extras)
-    elif rotate_method == "largest_box":
+    if rotate_method == "largest_box":
         transformed_bboxes = bboxes_affine_largest_box(bboxes, matrix, bbox_type=bbox_type)
     elif rotate_method == "ellipse":
         transformed_bboxes = bboxes_affine_ellipse(bboxes, matrix, bbox_type=bbox_type)

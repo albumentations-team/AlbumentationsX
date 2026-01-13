@@ -1,7 +1,3 @@
----
-alwaysApply: true
----
-
 # Keypoint Label Swapping Design Document
 
 ## Overview
@@ -13,6 +9,7 @@ This document describes the design for implementing semantic keypoint label swap
 Currently, AlbumentationsX transforms keypoint coordinates but ignores the semantic meaning of keypoint labels. For facial keypoints, pose estimation, and other structured keypoint datasets, this creates incorrect label assignments after transforms like horizontal flip.
 
 ### Example Problem
+
 ```python
 # Before horizontal flip
 keypoints = np.array([[100, 50], [200, 50]])  # [left_eye, right_eye]
@@ -161,6 +158,7 @@ Only transforms that change parity (mirror/reflect) need label swapping:
 ## What We Do NOT Want to Implement
 
 ### 1. Hardcoded Label Mappings
+
 - **NO preset mappings** like 'coco_pose_17' or 'facial_68'
 - **NO hardcoded string labels** in the library code
 - **NO automatic label detection**
@@ -168,6 +166,7 @@ Only transforms that change parity (mirror/reflect) need label swapping:
 **Rationale**: Users have different label formats and conventions. Library should be agnostic.
 
 ### 2. Complex Geometric Label Transformations
+
 - **NO automatic label updates** for arbitrary geometric transforms (affine, perspective, etc.)
 - **NO angle-dependent** label swapping
 - **NO coordinate-dependent** label logic
@@ -175,6 +174,7 @@ Only transforms that change parity (mirror/reflect) need label swapping:
 **Rationale**: Only simple, well-defined transforms (flips, 90° rotations) have clear semantic label mappings.
 
 ### 3. Separate Label Target Processing
+
 - **NO separate apply_to_keypoint_labels methods** on individual transforms
 - **NO label fields as separate targets** in the transform pipeline
 - **NO custom label transform functions**
@@ -182,6 +182,7 @@ Only transforms that change parity (mirror/reflect) need label swapping:
 **Rationale**: Labels are part of the keypoints data structure. Keep it simple and integrated.
 
 ### 4. Multi-Parameter Keypoint Configuration
+
 - **NO separate label_mapping_field parameter**
 - **NO label_transform_functions parameter**
 - **NO preset_mapping parameter**
@@ -191,6 +192,7 @@ Only transforms that change parity (mirror/reflect) need label swapping:
 ## Example Usage Patterns
 
 ### Basic Facial Keypoints
+
 ```python
 transform = A.Compose([
     A.HorizontalFlip(p=0.5),
@@ -210,6 +212,7 @@ transform = A.Compose([
 ```
 
 ### Multiple Label Fields
+
 ```python
 transform = A.Compose([
     A.HorizontalFlip(p=0.5),
@@ -227,6 +230,7 @@ transform = A.Compose([
 ```
 
 ### User-Defined Labels
+
 ```python
 # User has their own keypoint format
 transform = A.Compose([
@@ -251,16 +255,19 @@ transform = A.Compose([
 ## Technical Implementation
 
 ### 1. Mapping Conversion During Preprocessing
+
 - KeypointsProcessor.convert_label_mappings_to_encoded() converts string mappings to integer mappings
 - Called after labels are encoded by LabelManager
 - Handles multiple label fields per transform
 
 ### 2. Label Swapping During Transformation
+
 - DualTransform._apply_label_mapping_to_keypoints() swaps label columns
 - Works on keypoints array columns after geometric transformation
 - Fast integer-based operations only
 
 ### 3. Parity-Changing Transform Integration
+
 - HorizontalFlip, VerticalFlip, Transpose override apply_to_keypoints
 - D4/SquareSymmetry map group elements to base transform names
 - No code changes needed for other transforms
@@ -268,17 +275,20 @@ transform = A.Compose([
 ## Testing Strategy
 
 ### 1. Unit Tests
+
 - Test basic label mapping with string and integer labels
 - Test multiple label fields
 - Test partial mappings (some labels unmapped)
 - Test D4/SquareSymmetry group element mapping
 
 ### 2. Integration Tests
+
 - Test full pipeline with multiple transforms
 - Test interaction with existing keypoint processing
 - Test backward compatibility (no label mappings)
 
 ### 3. Performance Tests
+
 - Benchmark label transformation overhead
 - Test with large keypoint datasets
 - Memory usage profiling

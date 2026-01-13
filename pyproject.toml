@@ -123,11 +123,21 @@ classifiers = [
   "Typing :: Typed",
 ]
 
-dynamic = [ "dependencies" ]
+dependencies = [
+  "albucore==0.0.34",
+  "numpy>=1.24.4",
+  "pydantic>=2.12.4",
+  "pyyaml",
+  "scipy>=1.10",
+]
+
+optional-dependencies.contrib = [ "opencv-contrib-python>=4.9.0.80" ]
+optional-dependencies.contrib-headless = [ "opencv-contrib-python-headless>=4.9.0.80" ]
+optional-dependencies.gui = [ "opencv-python>=4.9.0.80" ]
+optional-dependencies.headless = [ "opencv-python-headless>=4.9.0.80" ]
 optional-dependencies.hub = [ "huggingface-hub" ]
 optional-dependencies.pillow = [ "pillow" ]
 optional-dependencies.pytorch = [ "torch" ]
-
 optional-dependencies.pyvips = [ "pyvips[binary]" ]
 optional-dependencies.text = [ "pillow" ]
 urls.Homepage = "https://albumentations.ai"

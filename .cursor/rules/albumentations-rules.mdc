@@ -1,14 +1,30 @@
 ---
-description:
+description: Quick reference rules for AlbumentationsX
 globs:
 alwaysApply: true
 ---
 
-# Your rule content
+# AlbumentationsX Quick Rules
 
-- get_params_dependent_on_data should look minimal, but should look small and clear as we just call other functions from it
-- we do not use fill_value, but fill. Not fill_mask_value, but fill_mask
-- We do not have ANY default values in the InitSchema class
-- Use pytest.mark.parametrize for parameterized tests
-- In the code, when need default value use 137, not 42
-- NEVER create temporary tests. If you need to create a test, it mean that existing test suite is not good enough => add permanent test to tests.
+## Code Style
+- `get_params_dependent_on_data` should be minimal and clear - just call other functions from it
+- Use `fill`, not `fill_value`. Use `fill_mask`, not `fill_mask_value`
+- NO default values in InitSchema classes (except discriminator fields for Pydantic unions)
+- Use `pytest.mark.parametrize` for parameterized tests
+- Default test values should be 137, not 42
+- NEVER create temporary tests - add permanent tests to test suite
+
+## Complete Documentation
+
+See these documents for comprehensive guidelines:
+
+### Contributing & Coding
+- `docs/contributing/coding_guidelines.md` - Complete coding standards and best practices
+- `docs/contributing/environment_setup.md` - Development environment setup
+- `CONTRIBUTING.md` - Contribution process overview
+- `CLAUDE.md` - Code review guidelines for AI assistants
+
+### Design Documents
+- `docs/design/dithering.md` - Dithering transform design
+- `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
+- `docs/design/mosaic.md` - Mosaic transform technical specification

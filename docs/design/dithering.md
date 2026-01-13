@@ -207,7 +207,7 @@ JARVIS_KERNEL = np.array([
 ### Parameterized Tests
 
 ```python
-@pytest.mark.parametrize("method", ["threshold", "random", "ordered", "error_diffusion"])
+@pytest.mark.parametrize("method", ["random", "ordered", "error_diffusion", "pattern"])
 @pytest.mark.parametrize("n_colors", [2, 4, 16, 256])
 @pytest.mark.parametrize("img_dtype", [np.uint8, np.float32])
 def test_dithering_methods(method, n_colors, img_dtype):

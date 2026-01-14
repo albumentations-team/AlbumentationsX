@@ -31,7 +31,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 
 from . import functional as fgeometric
 
@@ -205,13 +205,13 @@ class Pad(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.pad_with_params(
             img,
             pad_top,
@@ -224,13 +224,13 @@ class Pad(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.pad_with_params(
             mask,
             pad_top,
@@ -290,13 +290,13 @@ class Pad(DualTransform):
 
     def apply_to_images(
         self,
-        images: np.ndarray,
+        images: ImageType,
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.pad_images_with_params(
             images,
             pad_top,

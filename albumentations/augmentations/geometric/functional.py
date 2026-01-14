@@ -307,7 +307,7 @@ def _get_resize_backend() -> str:
 
 @preserve_channel_dim
 def resize(
-    img: np.ndarray,
+    img: ImageType,
     target_shape: tuple[int, int],
     interpolation: int,
 ) -> np.ndarray:
@@ -343,7 +343,7 @@ def resize(
 
 
 def resize_pyvips(
-    img: np.ndarray,
+    img: ImageType,
     target_shape: tuple[int, int],
     interpolation: int = 1,
 ) -> np.ndarray:
@@ -393,7 +393,7 @@ def resize_pyvips(
 
 
 def resize_cv2(
-    img: np.ndarray,
+    img: ImageType,
     target_shape: tuple[int, int],
     interpolation: int,
 ) -> np.ndarray:
@@ -425,7 +425,7 @@ def resize_cv2(
 
 
 def resize_pil(
-    img: np.ndarray,
+    img: ImageType,
     target_shape: tuple[int, int],
     interpolation: int,
 ) -> np.ndarray:
@@ -588,7 +588,7 @@ def keypoints_scale(
 
 @preserve_channel_dim
 def perspective(
-    img: np.ndarray,
+    img: ImageType,
     matrix: np.ndarray,
     max_width: int,
     max_height: int,
@@ -1560,7 +1560,7 @@ D4_TRANSFORMATIONS = {
 }
 
 
-def transpose_images(images: np.ndarray) -> np.ndarray:
+def transpose_images(images: ImageType) -> ImageType:
     """Transpose a batch of images.
 
     Args:
@@ -1622,7 +1622,7 @@ def rot90(img: ImageType, factor: Literal[0, 1, 2, 3]) -> ImageType:
     return np.rot90(img, factor)
 
 
-def rot90_images(images: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:
+def rot90_images(images: ImageType, factor: Literal[0, 1, 2, 3]) -> ImageType:
     """Rotate a batch of images 90 degrees counter-clockwise multiple times.
 
     Args:
@@ -1794,7 +1794,7 @@ def keypoints_transpose(keypoints: np.ndarray) -> np.ndarray:
 
 @preserve_channel_dim
 def pad(
-    img: np.ndarray,
+    img: ImageType,
     min_height: int,
     min_width: int,
     border_mode: int,
@@ -1868,7 +1868,7 @@ def extend_value(value: tuple[float, ...] | float, num_channels: int) -> Sequenc
 
 
 def copy_make_border_with_value_extension(
-    img: np.ndarray,
+    img: ImageType,
     top: int,
     bottom: int,
     left: int,
@@ -1918,7 +1918,7 @@ def copy_make_border_with_value_extension(
 
 @preserve_channel_dim
 def pad_with_params(
-    img: np.ndarray,
+    img: ImageType,
     h_pad_top: int,
     h_pad_bottom: int,
     w_pad_left: int,
@@ -1957,7 +1957,7 @@ def pad_with_params(
 
 
 def pad_images_with_params(
-    images: np.ndarray,
+    images: ImageType,
     h_pad_top: int,
     h_pad_bottom: int,
     w_pad_left: int,
@@ -2014,7 +2014,7 @@ def pad_images_with_params(
 
 @preserve_channel_dim
 def remap(
-    img: np.ndarray,
+    img: ImageType,
     map_x: np.ndarray,
     map_y: np.ndarray,
     interpolation: int,
@@ -4433,7 +4433,7 @@ def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
 
 
 def morphology(
-    img: np.ndarray,
+    img: ImageType,
     kernel: np.ndarray,
     operation: Literal["dilation", "erosion"],
 ) -> np.ndarray:
@@ -4504,7 +4504,7 @@ D4_TRANSFORMATIONS_IMAGES = {
 }
 
 
-def d4_images(img: np.ndarray, group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]) -> np.ndarray:
+def d4_images(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]) -> np.ndarray:
     """Applies a `D_4` symmetry group transformation to a batch of images.
 
     This function manipulates a batch of images using transformations such as rotations and flips,

@@ -34,6 +34,7 @@ from albumentations.core.transforms_interface import (
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
     ImageType,
+    VolumeType,
     d4_group_elements,
 )
 
@@ -107,31 +108,31 @@ class VerticalFlip(DualTransform):
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.keypoints_vflip(keypoints, params["shape"][0])
 
-    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         if mask.size == 0:
             # Assume mask shape is (H, W, C) - return empty array with same shape
             return mask
         return self.apply(mask, **params)
 
-    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_masks(self, masks: ImageType, **params: Any) -> ImageType:
         if masks.size == 0:
             # Assume masks shape is (N, H, W, C) - return empty array with same shape
             return masks
         return self.apply_to_images(masks, **params)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.vflip_images(images)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return fgeometric.vflip_volumes(volumes)
 
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
             return mask3d
         return self.apply_to_images(mask3d, **params)
 
-    def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
         if masks3d.size == 0:
             # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
             return masks3d
@@ -189,31 +190,31 @@ class HorizontalFlip(DualTransform):
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.keypoints_hflip(keypoints, params["shape"][1])
 
-    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         if mask.size == 0:
             # Assume mask shape is (H, W, C) - return empty array with same shape
             return mask
         return self.apply(mask, **params)
 
-    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_masks(self, masks: ImageType, **params: Any) -> ImageType:
         if masks.size == 0:
             # Assume masks shape is (N, H, W, C) - return empty array with same shape
             return masks
         return self.apply_to_images(masks, **params)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.hflip_images(images)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return fgeometric.hflip_volumes(volumes)
 
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
             return mask3d
         return self.apply_to_images(mask3d, **params)
 
-    def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
         if masks3d.size == 0:
             # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
             return masks3d
@@ -282,34 +283,34 @@ class Transpose(DualTransform):
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return fgeometric.keypoints_transpose(keypoints)
 
-    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         if mask.size == 0:
             # Transpose swaps H and W
             # Assume mask shape is (H, W, C) -> (W, H, C)
             return np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype)
         return self.apply(mask, **params)
 
-    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_masks(self, masks: ImageType, **params: Any) -> ImageType:
         if masks.size == 0:
             # Transpose swaps H and W
             # Assume masks shape is (N, H, W, C) -> (N, W, H, C)
             return np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype)
         return self.apply_to_images(masks, **params)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.transpose_images(images)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return fgeometric.transpose_volumes(volumes)
 
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Transpose swaps H and W
             # Assume mask3d shape is (D, H, W, C) -> (D, W, H, C)
             return np.empty((mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]), dtype=mask3d.dtype)
         return self.apply_to_images(mask3d, **params)
 
-    def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
         if masks3d.size == 0:
             # Transpose swaps H and W
             # Assume masks3d shape is (N, D, H, W, C) -> (N, D, W, H, C)
@@ -382,10 +383,10 @@ class D4(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.d4(img, group_element)
 
     def apply_to_bboxes(
@@ -407,10 +408,10 @@ class D4(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if mask.size == 0:
             # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
             # Assume mask shape is (H, W, C)
@@ -423,10 +424,10 @@ class D4(DualTransform):
 
     def apply_to_masks(
         self,
-        masks: np.ndarray,
+        masks: ImageType,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if masks.size == 0:
             # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
             # Assume masks shape is (N, H, W, C)
@@ -439,26 +440,26 @@ class D4(DualTransform):
 
     def apply_to_images(
         self,
-        images: np.ndarray,
+        images: ImageType,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.d4_images(images, group_element)
 
     def apply_to_volumes(
         self,
-        volumes: np.ndarray,
+        volumes: VolumeType,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         return fgeometric.d4_images(volumes, group_element)
 
     def apply_to_mask3d(
         self,
-        mask3d: np.ndarray,
+        mask3d: VolumeType,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         if mask3d.size == 0:
             # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
             # Assume mask3d shape is (D, H, W, C)
@@ -474,10 +475,10 @@ class D4(DualTransform):
 
     def apply_to_masks3d(
         self,
-        masks3d: np.ndarray,
+        masks3d: VolumeType,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         if masks3d.size == 0:
             # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
             # Assume masks3d shape is (N, D, H, W, C)

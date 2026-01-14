@@ -29,8 +29,10 @@ from albumentations.core.type_definitions import (
     ALL_TARGETS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     PAIR,
+    ImageType,
     PercentType,
     PxType,
+    VolumeType,
 )
 
 from . import functional as fcrops
@@ -143,10 +145,10 @@ class BaseCrop(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fcrops.crop(img, x_min=crop_coords[0], y_min=crop_coords[1], x_max=crop_coords[2], y_max=crop_coords[3])
 
     def apply_to_bboxes(
@@ -167,10 +169,10 @@ class BaseCrop(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if mask.size == 0:
             # Return empty array with cropped dimensions
             # Assume mask shape is (H, W, C)
@@ -181,10 +183,10 @@ class BaseCrop(DualTransform):
 
     def apply_to_masks(
         self,
-        masks: np.ndarray,
+        masks: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if masks.size == 0:
             # Return empty array with cropped dimensions
             # Assume masks shape is (N, H, W, C)
@@ -195,26 +197,26 @@ class BaseCrop(DualTransform):
 
     def apply_to_images(
         self,
-        images: np.ndarray,
+        images: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fcrops.volume_crop_yx(images, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
 
     def apply_to_volumes(
         self,
-        volumes: np.ndarray,
+        volumes: VolumeType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         return fcrops.volumes_crop_yx(volumes, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
 
     def apply_to_mask3d(
         self,
-        mask3d: np.ndarray,
+        mask3d: VolumeType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         if mask3d.size == 0:
             # Return empty array with cropped dimensions
             # Assume mask3d shape is (D, H, W, C)
@@ -225,10 +227,10 @@ class BaseCrop(DualTransform):
 
     def apply_to_masks3d(
         self,
-        masks3d: np.ndarray,
+        masks3d: VolumeType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         if masks3d.size == 0:
             # Return empty array with cropped dimensions
             # Assume masks3d shape is (N, D, H, W, C)
@@ -450,10 +452,10 @@ class BaseCropAndPad(BaseCrop):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         pad_params = params.get("pad_params")
         if pad_params is not None:
             img = fgeometric.pad_with_params(
@@ -469,10 +471,10 @@ class BaseCropAndPad(BaseCrop):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         crop_coords: Any,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         pad_params = params.get("pad_params")
         if pad_params is not None:
             mask = fgeometric.pad_with_params(
@@ -489,10 +491,10 @@ class BaseCropAndPad(BaseCrop):
 
     def apply_to_images(
         self,
-        images: np.ndarray,
+        images: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         pad_params = params.get("pad_params")
         if pad_params is not None:
             images = fcrops.pad_along_axes(
@@ -510,10 +512,10 @@ class BaseCropAndPad(BaseCrop):
 
     def apply_to_volumes(
         self,
-        volumes: np.ndarray,
+        volumes: VolumeType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         pad_params = params.get("pad_params")
         if pad_params is not None:
             volumes = fcrops.pad_along_axes(
@@ -531,18 +533,18 @@ class BaseCropAndPad(BaseCrop):
 
     def apply_to_mask3d(
         self,
-        mask3d: np.ndarray,
+        mask3d: VolumeType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         return self.apply_to_images(mask3d, crop_coords, **params)
 
     def apply_to_masks3d(
         self,
-        masks3d: np.ndarray,
+        masks3d: VolumeType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         return self.apply_to_volumes(masks3d, crop_coords, **params)
 
     def apply_to_bboxes(
@@ -1331,7 +1333,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         self.ignore_values = ignore_values
         self.ignore_channels = ignore_channels
 
-    def _preprocess_mask(self, mask: np.ndarray) -> np.ndarray:
+    def _preprocess_mask(self, mask: ImageType) -> ImageType:
         mask_height, mask_width = mask.shape[:2]
 
         if self.ignore_values is not None:
@@ -1584,20 +1586,20 @@ class _BaseRandomSizedCrop(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         crop = fcrops.crop(img, *crop_coords)
         interpolation = self._get_interpolation_for_resize(crop.shape[:2], "image")
         return fgeometric.resize(crop, self.size, interpolation)
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         crop = fcrops.crop(mask, *crop_coords)
         interpolation = self._get_interpolation_for_resize(crop.shape[:2], "mask")
         return fgeometric.resize(crop, self.size, interpolation)
@@ -1632,10 +1634,10 @@ class _BaseRandomSizedCrop(DualTransform):
 
     def apply_to_images(
         self,
-        images: np.ndarray,
+        images: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         # First crop the volume using volume_crop_yx (reduces data size)
         crop = fcrops.volume_crop_yx(images, *crop_coords)
 
@@ -1647,10 +1649,10 @@ class _BaseRandomSizedCrop(DualTransform):
 
     def apply_to_mask3d(
         self,
-        mask3d: np.ndarray,
+        mask3d: VolumeType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         return self.apply_to_images(mask3d, crop_coords, **params)
 
 
@@ -2478,19 +2480,19 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         crop = fcrops.crop(img, *crop_coords)
         return fgeometric.resize(crop, (self.height, self.width), self.interpolation)
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         crop = fcrops.crop(mask, *crop_coords)
         return fgeometric.resize(crop, (self.height, self.width), self.mask_interpolation)
 
@@ -2771,12 +2773,12 @@ class CropAndPad(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         crop_params: Sequence[int],
         pad_params: Sequence[int],
         fill: tuple[float, ...] | float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fcrops.crop_and_pad(
             img,
             crop_params,
@@ -2790,12 +2792,12 @@ class CropAndPad(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         crop_params: Sequence[int],
         pad_params: Sequence[int],
         fill_mask: tuple[float, ...] | float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fcrops.crop_and_pad(
             mask,
             crop_params,

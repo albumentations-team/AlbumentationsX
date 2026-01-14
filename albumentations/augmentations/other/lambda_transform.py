@@ -90,7 +90,7 @@ class Lambda(NoOp):
         fn = self.custom_apply_fns["image"]
         return fn(img, **params)
 
-    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         fn = self.custom_apply_fns["mask"]
         return fn(mask, **params)
 

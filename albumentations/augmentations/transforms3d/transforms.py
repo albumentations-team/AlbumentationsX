@@ -124,10 +124,10 @@ class BasePad3D(Transform3D):
 
     def apply_to_volume(
         self,
-        volume: np.ndarray,
+        volume: VolumeType,
         padding: tuple[int, int, int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         """Apply padding to a 3D volume.
 
         Args:
@@ -150,10 +150,10 @@ class BasePad3D(Transform3D):
 
     def apply_to_mask3d(
         self,
-        mask3d: np.ndarray,
+        mask3d: VolumeType,
         padding: tuple[int, int, int, int, int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         """Apply padding to a 3D mask.
 
         Args:
@@ -655,11 +655,11 @@ class BaseCropAndPad3D(Transform3D):
 
     def apply_to_volume(
         self,
-        volume: np.ndarray,
+        volume: VolumeType,
         crop_coords: tuple[int, int, int, int, int, int],
         pad_params: dict[str, int] | None,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         """Apply cropping and padding to a 3D volume.
 
         Args:
@@ -695,7 +695,7 @@ class BaseCropAndPad3D(Transform3D):
 
     def apply_to_mask3d(
         self,
-        mask3d: np.ndarray,
+        mask3d: VolumeType,
         crop_coords: tuple[int, int, int, int, int, int],
         pad_params: dict[str, int] | None,
         **params: Any,
@@ -1272,17 +1272,17 @@ class CoarseDropout3D(Transform3D):
 
         return f3d.cutout3d(volume, holes, self.fill)
 
-    def apply_to_mask(self, mask: np.ndarray, holes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
         """Apply dropout to a 3D mask.
 
         Args:
-            mask (np.ndarray): Input mask with shape (depth, height, width) or (depth, height, width, channels)
+            mask (VolumeType): Input mask with shape (depth, height, width) or (depth, height, width, channels)
             holes (np.ndarray): Array of holes with shape (num_holes, 6).
                 Each hole is represented as [z1, y1, x1, z2, y2, x2]
             **params (Any): Additional parameters
 
         Returns:
-            np.ndarray: Mask with holes filled with the given value
+            VolumeType: Mask with holes filled with the given value
 
         """
         if self.fill_mask is None or holes.size == 0:
@@ -1506,11 +1506,11 @@ class GridShuffle3D(Transform3D):
 
     def apply_to_volume(
         self,
-        volume: np.ndarray,
+        volume: VolumeType,
         tiles: np.ndarray,
         mapping: list[int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         return f3d.swap_tiles_on_volume(volume, tiles, mapping)
 
     def apply_to_keypoints(

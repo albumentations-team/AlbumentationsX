@@ -38,7 +38,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType, VolumeType
 from albumentations.core.utils import to_tuple
 
 from . import functional as fgeometric
@@ -218,12 +218,12 @@ class Perspective(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         matrix: np.ndarray,
         max_height: int,
         max_width: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.perspective(
             img,
             matrix,
@@ -236,11 +236,11 @@ class Perspective(DualTransform):
         )
 
     @batch_transform("spatial")
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
     @batch_transform("spatial")
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         """Apply the perspective transform to a batch of volumes.
 
         Args:
@@ -254,17 +254,17 @@ class Perspective(DualTransform):
         return self.apply(volumes, **params)
 
     @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return self.apply_to_mask(mask3d, **params)
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         matrix: np.ndarray,
         max_height: int,
         max_width: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.perspective(
             mask,
             matrix,
@@ -688,11 +688,11 @@ class Affine(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         matrix: np.ndarray,
         output_shape: tuple[int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.warp_affine(
             img,
             matrix,
@@ -704,11 +704,11 @@ class Affine(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         matrix: np.ndarray,
         output_shape: tuple[int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.warp_affine(
             mask,
             matrix,
@@ -752,15 +752,15 @@ class Affine(DualTransform):
         )
 
     @batch_transform("spatial")
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
     @batch_transform("spatial")
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
     @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return self.apply_to_mask(mask3d, **params)
 
     @staticmethod
@@ -1228,7 +1228,7 @@ class GridElasticDeform(DualTransform):
         self.mask_interpolation = mask_interpolation
 
     @staticmethod
-    def _generate_mesh(polygons: np.ndarray, dimensions: np.ndarray) -> np.ndarray:
+    def _generate_mesh(polygons: np.ndarray, dimensions: np.ndarray) -> ImageType:
         return np.hstack((dimensions.reshape(-1, 4), polygons))
 
     def get_params_dependent_on_data(
@@ -1272,20 +1272,20 @@ class GridElasticDeform(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         generated_mesh: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             raise ValueError("GridElasticDeform transform is only supported for RGB and grayscale images.")
         return fgeometric.distort_image(img, generated_mesh, self.interpolation)
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         generated_mesh: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.distort_image(mask, generated_mesh, self.mask_interpolation)
 
     def apply_to_bboxes(
@@ -1424,11 +1424,11 @@ class RandomGridShuffle(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         tiles: np.ndarray,
         mapping: list[int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.swap_tiles_on_image(img, tiles, mapping)
 
     def apply_to_bboxes(
@@ -1465,15 +1465,15 @@ class RandomGridShuffle(DualTransform):
         return fgeometric.swap_tiles_on_keypoints(keypoints, tiles, mapping)
 
     @batch_transform("spatial")
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
     @batch_transform("spatial")
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
     @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return self.apply(mask3d, **params)
 
     def get_params_dependent_on_data(
@@ -1588,10 +1588,10 @@ class Morphological(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         kernel: tuple[int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.morphology(img, kernel, self.operation)
 
     def apply_to_bboxes(

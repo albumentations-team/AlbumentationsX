@@ -245,7 +245,7 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
 
 
 def _check_preconditions(
-    img: np.ndarray,
+    img: ImageType,
     mask: np.ndarray | None,
     by_channels: bool,
 ) -> None:
@@ -515,7 +515,7 @@ def image_compression(
     num_channels = get_num_channels(img)
 
     # Prepare to encode and decode
-    def encode_decode(src_img: np.ndarray, read_mode: int) -> np.ndarray:
+    def encode_decode(src_img: ImageType, read_mode: int) -> np.ndarray:
         _, encoded_img = cv2.imencode(image_type, src_img, (int(quality_flag), quality))
         return cv2.imdecode(encoded_img, read_mode)
 
@@ -3844,7 +3844,7 @@ class StainNormalizer:
     def __init__(self) -> None:
         self.stain_matrix_target = None
 
-    def fit(self, img: np.ndarray) -> None:
+    def fit(self, img: ImageType) -> None:
         """Fit the stain normalizer to an image.
 
         This function fits the stain normalizer to an image.
@@ -4024,7 +4024,7 @@ class VahadaneNormalizer(StainNormalizer):
 
     """
 
-    def fit(self, img: np.ndarray) -> None:
+    def fit(self, img: ImageType) -> None:
         """Fit the Vahadane stain normalizer to an image.
 
         This function fits the Vahadane stain normalizer to an image.
@@ -4056,7 +4056,7 @@ class MacenkoNormalizer(StainNormalizer):
         super().__init__()
         self.angular_percentile = angular_percentile
 
-    def fit(self, img: np.ndarray, angular_percentile: float = 99) -> None:
+    def fit(self, img: ImageType, angular_percentile: float = 99) -> None:
         """Fit the Macenko stain normalizer to an image.
 
         This function fits the Macenko stain normalizer to an image.

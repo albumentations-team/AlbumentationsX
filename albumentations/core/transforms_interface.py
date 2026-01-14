@@ -341,18 +341,18 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         """Apply transform on image."""
         raise NotImplementedError
 
-    def apply_to_images(self, images: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         """Apply transform on images.
 
         Args:
-            images (np.ndarray): Input images as numpy array of shape:
+            images (ImageType): Input images as numpy array of shape:
                 - (num_images, height, width, channels)
                 - (num_images, height, width) for grayscale
             *args (Any): Additional positional arguments
             **params (Any): Additional parameters specific to the transform
 
         Returns:
-            np.ndarray: Transformed images as numpy array in the same format as input
+            ImageType: Transformed images as numpy array in the same format as input
 
         """
         # Handle batched numpy array input
@@ -373,7 +373,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         """
         return self.apply_to_images(volume, *args, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to multiple volumes."""
         return np.stack([self.apply_to_volume(vol, *args, **params) for vol in volumes])
 
@@ -584,7 +584,7 @@ class DualTransform(BasicTransform):
 
             Returns Transformed image of the same shape as input.
 
-        apply_to_images(images: np.ndarray, **params: Any) -> np.ndarray:
+        apply_to_images(images: ImageType, **params: Any) -> ImageType:
             Apply the transform to multiple images.
 
             images: Input images of shape (N, H, W, C).
@@ -592,7 +592,7 @@ class DualTransform(BasicTransform):
 
             Returns Transformed images in the same format as input.
 
-        apply_to_mask(mask: np.ndarray, **params: Any) -> np.ndarray:
+        apply_to_mask(mask: ImageType, **params: Any) -> ImageType:
             Apply the transform to a mask.
 
             mask: Input mask of shape (H, W), (H, W, C) for multi-channel masks
@@ -600,7 +600,7 @@ class DualTransform(BasicTransform):
 
             Returns Transformed mask in the same format as input.
 
-        apply_to_masks(masks: np.ndarray, **params: Any) -> np.ndarray:
+        apply_to_masks(masks: ImageType, **params: Any) -> ImageType:
             Apply the transform to multiple masks.
 
             masks: Array of shape (N, H, W) or (N, H, W, C) where N is number of masks
@@ -623,7 +623,7 @@ class DualTransform(BasicTransform):
 
             Returns Transformed bounding boxes array of shape (N, 4+).
 
-        apply_to_volume(volume: np.ndarray, **params: Any) -> np.ndarray:
+        apply_to_volume(volume: VolumeType, **params: Any) -> VolumeType:
             Apply the transform to a volume.
 
             volume: Input volume of shape (D, H, W, C).
@@ -631,7 +631,7 @@ class DualTransform(BasicTransform):
 
             Returns Transformed volume of the same shape as input.
 
-        apply_to_volumes(volumes: np.ndarray, **params: Any) -> np.ndarray:
+        apply_to_volumes(volumes: VolumeType, **params: Any) -> VolumeType:
             Apply the transform to multiple volumes.
 
             volumes: Input volumes of shape (N, D, H, W, C).
@@ -639,7 +639,7 @@ class DualTransform(BasicTransform):
 
             Returns Transformed volumes in the same format as input.
 
-        apply_to_mask3d(mask: np.ndarray, **params: Any) -> np.ndarray:
+        apply_to_mask3d(mask: VolumeType, **params: Any) -> VolumeType:
             Apply the transform to a 3D mask.
 
             mask: Input 3D mask of shape (D, H, W) or (D, H, W, C)
@@ -647,7 +647,7 @@ class DualTransform(BasicTransform):
 
             Returns Transformed 3D mask in the same format as input.
 
-        apply_to_masks3d(masks: np.ndarray, **params: Any) -> np.ndarray:
+        apply_to_masks3d(masks: VolumeType, **params: Any) -> VolumeType:
             Apply the transform to multiple 3D masks.
 
             masks: Input 3D masks of shape (N, D, H, W) or (N, D, H, W, C)
@@ -696,20 +696,20 @@ class DualTransform(BasicTransform):
     def apply_to_bboxes(self, bboxes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         raise NotImplementedError(f"BBoxes not implemented for {self.__class__.__name__}")
 
-    def apply_to_mask(self, mask: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, *args: Any, **params: Any) -> ImageType:
         return self.apply(mask, *args, **params)
 
-    def apply_to_masks(self, masks: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_masks(self, masks: ImageType, *args: Any, **params: Any) -> ImageType:
         if masks.size == 0:
             return masks
         return np.stack([self.apply_to_mask(mask, **params) for mask in masks])
 
     @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self.apply_to_mask(mask3d, *args, **params)
 
     @batch_transform("spatial")
-    def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return np.stack([self.apply_to_mask3d(mask3d, **params) for mask3d in masks3d])
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
@@ -954,19 +954,19 @@ class NoOp(DualTransform):
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
 
-    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         return mask
 
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return volume
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return volumes
 
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return mask3d
 
-    def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
         return masks3d
 
 
@@ -989,16 +989,16 @@ class Transform3D(DualTransform):
         raise NotImplementedError
 
     @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_volumes(self, volumes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to batch of 3D volumes."""
         return self.apply_to_volume(volumes, *args, **params)
 
-    def apply_to_mask3d(self, mask3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to single 3D mask."""
         return self.apply_to_volume(mask3d, *args, **params)
 
     @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to batch of 3D masks."""
         return self.apply_to_mask3d(masks3d, *args, **params)
 

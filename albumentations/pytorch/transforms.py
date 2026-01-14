@@ -84,14 +84,14 @@ class ToTensorV2(BasicTransform):
 
         return torch.from_numpy(img.transpose(2, 0, 1))
 
-    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> torch.Tensor:
+    def apply_to_mask(self, mask: ImageType, **params: Any) -> torch.Tensor:
         """Convert a mask array to a PyTorch tensor.
 
         If transpose_mask is True and mask has 3 dimensions (H,W,C),
         converts mask to channels-first format (C,H,W).
 
         Args:
-            mask (np.ndarray): Mask as a numpy array
+            mask (ImageType): Mask as a numpy array
             **params (Any): Additional parameters
 
         Returns:
@@ -102,7 +102,7 @@ class ToTensorV2(BasicTransform):
             mask = mask.transpose(2, 0, 1)
         return torch.from_numpy(mask)
 
-    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> torch.Tensor:
+    def apply_to_masks(self, masks: ImageType, **params: Any) -> torch.Tensor:
         """Convert numpy array or list of numpy array masks to torch tensor(s).
 
         Args:
@@ -119,7 +119,7 @@ class ToTensorV2(BasicTransform):
             masks = np.transpose(masks, (0, 3, 1, 2))  # -> (N, C, H, W)
         return torch.from_numpy(masks)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> torch.Tensor:
+    def apply_to_images(self, images: ImageType, **params: Any) -> torch.Tensor:
         """Convert batch of images from (N, H, W, C) to (N, C, H, W)."""
         return torch.from_numpy(images.transpose(0, 3, 1, 2))  # -> (N,C,H,W)
 
@@ -171,6 +171,6 @@ class ToTensor3D(BasicTransform):
             return torch.from_numpy(volume[np.newaxis, ...])
         raise ValueError(f"Expected 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
 
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> torch.Tensor:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
         """Convert 3D mask to channels-first tensor."""
         return self.apply_to_volume(mask3d, **params)

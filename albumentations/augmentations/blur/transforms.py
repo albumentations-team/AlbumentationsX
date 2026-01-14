@@ -731,10 +731,10 @@ class GaussianBlur(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         kernel: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.separable_convolve(img, kernel=kernel)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, float]:
@@ -903,10 +903,10 @@ class GlassBlur(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         dxy: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fblur.glass_blur(
             img,
             self.sigma,
@@ -1360,11 +1360,11 @@ class Defocus(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         radius: int,
         alias_blur: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fblur.defocus(img, radius, alias_blur)
 
     def get_params(self) -> dict[str, Any]:
@@ -1479,10 +1479,10 @@ class ZoomBlur(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         zoom_factors: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fblur.zoom_blur(img, zoom_factors)
 
     def get_params(self) -> dict[str, Any]:

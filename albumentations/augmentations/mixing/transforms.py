@@ -20,7 +20,7 @@ from albumentations.core.bbox_utils import BboxProcessor, check_bboxes, denormal
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import LENGTH_RAW_BBOX, Targets
+from albumentations.core.type_definitions import LENGTH_RAW_BBOX, ImageType, Targets
 
 __all__ = ["Mosaic", "OverlayElements"]
 
@@ -229,10 +229,10 @@ class OverlayElements(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         overlay_data: list[dict[str, Any]],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         for data in overlay_data:
             overlay_image = data["overlay_image"]
             overlay_mask = data["overlay_mask"]
@@ -242,10 +242,10 @@ class OverlayElements(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         overlay_data: list[dict[str, Any]],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         for data in overlay_data:
             if "mask_id" in data and data["mask_id"] is not None:
                 overlay_mask = data["overlay_mask"]
@@ -676,11 +676,11 @@ class Mosaic(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
         target_shape: tuple[int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fmixing.assemble_mosaic_from_processed_cells(
             processed_cells=processed_cells,
             target_shape=target_shape,
@@ -691,11 +691,11 @@ class Mosaic(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
         target_mask_shape: tuple[int, int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fmixing.assemble_mosaic_from_processed_cells(
             processed_cells=processed_cells,
             target_shape=target_mask_shape,

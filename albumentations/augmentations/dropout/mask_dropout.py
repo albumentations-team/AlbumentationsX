@@ -168,7 +168,7 @@ class MaskDropout(DualTransform):
 
         return img
 
-    def apply_to_mask(self, mask: np.ndarray, dropout_mask: np.ndarray | None, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, dropout_mask: np.ndarray | None, **params: Any) -> ImageType:
         if dropout_mask is None or self.fill_mask is None:
             return mask
 

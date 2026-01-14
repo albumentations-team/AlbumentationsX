@@ -15,6 +15,7 @@ import albumentations.augmentations.text.functional as ftext
 from albumentations.core.bbox_utils import check_bboxes, denormalize_bboxes
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
+from albumentations.core.type_definitions import ImageType
 
 __all__ = ["TextImage"]
 
@@ -153,7 +154,7 @@ class TextImage(ImageOnlyTransform):
 
     def preprocess_metadata(
         self,
-        image: np.ndarray,
+        image: ImageType,
         bbox: tuple[float, float, float, float],
         text: str,
         bbox_index: int,
@@ -237,10 +238,10 @@ class TextImage(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         overlay_data: list[dict[str, Any]],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return ftext.render_text(img, overlay_data, clear_bg=self.clear_bg)
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:

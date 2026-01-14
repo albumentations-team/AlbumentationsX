@@ -28,7 +28,9 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 ### Type Hints
 
 - All functions must have complete type hints
-- Use `np.ndarray` with proper shape annotations where possible
+- Use `ImageType` for image/mask/volume parameters and return types (not `np.ndarray`)
+- Use `np.ndarray` only for bboxes and keypoints
+- `ImageType` = `ImageUInt8 | ImageFloat32` (from `albumentations.core.type_definitions`)
 
 ### Transform Standards
 

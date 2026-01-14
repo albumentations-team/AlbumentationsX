@@ -18,7 +18,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS, ImageType
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType, VolumeType
 
 from . import functional as fgeometric
 
@@ -137,16 +137,16 @@ class RandomRotate90(DualTransform):
     ) -> np.ndarray:
         return fgeometric.keypoints_rot90(keypoints, factor, params["shape"])
 
-    def apply_to_images(self, images: np.ndarray, factor: Literal[0, 1, 2, 3], **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, factor: Literal[0, 1, 2, 3], **params: Any) -> ImageType:
         return fgeometric.rot90_images(images, factor)
 
-    def apply_to_volumes(self, volumes: np.ndarray, factor: Literal[0, 1, 2, 3], **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, factor: Literal[0, 1, 2, 3], **params: Any) -> VolumeType:
         return fgeometric.rot90_volumes(volumes, factor)
 
-    def apply_to_mask3d(self, mask3d: np.ndarray, factor: Literal[0, 1, 2, 3], **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, factor: Literal[0, 1, 2, 3], **params: Any) -> VolumeType:
         return self.apply_to_images(mask3d, factor, **params)
 
-    def apply_to_masks3d(self, masks3d: np.ndarray, factor: Literal[0, 1, 2, 3], **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, masks3d: VolumeType, factor: Literal[0, 1, 2, 3], **params: Any) -> VolumeType:
         return self.apply_to_volumes(masks3d, factor, **params)
 
 
@@ -309,14 +309,14 @@ class Rotate(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         matrix: np.ndarray,
         x_min: int,
         x_max: int,
         y_min: int,
         y_max: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         img_out = fgeometric.warp_affine(
             img,
             matrix,
@@ -331,14 +331,14 @@ class Rotate(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         matrix: np.ndarray,
         x_min: int,
         x_max: int,
         y_min: int,
         y_max: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         img_out = fgeometric.warp_affine(
             mask,
             matrix,

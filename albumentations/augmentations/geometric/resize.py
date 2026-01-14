@@ -14,7 +14,7 @@ from pydantic import Field, field_validator, model_validator
 from typing_extensions import Self
 
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ALL_TARGETS, ImageType
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType, VolumeType
 from albumentations.core.utils import to_tuple
 
 from . import functional as fgeometric
@@ -183,10 +183,10 @@ class RandomScale(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         scale: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         interpolation = self.interpolation
         if self.area_for_downscale in ["image", "image_mask"] and scale < 1.0:
             interpolation = cv2.INTER_AREA
@@ -195,10 +195,10 @@ class RandomScale(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         scale: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         interpolation = self.mask_interpolation
         if self.area_for_downscale == "image_mask" and scale < 1.0:
             interpolation = cv2.INTER_AREA
@@ -386,10 +386,10 @@ class MaxSizeTransform(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         scale: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         height, width = img.shape[:2]
         new_height, new_width = max(1, round(height * scale)), max(1, round(width * scale))
 
@@ -401,10 +401,10 @@ class MaxSizeTransform(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         scale: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         height, width = mask.shape[:2]
         new_height, new_width = max(1, round(height * scale)), max(1, round(width * scale))
 
@@ -427,19 +427,19 @@ class MaxSizeTransform(DualTransform):
         return fgeometric.keypoints_scale(keypoints, scale, scale)
 
     @batch_transform("spatial")
-    def apply_to_images(self, images: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self.apply(images, *args, **params)
 
     @batch_transform("spatial")
-    def apply_to_volumes(self, volumes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self.apply(volumes, *args, **params)
 
     @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self.apply_to_mask(mask3d, *args, **params)
 
     @batch_transform("spatial")
-    def apply_to_masks3d(self, masks3d: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self.apply_to_mask(masks3d, *args, **params)
 
 
@@ -826,7 +826,7 @@ class Resize(DualTransform):
 
         return fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
 
-    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         height, width = mask.shape[:2]
         is_downscale = (self.height < height) or (self.width < width)
 

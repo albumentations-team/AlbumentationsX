@@ -57,6 +57,8 @@ from albumentations.core.transforms_interface import (
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
     BIG_INTEGER,
+    ImageType,
+    VolumeType,
 )
 from albumentations.core.utils import to_tuple
 
@@ -248,11 +250,11 @@ class BaseDistortion(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         map_x: np.ndarray,
         map_y: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.remap(
             img,
             map_x,
@@ -263,24 +265,24 @@ class BaseDistortion(DualTransform):
         )
 
     @batch_transform("spatial")
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
     @batch_transform("spatial")
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
     @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return self.apply_to_mask(mask3d, **params)
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         map_x: np.ndarray,
         map_y: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fgeometric.remap(
             mask,
             map_x,

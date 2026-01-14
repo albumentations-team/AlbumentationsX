@@ -61,6 +61,7 @@ from albumentations.core.type_definitions import (
     PAIR,
     SEVEN,
     ImageType,
+    VolumeType,
 )
 from albumentations.core.utils import to_tuple
 
@@ -240,10 +241,10 @@ class Normalize(ImageOnlyTransform):
             )
         return normalize_per_image(img, self.normalization)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
 
@@ -323,11 +324,11 @@ class ImageCompression(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         quality: int,
         image_type: Literal[".jpg", ".webp"],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.image_compression(img, quality, image_type)
 
     def get_params(self) -> dict[str, int | str]:
@@ -440,12 +441,12 @@ class RandomSnow(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         snow_point: float,
         snow_texture: np.ndarray,
         sparkle_mask: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         non_rgb_error(img)
 
         if self.method == "bleach":
@@ -581,7 +582,7 @@ class RandomGravel(ImageOnlyTransform):
     def generate_gravel_patch(
         self,
         rectangular_roi: tuple[int, int, int, int],
-    ) -> np.ndarray:
+    ) -> ImageType:
         """Generate gravel particles within a specified rectangular region.
 
         Args:
@@ -603,10 +604,10 @@ class RandomGravel(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         gravels_infos: list[Any],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.add_gravel(img, gravels_infos)
 
     def get_params_dependent_on_data(
@@ -768,12 +769,12 @@ class RandomRain(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         slant: float,
         drop_length: int,
         rain_drops: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         non_rgb_error(img)
 
         return fpixel.add_rain(
@@ -915,12 +916,12 @@ class RandomFog(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         particle_positions: list[tuple[int, int]],
         radiuses: list[int],
         intensity: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         non_rgb_error(img)
         return fpixel.add_fog(
             img,
@@ -1175,11 +1176,11 @@ class RandomSunFlare(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         flare_center: tuple[float, float],
         circles: list[Any],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         non_rgb_error(img)
         if self.method == "overlay":
             return fpixel.add_sun_flare_overlay(
@@ -1373,11 +1374,11 @@ class RandomShadow(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         vertices_list: list[np.ndarray],
         intensities: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.add_shadow(img, vertices_list, intensities)
 
     def get_params_dependent_on_data(
@@ -1506,32 +1507,32 @@ class RandomToneCurve(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         low_y: float | np.ndarray,
         high_y: float | np.ndarray,
         num_channels: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.move_tone_curve(img, low_y, high_y, num_channels)
 
     def apply_to_images(
         self,
-        images: np.ndarray,
+        images: ImageType,
         low_y: float | np.ndarray,
         high_y: float | np.ndarray,
         num_channels: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.move_tone_curve(images, low_y, high_y, num_channels)
 
     def apply_to_volumes(
         self,
-        volumes: np.ndarray,
+        volumes: VolumeType,
         low_y: float | np.ndarray,
         high_y: float | np.ndarray,
         num_channels: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         return fpixel.move_tone_curve(volumes, low_y, high_y, num_channels)
 
     def get_params_dependent_on_data(
@@ -1647,12 +1648,12 @@ class HueSaturationValue(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         hue_shift: int,
         sat_shift: int,
         val_shift: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "HueSaturationValue transformation expects 1-channel or 3-channel images."
             raise TypeError(msg)
@@ -1853,16 +1854,16 @@ class Posterize(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         num_bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.posterize(img, num_bits)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
     def get_params(self) -> dict[str, Any]:
@@ -2121,11 +2122,11 @@ class RandomBrightnessContrast(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         alpha: float,
         beta: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         max_value = MAX_VALUES_BY_DTYPE[img.dtype]
         # Scale beta according to brightness_by_max setting
         beta = beta * max_value if self.brightness_by_max else beta * np.mean(img)
@@ -2140,10 +2141,10 @@ class RandomBrightnessContrast(ImageOnlyTransform):
 
         return albucore.multiply_add(img, alpha, beta, inplace=False)
 
-    def apply_to_images(self, images: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self.apply(images, *args, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self.apply(volumes, *args, **params)
 
     def get_params_dependent_on_data(
@@ -2238,16 +2239,16 @@ class GaussNoise(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         noise_map: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.add_noise(img, noise_map)
 
-    def apply_to_images(self, images: np.ndarray, noise_map: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, noise_map: np.ndarray, **params: Any) -> ImageType:
         return fpixel.add_noise(images, noise_map)
 
-    def apply_to_volumes(self, volumes: np.ndarray, noise_map: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, noise_map: np.ndarray, **params: Any) -> VolumeType:
         return fpixel.add_noise(volumes, noise_map)
 
     def get_params_dependent_on_data(
@@ -2347,12 +2348,12 @@ class ISONoise(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         color_shift: float,
         intensity: float,
         random_seed: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         non_rgb_error(img)
         return fpixel.iso_noise(
             img,
@@ -2494,20 +2495,20 @@ class ChannelShuffle(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         channels_shuffled: list[int] | None,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if channels_shuffled is None:
             return img
         return fpixel.channel_shuffle(img, channels_shuffled)
 
-    def apply_to_images(self, images: np.ndarray, channels_shuffled: list[int] | None, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, channels_shuffled: list[int] | None, **params: Any) -> ImageType:
         if channels_shuffled is None:
             return images
         return fpixel.volume_channel_shuffle(images, channels_shuffled)
 
-    def apply_to_volumes(self, volumes: np.ndarray, channels_shuffled: list[int] | None, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, channels_shuffled: list[int] | None, **params: Any) -> VolumeType:
         if channels_shuffled is None:
             return volumes
         return fpixel.volumes_channel_shuffle(volumes, channels_shuffled)
@@ -2567,10 +2568,10 @@ class InvertImg(ImageOnlyTransform):
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return fpixel.invert(img)
 
-    def apply_to_images(self, images: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self.apply(images, *args, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self.apply(volumes, *args, **params)
 
 
@@ -2660,10 +2661,10 @@ class RandomGamma(ImageOnlyTransform):
     def apply(self, img: ImageType, gamma: float, **params: Any) -> ImageType:
         return fpixel.gamma_transform(img, gamma=gamma)
 
-    def apply_to_volumes(self, volumes: np.ndarray, gamma: float, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, gamma: float, **params: Any) -> VolumeType:
         return self.apply(volumes, gamma=gamma)
 
-    def apply_to_images(self, images: np.ndarray, gamma: float, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, gamma: float, **params: Any) -> ImageType:
         return self.apply(images, gamma=gamma)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
@@ -2850,7 +2851,7 @@ class ToGray(ImageOnlyTransform):
 
         return fpixel.to_gray(img, self.num_output_channels, self.method)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         # Check if images are already grayscale by checking number of channels
         if images.shape[-1] == 1:
             warnings.warn("The image is already gray.", stacklevel=2)
@@ -2858,7 +2859,7 @@ class ToGray(ImageOnlyTransform):
 
         return fpixel.to_gray(images, self.num_output_channels, self.method)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         # Check if volumes are already grayscale by checking number of channels
         if volumes.shape[-1] == 1:
             warnings.warn("The volumes are already gray.", stacklevel=2)
@@ -2928,10 +2929,10 @@ class ToRGB(ImageOnlyTransform):
             num_output_channels=self.num_output_channels,
         )
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
 
@@ -3022,10 +3023,10 @@ class ToSepia(ImageOnlyTransform):
             raise TypeError(msg)
         return fpixel.linear_transformation_rgb(img, self.sepia_transformation_matrix)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
 
@@ -3233,13 +3234,13 @@ class MultiplicativeNoise(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         multiplier: float | np.ndarray,
         **kwargs: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return multiply(img, multiplier)
 
-    def apply_to_images(self, images: np.ndarray, multiplier: float | np.ndarray, **kwargs: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, multiplier: float | np.ndarray, **kwargs: Any) -> ImageType:
         return self.apply(images, multiplier, **kwargs)
 
     def get_params_dependent_on_data(
@@ -3332,10 +3333,10 @@ class FancyPCA(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         alpha_vector: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.fancy_pca(img, alpha_vector)
 
     def get_params_dependent_on_data(
@@ -3503,14 +3504,14 @@ class ColorJitter(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         brightness: float,
         contrast: float,
         saturation: float,
         hue: float,
         order: list[int],
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "ColorJitter transformation expects 1-channel or 3-channel images."
             raise TypeError(msg)
@@ -3662,7 +3663,7 @@ class Sharpen(ImageOnlyTransform):
     def __generate_sharpening_matrix(
         alpha: np.ndarray,
         lightness: np.ndarray,
-    ) -> np.ndarray:
+    ) -> ImageType:
         matrix_nochange = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
         matrix_effect = np.array(
             [[-1, -1, -1], [-1, 8 + lightness, -1], [-1, -1, -1]],
@@ -3688,11 +3689,11 @@ class Sharpen(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         alpha: float,
         sharpening_matrix: np.ndarray | None,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if self.method == "kernel":
             return fpixel.convolve(img, sharpening_matrix)
         return fpixel.sharpen_gaussian(img, alpha, self.kernel_size, self.sigma)
@@ -3768,7 +3769,7 @@ class Emboss(ImageOnlyTransform):
     def __generate_emboss_matrix(
         alpha_sample: np.ndarray,
         strength_sample: np.ndarray,
-    ) -> np.ndarray:
+    ) -> ImageType:
         matrix_nochange = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
         matrix_effect = np.array(
             [
@@ -3791,10 +3792,10 @@ class Emboss(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         emboss_matrix: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.convolve(img, emboss_matrix)
 
 
@@ -3934,11 +3935,11 @@ class Superpixels(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         replace_samples: Sequence[bool],
         n_segments: int,
         **kwargs: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.superpixels(
             img,
             n_segments,
@@ -4186,12 +4187,12 @@ class UnsharpMask(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         ksize: int,
         sigma: int,
         alpha: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.unsharp_mask(
             img,
             ksize,
@@ -4360,9 +4361,9 @@ class Spatter(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         **params: dict[str, Any],
-    ) -> np.ndarray:
+    ) -> ImageType:
         non_rgb_error(img)
 
         if params["mode"] == "rain":
@@ -4538,13 +4539,13 @@ class ChromaticAberration(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         primary_distortion_red: float,
         secondary_distortion_red: float,
         primary_distortion_blue: float,
         secondary_distortion_blue: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         non_rgb_error(img)
         return fpixel.chromatic_aberration(
             img,
@@ -4776,11 +4777,11 @@ class PlanckianJitter(ImageOnlyTransform):
         non_rgb_error(img)
         return fpixel.planckian_jitter(img, temperature, mode=self.mode)
 
-    def apply_to_images(self, images: np.ndarray, temperature: int, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, temperature: int, **params: Any) -> ImageType:
         non_rgb_error(images)
         return self.apply(images, temperature, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, temperature: int, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, temperature: int, **params: Any) -> VolumeType:
         non_rgb_error(volumes)
         return self.apply(volumes, temperature, **params)
 
@@ -4906,11 +4907,11 @@ class ShotNoise(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         scale: float,
         random_seed: int,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.shot_noise(img, scale, np.random.default_rng(random_seed))
 
     def get_params(self) -> dict[str, Any]:
@@ -5146,16 +5147,16 @@ class AdditiveNoise(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         noise_map: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.add_noise(img, noise_map)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
     def get_params_dependent_on_data(
@@ -5445,17 +5446,17 @@ class SaltAndPepper(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         salt_mask: np.ndarray,
         pepper_mask: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.apply_salt_and_pepper(img, salt_mask, pepper_mask)
 
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
 
@@ -5621,12 +5622,12 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         brightness_factor: float,
         contrast_factor: float,
         plasma_pattern: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.apply_plasma_brightness_contrast(
             img,
             brightness_factor,
@@ -5635,11 +5636,11 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         )
 
     @batch_transform("spatial")
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
     @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
 
@@ -5780,19 +5781,19 @@ class PlasmaShadow(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         intensity: float,
         plasma_pattern: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.apply_plasma_shadow(img, intensity, plasma_pattern)
 
     @batch_transform("spatial")
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
     @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
 
@@ -6095,11 +6096,11 @@ class AutoContrast(ImageOnlyTransform):
         return fpixel.auto_contrast(img, self.cutoff, self.ignore, self.method)
 
     @batch_transform("channel")
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
     @batch_transform("channel")
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
 
@@ -6305,7 +6306,7 @@ class HEStain(ImageOnlyTransform):
             "light",
         ]
 
-    def _get_stain_matrix(self, img: np.ndarray) -> np.ndarray:
+    def _get_stain_matrix(self, img: ImageType) -> np.ndarray:
         """Get stain matrix based on selected method."""
         if self.method == "preset" and self.preset is not None:
             return fpixel.STAIN_MATRICES[self.preset]
@@ -6318,12 +6319,12 @@ class HEStain(ImageOnlyTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         stain_matrix: np.ndarray,
         scale_factors: np.ndarray,
         shift_values: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         non_rgb_error(img)
         return fpixel.apply_he_stain_augmentation(
             img=img,
@@ -6334,11 +6335,11 @@ class HEStain(ImageOnlyTransform):
         )
 
     @batch_transform("channel")
-    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
     @batch_transform("channel")
-    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:

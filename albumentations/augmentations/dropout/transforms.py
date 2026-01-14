@@ -133,7 +133,7 @@ class BaseDropout(DualTransform):
                 raise ValueError("Inpainting works only for 1 or 3 channel images")
         return cutout(img, holes, self.fill, np.random.default_rng(seed))
 
-    def apply_to_images(self, images: np.ndarray, holes: np.ndarray, seed: int, **params: Any) -> np.ndarray:
+    def apply_to_images(self, images: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:
             return images
         if self.fill in {"inpaint_telea", "inpaint_ns"}:
@@ -148,7 +148,7 @@ class BaseDropout(DualTransform):
         # We can reuse the same logic
         return self.apply_to_images(volume, holes, seed, **params)
 
-    def apply_to_volumes(self, volumes: np.ndarray, holes: np.ndarray, seed: int, **params: Any) -> np.ndarray:
+    def apply_to_volumes(self, volumes: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
         if holes.size == 0:
             return volumes
         if self.fill in {"inpaint_telea", "inpaint_ns"}:
@@ -157,17 +157,17 @@ class BaseDropout(DualTransform):
                 raise ValueError("Inpainting works only for 1 or 3 channel images")
         return cutout_on_volumes(volumes, holes, self.fill, np.random.default_rng(seed))
 
-    def apply_to_mask3d(self, mask: np.ndarray, holes: np.ndarray, seed: int, **params: Any) -> np.ndarray:
+    def apply_to_mask3d(self, mask: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
         if self.fill_mask is None or holes.size == 0:
             return mask
         return cutout_on_volume(mask, holes, self.fill_mask, np.random.default_rng(seed))
 
-    def apply_to_masks3d(self, mask: np.ndarray, holes: np.ndarray, seed: int, **params: Any) -> np.ndarray:
+    def apply_to_masks3d(self, mask: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
         if self.fill_mask is None or holes.size == 0:
             return mask
         return cutout_on_volumes(mask, holes, self.fill_mask, np.random.default_rng(seed))
 
-    def apply_to_mask(self, mask: np.ndarray, holes: np.ndarray, seed: int, **params: Any) -> np.ndarray:
+    def apply_to_mask(self, mask: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if self.fill_mask is None or holes.size == 0:
             return mask
         return cutout(mask, holes, self.fill_mask, np.random.default_rng(seed))
@@ -295,29 +295,29 @@ class PixelDropout(DualTransform):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         drop_mask: np.ndarray,
         drop_values: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fpixel.pixel_dropout(img, drop_mask, drop_values)
 
     def apply_to_images(
         self,
-        images: np.ndarray,
+        images: ImageType,
         drop_mask: np.ndarray,
         drop_values: np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return self.apply(images, drop_mask, drop_values, **params)
 
     def apply_to_mask(
         self,
-        mask: np.ndarray,
+        mask: ImageType,
         mask_drop_mask: np.ndarray,
         mask_drop_values: float | np.ndarray,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         if self.mask_drop_value is None:
             return mask
 

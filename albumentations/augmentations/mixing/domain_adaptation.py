@@ -101,10 +101,10 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         ...
         ...     def apply(
         ...         self,
-        ...         img: np.ndarray,
+        ...         img: ImageType,
         ...         target_image: np.ndarray = None,
         ...         **params
-        ...     ) -> np.ndarray:
+        ...     ) -> ImageType:
         ...         if target_image is None:
         ...             return img
         ...
@@ -156,7 +156,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
     def targets_as_params(self) -> list[str]:
         return [self.metadata_key]
 
-    def _get_reference_image(self, data: dict[str, Any]) -> np.ndarray:
+    def _get_reference_image(self, data: dict[str, Any]) -> ImageType:
         """Retrieves the reference image from metadata."""
         metadata_images = data.get(self.metadata_key)
 
@@ -299,11 +299,11 @@ class HistogramMatching(BaseDomainAdaptation):
 
     def apply(
         self,
-        img: np.ndarray,
-        reference_image: np.ndarray,
+        img: ImageType,
+        reference_image: ImageType,
         blend_ratio: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return apply_histogram(img, reference_image, blend_ratio)
 
 
@@ -475,11 +475,11 @@ class FDA(BaseDomainAdaptation):
 
     def apply(
         self,
-        img: np.ndarray,
+        img: ImageType,
         target_image: np.ndarray,
         beta: float,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> ImageType:
         return fourier_domain_adaptation(img, target_image, beta)
 
 
@@ -646,7 +646,7 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
             "blend_ratio": self.py_random.uniform(*self.blend_ratio),
         }
 
-    def apply(self, img: ImageType, reference_image: np.ndarray, blend_ratio: float, **params: Any) -> ImageType:
+    def apply(self, img: ImageType, reference_image: ImageType, blend_ratio: float, **params: Any) -> ImageType:
         return adapt_pixel_distribution(
             img,
             ref=reference_image,

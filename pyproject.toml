@@ -310,6 +310,24 @@ test-framework = "pytest"
 ignore-paths = [  ]
 formatter-cmds = [ "ruff check --exit-zero --fix $file", "ruff format $file" ]
 
+[tool.coverage.run]
+source = ["albumentations"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
 [tool.google_docstring_parser]
 paths = [ "albumentations", "tools" ] # Directories or files to scan
 require_param_types = true            # Require parameter types in docstrings

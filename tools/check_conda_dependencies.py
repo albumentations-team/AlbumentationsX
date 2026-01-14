@@ -63,9 +63,16 @@ def versions_match(version1: str, version2: str) -> bool:
     if op1 != op2:
         return False
 
-    # Normalize versions by removing trailing .0
-    ver1_normalized = ver1.rstrip(".0") or "0"
-    ver2_normalized = ver2.rstrip(".0") or "0"
+    # Normalize versions by removing trailing .0 segments
+    def normalize_version(ver: str) -> str:
+        parts = ver.split(".")
+        # Remove trailing zeros
+        while len(parts) > 1 and parts[-1] == "0":
+            parts.pop()
+        return ".".join(parts)
+
+    ver1_normalized = normalize_version(ver1)
+    ver2_normalized = normalize_version(ver2)
 
     return ver1_normalized == ver2_normalized
 

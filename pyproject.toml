@@ -6,7 +6,7 @@ requires = [ "setuptools>=45", "wheel" ]
 [project]
 name = "albumentationsx"
 
-version = "2.0.13"
+version = "2.0.14"
 
 description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volumes, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows."
 readme = "README.md"
@@ -124,23 +124,26 @@ classifiers = [
 ]
 
 dependencies = [
-  "albucore==0.0.34",
+  "albucore==0.0.35",
   "numpy>=1.24.4",
   "pydantic>=2.12.4",
   "pyyaml",
   "scipy>=1.10",
 ]
 
-optional-dependencies.contrib = [ "opencv-contrib-python>=4.9.0.80" ]
-optional-dependencies.contrib-headless = [ "opencv-contrib-python-headless>=4.9.0.80" ]
-optional-dependencies.gui = [ "opencv-python>=4.9.0.80" ]
-optional-dependencies.headless = [ "opencv-python-headless>=4.9.0.80" ]
-optional-dependencies.hub = [ "huggingface-hub" ]
-optional-dependencies.pillow = [ "pillow" ]
-optional-dependencies.pytorch = [ "torch" ]
-optional-dependencies.pyvips = [ "pyvips[binary]" ]
-optional-dependencies.text = [ "pillow" ]
-urls.Homepage = "https://albumentations.ai"
+[project.optional-dependencies]
+contrib = ["opencv-contrib-python>=4.9.0.80"]
+contrib-headless = ["opencv-contrib-python-headless>=4.9.0.80"]
+gui = ["opencv-python>=4.9.0.80"]
+headless = ["opencv-python-headless>=4.9.0.80"]
+hub = ["huggingface-hub"]
+pillow = ["pillow"]
+pytorch = ["torch"]
+pyvips = ["pyvips[binary]"]
+text = ["pillow"]
+
+[project.urls]
+Homepage = "https://albumentations.ai"
 
 [tool.setuptools]
 packages = { find = { include = [

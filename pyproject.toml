@@ -124,7 +124,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "albucore==0.0.35",
+  "albucore==0.0.36",
   "numpy>=1.24.4",
   "pydantic>=2.12.4",
   "pyyaml",
@@ -158,7 +158,7 @@ packages = { find = { include = [
   ".cursor",
 ] } }
 
-package-data = { albumentations = [ "*.txt", "*.md" ] }
+package-data = { albumentations = [ "*.txt", "*.md", "py.typed" ] }
 
 [tool.setuptools.exclude-package-data]
 "*" = [ "tests*", "tools*", "benchmark*", "conda.recipe*", "docs*", ".github*", ".cursor" ]

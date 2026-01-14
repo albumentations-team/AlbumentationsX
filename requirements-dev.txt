@@ -1,7 +1,8 @@
 deepdiff>=8.0.1
 eval-type-backport
-pre_commit>=3.5.0
-pytest>=8.3.3
+opencv-python-headless>=4.9.0.80
+pre_commit>=4.5.1
+pytest>=9.0.2
 pytest_cov>=5.0.0
 pytest_mock>=3.14.0
 pytz

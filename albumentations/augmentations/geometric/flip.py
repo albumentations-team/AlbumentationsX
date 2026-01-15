@@ -420,7 +420,7 @@ class D4(DualTransform):
                 return np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype)
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return mask
-        return self.apply(mask, group_element, **params)
+        return self.apply(mask, group_element)
 
     def apply_to_masks(
         self,
@@ -436,7 +436,7 @@ class D4(DualTransform):
                 return np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype)
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return masks
-        return self.apply_to_images(masks, group_element, **params)
+        return self.apply_to_images(masks, group_element)
 
     def apply_to_images(
         self,
@@ -471,7 +471,7 @@ class D4(DualTransform):
                 )
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return mask3d
-        return self.apply_to_images(mask3d, group_element, **params)
+        return self.apply_to_images(mask3d, group_element)
 
     def apply_to_masks3d(
         self,
@@ -490,7 +490,7 @@ class D4(DualTransform):
                 )
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return masks3d
-        return self.apply_to_volumes(masks3d, group_element, **params)
+        return self.apply_to_volumes(masks3d, group_element)
 
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
         return {

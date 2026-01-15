@@ -702,7 +702,7 @@ class DualTransform(BasicTransform):
     def apply_to_masks(self, masks: ImageType, *args: Any, **params: Any) -> ImageType:
         if masks.size == 0:
             return masks
-        return np.stack([self.apply_to_mask(mask, *args, **params) for mask in masks])
+        return np.stack([self.apply_to_mask(mask, **params) for mask in masks])
 
     @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:

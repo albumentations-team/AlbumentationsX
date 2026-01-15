@@ -1228,7 +1228,7 @@ class GridElasticDeform(DualTransform):
         self.mask_interpolation = mask_interpolation
 
     @staticmethod
-    def _generate_mesh(polygons: np.ndarray, dimensions: np.ndarray) -> ImageType:
+    def _generate_mesh(polygons: np.ndarray, dimensions: np.ndarray) -> np.ndarray:
         return np.hstack((dimensions.reshape(-1, 4), polygons))
 
     def get_params_dependent_on_data(

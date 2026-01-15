@@ -3663,7 +3663,7 @@ class Sharpen(ImageOnlyTransform):
     def __generate_sharpening_matrix(
         alpha: np.ndarray,
         lightness: np.ndarray,
-    ) -> ImageType:
+    ) -> np.ndarray:
         matrix_nochange = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
         matrix_effect = np.array(
             [[-1, -1, -1], [-1, 8 + lightness, -1], [-1, -1, -1]],
@@ -3769,7 +3769,7 @@ class Emboss(ImageOnlyTransform):
     def __generate_emboss_matrix(
         alpha_sample: np.ndarray,
         strength_sample: np.ndarray,
-    ) -> ImageType:
+    ) -> np.ndarray:
         matrix_nochange = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
         matrix_effect = np.array(
             [

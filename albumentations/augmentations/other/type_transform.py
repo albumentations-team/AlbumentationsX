@@ -107,7 +107,7 @@ class ToFloat(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageFloat32:
         return to_float(images, self.max_value)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> ImageFloat32:
         return self.apply_to_images(volumes, **params)
 
 

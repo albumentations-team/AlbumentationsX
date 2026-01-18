@@ -699,7 +699,7 @@ class BaseCropAndPad3D(Transform3D):
         crop_coords: tuple[int, int, int, int, int, int],
         pad_params: dict[str, int] | None,
         **params: Any,
-    ) -> np.ndarray:
+    ) -> VolumeType:
         """Apply cropping and padding to a 3D mask.
 
         Args:
@@ -1402,12 +1402,12 @@ class CubicSymmetry(Transform3D):
         """Apply cubic symmetry transformation to a 3D volume.
 
         Args:
-            volume (np.ndarray): Input volume with shape (depth, height, width) or (depth, height, width, channels)
+            volume (VolumeType): Input volume with shape (depth, height, width) or (depth, height, width, channels)
             index (int): Index of the transformation to apply (0-47)
             **params (Any): Additional parameters
 
         Returns:
-            np.ndarray: Transformed volume with same shape as input
+            VolumeType: Transformed volume with same shape as input
 
         """
         return f3d.transform_cube(volume, index)

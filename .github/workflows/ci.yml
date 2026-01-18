@@ -27,17 +27,17 @@ jobs:
     - name: Install PyTorch
       run: |
         if [ "${{ matrix.operating-system }}" = "macos-latest" ]; then
-          uv pip install --system torch==2.7.1 torchvision==0.22.1
+          uv pip install torch==2.7.1 torchvision==0.22.1
         else
-          uv pip install --system torch==2.7.1+cpu torchvision==0.22.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+          uv pip install torch==2.7.1+cpu torchvision==0.22.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
         fi
       shell: bash
 
     - name: Install all dependencies
       run: |
-        uv pip install --system wheel
-        uv pip install --system -r requirements-dev.txt
-        uv pip install --system .
+        uv pip install wheel
+        uv pip install -r requirements-dev.txt
+        uv pip install .
 
     - name: Run PyTest with coverage
       run: pytest --cov --cov-branch --cov-report=xml
@@ -68,8 +68,8 @@ jobs:
 
     - name: Install all requirements
       run: |
-        uv pip install --system -r requirements-dev.txt
-        uv pip install --system .
+        uv pip install -r requirements-dev.txt
+        uv pip install .
 
     - name: Run checks
       run: pre-commit run --files $(find albumentations -type f)
@@ -91,7 +91,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install all requirements
       run: |
-        uv pip install --system opencv-python-headless>=4.9.0.80 requests
-        uv pip install --system .
+        uv pip install opencv-python-headless>=4.9.0.80 requests
+        uv pip install .
     - name: Run checks for documentation
       run: python -m tools.make_transforms_docs check README.md

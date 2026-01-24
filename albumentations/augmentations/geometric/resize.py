@@ -322,7 +322,7 @@ class MaxSizeTransform(DualTransform):
     _targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        max_size: int | list[int] | None
+        max_size: int | Sequence[int] | None
         max_size_hw: tuple[int | None, int | None] | None
         area_for_downscale: Literal["image", "image_mask"] | None
         interpolation: Literal[

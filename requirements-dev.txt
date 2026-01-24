@@ -1,3 +1,4 @@
+albu-spec>=0.0.2
 deepdiff>=8.0.1
 eval-type-backport
 opencv-python-headless>=4.9.0.80

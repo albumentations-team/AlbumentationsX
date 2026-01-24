@@ -606,7 +606,7 @@ class SafeRotate(Affine):
             cv2.INTER_LANCZOS4,
         ] = cv2.INTER_NEAREST,
         fill: tuple[float, ...] | float = 0,
-        fill_mask: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):
         super().__init__(

@@ -527,7 +527,7 @@ class Affine(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         scale: tuple[float, float] | float | dict[str, float | tuple[float, float]]
         translate_percent: tuple[float, float] | float | dict[str, float | tuple[float, float]] | None
-        translate_px: tuple[float, float] | float | dict[str, float | tuple[float, float]] | None
+        translate_px: tuple[int, int] | int | dict[str, float | tuple[float, float]] | None
         rotate: tuple[float, float] | float
         shear: tuple[float, float] | float | dict[str, float | tuple[float, float]]
         interpolation: Literal[
@@ -546,7 +546,7 @@ class Affine(DualTransform):
         ]
 
         fill: tuple[float, ...] | float
-        fill_mask: tuple[float, ...] | float
+        fill_mask: tuple[float, ...] | float | None
         border_mode: Literal[
             cv2.BORDER_CONSTANT,
             cv2.BORDER_REPLICATE,
@@ -666,7 +666,7 @@ class Affine(DualTransform):
             cv2.BORDER_REFLECT_101,
         ] = cv2.BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
-        fill_mask: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):
         super().__init__(p=p)
@@ -1044,7 +1044,13 @@ class ShiftScaleRotate(Affine):
             cv2.INTER_AREA,
             cv2.INTER_LANCZOS4,
         ] = cv2.INTER_LINEAR,
-        border_mode: int = cv2.BORDER_CONSTANT,
+        border_mode: Literal[
+            cv2.BORDER_CONSTANT,
+            cv2.BORDER_REPLICATE,
+            cv2.BORDER_REFLECT,
+            cv2.BORDER_WRAP,
+            cv2.BORDER_REFLECT_101,
+        ] = cv2.BORDER_CONSTANT,
         shift_limit_x: tuple[float, float] | float | None = None,
         shift_limit_y: tuple[float, float] | float | None = None,
         rotate_method: Literal["largest_box", "ellipse"] = "largest_box",

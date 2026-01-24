@@ -105,10 +105,10 @@ PercentType = (
     | tuple[float, float]
     | tuple[float, float, float, float]
     | tuple[
-        float | tuple[float, float] | list[float],
-        float | tuple[float, float] | list[float],
-        float | tuple[float, float] | list[float],
-        float | tuple[float, float] | list[float],
+        float | tuple[float, float],
+        float | tuple[float, float],
+        float | tuple[float, float],
+        float | tuple[float, float],
     ]
 )
 
@@ -118,10 +118,10 @@ PxType = (
     | tuple[int, int]
     | tuple[int, int, int, int]
     | tuple[
-        int | tuple[int, int] | list[int],
-        int | tuple[int, int] | list[int],
-        int | tuple[int, int] | list[int],
-        int | tuple[int, int] | list[int],
+        int | tuple[int, int],
+        int | tuple[int, int],
+        int | tuple[int, int],
+        int | tuple[int, int],
     ]
 )
 

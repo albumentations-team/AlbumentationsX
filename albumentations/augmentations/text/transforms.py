@@ -75,7 +75,7 @@ class TextImage(ImageOnlyTransform):
     class InitSchema(BaseTransformInitSchema):
         font_path: str | Path
         stopwords: tuple[str, ...]
-        augmentations: tuple[str | None, ...]
+        augmentations: tuple[Literal["insertion", "swap", "deletion"] | None, ...]
         fraction_range: Annotated[
             tuple[float, float],
             AfterValidator(nondecreasing),

@@ -19,7 +19,6 @@ from typing_extensions import Self
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes, union_of_bboxes
 from albumentations.core.pydantic import (
-    OnePlusIntRangeType,
     ZeroOneRangeType,
     check_range_bounds,
     nondecreasing,
@@ -1772,7 +1771,11 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
             cv2.INTER_LANCZOS4,
             cv2.INTER_LINEAR_EXACT,
         ]
-        min_max_height: OnePlusIntRangeType
+        min_max_height: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1, None)),
+            AfterValidator(nondecreasing),
+        ]
         w2h_ratio: Annotated[float, Field(gt=0)]
         size: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
         area_for_downscale: Literal["image", "image_mask"] | None
@@ -2526,7 +2529,7 @@ class CropAndPad(DualTransform):
             - If int: crop/pad all sides by this value.
             - If tuple of 2 ints: crop/pad by (top/bottom, left/right).
             - If tuple of 4 ints: crop/pad by (top, right, bottom, left).
-            - Each int can also be a tuple of 2 ints for a range, or a list of ints for discrete choices.
+            - Each int can also be a tuple of 2 ints for a range.
             Default: None.
 
         percent (float, tuple of float, tuple of tuples of float, or None):
@@ -2535,7 +2538,7 @@ class CropAndPad(DualTransform):
             - If float: crop/pad all sides by this fraction.
             - If tuple of 2 floats: crop/pad by (top/bottom, left/right) fractions.
             - If tuple of 4 floats: crop/pad by (top, right, bottom, left) fractions.
-            - Each float can also be a tuple of 2 floats for a range, or a list of floats for discrete choices.
+            - Each float can also be a tuple of 2 floats for a range.
             Default: None.
 
         border_mode (int):
@@ -2723,8 +2726,8 @@ class CropAndPad(DualTransform):
 
     def __init__(
         self,
-        px: int | list[int] | None = None,
-        percent: float | list[float] | None = None,
+        px: PxType | None = None,
+        percent: PercentType | None = None,
         keep_size: bool = True,
         sample_independently: bool = True,
         interpolation: Literal[
@@ -2925,11 +2928,9 @@ class CropAndPad(DualTransform):
             px = self.py_random.randrange(*self.px)
             return [px] * 4
         if isinstance(self.px[0], int):
-            return self.px
-        if len(self.px[0]) == PAIR:
-            return [self.py_random.randrange(*i) for i in self.px]
-
-        return [self.py_random.choice(i) for i in self.px]
+            return list(cast("tuple[int, int, int, int]", self.px))
+        # len(self.px[0]) == PAIR case - each element is a range tuple
+        return [self.py_random.randrange(*cast("tuple[int, int]", i)) for i in self.px]
 
     def _get_percent_params(self) -> list[float]:
         if self.percent is None:
@@ -2945,11 +2946,10 @@ class CropAndPad(DualTransform):
                 px = self.py_random.uniform(*self.percent)
                 params = [px] * 4
         elif isinstance(self.percent[0], (int, float)):
-            params = self.percent
-        elif len(self.percent[0]) == PAIR:
-            params = [self.py_random.uniform(*i) for i in self.percent]
+            params = list(cast("tuple[float, float, float, float]", self.percent))
         else:
-            params = [self.py_random.choice(i) for i in self.percent]
+            # len(self.percent[0]) == PAIR case - each element is a range tuple
+            params = [self.py_random.uniform(*cast("tuple[float, float]", i)) for i in self.percent]
 
         return params  # params = [top, right, bottom, left]
 

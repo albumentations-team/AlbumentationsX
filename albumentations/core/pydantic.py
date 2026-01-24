@@ -223,7 +223,7 @@ OnePlusFloatRangeType = Annotated[
     AfterValidator(check_range_bounds(1, None)),
 ]
 OnePlusIntRangeType = Annotated[
-    tuple[float, float] | float,
+    tuple[int, int] | int,
     AfterValidator(convert_to_1plus_range),
     AfterValidator(check_range_bounds(1, None)),
     AfterValidator(float2int),

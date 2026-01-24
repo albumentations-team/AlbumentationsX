@@ -3222,13 +3222,13 @@ class MultiplicativeNoise(ImageOnlyTransform):
 
     def __init__(
         self,
-        multiplier: tuple[float, float] | float = (0.9, 1.1),
+        multiplier: tuple[float, float] = (0.9, 1.1),
         per_channel: bool = False,
         elementwise: bool = False,
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.multiplier = cast("tuple[float, float]", multiplier)
+        self.multiplier = multiplier
         self.elementwise = elementwise
         self.per_channel = per_channel
 
@@ -4347,7 +4347,7 @@ class Spatter(ImageOnlyTransform):
         cutout_threshold: tuple[float, float] | float = (0.68, 0.68),
         intensity: tuple[float, float] | float = (0.6, 0.6),
         mode: Literal["rain", "mud"] = "rain",
-        color: tuple[int, ...] | None = None,
+        color: Sequence[int] | None = None,
         p: float = 0.5,
     ):
         super().__init__(p=p)

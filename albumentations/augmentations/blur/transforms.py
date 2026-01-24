@@ -1177,7 +1177,7 @@ class AdvancedBlur(ImageOnlyTransform):
         blur_limit: tuple[int, int] | int = (3, 7),
         sigma_x_limit: tuple[float, float] | float = (0.2, 1.0),
         sigma_y_limit: tuple[float, float] | float = (0.2, 1.0),
-        rotate_limit: tuple[int, int] | int = (-90, 90),
+        rotate_limit: tuple[float, float] | float = (-90, 90),
         beta_limit: tuple[float, float] | float = (0.5, 8.0),
         noise_limit: tuple[float, float] | float = (0.9, 1.1),
         p: float = 0.5,

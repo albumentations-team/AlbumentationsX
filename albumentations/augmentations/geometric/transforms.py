@@ -527,7 +527,7 @@ class Affine(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         scale: tuple[float, float] | float | dict[str, float | tuple[float, float]]
         translate_percent: tuple[float, float] | float | dict[str, float | tuple[float, float]] | None
-        translate_px: tuple[int, int] | int | dict[str, float | tuple[float, float]] | None
+        translate_px: tuple[int, int] | int | dict[str, int | tuple[int, int]] | None
         rotate: tuple[float, float] | float
         shear: tuple[float, float] | float | dict[str, float | tuple[float, float]]
         interpolation: Literal[

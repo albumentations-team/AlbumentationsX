@@ -28,10 +28,9 @@ from tests.utils import get_transforms
 
 def get_transforms_with_init_schema():
     """Get all transforms that have InitSchema."""
-    transforms_with_schema = []
-    for transform_cls, params in get_transforms():
-        transforms_with_schema.append(transform_cls)
-    return transforms_with_schema
+    # Deduplicate transform classes while preserving order in case
+    # get_transforms() returns multiple parameter sets per transform.
+    return list(dict.fromkeys(transform_cls for transform_cls, _ in get_transforms()))
 
 
 @pytest.mark.parametrize("transform_class", get_transforms_with_init_schema())

@@ -6,6 +6,12 @@ on:
     paths-ignore:
       - '**.md'
       - 'benchmark/**'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'benchmark/**'
 
 jobs:
   test_and_lint:

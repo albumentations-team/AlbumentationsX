@@ -304,7 +304,7 @@ class BboxProcessor(DataProcessor):
 
             # Check DualTransforms
             if isinstance(transform, DualTransform):
-                supported_types = getattr(transform, "_supported_bbox_types", {"hbb"})
+                supported_types = getattr(transform, "_supported_bbox_types", frozenset({"hbb"}))
                 if "obb" not in supported_types:
                     unsupported.append(transform.__class__.__name__)
 

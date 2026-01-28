@@ -59,24 +59,15 @@ def test_obb_format_preservation(bbox_format: str, input_bbox: list, transform: 
 
 
 @pytest.mark.parametrize(
-    "transform,expected_transform",
+    "transform",
     [
-        pytest.param(
-            A.HorizontalFlip(p=1.0),
-            lambda bbox: [1 - bbox[2], bbox[1], 1 - bbox[0], bbox[3]],
-            id="HFlip"
-        ),
-        pytest.param(
-            A.VerticalFlip(p=1.0),
-            lambda bbox: [bbox[0], 1 - bbox[3], bbox[2], 1 - bbox[1]],
-            id="VFlip"
-        ),
+        pytest.param(A.HorizontalFlip(p=1.0), id="HFlip"),
+        pytest.param(A.VerticalFlip(p=1.0), id="VFlip"),
     ],
 )
 @pytest.mark.obb
 def test_obb_matches_hbb_for_axis_aligned_flips(
     transform: A.BasicTransform,
-    expected_transform: callable
 ) -> None:
     """Test that OBB (angle=0) gives same result as HBB for flips."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -225,7 +216,7 @@ def test_compose_validates_obb_support_at_init():
     """Test that Compose rejects unsupported transforms with OBB at __init__ time."""
     # Create a custom transform that doesn't support OBB
     class UnsupportedTransform(A.DualTransform):
-        _supported_bbox_types = {"hbb"}  # Explicitly only HBB
+        _supported_bbox_types = frozenset({"hbb"})  # Explicitly only HBB
 
         def apply(self, img, **params):
             return img
@@ -281,7 +272,7 @@ def test_no_runtime_obb_errors():
 def test_nested_compose_obb_validation():
     """Test that nested Compose also validates OBB support."""
     class UnsupportedTransform(A.DualTransform):
-        _supported_bbox_types = {"hbb"}
+        _supported_bbox_types = frozenset({"hbb"})
 
         def apply(self, img, **params):
             return img
@@ -307,7 +298,7 @@ def test_nested_compose_obb_validation():
 def test_deeply_nested_compose_obb_validation():
     """Test that deeply nested unsupported transforms are caught at Compose init."""
     class UnsupportedTransform(A.DualTransform):
-        _supported_bbox_types = {"hbb"}
+        _supported_bbox_types = frozenset({"hbb"})
 
         def apply(self, img, **params):
             return img
@@ -329,3 +320,57 @@ def test_deeply_nested_compose_obb_validation():
             ],
             bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb")
         )
+
+
+@pytest.mark.obb
+def test_obb_affine_filters_out_of_bounds_boxes() -> None:
+    """Test that OBB boxes going out of bounds during affine transforms are properly filtered.
+
+    This is a regression test for the bug where validate_bboxes was called with pixel dimensions
+    on normalized coordinates, causing boxes outside [0, 1] to not be filtered correctly.
+    """
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # Create a bbox that will be pushed far out of bounds by rotation
+    # When rotated 90 degrees with shift, this should go completely outside the image
+    bboxes = [[0.8, 0.8, 0.95, 0.95, 0.0]]  # OBB near bottom-right corner
+
+    transform = A.Compose([
+        A.Affine(
+            rotate=90,
+            translate_percent={"x": 0.5, "y": 0.5},  # Large shift to push bbox out
+            p=1.0
+        )
+    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+
+    result = transform(image=image, bboxes=bboxes)
+
+    # The bbox should be filtered out since it's outside the image bounds
+    # Before the fix, validate_bboxes was comparing normalized coords against pixel dimensions,
+    # so boxes with x_max > 1.0 weren't being filtered (since 1.0 < 100)
+    assert len(result["bboxes"]) == 0, "Out of bounds OBB should have been filtered"
+
+
+@pytest.mark.obb
+def test_obb_affine_preserves_in_bounds_boxes() -> None:
+    """Test that OBB boxes staying in bounds during affine transforms are preserved."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # Create a bbox in the center that will stay in bounds
+    bboxes = [[0.4, 0.4, 0.6, 0.6, 0.0]]  # OBB in center
+
+    transform = A.Compose([
+        A.Affine(rotate=45, p=1.0)
+    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+
+    result = transform(image=image, bboxes=bboxes)
+
+    # The bbox should be preserved since it stays in bounds
+    assert len(result["bboxes"]) == 1, "In-bounds OBB should have been preserved"
+
+    # Verify the bbox is still within [0, 1] range
+    bbox = result["bboxes"][0]
+    assert 0 <= bbox[0] <= 1, f"x_min {bbox[0]} out of bounds"
+    assert 0 <= bbox[1] <= 1, f"y_min {bbox[1]} out of bounds"
+    assert 0 <= bbox[2] <= 1, f"x_max {bbox[2]} out of bounds"
+    assert 0 <= bbox[3] <= 1, f"y_max {bbox[3]} out of bounds"

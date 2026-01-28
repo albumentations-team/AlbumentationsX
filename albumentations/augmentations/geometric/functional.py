@@ -1277,7 +1277,8 @@ def bboxes_affine(
         transformed_polygons[..., 0] /= output_shape[1]
         transformed_polygons[..., 1] /= output_shape[0]
         transformed_bboxes = polygons_to_obb(transformed_polygons, extra_fields=extras)
-        return validate_bboxes(transformed_bboxes, output_shape)
+        # transformed_bboxes are in normalized coordinates; validate against a virtual 1x1 image
+        return validate_bboxes(transformed_bboxes, (1, 1))
 
     bboxes = denormalize_bboxes(bboxes, image_shape)
 

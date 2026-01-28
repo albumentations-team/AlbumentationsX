@@ -18,6 +18,7 @@ from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.bbox_utils import (
     BBOX_OBB_MIN_COLUMNS,
     denormalize_bboxes,
+    normalize_bbox_angles_decorator,
     normalize_bboxes,
     obb_to_polygons,
     polygons_to_obb,
@@ -161,6 +162,8 @@ def _process_unclipped_obb_boxes(
         result_bboxes[unclipped_indices, 5:] = extras[unclipped_indices]
 
 
+@normalize_bbox_angles_decorator()
+@handle_empty_array("bboxes")
 def crop_bboxes_by_coords_obb(
     bboxes: np.ndarray,
     crop_coords: tuple[int, int, int, int],
@@ -192,9 +195,6 @@ def crop_bboxes_by_coords_obb(
         Boxes partially cropped get batch-refitted via cv2.minAreaRect.
 
     """
-    if not bboxes.size:
-        return bboxes
-
     # Extract extra fields if present (e.g., class labels)
     extras = bboxes[:, 5:] if bboxes.shape[1] > BBOX_OBB_MIN_COLUMNS else None
 
@@ -254,17 +254,13 @@ def crop_bboxes_by_coords_obb(
             result_bboxes,
         )
 
-    # Normalize angles for all boxes
-    from albumentations.core.bbox_utils import normalize_bbox_angles
-
-    return normalize_bbox_angles(result_bboxes)
+    return result_bboxes
 
 
 def crop_bboxes_by_coords(
     bboxes: np.ndarray,
     crop_coords: tuple[int, int, int, int],
     image_shape: tuple[int, int],
-    normalized_input: bool = True,
     bbox_type: str | None = None,
 ) -> np.ndarray:
     """Crop bounding boxes based on given crop coordinates.
@@ -273,24 +269,17 @@ def crop_bboxes_by_coords(
     Supports both HBB (axis-aligned) and OBB (oriented) bounding boxes.
 
     Args:
-        bboxes (np.ndarray): Array of bounding boxes with shape (N, 4+) where each row is
-                             [x_min, y_min, x_max, y_max, ...] for HBB or
+        bboxes (np.ndarray): Array of normalized bounding boxes (Albumentations format) with shape (N, 4+)
+                             where each row is [x_min, y_min, x_max, y_max, ...] for HBB or
                              [x_min, y_min, x_max, y_max, angle, ...] for OBB.
-                             The bounding box coordinates can be either normalized (in [0, 1])
-                             if normalized_input=True or absolute pixel values if normalized_input=False.
         crop_coords (tuple[int, int, int, int]): Crop coordinates (x_min, y_min, x_max, y_max)
                                                  in absolute pixel values.
         image_shape (tuple[int, int]): Original image shape (height, width).
-        normalized_input (bool): Whether input boxes are in normalized coordinates.
-                               If True, assumes input is normalized [0,1] and returns normalized coordinates.
-                               If False, assumes input is in absolute pixels and returns absolute coordinates.
-                               Default: True for backward compatibility.
         bbox_type (str | None): Type of bounding box - "hbb" or "obb". If None, infers from shape
                                 (5+ columns treated as OBB). Default: None.
 
     Returns:
-        np.ndarray: Array of cropped bounding boxes. Coordinates will be in the same format as input
-                   (normalized if normalized_input=True, absolute pixels if normalized_input=False).
+        np.ndarray: Array of cropped bounding boxes in normalized coordinates (Albumentations format).
 
     Note:
         Bounding boxes that fall completely outside the crop area will be removed.
@@ -307,23 +296,10 @@ def crop_bboxes_by_coords(
     is_obb = bbox_type == "obb"
 
     if is_obb:
-        # OBB path - always works with normalized coords
-        if not normalized_input:
-            # Convert to normalized for OBB processing
-            bboxes_norm = normalize_bboxes(bboxes.copy().astype(np.float32), image_shape)
-            result = crop_bboxes_by_coords_obb(bboxes_norm, crop_coords, image_shape)
-            # Convert back to pixels if needed
-            crop_height = crop_coords[3] - crop_coords[1]
-            crop_width = crop_coords[2] - crop_coords[0]
-            return denormalize_bboxes(result, (crop_height, crop_width))
         return crop_bboxes_by_coords_obb(bboxes, crop_coords, image_shape)
 
-    # HBB path - original logic
-    # Convert to absolute coordinates if needed
-    if normalized_input:
-        cropped_bboxes = denormalize_bboxes(bboxes.copy().astype(np.float32), image_shape)
-    else:
-        cropped_bboxes = bboxes.copy().astype(np.float32)
+    # HBB path - convert normalized to absolute, crop, then normalize back
+    cropped_bboxes = denormalize_bboxes(bboxes.copy().astype(np.float32), image_shape)
 
     x_min, y_min = crop_coords[:2]
 
@@ -336,8 +312,7 @@ def crop_bboxes_by_coords(
     crop_width = crop_coords[2] - crop_coords[0]
     crop_shape = (crop_height, crop_width)
 
-    # Return in same format as input
-    return normalize_bboxes(cropped_bboxes, crop_shape) if normalized_input else cropped_bboxes
+    return normalize_bboxes(cropped_bboxes, crop_shape)
 
 
 @handle_empty_array("keypoints")

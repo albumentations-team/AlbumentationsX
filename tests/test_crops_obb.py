@@ -5,12 +5,17 @@ This test file verifies:
 2. Correct handling of partially cropped OBBs (refitting via cv2.minAreaRect)
 3. Unchanged OBBs keep original angle/dimensions
 4. All crop transforms support OBB
+5. Helper functions for clipped/unclipped OBB processing
 """
 
 import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.augmentations.crops.functional import (
+    _process_clipped_obb_boxes,
+    _process_unclipped_obb_boxes,
+)
 
 
 @pytest.mark.parametrize(
@@ -361,3 +366,118 @@ def test_obb_crop_compose_validation() -> None:
             [UnsupportedTransform()],
             bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
         )
+
+
+@pytest.mark.obb
+def test_process_clipped_obb_boxes() -> None:
+    """Test _process_clipped_obb_boxes helper function."""
+    # Create clipped polygons (already normalized and clipped to crop boundaries)
+    # Simulate a box that was clipped at the crop edge
+    crop_width, crop_height = 80, 80
+
+    # Clipped polygon corners (normalized to crop region)
+    # This represents a box that hit the crop boundary
+    polygons_clipped = np.array([
+        [
+            [0.0, 0.5],   # Left edge (clipped)
+            [0.25, 0.25],
+            [0.5, 0.5],
+            [0.25, 0.75],
+        ],
+        [
+            [0.5, 0.5],
+            [0.75, 0.25],
+            [1.0, 0.5],   # Right edge (clipped)
+            [0.75, 0.75],
+        ],
+    ], dtype=np.float32)
+
+    # Test without extras
+    clipped_indices = np.array([0, 1])
+    result = _process_clipped_obb_boxes(
+        clipped_indices, polygons_clipped, crop_width, crop_height, extras=None
+    )
+
+    assert result.shape == (2, 5), f"Expected shape (2, 5), got {result.shape}"
+    assert result.shape[1] == 5, "Result should have 5 columns (OBB format)"
+
+    # Test with extras (e.g., class labels)
+    extras = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+    result_with_extras = _process_clipped_obb_boxes(
+        clipped_indices, polygons_clipped, crop_width, crop_height, extras=extras
+    )
+
+    assert result_with_extras.shape == (2, 7), f"Expected shape (2, 7), got {result_with_extras.shape}"
+    np.testing.assert_array_equal(result_with_extras[:, 5:], extras)
+
+
+@pytest.mark.obb
+def test_process_unclipped_obb_boxes() -> None:
+    """Test _process_unclipped_obb_boxes helper function (vectorized center shift)."""
+    # Original bboxes in normalized coordinates
+    bboxes = np.array([
+        [0.3, 0.3, 0.5, 0.5, 30.0],      # Box 1
+        [0.4, 0.4, 0.6, 0.6, 45.0],      # Box 2
+        [0.35, 0.45, 0.55, 0.65, -15.0], # Box 3
+    ], dtype=np.float32)
+
+    image_shape = (100, 100)
+    crop_coords = (20, 20, 80, 80)  # 60x60 crop
+    crop_width, crop_height = 60, 60
+
+    unclipped_indices = np.array([0, 1, 2])
+    result_bboxes = np.empty((3, 5), dtype=np.float32)
+
+    _process_unclipped_obb_boxes(
+        unclipped_indices, bboxes, image_shape, crop_coords,
+        crop_width, crop_height, extras=None, result_bboxes=result_bboxes
+    )
+
+    # Verify angles are preserved
+    np.testing.assert_array_almost_equal(result_bboxes[:, 4], bboxes[:, 4], decimal=6)
+
+    # Verify boxes were transformed (centers shifted relative to crop)
+    assert not np.allclose(result_bboxes[:, :4], bboxes[:, :4])
+
+    # Test with extras
+    extras = np.array([[1.0], [2.0], [3.0]], dtype=np.float32)
+    result_with_extras = np.empty((3, 6), dtype=np.float32)
+
+    bboxes_with_extras = np.column_stack([bboxes, extras])
+    _process_unclipped_obb_boxes(
+        unclipped_indices, bboxes_with_extras, image_shape, crop_coords,
+        crop_width, crop_height, extras=extras, result_bboxes=result_with_extras
+    )
+
+    # Verify extras are preserved
+    np.testing.assert_array_equal(result_with_extras[:, 5:], extras)
+
+
+@pytest.mark.obb
+def test_process_unclipped_obb_boxes_vectorized() -> None:
+    """Test that _process_unclipped_obb_boxes processes all boxes in one shot (no loops)."""
+    # Create many boxes to ensure vectorization
+    n_boxes = 100
+    bboxes = np.random.rand(n_boxes, 5).astype(np.float32)
+    bboxes[:, :4] = bboxes[:, :4] * 0.3 + 0.35  # Keep in center region [0.35, 0.65]
+    bboxes[:, 4] = (bboxes[:, 4] - 0.5) * 360   # Random angles [-180, 180]
+
+    image_shape = (200, 200)
+    crop_coords = (50, 50, 150, 150)
+    crop_width, crop_height = 100, 100
+
+    unclipped_indices = np.arange(n_boxes)
+    result_bboxes = np.empty((n_boxes, 5), dtype=np.float32)
+
+    # This should be fast since it's vectorized
+    _process_unclipped_obb_boxes(
+        unclipped_indices, bboxes, image_shape, crop_coords,
+        crop_width, crop_height, extras=None, result_bboxes=result_bboxes
+    )
+
+    # Verify all angles are preserved
+    np.testing.assert_array_almost_equal(result_bboxes[:, 4], bboxes[:, 4], decimal=6)
+
+    # Verify all boxes were processed
+    assert result_bboxes.shape == (n_boxes, 5)
+    assert not np.any(np.isnan(result_bboxes))

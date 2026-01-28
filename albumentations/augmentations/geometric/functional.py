@@ -48,7 +48,7 @@ from albumentations.core.bbox_utils import (
     denormalize_bboxes,
     mask_to_bboxes,
     masks_from_bboxes,
-    normalize_bbox_angles,
+    normalize_bbox_angles_decorator,
     normalize_bboxes,
     obb_to_polygons,
     polygons_to_obb,
@@ -82,6 +82,7 @@ def _split_obb_params(
     return center_x, center_y, width, height, angle, extras
 
 
+@normalize_bbox_angles_decorator()
 def _merge_obb_params(
     center_x: np.ndarray,
     center_y: np.ndarray,
@@ -97,7 +98,7 @@ def _merge_obb_params(
     obb = np.stack([x_min, y_min, x_max, y_max, angle], axis=1)
     if extras is not None:
         obb = np.concatenate([obb, extras], axis=1)
-    return normalize_bbox_angles(obb)
+    return obb
 
 
 ROT90_180_FACTOR = 2

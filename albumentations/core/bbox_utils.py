@@ -7,7 +7,7 @@ image augmentations. It forms the core functionality for all bounding box-relate
 in the albumentations library.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Literal
 
 import cv2
@@ -27,6 +27,7 @@ __all__ = [
     "denormalize_bboxes",
     "filter_bboxes",
     "normalize_bbox_angles",
+    "normalize_bbox_angles_decorator",
     "normalize_bboxes",
     "obb_to_polygons",
     "polygons_to_obb",
@@ -494,6 +495,39 @@ def _canonicalize_angles(angles: np.ndarray, angle_range: tuple[float, float]) -
     return np.remainder(angles - start_arr, span_arr) + start_arr
 
 
+def normalize_bbox_angles_decorator(
+    angle_range: tuple[float, float] = DEFAULT_BBOX_ANGLE_RANGE,
+) -> Callable[[Callable[..., np.ndarray]], Callable[..., np.ndarray]]:
+    """Decorator that normalizes bounding box angles in the return value.
+
+    Args:
+        angle_range (tuple[float, float]): Inclusive-exclusive range [start, end) to wrap angles into.
+
+    Returns:
+        Decorator function that wraps bbox-returning functions.
+
+    """
+
+    def decorator(func: Callable[..., np.ndarray]) -> Callable[..., np.ndarray]:
+        def wrapper(*args: Any, **kwargs: Any) -> np.ndarray:
+            bboxes = func(*args, **kwargs)
+
+            # Handle empty arrays
+            if not isinstance(bboxes, np.ndarray) or bboxes.size == 0:
+                return bboxes
+
+            if bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
+                return bboxes
+
+            normalized = bboxes.copy()
+            normalized[:, 4] = _canonicalize_angles(normalized[:, 4], angle_range)
+            return normalized
+
+        return wrapper
+
+    return decorator
+
+
 @handle_empty_array("bboxes")
 def normalize_bbox_angles(
     bboxes: np.ndarray,
@@ -602,7 +636,10 @@ def polygons_to_obb(
         obb_list.append([x_min, y_min, x_max, y_max, angle])
 
     obb = np.array(obb_list, dtype=polygons.dtype)
-    obb = normalize_bbox_angles(obb, angle_range)
+
+    # Normalize angles
+    if obb.shape[1] >= BBOX_OBB_MIN_COLUMNS:
+        obb[:, 4] = _canonicalize_angles(obb[:, 4], angle_range)
 
     if extra_fields is not None:
         return np.concatenate([obb, extra_fields], axis=1)

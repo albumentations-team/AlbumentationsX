@@ -82,7 +82,7 @@ repos:
         language: system
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml)$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13
+    rev: v0.14.14
     hooks:
       - id: ruff
         exclude: '__pycache__/'

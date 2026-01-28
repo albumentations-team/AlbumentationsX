@@ -575,6 +575,11 @@ class DualTransform(BasicTransform):
     such as masks, bounding boxes, and keypoints. This class ensures that when a transform is applied to an image,
     all associated entities are transformed accordingly to maintain consistency between the image and its annotations.
 
+    Class Attributes:
+        _supported_bbox_types (set[str]): Set of supported bounding box types.
+            Valid values: {"hbb"} for axis-aligned boxes only, {"hbb", "obb"} for both axis-aligned
+            and oriented boxes. Default: {"hbb"}. Transforms that support OBB should override this.
+
     Methods:
         apply(img: np.ndarray, **params: Any) -> np.ndarray:
             Apply the transform to the image.
@@ -665,6 +670,8 @@ class DualTransform(BasicTransform):
             multiple single-channel masks.
 
     """
+
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb"})  # Default: only axis-aligned boxes
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
@@ -944,6 +951,7 @@ class NoOp(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types through unchanged
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return keypoints

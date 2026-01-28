@@ -97,6 +97,7 @@ class VerticalFlip(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return vflip(img)
@@ -179,6 +180,7 @@ class HorizontalFlip(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return hflip(img)
@@ -272,6 +274,7 @@ class Transpose(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return fgeometric.transpose(img)
@@ -371,6 +374,7 @@ class D4(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         pass

@@ -147,6 +147,7 @@ class Perspective(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         scale: NonNegativeFloatRangeType
@@ -523,6 +524,7 @@ class Affine(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         scale: tuple[float, float] | float | dict[str, float | tuple[float, float]]

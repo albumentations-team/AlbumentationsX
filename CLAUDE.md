@@ -42,6 +42,13 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - Default test values should be 137, not 42
 - Prefer relative parameters (fractions of image size) over fixed pixel values
 
+### Validation Principles
+
+- **Compose-level checks**: All validation of transform compatibility (bbox_type, target support) happens at `Compose.__init__()` time
+- **Transform-level checks**: All validation of transform constructor parameters happens at transform `__init__()` time (via InitSchema)
+- **Exception**: Reference data validation may happen at runtime
+- **NO runtime checks** for compatibility in `apply_*` methods or functional layer - fail fast at pipeline creation
+
 ### Dead Code Detection
 
 - **Flag as critical**: Unused methods, classes that are never called

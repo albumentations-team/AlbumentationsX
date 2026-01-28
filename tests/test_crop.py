@@ -103,7 +103,7 @@ def test_crop_near_bbox(image, bboxes, keypoints):
 
 
 def test_crop_bbox_by_coords():
-    cropped_bbox = crop_bboxes_by_coords(np.array([[0.5, 0.2, 0.9, 0.7]]), (18, 18, 82, 82), (100, 100))
+    cropped_bbox = crop_bboxes_by_coords(np.array([[0.5, 0.2, 0.9, 0.7]]), (18, 18, 82, 82), (100, 100), bbox_type="hbb")
     np.testing.assert_array_almost_equal(cropped_bbox, np.array([[0.5, 0.03125, 1.125, 0.8125]]))
 
 

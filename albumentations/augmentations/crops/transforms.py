@@ -17,7 +17,7 @@ from pydantic import AfterValidator, Field, model_validator
 from typing_extensions import Self
 
 from albumentations.augmentations.geometric import functional as fgeometric
-from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes, union_of_bboxes
+from albumentations.core.bbox_utils import BboxParams, denormalize_bboxes, normalize_bboxes, union_of_bboxes
 from albumentations.core.pydantic import (
     ZeroOneRangeType,
     check_range_bounds,
@@ -157,14 +157,8 @@ class BaseCrop(DualTransform):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> np.ndarray:
-        # Get bbox_type from BboxProcessor if available
-        bbox_type = None
-        if hasattr(self, "processors") and "bboxes" in self.processors:
-            processor = self.processors["bboxes"]
-            # Check if it's a BboxProcessor (not KeypointProcessor)
-            if hasattr(processor.params, "bbox_type"):
-                bbox_type = processor.params.bbox_type
-        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"][:2], bbox_type=bbox_type)
+        bbox_type = cast("BboxParams", self.processors["bboxes"].params).bbox_type
+        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"][:2], bbox_type)
 
     def apply_to_keypoints(
         self,
@@ -1617,7 +1611,8 @@ class _BaseRandomSizedCrop(DualTransform):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"])
+        bbox_type = cast("BboxParams", self.processors["bboxes"].params).bbox_type
+        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"], bbox_type)
 
     def apply_to_keypoints(
         self,
@@ -2831,7 +2826,8 @@ class CropAndPad(DualTransform):
         result_shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fcrops.crop_and_pad_bboxes(bboxes, crop_params, pad_params, params["shape"][:2], result_shape)
+        bbox_type = cast("BboxParams", self.processors["bboxes"].params).bbox_type
+        return fcrops.crop_and_pad_bboxes(bboxes, crop_params, pad_params, params["shape"][:2], result_shape, bbox_type)
 
     def apply_to_keypoints(
         self,

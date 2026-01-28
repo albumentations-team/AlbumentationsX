@@ -1539,12 +1539,12 @@ def test_bboxes_hflip_extreme_values():
     ],
 )
 def test_crop_bboxes_by_coords(bboxes, crop_coords, image_shape, expected_bboxes):
-    result = crop_bboxes_by_coords(bboxes, crop_coords, image_shape)
+    result = crop_bboxes_by_coords(bboxes, crop_coords, image_shape, bbox_type="hbb")
     np.testing.assert_array_almost_equal(result, expected_bboxes, decimal=6)
 
 
 def test_crop_bboxes_by_coords_empty_input():
-    result = crop_bboxes_by_coords(np.array([]), (50, 50, 150, 150), (200, 200))
+    result = crop_bboxes_by_coords(np.array([]), (50, 50, 150, 150), (200, 200), bbox_type="hbb")
     assert result.size == 0
 
 

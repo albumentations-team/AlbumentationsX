@@ -261,7 +261,7 @@ def crop_bboxes_by_coords(
     bboxes: np.ndarray,
     crop_coords: tuple[int, int, int, int],
     image_shape: tuple[int, int],
-    bbox_type: str | None = None,
+    bbox_type: str | None,
 ) -> np.ndarray:
     """Crop bounding boxes based on given crop coordinates.
 
@@ -275,8 +275,8 @@ def crop_bboxes_by_coords(
         crop_coords (tuple[int, int, int, int]): Crop coordinates (x_min, y_min, x_max, y_max)
                                                  in absolute pixel values.
         image_shape (tuple[int, int]): Original image shape (height, width).
-        bbox_type (str | None): Type of bounding box - "hbb" or "obb". If None, infers from shape
-                                (5+ columns treated as OBB). Default: None.
+        bbox_type (str | None): Type of bounding box - "hbb" or "obb". Must be explicitly provided.
+                                When None, defaults to HBB (for backward compatibility with direct calls).
 
     Returns:
         np.ndarray: Array of cropped bounding boxes in normalized coordinates (Albumentations format).
@@ -290,9 +290,8 @@ def crop_bboxes_by_coords(
     if not bboxes.size:
         return bboxes
 
-    # Detect OBB: only if explicitly bbox_type='obb'
-    # When bbox_type is None (direct function call), default to HBB for backward compatibility
-    # This handles HBB bboxes with extra columns (class labels, etc.)
+    # Only process as OBB if explicitly bbox_type='obb'
+    # When bbox_type is None, default to HBB (handles HBB with extra columns like class labels)
     is_obb = bbox_type == "obb"
 
     if is_obb:
@@ -451,6 +450,7 @@ def crop_and_pad_bboxes(
     pad_params: tuple[int, int, int, int] | None,
     image_shape: tuple[int, int],
     result_shape: tuple[int, int],
+    bbox_type: str | None,
 ) -> np.ndarray:
     """Crop and pad bounding boxes.
 
@@ -462,6 +462,7 @@ def crop_and_pad_bboxes(
         pad_params (tuple[int, int, int, int] | None): Pad parameters.
         image_shape (tuple[int, int]): Original image shape.
         result_shape (tuple[int, int]): Result image shape.
+        bbox_type (str | None): Type of bounding box - "hbb" or "obb". Must be explicitly provided.
 
     Returns:
         np.ndarray: Array of cropped and padded bounding boxes.
@@ -470,8 +471,8 @@ def crop_and_pad_bboxes(
     if len(bboxes) == 0:
         return bboxes
 
-    # Detect OBB (5+ columns) vs HBB (4 columns)
-    is_obb = bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS
+    # Only process as OBB if explicitly bbox_type='obb'
+    is_obb = bbox_type == "obb"
 
     if is_obb and crop_params is not None:
         # For OBB with crop, use specialized OBB crop function

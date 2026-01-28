@@ -141,6 +141,7 @@ class BaseCrop(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     def apply(
         self,
@@ -156,7 +157,14 @@ class BaseCrop(DualTransform):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"][:2])
+        # Get bbox_type from BboxProcessor if available
+        bbox_type = None
+        if hasattr(self, "processors") and "bboxes" in self.processors:
+            processor = self.processors["bboxes"]
+            # Check if it's a BboxProcessor (not KeypointProcessor)
+            if hasattr(processor.params, "bbox_type"):
+                bbox_type = processor.params.bbox_type
+        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"][:2], bbox_type=bbox_type)
 
     def apply_to_keypoints(
         self,
@@ -1751,6 +1759,7 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         interpolation: Literal[
@@ -1941,6 +1950,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         scale: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1)), AfterValidator(nondecreasing)]
@@ -2679,6 +2689,7 @@ class CropAndPad(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         px: PxType | None

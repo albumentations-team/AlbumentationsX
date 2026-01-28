@@ -1,0 +1,363 @@
+"""Tests for OBB (Oriented Bounding Box) support in crop transforms.
+
+This test file verifies:
+1. OBB format preservation through crops
+2. Correct handling of partially cropped OBBs (refitting via cv2.minAreaRect)
+3. Unchanged OBBs keep original angle/dimensions
+4. All crop transforms support OBB
+"""
+
+import numpy as np
+import pytest
+
+import albumentations as A
+
+
+@pytest.mark.parametrize(
+    "bbox_format,input_bbox",
+    [
+        pytest.param("pascal_voc", [20, 30, 60, 70, 30.0], id="pascal_voc"),
+        pytest.param("coco", [20, 30, 40, 40, 30.0], id="coco"),
+        pytest.param("yolo", [0.4, 0.5, 0.4, 0.4, 30.0], id="yolo"),
+        pytest.param("albumentations", [0.2, 0.3, 0.6, 0.7, 30.0], id="albumentations"),
+    ],
+)
+@pytest.mark.parametrize(
+    "transform",
+    [
+        pytest.param(A.Crop(x_min=10, y_min=10, x_max=90, y_max=90, p=1.0), id="Crop"),
+        pytest.param(A.CenterCrop(height=60, width=60, p=1.0), id="CenterCrop"),
+        pytest.param(A.RandomCrop(height=60, width=60, p=1.0), id="RandomCrop"),
+    ],
+)
+@pytest.mark.obb
+def test_obb_format_preservation_through_crops(bbox_format: str, input_bbox: list, transform: A.BasicTransform) -> None:
+    """Test that input format == output format for OBB through various crop transforms."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    aug = A.Compose(
+        [transform],
+        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb")
+    )
+
+    np.random.seed(137)
+    result = aug(image=image, bboxes=[input_bbox])
+    output_bbox = result["bboxes"]
+
+    # Verify format consistency - output should be in same format as input
+    if len(output_bbox) > 0:
+        output_bbox = output_bbox[0]
+        assert len(output_bbox) == 5, f"Expected 5 elements for OBB, got {len(output_bbox)}"
+
+        # Verify coordinates are in expected range
+        if bbox_format in ["pascal_voc", "coco"]:
+            # Pixel coordinates - should have values that could be > 1
+            assert isinstance(output_bbox, (list, tuple, np.ndarray))
+        else:
+            # Normalized coordinates [0, 1]
+            assert all(0 <= v <= 1.01 for v in output_bbox[:4]), \
+                f"Expected normalized coords for {bbox_format}, got {output_bbox}"
+
+
+@pytest.mark.obb
+def test_obb_fully_inside_crop_keeps_angle() -> None:
+    """Test that OBB fully inside crop keeps original angle and dimensions (relative)."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB fully inside the crop region (center at 50,50, will stay inside 20-80 crop)
+    bbox = [0.4, 0.4, 0.6, 0.6, 45.0]  # albumentations format
+
+    transform = A.Compose(
+        [A.Crop(x_min=20, y_min=20, x_max=80, y_max=80, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+    output_bbox = result["bboxes"][0]
+
+    # Should still have 5 elements (OBB format preserved)
+    assert len(output_bbox) == 5
+
+    # Angle should be preserved (within tolerance, might be normalized to equivalent angle)
+    # 45 and -45 are 90 degrees apart, but cv2.minAreaRect may return either depending on box orientation
+    angle_diff = abs(output_bbox[4] - 45.0)
+    # Allow for angle normalization: angles can differ by 90, 180, or 270 degrees and still be equivalent
+    angle_diff = min(angle_diff, abs(angle_diff - 90), abs(angle_diff - 180), abs(angle_diff - 270))
+    assert angle_diff < 5.0, f"Expected angle close to 45.0, got {output_bbox[4]}"
+
+    # Box should be within the cropped region [0, 1]
+    assert all(0 <= v <= 1.0 for v in output_bbox[:4])
+
+
+@pytest.mark.obb
+def test_obb_partially_cropped_refits() -> None:
+    """Test that OBB partially outside crop gets refitted via cv2.minAreaRect."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB that extends beyond crop region
+    # Center at (0.8, 0.8), extends to edges, will be clipped by crop to (0.5, 0.5, 0.95, 0.95)
+    bbox = [0.7, 0.7, 0.9, 0.9, 30.0]
+
+    transform = A.Compose(
+        [A.Crop(x_min=50, y_min=50, x_max=95, y_max=95, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    # Box should still exist (not filtered out)
+    assert len(result["bboxes"]) == 1
+
+    output_bbox = result["bboxes"][0]
+
+    # Should still have 5 elements (OBB format preserved)
+    assert len(output_bbox) == 5
+
+    # Angle might have changed due to refitting
+    # Just verify it's a valid angle in the canonical range
+    assert -180 <= output_bbox[4] < 180
+
+
+@pytest.mark.obb
+def test_obb_completely_outside_crop_filtered() -> None:
+    """Test that OBB completely outside crop is filtered out."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB completely outside the crop region
+    bbox = [0.1, 0.1, 0.3, 0.3, 0.0]  # Top-left corner, will be cropped out
+
+    transform = A.Compose(
+        [A.Crop(x_min=50, y_min=50, x_max=100, y_max=100, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    # Box should be filtered out
+    assert len(result["bboxes"]) == 0
+
+
+@pytest.mark.parametrize(
+    "transform_class,transform_kwargs",
+    [
+        pytest.param(A.Crop, {"x_min": 10, "y_min": 10, "x_max": 90, "y_max": 90}, id="Crop"),
+        pytest.param(A.CenterCrop, {"height": 60, "width": 60}, id="CenterCrop"),
+        pytest.param(A.RandomCrop, {"height": 60, "width": 60}, id="RandomCrop"),
+        pytest.param(A.RandomResizedCrop, {"size": (50, 50), "scale": (0.5, 1.0)}, id="RandomResizedCrop"),
+        pytest.param(A.RandomSizedCrop, {"min_max_height": (40, 60), "size": (50, 50)}, id="RandomSizedCrop"),
+        pytest.param(A.RandomCropFromBorders, {}, id="RandomCropFromBorders"),
+        pytest.param(A.CropNonEmptyMaskIfExists, {"height": 50, "width": 50}, id="CropNonEmptyMaskIfExists"),
+        pytest.param(A.BBoxSafeRandomCrop, {"erosion_rate": 0.0}, id="BBoxSafeRandomCrop"),
+        pytest.param(A.AtLeastOneBBoxRandomCrop, {"height": 50, "width": 50, "erosion_rate": 0.0}, id="AtLeastOneBBoxRandomCrop"),
+    ],
+)
+@pytest.mark.obb
+def test_crop_transforms_support_obb(transform_class, transform_kwargs) -> None:
+    """Test that all crop transforms support OBB."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    mask = np.zeros((100, 100), dtype=np.uint8)
+    mask[40:60, 40:60] = 1  # For CropNonEmptyMaskIfExists
+
+    # OBB in the middle
+    bbox = [0.3, 0.3, 0.7, 0.7, 25.0]
+
+    transform = transform_class(**transform_kwargs, p=1.0)
+
+    # Verify _supported_bbox_types includes "obb"
+    if hasattr(transform, "_supported_bbox_types"):
+        assert "obb" in transform._supported_bbox_types, \
+            f"{transform_class.__name__} does not declare OBB support"
+
+    aug = A.Compose(
+        [transform],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    np.random.seed(137)
+    result = aug(image=image, mask=mask, bboxes=[bbox])
+
+    # Should not raise an error and should return transformed data
+    assert "image" in result
+    assert "bboxes" in result
+
+    # If bbox survived, it should still have 5 elements
+    if len(result["bboxes"]) > 0:
+        assert len(result["bboxes"][0]) == 5
+
+
+@pytest.mark.obb
+def test_crop_and_pad_with_obb() -> None:
+    """Test CropAndPad transform with OBB."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB in the middle
+    bbox = [0.3, 0.3, 0.7, 0.7, 30.0]
+
+    transform = A.Compose(
+        [A.CropAndPad(px=10, p=1.0)],  # Crop 10px from each side
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    # Should not raise an error
+    assert "bboxes" in result
+
+    # If bbox survived, it should still have 5 elements
+    if len(result["bboxes"]) > 0:
+        assert len(result["bboxes"][0]) == 5
+
+
+@pytest.mark.obb
+def test_obb_with_extra_fields_preserved() -> None:
+    """Test that OBB extra fields (e.g., class labels) are preserved through crops."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB with extra field (class label)
+    bbox = [0.3, 0.3, 0.7, 0.7, 30.0, 1.0]  # Last element is class label
+
+    transform = A.Compose(
+        [A.CenterCrop(height=60, width=60, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    if len(result["bboxes"]) > 0:
+        output_bbox = result["bboxes"][0]
+
+        # Should have 6 elements (5 for OBB + 1 extra)
+        assert len(output_bbox) == 6
+
+        # Extra field should be preserved
+        assert output_bbox[5] == 1.0
+
+
+@pytest.mark.obb
+def test_multiple_obb_crop() -> None:
+    """Test cropping multiple OBBs at once."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # Multiple OBBs
+    bboxes = [
+        [0.2, 0.2, 0.4, 0.4, 15.0],
+        [0.5, 0.5, 0.8, 0.8, 45.0],
+        [0.1, 0.7, 0.3, 0.9, -30.0],
+    ]
+
+    transform = A.Compose(
+        [A.CenterCrop(height=70, width=70, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=bboxes)
+
+    # Should have some boxes remaining (at least the middle one)
+    assert len(result["bboxes"]) > 0
+
+    # All remaining boxes should have 5 elements
+    for bbox in result["bboxes"]:
+        assert len(bbox) == 5
+
+
+@pytest.mark.obb
+def test_obb_angle_normalization() -> None:
+    """Test that OBB angles are properly normalized after cropping."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB with angle outside normal range
+    bbox = [0.4, 0.4, 0.6, 0.6, 370.0]  # Will be normalized to 10.0
+
+    transform = A.Compose(
+        [A.CenterCrop(height=80, width=80, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    if len(result["bboxes"]) > 0:
+        output_bbox = result["bboxes"][0]
+
+        # Angle should be normalized to [-180, 180) range
+        assert -180 <= output_bbox[4] < 180
+
+
+@pytest.mark.obb
+def test_random_crop_near_bbox_with_obb() -> None:
+    """Test RandomCropNearBBox with OBB."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB for regular bboxes
+    bbox = [0.3, 0.3, 0.7, 0.7, 30.0]
+
+    # Cropping bbox (can be HBB)
+    cropping_bbox = [25, 25, 75, 75]
+
+    transform = A.Compose(
+        [A.RandomCropNearBBox(max_part_shift=0.2, cropping_bbox_key="crop_bbox", p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    np.random.seed(137)
+    result = transform(image=image, bboxes=[bbox], crop_bbox=cropping_bbox)
+
+    # Should not raise an error
+    assert "bboxes" in result
+
+    # If bbox survived, it should still have 5 elements
+    if len(result["bboxes"]) > 0:
+        assert len(result["bboxes"][0]) == 5
+
+
+@pytest.mark.obb
+def test_random_sized_bbox_safe_crop_with_obb() -> None:
+    """Test RandomSizedBBoxSafeCrop with OBB."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB
+    bbox = [0.3, 0.3, 0.7, 0.7, 25.0]
+
+    transform = A.Compose(
+        [A.RandomSizedBBoxSafeCrop(height=50, width=50, erosion_rate=0.0, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    np.random.seed(137)
+    result = transform(image=image, bboxes=[bbox])
+
+    # Should not raise an error
+    assert "bboxes" in result
+
+    # Box should be preserved (erosion_rate=0)
+    assert len(result["bboxes"]) > 0
+
+    # Should still have 5 elements
+    assert len(result["bboxes"][0]) == 5
+
+
+@pytest.mark.obb
+def test_obb_crop_compose_validation() -> None:
+    """Test that Compose validates OBB support at __init__ time."""
+    # This should work - BaseCrop supports OBB
+    compose = A.Compose(
+        [A.CenterCrop(height=50, width=50)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+    assert compose is not None
+
+    # Create a custom transform that doesn't support OBB
+    class UnsupportedTransform(A.DualTransform):
+        _supported_bbox_types = frozenset({"hbb"})
+
+        def apply(self, img, **params):
+            return img
+
+        def apply_to_bboxes(self, bboxes, **params):
+            return bboxes
+
+    # This should fail at Compose.__init__
+    with pytest.raises(ValueError, match="do not support OBB"):
+        A.Compose(
+            [UnsupportedTransform()],
+            bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        )

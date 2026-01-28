@@ -8,6 +8,7 @@ in the albumentations library.
 """
 
 from collections.abc import Callable, Sequence
+from functools import wraps
 from typing import Any, Literal
 
 import cv2
@@ -509,6 +510,7 @@ def normalize_bbox_angles_decorator(
     """
 
     def decorator(func: Callable[..., np.ndarray]) -> Callable[..., np.ndarray]:
+        @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> np.ndarray:
             bboxes = func(*args, **kwargs)
 

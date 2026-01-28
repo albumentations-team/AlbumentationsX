@@ -7,7 +7,7 @@ consistency between different data types during cropping operations.
 """
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
 import cv2
 import numpy as np
@@ -109,12 +109,11 @@ def _process_unclipped_obb_boxes(
     crop_width: int,
     crop_height: int,
     extras: np.ndarray | None,
-    result_bboxes: np.ndarray,
-) -> None:
+) -> np.ndarray:
     """Process OBB boxes that were fully inside crop (vectorized center shift).
 
     Preserves original angle and dimensions, only adjusts center position.
-    Modifies result_bboxes in-place.
+    Returns transformed bboxes.
     """
     crop_x_min, crop_y_min = crop_coords[:2]
     unclipped_bboxes = bboxes[unclipped_indices]
@@ -151,15 +150,21 @@ def _process_unclipped_obb_boxes(
     new_y_max = new_center_y_norm + height_norm * image_shape[0] / crop_height / 2
 
     # Build new bboxes with same angles (vectorized)
-    result_bboxes[unclipped_indices, 0] = new_x_min
-    result_bboxes[unclipped_indices, 1] = new_y_min
-    result_bboxes[unclipped_indices, 2] = new_x_max
-    result_bboxes[unclipped_indices, 3] = new_y_max
-    result_bboxes[unclipped_indices, 4] = angles
+    num_bboxes = len(unclipped_indices)
+    num_cols = 5 if extras is None else 5 + extras.shape[1]
+    result = np.empty((num_bboxes, num_cols), dtype=bboxes.dtype)
+
+    result[:, 0] = new_x_min
+    result[:, 1] = new_y_min
+    result[:, 2] = new_x_max
+    result[:, 3] = new_y_max
+    result[:, 4] = angles
 
     # Copy extra fields if present
     if extras is not None:
-        result_bboxes[unclipped_indices, 5:] = extras[unclipped_indices]
+        result[:, 5:] = extras[unclipped_indices]
+
+    return result
 
 
 @normalize_bbox_angles_decorator()
@@ -225,33 +230,55 @@ def crop_bboxes_by_coords_obb(
     eps = 1e-6
     clipped_mask = np.any(np.abs(polygons_cropped - polygons_clipped) > eps, axis=(1, 2))  # Shape: (N,)
 
-    # Step 6: Process clipped and unclipped boxes separately (vectorized)
-    result_bboxes = np.empty((len(bboxes), bboxes.shape[1]), dtype=np.float32)
+    # Step 6: Filter out boxes that are completely outside crop (all corners collapsed)
+    # A collapsed polygon will have all corners at the same point or very close
+    valid_mask = np.zeros(len(bboxes), dtype=bool)
+    for i, poly in enumerate(polygons_clipped):
+        # Check if polygon has non-zero area (corners are not all the same)
+        x_range = poly[:, 0].max() - poly[:, 0].min()
+        y_range = poly[:, 1].max() - poly[:, 1].min()
+        # Keep boxes with meaningful area (at least 1 pixel in both dimensions)
+        valid_mask[i] = x_range > 1.0 and y_range > 1.0
+
+    # Filter to valid boxes only
+    if not np.any(valid_mask):
+        # All boxes filtered out
+        empty_shape = (0, bboxes.shape[1]) if len(bboxes.shape) > 1 else (0, BBOX_OBB_MIN_COLUMNS)
+        return np.empty(empty_shape, dtype=np.float32)
+
+    # Keep only valid indices
+    valid_indices = np.where(valid_mask)[0]
+    filtered_bboxes = bboxes[valid_indices]
+    filtered_polygons_clipped = polygons_clipped[valid_indices]
+    filtered_clipped_mask = clipped_mask[valid_indices]
+    filtered_extras = extras[valid_indices] if extras is not None else None
+
+    # Step 7: Process clipped and unclipped boxes separately (vectorized)
+    result_bboxes = np.empty((len(filtered_bboxes), filtered_bboxes.shape[1]), dtype=np.float32)
 
     # Handle clipped boxes (need refitting)
-    if np.any(clipped_mask):
-        clipped_indices = np.where(clipped_mask)[0]
+    if np.any(filtered_clipped_mask):
+        clipped_indices = np.where(filtered_clipped_mask)[0]
         new_obbs = _process_clipped_obb_boxes(
             clipped_indices,
-            polygons_clipped,
+            filtered_polygons_clipped,
             crop_width,
             crop_height,
-            extras,
+            filtered_extras,
         )
         result_bboxes[clipped_indices] = new_obbs
 
     # Handle unclipped boxes (vectorized center shift)
-    if np.any(~clipped_mask):
-        unclipped_indices = np.where(~clipped_mask)[0]
-        _process_unclipped_obb_boxes(
+    if np.any(~filtered_clipped_mask):
+        unclipped_indices = np.where(~filtered_clipped_mask)[0]
+        result_bboxes[unclipped_indices] = _process_unclipped_obb_boxes(
             unclipped_indices,
-            bboxes,
+            filtered_bboxes,
             image_shape,
             crop_coords,
             crop_width,
             crop_height,
-            extras,
-            result_bboxes,
+            filtered_extras,
         )
 
     return result_bboxes
@@ -261,7 +288,7 @@ def crop_bboxes_by_coords(
     bboxes: np.ndarray,
     crop_coords: tuple[int, int, int, int],
     image_shape: tuple[int, int],
-    bbox_type: str | None,
+    bbox_type: Literal["obb", "hbb"],
 ) -> np.ndarray:
     """Crop bounding boxes based on given crop coordinates.
 
@@ -275,8 +302,7 @@ def crop_bboxes_by_coords(
         crop_coords (tuple[int, int, int, int]): Crop coordinates (x_min, y_min, x_max, y_max)
                                                  in absolute pixel values.
         image_shape (tuple[int, int]): Original image shape (height, width).
-        bbox_type (str | None): Type of bounding box - "hbb" or "obb". Must be explicitly provided.
-                                When None, defaults to HBB (for backward compatibility with direct calls).
+        bbox_type (Literal["obb", "hbb"]): Type of bounding box - "hbb" or "obb". Must be explicitly provided.
 
     Returns:
         np.ndarray: Array of cropped bounding boxes in normalized coordinates (Albumentations format).
@@ -450,7 +476,7 @@ def crop_and_pad_bboxes(
     pad_params: tuple[int, int, int, int] | None,
     image_shape: tuple[int, int],
     result_shape: tuple[int, int],
-    bbox_type: str | None,
+    bbox_type: Literal["obb", "hbb"],
 ) -> np.ndarray:
     """Crop and pad bounding boxes.
 
@@ -462,7 +488,7 @@ def crop_and_pad_bboxes(
         pad_params (tuple[int, int, int, int] | None): Pad parameters.
         image_shape (tuple[int, int]): Original image shape.
         result_shape (tuple[int, int]): Result image shape.
-        bbox_type (str | None): Type of bounding box - "hbb" or "obb". Must be explicitly provided.
+        bbox_type (Literal["obb", "hbb"]): Type of bounding box - "hbb" or "obb". Must be explicitly provided.
 
     Returns:
         np.ndarray: Array of cropped and padded bounding boxes.

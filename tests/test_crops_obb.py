@@ -426,11 +426,10 @@ def test_process_unclipped_obb_boxes() -> None:
     crop_width, crop_height = 60, 60
 
     unclipped_indices = np.array([0, 1, 2])
-    result_bboxes = np.empty((3, 5), dtype=np.float32)
 
-    _process_unclipped_obb_boxes(
+    result_bboxes = _process_unclipped_obb_boxes(
         unclipped_indices, bboxes, image_shape, crop_coords,
-        crop_width, crop_height, extras=None, result_bboxes=result_bboxes
+        crop_width, crop_height, extras=None
     )
 
     # Verify angles are preserved
@@ -441,12 +440,11 @@ def test_process_unclipped_obb_boxes() -> None:
 
     # Test with extras
     extras = np.array([[1.0], [2.0], [3.0]], dtype=np.float32)
-    result_with_extras = np.empty((3, 6), dtype=np.float32)
 
     bboxes_with_extras = np.column_stack([bboxes, extras])
-    _process_unclipped_obb_boxes(
+    result_with_extras = _process_unclipped_obb_boxes(
         unclipped_indices, bboxes_with_extras, image_shape, crop_coords,
-        crop_width, crop_height, extras=extras, result_bboxes=result_with_extras
+        crop_width, crop_height, extras=extras
     )
 
     # Verify extras are preserved
@@ -467,12 +465,11 @@ def test_process_unclipped_obb_boxes_vectorized() -> None:
     crop_width, crop_height = 100, 100
 
     unclipped_indices = np.arange(n_boxes)
-    result_bboxes = np.empty((n_boxes, 5), dtype=np.float32)
 
     # This should be fast since it's vectorized
-    _process_unclipped_obb_boxes(
+    result_bboxes = _process_unclipped_obb_boxes(
         unclipped_indices, bboxes, image_shape, crop_coords,
-        crop_width, crop_height, extras=None, result_bboxes=result_bboxes
+        crop_width, crop_height, extras=None
     )
 
     # Verify all angles are preserved

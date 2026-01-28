@@ -5,6 +5,8 @@ import time
 from threading import Thread
 from typing import Any
 
+from typing_extensions import Self
+
 from albumentations.core.analytics.backends.mixpanel import MixpanelBackend
 from albumentations.core.analytics.collectors import is_ci_environment, is_pytest_running
 from albumentations.core.analytics.events import ComposeInitEvent
@@ -25,7 +27,7 @@ class TelemetryClient:
     _instance = None
     _initialized = False
 
-    def __new__(cls) -> "TelemetryClient":
+    def __new__(cls) -> Self:
         """Create or return the singleton instance."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)

@@ -292,8 +292,14 @@ class BboxProcessor(DataProcessor):
         unsupported = []
 
         def check_transform(transform: object) -> None:
-            # Skip ImageOnly (they don't touch bboxes) and BaseCompose (handled recursively)
-            if isinstance(transform, (ImageOnlyTransform, BaseCompose)):
+            # Skip ImageOnly (they don't touch bboxes)
+            if isinstance(transform, ImageOnlyTransform):
+                return
+
+            # Recursively check nested BaseCompose
+            if isinstance(transform, BaseCompose):
+                for t in transform.transforms:
+                    check_transform(t)
                 return
 
             # Check DualTransforms
@@ -302,14 +308,9 @@ class BboxProcessor(DataProcessor):
                 if "obb" not in supported_types:
                     unsupported.append(transform.__class__.__name__)
 
-        # Check all transforms (including nested in Compose)
+        # Check all transforms
         for transform in transforms:
-            if isinstance(transform, BaseCompose):
-                # Recursively check nested transforms
-                for t in transform.transforms:
-                    check_transform(t)
-            else:
-                check_transform(transform)
+            check_transform(transform)
 
         if unsupported:
             msg = (

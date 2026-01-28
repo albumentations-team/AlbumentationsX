@@ -289,7 +289,7 @@ def test_nested_compose_obb_validation():
         def apply_to_bboxes(self, bboxes, **params):
             return bboxes
 
-    # Nested compose should also fail validation
+    # Single-level nested compose should fail validation
     with pytest.raises(ValueError, match="do not support OBB"):
         A.Compose(
             [
@@ -297,6 +297,34 @@ def test_nested_compose_obb_validation():
                 A.OneOf([
                     UnsupportedTransform(),
                     A.VerticalFlip()
+                ])
+            ],
+            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb")
+        )
+
+
+@pytest.mark.obb
+def test_deeply_nested_compose_obb_validation():
+    """Test that deeply nested unsupported transforms are caught at Compose init."""
+    class UnsupportedTransform(A.DualTransform):
+        _supported_bbox_types = {"hbb"}
+
+        def apply(self, img, **params):
+            return img
+
+        def apply_to_bboxes(self, bboxes, **params):
+            return bboxes
+
+    # Multi-level nested compose (OneOf > SomeOf > Unsupported) should fail validation
+    with pytest.raises(ValueError, match="do not support OBB"):
+        A.Compose(
+            [
+                A.HorizontalFlip(),
+                A.OneOf([
+                    A.SomeOf([
+                        UnsupportedTransform(),
+                        A.VerticalFlip()
+                    ], n=1)
                 ])
             ],
             bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb")

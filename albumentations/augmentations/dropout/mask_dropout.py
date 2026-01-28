@@ -49,6 +49,9 @@ class MaskDropout(DualTransform):
     Image types:
         uint8, float32
 
+    Supported bboxes:
+        hbb
+
     Note:
         - The mask should be a single-channel image where 0 represents the background and non-zero values represent
           different object instances.

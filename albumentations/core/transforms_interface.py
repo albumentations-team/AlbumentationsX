@@ -905,6 +905,12 @@ class NoOp(DualTransform):
     Targets:
         image, mask, bboxes, keypoints, volume, mask3d
 
+    Image types:
+        uint8, float32
+
+    Supported bboxes:
+        hbb, obb
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A

@@ -57,6 +57,9 @@ class CoarseDropout(BaseDropout):
     Image types:
         uint8, float32
 
+    Supported bboxes:
+        hbb
+
     Note:
         - The actual number and size of dropout regions are randomly chosen within the specified ranges for each
             application.
@@ -212,6 +215,9 @@ class Erasing(BaseDropout):
 
     Image types:
         uint8, float32
+
+    Supported bboxes:
+        hbb
 
     Note:
         - The transform attempts to find valid erasing parameters up to 10 times.
@@ -395,6 +401,9 @@ class ConstrainedCoarseDropout(BaseDropout):
 
     Image types:
         uint8, float32
+
+    Supported bboxes:
+        hbb
 
     Requires one of:
         - 'mask' key with segmentation mask where:

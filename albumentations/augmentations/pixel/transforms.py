@@ -148,7 +148,7 @@ class Normalize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Defaults to 1.0.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -270,7 +270,7 @@ class ImageCompression(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -359,7 +359,7 @@ class RandomSnow(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -501,7 +501,7 @@ class RandomGravel(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -681,7 +681,7 @@ class RandomRain(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -841,7 +841,7 @@ class RandomFog(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -1025,7 +1025,7 @@ class RandomSunFlare(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -1277,7 +1277,7 @@ class RandomShadow(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -1442,7 +1442,7 @@ class RandomToneCurve(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -1595,7 +1595,7 @@ class HueSaturationValue(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -1684,7 +1684,7 @@ class Solarize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -1778,7 +1778,7 @@ class Posterize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -2460,7 +2460,7 @@ class ChannelShuffle(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Number of channels:
         Any
@@ -4239,7 +4239,7 @@ class Spatter(ImageOnlyTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -4463,7 +4463,7 @@ class ChromaticAberration(ImageOnlyTransform):
             Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -4682,7 +4682,7 @@ class PlanckianJitter(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -4862,7 +4862,7 @@ class ShotNoise(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -5220,7 +5220,7 @@ class RGBShift(AdditiveNoise):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -5337,7 +5337,7 @@ class SaltAndPepper(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -5496,7 +5496,7 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -5669,7 +5669,7 @@ class PlasmaShadow(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -5864,7 +5864,7 @@ class Illumination(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -6048,7 +6048,7 @@ class AutoContrast(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32
@@ -6150,7 +6150,7 @@ class HEStain(ImageOnlyTransform):
             Default: False
 
     Targets:
-        image
+        image, volume
 
     Number of channels:
         3
@@ -6451,7 +6451,7 @@ class Dithering(ImageOnlyTransform):
         p(float): Probability of applying this transform. Default: 0.5
 
     Targets:
-        image
+        image, volume
 
     Image types:
         uint8, float32

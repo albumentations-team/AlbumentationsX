@@ -42,6 +42,9 @@ class TimeReverse(HorizontalFlip):
     Image types:
         uint8, float32
 
+    Supported bboxes:
+        hbb, obb
+
     Number of channels:
         Any
 
@@ -96,6 +99,9 @@ class TimeMasking(XYMasking):
 
     Image types:
         uint8, float32
+
+    Supported bboxes:
+        hbb
 
     Number of channels:
         Any
@@ -168,6 +174,9 @@ class FrequencyMasking(XYMasking):
 
     Image types:
         uint8, float32
+
+    Supported bboxes:
+        hbb
 
     Number of channels:
         Any

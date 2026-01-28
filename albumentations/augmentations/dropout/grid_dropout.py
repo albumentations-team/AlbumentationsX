@@ -56,6 +56,9 @@ class GridDropout(BaseDropout):
     Image types:
         uint8, float32
 
+    Supported bboxes:
+        hbb
+
     Note:
         - If both unit_size_range and holes_number_xy are None, the grid size is calculated based on the image size.
         - The actual number of dropped regions may differ slightly from holes_number_xy due to rounding.

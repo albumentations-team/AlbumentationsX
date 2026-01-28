@@ -332,6 +332,15 @@ class ElasticTransform(BaseDistortion):
     The transform works by generating random displacement fields and applying them to the input.
     These fields are smoothed using a Gaussian filter to create more natural-looking distortions.
 
+    Targets:
+        image, mask, bboxes, keypoints, volume, mask3d
+
+    Image types:
+        uint8, float32
+
+    Supported bboxes:
+        hbb
+
     Args:
         alpha (float): Scaling factor for the random displacement fields. Higher values result in
             more pronounced distortions. Default: 1.0
@@ -546,6 +555,9 @@ class PiecewiseAffine(BaseDistortion):
     Image types:
         uint8, float32
 
+    Supported bboxes:
+        hbb
+
     Note:
         - This augmentation is very slow. Consider using `ElasticTransform` instead, which is at least 10x faster.
         - The augmentation may not always produce visible effects, especially with small scale values.
@@ -727,6 +739,9 @@ class OpticalDistortion(BaseDistortion):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb
     Note:
         - The distortion is applied using OpenCV's initUndistortRectifyMap and remap functions.
         - The distortion coefficient (k) is randomly sampled from the distort_limit range.
@@ -881,6 +896,9 @@ class GridDistortion(BaseDistortion):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb
     Note:
         - The same distortion is applied to all targets (image, mask, bboxes, keypoints)
           to maintain consistency.
@@ -1075,6 +1093,9 @@ class ThinPlateSpline(BaseDistortion):
 
     Image types:
         uint8, float32
+
+    Supported bboxes:
+        hbb
 
     Note:
         - The transformation preserves smoothness and continuity

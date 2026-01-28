@@ -91,6 +91,9 @@ class Perspective(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         This transformation creates a perspective effect by randomly moving the four corners of the image.
         The amount of movement is controlled by the 'scale' parameter.
@@ -448,6 +451,9 @@ class Affine(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     References:
         Towards Rotation Invariance in Object Detection: https://arxiv.org/abs/2109.13488
 
@@ -925,6 +931,9 @@ class ShiftScaleRotate(Affine):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
@@ -1137,6 +1146,9 @@ class GridElasticDeform(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb
     Number of channels:
         1, 3
 
@@ -1343,6 +1355,9 @@ class RandomGridShuffle(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb
     Note:
         - This transform maintains consistency across all targets. If applied to an image and its corresponding
           mask or keypoints, the same shuffling will be applied to all.
@@ -1532,6 +1547,9 @@ class Morphological(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb
     References:
         Nougat: https://github.com/facebookresearch/nougat
 

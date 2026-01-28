@@ -60,7 +60,11 @@ class XYMasking(BaseDropout):
     Image types:
         uint8, float32
 
-    Note: Either `max_x_length` or `max_y_length` or both must be defined.
+    Supported bboxes:
+        hbb
+
+    Note:
+        Either `max_x_length` or `max_y_length` or both must be defined.
 
     """
 

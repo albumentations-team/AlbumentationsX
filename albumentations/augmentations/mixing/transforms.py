@@ -355,6 +355,9 @@ class Mosaic(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb
     Reference:
         YOLOv4: Optimal Speed and Accuracy of Object Detection: https://arxiv.org/pdf/2004.10934
 

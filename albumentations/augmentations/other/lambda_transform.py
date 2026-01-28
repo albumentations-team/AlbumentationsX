@@ -52,6 +52,9 @@ class Lambda(NoOp):
     Image types:
         uint8, float32
 
+    Supported bboxes:
+        hbb, obb
+
     Number of channels:
         Any
 

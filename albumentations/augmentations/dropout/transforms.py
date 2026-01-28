@@ -254,6 +254,9 @@ class PixelDropout(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb
     Note:
         - When applied to bounding boxes, this transform may cause some boxes to have zero area
           if all pixels within the box are dropped. Such boxes will be removed.

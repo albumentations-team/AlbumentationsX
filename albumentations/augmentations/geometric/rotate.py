@@ -73,6 +73,9 @@ class RandomRotate90(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
@@ -205,6 +208,9 @@ class Rotate(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - The rotation angle is randomly selected for each execution within the range specified by 'limit'.
         - When 'crop_border' is False, the output image will have the same size as the input, potentially
@@ -521,6 +527,9 @@ class SafeRotate(Affine):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - The rotation is performed around the center of the image.
         - After rotation, the image is scaled to fit within the original frame, which may cause some distortion.

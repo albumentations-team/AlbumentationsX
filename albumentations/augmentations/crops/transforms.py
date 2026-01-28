@@ -644,6 +644,9 @@ class RandomCrop(BaseCropAndPad):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         If pad_if_needed is True and crop size exceeds image dimensions, the image will be padded
         before applying the random crop.
@@ -827,6 +830,9 @@ class CenterCrop(BaseCropAndPad):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - If pad_if_needed is False and crop size exceeds image dimensions, it will raise a CropSizeError.
         - If pad_if_needed is True and crop size exceeds image dimensions, the image will be padded.
@@ -1008,6 +1014,9 @@ class Crop(BaseCropAndPad):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - The crop coordinates are applied as follows: x_min <= x < x_max and y_min <= y < y_max.
         - If pad_if_needed is False and crop region extends beyond image boundaries, it will be clipped.
@@ -1230,6 +1239,9 @@ class CropNonEmptyMaskIfExists(BaseCrop):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - If a mask is provided, the transform will try to crop an area containing non-zero (or non-ignored) pixels.
         - If no suitable area is found in the mask or no mask is provided, it will perform a random crop.
@@ -1698,6 +1710,9 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - The crop size is randomly selected for each execution within the range specified by 'min_max_height'.
         - The aspect ratio of the crop is determined by the 'w2h_ratio' parameter.
@@ -1885,6 +1900,9 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - This transform attempts to crop a random area with an aspect ratio and relative size
           specified by 'ratio' and 'scale' parameters. If it fails to find a suitable crop after
@@ -2083,6 +2101,9 @@ class RandomCropNearBBox(BaseCrop):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Examples:
         >>> aug = Compose([RandomCropNearBBox(max_part_shift=(0.1, 0.5), cropping_bbox_key='test_bbox')],
         >>>              bbox_params=BboxParams("pascal_voc"))
@@ -2176,6 +2197,9 @@ class BBoxSafeRandomCrop(BaseCrop):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Raises:
         CropSizeError: If requested crop size exceeds image dimensions
 
@@ -2330,6 +2354,9 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - This transform ensures that all bounding boxes in the original image are fully contained within the
           cropped area. If it's not possible to find such a crop (e.g., when bounding boxes are too spread out),
@@ -2592,6 +2619,9 @@ class CropAndPad(DualTransform):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - This transform will never crop images below a height or width of 1.
         - When using pixel values (px), the image will be cropped/padded by exactly that many pixels.
@@ -3018,6 +3048,9 @@ class RandomCropFromBorders(BaseCrop):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Note:
         - The actual amount of cropping for each side is randomly chosen between 0 and
           the specified maximum for each application of the transform.
@@ -3177,6 +3210,9 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
     Image types:
         uint8, float32
 
+
+    Supported bboxes:
+        hbb, obb
     Raises:
         CropSizeError: If requested crop size exceeds image dimensions
 

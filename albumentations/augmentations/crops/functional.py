@@ -231,14 +231,15 @@ def crop_bboxes_by_coords_obb(
     clipped_mask = np.any(np.abs(polygons_cropped - polygons_clipped) > eps, axis=(1, 2))  # Shape: (N,)
 
     # Step 6: Filter out boxes that are completely outside crop (all corners collapsed)
-    # A collapsed polygon will have all corners at the same point or very close
-    valid_mask = np.zeros(len(bboxes), dtype=bool)
-    for i, poly in enumerate(polygons_clipped):
-        # Check if polygon has non-zero area (corners are not all the same)
-        x_range = poly[:, 0].max() - poly[:, 0].min()
-        y_range = poly[:, 1].max() - poly[:, 1].min()
-        # Keep boxes with meaningful area (at least 1 pixel in both dimensions)
-        valid_mask[i] = x_range > 1.0 and y_range > 1.0
+    # Vectorized check: compute per-polygon extents
+    x_coords = polygons_clipped[:, :, 0]  # Shape: (N, 4)
+    y_coords = polygons_clipped[:, :, 1]  # Shape: (N, 4)
+    x_range = x_coords.max(axis=1) - x_coords.min(axis=1)  # Shape: (N,)
+    y_range = y_coords.max(axis=1) - y_coords.min(axis=1)  # Shape: (N,)
+
+    # Keep boxes with non-negligible extent; truly collapsed polygons are removed
+    # Use epsilon to detect degenerate polygons, not arbitrary pixel threshold
+    valid_mask = (x_range > eps) & (y_range > eps)
 
     # Filter to valid boxes only
     if not np.any(valid_mask):
@@ -316,8 +317,8 @@ def crop_bboxes_by_coords(
     if not bboxes.size:
         return bboxes
 
-    # Only process as OBB if explicitly bbox_type='obb'
-    # When bbox_type is None, default to HBB (handles HBB with extra columns like class labels)
+    # Process as OBB only when bbox_type == "obb"
+    # Otherwise, use the HBB path (supports HBB with extra columns like class labels)
     is_obb = bbox_type == "obb"
 
     if is_obb:
@@ -501,7 +502,7 @@ def crop_and_pad_bboxes(
     is_obb = bbox_type == "obb"
 
     if is_obb and crop_params is not None:
-        # For OBB with crop, use specialized OBB crop function
+        # For OBB with crop, use specialized OBB crop function that clips polygons
         extras = bboxes[:, 5:] if bboxes.shape[1] > BBOX_OBB_MIN_COLUMNS else None
 
         # Convert to polygons
@@ -512,10 +513,16 @@ def crop_and_pad_bboxes(
         polygons_px[..., 0] *= image_shape[1]
         polygons_px[..., 1] *= image_shape[0]
 
-        # Apply crop
-        crop_x, crop_y, _crop_x_max, _crop_y_max = crop_params
+        # Apply crop: shift to crop-relative coordinates and clip to crop rectangle
+        crop_x, crop_y, crop_x_max, crop_y_max = crop_params
         polygons_px[..., 0] -= crop_x
         polygons_px[..., 1] -= crop_y
+
+        # Clip polygons to crop boundaries
+        crop_width = crop_x_max - crop_x
+        crop_height = crop_y_max - crop_y
+        polygons_px[..., 0] = np.clip(polygons_px[..., 0], 0, crop_width)
+        polygons_px[..., 1] = np.clip(polygons_px[..., 1], 0, crop_height)
 
         # Apply pad if needed
         if pad_params is not None:
@@ -524,8 +531,10 @@ def crop_and_pad_bboxes(
             polygons_px[..., 1] += top
 
         # Normalize to result shape
-        polygons_px[..., 0] /= result_shape[1]
-        polygons_px[..., 1] /= result_shape[0]
+        result_width = result_shape[1]
+        result_height = result_shape[0]
+        polygons_px[..., 0] /= result_width
+        polygons_px[..., 1] /= result_height
 
         # Convert back to OBB
         return polygons_to_obb(polygons_px, extra_fields=extras)

@@ -153,7 +153,7 @@ def test_obb_completely_outside_crop_filtered() -> None:
         pytest.param(A.RandomCropFromBorders, {}, id="RandomCropFromBorders"),
         pytest.param(A.CropNonEmptyMaskIfExists, {"height": 50, "width": 50}, id="CropNonEmptyMaskIfExists"),
         pytest.param(A.BBoxSafeRandomCrop, {"erosion_rate": 0.0}, id="BBoxSafeRandomCrop"),
-        pytest.param(A.AtLeastOneBBoxRandomCrop, {"height": 50, "width": 50, "erosion_rate": 0.0}, id="AtLeastOneBBoxRandomCrop"),
+        pytest.param(A.AtLeastOneBBoxRandomCrop, {"height": 50, "width": 50, "erosion_factor": 0.0}, id="AtLeastOneBBoxRandomCrop"),
     ],
 )
 @pytest.mark.obb
@@ -199,7 +199,7 @@ def test_crop_and_pad_with_obb() -> None:
     bbox = [0.3, 0.3, 0.7, 0.7, 30.0]
 
     transform = A.Compose(
-        [A.CropAndPad(px=10, p=1.0)],  # Crop 10px from each side
+        [A.CropAndPad(px=10, p=1.0)],  # Pad 10px on each side (negative values crop)
         bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
     )
 

@@ -478,3 +478,189 @@ def test_process_unclipped_obb_boxes_vectorized() -> None:
     # Verify all boxes were processed
     assert result_bboxes.shape == (n_boxes, 5)
     assert not np.any(np.isnan(result_bboxes))
+
+
+@pytest.mark.obb
+def test_pad_with_obb() -> None:
+    """Test Pad transform with OBB - padding is just a shift."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB in the middle
+    bbox = [0.3, 0.3, 0.7, 0.7, 30.0]
+
+    transform = A.Compose(
+        [A.Pad(padding=10, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    # Image shape should increase by padding
+    assert result["image"].shape == (120, 120, 3)
+
+    # Should have the bbox
+    assert len(result["bboxes"]) == 1
+    output_bbox = result["bboxes"][0]
+
+    # Should still have 5 elements (OBB format preserved)
+    assert len(output_bbox) == 5
+
+    # Angle should be preserved (padding doesn't rotate)
+    assert abs(output_bbox[4] - 30.0) < 0.01
+
+    # Bounding box should be shifted relative to new image size
+    # Original center was at (0.5, 0.5) * 100 = (50, 50)
+    # After padding by 10, center is at (60, 60) in 120x120 image = (0.5, 0.5) normalized
+    # So normalized coords should be adjusted proportionally
+    assert all(0 <= v <= 1.0 for v in output_bbox[:4])
+
+
+@pytest.mark.obb
+def test_pad_with_obb_different_sides() -> None:
+    """Test Pad with different padding on each side with OBB."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    bbox = [0.4, 0.4, 0.6, 0.6, 45.0]
+
+    transform = A.Compose(
+        [A.Pad(padding=(5, 10, 15, 20), p=1.0)],  # left, top, right, bottom
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    # Image shape: width = 100 + 5 + 15 = 120, height = 100 + 10 + 20 = 130
+    assert result["image"].shape == (130, 120, 3)
+
+    # Bbox should be preserved
+    assert len(result["bboxes"]) == 1
+    output_bbox = result["bboxes"][0]
+
+    # OBB format preserved
+    assert len(output_bbox) == 5
+
+    # Angle preserved
+    assert abs(output_bbox[4] - 45.0) < 0.01
+
+
+@pytest.mark.obb
+def test_pad_if_needed_with_obb() -> None:
+    """Test PadIfNeeded transform with OBB."""
+    image = np.zeros((80, 80, 3), dtype=np.uint8)
+
+    bbox = [0.3, 0.3, 0.7, 0.7, -15.0]
+
+    transform = A.Compose(
+        [A.PadIfNeeded(min_height=100, min_width=100, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    # Image should be padded to at least 100x100
+    assert result["image"].shape[0] >= 100
+    assert result["image"].shape[1] >= 100
+
+    # Bbox should be preserved
+    assert len(result["bboxes"]) == 1
+    output_bbox = result["bboxes"][0]
+
+    # OBB format preserved
+    assert len(output_bbox) == 5
+
+    # Angle preserved
+    assert abs(output_bbox[4] - (-15.0)) < 0.01
+
+
+@pytest.mark.obb
+def test_pad_if_needed_divisor_with_obb() -> None:
+    """Test PadIfNeeded with divisor and OBB."""
+    image = np.zeros((95, 95, 3), dtype=np.uint8)
+
+    bbox = [0.4, 0.4, 0.6, 0.6, 60.0]
+
+    transform = A.Compose(
+        [A.PadIfNeeded(min_height=None, min_width=None, pad_height_divisor=32, pad_width_divisor=32, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    # Image should be padded to be divisible by 32
+    assert result["image"].shape[0] % 32 == 0
+    assert result["image"].shape[1] % 32 == 0
+
+    # Bbox should be preserved
+    assert len(result["bboxes"]) == 1
+    output_bbox = result["bboxes"][0]
+
+    # OBB format preserved
+    assert len(output_bbox) == 5
+
+    # Angle preserved
+    assert abs(output_bbox[4] - 60.0) < 0.01
+
+
+@pytest.mark.obb
+def test_pad_with_obb_extra_fields() -> None:
+    """Test that Pad preserves OBB extra fields (e.g., class labels)."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    # OBB with extra field (class label)
+    bbox = [0.3, 0.3, 0.7, 0.7, 30.0, 5.0]
+
+    transform = A.Compose(
+        [A.Pad(padding=10, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=[bbox])
+
+    output_bbox = result["bboxes"][0]
+
+    # Should have 6 elements (5 for OBB + 1 extra)
+    assert len(output_bbox) == 6
+
+    # Extra field should be preserved
+    assert output_bbox[5] == 5.0
+
+    # Angle should be preserved
+    assert abs(output_bbox[4] - 30.0) < 0.01
+
+
+@pytest.mark.obb
+def test_pad_with_multiple_obb() -> None:
+    """Test Pad with multiple OBBs."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    bboxes = [
+        [0.2, 0.2, 0.4, 0.4, 15.0],
+        [0.5, 0.5, 0.8, 0.8, 45.0],
+        [0.1, 0.7, 0.3, 0.9, -30.0],
+    ]
+
+    transform = A.Compose(
+        [A.Pad(padding=20, p=1.0)],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+    )
+
+    result = transform(image=image, bboxes=bboxes)
+
+    # All boxes should be preserved
+    assert len(result["bboxes"]) == 3
+
+    # All should have 5 elements
+    for bbox in result["bboxes"]:
+        assert len(bbox) == 5
+
+    # Original angles should be preserved
+    original_angles = [15.0, 45.0, -30.0]
+    for i, bbox in enumerate(result["bboxes"]):
+        assert abs(bbox[4] - original_angles[i]) < 0.01
+
+
+@pytest.mark.obb
+def test_pad_declares_obb_support() -> None:
+    """Test that Pad and PadIfNeeded declare OBB support."""
+    assert "obb" in A.Pad._supported_bbox_types
+    assert "obb" in A.PadIfNeeded._supported_bbox_types

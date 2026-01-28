@@ -63,6 +63,9 @@ class Pad(DualTransform):
     Image types:
         uint8, float32
 
+    Supported bboxes:
+        hbb, obb
+
     References:
         PyTorch Pad: https://pytorch.org/vision/main/generated/torchvision.transforms.v2.Pad.html
 
@@ -170,6 +173,7 @@ class Pad(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         padding: int | tuple[int, int] | tuple[int, int, int, int]
@@ -365,6 +369,9 @@ class PadIfNeeded(Pad):
 
     Image types:
         uint8, float32
+
+    Supported bboxes:
+        hbb, obb
 
     Note:
         - Either `min_height` or `pad_height_divisor` must be set, but not both.

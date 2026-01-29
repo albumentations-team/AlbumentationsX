@@ -1275,11 +1275,15 @@ def bboxes_affine(
         polygons[..., 0] *= image_shape[1]
         polygons[..., 1] *= image_shape[0]
         transformed_polygons = apply_affine_to_points(polygons.reshape(-1, 2), matrix).reshape(polygons.shape)
-        transformed_polygons[..., 0] /= output_shape[1]
-        transformed_polygons[..., 1] /= output_shape[0]
-        transformed_bboxes = polygons_to_obb(transformed_polygons, extra_fields=extras)
+        # Convert to OBB in PIXEL space (cv2.minAreaRect requires pixel coordinates for accuracy)
+        transformed_bboxes_px = polygons_to_obb(transformed_polygons, extra_fields=extras)
+        # Normalize the bbox coordinates (not angle or extras)
+        transformed_bboxes_px[:, 0] /= output_shape[1]  # x_min
+        transformed_bboxes_px[:, 1] /= output_shape[0]  # y_min
+        transformed_bboxes_px[:, 2] /= output_shape[1]  # x_max
+        transformed_bboxes_px[:, 3] /= output_shape[0]  # y_max
         # transformed_bboxes are in normalized coordinates; validate against a virtual 1x1 image
-        return validate_bboxes(transformed_bboxes, (1, 1))
+        return validate_bboxes(transformed_bboxes_px, (1, 1))
 
     bboxes = denormalize_bboxes(bboxes, image_shape)
 

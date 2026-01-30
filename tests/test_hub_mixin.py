@@ -11,7 +11,7 @@ from albumentations.core.hub_mixin import HubMixin, is_huggingface_hub_available
 # Skip tests if huggingface_hub is not available
 pytestmark = pytest.mark.skipif(
     not is_huggingface_hub_available,
-    reason="huggingface_hub is not available"
+    reason="huggingface_hub is not available",
 )
 
 
@@ -20,7 +20,6 @@ class DummyTransform(HubMixin):
 
     def __init__(self):
         """Initialize dummy transform."""
-        pass
 
 
 @pytest.mark.parametrize(
@@ -41,6 +40,7 @@ def test_windows_path_handling(path_string, expected_posix):
     Args:
         path_string: Input path with various formats
         expected_posix: Expected path after conversion to POSIX format
+
     """
     with patch("albumentations.core.hub_mixin.hf_hub_download") as mock_download:
         mock_download.return_value = "config.json"

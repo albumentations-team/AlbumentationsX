@@ -1,6 +1,7 @@
+from collections.abc import Sequence
+
 import numpy as np
 import pytest
-from collections.abc import Sequence
 
 from albumentations.core.label_manager import LabelEncoder, LabelManager
 
@@ -118,9 +119,15 @@ def test_label_encoder_2d_array():
         (["a", "b"], None, {"a": 0, "b": 1}, {0: "a", 1: "b"}, 2),
         # Update single item
         (["a"], "b", {"a": 0, "b": 1}, {0: "a", 1: "b"}, 2),
-    ]
+    ],
 )
-def test_label_encoder_update(initial_labels, update_labels, expected_classes, expected_inverse_classes, final_num_classes):
+def test_label_encoder_update(
+    initial_labels,
+    update_labels,
+    expected_classes,
+    expected_inverse_classes,
+    final_num_classes,
+):
     encoder = LabelEncoder()
     encoder.fit(initial_labels)
     encoder.update(update_labels)
@@ -138,16 +145,17 @@ def test_label_encoder_update(initial_labels, update_labels, expected_classes, e
     # Ensure transform/inverse_transform work with updated labels (if not empty)
     if update_labels:
         if isinstance(update_labels, str):
-             update_labels_list = [update_labels]
+            update_labels_list = [update_labels]
         elif isinstance(update_labels, Sequence):
             update_labels_list = list(update_labels)
         else:
-            update_labels_list = [] # Should not happen based on params, but safety
+            update_labels_list = []  # Should not happen based on params, but safety
 
         if update_labels_list:
             updated_encoded = encoder.transform(update_labels_list)
             updated_decoded = encoder.inverse_transform(updated_encoded)
             np.testing.assert_array_equal(updated_decoded, np.array(update_labels_list).flatten())
+
 
 def test_label_encoder_update_numeric_noop():
     """Test that update does nothing if the encoder was fit on numeric data."""
@@ -164,6 +172,7 @@ def test_label_encoder_update_numeric_noop():
     assert encoder.num_classes == initial_num
     assert encoder.is_numerical is True
 
+
 # Tests for LabelManager Implicit Update via process_field
 @pytest.mark.parametrize(
     "data_name, label_field, initial_data, update_data, expected_final_labels, expected_dtype_after_decode",
@@ -176,10 +185,15 @@ def test_label_encoder_update_numeric_noop():
         ("bboxes", "instance_ids", [], ["obj1", "obj2"], ["obj1", "obj2"], object),
         # Update with only existing
         ("bboxes", "class_labels", ["cat", "dog"], ["dog", "cat"], ["cat", "dog", "dog", "cat"], object),
-    ]
+    ],
 )
 def test_label_manager_process_field_updates_encoder(
-    data_name, label_field, initial_data, update_data, expected_final_labels, expected_dtype_after_decode
+    data_name,
+    label_field,
+    initial_data,
+    update_data,
+    expected_final_labels,
+    expected_dtype_after_decode,
 ):
     manager = LabelManager()
 
@@ -198,7 +212,7 @@ def test_label_manager_process_field_updates_encoder(
     # Check if encoder was updated (if new labels were present)
     if set(update_data) - set(initial_data):
         assert num_classes_updated > num_classes_initial
-        assert encoder_updated is encoder_initial # Should be the same instance
+        assert encoder_updated is encoder_initial  # Should be the same instance
     else:
         assert num_classes_updated == num_classes_initial
 
@@ -207,7 +221,7 @@ def test_label_manager_process_field_updates_encoder(
     restored_update = manager.restore_field(data_name, label_field, encoded_update)
 
     # Combine original + update data for checking restored combined labels
-    combined_original_data = np.concatenate([np.array(initial_data).flatten(), np.array(update_data).flatten()])
+    np.concatenate([np.array(initial_data).flatten(), np.array(update_data).flatten()])
     combined_encoded = np.concatenate([encoded_initial, encoded_update])
 
     # Decode the combined encoded data
@@ -260,7 +274,7 @@ def test_label_manager_process_field_multiple_fields():
     # Check encoders
     assert manager.metadata["bboxes"]["scores"].is_numerical
     assert not manager.metadata["bboxes"]["class_labels"].is_numerical
-    assert manager.metadata["bboxes"]["class_labels"].encoder.num_classes == 3 # cat, dog, bird
+    assert manager.metadata["bboxes"]["class_labels"].encoder.num_classes == 3  # cat, dog, bird
 
     # Restore scores
     restored_scores_initial = manager.restore_field("bboxes", "scores", encoded_scores_initial)

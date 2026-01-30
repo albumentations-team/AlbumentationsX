@@ -1,6 +1,6 @@
 import math
-from itertools import product
 import random
+from itertools import product
 
 import cv2
 import numpy as np
@@ -51,7 +51,7 @@ def test_warp_affine(params, image_shape):
         shear=shear_dict,
         scale=scale_dict,
         rotate=angle,
-        shift=shift
+        shift=shift,
     )
 
     assert affine_matrix.shape == (3, 3), "Affine matrix should be 3x3"
@@ -78,37 +78,45 @@ def create_test_image(shape):
     return image
 
 
-@pytest.mark.parametrize("translate, expected", [
-    ({"x": 10, "y": 20}, np.float32([[1, 0, 10], [0, 1, 20]])),
-    ({"x": -5, "y": 15}, np.float32([[1, 0, -5], [0, 1, 15]])),
-])
+@pytest.mark.parametrize(
+    "translate, expected",
+    [
+        ({"x": 10, "y": 20}, np.float32([[1, 0, 10], [0, 1, 20]])),
+        ({"x": -5, "y": 15}, np.float32([[1, 0, -5], [0, 1, 15]])),
+    ],
+)
 def test_translation(translate, expected):
     affine_matrix = fgeometric.create_affine_transformation_matrix(
         translate=translate,
         shear={"x": 0, "y": 0},
         scale={"x": 1, "y": 1},
         rotate=0,
-        shift=(0, 0)
+        shift=(0, 0),
     )
 
     assert affine_matrix.shape == (3, 3), "Affine matrix should be 3x3"
     np.testing.assert_array_almost_equal(affine_matrix[:2], expected)
 
-@pytest.mark.parametrize("scale, expected", [
-    ({"x": 2, "y": 2}, np.float32([[2, 0, 0], [0, 2, 0]])),
-    ({"x": 0.5, "y": 1.5}, np.float32([[0.5, 0, 0], [0, 1.5, 0]])),
-])
+
+@pytest.mark.parametrize(
+    "scale, expected",
+    [
+        ({"x": 2, "y": 2}, np.float32([[2, 0, 0], [0, 2, 0]])),
+        ({"x": 0.5, "y": 1.5}, np.float32([[0.5, 0, 0], [0, 1.5, 0]])),
+    ],
+)
 def test_scale(scale, expected):
     affine_matrix = fgeometric.create_affine_transformation_matrix(
         translate={"x": 0, "y": 0},
         shear={"x": 0, "y": 0},
         scale=scale,
         rotate=0,
-        shift=(0, 0)
+        shift=(0, 0),
     )
 
     assert affine_matrix.shape == (3, 3), "Affine matrix should be 3x3"
     np.testing.assert_array_almost_equal(affine_matrix[:2], expected)
+
 
 @pytest.mark.parametrize("rotate", [0, 45, 90, 180, -30])
 def test_rotation(rotate):
@@ -117,32 +125,38 @@ def test_rotation(rotate):
         shear={"x": 0, "y": 0},
         scale={"x": 1, "y": 1},
         rotate=rotate,
-        shift=(0, 0)
+        shift=(0, 0),
     )
     opencv_result = cv2.getRotationMatrix2D((0, 0), rotate, 1.0)
     np.testing.assert_array_almost_equal(result[:2], opencv_result)
 
-@pytest.mark.parametrize("shear", [
-    {"x": 0, "y": 0},
-    {"x": 30, "y": 0},
-    {"x": 0, "y": 30},
-    {"x": 15, "y": 15},
-])
+
+@pytest.mark.parametrize(
+    "shear",
+    [
+        {"x": 0, "y": 0},
+        {"x": 30, "y": 0},
+        {"x": 0, "y": 30},
+        {"x": 15, "y": 15},
+    ],
+)
 def test_shear(shear):
     result = fgeometric.create_affine_transformation_matrix(
         translate={"x": 0, "y": 0},
         shear=shear,
         scale={"x": 1, "y": 1},
         rotate=0,
-        shift=(0, 0)
+        shift=(0, 0),
     )
     # OpenCV doesn't have a direct shear function, so we'll just check if the matrix is as expected
-    expected = np.array([
-        [1, np.tan(np.deg2rad(shear["x"])), 0],
-        [np.tan(np.deg2rad(shear["y"])), 1, 0],
-        [0, 0, 1]
-    ])
-        # Compare only the first two rows and columns
+    expected = np.array(
+        [
+            [1, np.tan(np.deg2rad(shear["x"])), 0],
+            [np.tan(np.deg2rad(shear["y"])), 1, 0],
+            [0, 0, 1],
+        ],
+    )
+    # Compare only the first two rows and columns
     np.testing.assert_array_almost_equal(result[:2, :2], expected[:2, :2])
 
     # Check the translation part separately
@@ -156,7 +170,7 @@ def test_shift(shift):
         shear={"x": 0, "y": 0},
         scale={"x": 1, "y": 1},
         rotate=0,
-        shift=shift
+        shift=shift,
     )
 
     # The shift should not affect the final matrix
@@ -165,11 +179,14 @@ def test_shift(shift):
     np.testing.assert_array_almost_equal(result, expected)
 
 
-@pytest.mark.parametrize("translate, shear, scale, rotate, shift", [
-    ({"x": 10, "y": 20}, {"x": 0, "y": 0}, {"x": 1, "y": 1}, 0, (0, 0)),
-    ({"x": 0, "y": 0}, {"x": 30, "y": 0}, {"x": 2, "y": 2}, 45, (100, 100)),
-    ({"x": -5, "y": 5}, {"x": 15, "y": 15}, {"x": 0.5, "y": 1.5}, 90, (-50, 50)),
-])
+@pytest.mark.parametrize(
+    "translate, shear, scale, rotate, shift",
+    [
+        ({"x": 10, "y": 20}, {"x": 0, "y": 0}, {"x": 1, "y": 1}, 0, (0, 0)),
+        ({"x": 0, "y": 0}, {"x": 30, "y": 0}, {"x": 2, "y": 2}, 45, (100, 100)),
+        ({"x": -5, "y": 5}, {"x": 15, "y": 15}, {"x": 0.5, "y": 1.5}, 90, (-50, 50)),
+    ],
+)
 def test_matrix_determinant(translate, shear, scale, rotate, shift):
     result = fgeometric.create_affine_transformation_matrix(translate, shear, scale, rotate, shift)
     det = np.linalg.det(result[:2, :2])
@@ -183,13 +200,15 @@ def test_matrix_determinant(translate, shear, scale, rotate, shift):
 
     # If there's no shear, the determinant should be close to the product of scale factors
     if shear["x"] == 0 and shear["y"] == 0:
-        assert np.isclose(det, expected_det_without_shear, rtol=1e-6), \
+        assert np.isclose(det, expected_det_without_shear, rtol=1e-6), (
             f"Without shear, determinant {det} should be close to expected {expected_det_without_shear}"
+        )
     else:
         # With shear, we expect the determinant to be different from the product of scale factors
         # We can check if it's within a reasonable range, e.g., 50% to 150% of the expected value without shear
-        assert 0.5 * expected_det_without_shear < det < 1.5 * expected_det_without_shear, \
+        assert 0.5 * expected_det_without_shear < det < 1.5 * expected_det_without_shear, (
             f"With shear, determinant {det} should be within 50-150% of {expected_det_without_shear}"
+        )
 
 
 @pytest.mark.parametrize("image_shape", image_shapes)
@@ -219,7 +238,7 @@ def test_edge_padding(image_shape, translation, padding_value):
         shear=shear,
         scale=scale,
         rotate=rotate,
-        shift=shift
+        shift=shift,
     )
 
     # Apply the transformation with specified padding
@@ -235,30 +254,30 @@ def test_edge_padding(image_shape, translation, padding_value):
     # Check if the edge padding is correctly applied
     if translation[0] > 0:  # Right translation
         assert np.all(
-            warped_img[:, :translation[0]] == padding_value
+            warped_img[:, : translation[0]] == padding_value,
         ), "Edge padding failed: Incorrect padding on left edge."
     elif translation[0] < 0:  # Left translation
         assert np.all(
-            warped_img[:, translation[0]:] == padding_value
+            warped_img[:, translation[0] :] == padding_value,
         ), "Edge padding failed: Incorrect padding on right edge."
     if translation[1] > 0:  # Down translation
         assert np.all(
-            warped_img[:translation[1], :] == padding_value
+            warped_img[: translation[1], :] == padding_value,
         ), "Edge padding failed: Incorrect padding on top edge."
     elif translation[1] < 0:  # Up translation
         assert np.all(
-            warped_img[translation[1]:, :] == padding_value
+            warped_img[translation[1] :, :] == padding_value,
         ), "Edge padding failed: Incorrect padding on bottom edge."
 
     # Check that the non-padded area still contains the original values
     if translation[0] > 0:
-        assert np.all(warped_img[:, translation[0]:] == 255), "Non-padded area was altered."
+        assert np.all(warped_img[:, translation[0] :] == 255), "Non-padded area was altered."
     elif translation[0] < 0:
-        assert np.all(warped_img[:, :translation[0]] == 255), "Non-padded area was altered."
+        assert np.all(warped_img[:, : translation[0]] == 255), "Non-padded area was altered."
     if translation[1] > 0:
-        assert np.all(warped_img[translation[1]:, :] == 255), "Non-padded area was altered."
+        assert np.all(warped_img[translation[1] :, :] == 255), "Non-padded area was altered."
     elif translation[1] < 0:
-        assert np.all(warped_img[:translation[1], :] == 255), "Non-padded area was altered."
+        assert np.all(warped_img[: translation[1], :] == 255), "Non-padded area was altered."
 
 
 def calculate_iou(img1, img2):
@@ -274,14 +293,23 @@ def calculate_iou(img1, img2):
         (100, 100, 3),
     ],
 )
-@pytest.mark.parametrize("angle", [45,
-                                   90, 180
-                                   ])  # Rotation angles
+@pytest.mark.parametrize(
+    "angle",
+    [
+        45,
+        90,
+        180,
+    ],
+)  # Rotation angles
 @pytest.mark.parametrize("shape", ["circle", "rectangle"])
-@pytest.mark.parametrize("scale", [1,
-                                   0.8,
-                                   1.2
-                                   ])  # Scale factors
+@pytest.mark.parametrize(
+    "scale",
+    [
+        1,
+        0.8,
+        1.2,
+    ],
+)  # Scale factors
 def test_inverse_angle_scale(image_shape, angle, shape, scale):
     image = np.zeros(image_shape, dtype=np.uint8)
 
@@ -298,16 +326,16 @@ def test_inverse_angle_scale(image_shape, angle, shape, scale):
         shear={"x": 0, "y": 0},
         scale={"x": scale, "y": scale},
         rotate=angle,
-        shift=center
+        shift=center,
     )
 
     # Create inverse transformation matrix
     inverse_matrix = fgeometric.create_affine_transformation_matrix(
         translate={"x": 0, "y": 0},
         shear={"x": 0, "y": 0},
-        scale={"x": 1/scale, "y": 1/scale},
+        scale={"x": 1 / scale, "y": 1 / scale},
         rotate=-angle,
-        shift=center
+        shift=center,
     )
 
     # Apply the forward transformation
@@ -330,7 +358,7 @@ def test_inverse_angle_scale(image_shape, angle, shape, scale):
 
     # Calculate IoU
     iou = calculate_iou(image > 0, restored_img > 0)
-        # Calculate difference statistics
+    # Calculate difference statistics
     diff = np.abs(image.astype(int) - restored_img.astype(int))
 
     mean_diff = np.mean(diff)
@@ -340,6 +368,7 @@ def test_inverse_angle_scale(image_shape, angle, shape, scale):
     assert iou > 0.97, f"IoU ({iou}) is too low"
     assert mean_diff < 2, f"Mean difference ({mean_diff}) is too high"
     assert num_diff_pixels / image.size < 0.1, f"Too many different pixels ({num_diff_pixels})"
+
 
 @pytest.mark.parametrize(
     "img,expected",
@@ -354,7 +383,7 @@ def test_inverse_angle_scale(image_shape, angle, shape, scale):
                 ],
                 dtype=np.float32,
             ),
-                        np.array(
+            np.array(
                 [
                     [0.01, 0.02, 0.03, 0.04],
                     [0.05, 0.06, 0.07, 0.08],
@@ -367,18 +396,19 @@ def test_inverse_angle_scale(image_shape, angle, shape, scale):
         (
             np.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]], dtype=np.uint8),
             np.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]], dtype=np.uint8),
-        ),    ],
+        ),
+    ],
 )  # Scale factors
 def test_scale_with_warp_affine(img, expected):
     scale = 2
 
-        # Create a centered scaling matrix
+    # Create a centered scaling matrix
     transform = fgeometric.create_affine_transformation_matrix(
         translate={"x": 0, "y": 0},
         shear={"x": 0, "y": 0},
         scale={"x": scale, "y": scale},
         rotate=0,
-        shift=(0, 0)
+        shift=(0, 0),
     )
 
     expected_shape = (int(img.shape[0] * scale), int(img.shape[1] * scale))
@@ -441,7 +471,7 @@ def test_rotate_with_warp_affine(img, expected):
         shear={"x": 0, "y": 0},
         scale={"x": 1, "y": 1},
         rotate=angle,
-        shift=center
+        shift=center,
     )
 
     # Apply scaling using warp_affine from the example provided
@@ -523,7 +553,7 @@ def test_translate_with_warp_affine(img, expected, translate):
         shear={"x": 0, "y": 0},
         scale={"x": 1, "y": 1},
         rotate=0,
-        shift=(0, 0)
+        shift=(0, 0),
     )
 
     # Apply scaling using warp_affine from the example provided
@@ -564,7 +594,7 @@ def test_inverse_shear(image_shape, shear, shape):
         shear={"x": shear, "y": 0},  # Apply shear only in x-direction
         scale={"x": 1, "y": 1},
         rotate=0,
-        shift=center
+        shift=center,
     )
 
     # Create inverse transformation matrix
@@ -573,7 +603,7 @@ def test_inverse_shear(image_shape, shear, shape):
         shear={"x": -shear, "y": 0},  # Apply inverse shear
         scale={"x": 1, "y": 1},
         rotate=0,
-        shift=center
+        shift=center,
     )
 
     assert forward_matrix.shape == (3, 3), "Forward matrix should be 3x3"
@@ -600,13 +630,20 @@ def test_inverse_shear(image_shape, shear, shape):
     )
 
     # Check if the restored image is close to the original
-    np.testing.assert_allclose(image, restored_img, atol=1,
-                               err_msg=f"Inverse transformation failed: The restored image is not close enough to the original. "
-                               f"Shape: {shape}, Shear: {shear}, Max difference: {np.max(np.abs(image - restored_img))}")
+    np.testing.assert_allclose(
+        image,
+        restored_img,
+        atol=1,
+        err_msg=f"Inverse transformation failed: The restored image is not close enough to the original. "
+        f"Shape: {shape}, Shear: {shear}, Max difference: {np.max(np.abs(image - restored_img))}",
+    )
 
     # Check if the forward transformation actually changed the image (except for shear=0)
     if shear != 0:
-        assert not np.array_equal(image, warped_img), f"Forward transformation had no effect. Shape: {shape}, Shear: {shear}"
+        assert not np.array_equal(image, warped_img), (
+            f"Forward transformation had no effect. Shape: {shape}, Shear: {shear}"
+        )
+
 
 @pytest.mark.parametrize(
     "image_shape",
@@ -633,7 +670,7 @@ def test_inverse_translate(image_shape, translate, shape):
         shear={"x": 0, "y": 0},
         scale={"x": 1, "y": 1},
         rotate=0,
-        shift=center
+        shift=center,
     )
 
     # Create inverse transformation matrix
@@ -642,7 +679,7 @@ def test_inverse_translate(image_shape, translate, shape):
         shear={"x": 0, "y": 0},
         scale={"x": 1, "y": 1},
         rotate=0,
-        shift=center
+        shift=center,
     )
 
     # Apply the forward transformation
@@ -666,17 +703,19 @@ def test_inverse_translate(image_shape, translate, shape):
     )
 
     # Check if the restored image is identical to the original
-    np.testing.assert_allclose(image, restored_img, atol=1,
-                               err_msg=f"Inverse transformation failed: The restored image is not identical to the original. "
-                               f"Shape: {shape}, Translation: {translate}, "
-                               f"Max difference: {np.max(np.abs(image - restored_img))}")
-
+    np.testing.assert_allclose(
+        image,
+        restored_img,
+        atol=1,
+        err_msg=f"Inverse transformation failed: The restored image is not identical to the original. "
+        f"Shape: {shape}, Translation: {translate}, "
+        f"Max difference: {np.max(np.abs(image - restored_img))}",
+    )
 
     # Check if the forward transformation actually changed the image (except for translate=(0,0))
     if translate != (0, 0):
         assert not np.array_equal(image, warped_img), (
-            f"Forward transformation had no effect. "
-            f"Shape: {shape}, Translation: {translate}"
+            f"Forward transformation had no effect. Shape: {shape}, Translation: {translate}"
         )
 
 
@@ -694,7 +733,7 @@ def test_keypoint_affine(keypoint, expected, angle, scale, dx, dy):
         shear={"x": 0, "y": 0},
         scale={"x": scale, "y": scale},
         rotate=angle,
-        shift=center
+        shift=center,
     )
 
     keypoints = np.array([keypoint])
@@ -716,11 +755,12 @@ def test_keypoint_affine(keypoint, expected, angle, scale, dx, dy):
         actual,
         inverse_matrix,
         (height, width),
-        {"x": 1/scale, "y": 1/scale},
+        {"x": 1 / scale, "y": 1 / scale},
         cv2.BORDER_CONSTANT,
     )
-    np.testing.assert_allclose(restored_keypoints[0], keypoint, atol=1e-6), (
-        f"Inverse transformation failed. Original: {keypoint}, Restored: {restored_keypoints[0]}"
+    (
+        np.testing.assert_allclose(restored_keypoints[0], keypoint, atol=1e-6),
+        (f"Inverse transformation failed. Original: {keypoint}, Restored: {restored_keypoints[0]}"),
     )
 
 
@@ -871,10 +911,10 @@ def test_center_remains_stationary(image_shape, transform_params):
     np.testing.assert_allclose(transformed_center, center, atol=1e-6)
 
     # If there's a translation, check if the center has moved by the expected amount
-    if transform_params['translate']['x'] != 0 or transform_params['translate']['y'] != 0:
+    if transform_params["translate"]["x"] != 0 or transform_params["translate"]["y"] != 0:
         expected_center = [
-            center[0] + transform_params['translate']['x'],
-            center[1] + transform_params['translate']['y']
+            center[0] + transform_params["translate"]["x"],
+            center[1] + transform_params["translate"]["y"],
         ]
         np.testing.assert_allclose(transformed_center, expected_center, atol=1e-6)
 
@@ -994,42 +1034,44 @@ def test_calculate_affine_transform_padding(image_shape, transform_params, expec
     transform = fgeometric.create_affine_transformation_matrix(**transform_params, shift=bbox_shift)
 
     padding = fgeometric.calculate_affine_transform_padding(transform, image_shape)
-    np.testing.assert_allclose(padding, expected_padding, atol=1,
-                               err_msg=f"Failed for params: {transform_params}")
+    np.testing.assert_allclose(padding, expected_padding, atol=1, err_msg=f"Failed for params: {transform_params}")
 
-@pytest.mark.parametrize("transform_params, image_shape, expected_padding, description", [
-    (
-        {"translate": {"x": -50, "y": -50}, "shear": {"x": 0, "y": 0}, "scale": {"x": 1.5, "y": 1.5}, "rotate": 60},
-        (100, 100),
-        None,  # We'll just check if it's non-negative
-        "Rotation, scaling, and translation should have non-negative padding"
-    ),
-    (
-        {"translate": {"x": 0, "y": 0}, "shear": {"x": 0, "y": 0}, "scale": {"x": 1, "y": 1}, "rotate": 0},
-        (100, 100),
-        (0, 0, 0, 0),
-        "Identity transform should require no padding"
-    ),
-    (
-        {"translate": {"x": 20, "y": 30}, "shear": {"x": 0, "y": 0}, "scale": {"x": 1, "y": 1}, "rotate": 0},
-        (100, 100),
-        (20, 0, 30, 0),
-        "Translation should result in correct padding"
-    ),
-    (
-        {"translate": {"x": 0, "y": 0}, "shear": {"x": 0, "y": 0}, "scale": {"x": 2, "y": 2}, "rotate": 0},
-        (100, 100),
-        (0, 0, 0, 0),
-        "Scaling by 2 should result in 50 pixels padding on all sides"
-    ),
-    (
-        {"translate": {"x": 0, "y": 0}, "shear": {"x": 0, "y": 0}, "scale": {"x": 0.5, "y": 0.5}, "rotate": 0},
-        (100, 100),
-        (50, 50, 50, 50),
-        "Scaling by 2 should result in 50 pixels padding on all sides"
-    ),
 
-])
+@pytest.mark.parametrize(
+    "transform_params, image_shape, expected_padding, description",
+    [
+        (
+            {"translate": {"x": -50, "y": -50}, "shear": {"x": 0, "y": 0}, "scale": {"x": 1.5, "y": 1.5}, "rotate": 60},
+            (100, 100),
+            None,  # We'll just check if it's non-negative
+            "Rotation, scaling, and translation should have non-negative padding",
+        ),
+        (
+            {"translate": {"x": 0, "y": 0}, "shear": {"x": 0, "y": 0}, "scale": {"x": 1, "y": 1}, "rotate": 0},
+            (100, 100),
+            (0, 0, 0, 0),
+            "Identity transform should require no padding",
+        ),
+        (
+            {"translate": {"x": 20, "y": 30}, "shear": {"x": 0, "y": 0}, "scale": {"x": 1, "y": 1}, "rotate": 0},
+            (100, 100),
+            (20, 0, 30, 0),
+            "Translation should result in correct padding",
+        ),
+        (
+            {"translate": {"x": 0, "y": 0}, "shear": {"x": 0, "y": 0}, "scale": {"x": 2, "y": 2}, "rotate": 0},
+            (100, 100),
+            (0, 0, 0, 0),
+            "Scaling by 2 should result in 50 pixels padding on all sides",
+        ),
+        (
+            {"translate": {"x": 0, "y": 0}, "shear": {"x": 0, "y": 0}, "scale": {"x": 0.5, "y": 0.5}, "rotate": 0},
+            (100, 100),
+            (50, 50, 50, 50),
+            "Scaling by 2 should result in 50 pixels padding on all sides",
+        ),
+    ],
+)
 def test_calculate_affine_transform_padding_properties(transform_params, image_shape, expected_padding, description):
     center = fgeometric.center_bbox(image_shape)
 
@@ -1045,9 +1087,10 @@ def test_calculate_affine_transform_padding_properties(transform_params, image_s
 
 @pytest.mark.parametrize(
     ["format", "bbox"],
-    [("pascal_voc", (40, 40, 60, 60)),
-     ("albumentations", (0.4, 0.4, 0.6, 0.6))
-     ],
+    [
+        ("pascal_voc", (40, 40, 60, 60)),
+        ("albumentations", (0.4, 0.4, 0.6, 0.6)),
+    ],
 )
 @pytest.mark.parametrize(
     ["transform_class", "transform_params"],
@@ -1072,16 +1115,24 @@ def test_rotate_by_90_bboxes_symmetric_bbox(transform_class, transform_params, f
     np.testing.assert_allclose(bbox_out1, bbox, atol=1e-6)
 
 
-@pytest.mark.parametrize("scale, keep_ratio, balanced_scale, expected", [
-    ({"x": 1, "y": 1}, False, False, {"x": 1, "y": 1}),
-    ({"x": 1, "y": 1}, True, False, {"x": 1, "y": 1}),
-    ({"x": (0.5, 1.5), "y": (0.5, 1.5)}, False, False, {"x": pytest.approx(1, abs=0.5), "y": pytest.approx(1, abs=0.5)}),
-    ({"x": (0.5, 1.5), "y": (0.5, 1.5)}, True, False, lambda x: x["x"] == x["y"] and 0.5 <= x["x"] <= 1.5),
-    ({"x": (0.5, 1.5), "y": (0.5, 1.5)}, False, True, lambda x: all(0.5 <= v <= 1.5 for v in x.values())),
-    ({"x": (0.5, 2.0), "y": 1}, False, False, lambda x: 0.5 <= x["x"] <= 2.0 and x["y"] == 1),
-    ({"x": 0.5, "y": (0.5, 1.5)}, True, False, lambda x: x["x"] == 0.5 and x["y"] == 0.5),
-    ({"x": (0.8, 1.2), "y": (0.8, 1.2)}, False, True, lambda x: all(0.8 <= v <= 1.2 for v in x.values())),
-])
+@pytest.mark.parametrize(
+    "scale, keep_ratio, balanced_scale, expected",
+    [
+        ({"x": 1, "y": 1}, False, False, {"x": 1, "y": 1}),
+        ({"x": 1, "y": 1}, True, False, {"x": 1, "y": 1}),
+        (
+            {"x": (0.5, 1.5), "y": (0.5, 1.5)},
+            False,
+            False,
+            {"x": pytest.approx(1, abs=0.5), "y": pytest.approx(1, abs=0.5)},
+        ),
+        ({"x": (0.5, 1.5), "y": (0.5, 1.5)}, True, False, lambda x: x["x"] == x["y"] and 0.5 <= x["x"] <= 1.5),
+        ({"x": (0.5, 1.5), "y": (0.5, 1.5)}, False, True, lambda x: all(0.5 <= v <= 1.5 for v in x.values())),
+        ({"x": (0.5, 2.0), "y": 1}, False, False, lambda x: 0.5 <= x["x"] <= 2.0 and x["y"] == 1),
+        ({"x": 0.5, "y": (0.5, 1.5)}, True, False, lambda x: x["x"] == 0.5 and x["y"] == 0.5),
+        ({"x": (0.8, 1.2), "y": (0.8, 1.2)}, False, True, lambda x: all(0.8 <= v <= 1.2 for v in x.values())),
+    ],
+)
 def test_get_scale(scale, keep_ratio, balanced_scale, expected):
     result = A.Affine._get_scale(scale, keep_ratio, balanced_scale, random.Random(42))
 
@@ -1090,12 +1141,14 @@ def test_get_scale(scale, keep_ratio, balanced_scale, expected):
     else:
         assert result == expected
 
+
 def test_get_scale_balanced_scale_behavior():
     scale = {"x": (0.5, 2.0), "y": (0.5, 2.0)}
     result = A.Affine._get_scale(scale, keep_ratio=False, balanced_scale=True, random_state=random.Random(42))
 
     assert all(0.5 <= v <= 2.0 for v in result.values())
     assert any(v < 1.0 for v in result.values()) or any(v > 1.0 for v in result.values())
+
 
 def test_get_scale_keep_ratio():
     scale = {"x": (0.5, 1.5), "y": (0.8, 1.2)}
@@ -1126,60 +1179,67 @@ def test_get_random_scale(scale, keep_ratio, balanced_scale, expected_x_range, e
         assert expected_y_range[0] <= result["y"] <= expected_y_range[1], "y is out of range"
 
     if balanced_scale:
-        assert (
-            expected_x_range[0] <= result["x"] < 1 or 1 < result["x"] <= expected_x_range[1]
-        ), "x should be in the balanced range"
-        assert (
-            expected_y_range[0] <= result["y"] < 1 or 1 < result["y"] <= expected_x_range[1]
-        ), "x should be in the balanced range"
+        assert expected_x_range[0] <= result["x"] < 1 or 1 < result["x"] <= expected_x_range[1], (
+            "x should be in the balanced range"
+        )
+        assert expected_y_range[0] <= result["y"] < 1 or 1 < result["y"] <= expected_x_range[1], (
+            "x should be in the balanced range"
+        )
 
 
-@pytest.mark.parametrize("points, matrix, expected", [
-    # Test case 1: Identity transformation
-    (
-        np.array([[1, 1], [2, 2], [3, 3]]),
-        np.eye(3),
-        np.array([[1, 1], [2, 2], [3, 3]])
-    ),
-    # Test case 2: Translation
-    (
-        np.array([[1, 1], [2, 2], [3, 3]]),
-        np.array([[1, 0, 1], [0, 1, 2], [0, 0, 1]]),
-        np.array([[2, 3], [3, 4], [4, 5]])
-    ),
-    # Test case 3: Scaling
-    (
-        np.array([[1, 1], [2, 2], [3, 3]]),
-        np.array([[2, 0, 0], [0, 2, 0], [0, 0, 1]]),
-        np.array([[2, 2], [4, 4], [6, 6]])
-    ),
-    # Test case 4: Rotation (90 degrees)
-    (
-        np.array([[1, 0], [0, 1], [1, 1]]),
-        np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]),
-        np.array([[0, 1], [-1, 0], [-1, 1]])
-    ),
-    # Test case 5: Shear
-    (
-        np.array([[1, 1], [2, 2], [3, 3]]),
-        np.array([[1, 0.5, 0], [0, 1, 0], [0, 0, 1]]),
-        np.array([[1.5, 1], [3, 2], [4.5, 3]])
-    ),
-    (
-        np.array([]),
-        np.array([[1, 0.5, 0], [0, 1, 0], [0, 0, 1]]),
-        np.array([])
-    ),
-])
+@pytest.mark.parametrize(
+    "points, matrix, expected",
+    [
+        # Test case 1: Identity transformation
+        (
+            np.array([[1, 1], [2, 2], [3, 3]]),
+            np.eye(3),
+            np.array([[1, 1], [2, 2], [3, 3]]),
+        ),
+        # Test case 2: Translation
+        (
+            np.array([[1, 1], [2, 2], [3, 3]]),
+            np.array([[1, 0, 1], [0, 1, 2], [0, 0, 1]]),
+            np.array([[2, 3], [3, 4], [4, 5]]),
+        ),
+        # Test case 3: Scaling
+        (
+            np.array([[1, 1], [2, 2], [3, 3]]),
+            np.array([[2, 0, 0], [0, 2, 0], [0, 0, 1]]),
+            np.array([[2, 2], [4, 4], [6, 6]]),
+        ),
+        # Test case 4: Rotation (90 degrees)
+        (
+            np.array([[1, 0], [0, 1], [1, 1]]),
+            np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]),
+            np.array([[0, 1], [-1, 0], [-1, 1]]),
+        ),
+        # Test case 5: Shear
+        (
+            np.array([[1, 1], [2, 2], [3, 3]]),
+            np.array([[1, 0.5, 0], [0, 1, 0], [0, 0, 1]]),
+            np.array([[1.5, 1], [3, 2], [4.5, 3]]),
+        ),
+        (
+            np.array([]),
+            np.array([[1, 0.5, 0], [0, 1, 0], [0, 0, 1]]),
+            np.array([]),
+        ),
+    ],
+)
 def test_apply_affine_to_points(points, matrix, expected):
     result = fgeometric.apply_affine_to_points(points, matrix)
     np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-8)
 
-@pytest.mark.parametrize("points, matrix", [
-    # Test case for invalid input shapes
-    (np.array([[1, 1]]), np.eye(2)),  # Invalid matrix shape
-    (np.array([1, 1]), np.eye(3)),    # Invalid points shape
-])
+
+@pytest.mark.parametrize(
+    "points, matrix",
+    [
+        # Test case for invalid input shapes
+        (np.array([[1, 1]]), np.eye(2)),  # Invalid matrix shape
+        (np.array([1, 1]), np.eye(3)),  # Invalid points shape
+    ],
+)
 def test_apply_affine_to_points_invalid_input(points, matrix):
     with pytest.raises((ValueError, IndexError)):
         fgeometric.apply_affine_to_points(points, matrix)
@@ -1227,5 +1287,6 @@ def test_rot90(bboxes, angle, keypoints):
     np.testing.assert_array_equal(transformed["mask"], mask_rotated)
 
     np.testing.assert_array_almost_equal(transformed["bboxes"], bboxes_rotated, decimal=1e-5)
-    # If we want to check all coordinates we need additionally to convert for keypoints angle to radians and back as Compose does it for us
+    # If we want to check all coordinates we need additionally to convert for keypoints
+    # angle to radians and back as Compose does it for us
     np.testing.assert_array_almost_equal(transformed["keypoints"][:, :2], keypoints_rotated[:, :2])

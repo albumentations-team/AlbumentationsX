@@ -1,18 +1,21 @@
 from random import Random
-import pytest
-from albumentations.augmentations.blur import functional as fblur
+
 import numpy as np
+import pytest
+
+from albumentations.augmentations.blur import functional as fblur
+
 
 @pytest.mark.parametrize(
     "low, high, expected_range",
     [
-        (-8, 7, {3, 5, 7}),           # negative low
-        (2, 6, {3, 5, 7}),               # even values
-        (1, 4, {3, 5}),                  # low < 3
-        (4, 4, {5}),                  # same even value
-        (3, 3, {3}),                  # same odd value
-        (2, 2, {3}),                  # same even value < 3
-        (-4, -2, {3}),                # all negative values
+        (-8, 7, {3, 5, 7}),  # negative low
+        (2, 6, {3, 5, 7}),  # even values
+        (1, 4, {3, 5}),  # low < 3
+        (4, 4, {5}),  # same even value
+        (3, 3, {3}),  # same odd value
+        (2, 2, {3}),  # same even value < 3
+        (-4, -2, {3}),  # all negative values
     ],
     ids=[
         "negative_low",
@@ -22,7 +25,7 @@ import numpy as np
         "same_odd_value",
         "same_even_value_less_than_3",
         "all_negative",
-    ]
+    ],
 )
 def test_sample_odd_from_range(low: int, high: int, expected_range: set[int]):
     """Test sampling odd numbers from a range."""
@@ -47,7 +50,7 @@ def create_pil_kernel(radius):
     sigma2 = radius * radius
     scale = 1.0 / (radius * np.sqrt(2.0 * np.pi))
 
-    for i in range(-size//2 + 1, size//2 + 1):
+    for i in range(-size // 2 + 1, size // 2 + 1):
         x = i * 1.0
         kernel.append(scale * np.exp(-(x * x) / (2.0 * sigma2)))
 
@@ -56,35 +59,38 @@ def create_pil_kernel(radius):
     # Create 2D kernel
     return kernel[:, np.newaxis] @ kernel[np.newaxis, :]
 
+
 @pytest.mark.parametrize(
     ["sigma", "ksize", "expected_shape"],
     [
-        (0.5, 0, (3, 3)),     # Small sigma
-        (1.0, 0, (7, 7)),     # Medium sigma
-        (2.0, 0, (15, 15)),   # Large sigma
-        (3.0, 0, (21, 21)),   # Very large sigma
-        (1.0, 5, (5, 5)),     # Fixed kernel size
-        (2.0, 7, (7, 7)),     # Different fixed kernel size
-    ]
+        (0.5, 0, (3, 3)),  # Small sigma
+        (1.0, 0, (7, 7)),  # Medium sigma
+        (2.0, 0, (15, 15)),  # Large sigma
+        (3.0, 0, (21, 21)),  # Very large sigma
+        (1.0, 5, (5, 5)),  # Fixed kernel size
+        (2.0, 7, (7, 7)),  # Different fixed kernel size
+    ],
 )
 def test_kernel_shapes(sigma, ksize, expected_shape):
     kernel = fblur.create_gaussian_kernel(sigma, ksize)
     assert kernel.shape == expected_shape
 
+
 @pytest.mark.parametrize(
     ["sigma", "ksize", "expected_shape"],
     [
-        (0.5, 0, (3,)),     # Small sigma
-        (1.0, 0, (7,)),     # Medium sigma
-        (2.0, 0, (15,)),   # Large sigma
-        (3.0, 0, (21,)),   # Very large sigma
-        (1.0, 5, (5,)),     # Fixed kernel size
-        (2.0, 7, (7,)),     # Different fixed kernel size
-    ]
+        (0.5, 0, (3,)),  # Small sigma
+        (1.0, 0, (7,)),  # Medium sigma
+        (2.0, 0, (15,)),  # Large sigma
+        (3.0, 0, (21,)),  # Very large sigma
+        (1.0, 5, (5,)),  # Fixed kernel size
+        (2.0, 7, (7,)),  # Different fixed kernel size
+    ],
 )
 def test_1d_kernel_shapes(sigma, ksize, expected_shape):
     kernel = fblur.create_gaussian_kernel_1d(sigma, ksize)
     assert kernel.shape == expected_shape
+
 
 @pytest.mark.parametrize("sigma", [0.5, 1.0, 2.0, 3.0])
 def test_kernel_normalization(sigma):
@@ -95,12 +101,14 @@ def test_kernel_normalization(sigma):
     np.testing.assert_allclose(kernel.sum(), 1.0, atol=1e-6)
     np.testing.assert_allclose(kernel_1d.sum(), 1.0, atol=1e-6)
 
+
 @pytest.mark.parametrize("sigma", [0.5, 1.0, 2.0, 3.0])
 def test_kernel_symmetry(sigma):
     """Test that kernel is symmetric both horizontally and vertically"""
     kernel = fblur.create_gaussian_kernel(sigma, 0)
     np.testing.assert_allclose(kernel, kernel.T)  # Vertical symmetry
     np.testing.assert_allclose(kernel, np.flip(kernel))  # Horizontal symmetry
+
 
 @pytest.mark.parametrize("sigma", [0.5, 1.0, 2.0, 3.0])
 def test_matches_pil_kernel(sigma):
@@ -109,13 +117,14 @@ def test_matches_pil_kernel(sigma):
     pil_kernel = create_pil_kernel(sigma)
     np.testing.assert_allclose(our_kernel, pil_kernel, rtol=1e-5)
 
+
 @pytest.mark.parametrize(
     ["sigma", "ksize", "expected_max_value"],
     [
         (0.5, 0, 0.619),  # Small sigma has highest peak
         (2.0, 0, 0.040),  # Larger sigma has lower peak
         (3.0, 0, 0.018),  # Even larger sigma has even lower peak
-    ]
+    ],
 )
 def test_kernel_peak_values(sigma, ksize, expected_max_value):
     """Test that kernel peak values decrease with increasing sigma"""
@@ -123,19 +132,21 @@ def test_kernel_peak_values(sigma, ksize, expected_max_value):
 
     assert np.abs(kernel.max() - expected_max_value) < 0.01
 
+
 @pytest.mark.parametrize(
     ["sigma", "ksize", "expected_max_value"],
     [
         (0.5, 0, 0.786),  # Small sigma has highest peak
         (2.0, 0, 0.199),  # Larger sigma has lower peak
         (3.0, 0, 0.133),  # Even larger sigma has even lower peak
-    ]
+    ],
 )
 def test_1d_kernel_peak_values(sigma, ksize, expected_max_value):
     """Test that kernel peak values decrease with increasing sigma"""
     kernel = fblur.create_gaussian_kernel_1d(sigma, ksize)
 
     assert np.abs(kernel.max() - expected_max_value) < 0.01
+
 
 def test_kernel_visual_comparison():
     """Visual test to compare kernels (useful for debugging)"""
@@ -148,6 +159,7 @@ def test_kernel_visual_comparison():
 
 # === Motion Kernel Tests ===
 
+
 @pytest.mark.parametrize(
     "kernel_size, expected_shape",
     [
@@ -155,7 +167,7 @@ def test_kernel_visual_comparison():
         (5, (5, 5)),
         (7, (7, 7)),
         (9, (9, 9)),
-    ]
+    ],
 )
 def test_create_motion_kernel_shape(kernel_size, expected_shape):
     """Test that motion kernel has the correct shape."""
@@ -165,7 +177,7 @@ def test_create_motion_kernel_shape(kernel_size, expected_shape):
         angle=0.0,
         direction=0.0,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
     assert kernel.shape == expected_shape
 
@@ -179,7 +191,7 @@ def test_create_motion_kernel_normalization(kernel_size):
         angle=0.0,
         direction=0.0,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
     # For symmetric horizontal motion, the kernel sum should equal the kernel size
     # (each pixel along the horizontal line gets weight 1.0)
@@ -189,12 +201,12 @@ def test_create_motion_kernel_normalization(kernel_size):
 @pytest.mark.parametrize(
     "direction, expected_behavior",
     [
-        (-1.0, "backward"),   # Should have more weight toward start of line
-        (-0.5, "backward"),   # Moderate backward bias
-        (0.0, "symmetric"),   # Should be symmetric
-        (0.5, "forward"),     # Moderate forward bias
-        (1.0, "forward"),     # Should have more weight toward end of line
-    ]
+        (-1.0, "backward"),  # Should have more weight toward start of line
+        (-0.5, "backward"),  # Moderate backward bias
+        (0.0, "symmetric"),  # Should be symmetric
+        (0.5, "forward"),  # Moderate forward bias
+        (1.0, "forward"),  # Should have more weight toward end of line
+    ],
 )
 def test_create_motion_kernel_direction_bias(direction, expected_behavior):
     """Test that direction parameter controls blur direction correctly."""
@@ -205,7 +217,7 @@ def test_create_motion_kernel_direction_bias(direction, expected_behavior):
         angle=0.0,  # Horizontal line for easier testing
         direction=direction,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     # For horizontal motion, check the middle row
@@ -215,7 +227,7 @@ def test_create_motion_kernel_direction_bias(direction, expected_behavior):
     # Find center and calculate weights
     center_col = kernel_size // 2
     left_weight = np.sum(row[:center_col])
-    right_weight = np.sum(row[center_col + 1:])
+    right_weight = np.sum(row[center_col + 1 :])
 
     if expected_behavior == "backward":
         assert left_weight >= right_weight, f"direction={direction} should have more weight on the left"
@@ -237,7 +249,7 @@ def test_create_motion_kernel_direction_bias(direction, expected_behavior):
         (135.0, "diagonal"),
         (180.0, "horizontal"),
         (270.0, "vertical"),
-    ]
+    ],
 )
 def test_create_motion_kernel_angles(angle, expected_orientation):
     """Test that angle parameter controls motion direction correctly."""
@@ -248,7 +260,7 @@ def test_create_motion_kernel_angles(angle, expected_orientation):
         angle=angle,
         direction=0.0,  # Symmetric for easier testing
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     # Check that kernel has non-zero values
@@ -287,15 +299,18 @@ def test_create_motion_kernel_allow_shifted(allow_shifted):
             angle=0.0,
             direction=0.0,
             allow_shifted=allow_shifted,
-            random_state=random_state
+            random_state=random_state,
         )
         kernels.append(kernel)
 
     if not allow_shifted:
         # All kernels should be identical when shifting is disabled
         for i in range(1, len(kernels)):
-            np.testing.assert_array_equal(kernels[0], kernels[i],
-                                        "Kernels should be identical when allow_shifted=False")
+            np.testing.assert_array_equal(
+                kernels[0],
+                kernels[i],
+                "Kernels should be identical when allow_shifted=False",
+            )
     # Note: With shifting enabled, kernels might be different
     # (This is harder to test deterministically due to randomness)
 
@@ -307,7 +322,7 @@ def test_create_motion_kernel_allow_shifted(allow_shifted):
         (-1.0, 1.0),
         (0.0, 1.0),
         (-0.5, 0.5),
-    ]
+    ],
 )
 def test_create_motion_kernel_different_directions_produce_different_kernels(direction1, direction2):
     """Test that different direction values produce different kernels."""
@@ -319,7 +334,7 @@ def test_create_motion_kernel_different_directions_produce_different_kernels(dir
         angle=0.0,
         direction=direction1,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     # Reset random state to ensure same other parameters
@@ -329,11 +344,12 @@ def test_create_motion_kernel_different_directions_produce_different_kernels(dir
         angle=0.0,
         direction=direction2,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
-    assert not np.array_equal(kernel1, kernel2), \
+    assert not np.array_equal(kernel1, kernel2), (
         f"direction={direction1} and direction={direction2} should produce different kernels"
+    )
 
 
 def test_create_motion_kernel_extreme_directions():
@@ -347,7 +363,7 @@ def test_create_motion_kernel_extreme_directions():
         angle=0.0,
         direction=-1.0,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     # Test direction = 1 (fully forward)
@@ -357,7 +373,7 @@ def test_create_motion_kernel_extreme_directions():
         angle=0.0,
         direction=1.0,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     # For horizontal motion, check middle row
@@ -366,12 +382,18 @@ def test_create_motion_kernel_extreme_directions():
 
     # Backward should have no weight strictly to the right of center
     backward_row = kernel_backward[middle_row, :]
-    assert np.sum(backward_row[center_col+1:]) == 0, "Fully backward motion should have no weight strictly to the right of center"
-    assert np.sum(backward_row[:center_col+1]) > 0, "Fully backward motion should have weight on left side and center"
+    assert np.sum(backward_row[center_col + 1 :]) == 0, (
+        "Fully backward motion should have no weight strictly to the right of center"
+    )
+    assert np.sum(backward_row[: center_col + 1]) > 0, (
+        "Fully backward motion should have weight on left side and center"
+    )
 
     # Forward should have no weight strictly to the left of center
     forward_row = kernel_forward[middle_row, :]
-    assert np.sum(forward_row[:center_col]) == 0, "Fully forward motion should have no weight strictly to the left of center"
+    assert np.sum(forward_row[:center_col]) == 0, (
+        "Fully forward motion should have no weight strictly to the left of center"
+    )
     assert np.sum(forward_row[center_col:]) > 0, "Fully forward motion should have weight on center and right side"
 
 
@@ -384,7 +406,7 @@ def test_create_motion_kernel_center_pixel_behavior():
         angle=0.0,
         direction=0.0,  # Symmetric
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     # For symmetric horizontal motion, center pixel should have weight
@@ -403,7 +425,7 @@ def test_create_motion_kernel_non_empty(kernel_size):
         angle=0.0,
         direction=0.0,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     assert kernel.sum() > 0, "Kernel should never be completely empty"
@@ -415,11 +437,11 @@ def test_create_motion_kernel_non_empty(kernel_size):
     [
         (-2.0, -1.0),  # Should be clamped to -1.0
         (-1.5, -1.0),  # Should be clamped to -1.0
-        (1.5, 1.0),    # Should be clamped to 1.0
-        (2.0, 1.0),    # Should be clamped to 1.0
-        (0.5, 0.5),    # Should remain unchanged
+        (1.5, 1.0),  # Should be clamped to 1.0
+        (2.0, 1.0),  # Should be clamped to 1.0
+        (0.5, 0.5),  # Should remain unchanged
         (-0.5, -0.5),  # Should remain unchanged
-    ]
+    ],
 )
 def test_create_motion_kernel_direction_validation(direction_input, expected_clamped):
     """Test that direction values are properly clamped to [-1, 1] range."""
@@ -432,7 +454,7 @@ def test_create_motion_kernel_direction_validation(direction_input, expected_cla
         angle=0.0,
         direction=direction_input,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     # Create reference kernel with expected clamped value
@@ -442,9 +464,12 @@ def test_create_motion_kernel_direction_validation(direction_input, expected_cla
         angle=0.0,
         direction=expected_clamped,
         allow_shifted=False,
-        random_state=random_state
+        random_state=random_state,
     )
 
     # Kernels should be identical (direction was clamped to valid range)
-    np.testing.assert_array_equal(kernel, reference_kernel,
-                                  f"direction={direction_input} should be clamped to {expected_clamped}")
+    np.testing.assert_array_equal(
+        kernel,
+        reference_kernel,
+        f"direction={direction_input} should be clamped to {expected_clamped}",
+    )

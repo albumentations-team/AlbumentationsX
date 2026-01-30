@@ -1,11 +1,11 @@
 from typing import Literal
+
+import cv2
 import numpy as np
 import pytest
 
 import albumentations as A
 from albumentations.augmentations.crops.functional import crop_bboxes_by_coords
-
-import cv2
 
 from .conftest import IMAGES, RECTANGULAR_UINT8_IMAGE
 
@@ -88,7 +88,20 @@ def test_crop_near_bbox(image, bboxes, keypoints):
 
     aug(image=image, bboxes=bboxes, target_bbox=[0, 5, 10, 20], keypoints=keypoints)
 
-    target_keys = {"image", "images", "bboxes", "labels", "mask", "masks", "keypoints", "volume", "volumes", "mask3d", "masks3d", bbox_key}
+    target_keys = {
+        "image",
+        "images",
+        "bboxes",
+        "labels",
+        "mask",
+        "masks",
+        "keypoints",
+        "volume",
+        "volumes",
+        "mask3d",
+        "masks3d",
+        bbox_key,
+    }
 
     assert aug._available_keys == target_keys
 
@@ -103,7 +116,12 @@ def test_crop_near_bbox(image, bboxes, keypoints):
 
 
 def test_crop_bbox_by_coords():
-    cropped_bbox = crop_bboxes_by_coords(np.array([[0.5, 0.2, 0.9, 0.7]]), (18, 18, 82, 82), (100, 100), bbox_type="hbb")
+    cropped_bbox = crop_bboxes_by_coords(
+        np.array([[0.5, 0.2, 0.9, 0.7]]),
+        (18, 18, 82, 82),
+        (100, 100),
+        bbox_type="hbb",
+    )
     np.testing.assert_array_almost_equal(cropped_bbox, np.array([[0.5, 0.03125, 1.125, 0.8125]]))
 
 
@@ -151,14 +169,16 @@ def test_bbox_params_edges(
     else:
         np.testing.assert_allclose(res, expected_bboxes, rtol=1e-6, atol=1e-6)
 
+
 POSITIONS = ["center", "top_left", "top_right", "bottom_left", "bottom_right"]
+
 
 @pytest.mark.parametrize(
     ["crop_cls", "crop_params"],
     [
         (A.RandomCrop, {"height": 150, "width": 150}),
         (A.CenterCrop, {"height": 150, "width": 150}),
-    ]
+    ],
 )
 @pytest.mark.parametrize("pad_position", POSITIONS)
 @pytest.mark.parametrize("border_mode", [cv2.BORDER_CONSTANT, cv2.BORDER_REFLECT_101, cv2.BORDER_REFLECT])
@@ -173,32 +193,41 @@ def test_pad_position_equivalence(
     keypoints: np.ndarray,
 ):
     """Test that pad_position works identically for both padding approaches."""
-
     # Approach 1: Crop with built-in padding
-    transform1 = A.Compose([
-        crop_cls(
-            **crop_params,
-            pad_if_needed=True,
-            border_mode=border_mode,
-            fill=0,
-            pad_position=pad_position,
-        )
-    ], keypoint_params=A.KeypointParams(format="xyas"), bbox_params=A.BboxParams(format="pascal_voc"), strict=True)
+    transform1 = A.Compose(
+        [
+            crop_cls(
+                **crop_params,
+                pad_if_needed=True,
+                border_mode=border_mode,
+                fill=0,
+                pad_position=pad_position,
+            ),
+        ],
+        keypoint_params=A.KeypointParams(format="xyas"),
+        bbox_params=A.BboxParams(format="pascal_voc"),
+        strict=True,
+    )
 
     # Approach 2: Separate pad and crop
-    transform2 = A.Compose([
-        A.PadIfNeeded(
-            min_height=crop_params["height"],
-            min_width=crop_params["width"],
-            border_mode=border_mode,
-            fill=0,
-            position=pad_position,
-        ),
-        crop_cls(
-            **crop_params,
-            pad_if_needed=False,
-        )
-    ], keypoint_params=A.KeypointParams(format="xyas"), bbox_params=A.BboxParams(format="pascal_voc"), strict=True)
+    transform2 = A.Compose(
+        [
+            A.PadIfNeeded(
+                min_height=crop_params["height"],
+                min_width=crop_params["width"],
+                border_mode=border_mode,
+                fill=0,
+                position=pad_position,
+            ),
+            crop_cls(
+                **crop_params,
+                pad_if_needed=False,
+            ),
+        ],
+        keypoint_params=A.KeypointParams(format="xyas"),
+        bbox_params=A.BboxParams(format="pascal_voc"),
+        strict=True,
+    )
 
     result1 = transform1(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)
     result2 = transform2(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)
@@ -206,23 +235,24 @@ def test_pad_position_equivalence(
     np.testing.assert_array_equal(
         result1["image"],
         result2["image"],
-        err_msg=f"Images don't match for position {pad_position}"
+        err_msg=f"Images don't match for position {pad_position}",
     )
     np.testing.assert_array_equal(
         result1["mask"],
         result2["mask"],
-        err_msg=f"Masks don't match for position {pad_position}"
+        err_msg=f"Masks don't match for position {pad_position}",
     )
     np.testing.assert_array_equal(
         result1["bboxes"],
         result2["bboxes"],
-        err_msg=f"Bboxes don't match for position {pad_position}"
+        err_msg=f"Bboxes don't match for position {pad_position}",
     )
     np.testing.assert_array_equal(
         result1["keypoints"],
         result2["keypoints"],
-        err_msg=f"Keypoints don't match for position {pad_position}"
+        err_msg=f"Keypoints don't match for position {pad_position}",
     )
+
 
 def test_base_crop_and_pad_fill():
     # tests whether BaseCropAndPad usues correct values for constant borders
@@ -243,7 +273,6 @@ def test_base_crop_and_pad_fill():
 
     assert np.all(out["image"] == expected_img * 100)
     assert np.all(out["mask"] == expected_msk * 200)
-
 
     assert np.all(out1["image"] == expected_img * 201)
     assert np.all(out1["mask"] == expected_msk * 0)  # 0 is the default for fill_mask
@@ -305,29 +334,38 @@ def test_at_least_one_bbox_random_crop_with_multiple_bboxes():
     mask = np.random.randint(0, 2, (300, 300), dtype=np.uint8)
 
     # Create multiple bounding boxes to trigger the bug
-    bboxes = np.array([
-        [30, 50, 100, 140],
-        [150, 120, 270, 250],
-        [200, 30, 280, 90]
-    ], dtype=np.float32)
+    bboxes = np.array(
+        [
+            [30, 50, 100, 140],
+            [150, 120, 270, 250],
+            [200, 30, 280, 90],
+        ],
+        dtype=np.float32,
+    )
     bbox_labels = [1, 2, 3]
 
-    keypoints = np.array([
-        [50, 70],
-        [190, 170],
-        [240, 60]
-    ], dtype=np.float32)
+    keypoints = np.array(
+        [
+            [50, 70],
+            [190, 170],
+            [240, 60],
+        ],
+        dtype=np.float32,
+    )
     keypoint_labels = [0, 1, 2]
 
-    transform = A.Compose([
-        A.AtLeastOneBBoxRandomCrop(
-            height=200,
-            width=200,
-            erosion_factor=0.2,
-            p=1.0
-        ),
-    ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-       keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+    transform = A.Compose(
+        [
+            A.AtLeastOneBBoxRandomCrop(
+                height=200,
+                width=200,
+                erosion_factor=0.2,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["bbox_labels"]),
+        keypoint_params=A.KeypointParams(format="xy", label_fields=["keypoint_labels"]),
+    )
 
     # This should not raise ValueError
     transformed = transform(
@@ -336,14 +374,14 @@ def test_at_least_one_bbox_random_crop_with_multiple_bboxes():
         bboxes=bboxes,
         bbox_labels=bbox_labels,
         keypoints=keypoints,
-        keypoint_labels=keypoint_labels
+        keypoint_labels=keypoint_labels,
     )
 
     # Verify that at least one bounding box was preserved
-    assert len(transformed['bboxes']) > 0
-    assert len(transformed['bbox_labels']) > 0
-    assert transformed['image'].shape == (200, 200, 3)
-    assert transformed['mask'].shape == (200, 200)
+    assert len(transformed["bboxes"]) > 0
+    assert len(transformed["bbox_labels"]) > 0
+    assert transformed["image"].shape == (200, 200, 3)
+    assert transformed["mask"].shape == (200, 200)
 
 
 @pytest.mark.parametrize("num_bboxes", [1, 10, 100, 1000])
@@ -360,18 +398,21 @@ def test_at_least_one_bbox_random_crop_efficiency(num_bboxes):
     bboxes = np.stack([x1, y1, x2, y2], axis=1)
     bbox_labels = list(range(num_bboxes))
 
-    transform = A.Compose([
-        A.AtLeastOneBBoxRandomCrop(
-            height=200,
-            width=200,
-            erosion_factor=0.2,
-            p=1.0
-        ),
-    ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']))
+    transform = A.Compose(
+        [
+            A.AtLeastOneBBoxRandomCrop(
+                height=200,
+                width=200,
+                erosion_factor=0.2,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["bbox_labels"]),
+    )
 
     # Should work efficiently without converting to list
     transformed = transform(image=image, bboxes=bboxes, bbox_labels=bbox_labels)
 
-    assert len(transformed['bboxes']) > 0
-    assert len(transformed['bbox_labels']) > 0
-    assert transformed['image'].shape == (200, 200, 3)
+    assert len(transformed["bboxes"]) > 0
+    assert len(transformed["bbox_labels"]) > 0
+    assert transformed["image"].shape == (200, 200, 3)

@@ -42,7 +42,7 @@ def test_obb_format_preservation_through_crops(bbox_format: str, input_bbox: lis
 
     aug = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb")
+        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb"),
     )
 
     np.random.seed(137)
@@ -60,8 +60,9 @@ def test_obb_format_preservation_through_crops(bbox_format: str, input_bbox: lis
             assert isinstance(output_bbox, (list, tuple, np.ndarray))
         else:
             # Normalized coordinates [0, 1]
-            assert all(0 <= v <= 1.01 for v in output_bbox[:4]), \
+            assert all(0 <= v <= 1.01 for v in output_bbox[:4]), (
                 f"Expected normalized coords for {bbox_format}, got {output_bbox}"
+            )
 
 
 @pytest.mark.obb
@@ -74,7 +75,7 @@ def test_obb_fully_inside_crop_keeps_angle() -> None:
 
     transform = A.Compose(
         [A.Crop(x_min=20, y_min=20, x_max=80, y_max=80, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -105,7 +106,7 @@ def test_obb_partially_cropped_refits() -> None:
 
     transform = A.Compose(
         [A.Crop(x_min=50, y_min=50, x_max=95, y_max=95, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -133,7 +134,7 @@ def test_obb_completely_outside_crop_filtered() -> None:
 
     transform = A.Compose(
         [A.Crop(x_min=50, y_min=50, x_max=100, y_max=100, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -153,7 +154,11 @@ def test_obb_completely_outside_crop_filtered() -> None:
         pytest.param(A.RandomCropFromBorders, {}, id="RandomCropFromBorders"),
         pytest.param(A.CropNonEmptyMaskIfExists, {"height": 50, "width": 50}, id="CropNonEmptyMaskIfExists"),
         pytest.param(A.BBoxSafeRandomCrop, {"erosion_rate": 0.0}, id="BBoxSafeRandomCrop"),
-        pytest.param(A.AtLeastOneBBoxRandomCrop, {"height": 50, "width": 50, "erosion_factor": 0.0}, id="AtLeastOneBBoxRandomCrop"),
+        pytest.param(
+            A.AtLeastOneBBoxRandomCrop,
+            {"height": 50, "width": 50, "erosion_factor": 0.0},
+            id="AtLeastOneBBoxRandomCrop",
+        ),
     ],
 )
 @pytest.mark.obb
@@ -170,12 +175,11 @@ def test_crop_transforms_support_obb(transform_class, transform_kwargs) -> None:
 
     # Verify _supported_bbox_types includes "obb"
     if hasattr(transform, "_supported_bbox_types"):
-        assert "obb" in transform._supported_bbox_types, \
-            f"{transform_class.__name__} does not declare OBB support"
+        assert "obb" in transform._supported_bbox_types, f"{transform_class.__name__} does not declare OBB support"
 
     aug = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     np.random.seed(137)
@@ -200,7 +204,7 @@ def test_crop_and_pad_with_obb() -> None:
 
     transform = A.Compose(
         [A.CropAndPad(px=10, p=1.0)],  # Pad 10px on each side (negative values crop)
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -223,7 +227,7 @@ def test_obb_with_extra_fields_preserved() -> None:
 
     transform = A.Compose(
         [A.CenterCrop(height=60, width=60, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -252,7 +256,7 @@ def test_multiple_obb_crop() -> None:
 
     transform = A.Compose(
         [A.CenterCrop(height=70, width=70, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=bboxes)
@@ -275,7 +279,7 @@ def test_obb_angle_normalization() -> None:
 
     transform = A.Compose(
         [A.CenterCrop(height=80, width=80, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -300,7 +304,7 @@ def test_random_crop_near_bbox_with_obb() -> None:
 
     transform = A.Compose(
         [A.RandomCropNearBBox(max_part_shift=0.2, cropping_bbox_key="crop_bbox", p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     np.random.seed(137)
@@ -324,7 +328,7 @@ def test_random_sized_bbox_safe_crop_with_obb() -> None:
 
     transform = A.Compose(
         [A.RandomSizedBBoxSafeCrop(height=50, width=50, erosion_rate=0.0, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     np.random.seed(137)
@@ -346,7 +350,7 @@ def test_obb_crop_compose_validation() -> None:
     # This should work - BaseCrop supports OBB
     compose = A.Compose(
         [A.CenterCrop(height=50, width=50)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
     assert compose is not None
 
@@ -364,7 +368,7 @@ def test_obb_crop_compose_validation() -> None:
     with pytest.raises(ValueError, match="do not support OBB"):
         A.Compose(
             [UnsupportedTransform()],
-            bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+            bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
         )
 
 
@@ -377,25 +381,32 @@ def test_process_clipped_obb_boxes() -> None:
 
     # Clipped polygon corners (normalized to crop region)
     # This represents a box that hit the crop boundary
-    polygons_clipped = np.array([
+    polygons_clipped = np.array(
         [
-            [0.0, 0.5],   # Left edge (clipped)
-            [0.25, 0.25],
-            [0.5, 0.5],
-            [0.25, 0.75],
+            [
+                [0.0, 0.5],  # Left edge (clipped)
+                [0.25, 0.25],
+                [0.5, 0.5],
+                [0.25, 0.75],
+            ],
+            [
+                [0.5, 0.5],
+                [0.75, 0.25],
+                [1.0, 0.5],  # Right edge (clipped)
+                [0.75, 0.75],
+            ],
         ],
-        [
-            [0.5, 0.5],
-            [0.75, 0.25],
-            [1.0, 0.5],   # Right edge (clipped)
-            [0.75, 0.75],
-        ],
-    ], dtype=np.float32)
+        dtype=np.float32,
+    )
 
     # Test without extras
     clipped_indices = np.array([0, 1])
     result = _process_clipped_obb_boxes(
-        clipped_indices, polygons_clipped, crop_width, crop_height, extras=None
+        clipped_indices,
+        polygons_clipped,
+        crop_width,
+        crop_height,
+        extras=None,
     )
 
     assert result.shape == (2, 5), f"Expected shape (2, 5), got {result.shape}"
@@ -404,7 +415,11 @@ def test_process_clipped_obb_boxes() -> None:
     # Test with extras (e.g., class labels)
     extras = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
     result_with_extras = _process_clipped_obb_boxes(
-        clipped_indices, polygons_clipped, crop_width, crop_height, extras=extras
+        clipped_indices,
+        polygons_clipped,
+        crop_width,
+        crop_height,
+        extras=extras,
     )
 
     assert result_with_extras.shape == (2, 7), f"Expected shape (2, 7), got {result_with_extras.shape}"
@@ -415,11 +430,14 @@ def test_process_clipped_obb_boxes() -> None:
 def test_process_unclipped_obb_boxes() -> None:
     """Test _process_unclipped_obb_boxes helper function (vectorized center shift)."""
     # Original bboxes in normalized coordinates
-    bboxes = np.array([
-        [0.3, 0.3, 0.5, 0.5, 30.0],      # Box 1
-        [0.4, 0.4, 0.6, 0.6, 45.0],      # Box 2
-        [0.35, 0.45, 0.55, 0.65, -15.0], # Box 3
-    ], dtype=np.float32)
+    bboxes = np.array(
+        [
+            [0.3, 0.3, 0.5, 0.5, 30.0],  # Box 1
+            [0.4, 0.4, 0.6, 0.6, 45.0],  # Box 2
+            [0.35, 0.45, 0.55, 0.65, -15.0],  # Box 3
+        ],
+        dtype=np.float32,
+    )
 
     image_shape = (100, 100)
     crop_coords = (20, 20, 80, 80)  # 60x60 crop
@@ -428,8 +446,13 @@ def test_process_unclipped_obb_boxes() -> None:
     unclipped_indices = np.array([0, 1, 2])
 
     result_bboxes = _process_unclipped_obb_boxes(
-        unclipped_indices, bboxes, image_shape, crop_coords,
-        crop_width, crop_height, extras=None
+        unclipped_indices,
+        bboxes,
+        image_shape,
+        crop_coords,
+        crop_width,
+        crop_height,
+        extras=None,
     )
 
     # Verify angles are preserved
@@ -443,8 +466,13 @@ def test_process_unclipped_obb_boxes() -> None:
 
     bboxes_with_extras = np.column_stack([bboxes, extras])
     result_with_extras = _process_unclipped_obb_boxes(
-        unclipped_indices, bboxes_with_extras, image_shape, crop_coords,
-        crop_width, crop_height, extras=extras
+        unclipped_indices,
+        bboxes_with_extras,
+        image_shape,
+        crop_coords,
+        crop_width,
+        crop_height,
+        extras=extras,
     )
 
     # Verify extras are preserved
@@ -458,7 +486,7 @@ def test_process_unclipped_obb_boxes_vectorized() -> None:
     n_boxes = 100
     bboxes = np.random.rand(n_boxes, 5).astype(np.float32)
     bboxes[:, :4] = bboxes[:, :4] * 0.3 + 0.35  # Keep in center region [0.35, 0.65]
-    bboxes[:, 4] = (bboxes[:, 4] - 0.5) * 360   # Random angles [-180, 180]
+    bboxes[:, 4] = (bboxes[:, 4] - 0.5) * 360  # Random angles [-180, 180]
 
     image_shape = (200, 200)
     crop_coords = (50, 50, 150, 150)
@@ -468,8 +496,13 @@ def test_process_unclipped_obb_boxes_vectorized() -> None:
 
     # This should be fast since it's vectorized
     result_bboxes = _process_unclipped_obb_boxes(
-        unclipped_indices, bboxes, image_shape, crop_coords,
-        crop_width, crop_height, extras=None
+        unclipped_indices,
+        bboxes,
+        image_shape,
+        crop_coords,
+        crop_width,
+        crop_height,
+        extras=None,
     )
 
     # Verify all angles are preserved
@@ -490,7 +523,7 @@ def test_pad_with_obb() -> None:
 
     transform = A.Compose(
         [A.Pad(padding=10, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -524,7 +557,7 @@ def test_pad_with_obb_different_sides() -> None:
 
     transform = A.Compose(
         [A.Pad(padding=(5, 10, 15, 20), p=1.0)],  # left, top, right, bottom
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -552,7 +585,7 @@ def test_pad_if_needed_with_obb() -> None:
 
     transform = A.Compose(
         [A.PadIfNeeded(min_height=100, min_width=100, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -581,7 +614,7 @@ def test_pad_if_needed_divisor_with_obb() -> None:
 
     transform = A.Compose(
         [A.PadIfNeeded(min_height=None, min_width=None, pad_height_divisor=32, pad_width_divisor=32, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -611,7 +644,7 @@ def test_pad_with_obb_extra_fields() -> None:
 
     transform = A.Compose(
         [A.Pad(padding=10, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -641,7 +674,7 @@ def test_pad_with_multiple_obb() -> None:
 
     transform = A.Compose(
         [A.Pad(padding=20, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=bboxes)
@@ -681,7 +714,12 @@ def test_crop_and_pad_bboxes_obb_partial_crop() -> None:
     result_shape = (60, 60)
 
     result = crop_and_pad_bboxes(
-        bboxes, crop_params, pad_params, image_shape, result_shape, bbox_type="obb"
+        bboxes,
+        crop_params,
+        pad_params,
+        image_shape,
+        result_shape,
+        bbox_type="obb",
     )
 
     # Should not be empty - box is partially inside
@@ -704,11 +742,16 @@ def test_crop_and_pad_bboxes_obb_with_crop_and_pad() -> None:
 
     image_shape = (100, 100)
     crop_params = (20, 20, 80, 80)  # Crop to 60x60
-    pad_params = (10, 10, 10, 10)   # Pad 10px on all sides
-    result_shape = (80, 80)         # 60 + 20 = 80
+    pad_params = (10, 10, 10, 10)  # Pad 10px on all sides
+    result_shape = (80, 80)  # 60 + 20 = 80
 
     result = crop_and_pad_bboxes(
-        bboxes, crop_params, pad_params, image_shape, result_shape, bbox_type="obb"
+        bboxes,
+        crop_params,
+        pad_params,
+        image_shape,
+        result_shape,
+        bbox_type="obb",
     )
 
     # Should preserve the bbox
@@ -736,7 +779,12 @@ def test_crop_and_pad_bboxes_obb_edge_clipping() -> None:
     result_shape = (80, 80)
 
     result = crop_and_pad_bboxes(
-        bboxes, crop_params, pad_params, image_shape, result_shape, bbox_type="obb"
+        bboxes,
+        crop_params,
+        pad_params,
+        image_shape,
+        result_shape,
+        bbox_type="obb",
     )
 
     # If the box survives filtering, check it was properly clipped
@@ -765,7 +813,12 @@ def test_crop_and_pad_bboxes_obb_with_extras() -> None:
     result_shape = (80, 80)
 
     result = crop_and_pad_bboxes(
-        bboxes, crop_params, pad_params, image_shape, result_shape, bbox_type="obb"
+        bboxes,
+        crop_params,
+        pad_params,
+        image_shape,
+        result_shape,
+        bbox_type="obb",
     )
 
     # Should preserve bbox
@@ -792,7 +845,12 @@ def test_crop_and_pad_bboxes_obb_only_pad() -> None:
     result_shape = (140, 140)
 
     result = crop_and_pad_bboxes(
-        bboxes, crop_params, pad_params, image_shape, result_shape, bbox_type="obb"
+        bboxes,
+        crop_params,
+        pad_params,
+        image_shape,
+        result_shape,
+        bbox_type="obb",
     )
 
     # Should preserve bbox
@@ -813,7 +871,7 @@ def test_crop_and_pad_bboxes_vectorized_filtering() -> None:
     np.random.seed(137)
     bboxes = np.random.rand(n_boxes, 5).astype(np.float32)
     bboxes[:, :4] = bboxes[:, :4] * 0.8 + 0.1  # Range [0.1, 0.9]
-    bboxes[:, 4] = (bboxes[:, 4] - 0.5) * 360   # Angles [-180, 180]
+    bboxes[:, 4] = (bboxes[:, 4] - 0.5) * 360  # Angles [-180, 180]
 
     image_shape = (200, 200)
     crop_coords = (50, 50, 150, 150)

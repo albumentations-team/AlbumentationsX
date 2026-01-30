@@ -36,7 +36,7 @@ def test_obb_format_preservation(bbox_format: str, input_bbox: list, transform: 
 
     aug = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb")
+        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb"),
     )
 
     np.random.seed(137)  # For consistent RandomRotate90
@@ -50,12 +50,14 @@ def test_obb_format_preservation(bbox_format: str, input_bbox: list, transform: 
         # For pascal_voc, at least some coords should be > 1 (not normalized)
         if bbox_format == "pascal_voc":
             # Original had coords [10, 20, 50, 60], so output should also be in pixel space
-            assert any(abs(v) > 1 for v in output_bbox[:4]), \
+            assert any(abs(v) > 1 for v in output_bbox[:4]), (
                 f"Expected pixel coords for {bbox_format}, got {output_bbox}"
+            )
     else:
         # Normalized coordinates [0, 1]
-        assert all(0 <= v <= 1.01 for v in output_bbox[:4]), \
+        assert all(0 <= v <= 1.01 for v in output_bbox[:4]), (
             f"Expected normalized coords for {bbox_format}, got {output_bbox}"
+        )
 
 
 @pytest.mark.parametrize(
@@ -76,7 +78,7 @@ def test_obb_matches_hbb_for_axis_aligned_flips(
     # HBB
     aug_hbb = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="hbb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="hbb"),
     )
     result_hbb = aug_hbb(image=image, bboxes=[bbox_coords])
     bbox_hbb = result_hbb["bboxes"][0]
@@ -84,9 +86,9 @@ def test_obb_matches_hbb_for_axis_aligned_flips(
     # OBB with angle=0
     aug_obb = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
-    result_obb = aug_obb(image=image, bboxes=[bbox_coords + [0.0]])
+    result_obb = aug_obb(image=image, bboxes=[[*bbox_coords, 0.0]])
     bbox_obb = result_obb["bboxes"][0]
 
     # Check that OBB coords match HBB coords (ignoring the angle)
@@ -95,7 +97,7 @@ def test_obb_matches_hbb_for_axis_aligned_flips(
         bbox_hbb,
         rtol=1e-5,
         atol=1e-5,
-        err_msg=f"OBB coords don't match HBB for {transform.__class__.__name__}"
+        err_msg=f"OBB coords don't match HBB for {transform.__class__.__name__}",
     )
 
 
@@ -111,7 +113,7 @@ def test_obb_matches_hbb_for_axis_aligned_d4(group_member: str) -> None:
     bbox_coords = [0.2, 0.3, 0.6, 0.7]  # albumentations format
 
     hbb_arr = np.array([bbox_coords], dtype=np.float32)
-    obb_arr = np.array([bbox_coords + [0.0]], dtype=np.float32)
+    obb_arr = np.array([[*bbox_coords, 0.0]], dtype=np.float32)
 
     hbb_result = bboxes_d4(hbb_arr, group_member, bbox_type="hbb")
     obb_result = bboxes_d4(obb_arr, group_member, bbox_type="obb")
@@ -121,7 +123,7 @@ def test_obb_matches_hbb_for_axis_aligned_d4(group_member: str) -> None:
         hbb_result[0],
         rtol=1e-5,
         atol=1e-5,
-        err_msg=f"OBB coords don't match HBB for D4 operation '{group_member}'"
+        err_msg=f"OBB coords don't match HBB for D4 operation '{group_member}'",
     )
 
 
@@ -142,7 +144,7 @@ def test_obb_format_roundtrip_with_angle(bbox_format: str, input_bbox: list) -> 
     # Apply identity transform
     aug = A.Compose(
         [A.NoOp()],
-        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb")
+        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb"),
     )
 
     result = aug(image=image, bboxes=[input_bbox])
@@ -154,7 +156,7 @@ def test_obb_format_roundtrip_with_angle(bbox_format: str, input_bbox: list) -> 
         input_bbox,
         rtol=1e-5,
         atol=1e-5,
-        err_msg=f"Format {bbox_format} not preserved through identity transform"
+        err_msg=f"Format {bbox_format} not preserved through identity transform",
     )
 
 
@@ -178,7 +180,7 @@ def test_obb_format_preserved_through_pipeline(bbox_format: str, input_bbox: lis
             A.VerticalFlip(p=1.0),
             A.Rotate(limit=(30, 30), p=1.0),
         ],
-        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb")
+        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb"),
     )
 
     result = aug(image=image, bboxes=[input_bbox])
@@ -187,12 +189,14 @@ def test_obb_format_preserved_through_pipeline(bbox_format: str, input_bbox: lis
     # Verify format consistency (same checks as test_obb_format_preservation)
     if bbox_format in ["pascal_voc", "coco"]:
         if bbox_format == "pascal_voc":
-            assert any(abs(v) > 1 for v in output_bbox[:4]), \
+            assert any(abs(v) > 1 for v in output_bbox[:4]), (
                 f"Expected pixel coords for {bbox_format}, got {output_bbox}"
+            )
     else:
         # Allow slightly over 1.0 due to rotation artifacts near borders
-        assert all(-0.01 <= v <= 1.01 for v in output_bbox[:4]), \
+        assert all(-0.01 <= v <= 1.01 for v in output_bbox[:4]), (
             f"Expected normalized coords for {bbox_format}, got {output_bbox}"
+        )
 
 
 @pytest.mark.obb
@@ -214,6 +218,7 @@ def test_obb_support_declaration():
 @pytest.mark.obb
 def test_compose_validates_obb_support_at_init():
     """Test that Compose rejects unsupported transforms with OBB at __init__ time."""
+
     # Create a custom transform that doesn't support OBB
     class UnsupportedTransform(A.DualTransform):
         _supported_bbox_types = frozenset({"hbb"})  # Explicitly only HBB
@@ -228,7 +233,7 @@ def test_compose_validates_obb_support_at_init():
     with pytest.raises(ValueError, match="do not support OBB"):
         A.Compose(
             [UnsupportedTransform()],
-            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb")
+            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb"),
         )
 
 
@@ -238,7 +243,7 @@ def test_compose_allows_imageonly_with_obb():
     # Should NOT raise - ImageOnly transforms are skipped in validation
     compose = A.Compose(
         [A.Normalize(), A.HorizontalFlip()],
-        bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb")
+        bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb"),
     )
     assert compose is not None
 
@@ -259,7 +264,7 @@ def test_no_runtime_obb_errors():
     # If this passes __init__, it should work at __call__ time
     compose = A.Compose(
         [A.HorizontalFlip(p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb")
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
     )
 
     # Should not raise at runtime
@@ -271,6 +276,7 @@ def test_no_runtime_obb_errors():
 @pytest.mark.obb
 def test_nested_compose_obb_validation():
     """Test that nested Compose also validates OBB support."""
+
     class UnsupportedTransform(A.DualTransform):
         _supported_bbox_types = frozenset({"hbb"})
 
@@ -285,18 +291,21 @@ def test_nested_compose_obb_validation():
         A.Compose(
             [
                 A.HorizontalFlip(),
-                A.OneOf([
-                    UnsupportedTransform(),
-                    A.VerticalFlip()
-                ])
+                A.OneOf(
+                    [
+                        UnsupportedTransform(),
+                        A.VerticalFlip(),
+                    ],
+                ),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb")
+            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb"),
         )
 
 
 @pytest.mark.obb
 def test_deeply_nested_compose_obb_validation():
     """Test that deeply nested unsupported transforms are caught at Compose init."""
+
     class UnsupportedTransform(A.DualTransform):
         _supported_bbox_types = frozenset({"hbb"})
 
@@ -311,14 +320,19 @@ def test_deeply_nested_compose_obb_validation():
         A.Compose(
             [
                 A.HorizontalFlip(),
-                A.OneOf([
-                    A.SomeOf([
-                        UnsupportedTransform(),
-                        A.VerticalFlip()
-                    ], n=1)
-                ])
+                A.OneOf(
+                    [
+                        A.SomeOf(
+                            [
+                                UnsupportedTransform(),
+                                A.VerticalFlip(),
+                            ],
+                            n=1,
+                        ),
+                    ],
+                ),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb")
+            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb"),
         )
 
 
@@ -335,13 +349,16 @@ def test_obb_affine_filters_out_of_bounds_boxes() -> None:
     # When rotated 90 degrees with shift, this should go completely outside the image
     bboxes = [[0.8, 0.8, 0.95, 0.95, 0.0]]  # OBB near bottom-right corner
 
-    transform = A.Compose([
-        A.Affine(
-            rotate=90,
-            translate_percent={"x": 0.5, "y": 0.5},  # Large shift to push bbox out
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                rotate=90,
+                translate_percent={"x": 0.5, "y": 0.5},  # Large shift to push bbox out
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=bboxes)
 
@@ -359,9 +376,12 @@ def test_obb_affine_preserves_in_bounds_boxes() -> None:
     # Create a bbox in the center that will stay in bounds
     bboxes = [[0.4, 0.4, 0.6, 0.6, 0.0]]  # OBB in center
 
-    transform = A.Compose([
-        A.Affine(rotate=45, p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(rotate=45, p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=bboxes)
 

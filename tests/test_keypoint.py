@@ -1,10 +1,9 @@
-
 import math
 from typing import Any
 
+import cv2
 import numpy as np
 import pytest
-import cv2
 
 import albumentations as A
 import albumentations.augmentations.geometric.functional as fgeometric
@@ -401,7 +400,11 @@ def test_convert_keypoints_from_albumentations(
 
 def test_convert_keypoints_from_albumentations_invalid_format():
     with pytest.raises(ValueError, match="Unknown target_format"):
-        convert_keypoints_from_albumentations(np.array([[10, 20, 0, 0]]), "invalid_format", {"height": 100, "width": 100})
+        convert_keypoints_from_albumentations(
+            np.array([[10, 20, 0, 0]]),
+            "invalid_format",
+            {"height": 100, "width": 100},
+        )
 
 
 @pytest.mark.parametrize(
@@ -501,7 +504,7 @@ def test_compose_with_keypoint_noop_label_outside(keypoints, keypoint_format: st
         keypoint_params={
             "format": keypoint_format,
             "label_fields": list(labels.keys()),
-            },
+        },
         strict=True,
     )
     transformed = aug(image=image, keypoints=keypoints, **labels)
@@ -594,15 +597,12 @@ def test_keypoint_rotate90(keypoint, expected, factor: int) -> None:
     [
         # No scaling (scale = 1)
         [[10.0, 20.0, 1, 0, 1], [10.0, 20.0, 1, 0, 1], 1],
-
         # Uniform scaling up (scale = 2)
         [[10.0, 20.0, 1, 0, 1], [20.0, 40.0, 1, 0, 2], 2],
-
         # Uniform scaling down (scale = 0.5)
         [[10.0, 20.0, 1, 0, 1], [5.0, 10.0, 1, 0, 0.5], 0.5],
-
         # Different coordinates, angle, and initial scale
-        [[100.0, 50.0, 1, np.pi/4, 2], [200.0, 100.0, 1, np.pi/4, 4], 2],
+        [[100.0, 50.0, 1, np.pi / 4, 2], [200.0, 100.0, 1, np.pi / 4, 4], 2],
     ],
 )
 def test_keypoint_scale(keypoint, expected, scale: float) -> None:
@@ -785,7 +785,10 @@ def dummy_keypoint_func(keypoints):
 @pytest.mark.parametrize(
     "input_keypoints, expected_output",
     [
-        (np.array([[1, 2, 33, 0], [3, 4, 33, np.pi], [5, 6, 33, 2 * np.pi]]), np.array([[1, 2, 33, 0], [3, 4, 33, np.pi], [5, 6, 33, 0]])),
+        (
+            np.array([[1, 2, 33, 0], [3, 4, 33, np.pi], [5, 6, 33, 2 * np.pi]]),
+            np.array([[1, 2, 33, 0], [3, 4, 33, np.pi], [5, 6, 33, 0]]),
+        ),
         (np.array([[1, 2, 33, -np.pi], [3, 4, 33, 3 * np.pi]]), np.array([[1, 2, 33, np.pi], [3, 4, 33, np.pi]])),
         (np.array([]), np.array([])),
     ],
@@ -830,12 +833,20 @@ def test_remove_invisible_keypoints_false(transform, params):
 
     keypoints = np.array([[10, 10], [20, 10], [20, 20], [10, 20]])
 
-    aug = A.Compose([transform(**params, p=1)], keypoint_params=A.KeypointParams(format="xy", remove_invisible=False), strict=True)
+    aug = A.Compose(
+        [transform(**params, p=1)],
+        keypoint_params=A.KeypointParams(format="xy", remove_invisible=False),
+        strict=True,
+    )
     result = aug(image=image, keypoints=keypoints)
 
     np.testing.assert_array_equal(result["keypoints"], keypoints)
 
-    aug = A.Compose([transform(**params, p=1)], keypoint_params=A.KeypointParams(format="xy", remove_invisible=True), strict=True)
+    aug = A.Compose(
+        [transform(**params, p=1)],
+        keypoint_params=A.KeypointParams(format="xy", remove_invisible=True),
+        strict=True,
+    )
     result = aug(image=image, keypoints=keypoints)
 
     assert len(result["keypoints"]) == 0
@@ -920,13 +931,17 @@ def test_longest_max_size_keypoints():
     aug = A.LongestMaxSize(max_size=100, p=1)
     result = aug(image=img, keypoints=keypoints)
     np.testing.assert_array_almost_equal(
-        result["keypoints"], [(18, 10, 1, 0, 0)], decimal=5
+        result["keypoints"],
+        [(18, 10, 1, 0, 0)],
+        decimal=5,
     )
 
     aug = A.LongestMaxSize(max_size=5, p=1)
     result = aug(image=img, keypoints=keypoints)
     np.testing.assert_array_almost_equal(
-        result["keypoints"], [(0.9, 0.5, 1, 0, 0)], decimal=5
+        result["keypoints"],
+        [(0.9, 0.5, 1, 0, 0)],
+        decimal=5,
     )
 
     aug = A.LongestMaxSize(max_size=50, p=1)
@@ -964,7 +979,6 @@ def test_resize_keypoints():
     np.testing.assert_array_equal(result["keypoints"], [(9, 5, 1, 0, 0)])
 
 
-
 @pytest.mark.parametrize(
     "image_shape, keypoints, distortion_type",
     [
@@ -972,37 +986,36 @@ def test_resize_keypoints():
         (
             (100, 100),
             np.array([[50, 50, 1], [25, 75, 1], [75, 25, 1]]),
-            "translation"
+            "translation",
         ),
         # Test case 2: Single point
         (
             (100, 100),
             np.array([[10, 10, 1]]),
-            "identity"
+            "identity",
         ),
         # Test case 3: Points with extra attributes
         (
             (100, 100),
-            np.array([[50, 50, 1, 0, 2], [25, 75, 1, np.pi/4, 1]]),
-            "wave"
+            np.array([[50, 50, 1, 0, 2], [25, 75, 1, np.pi / 4, 1]]),
+            "wave",
         ),
         # Test case 4: Points near borders
         (
             (100, 100),
             np.array([[0, 0, 1], [99, 99, 1], [0, 99, 1], [99, 0, 1]]),
-            "scale"
+            "scale",
         ),
         # Test case 5: Larger image
         (
             (512, 512),
             np.array([[256, 256, 1], [128, 384, 1], [384, 128, 1]]),
-            "rotation"
+            "rotation",
         ),
-    ]
+    ],
 )
 def test_keypoint_remap_methods(image_shape, keypoints, distortion_type):
     """Test that both keypoint remapping methods produce similar results."""
-
     # Generate distortion maps based on type
     h, w = image_shape
     map_x = np.zeros(image_shape, dtype=np.float32)
@@ -1020,8 +1033,8 @@ def test_keypoint_remap_methods(image_shape, keypoints, distortion_type):
         map_y = y.astype(np.float32) + 10
 
     elif distortion_type == "wave":
-        map_x = x + np.sin(y/10.0) * 5  # y affects x-displacement
-        map_y = y + np.sin(x/10.0) * 5  # x affects y-displacement
+        map_x = x + np.sin(y / 10.0) * 5  # y affects x-displacement
+        map_y = y + np.sin(x / 10.0) * 5  # x affects y-displacement
         map_x = map_x.astype(np.float32)
         map_y = map_y.astype(np.float32)
 
@@ -1031,7 +1044,7 @@ def test_keypoint_remap_methods(image_shape, keypoints, distortion_type):
         map_y = y.astype(np.float32) * scale
 
     elif distortion_type == "rotation":
-        center = (w/2, h/2)
+        center = (w / 2, h / 2)
         angle = 45
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
 
@@ -1053,8 +1066,8 @@ def test_keypoint_remap_methods(image_shape, keypoints, distortion_type):
         result_direct[:, :2],  # only x,y coordinates
         result_mask[:, :2],
         rtol=1e-3,  # relative tolerance
-        atol=2.0,   # absolute tolerance (1 pixel)
-        err_msg=f"Methods produced different results for {distortion_type} distortion"
+        atol=2.0,  # absolute tolerance (1 pixel)
+        err_msg=f"Methods produced different results for {distortion_type} distortion",
     )
 
     # Compare extra attributes if present
@@ -1064,7 +1077,7 @@ def test_keypoint_remap_methods(image_shape, keypoints, distortion_type):
             result_mask[:, 2:],
             rtol=1e-3,
             atol=1e-3,
-            err_msg="Methods produced different results for extra attributes"
+            err_msg="Methods produced different results for extra attributes",
         )
 
     # Additional checks for specific distortion types
@@ -1074,5 +1087,5 @@ def test_keypoint_remap_methods(image_shape, keypoints, distortion_type):
             keypoints,
             rtol=1e-3,
             atol=1.0,
-            err_msg="Identity transformation changed keypoint positions"
+            err_msg="Identity transformation changed keypoint positions",
         )

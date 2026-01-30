@@ -13,7 +13,7 @@ from albumentations.augmentations import FromFloat, ToFloat
         ("image", (8, 7)),
         ("images", (4, 8, 7, 6)),
         ("images", (4, 8, 7)),
-    ]
+    ],
 )
 def test_to_float(param, shape, dtype):
     rng = np.random.default_rng()
@@ -35,7 +35,7 @@ def test_to_float(param, shape, dtype):
         ("image", (8, 7)),
         ("images", (4, 8, 7, 6)),
         ("images", (4, 8, 7)),
-    ]
+    ],
 )
 def test_from_float(param, shape, dtype):
     rng = np.random.default_rng()

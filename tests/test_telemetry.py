@@ -1,19 +1,19 @@
 """Tests for telemetry functionality in AlbumentationsX."""
 
-
 import time
 from unittest.mock import Mock, patch
-import pytest
+
 import numpy as np
+import pytest
 
 import albumentations as A
+from albumentations.core.analytics.collectors import (
+    collect_pipeline_info,
+    get_environment_info,
+)
+from albumentations.core.analytics.events import ComposeInitEvent
 from albumentations.core.analytics.settings import settings
 from albumentations.core.analytics.telemetry import TelemetryClient, get_telemetry_client
-from albumentations.core.analytics.events import ComposeInitEvent
-from albumentations.core.analytics.collectors import (
-    get_environment_info,
-    collect_pipeline_info,
-)
 
 
 @pytest.fixture(autouse=True)
@@ -21,6 +21,7 @@ def reset_telemetry_client():
     """Reset the telemetry client singleton between tests."""
     # Clear the global telemetry client
     import albumentations.core.analytics.telemetry
+
     albumentations.core.analytics.telemetry.telemetry_client = None
 
     # Clear the singleton instance
@@ -42,6 +43,7 @@ class TestTelemetrySettings:
         """Test that telemetry is enabled by default."""
         # Create fresh settings instance
         from albumentations.core.analytics.settings import SettingsManager
+
         test_settings = SettingsManager()
         assert test_settings.telemetry_enabled is True
 
@@ -57,6 +59,7 @@ class TestTelemetrySettings:
         monkeypatch.setenv("ALBUMENTATIONS_NO_TELEMETRY", "1")
         # Create new settings instance to pick up env var
         from albumentations.core.analytics.settings import SettingsManager
+
         test_settings = SettingsManager()
         assert test_settings.telemetry_enabled is False
 
@@ -64,6 +67,7 @@ class TestTelemetrySettings:
         """Test that offline mode disables telemetry."""
         monkeypatch.setenv("ALBUMENTATIONS_OFFLINE", "1")
         from albumentations.core.analytics.settings import SettingsManager
+
         test_settings = SettingsManager()
         assert test_settings.telemetry_enabled is False
 
@@ -268,15 +272,17 @@ class TestCIEnvironmentDetection:
         """Test that Compose doesn't send telemetry in CI environments."""
         # Since we're already in pytest, telemetry is disabled
         # Let's test that the compose still works
-        transform = A.Compose([
-            A.RandomCrop(256, 256),
-            A.HorizontalFlip(p=0.5),
-        ])
+        transform = A.Compose(
+            [
+                A.RandomCrop(256, 256),
+                A.HorizontalFlip(p=0.5),
+            ],
+        )
 
         # Transform should work normally
         image = np.zeros((512, 512, 3), dtype=np.uint8)
         result = transform(image=image)
-        assert result['image'].shape == (256, 256, 3)
+        assert result["image"].shape == (256, 256, 3)
 
         # Client should be disabled (because we're in pytest)
         client = get_telemetry_client()
@@ -286,36 +292,42 @@ class TestCIEnvironmentDetection:
 class TestComposeIntegration:
     """Test telemetry integration with Compose class."""
 
-    @patch('albumentations.core.composition.get_telemetry_client')
-    @patch('albumentations.core.composition.get_environment_info')
-    @patch('albumentations.core.composition.collect_pipeline_info')
+    @patch("albumentations.core.composition.get_telemetry_client")
+    @patch("albumentations.core.composition.get_environment_info")
+    @patch("albumentations.core.composition.collect_pipeline_info")
     def test_compose_with_telemetry_enabled(self, mock_collect_pipeline, mock_get_env, mock_get_client):
         """Test that Compose tracks telemetry when enabled."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
         mock_get_env.return_value = {"environment": "test"}
-        mock_collect_pipeline.return_value = {"transforms": ["RandomCrop", "HorizontalFlip"], "pipeline_hash": "test_hash"}
+        mock_collect_pipeline.return_value = {
+            "transforms": ["RandomCrop", "HorizontalFlip"],
+            "pipeline_hash": "test_hash",
+        }
 
         # Enable telemetry
         settings.update(telemetry=True)
         try:
-            transform = A.Compose([
-                A.RandomCrop(256, 256),
-                A.HorizontalFlip(p=0.5),
-            ], telemetry=True)
+            A.Compose(
+                [
+                    A.RandomCrop(256, 256),
+                    A.HorizontalFlip(p=0.5),
+                ],
+                telemetry=True,
+            )
 
             # Verify telemetry was tracked
             mock_client.track_compose_init.assert_called_once()
             args = mock_client.track_compose_init.call_args
             # First argument should be the telemetry data dict
             telemetry_data = args[0][0]
-            assert telemetry_data['environment'] == 'test'
-            assert telemetry_data['transforms'] == ["RandomCrop", "HorizontalFlip"]
-            assert args[1]['telemetry'] is True
+            assert telemetry_data["environment"] == "test"
+            assert telemetry_data["transforms"] == ["RandomCrop", "HorizontalFlip"]
+            assert args[1]["telemetry"] is True
         finally:
             settings.update(telemetry=True)
 
-    @patch('albumentations.core.composition.get_telemetry_client')
+    @patch("albumentations.core.composition.get_telemetry_client")
     def test_compose_with_telemetry_disabled(self, mock_get_client):
         """Test that Compose tracks telemetry call with telemetry=False."""
         mock_client = Mock()
@@ -324,32 +336,37 @@ class TestComposeIntegration:
         # Enable telemetry globally
         settings.update(telemetry=True)
         try:
-            transform = A.Compose([
-                A.RandomCrop(256, 256),
-                A.HorizontalFlip(p=0.5),
-            ], telemetry=False)
+            A.Compose(
+                [
+                    A.RandomCrop(256, 256),
+                    A.HorizontalFlip(p=0.5),
+                ],
+                telemetry=False,
+            )
 
             # Verify telemetry was called but with telemetry=False
             mock_client.track_compose_init.assert_called_once()
             args = mock_client.track_compose_init.call_args
-            assert args[1]['telemetry'] is False
+            assert args[1]["telemetry"] is False
         finally:
             settings.update(telemetry=True)
 
     def test_compose_telemetry_never_raises(self):
         """Test that telemetry errors never affect user code."""
         # Make telemetry collection raise an exception
-        with patch('albumentations.core.composition.get_telemetry_client', side_effect=Exception("Telemetry error")):
+        with patch("albumentations.core.composition.get_telemetry_client", side_effect=Exception("Telemetry error")):
             # This should not raise
-            transform = A.Compose([
-                A.RandomCrop(256, 256),
-                A.HorizontalFlip(p=0.5),
-            ])
+            transform = A.Compose(
+                [
+                    A.RandomCrop(256, 256),
+                    A.HorizontalFlip(p=0.5),
+                ],
+            )
 
             # Transform should work normally
             image = np.zeros((512, 512, 3), dtype=np.uint8)
             result = transform(image=image)
-            assert result['image'].shape == (256, 256, 3)
+            assert result["image"].shape == (256, 256, 3)
 
 
 class TestDataCollectors:
@@ -360,78 +377,83 @@ class TestDataCollectors:
         info = get_environment_info()
 
         # Check basic fields exist
-        assert 'albumentationsx_version' in info
-        assert 'python_version' in info
-        assert 'os' in info
-        assert 'cpu' in info
-        assert 'environment' in info
+        assert "albumentationsx_version" in info
+        assert "python_version" in info
+        assert "os" in info
+        assert "cpu" in info
+        assert "environment" in info
 
         # Check optional fields (may or may not exist depending on system)
         # gpu and ram_gb can be None
-        assert 'gpu' in info
-        assert 'ram_gb' in info
+        assert "gpu" in info
+        assert "ram_gb" in info
 
         # Check environment is one of the expected values
-        assert info['environment'] in ['ci', 'colab', 'kaggle', 'docker', 'jupyter', 'local']
+        assert info["environment"] in ["ci", "colab", "kaggle", "docker", "jupyter", "local"]
 
         # OS should be more specific than just "Linux", "Darwin", "Windows"
         # e.g., "Ubuntu 22.04", "macOS 14.2", "Windows 11"
-        assert info['os'] and len(info['os']) > 0
+        assert info["os"] and len(info["os"]) > 0
 
     def test_collect_pipeline_info(self):
         """Test pipeline info collection."""
-        compose = A.Compose([
-            A.RandomCrop(256, 256),
-            A.HorizontalFlip(p=0.5),
-            A.OneOf([
-                A.Blur(blur_limit=3),
-                A.MedianBlur(blur_limit=3),
-            ], p=0.5),
-        ])
+        compose = A.Compose(
+            [
+                A.RandomCrop(256, 256),
+                A.HorizontalFlip(p=0.5),
+                A.OneOf(
+                    [
+                        A.Blur(blur_limit=3),
+                        A.MedianBlur(blur_limit=3),
+                    ],
+                    p=0.5,
+                ),
+            ],
+        )
 
         info = collect_pipeline_info(compose)
 
-        assert 'transforms' in info
-        assert 'targets' in info
-        assert 'pipeline_hash' in info
+        assert "transforms" in info
+        assert "targets" in info
+        assert "pipeline_hash" in info
 
         # Check transform names (should include nested transforms)
-        transform_names = info['transforms']
-        assert 'RandomCrop' in transform_names
-        assert 'HorizontalFlip' in transform_names
-        assert 'OneOf' in transform_names
-        assert 'Blur' in transform_names
-        assert 'MedianBlur' in transform_names
+        transform_names = info["transforms"]
+        assert "RandomCrop" in transform_names
+        assert "HorizontalFlip" in transform_names
+        assert "OneOf" in transform_names
+        assert "Blur" in transform_names
+        assert "MedianBlur" in transform_names
 
         # Check target usage
-        assert info['targets'] == 'None'
+        assert info["targets"] == "None"
 
     def test_collect_pipeline_info_with_targets(self):
         """Test pipeline info collection with different target configurations."""
         # Test with bboxes only
         compose_bbox = A.Compose(
             [A.RandomCrop(256, 256)],
-            bbox_params=A.BboxParams(format='pascal_voc')
+            bbox_params=A.BboxParams(format="pascal_voc"),
         )
         info = collect_pipeline_info(compose_bbox)
-        assert info['targets'] == 'bboxes'
+        assert info["targets"] == "bboxes"
 
         # Test with keypoints only
         compose_kp = A.Compose(
             [A.RandomCrop(256, 256)],
-            keypoint_params=A.KeypointParams(format='xy')
+            keypoint_params=A.KeypointParams(format="xy"),
         )
         info = collect_pipeline_info(compose_kp)
-        assert info['targets'] == 'keypoints'
+        assert info["targets"] == "keypoints"
 
         # Test with both bboxes and keypoints
         compose_both = A.Compose(
             [A.RandomCrop(256, 256)],
-            bbox_params=A.BboxParams(format='pascal_voc'),
-            keypoint_params=A.KeypointParams(format='xy')
+            bbox_params=A.BboxParams(format="pascal_voc"),
+            keypoint_params=A.KeypointParams(format="xy"),
         )
         info = collect_pipeline_info(compose_both)
-        assert info['targets'] == 'bboxes_keypoints'
+        assert info["targets"] == "bboxes_keypoints"
 
 
 class TestComposeInitEvent:
@@ -472,14 +494,14 @@ class TestComposeInitEvent:
 
         data = event.to_dict()
 
-        assert data['event_type'] == "compose_init"
-        assert data['session_id'] == "test_session"
-        assert data['environment']['os'] == "Ubuntu 22.04"
-        assert data['environment']['environment'] == "jupyter"
-        assert data['environment']['gpu'] == "NVIDIA RTX 3080"
-        assert data['environment']['ram_gb'] == 16.0
-        assert data['pipeline']['transforms'] == ["RandomCrop", "HorizontalFlip"]
-        assert data['pipeline']['targets'] == "bboxes_keypoints"
+        assert data["event_type"] == "compose_init"
+        assert data["session_id"] == "test_session"
+        assert data["environment"]["os"] == "Ubuntu 22.04"
+        assert data["environment"]["environment"] == "jupyter"
+        assert data["environment"]["gpu"] == "NVIDIA RTX 3080"
+        assert data["environment"]["ram_gb"] == 16.0
+        assert data["pipeline"]["transforms"] == ["RandomCrop", "HorizontalFlip"]
+        assert data["pipeline"]["targets"] == "bboxes_keypoints"
 
     def test_generate_pipeline_hash(self):
         """Test pipeline hash generation."""
@@ -583,16 +605,25 @@ class TestComposeInitEvent:
 class TestComplexPipelines:
     """Test telemetry with complex pipeline configurations."""
 
-    @patch('albumentations.core.composition.get_telemetry_client')
-    @patch('albumentations.core.composition.get_environment_info')
-    @patch('albumentations.core.composition.collect_pipeline_info')
+    @patch("albumentations.core.composition.get_telemetry_client")
+    @patch("albumentations.core.composition.get_environment_info")
+    @patch("albumentations.core.composition.collect_pipeline_info")
     def test_compose_with_all_features(self, mock_collect_pipeline, mock_get_env, mock_get_client):
         """Test telemetry with fully-featured compose."""
         mock_client = Mock()
         mock_get_client.return_value = mock_client
         mock_get_env.return_value = {"environment": "test"}
         mock_collect_pipeline.return_value = {
-            "transforms": ["RandomCrop", "HorizontalFlip", "OneOf", "Blur", "MedianBlur", "SomeOf", "RandomBrightnessContrast", "HueSaturationValue"],
+            "transforms": [
+                "RandomCrop",
+                "HorizontalFlip",
+                "OneOf",
+                "Blur",
+                "MedianBlur",
+                "SomeOf",
+                "RandomBrightnessContrast",
+                "HueSaturationValue",
+            ],
             "pipeline_hash": "complex_hash",
             "targets": "bboxes_keypoints",
         }
@@ -600,21 +631,29 @@ class TestComplexPipelines:
         # Enable telemetry
         settings.update(telemetry=True)
         try:
-            compose = A.Compose([
-                A.RandomCrop(256, 256),
-                A.HorizontalFlip(p=0.5),
-                A.OneOf([
-                    A.Blur(blur_limit=3),
-                    A.MedianBlur(blur_limit=3),
-                ], p=0.5),
-                A.SomeOf([
-                    A.RandomBrightnessContrast(p=0.5),
-                    A.HueSaturationValue(p=0.5),
-                ], n=1, p=0.5),
-            ],
-            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']),
-            keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']),
-            additional_targets={'image2': 'image', 'mask2': 'mask'},
+            A.Compose(
+                [
+                    A.RandomCrop(256, 256),
+                    A.HorizontalFlip(p=0.5),
+                    A.OneOf(
+                        [
+                            A.Blur(blur_limit=3),
+                            A.MedianBlur(blur_limit=3),
+                        ],
+                        p=0.5,
+                    ),
+                    A.SomeOf(
+                        [
+                            A.RandomBrightnessContrast(p=0.5),
+                            A.HueSaturationValue(p=0.5),
+                        ],
+                        n=1,
+                        p=0.5,
+                    ),
+                ],
+                bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+                keypoint_params=A.KeypointParams(format="xy", label_fields=["keypoint_labels"]),
+                additional_targets={"image2": "image", "mask2": "mask"},
             )
 
             # Verify telemetry was called
@@ -623,7 +662,7 @@ class TestComplexPipelines:
             # Verify the data was passed correctly
             args = mock_client.track_compose_init.call_args
             telemetry_data = args[0][0]
-            assert telemetry_data['targets'] == 'bboxes_keypoints'
+            assert telemetry_data["targets"] == "bboxes_keypoints"
         finally:
             settings.update(telemetry=True)
 
@@ -646,22 +685,28 @@ class TestComplexPipelines:
             def track_call(telemetry_data, telemetry):
                 # Extract main_compose from the Compose object if passed
                 # In the patched version, we get data dict, not Compose
-                telemetry_calls.append({
-                    'telemetry': telemetry,
-                    'data': telemetry_data
-                })
+                telemetry_calls.append(
+                    {
+                        "telemetry": telemetry,
+                        "data": telemetry_data,
+                    },
+                )
 
             mock_client.track_compose_init = track_call
 
-            with patch('albumentations.core.composition.get_telemetry_client', return_value=mock_client):
+            with patch("albumentations.core.composition.get_telemetry_client", return_value=mock_client):
                 # Create compose with nested structure
-                main_compose = A.Compose([
-                    A.Compose([  # Nested compose
-                        A.HorizontalFlip(p=0.5),
-                        A.VerticalFlip(p=0.5),
-                    ]),
-                    A.RandomBrightnessContrast(p=0.3),
-                ])
+                main_compose = A.Compose(
+                    [
+                        A.Compose(
+                            [  # Nested compose
+                                A.HorizontalFlip(p=0.5),
+                                A.VerticalFlip(p=0.5),
+                            ],
+                        ),
+                        A.RandomBrightnessContrast(p=0.3),
+                    ],
+                )
 
             # Both composes track telemetry
             assert len(telemetry_calls) == 2, f"Expected 2 telemetry calls, got {len(telemetry_calls)}"
@@ -676,15 +721,17 @@ class TestComplexPipelines:
             settings.update(telemetry=True)
 
 
-@pytest.mark.parametrize("env_var,env_value,expected", [
-            ("ALBUMENTATIONS_NO_TELEMETRY", "1", False),
+@pytest.mark.parametrize(
+    "env_var,env_value,expected",
+    [
+        ("ALBUMENTATIONS_NO_TELEMETRY", "1", False),
         ("ALBUMENTATIONS_NO_TELEMETRY", "true", False),
         ("ALBUMENTATIONS_NO_TELEMETRY", "TRUE", False),
         ("ALBUMENTATIONS_NO_TELEMETRY", "0", True),
         ("ALBUMENTATIONS_NO_TELEMETRY", "false", True),
-            ("ALBUMENTATIONS_OFFLINE", "1", False),
-
-])
+        ("ALBUMENTATIONS_OFFLINE", "1", False),
+    ],
+)
 def test_environment_variables(monkeypatch, env_var, env_value, expected):
     """Test various environment variable configurations."""
     # Clear all relevant env vars first
@@ -696,6 +743,7 @@ def test_environment_variables(monkeypatch, env_var, env_value, expected):
 
     # Create new settings instance to pick up env vars
     from albumentations.core.analytics.settings import SettingsManager
+
     test_settings = SettingsManager()
 
     assert test_settings.telemetry_enabled == expected
@@ -703,12 +751,13 @@ def test_environment_variables(monkeypatch, env_var, env_value, expected):
 
 def test_settings_manager():
     """Test the SettingsManager functionality."""
-    from albumentations.core.analytics.settings import SettingsManager
     import tempfile
     from pathlib import Path
 
+    from albumentations.core.analytics.settings import SettingsManager
+
     # Create a temporary settings file
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
         temp_path = Path(f.name)
 
     try:
@@ -743,49 +792,64 @@ class TestTelemetryIntegration:
         # Enable telemetry
         settings.update(telemetry=True)
         # Create a simple pipeline
-        transform = A.Compose([
-            A.RandomCrop(256, 256),
-            A.HorizontalFlip(p=0.5),
-            A.RandomBrightnessContrast(p=0.2),
-        ])
+        transform = A.Compose(
+            [
+                A.RandomCrop(256, 256),
+                A.HorizontalFlip(p=0.5),
+                A.RandomBrightnessContrast(p=0.2),
+            ],
+        )
 
         # Test the pipeline works
         image = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
         result = transform(image=image)
-        assert result['image'].shape == (256, 256, 3)
+        assert result["image"].shape == (256, 256, 3)
 
     def test_pipeline_with_telemetry_disabled(self):
         """Test creating a pipeline with telemetry explicitly disabled."""
         # Create a pipeline with telemetry disabled
-        transform = A.Compose([
-            A.RandomCrop(256, 256),
-            A.HorizontalFlip(p=0.5),
-        ], telemetry=False)
+        transform = A.Compose(
+            [
+                A.RandomCrop(256, 256),
+                A.HorizontalFlip(p=0.5),
+            ],
+            telemetry=False,
+        )
 
         # Test it works
         image = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
         result = transform(image=image)
-        assert result['image'].shape == (256, 256, 3)
+        assert result["image"].shape == (256, 256, 3)
 
     def test_complex_pipeline_with_telemetry(self):
         """Test complex pipeline with nested structures and telemetry."""
         settings.update(telemetry=True)
-        complex_transform = A.Compose([
-            A.Compose([  # Nested compose
-                A.HorizontalFlip(p=0.5),
-                A.VerticalFlip(p=0.5),
-            ]),
-            A.OneOf([
-                A.Blur(blur_limit=3),
-                A.MedianBlur(blur_limit=3),
-            ], p=0.5),
-            A.SomeOf([
-                A.RandomBrightnessContrast(p=0.5),
-                A.HueSaturationValue(p=0.5),
-            ], n=1, p=0.5),
-        ],
-        bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']),
-        keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']),
+        complex_transform = A.Compose(
+            [
+                A.Compose(
+                    [  # Nested compose
+                        A.HorizontalFlip(p=0.5),
+                        A.VerticalFlip(p=0.5),
+                    ],
+                ),
+                A.OneOf(
+                    [
+                        A.Blur(blur_limit=3),
+                        A.MedianBlur(blur_limit=3),
+                    ],
+                    p=0.5,
+                ),
+                A.SomeOf(
+                    [
+                        A.RandomBrightnessContrast(p=0.5),
+                        A.HueSaturationValue(p=0.5),
+                    ],
+                    n=1,
+                    p=0.5,
+                ),
+            ],
+            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+            keypoint_params=A.KeypointParams(format="xy", label_fields=["keypoint_labels"]),
         )
 
         # Test with all targets
@@ -806,31 +870,33 @@ class TestTelemetryIntegration:
         )
 
         # Check all outputs are present
-        assert 'image' in result
-        assert 'mask' in result
-        assert 'bboxes' in result
-        assert 'labels' in result
-        assert 'keypoints' in result
-        assert 'keypoint_labels' in result
+        assert "image" in result
+        assert "mask" in result
+        assert "bboxes" in result
+        assert "labels" in result
+        assert "keypoints" in result
+        assert "keypoint_labels" in result
 
     def test_lambda_transform_excluded(self):
         """Test that Lambda transforms are excluded from telemetry."""
         from albumentations.augmentations.other.lambda_transform import Lambda
 
         # Create pipeline with Lambda
-        transform = A.Compose([
-            A.RandomCrop(256, 256),
-            Lambda(name="custom_lambda", image=lambda x, **kwargs: x),
-            A.HorizontalFlip(p=0.5),
-        ])
+        transform = A.Compose(
+            [
+                A.RandomCrop(256, 256),
+                Lambda(name="custom_lambda", image=lambda x, **kwargs: x),
+                A.HorizontalFlip(p=0.5),
+            ],
+        )
 
         # Collect pipeline info
         info = collect_pipeline_info(transform)
 
         # Lambda should not be in transform names
-        assert 'Lambda' not in info['transforms']
-        assert 'RandomCrop' in info['transforms']
-        assert 'HorizontalFlip' in info['transforms']
+        assert "Lambda" not in info["transforms"]
+        assert "RandomCrop" in info["transforms"]
+        assert "HorizontalFlip" in info["transforms"]
 
     def test_normalize_totensor_included(self):
         """Test that Normalize and ToTensorV2 are included with Mixpanel."""
@@ -861,10 +927,13 @@ class TestTelemetryIntegration:
     def test_serialization_with_telemetry(self):
         """Test that telemetry doesn't interfere with serialization."""
         # Create a pipeline
-        transform = A.Compose([
-            A.RandomCrop(256, 256),
-            A.HorizontalFlip(p=0.5),
-        ], seed=137)
+        transform = A.Compose(
+            [
+                A.RandomCrop(256, 256),
+                A.HorizontalFlip(p=0.5),
+            ],
+            seed=137,
+        )
 
         # Serialize
         serialized = transform.to_dict()
@@ -883,4 +952,4 @@ class TestTelemetryIntegration:
         result2 = deserialized(image=image)
 
         # Should produce identical results
-        np.testing.assert_array_equal(result1['image'], result2['image'])
+        np.testing.assert_array_equal(result1["image"], result2["image"])

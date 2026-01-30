@@ -1,6 +1,5 @@
 """Tests for dithering transforms."""
 
-
 import numpy as np
 import pytest
 
@@ -27,8 +26,8 @@ class TestDitheringFunctional:
 
         # Test multi-level quantization
         np.testing.assert_equal(quantize_value(0.0, 4), 0.0)
-        np.testing.assert_allclose(quantize_value(0.25, 4), 1/3)
-        np.testing.assert_allclose(quantize_value(0.5, 4), 2/3)
+        np.testing.assert_allclose(quantize_value(0.25, 4), 1 / 3)
+        np.testing.assert_allclose(quantize_value(0.5, 4), 2 / 3)
         np.testing.assert_equal(quantize_value(1.0, 4), 1.0)
 
     def test_generate_bayer_matrix(self):
@@ -100,7 +99,10 @@ class TestDitheringFunctional:
 
         # Test serpentine scanning
         result_serpentine = error_diffusion_dither(
-            img, n_colors=2, algorithm="floyd_steinberg", serpentine=True
+            img,
+            n_colors=2,
+            algorithm="floyd_steinberg",
+            serpentine=True,
         )
         np.testing.assert_equal(result_serpentine.shape, img.shape)
 
@@ -122,7 +124,12 @@ class TestDitheringFunctional:
 
         # Test grayscale mode
         result = apply_dithering(
-            img, method="random", n_colors=2, color_mode="grayscale", noise_range=(-0.5, 0.5), random_generator=rng
+            img,
+            method="random",
+            n_colors=2,
+            color_mode="grayscale",
+            noise_range=(-0.5, 0.5),
+            random_generator=rng,
         )
         np.testing.assert_equal(result.shape, img.shape)
         # All channels should be identical after grayscale conversion
@@ -131,13 +138,17 @@ class TestDitheringFunctional:
 
     def test_apply_dithering_per_channel(self):
         """Test per-channel dithering."""
-        rng = np.random.default_rng(137)
+        np.random.default_rng(137)
         # Create color image
         img = np.random.rand(10, 10, 3).astype(np.float32)
 
         # Test per-channel mode
         result = apply_dithering(
-            img, method="ordered", n_colors=4, color_mode="per_channel", matrix_size=4
+            img,
+            method="ordered",
+            n_colors=4,
+            color_mode="per_channel",
+            matrix_size=4,
         )
         np.testing.assert_equal(result.shape, img.shape)
         # Channels can be different
@@ -148,7 +159,8 @@ class TestDitheringTransform:
     """Test Dithering transform class."""
 
     @pytest.mark.parametrize(
-        "method", ["random", "ordered", "error_diffusion"]
+        "method",
+        ["random", "ordered", "error_diffusion"],
     )
     @pytest.mark.parametrize("n_colors", [2, 4, 16])
     @pytest.mark.parametrize("img_dtype", [np.uint8, np.float32])
@@ -183,8 +195,14 @@ class TestDitheringTransform:
         img = np.random.randint(0, 256, (50, 50, 3), dtype=np.uint8)
 
         algorithms = [
-            "floyd_steinberg", "jarvis", "stucki", "atkinson",
-            "burkes", "sierra", "sierra_2row", "sierra_lite"
+            "floyd_steinberg",
+            "jarvis",
+            "stucki",
+            "atkinson",
+            "burkes",
+            "sierra",
+            "sierra_2row",
+            "sierra_lite",
         ]
 
         for algo in algorithms:
@@ -192,7 +210,7 @@ class TestDitheringTransform:
                 method="error_diffusion",
                 error_diffusion_algorithm=algo,
                 n_colors=2,
-                p=1.0
+                p=1.0,
             )
             result = transform(image=img)["image"]
             np.testing.assert_equal(result.shape, img.shape)
@@ -206,7 +224,7 @@ class TestDitheringTransform:
             method="ordered",
             n_colors=2,
             color_mode="grayscale",
-            p=1.0
+            p=1.0,
         )
         result = transform(image=img)["image"]
         np.testing.assert_equal(result.shape, img.shape)
@@ -216,7 +234,7 @@ class TestDitheringTransform:
             method="ordered",
             n_colors=4,
             color_mode="per_channel",
-            p=1.0
+            p=1.0,
         )
         result = transform(image=img)["image"]
         np.testing.assert_equal(result.shape, img.shape)
@@ -230,7 +248,7 @@ class TestDitheringTransform:
                 method="ordered",
                 n_colors=2,
                 bayer_matrix_size=size,
-                p=1.0
+                p=1.0,
             )
             result = transform(image=img)["image"]
             np.testing.assert_equal(result.shape, img.shape)
@@ -243,7 +261,7 @@ class TestDitheringTransform:
         transform1 = A.Dithering(
             method="error_diffusion",
             serpentine=False,
-            p=1.0
+            p=1.0,
         )
         result1 = transform1(image=img)["image"]
 
@@ -251,7 +269,7 @@ class TestDitheringTransform:
         transform2 = A.Dithering(
             method="error_diffusion",
             serpentine=True,
-            p=1.0
+            p=1.0,
         )
         result2 = transform2(image=img)["image"]
 
@@ -283,7 +301,7 @@ class TestDitheringTransform:
             bayer_matrix_size=8,
             serpentine=True,
             noise_range=(-0.3, 0.3),
-            p=0.7
+            p=0.7,
         )
 
         # Serialize
@@ -310,16 +328,18 @@ class TestDitheringTransform:
         """Test Dithering in a Compose pipeline."""
         img = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
 
-        transform = A.Compose([
-            A.RandomBrightnessContrast(p=0.5),
-            A.Dithering(
-                method="error_diffusion",
-                n_colors=16,
-                error_diffusion_algorithm="floyd_steinberg",
-                p=1.0
-            ),
-            A.HorizontalFlip(p=0.5),
-        ])
+        transform = A.Compose(
+            [
+                A.RandomBrightnessContrast(p=0.5),
+                A.Dithering(
+                    method="error_diffusion",
+                    n_colors=16,
+                    error_diffusion_algorithm="floyd_steinberg",
+                    p=1.0,
+                ),
+                A.HorizontalFlip(p=0.5),
+            ],
+        )
 
         result = transform(image=img)["image"]
         np.testing.assert_equal(result.shape, img.shape)
@@ -376,7 +396,7 @@ class TestDitheringTransform:
                 method="ordered",
                 n_colors=4,
                 color_mode="per_channel",
-                p=1.0
+                p=1.0,
             )
             result = transform(image=img)["image"]
 
@@ -435,12 +455,15 @@ class TestDitheringTransform:
                 method="error_diffusion",
                 n_colors=2,
                 color_mode="grayscale",
-                p=1.0
+                p=1.0,
             )
             result = transform(image=img)["image"]
 
             # Grayscale mode preserves original number of channels
-            np.testing.assert_equal(result.shape, img.shape), f"Grayscale output shape wrong for {n_channels} input channels"
+            (
+                np.testing.assert_equal(result.shape, img.shape),
+                f"Grayscale output shape wrong for {n_channels} input channels",
+            )
 
             # All channels should be identical in grayscale mode
             for ch in range(1, n_channels):

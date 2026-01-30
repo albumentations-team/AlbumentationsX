@@ -1,10 +1,9 @@
-import random
 import numpy as np
 import pytest
 
 from albumentations.augmentations.mixing.transforms import Mosaic
-from albumentations.core.composition import Compose
 from albumentations.core.bbox_utils import BboxParams
+from albumentations.core.composition import Compose
 from albumentations.core.keypoints_utils import KeypointParams
 
 
@@ -37,8 +36,8 @@ def test_mosaic_identity_single_image(img_shape: tuple[int, ...], target_size: t
     "img_shape, target_size, fill, fill_mask",
     [
         # Matching sizes
-        ((100, 80, 3), (100, 80), 128, 1), # RGB
-        ((64, 64, 1), (64, 64), 50, 2),   # Grayscale
+        ((100, 80, 3), (100, 80), 128, 1),  # RGB
+        ((64, 64, 1), (64, 64), 50, 2),  # Grayscale
         # Target smaller (cropping)
         ((100, 100, 3), (80, 80), 100, 4),
         # Target larger (padding)
@@ -73,9 +72,9 @@ def test_mosaic_identity_monochromatic(
         expected_output_shape_img = (*target_size, img_shape[-1])
 
     # --- Mask Setup ---
-    mask_shape = img_shape[:2] + (1,)
+    mask_shape = (*img_shape[:2], 1)
     mask = np.full(mask_shape, fill_value=fill_mask, dtype=np.uint8)
-    expected_output_shape_mask = target_size + (1,)
+    expected_output_shape_mask = (*target_size, 1)
 
     # --- Transform --- (Use 0 for padding values to test persistence)
     transform = Mosaic(
@@ -83,7 +82,7 @@ def test_mosaic_identity_monochromatic(
         grid_yx=grid_yx,
         p=1.0,
         fill=0,
-        fill_mask=0
+        fill_mask=0,
     )
 
     # --- Apply ---
@@ -126,26 +125,32 @@ def test_mosaic_identity_with_targets() -> None:
     img = np.random.randint(0, 256, size=(*img_size, 3), dtype=np.uint8)
     mask = np.random.randint(0, 2, size=img_size, dtype=np.uint8)
     # Bbox in albumentations format [x_min, y_min, x_max, y_max, class_id]
-    bboxes = np.array([
-        [0.2, 0.3, 0.8, 0.7, 1],
-        [0.1, 0.1, 0.5, 0.5, 2],
-        [0.6, 0.2, 0.9, 0.4, 0]
-    ], dtype=np.float32)
+    bboxes = np.array(
+        [
+            [0.2, 0.3, 0.8, 0.7, 1],
+            [0.1, 0.1, 0.5, 0.5, 2],
+            [0.6, 0.2, 0.9, 0.4, 0],
+        ],
+        dtype=np.float32,
+    )
 
     # Set cell_shape = target_size for identity case
     transform = Mosaic(target_size=img_size, cell_shape=img_size, grid_yx=(1, 1), p=1.0)
 
     # Use Compose to handle bbox processing
-    pipeline = Compose([
-        transform
-    ], bbox_params=BboxParams(format='albumentations', label_fields=['class_labels']))
+    pipeline = Compose(
+        [
+            transform,
+        ],
+        bbox_params=BboxParams(format="albumentations", label_fields=["class_labels"]),
+    )
 
     data = {
         "image": img.copy(),
         "mask": mask.copy(),
-        "bboxes": bboxes.copy()[:, :4], # Pass only coords
-        "class_labels": bboxes[:, 4].tolist(), # Pass labels separately
-        "mosaic_metadata": []
+        "bboxes": bboxes.copy()[:, :4],  # Pass only coords
+        "class_labels": bboxes[:, 4].tolist(),  # Pass labels separately
+        "mosaic_metadata": [],
     }
 
     result = pipeline(**data)
@@ -162,11 +167,11 @@ def test_mosaic_identity_with_targets() -> None:
     # Need to reconstruct the expected format from Compose output
     expected_bboxes_with_labels = np.concatenate(
         (data["bboxes"], np.array(data["class_labels"])[..., np.newaxis]),
-        axis=1
+        axis=1,
     )
     result_bboxes_with_labels = np.concatenate(
         (result["bboxes"], np.array(result["class_labels"])[..., np.newaxis]),
-        axis=1
+        axis=1,
     )
     np.testing.assert_allclose(result_bboxes_with_labels, expected_bboxes_with_labels, atol=1e-6)
 
@@ -181,32 +186,36 @@ def test_mosaic_primary_mask_metadata_no_mask() -> None:
     target_size = (100, 100)
     cell_shape = (100, 100)
     primary_image = np.zeros((*target_size, 3), dtype=np.uint8)
-    primary_mask = np.ones(target_size + (1,), dtype=np.uint8) * 55  # Non-zero primary mask value
+    primary_mask = np.ones((*target_size, 1), dtype=np.uint8) * 55  # Non-zero primary mask value
 
     # Metadata item with compatible image but NO mask
     metadata_item_no_mask = {"image": np.ones((80, 80, 3), dtype=np.uint8) * 10}
     # Metadata item with compatible image AND mask
     metadata_item_with_mask = {
         "image": np.ones((70, 70, 3), dtype=np.uint8) * 20,
-        "mask": np.ones((70, 70, 1), dtype=np.uint8) * 77, # Distinct mask value
+        "mask": np.ones((70, 70, 1), dtype=np.uint8) * 77,  # Distinct mask value
     }
 
     metadata = [metadata_item_no_mask, metadata_item_with_mask, metadata_item_with_mask]
-    fill_mask_value = 100 # Distinct fill value
+    fill_mask_value = 100  # Distinct fill value
 
     # Use a 2x2 grid to ensure all items (primary + 3 metadata) are potentially used
-    transform = Compose([
-        Mosaic(
-            grid_yx=(2, 2),
-            center_range=(0.5, 0.5),
-            cell_shape=cell_shape,
-            target_size=target_size,
-            fit_mode="contain",
-            fill_mask=fill_mask_value,
-            metadata_key="mosaic_input",
-            p=1.0,
-            )
-        ], seed=137, strict=True)
+    transform = Compose(
+        [
+            Mosaic(
+                grid_yx=(2, 2),
+                center_range=(0.5, 0.5),
+                cell_shape=cell_shape,
+                target_size=target_size,
+                fit_mode="contain",
+                fill_mask=fill_mask_value,
+                metadata_key="mosaic_input",
+                p=1.0,
+            ),
+        ],
+        seed=137,
+        strict=True,
+    )
 
     data = {
         "image": primary_image,
@@ -218,7 +227,7 @@ def test_mosaic_primary_mask_metadata_no_mask() -> None:
     output_mask = result["mask"]
 
     # Basic shape check
-    assert output_mask.shape == target_size + (1,)
+    assert output_mask.shape == (*target_size, 1)
     assert output_mask.dtype == np.uint8
 
     # Check that all expected values are present in the mask
@@ -237,7 +246,7 @@ def test_mosaic_primary_mask_metadata_no_mask() -> None:
     # Optionally, check that the fill_value for the image (default 0) is NOT in the mask
     # unless the fill_mask_value itself was 0.
     if fill_mask_value != 0:
-        assert 0 not in unique_values # Assuming default image fill value 0 wasn't used for mask
+        assert 0 not in unique_values  # Assuming default image fill value 0 wasn't used for mask
 
 
 def test_mosaic_simplified_deterministic() -> None:
@@ -257,10 +266,10 @@ def test_mosaic_simplified_deterministic() -> None:
     keypoints_primary = np.array([[10, 10, 0, 0, 0], [50, 50, 0, 0, 0]], dtype=np.float32)
 
     # --- Metadata ---
-    img_meta = np.ones((*cell_shape, 3), dtype=np.uint8) * 2 # Use cell_shape for meta consistency
+    img_meta = np.ones((*cell_shape, 3), dtype=np.uint8) * 2  # Use cell_shape for meta consistency
     mask_meta = np.ones(cell_shape, dtype=np.uint8) * 22
-    bboxes_meta = np.array([[0, 0, 1, 1]], dtype=np.float32) # rel to meta_size
-    keypoints_meta = np.array([[10, 10, 0, 0, 0], [90, 90, 0, 0, 0]], dtype=np.float32) # rel to meta_size
+    bboxes_meta = np.array([[0, 0, 1, 1]], dtype=np.float32)  # rel to meta_size
+    keypoints_meta = np.array([[10, 10, 0, 0, 0], [90, 90, 0, 0, 0]], dtype=np.float32)  # rel to meta_size
 
     metadata_list = [
         {
@@ -268,26 +277,28 @@ def test_mosaic_simplified_deterministic() -> None:
             "mask": mask_meta,
             "bboxes": bboxes_meta,
             "keypoints": keypoints_meta,
-        }
+        },
     ]
 
     # --- Transform ---
     transform = Mosaic(
         target_size=target_size,
         grid_yx=grid_yx,
-        cell_shape=cell_shape, # Use defined cell_shape
+        cell_shape=cell_shape,  # Use defined cell_shape
         center_range=center_range,
         p=1.0,
         fill=0,
         fill_mask=0,
-        fit_mode="cover", # Match the calculation trace
+        fit_mode="cover",  # Match the calculation trace
     )
 
-    pipeline = Compose([
-        transform
-    ],
-    bbox_params=BboxParams(format='albumentations', min_visibility=0.0, min_area=0.0),
-    keypoint_params=KeypointParams(format='albumentations'))
+    pipeline = Compose(
+        [
+            transform,
+        ],
+        bbox_params=BboxParams(format="albumentations", min_visibility=0.0, min_area=0.0),
+        keypoint_params=KeypointParams(format="albumentations"),
+    )
 
     # --- Input Data ---
     data = {
@@ -307,20 +318,20 @@ def test_mosaic_simplified_deterministic() -> None:
 
     # --- Assertions ---
     # Image/Mask Shape Check
-    assert result['image'].shape == (*target_size, 3)
-    assert result['mask'].shape == (*target_size, 1)  # Mask should have channel dimension
+    assert result["image"].shape == (*target_size, 3)
+    assert result["mask"].shape == (*target_size, 1)  # Mask should have channel dimension
     # Relaxed Image/Mask Content Check: Ensure the two halves are not just the fill value
-    split_col = 50 # Based on center_range=(0.5, 0.5)
-    assert not np.all(result['image'][:, :split_col] == 0) # Check left half
-    assert not np.all(result['image'][:, split_col:] == 0) # Check right half
-    assert not np.all(result['mask'][:, :split_col] == 0)
-    assert not np.all(result['mask'][:, split_col:] == 0)
+    split_col = 50  # Based on center_range=(0.5, 0.5)
+    assert not np.all(result["image"][:, :split_col] == 0)  # Check left half
+    assert not np.all(result["image"][:, split_col:] == 0)  # Check right half
+    assert not np.all(result["mask"][:, :split_col] == 0)
+    assert not np.all(result["mask"][:, split_col:] == 0)
 
     # Check bboxes
-    assert 'bboxes' in result
-    np.testing.assert_allclose(result['bboxes'], expected_bboxes, atol=1e-6)
+    assert "bboxes" in result
+    np.testing.assert_allclose(result["bboxes"], expected_bboxes, atol=1e-6)
 
     # Relaxed Keypoints check
-    assert 'keypoints' in result
-    assert result['keypoints'].shape[0] > 0 # Expect some keypoints
-    assert result['keypoints'].shape[1] == 5 # x, y, Z, angle, scale
+    assert "keypoints" in result
+    assert result["keypoints"].shape[0] > 0  # Expect some keypoints
+    assert result["keypoints"].shape[1] == 5  # x, y, Z, angle, scale

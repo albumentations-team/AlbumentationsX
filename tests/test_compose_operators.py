@@ -1,6 +1,5 @@
 """Tests for compose operators (+, -, __radd__)."""
 
-
 import numpy as np
 import pytest
 
@@ -52,13 +51,11 @@ def sample_keypoint_labels():
     [
         # Simple case: [A, B] + C = [A, B, C]
         ([A.HorizontalFlip, A.VerticalFlip], A.Blur),
-
         # Different transform types
         ([A.RandomBrightnessContrast], A.HorizontalFlip),
-
         # Single transform
         ([A.HorizontalFlip], A.VerticalFlip),
-    ]
+    ],
 )
 def test_compose_add_single_transform_equivalence(
     compose_class,
@@ -105,13 +102,11 @@ def test_compose_add_single_transform_equivalence(
     [
         # Multiple transforms: [A, B] + [C, D] = [A, B, C, D]
         ([A.HorizontalFlip], [A.VerticalFlip, A.Blur]),
-
         # Empty base: [] + [A, B] = [A, B]
         ([], [A.HorizontalFlip, A.VerticalFlip]),
-
         # Different transform types
         ([A.RandomBrightnessContrast], [A.HorizontalFlip]),
-    ]
+    ],
 )
 def test_compose_add_multiple_transforms_equivalence(
     compose_class,
@@ -130,8 +125,9 @@ def test_compose_add_multiple_transforms_equivalence(
     base_compose = compose_class(base_transforms, **compose_kwargs)
 
     # Create fresh instances for expected compose
-    expected_transforms = ([cls(p=1.0) for cls in base_transform_classes] +
-                          [cls(p=1.0) for cls in additional_transform_classes])
+    expected_transforms = [cls(p=1.0) for cls in base_transform_classes] + [
+        cls(p=1.0) for cls in additional_transform_classes
+    ]
     expected_compose = compose_class(expected_transforms, **compose_kwargs)
 
     # Test the operator with fresh instances
@@ -159,10 +155,9 @@ def test_compose_add_multiple_transforms_equivalence(
     [
         # Simple case: A + [B, C] = [A, B, C]
         (A.HorizontalFlip, [A.VerticalFlip, A.Blur]),
-
         # Different transform types
         (A.RandomBrightnessContrast, [A.HorizontalFlip]),
-    ]
+    ],
 )
 def test_compose_radd_single_transform_equivalence(
     compose_class,
@@ -209,10 +204,9 @@ def test_compose_radd_single_transform_equivalence(
     [
         # Multiple prepends: [A, B] + [C, D] = [A, B, C, D]
         ([A.HorizontalFlip, A.VerticalFlip], [A.Blur]),
-
         # Empty base: [A, B] + [] = [A, B]
         ([A.HorizontalFlip, A.VerticalFlip], []),
-    ]
+    ],
 )
 def test_compose_radd_multiple_transforms_equivalence(
     compose_class,
@@ -231,8 +225,9 @@ def test_compose_radd_multiple_transforms_equivalence(
     base_compose = compose_class(base_transforms, **compose_kwargs)
 
     # Create fresh instances for expected compose
-    expected_transforms = ([cls(p=1.0) for cls in additional_transform_classes] +
-                          [cls(p=1.0) for cls in base_transform_classes])
+    expected_transforms = [cls(p=1.0) for cls in additional_transform_classes] + [
+        cls(p=1.0) for cls in base_transform_classes
+    ]
     expected_compose = compose_class(expected_transforms, **compose_kwargs)
 
     # Test the operator with fresh instances
@@ -319,8 +314,8 @@ def test_compose_subtract_by_class(sample_image, sample_mask):
     # Verify correct transform was removed
     assert len(reduced_compose.transforms) == 2
     assert transform_a not in reduced_compose.transforms  # First HorizontalFlip removed
-    assert transform_b in reduced_compose.transforms     # VerticalFlip remains
-    assert transform_c in reduced_compose.transforms     # Second HorizontalFlip remains
+    assert transform_b in reduced_compose.transforms  # VerticalFlip remains
+    assert transform_c in reduced_compose.transforms  # Second HorizontalFlip remains
 
 
 def test_compose_subtract_nonexistent_transform_raises_error():
@@ -373,7 +368,7 @@ def test_compose_subtract_type_validation():
     # Test removing by class
     result = compose_with_flip - A.HorizontalFlip
     assert len(result.transforms) == 1
-    assert type(result.transforms[0]) == A.VerticalFlip
+    assert isinstance(result.transforms[0], A.VerticalFlip)
 
 
 @pytest.mark.parametrize(
@@ -384,9 +379,9 @@ def test_compose_subtract_type_validation():
         (None, KeypointParams(format="xy")),
         (
             BboxParams(format="pascal_voc", label_fields=["bbox_labels"]),
-            KeypointParams(format="xy")
+            KeypointParams(format="xy"),
         ),
-    ]
+    ],
 )
 def test_compose_operators_preserve_params(
     bbox_params,
@@ -492,8 +487,8 @@ def test_compose_operators_preserve_other_params(sample_image, sample_mask):
 
     # Verify other params are preserved
     assert result_compose.p == 0.8
-    assert result_compose.strict == True
-    assert result_compose.is_check_shapes == False
+    assert result_compose.strict
+    assert not result_compose.is_check_shapes
 
 
 def test_compose_operators_immutability(sample_image, sample_mask):
@@ -545,7 +540,7 @@ def test_special_compose_classes_add_operations(compose_class, sample_image, sam
 
     # Check that the result has correct number of transforms
     assert len(result_compose.transforms) == len(expected_compose.transforms)
-    assert type(result_compose) == type(expected_compose)
+    assert type(result_compose) is type(expected_compose)
 
 
 def test_selective_channel_transform_operators(sample_image):
@@ -553,7 +548,7 @@ def test_selective_channel_transform_operators(sample_image):
     base_compose = A.SelectiveChannelTransform(
         [A.HorizontalFlip(p=1.0)],
         channels=[0, 1],
-        p=1.0
+        p=1.0,
     )
 
     result_compose = base_compose + A.VerticalFlip(p=1.0)
@@ -666,18 +661,18 @@ def test_compose_operators_preserve_telemetry():
 
     # Test __add__ operator
     result_add = compose_no_telemetry + A.VerticalFlip(p=1.0)
-    assert hasattr(result_add, 'telemetry')
+    assert hasattr(result_add, "telemetry")
     assert result_add.telemetry is False, "telemetry=False should be preserved with + operator"
 
     # Test __radd__ operator
     result_radd = A.VerticalFlip(p=1.0) + compose_no_telemetry
-    assert hasattr(result_radd, 'telemetry')
+    assert hasattr(result_radd, "telemetry")
     assert result_radd.telemetry is False, "telemetry=False should be preserved with __radd__ operator"
 
     # Test __sub__ operator
     compose_multi = A.Compose([A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0)], telemetry=False)
     result_sub = compose_multi - A.HorizontalFlip
-    assert hasattr(result_sub, 'telemetry')
+    assert hasattr(result_sub, "telemetry")
     assert result_sub.telemetry is False, "telemetry=False should be preserved with - operator"
 
     # Test with telemetry=True (default)

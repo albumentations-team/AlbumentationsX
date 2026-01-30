@@ -53,7 +53,6 @@ def test_init_vs_initschema_types(transform_class):
     """
     transform_name = transform_class.__name__
 
-
     param_names = get_common_param_names(transform_class)
 
     mismatches = []
@@ -62,7 +61,6 @@ def test_init_vs_initschema_types(transform_class):
         # Skip special parameters
         if param_name in {"self", "strict"}:
             continue
-
 
         # Extract types from both sources
         init_type = get_init_param_type(transform_class, param_name)
@@ -77,7 +75,7 @@ def test_init_vs_initschema_types(transform_class):
                     f"  Parameter '{param_name}':\n"
                     f"    __init__:    {init_type}\n"
                     f"    InitSchema:  {schema_type}\n"
-                    f"    Mismatch: {mismatch}"
+                    f"    Mismatch: {mismatch}",
                 )
 
     # Assert no mismatches found

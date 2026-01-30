@@ -26,7 +26,7 @@ def get_class_targets(cls) -> set[str]:
     if isinstance(targets, tuple):
         # Convert Targets enum to lowercase string names
         return {t.name.lower() for t in targets}
-    elif isinstance(targets, Targets):
+    if isinstance(targets, Targets):
         return {targets.name.lower()}
 
     return set()
@@ -50,7 +50,7 @@ def get_class_bbox_types(cls) -> set[str]:
     bbox_types = cls._supported_bbox_types
     if isinstance(bbox_types, frozenset):
         return set(bbox_types)
-    elif isinstance(bbox_types, set):
+    if isinstance(bbox_types, set):
         return bbox_types
 
     return set()
@@ -82,8 +82,7 @@ def test_docstring_targets_match_class_property(transform_cls):
 
     # Check they match
     assert docstring_targets == class_targets, (
-        f"{transform_name}: Docstring targets {docstring_targets} "
-        f"don't match class _targets {class_targets}"
+        f"{transform_name}: Docstring targets {docstring_targets} don't match class _targets {class_targets}"
     )
 
 

@@ -1,6 +1,7 @@
+import random
+
 import numpy as np
 import pytest
-import random
 from albucore import get_num_channels
 from PIL import Image, ImageFont
 
@@ -39,7 +40,6 @@ def test_delete_random_words(sentence, num_words, expected_length):
     ],
 )
 def test_swap_random_words(sentence, num_words):
-
     words_in_sentence = sentence.split(" ")
 
     result = ftext.swap_random_words(words_in_sentence, num_words, random.Random(42))
@@ -49,9 +49,9 @@ def test_swap_random_words(sentence, num_words):
     if len(words_in_sentence) == 1:
         assert result == sentence, "Single word input should remain unchanged"
     else:
-        assert (
-            words_in_result != words_in_sentence or num_words == 0
-        ), f"Result should be different from input for n={num_words}"
+        assert words_in_result != words_in_sentence or num_words == 0, (
+            f"Result should be different from input for n={num_words}"
+        )
         assert len(words_in_result) == len(words_in_sentence), "Result should have the same number of words as input"
         assert sorted(words_in_result) == sorted(words_in_sentence), "Result should contain the same words as input"
 
@@ -78,14 +78,14 @@ def test_insert_random_stopwords(sentence, num_insertions, stopwords, expected_l
     result_length = len(result.split())
 
     # Ensure the result length is within the expected range
-    assert (
-        expected_length_range[0] <= result_length <= expected_length_range[1]
-    ), f"Result length {result_length} not in expected range {expected_length_range} for input '{sentence}' with num_insertions={num_insertions}"
+    assert expected_length_range[0] <= result_length <= expected_length_range[1], (
+        f"Result length {result_length} not in expected range {expected_length_range} for input '{sentence}' with num_insertions={num_insertions}"
+    )
 
     # Check if the number of words increased correctly
-    assert (
-        result_length == len(sentence.split()) + num_insertions
-    ), "The number of words in the result should be the original number plus the number of insertions"
+    assert result_length == len(sentence.split()) + num_insertions, (
+        "The number of words in the result should be the original number plus the number of insertions"
+    )
 
     # Ensure all inserted words are from the stopwords list
     if stopwords is None:
@@ -118,8 +118,8 @@ dummy_metadata = {
 
 
 @pytest.mark.parametrize(
-    "image_shape, metadata_list", [
-
+    "image_shape, metadata_list",
+    [
         (
             (100, 100, 1),
             [

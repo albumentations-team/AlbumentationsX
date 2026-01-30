@@ -1,32 +1,34 @@
 import multiprocessing
 import sys
 
+import cv2
 import numpy as np
 import pytest
-import cv2
 
 cv2.setRNGSeed(137)
 
 np.random.seed(137)
 
+
 @pytest.fixture
 def mask():
     return cv2.randu(np.empty((100, 100), dtype=np.uint8), 0, 2)
 
+
 @pytest.fixture
 def image():
-    return cv2.randu(np.zeros((100, 100, 3), dtype=np.uint8),
-                       low=np.array([0, 0, 0]),
-                       high=np.array([255, 255, 255]))
+    return cv2.randu(np.zeros((100, 100, 3), dtype=np.uint8), low=np.array([0, 0, 0]), high=np.array([255, 255, 255]))
 
 
 @pytest.fixture
 def bboxes():
     return np.array([[15, 12, 75, 30, 1], [55, 25, 90, 90, 2]])
 
+
 @pytest.fixture
 def volume():
     return np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)
+
 
 @pytest.fixture
 def mask3d():
@@ -64,6 +66,7 @@ def mp_pool():
         method = None
     return multiprocessing.get_context(method).Pool(4)
 
+
 SQUARE_UINT8_IMAGE = cv2.randu(np.zeros((100, 100, 3), dtype=np.uint8), 0, 255)
 RECTANGULAR_UINT8_IMAGE = cv2.randu(np.zeros((101, 99, 3), dtype=np.uint8), 0, 255)
 
@@ -84,6 +87,7 @@ SQUARE_MULTI_UINT8_IMAGE = np.random.randint(low=0, high=256, size=(100, 100, 5)
 SQUARE_MULTI_FLOAT_IMAGE = np.random.uniform(low=0.0, high=1.0, size=(100, 100, 5)).astype(np.float32)
 
 MULTI_IMAGES = [SQUARE_MULTI_UINT8_IMAGE, SQUARE_MULTI_FLOAT_IMAGE]
+
 
 @pytest.fixture
 def image_float32():

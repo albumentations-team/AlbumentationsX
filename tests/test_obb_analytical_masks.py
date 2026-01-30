@@ -14,8 +14,6 @@ For transformations where we can compute exact results mathematically, we:
 This validates that the OBB transformation matches the actual geometric operation.
 """
 
-import math
-
 import cv2
 import numpy as np
 import pytest
@@ -36,6 +34,7 @@ def obb_to_mask(
 
     Returns:
         Binary mask with the OBB filled
+
     """
     from albumentations.core.bbox_utils import obb_to_polygons
 
@@ -83,16 +82,19 @@ def test_obb_rotation_centered_square_analytical(rotation_deg: int) -> None:
         cy - size / 2,
         cx + size / 2,
         cy + size / 2,
-        initial_angle
+        initial_angle,
     ]
 
     # Create input mask from OBB
     input_mask = obb_to_mask(input_obb, image_shape)
 
     # Apply rotation to OBB
-    transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -130,14 +132,17 @@ def test_obb_rotation_centered_rectangular_analytical(rotation_deg: int) -> None
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        initial_angle
+        initial_angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -175,14 +180,17 @@ def test_obb_rotation_with_initial_angle_analytical(rotation_deg: int, initial_a
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        initial_angle
+        initial_angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -221,14 +229,17 @@ def test_obb_rotation_offset_box_analytical(offset_x: float, offset_y: float, ro
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        initial_angle
+        initial_angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -258,14 +269,17 @@ def test_obb_horizontal_flip_centered_box_analytical() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -295,14 +309,17 @@ def test_obb_vertical_flip_centered_box_analytical() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.VerticalFlip(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.VerticalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -340,14 +357,17 @@ def test_obb_horizontal_flip_offset_box_analytical(offset_x: float, offset_y: fl
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -385,14 +405,17 @@ def test_obb_vertical_flip_offset_box_analytical(offset_x: float, offset_y: floa
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.VerticalFlip(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.VerticalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -425,7 +448,7 @@ def test_obb_rot90_centered_box_analytical(k: int) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
@@ -471,7 +494,7 @@ def test_obb_rot90_offset_box_analytical(offset_x: float, offset_y: float, k: in
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
@@ -505,14 +528,17 @@ def test_obb_transpose_centered_box_analytical() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Transpose(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Transpose(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -550,14 +576,17 @@ def test_obb_transpose_offset_box_analytical(offset_x: float, offset_y: float) -
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Transpose(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Transpose(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -587,14 +616,17 @@ def test_obb_identity_transform_analytical() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Affine(scale=1.0, rotate=0, translate_px={"x": 0, "y": 0}, p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(scale=1.0, rotate=0, translate_px={"x": 0, "y": 0}, p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -622,18 +654,21 @@ def test_obb_360_rotation_analytical() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Rotate(limit=(360, 360), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(360, 360), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
-    rotated_mask = result["mask"]
+    result["mask"]
 
     output_mask = obb_to_mask(output_obb, image_shape)
 
@@ -660,16 +695,19 @@ def test_obb_combined_transforms_analytical() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
     # Apply HFlip then Rotate 90°
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-        A.Rotate(limit=(90, 90), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+            A.Rotate(limit=(90, 90), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -707,7 +745,7 @@ def test_obb_mask_conversion_roundtrip(width: float, height: float, angle: float
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     # Create mask from OBB
@@ -723,8 +761,9 @@ def test_obb_mask_conversion_roundtrip(width: float, height: float, angle: float
     actual_area = mask.sum()
 
     # Allow 20% tolerance for discretization and rotation effects
-    assert 0.8 * expected_area_pixels <= actual_area <= 1.2 * expected_area_pixels, \
+    assert 0.8 * expected_area_pixels <= actual_area <= 1.2 * expected_area_pixels, (
         f"Mask area {actual_area} should be close to expected {expected_area_pixels:.0f}"
+    )
 
 
 @pytest.mark.obb
@@ -754,20 +793,23 @@ def test_obb_affine_identity_and_simple_transforms_mask(scale: float, rotation_d
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Affine(
-            scale=scale,
-            rotate=rotation_deg,
-            translate_px=0,
-            shear=0,
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=scale,
+                rotate=rotation_deg,
+                translate_px=0,
+                shear=0,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -805,20 +847,23 @@ def test_obb_affine_translation_mask(translate_x: float, translate_y: float) -> 
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Affine(
-            scale=1.0,
-            rotate=0,
-            translate_percent={"x": translate_x, "y": translate_y},
-            shear=0,
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=1.0,
+                rotate=0,
+                translate_percent={"x": translate_x, "y": translate_y},
+                shear=0,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -852,20 +897,23 @@ def test_obb_affine_scaling_mask(scale: float) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Affine(
-            scale=scale,
-            rotate=0,
-            translate_px=0,
-            shear=0,
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=scale,
+                rotate=0,
+                translate_px=0,
+                shear=0,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -903,20 +951,23 @@ def test_obb_affine_shear_mask(shear_x: float, shear_y: float) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Affine(
-            scale=1.0,
-            rotate=0,
-            translate_px=0,
-            shear={"x": shear_x, "y": shear_y},
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=1.0,
+                rotate=0,
+                translate_px=0,
+                shear={"x": shear_x, "y": shear_y},
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -954,20 +1005,23 @@ def test_obb_affine_combined_transforms_mask(scale: float, rotation_deg: int, tr
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     input_mask = obb_to_mask(input_obb, image_shape)
 
-    transform = A.Compose([
-        A.Affine(
-            scale=scale,
-            rotate=rotation_deg,
-            translate_percent=translate,
-            shear=0,
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=scale,
+                rotate=rotation_deg,
+                translate_percent=translate,
+                shear=0,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
     output_obb = result["bboxes"][0]
@@ -979,4 +1033,6 @@ def test_obb_affine_combined_transforms_mask(scale: float, rotation_deg: int, tr
     union = np.logical_or(transformed_mask, output_mask).sum()
     iou = intersection / union if union > 0 else 0
 
-    assert iou > 0.60, f"IoU {iou:.3f} too low for combined transform (scale={scale}, rotate={rotation_deg}, translate={translate})"
+    assert iou > 0.60, (
+        f"IoU {iou:.3f} too low for combined transform (scale={scale}, rotate={rotation_deg}, translate={translate})"
+    )

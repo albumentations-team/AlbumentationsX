@@ -1,4 +1,6 @@
 import os
+
+import cv2
 import numpy as np
 import pytest
 
@@ -10,8 +12,6 @@ from albumentations.augmentations.geometric.functional import (
     to_distance_maps,
 )
 from tests.utils import set_seed
-
-import cv2
 
 
 @pytest.mark.parametrize(
@@ -52,16 +52,23 @@ def test_to_distance_maps(image_shape, keypoints, inverted):
     ],
 )
 def test_from_distance_maps(
-    image_shape, keypoints, inverted, threshold, if_not_found_coords
+    image_shape,
+    keypoints,
+    inverted,
+    threshold,
+    if_not_found_coords,
 ):
     distance_maps = to_distance_maps(keypoints, image_shape, inverted)
     recovered_keypoints = from_distance_maps(
-        distance_maps, inverted, if_not_found_coords, threshold
+        distance_maps,
+        inverted,
+        if_not_found_coords,
+        threshold,
     )
 
     assert len(recovered_keypoints) == len(keypoints)
 
-    for original, recovered in zip(keypoints, recovered_keypoints):
+    for original, recovered in zip(keypoints, recovered_keypoints, strict=False):
         if threshold is None:
             np.testing.assert_allclose(original, recovered, atol=1)
         else:
@@ -74,7 +81,8 @@ def test_from_distance_maps(
             elif if_not_found_coords is not None:
                 if isinstance(if_not_found_coords, dict):
                     assert np.allclose(
-                        recovered, [if_not_found_coords["x"], if_not_found_coords["y"]]
+                        recovered,
+                        [if_not_found_coords["x"], if_not_found_coords["y"]],
                     )
                 else:
                     assert np.allclose(recovered, if_not_found_coords)
@@ -116,7 +124,7 @@ def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
                     [0, 100, 50, 200],
                     [50, 0, 100, 100],
                     [50, 100, 100, 200],
-                ]
+                ],
             ),
         ),
         # Single row grid
@@ -129,7 +137,7 @@ def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
                     [0, 50, 100, 100],
                     [0, 100, 100, 150],
                     [0, 150, 100, 200],
-                ]
+                ],
             ),
         ),
         # Single column grid
@@ -137,7 +145,7 @@ def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
             (100, 200),
             (4, 1),
             np.array(
-                [[0, 0, 25, 200], [25, 0, 50, 200], [50, 0, 75, 200], [75, 0, 100, 200]]
+                [[0, 0, 25, 200], [25, 0, 50, 200], [50, 0, 75, 200], [75, 0, 100, 200]],
             ),
         ),
         # Edge case: Grid size equals image size
@@ -176,7 +184,7 @@ def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
                     [70, 51, 105, 103],
                     [70, 103, 105, 154],
                     [70, 154, 105, 205],
-                ]
+                ],
             ),
         ),
     ],
@@ -184,7 +192,9 @@ def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
 def test_split_uniform_grid(image_shape, grid, expected):
     random_seed = 42
     result = fgeometric.split_uniform_grid(
-        image_shape, grid, random_generator=np.random.default_rng(random_seed)
+        image_shape,
+        grid,
+        random_generator=np.random.default_rng(random_seed),
     )
     np.testing.assert_array_equal(result, expected)
 
@@ -229,12 +239,16 @@ def test_generate_shuffled_splits(size, divisions, random_seed, expected):
 def test_consistent_shuffling(size, divisions, random_seed):
     set_seed(random_seed)
     result1 = fgeometric.generate_shuffled_splits(
-        size, divisions, random_generator=np.random.default_rng(random_seed)
+        size,
+        divisions,
+        random_generator=np.random.default_rng(random_seed),
     )
     assert len(result1) == divisions + 1
     set_seed(random_seed)
     result2 = fgeometric.generate_shuffled_splits(
-        size, divisions, random_generator=np.random.default_rng(random_seed)
+        size,
+        divisions,
+        random_generator=np.random.default_rng(random_seed),
     )
     assert len(result2) == divisions + 1
     (
@@ -270,7 +284,11 @@ def test_create_piecewise_affine_maps_shapes(
     """Test that output maps have correct shapes and types."""
     generator = np.random.default_rng(42)
     map_x, map_y = fgeometric.create_piecewise_affine_maps(
-        image_shape, grid, scale, absolute_scale, generator
+        image_shape,
+        grid,
+        scale,
+        absolute_scale,
+        generator,
     )
 
     assert map_x is not None and map_y is not None
@@ -288,12 +306,18 @@ def test_create_piecewise_affine_maps_shapes(
     ],
 )
 def test_create_piecewise_affine_maps_bounds(
-    image_shape: tuple[int, int], grid: tuple[int, int], scale: float
+    image_shape: tuple[int, int],
+    grid: tuple[int, int],
+    scale: float,
 ):
     """Test that output maps stay within image bounds."""
     generator = np.random.default_rng(42)
     map_x, map_y = fgeometric.create_piecewise_affine_maps(
-        image_shape, grid, scale, False, generator
+        image_shape,
+        grid,
+        scale,
+        False,
+        generator,
     )
 
     assert map_x is not None and map_y is not None
@@ -314,12 +338,17 @@ def test_create_piecewise_affine_maps_bounds(
     ],
 )
 def test_create_piecewise_affine_maps_edge_cases(
-    scale: float, expected_result: tuple[None, None]
+    scale: float,
+    expected_result: tuple[None, None],
 ):
     """Test edge cases with zero or negative scale."""
     generator = np.random.default_rng(42)
     result = fgeometric.create_piecewise_affine_maps(
-        (100, 100), (4, 4), scale, False, generator
+        (100, 100),
+        (4, 4),
+        scale,
+        False,
+        generator,
     )
     assert result == expected_result
 
@@ -327,10 +356,18 @@ def test_create_piecewise_affine_maps_edge_cases(
 def test_create_piecewise_affine_maps_reproducibility():
     """Test that the function produces the same output with the same random seed."""
     result1 = fgeometric.create_piecewise_affine_maps(
-        (100, 100), (4, 4), 0.05, False, random_generator=np.random.default_rng(42)
+        (100, 100),
+        (4, 4),
+        0.05,
+        False,
+        random_generator=np.random.default_rng(42),
     )
     result2 = fgeometric.create_piecewise_affine_maps(
-        (100, 100), (4, 4), 0.05, False, random_generator=np.random.default_rng(42)
+        (100, 100),
+        (4, 4),
+        0.05,
+        False,
+        random_generator=np.random.default_rng(42),
     )
 
     assert result1[0] is not None and result1[1] is not None
@@ -349,13 +386,18 @@ def test_create_piecewise_affine_maps_reproducibility():
     ],
 )
 def test_create_piecewise_affine_maps_zero_dimensions(
-    image_shape: tuple[int, int], grid: tuple[int, int]
+    image_shape: tuple[int, int],
+    grid: tuple[int, int],
 ):
     """Test handling of zero dimensions."""
     generator = np.random.default_rng(42)
     with pytest.raises(ValueError):
         fgeometric.create_piecewise_affine_maps(
-            image_shape, grid, 0.05, False, generator
+            image_shape,
+            grid,
+            0.05,
+            False,
+            generator,
         )
 
 
@@ -375,7 +417,11 @@ def test_create_piecewise_affine_maps_grid_points(
     """Test that grid points are properly distributed."""
     generator = np.random.default_rng(42)
     map_x, map_y = fgeometric.create_piecewise_affine_maps(
-        image_shape, grid, scale, absolute_scale, generator
+        image_shape,
+        grid,
+        scale,
+        absolute_scale,
+        generator,
     )
 
     assert map_x is not None and map_y is not None
@@ -417,7 +463,7 @@ def test_create_piecewise_affine_maps_grid_points(
 
             # Check if any point in neighborhood is close to expected x coordinate
             assert np.any(
-                np.abs(neighborhood - x) < max_deviation
+                np.abs(neighborhood - x) < max_deviation,
             ), f"No points near grid intersection ({x}, {y}) within allowed deviation"
 
 
@@ -443,40 +489,58 @@ def test_copy_make_border_with_value_extension_zero_channels():
     assert result.size == 0
 
 
-
 @pytest.fixture
 def random_generator():
     return np.random.default_rng(42)  # Fixed seed for reproducibility
 
-@pytest.mark.parametrize("image_shape", [
-    (100, 100),
-    (224, 224),
-    (32, 64),
-    (1, 1),
-])
-@pytest.mark.parametrize("alpha", [
-    0.0,
-    1.0,
-    10.0,
-])
-@pytest.mark.parametrize("sigma", [
-    1.0,
-    50.0,
-    100.0,
-])
-@pytest.mark.parametrize("same_dxdy", [
-    True,
-    False,
-])
-@pytest.mark.parametrize("kernel_size", [
-    (0, 0),  # No blur
-    (3, 3),  # Small kernel
-    (17, 17),  # Large kernel
-])
-@pytest.mark.parametrize("noise_distribution", [
-    "gaussian",
-    "uniform",
-])
+
+@pytest.mark.parametrize(
+    "image_shape",
+    [
+        (100, 100),
+        (224, 224),
+        (32, 64),
+        (1, 1),
+    ],
+)
+@pytest.mark.parametrize(
+    "alpha",
+    [
+        0.0,
+        1.0,
+        10.0,
+    ],
+)
+@pytest.mark.parametrize(
+    "sigma",
+    [
+        1.0,
+        50.0,
+        100.0,
+    ],
+)
+@pytest.mark.parametrize(
+    "same_dxdy",
+    [
+        True,
+        False,
+    ],
+)
+@pytest.mark.parametrize(
+    "kernel_size",
+    [
+        (0, 0),  # No blur
+        (3, 3),  # Small kernel
+        (17, 17),  # Large kernel
+    ],
+)
+@pytest.mark.parametrize(
+    "noise_distribution",
+    [
+        "gaussian",
+        "uniform",
+    ],
+)
 def test_generate_displacement_fields(
     random_generator,
     image_shape,
@@ -522,6 +586,7 @@ def test_generate_displacement_fields(
         assert np.all(np.abs(dx) <= abs(alpha))
         assert np.all(np.abs(dy) <= abs(alpha))
 
+
 def test_reproducibility(random_generator):
     """Test that the function produces the same output with the same random seed"""
     params = {
@@ -558,19 +623,20 @@ def test_gaussian_blur_effect(random_generator):
     dx1, _ = fgeometric.generate_displacement_fields(
         **params,
         kernel_size=(3, 3),  # Small kernel
-        random_generator=np.random.default_rng(42)
+        random_generator=np.random.default_rng(42),
     )
 
     # Generate fields with large kernel (more smoothing)
     dx2, _ = fgeometric.generate_displacement_fields(
         **params,
         kernel_size=(17, 17),  # Large kernel
-        random_generator=np.random.default_rng(42)
+        random_generator=np.random.default_rng(42),
     )
 
     # Calculate local variation using standard deviation of local neighborhoods
     def calculate_local_variation(arr, window_size=3):
         from scipy.ndimage import uniform_filter
+
         # Ensure we're working with float64 for better numerical stability
         arr = arr.astype(np.float64)
         local_mean = uniform_filter(arr, size=window_size)
@@ -583,9 +649,9 @@ def test_gaussian_blur_effect(random_generator):
     var2 = calculate_local_variation(dx2)
 
     assert var2 < var1, (
-        f"Gaussian blur should reduce local variation. "
-        f"Before blur (3x3): {var1:.6f}, After blur (17x17): {var2:.6f}"
+        f"Gaussian blur should reduce local variation. Before blur (3x3): {var1:.6f}, After blur (17x17): {var2:.6f}"
     )
+
 
 def test_memory_efficiency(random_generator):
     """Test that the function doesn't create unnecessary copies"""
@@ -607,13 +673,13 @@ def test_memory_efficiency(random_generator):
     snapshot1 = tracemalloc.take_snapshot()
 
     # Run function
-    dx, dy = fgeometric.generate_displacement_fields(**params)
+    dx, _dy = fgeometric.generate_displacement_fields(**params)
 
     # Get memory snapshot after
     snapshot2 = tracemalloc.take_snapshot()
 
     # Compare memory usage
-    stats = snapshot2.compare_to(snapshot1, 'lineno')
+    stats = snapshot2.compare_to(snapshot1, "lineno")
 
     # Check that memory usage is reasonable (less than 4 times the size of output)
     # Factor of 4 accounts for temporary arrays during computation
@@ -624,11 +690,15 @@ def test_memory_efficiency(random_generator):
 
     tracemalloc.stop()
 
-@pytest.mark.parametrize("input_shape,target_shape", [
-    ((100, 100), (200, 200)),
-    ((200, 200), (100, 100)),
-    ((150, 100), (150, 200)),
-])
+
+@pytest.mark.parametrize(
+    "input_shape,target_shape",
+    [
+        ((100, 100), (200, 200)),
+        ((200, 200), (100, 100)),
+        ((150, 100), (150, 200)),
+    ],
+)
 def test_resize_cv2(input_shape, target_shape):
     img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
 
@@ -636,12 +706,16 @@ def test_resize_cv2(input_shape, target_shape):
 
     assert resized.shape == (*target_shape, 3)
 
-@pytest.mark.parametrize("input_shape,target_shape", [
-    ((100, 100), (200, 200)),
-    ((256, 256), (512, 512)),
-    ((200, 200), (100, 100)),
-    ((150, 100), (150, 200)),
-])
+
+@pytest.mark.parametrize(
+    "input_shape,target_shape",
+    [
+        ((100, 100), (200, 200)),
+        ((256, 256), (512, 512)),
+        ((200, 200), (100, 100)),
+        ((150, 100), (150, 200)),
+    ],
+)
 def test_resize_cv2_2d_mask(input_shape, target_shape):
     """Test that resize_cv2 handles 2D arrays (masks) correctly."""
     mask = np.random.randint(0, 2, input_shape, dtype=np.uint8)
@@ -651,25 +725,33 @@ def test_resize_cv2_2d_mask(input_shape, target_shape):
     assert resized.shape == target_shape
     assert resized.ndim == 2
 
+
 @pytest.mark.skipif(not _PYVIPS_AVAILABLE, reason="pyvips is not installed")
-@pytest.mark.parametrize("input_shape,target_shape", [
-    ((100, 100), (200, 200)),
-    ((200, 200), (100, 100)),
-    ((150, 100), (150, 200)),
-])
+@pytest.mark.parametrize(
+    "input_shape,target_shape",
+    [
+        ((100, 100), (200, 200)),
+        ((200, 200), (100, 100)),
+        ((150, 100), (150, 200)),
+    ],
+)
 def test_resize_pyvips(input_shape, target_shape):
     img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
 
     resized = fgeometric.resize_pyvips(img, target_shape, interpolation=0)
     assert resized.shape == (*target_shape, 3)
 
+
 @pytest.mark.xfail(reason="pyvips and OpenCV have different interpolation implementations")
 @pytest.mark.skipif(not _PYVIPS_AVAILABLE, reason="pyvips is not installed")
 @pytest.mark.parametrize("interpolation", [0, 1, 2])
-@pytest.mark.parametrize("input_shape,target_shape", [
-    ((100, 100), (200, 200)),
-    ((200, 200), (100, 100)),
-])
+@pytest.mark.parametrize(
+    "input_shape,target_shape",
+    [
+        ((100, 100), (200, 200)),
+        ((200, 200), (100, 100)),
+    ],
+)
 def test_resize_cv2_vs_pyvips(input_shape, target_shape, interpolation):
     img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
 
@@ -677,13 +759,17 @@ def test_resize_cv2_vs_pyvips(input_shape, target_shape, interpolation):
     resized_pyvips = fgeometric.resize_pyvips(img, target_shape, interpolation=interpolation)
     np.testing.assert_allclose(resized_cv2, resized_pyvips, atol=1)
 
+
 @pytest.mark.xfail(reason="Pillow and OpenCV have different interpolation implementations")
 @pytest.mark.skipif(not _PIL_AVAILABLE, reason="pillow is not installed")
 @pytest.mark.parametrize("interpolation", [0, 1, 2])
-@pytest.mark.parametrize("input_shape,target_shape", [
-    ((100, 100), (200, 200)),
-    ((200, 200), (100, 100)),
-])
+@pytest.mark.parametrize(
+    "input_shape,target_shape",
+    [
+        ((100, 100), (200, 200)),
+        ((200, 200), (100, 100)),
+    ],
+)
 def test_resize_cv2_vs_pillow(input_shape, target_shape, interpolation):
     img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
 
@@ -693,17 +779,23 @@ def test_resize_cv2_vs_pillow(input_shape, target_shape, interpolation):
 
 
 @pytest.mark.skipif(not _PIL_AVAILABLE, reason="pillow is not installed")
-@pytest.mark.parametrize("interpolation", [
-    cv2.INTER_NEAREST,
-    cv2.INTER_LINEAR,
-    cv2.INTER_CUBIC,
-    cv2.INTER_AREA,
-    cv2.INTER_LANCZOS4,
-])
-@pytest.mark.parametrize("input_shape,target_shape", [
-    ((100, 100), (50, 75)),  # Downscale with different aspect ratio
-    ((50, 50), (100, 150)),   # Upscale with different aspect ratio
-])
+@pytest.mark.parametrize(
+    "interpolation",
+    [
+        cv2.INTER_NEAREST,
+        cv2.INTER_LINEAR,
+        cv2.INTER_CUBIC,
+        cv2.INTER_AREA,
+        cv2.INTER_LANCZOS4,
+    ],
+)
+@pytest.mark.parametrize(
+    "input_shape,target_shape",
+    [
+        ((100, 100), (50, 75)),  # Downscale with different aspect ratio
+        ((50, 50), (100, 150)),  # Upscale with different aspect ratio
+    ],
+)
 def test_resize_pil_with_cv2_interpolation_constants(input_shape, target_shape, interpolation):
     """Test that resize_pil correctly maps cv2 interpolation constants to PIL."""
     img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)

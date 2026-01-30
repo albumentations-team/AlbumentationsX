@@ -1,13 +1,10 @@
-from typing import Type
-
 import cv2
 import numpy as np
 import pytest
 from albucore import to_float
 
-from .aug_definitions import transforms2metadata_key
-
 import albumentations as A
+from albumentations.augmentations.pixel import functional as fpixel
 from tests.conftest import (
     IMAGES,
     RECTANGULAR_UINT8_IMAGE,
@@ -16,7 +13,8 @@ from tests.conftest import (
     SQUARE_MULTI_UINT8_IMAGE,
     SQUARE_UINT8_IMAGE,
 )
-from albumentations.augmentations.pixel import functional as fpixel
+
+from .aug_definitions import transforms2metadata_key
 from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms, set_seed
 
 
@@ -40,7 +38,10 @@ def test_image_only_augmentations_mask_persists(augmentation_cls, params):
     }
     if augmentation_cls == A.TextImage:
         aug = A.Compose([augmentation_cls(p=1, **params)], bbox_params=A.BboxParams(format="pascal_voc"), strict=True)
-        data = aug(**data, textimage_metadata={"text": "May the transformations be ever in your favor!", "bbox": (0.1, 0.1, 0.9, 0.2)})
+        data = aug(
+            **data,
+            textimage_metadata={"text": "May the transformations be ever in your favor!", "bbox": (0.1, 0.1, 0.9, 0.2)},
+        )
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
@@ -66,7 +67,6 @@ def test_image_only_augmentations(augmentation_cls, params):
     image = SQUARE_FLOAT_IMAGE
     mask = image[:, :, 0].copy().astype(np.uint8)
 
-
     data = {
         "image": image,
         "mask": mask,
@@ -78,8 +78,8 @@ def test_image_only_augmentations(augmentation_cls, params):
         data["mosaic_metadata"] = [
             {
                 "image": SQUARE_FLOAT_IMAGE,
-                "mask": mask
-            }
+                "mask": mask,
+            },
         ]
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
@@ -97,7 +97,7 @@ def test_image_only_augmentations(augmentation_cls, params):
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_dual_transforms(
-        custom_arguments={ },
+        custom_arguments={},
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
@@ -117,8 +117,8 @@ def test_dual_augmentations(augmentation_cls, params):
         data["mosaic_metadata"] = [
             {
                 "image": SQUARE_UINT8_IMAGE,
-                "mask": mask
-            }
+                "mask": mask,
+            },
         ]
     data = aug(**data)
     assert data["image"].dtype == image.dtype
@@ -128,7 +128,7 @@ def test_dual_augmentations(augmentation_cls, params):
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_dual_transforms(
-        custom_arguments={ },
+        custom_arguments={},
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
@@ -150,8 +150,8 @@ def test_dual_augmentations_with_float_values(augmentation_cls, params):
         data["mosaic_metadata"] = [
             {
                 "image": SQUARE_FLOAT_IMAGE,
-                "mask": mask
-            }
+                "mask": mask,
+            },
         ]
 
     data = aug(**data)
@@ -191,8 +191,8 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
         data["mosaic_metadata"] = [
             {
                 "image": SQUARE_UINT8_IMAGE,
-                "mask": mask
-            }
+                "mask": mask,
+            },
         ]
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
@@ -227,7 +227,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
             "text": "May the transformations be ever in your favor!",
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
-    elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+    elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros((image_float32.shape[0], image_float32.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -237,10 +237,10 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
         data["mosaic_metadata"] = [
             {
                 "image": image_float32,
-            }
+            },
         ]
     elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image_float32    ]
+        data[transforms2metadata_key[augmentation_cls]] = [image_float32]
 
     aug(**data)
 
@@ -309,14 +309,14 @@ def test_augmentations_wont_change_shape_rgb(augmentation_cls, params):
                 {
                     "image": image_3ch,
                     "mask": mask_3ch,
-                }
-            ]
+                },
+            ],
         }
     elif augmentation_cls in transforms2metadata_key:
         data = {
             "image": image_3ch,
             "mask": mask_3ch,
-            transforms2metadata_key[augmentation_cls]: [image_3ch]
+            transforms2metadata_key[augmentation_cls]: [image_3ch],
         }
     else:
         data = {
@@ -413,7 +413,7 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
             "text": "May the transformations be ever in your favor!",
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
-    elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+    elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -421,7 +421,7 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
         data["mosaic_metadata"] = [
             {
                 "image": image,
-            }
+            },
         ]
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
@@ -481,7 +481,7 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
             "text": "May the transformations be ever in your favor!",
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
-    elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+    elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -489,7 +489,7 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
         data["mosaic_metadata"] = [
             {
                 "image": image,
-            }
+            },
         ]
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
@@ -555,7 +555,7 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
             "text": "May the transformations be ever in your favor!",
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
-    elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+    elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -563,7 +563,7 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
         data["mosaic_metadata"] = [
             {
                 "image": image,
-            }
+            },
         ]
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
@@ -629,7 +629,7 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
             "text": "May the transformations be ever in your favor!",
             "bbox": (0.1, 0.1, 0.9, 0.2),
         }
-    elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+    elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros_like(image)[:, :, 0]
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -637,7 +637,7 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
         data["mosaic_metadata"] = [
             {
                 "image": image,
-            }
+            },
         ]
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
@@ -683,7 +683,7 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
         [A.PadIfNeeded, {"min_height": None, "min_width": 512, "pad_height_divisor": 128}, (300, 200, 1)],
     ],
 )
-def test_pad_if_needed(augmentation_cls: Type[A.PadIfNeeded], params: dict, image_shape: tuple[int, int]):
+def test_pad_if_needed(augmentation_cls: type[A.PadIfNeeded], params: dict, image_shape: tuple[int, int]):
     image = np.zeros(image_shape)
     pad = augmentation_cls(**params)
 
@@ -787,7 +787,7 @@ def test_pad_if_needed_position(params, image_shape):
 
     elif params["position"] == "random":
         # Find where the original image was placed (where pixels are 0)
-        zero_mask = (image_padded == 0)
+        zero_mask = image_padded == 0
 
         # Get the bounds of the zero region
         zero_rows = np.where(zero_mask.any(axis=1))[0]
@@ -801,7 +801,7 @@ def test_pad_if_needed_position(params, image_shape):
 
         # Verify the rest of the image is filled with ones
         padded_mask = np.ones_like(true_result)
-        padded_mask[zero_rows[0]:zero_rows[-1]+1, zero_cols[0]:zero_cols[-1]+1] = 0
+        padded_mask[zero_rows[0] : zero_rows[-1] + 1, zero_cols[0] : zero_cols[-1] + 1] = 0
         assert np.all(image_padded[padded_mask == 1] == 1), "Padding value incorrect"
 
 
@@ -854,7 +854,7 @@ def test_pad_if_needed_position(params, image_shape):
             A.ElasticTransform: {
                 "interpolation": cv2.INTER_NEAREST,
             },
-            A.Pad : {
+            A.Pad: {
                 "fill": 0,
             },
             A.Resize: {
@@ -897,7 +897,7 @@ def test_augmentations_match_uint8_float32(augmentation_cls, params):
     transform = A.Compose([augmentation_cls(p=1, **params)], seed=137, strict=True)
 
     data = {"image": image_uint8}
-    if augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+    if augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros_like(image_uint8)[:, :, 0]
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -917,7 +917,7 @@ def test_augmentations_match_uint8_float32(augmentation_cls, params):
 def test_solarize_threshold():
     image = SQUARE_UINT8_IMAGE
     image[20:40, 20:40] = 255
-    transform = A.Solarize(threshold_range = (0.5, 0.5), p=1)
+    transform = A.Solarize(threshold_range=(0.5, 0.5), p=1)
     transformed_image = transform(image=image)["image"]
     assert (transformed_image[20:40, 20:40] == 0).all()
 
@@ -967,7 +967,7 @@ def test_constrained_coarse_dropout_with_mask():
 
 
 @pytest.mark.parametrize(
-    ["bbox_labels", "bboxes",  "expected_num_objects"],
+    ["bbox_labels", "bboxes", "expected_num_objects"],
     [
         # Case 1: String labels
         (
@@ -995,18 +995,21 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
     """Test ConstrainedCoarseDropout with bounding boxes."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
-    transform = A.Compose([
-        A.ConstrainedCoarseDropout(
-            num_holes_range=(2, 2),  # Fixed 2 holes per object
-            hole_height_range=(0.3, 0.3),  # Fixed 30% of object height
-            hole_width_range=(0.3, 0.3),  # Fixed 30% of object width
-            bbox_labels=bbox_labels,
-            p=1.0,
-        )
-    ],
-    strict=True,
-    bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']), seed=137, save_applied_params=True)
-
+    transform = A.Compose(
+        [
+            A.ConstrainedCoarseDropout(
+                num_holes_range=(2, 2),  # Fixed 2 holes per object
+                hole_height_range=(0.3, 0.3),  # Fixed 30% of object height
+                hole_width_range=(0.3, 0.3),  # Fixed 30% of object width
+                bbox_labels=bbox_labels,
+                p=1.0,
+            ),
+        ],
+        strict=True,
+        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["class_labels"]),
+        seed=137,
+        save_applied_params=True,
+    )
 
     # Extract labels for bbox_params
     labels = [bbox[4] for bbox in bboxes]
@@ -1016,12 +1019,13 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
     transformed = transform(image=image, bboxes=bboxes_without_labels, class_labels=labels)
 
     # Get applied parameters
-    applied_params = transformed['applied_transforms'][0][1]  # First transform's params
-    holes = applied_params['holes']
+    applied_params = transformed["applied_transforms"][0][1]  # First transform's params
+    holes = applied_params["holes"]
 
     # Verify number of holes (2 per object)
-    assert len(holes) == expected_num_objects * 2, \
+    assert len(holes) == expected_num_objects * 2, (
         f"Expected {expected_num_objects * 2} holes (2 per object), got {len(holes)}"
+    )
 
     # Verify holes are within image bounds
     for hole in holes:
@@ -1030,23 +1034,21 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
         assert 0 <= y1 < y2 <= 100, f"Invalid hole y coordinates: {y1}, {y2}"
 
     # Verify holes overlap with target boxes
-    target_boxes = [
-        bbox[:4] for bbox, label in zip(bboxes, labels)
-        if label in bbox_labels
-    ]
+    target_boxes = [bbox[:4] for bbox, label in zip(bboxes, labels, strict=False) if label in bbox_labels]
 
     for hole in holes:
         overlaps_any = False
         for box in target_boxes:
             # Check for overlap
-            if not (hole[2] <= box[0] or  # hole right < box left
-                   hole[0] >= box[2] or  # hole left > box right
-                   hole[3] <= box[1] or  # hole bottom < box top
-                   hole[1] >= box[3]):   # hole top > box bottom
+            if not (
+                hole[2] <= box[0]  # hole right < box left
+                or hole[0] >= box[2]  # hole left > box right
+                or hole[3] <= box[1]  # hole bottom < box top
+                or hole[1] >= box[3]
+            ):  # hole top > box bottom
                 overlaps_any = True
                 break
         assert overlaps_any, f"Hole {hole} doesn't overlap with any target box"
-
 
 
 @pytest.mark.parametrize(
@@ -1067,14 +1069,13 @@ def test_pixel_dropout_drop_values(drop_value, expected_values):
         # For None, we just verify values are within valid range
         assert result.dtype == np.uint8
         assert np.all((result >= 0) & (result <= 255))
+    elif isinstance(drop_value, (int, float)):
+        # For single value, all channels should have same value
+        assert np.all(result == expected_values)
     else:
-        if isinstance(drop_value, (int, float)):
-            # For single value, all channels should have same value
-            assert np.all(result == expected_values)
-        else:
-            # For sequence, each channel should have corresponding value
-            for channel_idx, expected_value in enumerate(expected_values):
-                assert np.all(result[:, :, channel_idx] == expected_value)
+        # For sequence, each channel should have corresponding value
+        for channel_idx, expected_value in enumerate(expected_values):
+            assert np.all(result[:, :, channel_idx] == expected_value)
 
 
 def test_pixel_dropout_per_channel():
@@ -1086,7 +1087,7 @@ def test_pixel_dropout_per_channel():
         dropout_prob=0.5,
         drop_value=0,
         per_channel=True,
-        p=1.0
+        p=1.0,
     )
     result = transform(image=image)["image"]
     assert np.any(result == 0)  # Should have some dropped pixels
@@ -1096,7 +1097,7 @@ def test_pixel_dropout_per_channel():
         dropout_prob=0.5,
         drop_value=(1, 2, 3),
         per_channel=True,
-        p=1.0
+        p=1.0,
     )
     result = transform(image=image)["image"]
     # Each channel should only contain original values or its drop value
@@ -1106,13 +1107,14 @@ def test_pixel_dropout_per_channel():
         assert drop_val in unique_values
         assert 255 in unique_values
 
+
 def test_pixel_dropout_multiple_images():
     # I actually don't care about these params, I just need a transform instance.
     transform = A.PixelDropout(
         dropout_prob=0.5,
         drop_value=0,
         per_channel=True,
-        p=1.0
+        p=1.0,
     )
 
     # Prepare inputs:
@@ -1122,8 +1124,8 @@ def test_pixel_dropout_multiple_images():
     drop_values = fpixel.prepare_drop_values(images, 0, rng)
 
     result = transform.apply_to_images(images, drop_mask, drop_values)
-    assert result.shape == images.shape # Check that original shape is preserved
-    assert np.all([np.any(image == 0) for image in result]) # Each image should have some dropped pixels
+    assert result.shape == images.shape  # Check that original shape is preserved
+    assert np.all([np.any(image == 0) for image in result])  # Each image should have some dropped pixels
 
 
 @pytest.mark.parametrize(
@@ -1176,7 +1178,7 @@ def test_salt_and_pepper_noise():
     transform = A.SaltAndPepper(
         amount=amount,
         salt_vs_pepper=salt_vs_pepper,
-        p=1.0
+        p=1.0,
     )
     transform.set_random_seed(137)
 
@@ -1190,13 +1192,11 @@ def test_salt_and_pepper_noise():
     total_changes = salt_pixels.sum() + pepper_pixels.sum()
 
     expected_pixels = int(image.shape[0] * image.shape[1] * amount[0])
-    assert total_changes == expected_pixels, \
-        f"Expected {expected_pixels} noisy pixels, got {total_changes}"
+    assert total_changes == expected_pixels, f"Expected {expected_pixels} noisy pixels, got {total_changes}"
 
     # Verify salt vs pepper ratio
     expected_salt = int(expected_pixels * salt_vs_pepper[0])
-    assert salt_pixels.sum() == expected_salt, \
-        f"Expected {expected_salt} salt pixels, got {salt_pixels.sum()}"
+    assert salt_pixels.sum() == expected_salt, f"Expected {expected_salt} salt pixels, got {salt_pixels.sum()}"
 
 
 def test_salt_and_pepper_float_image():
@@ -1207,18 +1207,17 @@ def test_salt_and_pepper_float_image():
     transform = A.SaltAndPepper(
         amount=(0.05, 0.05),
         salt_vs_pepper=(0.6, 0.6),
-        p=1.0
+        p=1.0,
     )
     transform.set_random_seed(137)
 
     transformed = transform(image=image)["image"]
 
     # Check that salt pixels are 1.0 and pepper pixels are 0.0
-    changed_mask = (transformed != image).any(axis=2)
-    assert np.allclose(transformed[transformed > 0.9], 1.0), \
-        "Salt pixels should be exactly 1.0 for float images"
-    assert np.allclose(transformed[transformed < 0.1], 0.0), \
-        "Pepper pixels should be exactly 0.0 for float images"
+    (transformed != image).any(axis=2)
+    assert np.allclose(transformed[transformed > 0.9], 1.0), "Salt pixels should be exactly 1.0 for float images"
+    assert np.allclose(transformed[transformed < 0.1], 0.0), "Pepper pixels should be exactly 0.0 for float images"
+
 
 def test_salt_and_pepper_grayscale():
     """Test salt and pepper noise on single-channel images"""
@@ -1228,33 +1227,30 @@ def test_salt_and_pepper_grayscale():
     transform = A.SaltAndPepper(
         amount=(0.05, 0.05),
         salt_vs_pepper=(0.6, 0.6),
-        p=1.0
+        p=1.0,
     )
     transform.set_random_seed(137)
 
     transformed = transform(image=image)["image"]
 
     # Verify shape is preserved
-    assert transformed.shape == image.shape, \
-        "Transform should preserve single-channel image shape"
+    assert transformed.shape == image.shape, "Transform should preserve single-channel image shape"
 
     # Check noise values
     changed_mask = transformed != image
     salt_pixels = (transformed == 255) & changed_mask
     pepper_pixels = (transformed == 0) & changed_mask
 
-    assert (salt_pixels | pepper_pixels | ~changed_mask).all(), \
-        "Changed pixels should only be salt (255) or pepper (0)"
-
+    assert (salt_pixels | pepper_pixels | ~changed_mask).all(), "Changed pixels should only be salt (255) or pepper (0)"
 
 
 @pytest.mark.parametrize(
     ["slant_range", "expected_slant_range"],
     [
         ((-10, -5), (-10, -5)),  # negative slant range
-        ((5, 10), (5, 10)),      # positive slant range
-        ((-5, 5), (-5, 5)),      # range crossing zero
-    ]
+        ((5, 10), (5, 10)),  # positive slant range
+        ((-5, 5), (-5, 5)),  # range crossing zero
+    ],
 )
 def test_random_rain_slant(slant_range, expected_slant_range):
     # Create a deterministic image
@@ -1264,7 +1260,7 @@ def test_random_rain_slant(slant_range, expected_slant_range):
     transform = A.RandomRain(
         slant_range=slant_range,
         p=1.0,
-        rain_type="heavy"  # Use heavy to ensure enough rain drops
+        rain_type="heavy",  # Use heavy to ensure enough rain drops
     )
     transform.set_random_seed(137)
     # Run multiple times to ensure slant stays within range
@@ -1273,13 +1269,14 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         # Get params without actually applying transform
         params = transform.get_params_dependent_on_data(
             {"shape": image.shape},
-            {"image": image}
+            {"image": image},
         )
         slants.append(params["slant"])
 
     # Assert all slants are within the expected range
-    assert all(expected_slant_range[0] <= s <= expected_slant_range[1] for s in slants), \
+    assert all(expected_slant_range[0] <= s <= expected_slant_range[1] for s in slants), (
         f"Slants {slants} not within range {expected_slant_range}"
+    )
 
     # Assert we get at least some variation in slants
     assert len(set(slants)) > 1, "Slant values show no variation"
@@ -1289,8 +1286,8 @@ def test_random_rain_slant(slant_range, expected_slant_range):
     has_lower = any(s < slant_mid for s in slants)
     has_upper = any(s > slant_mid for s in slants)
     if expected_slant_range[0] != expected_slant_range[1]:  # Skip if range is single value
-        assert has_lower and has_upper, \
-            f"Slant values {slants} don't cover both halves of range {expected_slant_range}"
+        assert has_lower and has_upper, f"Slant values {slants} don't cover both halves of range {expected_slant_range}"
+
 
 @pytest.mark.parametrize("slant", [-10, 0, 10])
 def test_random_rain_visual_effect(slant):
@@ -1303,10 +1300,10 @@ def test_random_rain_visual_effect(slant):
         drop_length=20,
         drop_width=2,
         drop_color=(0, 0, 0),  # Black rain drops for contrast
-        blur_value=1,          # Minimal blur for clearer lines
+        blur_value=1,  # Minimal blur for clearer lines
         brightness_coefficient=1.0,  # No brightness change
         p=1.0,
-        rain_type="heavy"
+        rain_type="heavy",
     )
 
     transform.set_random_seed(137)
@@ -1331,8 +1328,9 @@ def test_random_rain_visual_effect(slant):
             expected_slant = 1 if slant > 0 else -1 if slant < 0 else 0
 
             # The slant direction should match the expected direction
-            assert observed_slant == expected_slant, \
+            assert observed_slant == expected_slant, (
                 f"Rain drops slant direction {observed_slant} doesn't match expected {expected_slant}"
+            )
 
 
 def test_to_sepia_rgb():
@@ -1345,13 +1343,21 @@ def test_to_sepia_rgb():
     assert image.shape == transformed.shape
     assert not np.array_equal(image, transformed)
 
-@pytest.mark.parametrize("image", [np.random.randint(low=0, high=255, size=(10, 10, 1), dtype=np.uint8), np.random.randint(low=0, high=255, size=(2, 10, 10, 1), dtype=np.uint8)])
+
+@pytest.mark.parametrize(
+    "image",
+    [
+        np.random.randint(low=0, high=255, size=(10, 10, 1), dtype=np.uint8),
+        np.random.randint(low=0, high=255, size=(2, 10, 10, 1), dtype=np.uint8),
+    ],
+)
 def test_to_sepia_gray(image: np.ndarray):
     transform = A.ToSepia(p=1.0)
 
     transformed = transform(image=image)["image"]
 
     assert np.array_equal(image, transformed)
+
 
 def test_to_sepia_rgb_multiple_images():
     transform = A.ToSepia(p=1.0)
@@ -1360,4 +1366,4 @@ def test_to_sepia_rgb_multiple_images():
     transformed = transform.apply_to_images(images)
 
     assert images.shape == transformed.shape
-    assert np.all([not np.array_equal(im, tr) for im, tr in zip(images, transformed)])
+    assert np.all([not np.array_equal(im, tr) for im, tr in zip(images, transformed, strict=False)])

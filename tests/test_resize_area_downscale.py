@@ -28,7 +28,7 @@ def get_mask(size):
     mask = np.zeros((size, size, 1), dtype=np.uint8)
     # Add a simple pattern
     center = size // 2
-    mask[center - size//4:center + size//4, center - size//4:center + size//4] = 1
+    mask[center - size // 4 : center + size // 4, center - size // 4 : center + size // 4] = 1
     return mask
 
 
@@ -38,22 +38,22 @@ def get_mask(size):
         (
             A.RandomScale,
             {"scale_limit": (-0.5, -0.5)},  # Fixed 0.5 downscale (100px→50px)
-            {"scale_limit": (1.0, 1.0)}      # Fixed 2.0 upscale (50px→100px)
+            {"scale_limit": (1.0, 1.0)},  # Fixed 2.0 upscale (50px→100px)
         ),
         (
             A.Resize,
-            {"height": 50, "width": 50},     # Downscale 100px→50px
-            {"height": 100, "width": 100}    # Upscale 50px→100px
+            {"height": 50, "width": 50},  # Downscale 100px→50px
+            {"height": 100, "width": 100},  # Upscale 50px→100px
         ),
         (
             A.LongestMaxSize,
-            {"max_size": 50},                # Downscale 100px→50px
-            {"max_size": 100}                # Upscale 50px→100px
+            {"max_size": 50},  # Downscale 100px→50px
+            {"max_size": 100},  # Upscale 50px→100px
         ),
         (
             A.SmallestMaxSize,
-            {"max_size": 50},                # Downscale 100px→50px
-            {"max_size": 100}                # Upscale 50px→100px
+            {"max_size": 50},  # Downscale 100px→50px
+            {"max_size": 100},  # Upscale 50px→100px
         ),
     ],
 )
@@ -67,7 +67,13 @@ def get_mask(size):
     ],
 )
 class TestAreaForDownscaleOutput:
-    def test_downscale_area_option_matches_area_interp(self, transform_cls, downscale_params, upscale_params, interpolation):
+    def test_downscale_area_option_matches_area_interp(
+        self,
+        transform_cls,
+        downscale_params,
+        upscale_params,
+        interpolation,
+    ):
         """Test that specified interpolation with area_for_downscale='image' matches AREA without area_for_downscale for downscaling."""
         image = get_downscale_image()
 
@@ -76,7 +82,7 @@ class TestAreaForDownscaleOutput:
             interpolation=interpolation,
             area_for_downscale="image",
             p=1.0,
-            **downscale_params
+            **downscale_params,
         )
         result1 = transform1(image=image)
 
@@ -85,7 +91,7 @@ class TestAreaForDownscaleOutput:
             interpolation=cv2.INTER_AREA,
             area_for_downscale=None,
             p=1.0,
-            **downscale_params
+            **downscale_params,
         )
         result2 = transform2(image=image)
 
@@ -93,7 +99,7 @@ class TestAreaForDownscaleOutput:
         np.testing.assert_array_equal(
             result1["image"],
             result2["image"],
-            err_msg=f"Downscale outputs differ for {transform_cls.__name__} with {interpolation}+area_for_image vs AREA"
+            err_msg=f"Downscale outputs differ for {transform_cls.__name__} with {interpolation}+area_for_image vs AREA",
         )
 
     def test_downscale_area_option_for_mask(self, transform_cls, downscale_params, upscale_params, interpolation):
@@ -107,7 +113,7 @@ class TestAreaForDownscaleOutput:
             mask_interpolation=cv2.INTER_NEAREST,
             area_for_downscale="image",
             p=1.0,
-            **downscale_params
+            **downscale_params,
         )
         result1 = transform1(image=image, mask=mask)
 
@@ -117,7 +123,7 @@ class TestAreaForDownscaleOutput:
             mask_interpolation=cv2.INTER_NEAREST,
             area_for_downscale="image_mask",
             p=1.0,
-            **downscale_params
+            **downscale_params,
         )
         result2 = transform2(image=image, mask=mask)
 
@@ -125,7 +131,7 @@ class TestAreaForDownscaleOutput:
         np.testing.assert_array_equal(
             result1["image"],
             result2["image"],
-            err_msg=f"Image outputs differ between area_for_downscale='image' and 'image_mask'"
+            err_msg="Image outputs differ between area_for_downscale='image' and 'image_mask'",
         )
 
         # Transform 3: With AREA mask interpolation (should match area_for_downscale="image_mask")
@@ -134,7 +140,7 @@ class TestAreaForDownscaleOutput:
             mask_interpolation=cv2.INTER_AREA,
             area_for_downscale=None,
             p=1.0,
-            **downscale_params
+            **downscale_params,
         )
         result3 = transform3(image=image, mask=mask)
 
@@ -142,7 +148,7 @@ class TestAreaForDownscaleOutput:
         np.testing.assert_array_equal(
             result2["mask"],
             result3["mask"],
-            err_msg=f"Mask with NEAREST+area_for_image_mask should match mask with AREA interpolation"
+            err_msg="Mask with NEAREST+area_for_image_mask should match mask with AREA interpolation",
         )
 
     def test_upscale_ignores_area_for_downscale(self, transform_cls, downscale_params, upscale_params, interpolation):
@@ -154,7 +160,7 @@ class TestAreaForDownscaleOutput:
             interpolation=interpolation,
             area_for_downscale="image",
             p=1.0,
-            **upscale_params
+            **upscale_params,
         )
         result1 = transform1(image=image)
 
@@ -163,7 +169,7 @@ class TestAreaForDownscaleOutput:
             interpolation=interpolation,
             area_for_downscale=None,
             p=1.0,
-            **upscale_params
+            **upscale_params,
         )
         result2 = transform2(image=image)
 
@@ -171,5 +177,5 @@ class TestAreaForDownscaleOutput:
         np.testing.assert_array_equal(
             result1["image"],
             result2["image"],
-            err_msg=f"Upscale outputs differ with/without area_for_downscale"
+            err_msg="Upscale outputs differ with/without area_for_downscale",
         )

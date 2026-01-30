@@ -67,6 +67,7 @@ def compute_obb_after_rotation(
 
     Returns:
         (x_min, y_min, x_max, y_max, new_angle) - AABB of rotated oriented box
+
     """
     # Convert OBB to polygon
     obb_array = np.array([input_obb], dtype=np.float32)
@@ -105,12 +106,15 @@ def test_obb_rotation_centered_square_box_square_image(rotation_deg: int) -> Non
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        initial_angle
+        initial_angle,
     ]
 
-    transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -120,9 +124,11 @@ def test_obb_rotation_centered_square_box_square_image(rotation_deg: int) -> Non
 
     # Check AABB coordinates
     np.testing.assert_allclose(
-        output_bbox[:4], expected[:4],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"OBB AABB incorrect after {rotation_deg}° rotation"
+        output_bbox[:4],
+        expected[:4],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"OBB AABB incorrect after {rotation_deg}° rotation",
     )
 
     # Check angle (allowing for equivalence modulo 360 and potential 90° ambiguity from minAreaRect)
@@ -138,7 +144,9 @@ def test_obb_rotation_centered_square_box_square_image(rotation_deg: int) -> Non
         abs(actual_angle - expected_angle + 180) % 360,
     )
 
-    assert angle_diff < 1.0, f"OBB angle incorrect after {rotation_deg}° rotation: got {actual_angle}, expected {expected_angle}"
+    assert angle_diff < 1.0, (
+        f"OBB angle incorrect after {rotation_deg}° rotation: got {actual_angle}, expected {expected_angle}"
+    )
 
 
 @pytest.mark.obb
@@ -163,12 +171,15 @@ def test_obb_rotation_centered_rectangular_box_square_image(rotation_deg: int) -
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        initial_angle
+        initial_angle,
     ]
 
-    transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -176,9 +187,11 @@ def test_obb_rotation_centered_rectangular_box_square_image(rotation_deg: int) -
     expected = compute_obb_after_rotation(input_bbox, 0.5, 0.5, rotation_deg)
 
     np.testing.assert_allclose(
-        output_bbox[:4], expected[:4],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"Rectangular OBB AABB incorrect after {rotation_deg}° rotation"
+        output_bbox[:4],
+        expected[:4],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"Rectangular OBB AABB incorrect after {rotation_deg}° rotation",
     )
 
 
@@ -204,12 +217,15 @@ def test_obb_rotation_with_initial_angle(rotation_deg: int, initial_angle: float
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        initial_angle
+        initial_angle,
     ]
 
-    transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -217,9 +233,11 @@ def test_obb_rotation_with_initial_angle(rotation_deg: int, initial_angle: float
     expected = compute_obb_after_rotation(input_bbox, 0.5, 0.5, rotation_deg)
 
     np.testing.assert_allclose(
-        output_bbox[:4], expected[:4],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"OBB with initial angle {initial_angle}° incorrect after {rotation_deg}° rotation"
+        output_bbox[:4],
+        expected[:4],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"OBB with initial angle {initial_angle}° incorrect after {rotation_deg}° rotation",
     )
 
 
@@ -246,12 +264,15 @@ def test_obb_rotation_offset_box(offset_x: float, offset_y: float, rotation_deg:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        initial_angle
+        initial_angle,
     ]
 
-    transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -259,9 +280,11 @@ def test_obb_rotation_offset_box(offset_x: float, offset_y: float, rotation_deg:
     expected = compute_obb_after_rotation(input_bbox, 0.5, 0.5, rotation_deg)
 
     np.testing.assert_allclose(
-        output_bbox[:4], expected[:4],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"Offset OBB incorrect after {rotation_deg}° rotation"
+        output_bbox[:4],
+        expected[:4],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"Offset OBB incorrect after {rotation_deg}° rotation",
     )
 
 
@@ -283,12 +306,15 @@ def test_obb_horizontal_flip_centered_box() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -298,9 +324,11 @@ def test_obb_horizontal_flip_centered_box() -> None:
     out_cy = (output_bbox[1] + output_bbox[3]) / 2
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [0.5, 0.5],
-        rtol=1e-4, atol=1e-4,
-        err_msg="Centered OBB center should stay at (0.5, 0.5) after horizontal flip"
+        [out_cx, out_cy],
+        [0.5, 0.5],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="Centered OBB center should stay at (0.5, 0.5) after horizontal flip",
     )
 
     # AABB dimensions should be the same (just the angle changes)
@@ -310,9 +338,11 @@ def test_obb_horizontal_flip_centered_box() -> None:
     input_height = height
 
     np.testing.assert_allclose(
-        [out_width, out_height], [input_width, input_height],
-        rtol=1e-4, atol=1e-4,
-        err_msg="AABB dimensions should be preserved for centered box"
+        [out_width, out_height],
+        [input_width, input_height],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="AABB dimensions should be preserved for centered box",
     )
 
 
@@ -333,12 +363,15 @@ def test_obb_vertical_flip_centered_box() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.VerticalFlip(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.VerticalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -348,9 +381,11 @@ def test_obb_vertical_flip_centered_box() -> None:
     out_cy = (output_bbox[1] + output_bbox[3]) / 2
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [0.5, 0.5],
-        rtol=1e-4, atol=1e-4,
-        err_msg="Centered OBB center should stay at (0.5, 0.5) after vertical flip"
+        [out_cx, out_cy],
+        [0.5, 0.5],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="Centered OBB center should stay at (0.5, 0.5) after vertical flip",
     )
 
     # AABB dimensions should be the same
@@ -358,9 +393,11 @@ def test_obb_vertical_flip_centered_box() -> None:
     out_height = output_bbox[3] - output_bbox[1]
 
     np.testing.assert_allclose(
-        [out_width, out_height], [width, height],
-        rtol=1e-4, atol=1e-4,
-        err_msg="AABB dimensions should be preserved for centered box"
+        [out_width, out_height],
+        [width, height],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="AABB dimensions should be preserved for centered box",
     )
 
 
@@ -389,12 +426,15 @@ def test_obb_horizontal_flip_offset_box(offset_x: float, offset_y: float) -> Non
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -407,9 +447,11 @@ def test_obb_horizontal_flip_offset_box(offset_x: float, offset_y: float) -> Non
     expected_cy = cy
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [expected_cx, expected_cy],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"OBB center incorrect after horizontal flip (offset={offset_x}, {offset_y})"
+        [out_cx, out_cy],
+        [expected_cx, expected_cy],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"OBB center incorrect after horizontal flip (offset={offset_x}, {offset_y})",
     )
 
 
@@ -438,12 +480,15 @@ def test_obb_vertical_flip_offset_box(offset_x: float, offset_y: float) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.VerticalFlip(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.VerticalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -456,9 +501,11 @@ def test_obb_vertical_flip_offset_box(offset_x: float, offset_y: float) -> None:
     expected_cy = 1.0 - cy
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [expected_cx, expected_cy],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"OBB center incorrect after vertical flip (offset={offset_x}, {offset_y})"
+        [out_cx, out_cy],
+        [expected_cx, expected_cy],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"OBB center incorrect after vertical flip (offset={offset_x}, {offset_y})",
     )
 
 
@@ -469,7 +516,7 @@ def test_obb_vertical_flip_offset_box(offset_x: float, offset_y: float) -> None:
 )
 def test_obb_rot90_centered_box_analytical(k: int) -> None:
     """Test 90-degree rotations with analytical calculation using functional API."""
-    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    np.zeros((100, 100, 3), dtype=np.uint8)
 
     cx, cy = 0.5, 0.5
     width, height = 0.4, 0.3
@@ -480,7 +527,7 @@ def test_obb_rot90_centered_box_analytical(k: int) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     # Use functional API
@@ -505,9 +552,11 @@ def test_obb_rot90_centered_box_analytical(k: int) -> None:
     expected_obb = polygons_to_obb(rotated_polygon.reshape(1, 4, 2))[0]
 
     np.testing.assert_allclose(
-        output_bbox[:4], expected_obb[:4],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"OBB incorrect after rot90 with k={k}"
+        output_bbox[:4],
+        expected_obb[:4],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"OBB incorrect after rot90 with k={k}",
     )
 
 
@@ -523,7 +572,7 @@ def test_obb_rot90_centered_box_analytical(k: int) -> None:
 )
 def test_obb_rot90_offset_box_analytical(offset_x: float, offset_y: float, k: int) -> None:
     """Test 90-degree rotations of offset box with analytical calculation."""
-    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    np.zeros((100, 100, 3), dtype=np.uint8)
 
     cx, cy = 0.5 + offset_x, 0.5 + offset_y
     width, height = 0.2, 0.15
@@ -534,7 +583,7 @@ def test_obb_rot90_offset_box_analytical(offset_x: float, offset_y: float, k: in
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     bboxes = np.array([input_bbox], dtype=np.float32)
@@ -554,9 +603,11 @@ def test_obb_rot90_offset_box_analytical(offset_x: float, offset_y: float, k: in
     expected_obb = polygons_to_obb(rotated_polygon.reshape(1, 4, 2))[0]
 
     np.testing.assert_allclose(
-        output_bbox[:4], expected_obb[:4],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"Offset OBB incorrect after rot90 with k={k}, offset=({offset_x}, {offset_y})"
+        output_bbox[:4],
+        expected_obb[:4],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"Offset OBB incorrect after rot90 with k={k}, offset=({offset_x}, {offset_y})",
     )
 
 
@@ -578,12 +629,15 @@ def test_obb_transpose_centered_box() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Transpose(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Transpose(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -593,9 +647,11 @@ def test_obb_transpose_centered_box() -> None:
     out_cy = (output_bbox[1] + output_bbox[3]) / 2
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [0.5, 0.5],
-        rtol=1e-4, atol=1e-4,
-        err_msg="Centered OBB should stay centered after transpose"
+        [out_cx, out_cy],
+        [0.5, 0.5],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="Centered OBB should stay centered after transpose",
     )
 
     # For centered box, AABB dimensions swap
@@ -603,9 +659,11 @@ def test_obb_transpose_centered_box() -> None:
     out_height = output_bbox[3] - output_bbox[1]
 
     np.testing.assert_allclose(
-        [out_width, out_height], [height, width],  # Note: swapped
-        rtol=1e-4, atol=1e-4,
-        err_msg="AABB dimensions should swap for centered box after transpose"
+        [out_width, out_height],
+        [height, width],  # Note: swapped
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="AABB dimensions should swap for centered box after transpose",
     )
 
 
@@ -634,12 +692,15 @@ def test_obb_transpose_offset_box(offset_x: float, offset_y: float) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Transpose(p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Transpose(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -652,9 +713,11 @@ def test_obb_transpose_offset_box(offset_x: float, offset_y: float) -> None:
     expected_cy = cx
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [expected_cx, expected_cy],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"OBB center incorrect after transpose (offset={offset_x}, {offset_y})"
+        [out_cx, out_cy],
+        [expected_cx, expected_cy],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"OBB center incorrect after transpose (offset={offset_x}, {offset_y})",
     )
 
 
@@ -672,20 +735,25 @@ def test_obb_identity_transform() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Affine(scale=1.0, rotate=0, translate_px={"x": 0, "y": 0}, p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(scale=1.0, rotate=0, translate_px={"x": 0, "y": 0}, p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
 
     np.testing.assert_allclose(
-        output_bbox, input_bbox,
-        rtol=1e-5, atol=1e-5,
-        err_msg="Identity transform should preserve OBB exactly"
+        output_bbox,
+        input_bbox,
+        rtol=1e-5,
+        atol=1e-5,
+        err_msg="Identity transform should preserve OBB exactly",
     )
 
 
@@ -703,21 +771,26 @@ def test_obb_360_rotation_is_identity() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Rotate(limit=(360, 360), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(360, 360), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
 
     # Position should be same (within numerical tolerance)
     np.testing.assert_allclose(
-        output_bbox[:4], input_bbox[:4],
-        rtol=1e-3, atol=1e-3,
-        err_msg="360° rotation should return to original position"
+        output_bbox[:4],
+        input_bbox[:4],
+        rtol=1e-3,
+        atol=1e-3,
+        err_msg="360° rotation should return to original position",
     )
 
 
@@ -735,13 +808,16 @@ def test_obb_combined_flip_and_rotate_centered() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-        A.Rotate(limit=(90, 90), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+            A.Rotate(limit=(90, 90), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -760,9 +836,11 @@ def test_obb_combined_flip_and_rotate_centered() -> None:
     expected_obb = polygons_to_obb(rotated_polygon.reshape(1, 4, 2))[0]
 
     np.testing.assert_allclose(
-        output_bbox[:4], expected_obb[:4],
-        rtol=1e-4, atol=1e-4,
-        err_msg="Combined HFlip + Rotate incorrect"
+        output_bbox[:4],
+        expected_obb[:4],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="Combined HFlip + Rotate incorrect",
     )
 
 
@@ -780,15 +858,18 @@ def test_obb_multiple_rotations_accumulate() -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        initial_angle
+        initial_angle,
     ]
 
     # Rotate by 30° three times
-    transform = A.Compose([
-        A.Rotate(limit=(30, 30), p=1.0),
-        A.Rotate(limit=(30, 30), p=1.0),
-        A.Rotate(limit=(30, 30), p=1.0),
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Rotate(limit=(30, 30), p=1.0),
+            A.Rotate(limit=(30, 30), p=1.0),
+            A.Rotate(limit=(30, 30), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -799,9 +880,11 @@ def test_obb_multiple_rotations_accumulate() -> None:
     expected = compute_obb_after_rotation(expected, 0.5, 0.5, 30)
 
     np.testing.assert_allclose(
-        output_bbox[:4], expected[:4],
-        rtol=1e-3, atol=1e-3,
-        err_msg="Multiple rotations should compose correctly"
+        output_bbox[:4],
+        expected[:4],
+        rtol=1e-3,
+        atol=1e-3,
+        err_msg="Multiple rotations should compose correctly",
     )
 
 
@@ -831,18 +914,21 @@ def test_obb_affine_pure_translation(translate_x: float, translate_y: float) -> 
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Affine(
-            scale=1.0,
-            rotate=0,
-            translate_percent={"x": translate_x, "y": translate_y},
-            shear=0,
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=1.0,
+                rotate=0,
+                translate_percent={"x": translate_x, "y": translate_y},
+                shear=0,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -855,9 +941,11 @@ def test_obb_affine_pure_translation(translate_x: float, translate_y: float) -> 
     expected_cy = cy + translate_y
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [expected_cx, expected_cy],
-        rtol=1e-4, atol=1e-4,
-        err_msg=f"Center should translate by ({translate_x}, {translate_y})"
+        [out_cx, out_cy],
+        [expected_cx, expected_cy],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"Center should translate by ({translate_x}, {translate_y})",
     )
 
     # AABB dimensions should stay the same
@@ -865,9 +953,11 @@ def test_obb_affine_pure_translation(translate_x: float, translate_y: float) -> 
     out_height = output_bbox[3] - output_bbox[1]
 
     np.testing.assert_allclose(
-        [out_width, out_height], [width, height],
-        rtol=1e-4, atol=1e-4,
-        err_msg="AABB dimensions should be preserved during translation"
+        [out_width, out_height],
+        [width, height],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="AABB dimensions should be preserved during translation",
     )
 
     # Note: Angle might have ambiguity due to cv2.minAreaRect behavior
@@ -897,18 +987,21 @@ def test_obb_affine_pure_scaling(scale: float) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Affine(
-            scale=scale,
-            rotate=0,
-            translate_px=0,
-            shear=0,
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=scale,
+                rotate=0,
+                translate_px=0,
+                shear=0,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -918,9 +1011,11 @@ def test_obb_affine_pure_scaling(scale: float) -> None:
     out_cy = (output_bbox[1] + output_bbox[3]) / 2
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [0.5, 0.5],
-        rtol=1e-4, atol=1e-4,
-        err_msg="Center should stay at (0.5, 0.5) for centered box during scaling"
+        [out_cx, out_cy],
+        [0.5, 0.5],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="Center should stay at (0.5, 0.5) for centered box during scaling",
     )
 
     # AABB dimensions should scale proportionally
@@ -931,9 +1026,11 @@ def test_obb_affine_pure_scaling(scale: float) -> None:
     expected_height = height * scale
 
     np.testing.assert_allclose(
-        [out_width, out_height], [expected_width, expected_height],
-        rtol=1e-3, atol=1e-3,
-        err_msg=f"AABB dimensions should scale by {scale}"
+        [out_width, out_height],
+        [expected_width, expected_height],
+        rtol=1e-3,
+        atol=1e-3,
+        err_msg=f"AABB dimensions should scale by {scale}",
     )
 
     # Note: Angle representation can be ambiguous due to cv2.minAreaRect behavior
@@ -961,30 +1058,38 @@ def test_obb_affine_rotation_vs_rotate_transform(rotation_deg: int) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     # Apply Affine with rotation
-    affine_transform = A.Compose([
-        A.Affine(rotate=rotation_deg, scale=1.0, translate_px=0, shear=0, p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    affine_transform = A.Compose(
+        [
+            A.Affine(rotate=rotation_deg, scale=1.0, translate_px=0, shear=0, p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     affine_result = affine_transform(image=image, bboxes=[input_bbox])
     affine_bbox = affine_result["bboxes"][0]
 
     # Apply Rotate transform
-    rotate_transform = A.Compose([
-        A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    rotate_transform = A.Compose(
+        [
+            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     rotate_result = rotate_transform(image=image, bboxes=[input_bbox])
     rotate_bbox = rotate_result["bboxes"][0]
 
     # Results should be very close
     np.testing.assert_allclose(
-        affine_bbox[:4], rotate_bbox[:4],
-        rtol=1e-3, atol=1e-3,
-        err_msg=f"Affine(rotate={rotation_deg}) should match Rotate(limit={rotation_deg})"
+        affine_bbox[:4],
+        rotate_bbox[:4],
+        rtol=1e-3,
+        atol=1e-3,
+        err_msg=f"Affine(rotate={rotation_deg}) should match Rotate(limit={rotation_deg})",
     )
 
 
@@ -1014,12 +1119,15 @@ def test_obb_affine_combined_scale_rotate(scale: float, rotation_deg: int) -> No
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Affine(scale=scale, rotate=rotation_deg, translate_px=0, shear=0, p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(scale=scale, rotate=rotation_deg, translate_px=0, shear=0, p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -1040,9 +1148,11 @@ def test_obb_affine_combined_scale_rotate(scale: float, rotation_deg: int) -> No
 
     # AABB should be close
     np.testing.assert_allclose(
-        output_bbox[:4], expected_obb[:4],
-        rtol=1e-3, atol=1e-3,
-        err_msg=f"Combined scale={scale}, rotate={rotation_deg} incorrect"
+        output_bbox[:4],
+        expected_obb[:4],
+        rtol=1e-3,
+        atol=1e-3,
+        err_msg=f"Combined scale={scale}, rotate={rotation_deg} incorrect",
     )
 
 
@@ -1068,13 +1178,16 @@ def test_obb_affine_different_image_sizes(image_size: int) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     # Apply 45° rotation
-    transform = A.Compose([
-        A.Affine(rotate=45, scale=1.0, translate_px=0, shear=0, p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(rotate=45, scale=1.0, translate_px=0, shear=0, p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -1084,9 +1197,11 @@ def test_obb_affine_different_image_sizes(image_size: int) -> None:
     out_cy = (output_bbox[1] + output_bbox[3]) / 2
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [0.5, 0.5],
-        rtol=1e-3, atol=1e-3,
-        err_msg=f"Center incorrect for image size {image_size}x{image_size}"
+        [out_cx, out_cy],
+        [0.5, 0.5],
+        rtol=1e-3,
+        atol=1e-3,
+        err_msg=f"Center incorrect for image size {image_size}x{image_size}",
     )
 
     # Box should not degenerate or grow unreasonably
@@ -1122,12 +1237,15 @@ def test_obb_affine_very_small_boxes(box_size: float, rotation_deg: int) -> None
         cy - box_size / 2,
         cx + box_size / 2,
         cy + box_size / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Affine(rotate=rotation_deg, scale=1.0, translate_px=0, shear=0, p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(rotate=rotation_deg, scale=1.0, translate_px=0, shear=0, p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -1137,9 +1255,11 @@ def test_obb_affine_very_small_boxes(box_size: float, rotation_deg: int) -> None
     out_cy = (output_bbox[1] + output_bbox[3]) / 2
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [0.5, 0.5],
-        rtol=1e-3, atol=1e-3,
-        err_msg=f"Small box center incorrect (size={box_size})"
+        [out_cx, out_cy],
+        [0.5, 0.5],
+        rtol=1e-3,
+        atol=1e-3,
+        err_msg=f"Small box center incorrect (size={box_size})",
     )
 
     # Box should not degenerate
@@ -1176,18 +1296,21 @@ def test_obb_affine_shear_transforms(shear_x: float, shear_y: float) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Affine(
-            scale=1.0,
-            rotate=0,
-            translate_px=0,
-            shear={"x": shear_x, "y": shear_y},
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=1.0,
+                rotate=0,
+                translate_px=0,
+                shear={"x": shear_x, "y": shear_y},
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -1197,9 +1320,11 @@ def test_obb_affine_shear_transforms(shear_x: float, shear_y: float) -> None:
     out_cy = (output_bbox[1] + output_bbox[3]) / 2
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [0.5, 0.5],
-        rtol=0.05, atol=0.05,
-        err_msg=f"Center should be near (0.5, 0.5) after shear ({shear_x}, {shear_y})"
+        [out_cx, out_cy],
+        [0.5, 0.5],
+        rtol=0.05,
+        atol=0.05,
+        err_msg=f"Center should be near (0.5, 0.5) after shear ({shear_x}, {shear_y})",
     )
 
     # Box should not degenerate
@@ -1236,13 +1361,16 @@ def test_obb_affine_non_square_images(image_height: int, image_width: int) -> No
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
     # Apply 90° rotation
-    transform = A.Compose([
-        A.Affine(rotate=90, scale=1.0, translate_px=0, shear=0, p=1.0)
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(rotate=90, scale=1.0, translate_px=0, shear=0, p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
     output_bbox = result["bboxes"][0]
@@ -1252,9 +1380,11 @@ def test_obb_affine_non_square_images(image_height: int, image_width: int) -> No
     out_cy = (output_bbox[1] + output_bbox[3]) / 2
 
     np.testing.assert_allclose(
-        [out_cx, out_cy], [0.5, 0.5],
-        rtol=1e-3, atol=1e-3,
-        err_msg=f"Center incorrect for {image_height}x{image_width} image"
+        [out_cx, out_cy],
+        [0.5, 0.5],
+        rtol=1e-3,
+        atol=1e-3,
+        err_msg=f"Center incorrect for {image_height}x{image_width} image",
     )
 
     # Box should be reasonable
@@ -1287,19 +1417,22 @@ def test_obb_affine_fit_output(rotation_deg: int) -> None:
         cy - height / 2,
         cx + width / 2,
         cy + height / 2,
-        angle
+        angle,
     ]
 
-    transform = A.Compose([
-        A.Affine(
-            rotate=rotation_deg,
-            scale=1.0,
-            translate_px=0,
-            shear=0,
-            fit_output=True,
-            p=1.0
-        )
-    ], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"))
+    transform = A.Compose(
+        [
+            A.Affine(
+                rotate=rotation_deg,
+                scale=1.0,
+                translate_px=0,
+                shear=0,
+                fit_output=True,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+    )
 
     result = transform(image=image, bboxes=[input_bbox])
 

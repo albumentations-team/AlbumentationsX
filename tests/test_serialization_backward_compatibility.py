@@ -1,18 +1,19 @@
-import pytest
 import warnings
+
+import pytest
+
 import albumentations as A
 
 
 def test_from_dict_without_p_uses_correct_defaults():
     """Test that from_dict uses correct default p values when p is missing."""
-
     # Test transform with p=1.0 default (Resize)
     config = {
         "transform": {
             "__class_fullname__": "Resize",
             "height": 224,
-            "width": 224
-        }
+            "width": 224,
+        },
     }
 
     with pytest.warns(UserWarning, match="Transform Resize has no 'p' parameter.*defaulting to 1"):
@@ -23,8 +24,8 @@ def test_from_dict_without_p_uses_correct_defaults():
     # Test transform with p=0.5 default (HorizontalFlip)
     config = {
         "transform": {
-            "__class_fullname__": "HorizontalFlip"
-        }
+            "__class_fullname__": "HorizontalFlip",
+        },
     }
 
     with pytest.warns(UserWarning, match="Transform HorizontalFlip has no 'p' parameter.*defaulting to 0.5"):
@@ -35,12 +36,11 @@ def test_from_dict_without_p_uses_correct_defaults():
 
 def test_compose_without_p_no_warning():
     """Test that Compose gets default p=1.0 when p is missing."""
-
     config = {
         "transform": {
             "__class_fullname__": "Compose",
-            "transforms": []
-        }
+            "transforms": [],
+        },
     }
 
     # Should not produce warning because Compose inherits from BaseCompose
@@ -55,7 +55,6 @@ def test_compose_without_p_no_warning():
 
 def test_nested_transforms_without_p():
     """Test that nested transforms get correct p values when missing."""
-
     config = {
         "transform": {
             "__class_fullname__": "Compose",
@@ -63,16 +62,16 @@ def test_nested_transforms_without_p():
                 {
                     "__class_fullname__": "Resize",
                     "height": 224,
-                    "width": 224
+                    "width": 224,
                 },
                 {
-                    "__class_fullname__": "RandomBrightnessContrast"
+                    "__class_fullname__": "RandomBrightnessContrast",
                 },
                 {
-                    "__class_fullname__": "Normalize"
-                }
-            ]
-        }
+                    "__class_fullname__": "Normalize",
+                },
+            ],
+        },
     }
 
     with pytest.warns(UserWarning) as warnings_list:
@@ -87,23 +86,25 @@ def test_nested_transforms_without_p():
     assert transform.transforms[2].p == 1.0  # Normalize
 
 
-@pytest.mark.parametrize("transform_name,expected_p", [
-    ("Resize", 1.0),
-    ("PadIfNeeded", 1.0),
-    ("CenterCrop", 1.0),
-    ("RandomCrop", 1.0),
-    ("Normalize", 1.0),
-    ("ToFloat", 1.0),
-    ("FromFloat", 1.0),
-    ("HorizontalFlip", 0.5),
-    ("VerticalFlip", 0.5),
-    ("RandomBrightnessContrast", 0.5),
-    ("GaussNoise", 0.5),
-    ("Blur", 0.5),
-])
+@pytest.mark.parametrize(
+    "transform_name,expected_p",
+    [
+        ("Resize", 1.0),
+        ("PadIfNeeded", 1.0),
+        ("CenterCrop", 1.0),
+        ("RandomCrop", 1.0),
+        ("Normalize", 1.0),
+        ("ToFloat", 1.0),
+        ("FromFloat", 1.0),
+        ("HorizontalFlip", 0.5),
+        ("VerticalFlip", 0.5),
+        ("RandomBrightnessContrast", 0.5),
+        ("GaussNoise", 0.5),
+        ("Blur", 0.5),
+    ],
+)
 def test_various_transforms_default_p(transform_name, expected_p):
     """Test that various transforms get their correct default p values."""
-
     # Build minimal config for each transform
     config = {"transform": {"__class_fullname__": transform_name}}
 
@@ -125,14 +126,13 @@ def test_various_transforms_default_p(transform_name, expected_p):
 
 def test_transform_with_explicit_p_no_warning():
     """Test that no warning is produced when p is explicitly provided."""
-
     config = {
         "transform": {
             "__class_fullname__": "Resize",
             "height": 224,
             "width": 224,
-            "p": 0.8  # Explicitly provided
-        }
+            "p": 0.8,  # Explicitly provided
+        },
     }
 
     # Should not produce any warnings

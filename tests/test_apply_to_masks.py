@@ -192,8 +192,6 @@ def test_flip_apply_to_masks_batch(transform_class, num_masks, channels):
         assert result["masks"].shape[3] == channels
 
 
-
-
 def test_flip_apply_to_masks_empty_batch():
     """Test that HorizontalFlip and VerticalFlip handle empty batch correctly."""
     for transform_class in [A.HorizontalFlip, A.VerticalFlip]:
@@ -233,14 +231,14 @@ def test_transpose_empty_masks_swaps_dimensions():
 @pytest.mark.parametrize(
     "group_element,expected_swap",
     [
-        ("e", False),       # identity - no swap
-        ("r90", True),      # rotation 90 - swaps dimensions for non-square images
-        ("r180", False),    # rotation 180 - no swap
-        ("r270", True),     # rotation 270 - swaps dimensions for non-square images
-        ("v", False),       # vertical flip - no swap
-        ("h", False),       # horizontal flip - no swap
-        ("t", True),        # transpose - swaps dimensions
-        ("hvt", True),      # anti-diagonal transpose - swaps dimensions
+        ("e", False),  # identity - no swap
+        ("r90", True),  # rotation 90 - swaps dimensions for non-square images
+        ("r180", False),  # rotation 180 - no swap
+        ("r270", True),  # rotation 270 - swaps dimensions for non-square images
+        ("v", False),  # vertical flip - no swap
+        ("h", False),  # horizontal flip - no swap
+        ("t", True),  # transpose - swaps dimensions
+        ("hvt", True),  # anti-diagonal transpose - swaps dimensions
     ],
 )
 def test_d4_empty_mask_dimension_handling(group_element, expected_swap):

@@ -1,4 +1,5 @@
 import hashlib
+from copy import deepcopy
 
 import cv2
 import numpy as np
@@ -6,13 +7,13 @@ import pytest
 from albucore import (
     MAX_VALUES_BY_DTYPE,
     clip,
-    get_num_channels,
     is_multispectral_image,
     to_float,
 )
+from sklearn.decomposition import NMF
 
-import albumentations.augmentations.pixel.functional as fpixel
 import albumentations.augmentations.geometric.functional as fgeometric
+import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.core.type_definitions import d4_group_elements
 from tests.conftest import (
     IMAGES,
@@ -22,9 +23,6 @@ from tests.conftest import (
     VOLUME,
 )
 from tests.utils import convert_2d_to_target_format
-from copy import deepcopy
-from sklearn.decomposition import NMF
-from typing import Any
 
 
 @pytest.mark.parametrize(
@@ -59,10 +57,12 @@ def test_rot90(target):
 @pytest.mark.parametrize("target", ["image", "image_4_channels"])
 def test_rot90_float(target):
     img = np.array(
-        [[0.0, 0.0, 0.4], [0.0, 0.0, 0.4], [0.0, 0.0, 0.4]], dtype=np.float32
+        [[0.0, 0.0, 0.4], [0.0, 0.0, 0.4], [0.0, 0.0, 0.4]],
+        dtype=np.float32,
     )
     expected = np.array(
-        [[0.4, 0.4, 0.4], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float32
+        [[0.4, 0.4, 0.4], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        dtype=np.float32,
     )
     img, expected = convert_2d_to_target_format([img, expected], target=target)
     rotated = fgeometric.rot90(img, factor=1)
@@ -73,11 +73,16 @@ def test_rot90_float(target):
 def test_pad(target):
     img = np.array([[1, 2], [3, 4]], dtype=np.uint8)
     expected = np.array(
-        [[4, 3, 4, 3], [2, 1, 2, 1], [4, 3, 4, 3], [2, 1, 2, 1]], dtype=np.uint8
+        [[4, 3, 4, 3], [2, 1, 2, 1], [4, 3, 4, 3], [2, 1, 2, 1]],
+        dtype=np.uint8,
     )
     img, expected = convert_2d_to_target_format([img, expected], target=target)
     padded = fgeometric.pad(
-        img, min_height=4, min_width=4, border_mode=cv2.BORDER_REFLECT_101, value=None
+        img,
+        min_height=4,
+        min_width=4,
+        border_mode=cv2.BORDER_REFLECT_101,
+        value=None,
     )
     np.testing.assert_array_equal(padded, expected)
 
@@ -96,7 +101,11 @@ def test_pad_float(target):
     )
     img, expected = convert_2d_to_target_format([img, expected], target=target)
     padded_img = fgeometric.pad(
-        img, min_height=4, min_width=4, value=None, border_mode=cv2.BORDER_REFLECT_101
+        img,
+        min_height=4,
+        min_width=4,
+        value=None,
+        border_mode=cv2.BORDER_REFLECT_101,
     )
     np.testing.assert_array_almost_equal_nulp(padded_img, expected)
 
@@ -157,7 +166,8 @@ def test_scale(target):
 @pytest.mark.parametrize("target", ["image", "mask"])
 def test_resize_linear_interpolation(target):
     img = np.array(
-        [[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]], dtype=np.uint8
+        [[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]],
+        dtype=np.uint8,
     )
     expected = np.array([[2, 2], [4, 4]], dtype=np.uint8)
     img, expected = convert_2d_to_target_format([img, expected], target=target)
@@ -171,7 +181,8 @@ def test_resize_linear_interpolation(target):
 @pytest.mark.parametrize("target", ["image", "mask"])
 def test_resize_nearest_interpolation(target):
     img = np.array(
-        [[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]], dtype=np.uint8
+        [[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]],
+        dtype=np.uint8,
     )
     expected = np.array([[1, 1], [3, 3]], dtype=np.uint8)
     img, expected = convert_2d_to_target_format([img, expected], target=target)
@@ -400,7 +411,7 @@ def test_equalize_rgb_mask():
     img_cv[..., 0] = cv2.equalizeHist(img_cv[..., 0])
     img_cv = cv2.cvtColor(img_cv, cv2.COLOR_YCrCb2RGB)
     assert np.all(
-        img_cv == fpixel.equalize(img, mask=mask, mode="cv", by_channels=False)[:10, :10]
+        img_cv == fpixel.equalize(img, mask=mask, mode="cv", by_channels=False)[:10, :10],
     )
 
     mask = np.zeros((256, 256, 3), dtype=bool)
@@ -459,7 +470,7 @@ def test_create_shape_groups(tiles, expected):
     for shape in expected:
         assert shape in result, f"Shape {shape} is not in the result"
         assert sorted(result[shape]) == sorted(
-            expected[shape]
+            expected[shape],
         ), f"Incorrect indices for shape {shape}"
 
 
@@ -478,11 +489,10 @@ def test_shuffle_tiles_within_shape_groups(shape_groups, random_seed, expected_o
     generator = np.random.default_rng(random_seed)
     shape_groups_original = deepcopy(shape_groups)
     actual_output = fgeometric.shuffle_tiles_within_shape_groups(
-        shape_groups, generator
+        shape_groups,
+        generator,
     )
-    assert (
-        shape_groups == shape_groups_original
-    ), "Input shape groups should not be modified"
+    assert shape_groups == shape_groups_original, "Input shape groups should not be modified"
     np.testing.assert_array_equal(actual_output, expected_output)
 
 
@@ -515,13 +525,14 @@ def test_d4_transformations(group_member, expected):
     img = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8]], dtype=np.uint8)
     transformed_img = fgeometric.d4(img, group_member)
     assert np.array_equal(
-        transformed_img, expected
+        transformed_img,
+        expected,
     ), f"Failed for transformation {group_member}"
 
 
 def get_md5_hash(image):
     image_bytes = image.tobytes()
-    hash_md5 = hashlib.md5()
+    hash_md5 = hashlib.md5(usedforsecurity=False)
     hash_md5.update(image_bytes)
     return hash_md5.hexdigest()
 
@@ -533,7 +544,7 @@ def test_d4_unique(image):
         hashes.add(get_md5_hash(fgeometric.d4(image, element)))
 
     assert len(hashes) == len(
-        set(hashes)
+        set(hashes),
     ), "d4 should generate unique images for all group elements"
 
 
@@ -542,9 +553,7 @@ def test_d4_unique(image):
 def test_d4_output_shape_with_group(image, group_member):
     result = fgeometric.d4(image, group_member)
     if group_member in ["r90", "r270", "t", "hvt"]:
-        assert (
-            result.shape[:2] == image.shape[:2][::-1]
-        ), "Output shape should be the transpose of input shape"
+        assert result.shape[:2] == image.shape[:2][::-1], "Output shape should be the transpose of input shape"
     else:
         assert result.shape == image.shape, "Output shape should match input shape"
 
@@ -552,9 +561,7 @@ def test_d4_output_shape_with_group(image, group_member):
 @pytest.mark.parametrize("image", RECTANGULAR_IMAGES)
 def test_transpose_output_shape(image):
     result = fgeometric.transpose(image)
-    assert (
-        result.shape[:2] == image.shape[:2][::-1]
-    ), "Output shape should be the transpose of input shape"
+    assert result.shape[:2] == image.shape[:2][::-1], "Output shape should be the transpose of input shape"
 
 
 @pytest.mark.parametrize("image", RECTANGULAR_IMAGES)
@@ -562,9 +569,7 @@ def test_transpose_output_shape(image):
 def test_d4_output_shape_with_factor(image, factor):
     result = fgeometric.rot90(image, factor)
     if factor in {1, 3}:
-        assert (
-            result.shape[:2] == image.shape[:2][::-1]
-        ), "Output shape should be the transpose of input shape"
+        assert result.shape[:2] == image.shape[:2][::-1], "Output shape should be the transpose of input shape"
     else:
         assert result.shape == image.shape, "Output shape should match input shape"
 
@@ -579,6 +584,7 @@ def create_test_matrix(matrix, shape):
         return matrix
     if len(shape) == 3:
         return np.stack([matrix] * shape[2], axis=-1)
+    return None
 
 
 @pytest.mark.parametrize("shape", [(3, 3), (3, 3, 1), (3, 3, 3), (3, 3, 7)])
@@ -652,10 +658,14 @@ def test_planckian_jitter_blackbody():
     )
 
     blackbody_plankian_jitter = fpixel.planckian_jitter(
-        img, temperature=3500, mode="blackbody"
+        img,
+        temperature=3500,
+        mode="blackbody",
     )
     assert np.allclose(
-        blackbody_plankian_jitter, expected_blackbody_plankian_jitter, atol=1e-4
+        blackbody_plankian_jitter,
+        expected_blackbody_plankian_jitter,
+        atol=1e-4,
     )
 
 
@@ -771,8 +781,7 @@ def test_planckian_jitter_interpolation():
 
     # The mid-temperature result should be between the two extremes
     assert np.all(
-        (result_mid >= np.minimum(result1, result2))
-        & (result_mid <= np.maximum(result1, result2))
+        (result_mid >= np.minimum(result1, result2)) & (result_mid <= np.maximum(result1, result2)),
     )
 
 
@@ -795,11 +804,11 @@ def test_planckian_jitter_invalid_mode():
 
 
 @pytest.mark.parametrize(
-        ("image", "num_channels"),
-        [
-            (SQUARE_UINT8_IMAGE, 3),
-            (VOLUME, 3),
-        ]
+    ("image", "num_channels"),
+    [
+        (SQUARE_UINT8_IMAGE, 3),
+        (VOLUME, 3),
+    ],
 )
 def test_random_tone_curve(image, num_channels):
     low_y = 0.1
@@ -807,7 +816,10 @@ def test_random_tone_curve(image, num_channels):
 
     result_float_value = fpixel.move_tone_curve(image, low_y, high_y, num_channels)
     result_array_value = fpixel.move_tone_curve(
-        image, np.array([low_y] * num_channels), np.array([high_y] * num_channels), num_channels
+        image,
+        np.array([low_y] * num_channels),
+        np.array([high_y] * num_channels),
+        num_channels,
     )
 
     np.testing.assert_allclose(result_float_value, result_array_value)
@@ -833,12 +845,18 @@ def test_iso_noise(image, color_shift, intensity):
     # Generate noise using the same random state instance
     rng = np.random.default_rng(42)
     result_uint8 = fpixel.iso_noise(
-        image, color_shift=color_shift, intensity=intensity, random_generator=rng
+        image,
+        color_shift=color_shift,
+        intensity=intensity,
+        random_generator=rng,
     )
 
     rng = np.random.default_rng(42)
     result_float = fpixel.iso_noise(
-        float_image, color_shift=color_shift, intensity=intensity, random_generator=rng
+        float_image,
+        color_shift=color_shift,
+        intensity=intensity,
+        random_generator=rng,
     )
 
     # Convert float result back to uint8
@@ -846,8 +864,8 @@ def test_iso_noise(image, color_shift, intensity):
 
     # Calculate noise
     noise = result_uint8.astype(np.float32) - image.astype(np.float32)
-    mean_noise = np.mean(noise)
-    std_noise = np.std(noise)
+    np.mean(noise)
+    np.std(noise)
 
     if intensity == 0:
         # For zero intensity, expect no noise
@@ -873,7 +891,7 @@ def test_grayscale_to_multichannel(input_image, num_output_channels, expected_sh
     assert np.all(result[..., 0] == result[..., 1])  # All channels should be identical
 
 
-def test_grayscale_to_multichannel_preserves_values():
+def test_grayscale_to_multichannel_preserves_values_simple():
     input_image = np.random.randint(0, 256, (10, 10), dtype=np.uint8)
     result = fpixel.grayscale_to_multichannel(input_image, num_output_channels=3)
     assert np.all(result[..., 0] == input_image)
@@ -916,10 +934,7 @@ def test_to_gray_from_lab(dtype):
 def test_to_gray_desaturation(dtype, channels):
     img = create_test_image(10, 10, channels, dtype)
     result = fpixel.to_gray_desaturation(img)
-    expected = (
-        np.max(img.astype(np.float32), axis=-1)
-        + np.min(img.astype(np.float32), axis=-1)
-    ) / 2
+    expected = (np.max(img.astype(np.float32), axis=-1) + np.min(img.astype(np.float32), axis=-1)) / 2
     if dtype == np.uint8:
         expected = expected.astype(np.uint8)
     np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1)
@@ -977,7 +992,10 @@ def test_float32_uint8_consistency(func):
     result_float32 = func(img_float32)
 
     np.testing.assert_allclose(
-        result_uint8 / 255.0, result_float32, rtol=1e-5, atol=1e-2
+        result_uint8 / 255.0,
+        result_float32,
+        rtol=1e-5,
+        atol=1e-2,
     )
 
 
@@ -1107,9 +1125,7 @@ def test_image_compression_quality_with_patterns(image_type):
     high_diff = np.abs(image - high_quality).mean()
     low_diff = np.abs(image - low_quality).mean()
 
-    assert (
-        low_diff > high_diff
-    ), f"Low quality diff ({low_diff}) should be greater than high quality diff ({high_diff})"
+    assert low_diff > high_diff, f"Low quality diff ({low_diff}) should be greater than high quality diff ({high_diff})"
 
 
 @pytest.mark.parametrize(
@@ -1161,7 +1177,7 @@ def test_auto_contrast(img, expected):
         )
     elif expected == "non_constant":
         assert not np.all(
-            result == img
+            result == img,
         ), "The output should change for non-constant input."
 
 
@@ -1190,7 +1206,6 @@ def test_auto_contrast(img, expected):
             np.float32,
             0.5,
         ),
-
         # 3D array tests
         (
             np.zeros((10, 10, 3), dtype=np.uint8),
@@ -1220,7 +1235,6 @@ def test_auto_contrast(img, expected):
             np.float32,
             [0.1, 0.2, 0.3],
         ),
-
         # Edge cases
         (
             np.zeros((10, 10, 1), dtype=np.uint8),
@@ -1321,20 +1335,12 @@ def test_prepare_drop_values_random():
             (10, 10, 1),
             {"is_2d": False, "channels_same": True},
         ),
-
         # 3D array tests - shared mask across channels
         (
             (10, 10, 3),
             False,
             0.5,
             (10, 10, 3),
-            {"is_2d": False, "channels_same": True},
-        ),
-        (
-            (10, 10, 1),
-            False,
-            0.5,
-            (10, 10, 1),
             {"is_2d": False, "channels_same": True},
         ),
         # 3D array tests - independent masks per channel
@@ -1345,14 +1351,7 @@ def test_prepare_drop_values_random():
             (10, 10, 3),
             {"is_2d": False, "channels_same": False},
         ),
-        (
-            (10, 10, 1),
-            True,
-            0.5,
-            (10, 10, 1),
-            {"is_2d": False, "channels_same": True},  # single channel is always same
-        ),
-         # 2-channel tests - shared mask across channels
+        # 2-channel tests - shared mask across channels
         (
             (10, 10, 2),
             False,
@@ -1360,7 +1359,6 @@ def test_prepare_drop_values_random():
             (10, 10, 2),
             {"is_2d": False, "channels_same": True},
         ),
-
         # 2-channel tests - independent masks per channel
         (
             (10, 10, 2),
@@ -1376,7 +1374,7 @@ def test_get_drop_mask_shapes_and_properties(
     per_channel,
     dropout_prob,
     expected_shape,
-    expected_properties
+    expected_properties,
 ):
     rng = np.random.default_rng(42)
     mask = fpixel.get_drop_mask(shape, per_channel, dropout_prob, rng)
@@ -1392,11 +1390,9 @@ def test_get_drop_mask_shapes_and_properties(
 
     # For 3D masks, check if channels are same or different
     if not expected_properties["is_2d"]:
-        channels_same = all(
-            np.array_equal(mask[..., 0], mask[..., i])
-            for i in range(1, mask.shape[-1])
-        )
+        channels_same = all(np.array_equal(mask[..., 0], mask[..., i]) for i in range(1, mask.shape[-1]))
         assert channels_same == expected_properties["channels_same"]
+
 
 @pytest.mark.parametrize(
     "dropout_prob",
@@ -1416,6 +1412,7 @@ def test_get_drop_mask_probabilities(dropout_prob):
             dropout_prob,
             rtol=0.1,  # Allow 10% relative tolerance due to randomness
         )
+
 
 def test_get_drop_mask_reproducibility():
     """Test that the same random seed produces the same mask."""
@@ -1465,8 +1462,9 @@ def test_pixel_dropout_sequence_per_channel():
 
     # Each channel should be entirely filled with its corresponding value
     for channel_idx, expected_value in enumerate(drop_values):
-        assert np.all(result[:, :, channel_idx] == expected_value), \
+        assert np.all(result[:, :, channel_idx] == expected_value), (
             f"Channel {channel_idx} should be filled with value {expected_value}"
+        )
 
 
 def test_prepare_drop_values_random_two_channels():
@@ -1494,7 +1492,7 @@ def test_prepare_drop_values_random_two_channels():
     [
         ((100, 100), 0.5),  # Standard square image
         ((200, 100), 0.5),  # Rectangular image
-        ((50, 75), 0.5),    # Small irregular image
+        ((50, 75), 0.5),  # Small irregular image
         ((100, 100), 0.1),  # Low roughness
         ((100, 100), 0.9),  # High roughness
     ],
@@ -1510,11 +1508,12 @@ def test_plasma_pattern_basic_properties(shape, roughness):
     assert np.all(pattern <= 1)
     assert not np.allclose(pattern, pattern.mean())
 
+
 @pytest.mark.parametrize(
     ["seed1", "seed2", "should_be_different"],
     [
-        (42, 42, False),     # Same seed should produce same pattern
-        (42, 43, True),      # Different seeds should produce different patterns
+        (42, 42, False),  # Same seed should produce same pattern
+        (42, 43, True),  # Different seeds should produce different patterns
     ],
 )
 def test_plasma_pattern_reproducibility(seed1, seed2, should_be_different):
@@ -1557,57 +1556,58 @@ def test_plasma_pattern_statistical_properties():
         # Test PIL method with simple range
         (
             np.array([1, 1, 1]),  # Simple histogram
-            0, 2,  # min/max intensities
-            255,   # max value
+            0,
+            2,  # min/max intensities
+            255,  # max value
             "pil",
             np.array([0, 128, 255]),  # Expected LUT for first 3 values
         ),
-
         # Test CDF method with simple range
         (
             np.array([1, 1, 1]),  # Equal distribution
-            0, 2,  # min/max intensities
-            255,   # max value
+            0,
+            2,  # min/max intensities
+            255,  # max value
             "cdf",
             np.array([0, 128, 255]),  # Expected LUT for first 3 values
         ),
-
         # Test empty histogram with PIL method
         (
             np.zeros(256),  # Empty histogram
-            0, 255,
+            0,
+            255,
             255,
             "pil",
             np.arange(256, dtype=np.uint8),  # Should return identity LUT
         ),
-
         # Test empty histogram with CDF method
         (
             np.zeros(256),
-            0, 255,
+            0,
+            255,
             255,
             "cdf",
             np.arange(256, dtype=np.uint8),  # Should return identity LUT
         ),
-
         # Test single value histogram with PIL method
         (
             np.array([0, 10, 0]),  # Single non-zero value
-            1, 1,
+            1,
+            1,
             255,
             "pil",
             np.zeros(256, dtype=np.uint8),  # Should map everything to 0
         ),
-
         # Test narrow range with PIL method
         (
             np.array([0, 1, 1, 1, 0]),
-            1, 3,
+            1,
+            3,
             255,
             "pil",
-            np.array([0, 0, 128, 255, 255, *[255]*(256-5)]),  # Linear scaling
+            np.array([0, 0, 128, 255, 255, *[255] * (256 - 5)]),  # Linear scaling
         ),
-    ]
+    ],
 )
 def test_create_contrast_lut(
     hist: np.ndarray,
@@ -1615,7 +1615,7 @@ def test_create_contrast_lut(
     max_intensity: int,
     max_value: int,
     method: str,
-    expected_output: np.ndarray
+    expected_output: np.ndarray,
 ):
     """Test create_contrast_lut function with various inputs."""
     # If hist is smaller than 256, pad it
@@ -1628,7 +1628,7 @@ def test_create_contrast_lut(
         min_intensity=min_intensity,
         max_intensity=max_intensity,
         max_value=max_value,
-        method=method
+        method=method,
     )
 
     # Basic checks
@@ -1640,8 +1640,8 @@ def test_create_contrast_lut(
 
     # Check if first few values match expected
     assert np.array_equal(
-        lut[:len(expected_output)],
-        expected_output[:len(expected_output)]
+        lut[: len(expected_output)],
+        expected_output[: len(expected_output)],
     )
 
 
@@ -1656,7 +1656,7 @@ def test_create_contrast_lut_properties():
         min_intensity=50,
         max_intensity=200,
         max_value=max_value,
-        method="pil"
+        method="pil",
     )
     assert np.all(np.diff(lut_pil) >= 0), "PIL LUT should be monotonically increasing"
 
@@ -1666,10 +1666,9 @@ def test_create_contrast_lut_properties():
         min_intensity=50,
         max_intensity=200,
         max_value=max_value,
-        method="cdf"
+        method="cdf",
     )
     assert np.all(np.diff(lut_cdf) >= 0), "CDF LUT should be monotonically increasing"
-
 
 
 @pytest.mark.parametrize(
@@ -1679,51 +1678,45 @@ def test_create_contrast_lut_properties():
         (
             np.array([0, 1, 1, 1, 0]),  # Simple histogram
             0,
-            (1, 3)  # Should return first and last non-zero indices
+            (1, 3),  # Should return first and last non-zero indices
         ),
-
         # Test with empty histogram
         (
             np.zeros(256),
             0,
-            (0, 0)  # Should return (0, 0) for empty histogram
+            (0, 0),  # Should return (0, 0) for empty histogram
         ),
-
         # Test with single value histogram
         (
             np.array([0, 10, 0, 0]),
             0,
-            (1, 1)  # Should return same index for single peak
+            (1, 1),  # Should return same index for single peak
         ),
-
         # Test with 20% cutoff
         (
             np.array([10, 10, 10, 10, 10]),  # Uniform histogram
             20,
-            (1, 4)  # Should cut 20% from each end
+            (1, 4),  # Should cut 20% from each end
         ),
-
         # Test with 50% cutoff
         (
             np.array([10, 10, 10, 10, 10]),
             50,
-            (2, 2)  # Should converge to middle
+            (2, 2),  # Should converge to middle
         ),
-
         # Test with asymmetric histogram
         (
             np.array([50, 10, 10, 10, 20]),  # More weight on edges
             20,
-            (1, 4)  # Should adjust for weight distribution
+            (1, 4),  # Should adjust for weight distribution
         ),
-
         # Test with all pixels in one bin
         (
             np.array([0, 100, 0, 0]),
             10,
-            (1, 1)  # Should return the peak location
+            (1, 1),  # Should return the peak location
         ),
-    ]
+    ],
 )
 def test_get_histogram_bounds(hist: np.ndarray, cutoff: float, expected: tuple[int, int]):
     """Test get_histogram_bounds with various histogram shapes and cutoffs."""
@@ -1735,7 +1728,6 @@ def test_get_histogram_bounds(hist: np.ndarray, cutoff: float, expected: tuple[i
     assert min_intensity >= 0
     assert max_intensity < len(hist)
     assert (min_intensity, max_intensity) == expected
-
 
 
 def test_get_histogram_bounds_properties():
@@ -1751,8 +1743,7 @@ def test_get_histogram_bounds_properties():
 
         # Range should decrease as cutoff increases
         current_range = max_intensity - min_intensity + 1
-        assert current_range <= previous_range, \
-            f"Range should decrease with increasing cutoff. Cutoff: {cutoff}"
+        assert current_range <= previous_range, f"Range should decrease with increasing cutoff. Cutoff: {cutoff}"
         previous_range = current_range
 
         # Verify percentage of pixels included
@@ -1762,8 +1753,7 @@ def test_get_histogram_bounds_properties():
 
             expected_cut = total_pixels * cutoff / 100
             relative_error = abs(pixels_before_min - expected_cut) / expected_cut
-            assert relative_error <= 0.1, \
-                f"Lower bound cut incorrect for cutoff {cutoff}"
+            assert relative_error <= 0.1, f"Lower bound cut incorrect for cutoff {cutoff}"
 
 
 def test_get_histogram_bounds_edge_cases():
@@ -1804,83 +1794,74 @@ def test_get_histogram_bounds_numerical_stability():
         # Test horizontal gradient (0 degrees)
         (
             np.array([[100, 100], [100, 100]], dtype=np.uint8),
-            0.2,    # ±20% change
+            0.2,  # ±20% change
             0,
             np.array([[80, 120], [80, 120]], dtype=np.uint8),  # Updated
         ),
-
         # Test vertical gradient (90 degrees)
         (
             np.array([[100, 100], [100, 100]], dtype=np.uint8),
-            0.2,    # ±20% change
+            0.2,  # ±20% change
             90,
             np.array([[80, 80], [120, 120]], dtype=np.uint8),  # Updated
         ),
-
         # Test RGB image
         (
             np.array([[[100, 150, 200], [100, 150, 200]]], dtype=np.uint8),
-            0.1,    # ±10% change
+            0.1,  # ±10% change
             0,
             np.array([[[90, 135, 180], [110, 165, 220]]], dtype=np.uint8),  # Updated
         ),
-
         # Test float32 image
         (
             np.array([[0.5, 0.5]], dtype=np.float32),
-            0.2,    # ±20% change
+            0.2,  # ±20% change
             0,
             np.array([[0.4, 0.6]], dtype=np.float32),  # Updated
         ),
-
         # Test negative intensity
         (
             np.array([[100, 100]], dtype=np.uint8),
-            -0.2,   # ±20% change (inverted)
+            -0.2,  # ±20% change (inverted)
             0,
             np.array([[120, 80]], dtype=np.uint8),  # Updated
         ),
-
         # Test 45 degree angle
         (
             np.array([[100, 100], [100, 100]], dtype=np.uint8),
-            0.2,    # ±20% change
+            0.2,  # ±20% change
             45,
             np.array([[80, 100], [100, 120]], dtype=np.uint8),
         ),
-
         # Test minimal intensity
         (
             np.array([[100, 100]], dtype=np.uint8),
-            0.01,   # ±1% change
+            0.01,  # ±1% change
             0,
             np.array([[99, 101]], dtype=np.uint8),  # Correct
         ),
-
         # Test small intensity
         (
             np.array([[100, 100]], dtype=np.uint8),
-            0.05,   # ±5% change
+            0.05,  # ±5% change
             0,
             np.array([[95, 105]], dtype=np.uint8),  # Correct
         ),
-
         # Test medium intensity
         (
             np.array([[100, 100]], dtype=np.uint8),
-            0.15,   # ±15% change
+            0.15,  # ±15% change
             0,
             np.array([[85, 115]], dtype=np.uint8),  # Correct
         ),
-
         # Test diagonal with small intensity
         (
             np.array([[100, 100], [100, 100]], dtype=np.uint8),
-            0.05,   # ±5% change
+            0.05,  # ±5% change
             45,
             np.array([[95, 100], [100, 105]], dtype=np.uint8),
         ),
-    ]
+    ],
 )
 def test_apply_linear_illumination(img, intensity, angle, expected):
     result = fpixel.apply_linear_illumination(img.copy(), intensity, angle)
@@ -1895,7 +1876,7 @@ def test_apply_linear_illumination(img, intensity, angle, expected):
         ((100, 100, 3), np.uint8),
         ((100, 100, 3), np.float32),
         ((50, 75, 4), np.uint8),  # RGBA
-    ]
+    ],
 )
 def test_apply_linear_illumination_shapes(shape, dtype):
     """Test that function works with different image shapes and dtypes."""
@@ -1908,6 +1889,7 @@ def test_apply_linear_illumination_shapes(shape, dtype):
     assert result.shape == img.shape
     assert result.dtype == img.dtype
 
+
 @pytest.mark.parametrize("angle", [0, 45, 90, 180, 270, 360])
 def test_apply_linear_illumination_angles(angle):
     """Test different angles produce expected gradient directions."""
@@ -1916,6 +1898,7 @@ def test_apply_linear_illumination_angles(angle):
 
     # Check that the gradient exists (image is not uniform)
     assert not np.all(result == result[0, 0])
+
 
 def test_apply_linear_illumination_preserves_range():
     """Test that the function preserves the valid range of values."""
@@ -1931,6 +1914,7 @@ def test_apply_linear_illumination_preserves_range():
     assert result_float.min() >= 0
     assert result_float.max() <= 1.0
 
+
 def test_apply_linear_illumination_preserves_input():
     """Test that the function doesn't modify input array."""
     img = np.array([[100, 200]], dtype=np.uint8)
@@ -1939,6 +1923,7 @@ def test_apply_linear_illumination_preserves_input():
     _ = fpixel.apply_linear_illumination(img, intensity=0.1, angle=0)
 
     np.testing.assert_array_equal(img, img_copy)
+
 
 def test_apply_linear_illumination_symmetry():
     """Test that opposite angles produce inverse effects."""
@@ -1956,16 +1941,13 @@ def test_apply_linear_illumination_symmetry():
     [
         # Test horizontal gradient (0 degrees)
         (2, 2, 0, np.array([[0, 1], [0, 1]], dtype=np.float32)),
-
         # Test vertical gradient (90 degrees)
         (2, 2, 90, np.array([[0, 0], [1, 1]], dtype=np.float32)),
-
         # Test diagonal gradient (45 degrees)
         (2, 2, 45, np.array([[0, 0.5], [0.5, 1]], dtype=np.float32)),
-
         # Test diagonal gradient (135 degrees)
         (2, 2, 135, np.array([[0.5, 0], [1, 0.5]], dtype=np.float32)),
-    ]
+    ],
 )
 def test_create_directional_gradient(height, width, angle, expected):
     gradient = fpixel.create_directional_gradient(height, width, angle)
@@ -1980,21 +1962,19 @@ def test_gradient_range():
         assert gradient.max() <= 1 + 1e-7
 
 
-
 @pytest.mark.parametrize(
     ["corner", "intensity", "expected_corner"],
     [
         # Test each corner with positive intensity (brightening)
-        (0, 0.2, (0, 0)),      # top-left is brightest
-        (1, 0.2, (0, 9)),      # top-right is brightest
-        (2, 0.2, (9, 9)),      # bottom-right is brightest
-        (3, 0.2, (9, 0)),      # bottom-left is brightest
-
+        (0, 0.2, (0, 0)),  # top-left is brightest
+        (1, 0.2, (0, 9)),  # top-right is brightest
+        (2, 0.2, (9, 9)),  # bottom-right is brightest
+        (3, 0.2, (9, 0)),  # bottom-left is brightest
         # Test with negative intensity (darkening)
-        (0, -0.2, (9, 9)),     # top-left is darkest, opposite corner is brightest
-        (1, -0.2, (9, 0)),     # top-right is darkest, opposite corner is brightest
-        (2, -0.2, (0, 0)),     # bottom-right is darkest, opposite corner is brightest
-        (3, -0.2, (0, 9)),     # bottom-left is darkest, opposite corner is brightest
+        (0, -0.2, (9, 9)),  # top-left is darkest, opposite corner is brightest
+        (1, -0.2, (9, 0)),  # top-right is darkest, opposite corner is brightest
+        (2, -0.2, (0, 0)),  # bottom-right is darkest, opposite corner is brightest
+        (3, -0.2, (0, 9)),  # bottom-left is darkest, opposite corner is brightest
     ],
 )
 def test_corner_illumination_brightest_point(corner, intensity, expected_corner):
@@ -2014,10 +1994,10 @@ def test_corner_illumination_brightest_point(corner, intensity, expected_corner)
 @pytest.mark.parametrize(
     ["shape", "dtype"],
     [
-        ((10, 10), np.float32),      # grayscale float32
-        ((10, 10), np.uint8),        # grayscale uint8
-        ((10, 10, 3), np.float32),   # RGB float32
-        ((10, 10, 3), np.uint8),     # RGB uint8
+        ((10, 10), np.float32),  # grayscale float32
+        ((10, 10), np.uint8),  # grayscale uint8
+        ((10, 10, 3), np.float32),  # RGB float32
+        ((10, 10, 3), np.uint8),  # RGB uint8
         # Removed single channel test case as it's not supported
     ],
 )
@@ -2107,18 +2087,16 @@ def test_corner_illumination_multichannel_consistency():
     ["center", "intensity", "sigma", "expected_brightest"],
     [
         # Test different centers with positive intensity (brightening)
-        ((0.5, 0.5), 0.2, 0.25, (5, 5)),    # center
-        ((0.0, 0.0), 0.2, 0.25, (0, 0)),    # top-left
-        ((1.0, 0.0), 0.2, 0.25, (0, 9)),    # top-right
-        ((1.0, 1.0), 0.2, 0.25, (9, 9)),    # bottom-right
-        ((0.0, 1.0), 0.2, 0.25, (9, 0)),    # bottom-left
-
+        ((0.5, 0.5), 0.2, 0.25, (5, 5)),  # center
+        ((0.0, 0.0), 0.2, 0.25, (0, 0)),  # top-left
+        ((1.0, 0.0), 0.2, 0.25, (0, 9)),  # top-right
+        ((1.0, 1.0), 0.2, 0.25, (9, 9)),  # bottom-right
+        ((0.0, 1.0), 0.2, 0.25, (9, 0)),  # bottom-left
         # Test with negative intensity (darkening)
-        ((0.5, 0.5), -0.2, 0.25, (0, 0)),   # center is darkest, corners brightest
-
+        ((0.5, 0.5), -0.2, 0.25, (0, 0)),  # center is darkest, corners brightest
         # Test different sigma values
-        ((0.5, 0.5), 0.2, 0.1, (5, 5)),     # narrow gaussian
-        ((0.5, 0.5), 0.2, 0.5, (5, 5)),     # wide gaussian
+        ((0.5, 0.5), 0.2, 0.1, (5, 5)),  # narrow gaussian
+        ((0.5, 0.5), 0.2, 0.5, (5, 5)),  # wide gaussian
     ],
 )
 def test_gaussian_illumination_brightest_point(center, intensity, sigma, expected_brightest):
@@ -2138,10 +2116,10 @@ def test_gaussian_illumination_brightest_point(center, intensity, sigma, expecte
 @pytest.mark.parametrize(
     ["shape", "dtype"],
     [
-        ((10, 10), np.float32),       # grayscale float32
-        ((10, 10), np.uint8),         # grayscale uint8
-        ((10, 10, 3), np.float32),    # RGB float32
-        ((10, 10, 3), np.uint8),      # RGB uint8
+        ((10, 10), np.float32),  # grayscale float32
+        ((10, 10), np.uint8),  # grayscale uint8
+        ((10, 10, 3), np.float32),  # RGB float32
+        ((10, 10, 3), np.uint8),  # RGB uint8
     ],
 )
 def test_gaussian_illumination_preserves_shape_and_type(shape, dtype):
@@ -2197,20 +2175,28 @@ def test_gaussian_illumination_symmetry():
     # Check horizontal symmetry with tolerance
     center_row = result[mid]
     assert np.allclose(
-        center_row[mid-radius:mid],  # Left of center
-        np.flip(center_row[mid+1:mid+radius+1]),  # Right of center
+        center_row[mid - radius : mid],  # Left of center
+        np.flip(center_row[mid + 1 : mid + radius + 1]),  # Right of center
         rtol=1e-4,  # Increased relative tolerance
         atol=1e-3,  # Absolute tolerance
-    ), f"Horizontal asymmetry:\nLeft:  {center_row[mid-radius:mid]}\nRight: {np.flip(center_row[mid+1:mid+radius+1])}"
+    ), (
+        f"Horizontal asymmetry:\n"
+        f"Left:  {center_row[mid - radius : mid]}\n"
+        f"Right: {np.flip(center_row[mid + 1 : mid + radius + 1])}"
+    )
 
     # Check vertical symmetry with tolerance
     center_col = result[:, mid]
     assert np.allclose(
-        center_col[mid-radius:mid],  # Above center
-        np.flip(center_col[mid+1:mid+radius+1]),  # Below center
+        center_col[mid - radius : mid],  # Above center
+        np.flip(center_col[mid + 1 : mid + radius + 1]),  # Below center
         rtol=1e-4,  # Increased relative tolerance
         atol=1e-3,  # Absolute tolerance
-    ), f"Vertical asymmetry:\nAbove: {center_col[mid-radius:mid]}\nBelow: {np.flip(center_col[mid+1:mid+radius+1])}"
+    ), (
+        f"Vertical asymmetry:\n"
+        f"Above: {center_col[mid - radius : mid]}\n"
+        f"Below: {np.flip(center_col[mid + 1 : mid + radius + 1])}"
+    )
 
 
 @pytest.mark.parametrize("intensity", [-0.2, 0.2])
@@ -2233,7 +2219,7 @@ def test_gaussian_illumination_multichannel_consistency(intensity):
     ["sigma", "expected_pattern"],
     [
         (0.1, "narrow"),  # Narrow gaussian should have steeper falloff
-        (0.5, "wide"),    # Wide gaussian should have gradual falloff
+        (0.5, "wide"),  # Wide gaussian should have gradual falloff
     ],
 )
 def test_gaussian_illumination_sigma(sigma, expected_pattern):
@@ -2269,9 +2255,18 @@ def test_gaussian_illumination_sigma(sigma, expected_pattern):
         assert diff > wide_diff  # Narrow should have steeper falloff than wide
 
 
-
 @pytest.mark.parametrize(
-    ["img", "slant", "drop_length", "drop_width", "drop_color", "blur_value", "brightness_coefficient", "rain_drops", "expected_shape"],
+    [
+        "img",
+        "slant",
+        "drop_length",
+        "drop_width",
+        "drop_color",
+        "blur_value",
+        "brightness_coefficient",
+        "rain_drops",
+        "expected_shape",
+    ],
     [
         # Test basic functionality with small image
         (
@@ -2309,13 +2304,28 @@ def test_gaussian_illumination_sigma(sigma, expected_pattern):
             np.array([(5, 5), (10, 10), (15, 15)]),
             (30, 30, 3),
         ),
-    ]
+    ],
 )
 def test_add_rain_shape_and_type(
-    img, slant, drop_length, drop_width, drop_color, blur_value, brightness_coefficient, rain_drops, expected_shape
+    img,
+    slant,
+    drop_length,
+    drop_width,
+    drop_color,
+    blur_value,
+    brightness_coefficient,
+    rain_drops,
+    expected_shape,
 ):
     result = fpixel.add_rain(
-        img, slant, drop_length, drop_width, drop_color, blur_value, brightness_coefficient, rain_drops
+        img,
+        slant,
+        drop_length,
+        drop_width,
+        drop_color,
+        blur_value,
+        brightness_coefficient,
+        rain_drops,
     )
     assert result.shape == expected_shape
     assert result.dtype == np.uint8
@@ -2406,11 +2416,10 @@ def test_add_rain_preserves_input():
         # Test different image sizes
         ((100, 100), np.array([1.0, 1.0, 1.0]), 1.0, (100, 100, 3)),
         ((200, 300), np.array([0.5, 0.5, 0.5]), 0.8, (200, 300, 3)),
-
         # Test different image shapes
         ((50, 75), np.array([0.7, 0.7, 0.7]), 0.6, (50, 75, 3)),
         ((480, 640), np.array([0.9, 0.9, 0.9]), 0.9, (480, 640, 3)),
-    ]
+    ],
 )
 def test_rain_params_shapes(shape, color, intensity, expected_shape):
     """Test that output shapes are correct for different input configurations."""
@@ -2430,7 +2439,7 @@ def test_rain_params_shapes(shape, color, intensity, expected_shape):
         (1.0, np.array([0.0, 0.0, 0.0])),  # Black color
         (0.5, np.array([0.5, 0.5, 0.5])),  # Gray color
         (0.8, np.array([1.0, 0.0, 0.0])),  # Red color
-    ]
+    ],
 )
 def test_rain_params_intensity_and_color(intensity, color):
     """Test that intensity and color are correctly applied."""
@@ -2451,9 +2460,9 @@ def test_rain_params_intensity_and_color(intensity, color):
     "liquid_layer",
     [
         np.zeros((100, 100)),  # All zeros
-        np.ones((100, 100)),   # All ones
+        np.ones((100, 100)),  # All ones
         np.random.normal(0.65, 0.3, (100, 100)),  # Random normal
-    ]
+    ],
 )
 def test_rain_params_different_inputs(liquid_layer):
     """Test function behavior with different types of input layers."""
@@ -2497,7 +2506,6 @@ def test_rain_params_visual_pattern():
     assert np.sum(drops == 0) > 0
 
 
-
 def test_rain_params_zero_input():
     """Test that zero input produces valid output without NaN values."""
     shape = (100, 100)
@@ -2535,11 +2543,10 @@ def test_rain_params_small_input():
         # Test different image sizes
         ((100, 100), np.array([0.2, 0.4, 0.6]), 0.5, 2.0, 0.8, (100, 100, 3)),
         ((200, 300), np.array([0.1, 0.2, 0.3]), 0.6, 1.5, 0.7, (200, 300, 3)),
-
         # Test different parameters
         ((50, 75), np.array([0.3, 0.3, 0.3]), 0.4, 3.0, 0.9, (50, 75, 3)),
         ((480, 640), np.array([0.4, 0.4, 0.4]), 0.7, 2.5, 0.6, (480, 640, 3)),
-    ]
+    ],
 )
 def test_mud_params_shapes(shape, color, cutout_threshold, sigma, intensity, expected_shape):
     """Test output shapes for different input configurations."""
@@ -2559,7 +2566,7 @@ def test_mud_params_shapes(shape, color, cutout_threshold, sigma, intensity, exp
         (0.8, np.array([0.0, 0.0, 0.0]), 0.6),  # Black color
         (1.0, np.array([0.5, 0.5, 0.5]), 0.7),  # Gray color
         (0.9, np.array([0.8, 0.4, 0.2]), 0.4),  # Brown color
-    ]
+    ],
 )
 def test_mud_params_intensity_and_color(intensity, color, cutout_threshold):
     """Test intensity and color application."""
@@ -2586,10 +2593,10 @@ def test_mud_params_intensity_and_color(intensity, color, cutout_threshold):
     # Add diagnostic information
     if max_effect < expected_min:
         # Calculate percentage of non-zero mud pixels
-        mud_coverage = np.mean(result["mud"] > 0)
+        np.mean(result["mud"] > 0)
 
         # Show distribution of non-zero mud values
-        non_zero_mud = result["mud"][result["mud"] > 0]
+        result["mud"][result["mud"] > 0]
 
     if max_color > 0:
         assert max_effect >= expected_min, (
@@ -2600,6 +2607,7 @@ def test_mud_params_intensity_and_color(intensity, color, cutout_threshold):
         # For black color, expect no effect
         assert max_effect == 0, f"Expected no effect for black color, got {max_effect:.3f}"
 
+
 def test_minimum_effect_coverage():
     """Test that minimum effect coverage is maintained."""
     shape = (100, 100)
@@ -2609,7 +2617,7 @@ def test_minimum_effect_coverage():
     sigma = 2.0
     intensity = 0.8
 
-    result = fpixel.get_mud_params(liquid_layer, color, cutout_threshold, sigma, intensity, np.random.default_rng(137)   )
+    result = fpixel.get_mud_params(liquid_layer, color, cutout_threshold, sigma, intensity, np.random.default_rng(137))
 
     # Check that we have some non-zero effect
     mud_coverage = np.sum(result["mud"] > 0) / result["mud"].size
@@ -2644,7 +2652,7 @@ def test_blur_effect():
     result = fpixel.get_mud_params(liquid_layer, color, cutout_threshold, sigma, intensity, np.random.default_rng(137))
 
     # Blurring should create gradients - check that we have intermediate values
-    mud = result["mud"][:,:,0]  # Take first channel
+    mud = result["mud"][:, :, 0]  # Take first channel
     assert np.sum((mud > 0) & (mud < np.max(mud))) > 0
 
 
@@ -2657,25 +2665,39 @@ def test_deterministic():
     sigma = 2.0
     intensity = 0.8
 
-    result1 = fpixel.get_mud_params(liquid_layer.copy(), color, cutout_threshold, sigma, intensity, np.random.default_rng(137))
-    result2 = fpixel.get_mud_params(liquid_layer.copy(), color, cutout_threshold, sigma, intensity, np.random.default_rng(137))
+    result1 = fpixel.get_mud_params(
+        liquid_layer.copy(),
+        color,
+        cutout_threshold,
+        sigma,
+        intensity,
+        np.random.default_rng(137),
+    )
+    result2 = fpixel.get_mud_params(
+        liquid_layer.copy(),
+        color,
+        cutout_threshold,
+        sigma,
+        intensity,
+        np.random.default_rng(137),
+    )
 
     np.testing.assert_array_almost_equal(result1["mud"], result2["mud"])
     np.testing.assert_array_almost_equal(result1["non_mud"], result2["non_mud"])
-
 
 
 @pytest.fixture
 def random_state():
     return np.random.RandomState(42)
 
+
 @pytest.mark.parametrize(
     ["height", "width", "n_iter"],
     [
-        (100, 100, 50),   # Small square image
+        (100, 100, 50),  # Small square image
         (200, 100, 100),  # Rectangle image
-        (50, 50, 200),    # Small image, more iterations
-    ]
+        (50, 50, 200),  # Small image, more iterations
+    ],
 )
 def test_simple_nmf_shape(height, width, n_iter, random_state):
     # Create synthetic H&E-like data
@@ -2698,15 +2720,16 @@ def test_simple_nmf_shape(height, width, n_iter, random_state):
     np.testing.assert_allclose(
         np.sum(colors**2, axis=1),
         np.ones(2),
-        rtol=1e-5
+        rtol=1e-5,
     )
+
 
 @pytest.mark.parametrize(
     ["height", "width"],
     [
         (100, 100),  # Square image
         (200, 100),  # Rectangle image
-    ]
+    ],
 )
 def test_simple_nmf_against_sklearn(height, width, random_state):
     # Create synthetic H&E-like data
@@ -2720,9 +2743,9 @@ def test_simple_nmf_against_sklearn(height, width, random_state):
     # Sklearn implementation
     sklearn_nmf = NMF(
         n_components=2,
-        init='random',
+        init="random",
         random_state=42,
-        max_iter=100
+        max_iter=100,
     )
     sklearn_concentrations = sklearn_nmf.fit_transform(od)
     sklearn_colors = sklearn_nmf.components_
@@ -2774,8 +2797,8 @@ def synthetic_he_image():
     ["normalizer_class", "kwargs"],
     [
         (fpixel.VahadaneNormalizer, {}),
-        (fpixel.MacenkoNormalizer, { "angular_percentile": 99 }),
-    ]
+        (fpixel.MacenkoNormalizer, {"angular_percentile": 99}),
+    ],
 )
 def test_normalizer_output_shape(normalizer_class, kwargs, synthetic_he_image):
     """Test that normalizers produce correctly shaped output."""
@@ -2788,15 +2811,16 @@ def test_normalizer_output_shape(normalizer_class, kwargs, synthetic_he_image):
     assert np.allclose(
         np.sum(normalizer.stain_matrix_target**2, axis=1),
         np.ones(2),
-        rtol=1e-5
+        rtol=1e-5,
     )
+
 
 @pytest.mark.parametrize(
     ["normalizer_class", "kwargs", "angle_tolerance"],
     [
         (fpixel.VahadaneNormalizer, {}, 45),
-        (fpixel.MacenkoNormalizer, { "angular_percentile": 99 }, 45),
-    ]
+        (fpixel.MacenkoNormalizer, {"angular_percentile": 99}, 45),
+    ],
 )
 def test_normalizer_stain_separation(normalizer_class, kwargs, angle_tolerance, synthetic_he_image):
     """Test that normalizers correctly separate H&E stains."""
@@ -2816,13 +2840,13 @@ def test_normalizer_stain_separation(normalizer_class, kwargs, angle_tolerance, 
 
 @pytest.mark.parametrize(
     "angular_percentile",
-    [0, 50, 90, 99, 99.9]
+    [0, 50, 90, 99, 99.9],
 )
 def test_macenko_angular_percentile(angular_percentile, synthetic_he_image):
     """Test MacenkoNormalizer with different angular percentiles."""
     img = synthetic_he_image[0]
     normalizer = fpixel.MacenkoNormalizer(
-        angular_percentile=angular_percentile
+        angular_percentile=angular_percentile,
     )
     normalizer.fit(img)
 
@@ -2837,15 +2861,15 @@ def test_macenko_angular_percentile(angular_percentile, synthetic_he_image):
         (
             np.array([2.0, 1.0], dtype=np.float32),
             np.array([0.0, 0.0], dtype=np.float32),
-            {"h_change": "increase", "e_change": "stable"}
+            {"h_change": "increase", "e_change": "stable"},
         ),
         # Decrease both
         (
             np.array([0.5, 0.5], dtype=np.float32),
             np.array([0.0, 0.0], dtype=np.float32),
-            {"h_change": "decrease", "e_change": "decrease"}
+            {"h_change": "decrease", "e_change": "decrease"},
         ),
-    ]
+    ],
 )
 def test_stain_augmentation_effects(synthetic_he_image, scale_factors, shift_values, expected_changes):
     """Test that augmentation produces expected changes in stain intensities."""
@@ -2859,7 +2883,7 @@ def test_stain_augmentation_effects(synthetic_he_image, scale_factors, shift_val
         stain_matrix=stain_matrix,
         scale_factors=scale_factors,
         shift_values=shift_values,
-        augment_background=True
+        augment_background=True,
     )
 
     # Calculate changes in optical density
@@ -2875,10 +2899,8 @@ def test_stain_augmentation_effects(synthetic_he_image, scale_factors, shift_val
     h_region_mask = tissue_mask[:50, 20:]
     e_region_mask = tissue_mask[50:, 20:]
 
-    h_change = (np.mean(od_result[:50, 20:][h_region_mask]) -
-                np.mean(od_orig[:50, 20:][h_region_mask]))
-    e_change = (np.mean(od_result[50:, 20:][e_region_mask]) -
-                np.mean(od_orig[50:, 20:][e_region_mask]))
+    h_change = np.mean(od_result[:50, 20:][h_region_mask]) - np.mean(od_orig[:50, 20:][h_region_mask])
+    e_change = np.mean(od_result[50:, 20:][e_region_mask]) - np.mean(od_orig[50:, 20:][e_region_mask])
 
     # Check direction of changes
     if expected_changes["h_change"] == "increase":
@@ -2905,7 +2927,7 @@ def test_background_augmentation(synthetic_he_image):
         stain_matrix=stain_matrix,
         scale_factors=np.array([2.0, 2.0]),
         shift_values=np.array([0.1, 0.1]),
-        augment_background=False
+        augment_background=False,
     )
 
     # Background region should be unchanged
@@ -2913,9 +2935,8 @@ def test_background_augmentation(synthetic_he_image):
         result[:20, :20],
         img[:20, :20],
         rtol=1e-5,
-        atol=1
+        atol=1,
     )
-
 
 
 @pytest.mark.parametrize(
@@ -2978,8 +2999,9 @@ def test_white_pixels_in_mixed_images(image_type, sat_shift):
     for y in range(image.shape[0]):
         for x in range(image.shape[1]):
             if white_mask[y, x]:
-                assert np.array_equal(result[y, x], [255, 255, 255]), \
+                assert np.array_equal(result[y, x], [255, 255, 255]), (
                     f"White pixel at ({y},{x}) changed color in {image_type} image"
+                )
 
     # Non-white pixels should be affected by saturation (except black which has V=0)
     if image_type in {"white_and_color", "white_black_color"}:
@@ -3000,9 +3022,10 @@ def test_white_pixels_in_mixed_images(image_type, sat_shift):
                     actual_sat = result_hsv[y, x, 1]
 
                     # Check that saturation increased or reached maximum
-                    assert actual_sat > orig_sat or actual_sat == 255, \
-                        f"Saturation did not increase at ({y},{x}) in {image_type} image. " \
+                    assert actual_sat > orig_sat or actual_sat == 255, (
+                        f"Saturation did not increase at ({y},{x}) in {image_type} image. "
                         f"Original: {orig_sat}, Actual: {actual_sat}"
+                    )
 
 
 def test_grayscale_image_with_saturation():
@@ -3022,7 +3045,7 @@ def test_grayscale_image_with_saturation():
     "gray_value, sat_shift",
     [
         (128, 100),  # Medium gray
-        (50, 200),   # Dark gray
+        (50, 200),  # Dark gray
         (200, 150),  # Light gray
     ],
 )
@@ -3041,8 +3064,9 @@ def test_gray_pixels_remain_gray_with_saturation_increase(gray_value, sat_shift)
     # Check that all pixels are still the same gray value
     expected = np.ones((10, 10, 3), dtype=np.uint8) * gray_value
     np.testing.assert_array_equal(
-        result, expected,
-        f"Gray pixels (value {gray_value}) changed color with saturation shift {sat_shift}"
+        result,
+        expected,
+        f"Gray pixels (value {gray_value}) changed color with saturation shift {sat_shift}",
     )
 
 
@@ -3067,7 +3091,7 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
         image[8:, 8:] = [100, 180, 220]  # Light blue
 
     # Store original gray pixels for comparison (all pixels where R=G=B)
-    gray_mask = (image[:,:,0] == image[:,:,1]) & (image[:,:,1] == image[:,:,2])
+    gray_mask = (image[:, :, 0] == image[:, :, 1]) & (image[:, :, 1] == image[:, :, 2])
 
     # Store original values for comparison
     original_values = image.copy()
@@ -3079,8 +3103,9 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
     for y in range(image.shape[0]):
         for x in range(image.shape[1]):
             if gray_mask[y, x]:
-                assert np.array_equal(result[y, x], original_values[y, x]), \
+                assert np.array_equal(result[y, x], original_values[y, x]), (
                     f"Gray pixel at ({y},{x}) changed from {original_values[y, x]} to {result[y, x]}"
+                )
 
     # Non-gray pixels should be affected by saturation
     colored_mask = ~gray_mask
@@ -3099,9 +3124,10 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
                 actual_sat = result_hsv[y, x, 1]
 
                 # Check that saturation increased or reached maximum
-                assert actual_sat > orig_sat or actual_sat == 255, \
-                    f"Saturation did not increase at ({y},{x}) in {image_type} image. " \
+                assert actual_sat > orig_sat or actual_sat == 255, (
+                    f"Saturation did not increase at ({y},{x}) in {image_type} image. "
                     f"Original: {orig_sat}, Actual: {actual_sat}"
+                )
 
 
 @pytest.mark.parametrize(
@@ -3120,7 +3146,6 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
         ((65, 85, 3), np.float32, "max", 1),
         ((100, 100, 3), np.uint8, "pca", 1),
         ((100, 100, 3), np.float32, "pca", 1),
-
         # Test multi-channel output
         ((100, 100, 3), np.uint8, "weighted_average", 3),
         ((100, 100, 3), np.float32, "weighted_average", 3),
@@ -3134,7 +3159,6 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
         ((65, 85, 3), np.float32, "max", 5),
         ((100, 100, 3), np.uint8, "pca", 3),
         ((100, 100, 3), np.float32, "pca", 3),
-
         # Test different input channel counts
         ((100, 100, 4), np.uint8, "average", 1),
         ((100, 100, 5), np.uint8, "max", 3),
@@ -3157,18 +3181,19 @@ def test_to_gray_preserves_original_image(shape, dtype, method, num_output_chann
     result = fpixel.to_gray(original_img, num_output_channels, method)
 
     # Check that original image is unchanged
-    np.testing.assert_array_equal(original_img, img_copy,
-                                  err_msg=f"to_gray modified the original image with method={method}")
+    np.testing.assert_array_equal(
+        original_img,
+        img_copy,
+        err_msg=f"to_gray modified the original image with method={method}",
+    )
 
     # Check that result has correct shape
     if num_output_channels == 1:
         expected_shape = shape[:2]  # Remove channel dimension
     else:
-        expected_shape = shape[:2] + (num_output_channels,)
+        expected_shape = (*shape[:2], num_output_channels)
 
-    assert result.shape == expected_shape, (
-        f"Expected shape {expected_shape}, got {result.shape} for method={method}"
-    )
+    assert result.shape == expected_shape, f"Expected shape {expected_shape}, got {result.shape} for method={method}"
 
     # Check that result has same dtype as input
     assert result.dtype == dtype, f"Expected dtype {dtype}, got {result.dtype}"
@@ -3182,13 +3207,11 @@ def test_to_gray_preserves_original_image(shape, dtype, method, num_output_chann
         ((100, 100), 3, (100, 100, 3)),
         ((50, 75), 4, (50, 75, 4)),
         ((80, 60), 2, (80, 60, 2)),
-
         # 3D input with single channel
         ((100, 100, 1), 1, (100, 100, 1)),
         ((100, 100, 1), 3, (100, 100, 3)),
         ((50, 75, 1), 4, (50, 75, 4)),
         ((80, 60, 1), 2, (80, 60, 2)),
-
         # Test edge cases
         ((10, 10), 5, (10, 10, 5)),
         ((10, 10, 1), 10, (10, 10, 10)),
@@ -3203,28 +3226,27 @@ def test_grayscale_to_multichannel_output_channels(input_shape, num_output_chann
     result = fpixel.grayscale_to_multichannel(grayscale_img, num_output_channels)
 
     # Check output shape
-    assert result.shape == expected_shape, (
-        f"Expected shape {expected_shape}, got {result.shape}"
-    )
+    assert result.shape == expected_shape, f"Expected shape {expected_shape}, got {result.shape}"
 
     # Check that all channels have the same values (replicated from grayscale)
     if num_output_channels > 1 and len(result.shape) > 2:
         for i in range(1, num_output_channels):
             np.testing.assert_array_equal(
-                result[..., 0], result[..., i],
-                err_msg=f"Channel {i} doesn't match channel 0"
+                result[..., 0],
+                result[..., i],
+                err_msg=f"Channel {i} doesn't match channel 0",
             )
 
 
 @pytest.mark.parametrize(
-    ["method"],
+    "method",
     [
-        ("weighted_average",),
-        ("from_lab",),
-        ("desaturation",),
-        ("average",),
-        ("max",),
-        ("pca",),
+        "weighted_average",
+        "from_lab",
+        "desaturation",
+        "average",
+        "max",
+        "pca",
     ],
 )
 def test_to_gray_all_methods_consistency(method):
@@ -3246,34 +3268,28 @@ def test_to_gray_all_methods_consistency(method):
     assert gray_float32.dtype == np.float32, f"Incorrect dtype for float32 with method={method}"
 
     # Check value ranges
-    assert gray_uint8.min() >= 0 and gray_uint8.max() <= 255, (
-        f"uint8 values out of range for method={method}"
-    )
-    assert gray_float32.min() >= 0 and gray_float32.max() <= 1.0, (
-        f"float32 values out of range for method={method}"
-    )
+    assert gray_uint8.min() >= 0 and gray_uint8.max() <= 255, f"uint8 values out of range for method={method}"
+    assert gray_float32.min() >= 0 and gray_float32.max() <= 1.0, f"float32 values out of range for method={method}"
 
     # Test with multiple output channels
     gray_multi_uint8 = fpixel.to_gray(rgb_img_uint8, 3, method)
     gray_multi_float32 = fpixel.to_gray(rgb_img_float32, 3, method)
 
     # Check shapes for multi-channel output
-    assert gray_multi_uint8.shape == (50, 50, 3), (
-        f"Incorrect multi-channel shape for uint8 with method={method}"
-    )
-    assert gray_multi_float32.shape == (50, 50, 3), (
-        f"Incorrect multi-channel shape for float32 with method={method}"
-    )
+    assert gray_multi_uint8.shape == (50, 50, 3), f"Incorrect multi-channel shape for uint8 with method={method}"
+    assert gray_multi_float32.shape == (50, 50, 3), f"Incorrect multi-channel shape for float32 with method={method}"
 
     # Check that all channels are identical
     for i in range(1, 3):
         np.testing.assert_array_equal(
-            gray_multi_uint8[..., 0], gray_multi_uint8[..., i],
-            err_msg=f"Channels not identical for uint8 with method={method}"
+            gray_multi_uint8[..., 0],
+            gray_multi_uint8[..., i],
+            err_msg=f"Channels not identical for uint8 with method={method}",
         )
         np.testing.assert_array_equal(
-            gray_multi_float32[..., 0], gray_multi_float32[..., i],
-            err_msg=f"Channels not identical for float32 with method={method}"
+            gray_multi_float32[..., 0],
+            gray_multi_float32[..., i],
+            err_msg=f"Channels not identical for float32 with method={method}",
         )
 
 
@@ -3337,7 +3353,7 @@ def test_to_gray_method_properties(method, expected_property):
     test_img = np.zeros((10, 10, 3), dtype=np.uint8)
     test_img[..., 0] = 255  # Red
     test_img[..., 1] = 128  # Green
-    test_img[..., 2] = 0    # Blue
+    test_img[..., 2] = 0  # Blue
 
     result = fpixel.to_gray(test_img, 1, method)
 

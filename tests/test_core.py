@@ -1,13 +1,11 @@
-
-import typing
+import warnings
+from typing import Any
 from unittest import mock
 from unittest.mock import MagicMock, Mock, call, patch
-import warnings
-import torch
+
 import cv2
 import numpy as np
 import pytest
-from typing import Any
 
 import albumentations as A
 from albumentations.core.bbox_utils import check_bboxes
@@ -24,15 +22,20 @@ from albumentations.core.composition import (
     SomeOf,
 )
 from albumentations.core.transforms_interface import DualTransform, ImageOnlyTransform, NoOp
-from albumentations.core.utils import to_tuple, get_shape
+from albumentations.core.utils import to_tuple
 from tests.conftest import (
     IMAGES,
     SQUARE_UINT8_IMAGE,
 )
 
 from .aug_definitions import transforms2metadata_key
-
-from .utils import get_2d_transforms, get_dual_transforms, get_filtered_transforms, get_image_only_transforms, get_transforms, set_seed
+from .utils import (
+    get_2d_transforms,
+    get_dual_transforms,
+    get_filtered_transforms,
+    get_image_only_transforms,
+    set_seed,
+)
 
 
 def test_one_or_other():
@@ -132,7 +135,7 @@ def test_to_tuple(input, kwargs, expected):
 @pytest.mark.parametrize("image", IMAGES)
 def test_image_only_transform(image):
     mask = image.copy()
-    height, width = image.shape[:2]
+    _height, _width = image.shape[:2]
     with mock.patch.object(ImageOnlyTransform, "apply") as mocked_apply:
         with mock.patch.object(ImageOnlyTransform, "get_params", return_value={"interpolation": cv2.INTER_LINEAR}):
             aug = ImageOnlyTransform(p=1)
@@ -391,7 +394,7 @@ def test_check_each_transform(targets, bbox_params, keypoint_params, expected):
         [A.Crop(0, 0, 50, 50), A.PadIfNeeded(100, 100, border_mode=cv2.BORDER_CONSTANT, fill=0)],
         bbox_params=bbox_params,
         keypoint_params=keypoint_params,
-        seed=137
+        seed=137,
     )
     res = augs(image=image, **targets)
 
@@ -481,7 +484,7 @@ def test_check_each_transform_compose(targets, bbox_params, keypoint_params, exp
         [Compose([A.Crop(0, 0, 50, 50), A.PadIfNeeded(100, 100, border_mode=cv2.BORDER_CONSTANT, fill=0)])],
         bbox_params=bbox_params,
         keypoint_params=keypoint_params,
-        seed=137
+        seed=137,
     )
     res = augs(image=image, **targets)
 
@@ -684,12 +687,15 @@ def test_bbox_params_is_not_set(image, bboxes):
 )
 @pytest.mark.parametrize(
     "inner_transform",
-    [(A.Normalize, {}), (A.Resize, {"height": 100, "width": 100})]
-    + get_filtered_transforms((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),  # type: ignore
+    [
+        (A.Normalize, {}),
+        (A.Resize, {"height": 100, "width": 100}),
+        *get_filtered_transforms((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
+    ],  # type: ignore
 )
 def test_single_transform_compose(
     compose_transform: tuple[type[BaseCompose], dict],
-    inner_transform: tuple[typing.Union[type[BaseCompose], type[A.BasicTransform]], dict],
+    inner_transform: tuple[type[BaseCompose] | type[A.BasicTransform], dict],
 ):
     compose_cls, compose_kwargs = compose_transform
     cls, kwargs = inner_transform
@@ -703,8 +709,7 @@ def test_single_transform_compose(
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_dual_transforms(
-        custom_arguments={
-        },
+        custom_arguments={},
         except_augmentations={
             A.FDA,
             A.HistogramMatching,
@@ -733,7 +738,7 @@ def test_contiguous_output_dual(augmentation_cls, params):
     transform = augmentation_cls(p=1, **params)
 
     data = {"image": image, "mask": mask}
-    if augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+    if augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros_like(image)[:, :, 0]
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -966,7 +971,7 @@ def test_compose_non_available_keys() -> None:
     transform = A.Compose(
         [mock_transform],
         strict=True,
-        seed=137
+        seed=137,
     )
 
     image = np.empty([10, 10, 3], dtype=np.uint8)
@@ -1008,19 +1013,22 @@ def test_compose_additional_targets_in_available_keys() -> None:
     augmentation(image=image, additional_target_1=image, additional_target_2=image)
 
     # empty `transforms`
-    augmentation = Compose([], p=1, additional_targets={"additional_target_1": "image", "additional_target_2": "image"}, strict=True)
+    augmentation = Compose(
+        [],
+        p=1,
+        additional_targets={"additional_target_1": "image", "additional_target_2": "image"},
+        strict=True,
+    )
     augmentation(image=image, additional_target_1=image, additional_target_2=image)  # will raise exception if not
     # strict=False should not raise error without additional_targets
     augmentation = Compose([], p=1, strict=False)
     augmentation(image=image, additional_target_1=image, additional_target_2=image)
 
 
-
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_2d_transforms(
-        custom_arguments={
-        },
+        custom_arguments={},
         except_augmentations={
             A.Lambda,
             A.RandomSizedBBoxSafeCrop,
@@ -1040,25 +1048,40 @@ def test_compose_additional_targets_in_available_keys() -> None:
 @pytest.mark.parametrize("shape", [(101, 99, 3), (101, 99)])
 def test_images_as_target(augmentation_cls, params, shape):
     if len(shape) == 2:
-        if augmentation_cls in {A.ChannelDropout, A.Spatter, A.ISONoise,
-                                A.RandomGravel, A.ChromaticAberration, A.PlanckianJitter, A.PixelDistributionAdaptation,
-                                A.MaskDropout, A.ConstrainedCoarseDropout, A.ChannelShuffle, A.ToRGB, A.RandomSunFlare,
-                                A.RandomFog, A.RandomSnow, A.RandomRain, A.HEStain}:
+        if augmentation_cls in {
+            A.ChannelDropout,
+            A.Spatter,
+            A.ISONoise,
+            A.RandomGravel,
+            A.ChromaticAberration,
+            A.PlanckianJitter,
+            A.PixelDistributionAdaptation,
+            A.MaskDropout,
+            A.ConstrainedCoarseDropout,
+            A.ChannelShuffle,
+            A.ToRGB,
+            A.RandomSunFlare,
+            A.RandomFog,
+            A.RandomSnow,
+            A.RandomRain,
+            A.HEStain,
+        }:
             pytest.skip(f"{augmentation_cls.__name__} is not applicable to grayscale images")
 
         if "fill" in params and not np.isscalar(params["fill"]):
             params["fill"] = params["fill"][0]
 
-    image = np.random.uniform(0, 255, shape).astype(np.float32) if augmentation_cls == A.FromFloat else np.random.randint(0, 255, shape, dtype=np.uint8)
-
-
+    image = (
+        np.random.uniform(0, 255, shape).astype(np.float32)
+        if augmentation_cls == A.FromFloat
+        else np.random.randint(0, 255, shape, dtype=np.uint8)
+    )
 
     # Stack images into a single array
     images = np.stack([image] * 2)
     data = {"images": images}
 
-
-    if augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+    if augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros_like(image)[:, :, 0]
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -1072,7 +1095,6 @@ def test_images_as_target(augmentation_cls, params, shape):
 
     transformed = aug(**data)
 
-
     # Check both images were transformed identically
     np.testing.assert_allclose(transformed["images"][0], transformed["images"][1])
 
@@ -1080,7 +1102,9 @@ def test_images_as_target(augmentation_cls, params, shape):
 
     assert isinstance(transformed["images"], np.ndarray)
 
-    assert transformed["images"].ndim == len(shape) + 1, f"Expected {len(shape) + 1} dimensions, got {transformed['images'].ndim}"
+    assert transformed["images"].ndim == len(shape) + 1, (
+        f"Expected {len(shape) + 1} dimensions, got {transformed['images'].ndim}"
+    )
 
     assert transformed["images"].flags["C_CONTIGUOUS"]  # Ensure memory is contiguous
 
@@ -1090,11 +1114,29 @@ def test_images_as_target(augmentation_cls, params, shape):
     if len(shape) == 3:
         assert transformed["images"].shape[-1] == image.shape[2]  # Channels match input
 
-    if augmentation_cls not in [A.RandomCrop, A.AtLeastOneBBoxRandomCrop, A.RandomResizedCrop, A.Resize, A.RandomSizedCrop, A.RandomSizedBBoxSafeCrop,
-                                A.BBoxSafeRandomCrop, A.Transpose, A.RandomCropNearBBox, A.CenterCrop, A.Crop, A.CropAndPad,
-                                A.LongestMaxSize, A.RandomScale, A.PadIfNeeded, A.SmallestMaxSize, A.RandomCropFromBorders,
-                                A.RandomRotate90, A.D4, A.SquareSymmetry]:
-        assert (H, W) == image.shape[:2]
+    if augmentation_cls not in [
+        A.RandomCrop,
+        A.AtLeastOneBBoxRandomCrop,
+        A.RandomResizedCrop,
+        A.Resize,
+        A.RandomSizedCrop,
+        A.RandomSizedBBoxSafeCrop,
+        A.BBoxSafeRandomCrop,
+        A.Transpose,
+        A.RandomCropNearBBox,
+        A.CenterCrop,
+        A.Crop,
+        A.CropAndPad,
+        A.LongestMaxSize,
+        A.RandomScale,
+        A.PadIfNeeded,
+        A.SmallestMaxSize,
+        A.RandomCropFromBorders,
+        A.RandomRotate90,
+        A.D4,
+        A.SquareSymmetry,
+    ]:
+        assert image.shape[:2] == (H, W)
 
 
 @pytest.mark.parametrize(
@@ -1127,10 +1169,20 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
         data["cropping_bbox"] = bboxes[0]
     elif augmentation_cls in [A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop]:
         # requires "bboxes" arg
-        aug = A.Compose([augmentation_cls(p=1, **params)], bbox_params=A.BboxParams(format="pascal_voc"), strict=True, seed=137)
+        aug = A.Compose(
+            [augmentation_cls(p=1, **params)],
+            bbox_params=A.BboxParams(format="pascal_voc"),
+            strict=True,
+            seed=137,
+        )
         data["bboxes"] = bboxes
     elif augmentation_cls == A.TextImage:
-        aug = A.Compose([augmentation_cls(p=1, **params)], bbox_params=A.BboxParams(format="pascal_voc"), strict=True, seed=137)
+        aug = A.Compose(
+            [augmentation_cls(p=1, **params)],
+            bbox_params=A.BboxParams(format="pascal_voc"),
+            strict=True,
+            seed=137,
+        )
         data["textimage_metadata"] = {"text": "Hello, world!", "bbox": (0.1, 0.1, 0.9, 0.2)}
     elif augmentation_cls == A.OverlayElements:
         # requires "metadata" arg
@@ -1139,11 +1191,11 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
     elif augmentation_cls == A.Mosaic:
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
         data["mosaic_metadata"] = [
-                {
-                    "image": image,
-                    "mask": mask,
-                }
-            ]
+            {
+                "image": image,
+                "mask": mask,
+            },
+        ]
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
         aug = A.Compose([augmentation_cls(p=1, **params)], p=1, strict=True, seed=137)
@@ -1153,7 +1205,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
             # requires float image
             image = (image / 255).astype(np.float32)
             assert not image.flags["C_CONTIGUOUS"]
-        elif augmentation_cls == A.MaskDropout or augmentation_cls == A.ConstrainedCoarseDropout:
+        elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
             # requires single channel mask
             mask = mask[:, :, 0]
 
@@ -1161,13 +1213,15 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
 
     transformed = aug(**data)
 
-    assert transformed["image"].flags["C_CONTIGUOUS"], f"{augmentation_cls.__name__} did not return a C_CONTIGUOUS image"
+    assert transformed["image"].flags["C_CONTIGUOUS"], (
+        f"{augmentation_cls.__name__} did not return a C_CONTIGUOUS image"
+    )
 
     # Check if the augmentation is not an ImageOnlyTransform and mask is in the output
     if not issubclass(augmentation_cls, ImageOnlyTransform) and "mask" in transformed:
-        assert transformed["mask"].flags[
-            "C_CONTIGUOUS"
-        ], f"{augmentation_cls.__name__} did not return a C_CONTIGUOUS mask"
+        assert transformed["mask"].flags["C_CONTIGUOUS"], (
+            f"{augmentation_cls.__name__} did not return a C_CONTIGUOUS mask"
+        )
 
 
 @pytest.mark.parametrize(
@@ -1218,8 +1272,7 @@ def test_masks_as_target(augmentation_cls, params, masks):
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_dual_transforms(
-        custom_arguments={
-        },
+        custom_arguments={},
         except_augmentations={
             A.PixelDropout,
             A.RandomCrop,
@@ -1255,31 +1308,37 @@ def test_masks_as_target(augmentation_cls, params, masks):
         },
     ),
 )
-@pytest.mark.parametrize("interpolation", [cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT
-            ])
+@pytest.mark.parametrize(
+    "interpolation",
+    [
+        cv2.INTER_NEAREST,
+        cv2.INTER_NEAREST_EXACT,
+        cv2.INTER_LINEAR,
+        cv2.INTER_CUBIC,
+        cv2.INTER_AREA,
+        cv2.INTER_LANCZOS4,
+        cv2.INTER_LINEAR_EXACT,
+    ],
+)
 def test_mask_interpolation(augmentation_cls, params, interpolation, image):
     mask = image.copy()
-    if augmentation_cls in {A.Affine, A.GridElasticDeform,
-    A.SafeRotate,
-    A.ShiftScaleRotate,
-    A.OpticalDistortion,
-    A.ThinPlateSpline,
-    A.Perspective,
-    A.ElasticTransform,
-    A.GridDistortion,
-    A.PiecewiseAffine,
-    A.CropAndPad,
-    A.LongestMaxSize,
-    A.SmallestMaxSize,
-    A.RandomResizedCrop,
-    A.RandomScale,
-    A.Rotate
+    if augmentation_cls in {
+        A.Affine,
+        A.GridElasticDeform,
+        A.SafeRotate,
+        A.ShiftScaleRotate,
+        A.OpticalDistortion,
+        A.ThinPlateSpline,
+        A.Perspective,
+        A.ElasticTransform,
+        A.GridDistortion,
+        A.PiecewiseAffine,
+        A.CropAndPad,
+        A.LongestMaxSize,
+        A.SmallestMaxSize,
+        A.RandomResizedCrop,
+        A.RandomScale,
+        A.Rotate,
     } and interpolation in {cv2.INTER_NEAREST_EXACT, cv2.INTER_LINEAR_EXACT}:
         return
 
@@ -1298,15 +1357,22 @@ def test_mask_interpolation(augmentation_cls, params, interpolation, image):
     np.testing.assert_array_equal(transformed["mask"], transformed["image"])
 
 
-
-@pytest.mark.parametrize("interpolation", [cv2.INTER_NEAREST,
-                                                cv2.INTER_LINEAR,
-                                                cv2.INTER_CUBIC,
-                                                cv2.INTER_AREA
-                                                ])
+@pytest.mark.parametrize(
+    "interpolation",
+    [
+        cv2.INTER_NEAREST,
+        cv2.INTER_LINEAR,
+        cv2.INTER_CUBIC,
+        cv2.INTER_AREA,
+    ],
+)
 @pytest.mark.parametrize("compose", [A.Compose, A.OneOf, A.Sequential, A.SomeOf])
 def test_mask_interpolation_someof(interpolation, compose):
-    transform = A.Compose([compose([A.Affine(p=1), A.RandomSizedCrop(min_max_height=(4, 8), size= (113, 103), p=1)], p=1)], mask_interpolation=interpolation, strict=True)
+    transform = A.Compose(
+        [compose([A.Affine(p=1), A.RandomSizedCrop(min_max_height=(4, 8), size=(113, 103), p=1)], p=1)],
+        mask_interpolation=interpolation,
+        strict=True,
+    )
 
     image = SQUARE_UINT8_IMAGE
     mask = image.copy()
@@ -1323,11 +1389,22 @@ def test_mask_interpolation_someof(interpolation, compose):
         (A.VerticalFlip(p=1), {"shape"}),
         (
             A.RandomBrightnessContrast(p=1),
-            {"shape", "alpha", "beta"}
+            {"shape", "alpha", "beta"},
         ),
         (
             A.Rotate(p=1),
-            {'shape', 'x_min', 'x_max', 'y_min', 'y_max', 'matrix', 'bbox_matrix', 'interpolation', "fill", "fill_mask"}
+            {
+                "shape",
+                "x_min",
+                "x_max",
+                "y_min",
+                "y_max",
+                "matrix",
+                "bbox_matrix",
+                "interpolation",
+                "fill",
+                "fill_mask",
+            },
         ),
     ],
 )
@@ -1345,47 +1422,62 @@ def test_transform_returns_params(transform, expected_param_keys):
         # Simple sequential transforms
         (
             [A.HorizontalFlip(p=1), A.Blur(p=1)],
-            ["HorizontalFlip", "Blur"]
+            ["HorizontalFlip", "Blur"],
         ),
         # OneOf inside Compose
         (
             [
-                A.OneOf([
-                    A.HorizontalFlip(p=1),
-                    A.VerticalFlip(p=1)
-                ], p=1),
-                A.Blur(p=1)
+                A.OneOf(
+                    [
+                        A.HorizontalFlip(p=1),
+                        A.VerticalFlip(p=1),
+                    ],
+                    p=1,
+                ),
+                A.Blur(p=1),
             ],
-            ["HorizontalFlip|VerticalFlip", "Blur"]  # One of these will be applied
+            ["HorizontalFlip|VerticalFlip", "Blur"],  # One of these will be applied
         ),
         # Nested Sequential
         (
             [
-                A.Sequential([
-                    A.HorizontalFlip(p=1),
-                    A.Blur(p=1)
-                ], p=1),
-                A.RandomBrightnessContrast(p=1)
+                A.Sequential(
+                    [
+                        A.HorizontalFlip(p=1),
+                        A.Blur(p=1),
+                    ],
+                    p=1,
+                ),
+                A.RandomBrightnessContrast(p=1),
             ],
-            ["HorizontalFlip", "Blur", "RandomBrightnessContrast"]
+            ["HorizontalFlip", "Blur", "RandomBrightnessContrast"],
         ),
         # Complex nesting
         (
             [
-                A.OneOf([
-                    A.Sequential([
-                        A.HorizontalFlip(p=1),
-                        A.Blur(p=1)
-                    ], p=1),
-                    A.Sequential([
-                        A.VerticalFlip(p=1),
-                        A.RandomBrightnessContrast(p=1)
-                    ], p=1)
-                ], p=1)
+                A.OneOf(
+                    [
+                        A.Sequential(
+                            [
+                                A.HorizontalFlip(p=1),
+                                A.Blur(p=1),
+                            ],
+                            p=1,
+                        ),
+                        A.Sequential(
+                            [
+                                A.VerticalFlip(p=1),
+                                A.RandomBrightnessContrast(p=1),
+                            ],
+                            p=1,
+                        ),
+                    ],
+                    p=1,
+                ),
             ],
-            ["HorizontalFlip,Blur|VerticalFlip,RandomBrightnessContrast"]  # One sequence will be applied
+            ["HorizontalFlip,Blur|VerticalFlip,RandomBrightnessContrast"],  # One sequence will be applied
         ),
-    ]
+    ],
 )
 def test_transform_tracking(image, transforms, expected_names):
     transform = A.Compose(transforms, p=1, save_applied_params=True, strict=True)
@@ -1407,51 +1499,70 @@ def test_transform_tracking(image, transforms, expected_names):
     else:
         assert applied_names == expected_names
 
+
 @pytest.mark.parametrize(
     ["transform_class", "transform_params"],
     [
         (A.Blur, {"blur_limit": 3}),
         (A.RandomBrightnessContrast, {"brightness_limit": 0.2, "contrast_limit": 0.2}),
         (A.HorizontalFlip, {}),
-    ]
+    ],
 )
 def test_params_content(image, transform_class, transform_params):
     transform = A.Compose([transform_class(p=1, **transform_params)], save_applied_params=True, strict=True)
     result = transform(image=image)
 
     assert len(result["applied_transforms"]) == 1
-    transform_name, params = result["applied_transforms"][0]
+    transform_name, _params = result["applied_transforms"][0]
 
     assert transform_name == transform_class.__name__
 
+
 def test_no_param_tracking():
     """Test that params are not tracked when save_applied_params=False"""
-    transform = A.Compose([
-        A.HorizontalFlip(p=1),
-        A.Blur(p=1)
-    ], p=1, save_applied_params=False, strict=True)
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1),
+            A.Blur(p=1),
+        ],
+        p=1,
+        save_applied_params=False,
+        strict=True,
+    )
 
     result = transform(image=np.zeros((100, 100, 3), dtype=np.uint8))
     assert "applied_transforms" not in result
 
+
 def test_probability_control():
     """Test that transforms are only tracked when they are actually applied"""
-    transform = A.Compose([
-        A.HorizontalFlip(p=0),  # Will not be applied
-        A.Blur(p=1)  # Will be applied
-    ], p=1, save_applied_params=True, strict=True)
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=0),  # Will not be applied
+            A.Blur(p=1),  # Will be applied
+        ],
+        p=1,
+        save_applied_params=True,
+        strict=True,
+    )
 
     result = transform(image=np.zeros((100, 100, 3), dtype=np.uint8))
     applied_names = [t[0] for t in result["applied_transforms"]]
     assert "HorizontalFlip" not in applied_names
     assert "Blur" in applied_names
 
+
 def test_compose_probability():
     """Test that no transforms are tracked when compose probability is 0"""
-    transform = A.Compose([
-        A.HorizontalFlip(p=1),
-        A.Blur(p=1)
-    ], p=0, save_applied_params=True, strict=True)
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1),
+            A.Blur(p=1),
+        ],
+        p=0,
+        save_applied_params=True,
+        strict=True,
+    )
 
     result = transform(image=np.zeros((100, 100, 3), dtype=np.uint8))
 
@@ -1461,13 +1572,15 @@ def test_compose_probability():
 def test_transform_strict_mode_raises_error():
     # Test that strict=True raises error for invalid parameters
     with pytest.raises(ValueError, match="Argument\\(s\\) 'invalid_param' are not valid for transform Blur"):
-       A.Blur(strict=True, invalid_param=123)
+        A.Blur(strict=True, invalid_param=123)
+
 
 def test_transform_non_strict_mode_shows_warning():
     # Test that strict=False (default) shows warning for invalid parameters
     with pytest.warns(UserWarning, match="Argument\\(s\\) 'invalid_param' are not valid for transform Blur"):
         transform = A.Blur(invalid_param=123)
         assert transform.p == 0.5  # Check that transform was still created with default values
+
 
 def test_transform_valid_params_no_warning():
     # Test that no warning/error is raised for valid parameters
@@ -1477,10 +1590,12 @@ def test_transform_valid_params_no_warning():
         assert transform.p == 0.7
         assert transform.blur_limit == (3, 5)
 
+
 def test_transform_multiple_invalid_params():
     # Test handling of multiple invalid parameters
     with pytest.raises(ValueError, match="Argument\\(s\\) 'invalid1, invalid2' are not valid for transform Blur"):
         A.Blur(strict=True, invalid1=123, invalid2=456)
+
 
 def test_transform_strict_with_valid_params():
     # Test that strict mode doesn't affect valid parameters
@@ -1507,8 +1622,8 @@ def test_label_type_preservation(labels, expected_type, expected_dtype):
     transform = Compose(
         [NoOp(p=1.0)],
         bbox_params=BboxParams(
-            format='pascal_voc',
-            label_fields=['labels']
+            format="pascal_voc",
+            label_fields=["labels"],
         ),
         strict=True,
     )
@@ -1516,14 +1631,14 @@ def test_label_type_preservation(labels, expected_type, expected_dtype):
     transformed = transform(
         image=np.zeros((100, 100, 3), dtype=np.uint8),
         bboxes=[(0, 0, 10, 10), (10, 10, 20, 20), (20, 20, 30, 30)],
-        labels=labels
+        labels=labels,
     )
 
-    result_labels = transformed['labels']
+    result_labels = transformed["labels"]
     assert isinstance(result_labels, expected_type)
     if expected_dtype is not None:
         assert result_labels.dtype == expected_dtype
-    if expected_type == list:
+    if expected_type is list:
         assert result_labels == labels
     else:
         np.testing.assert_array_equal(result_labels, labels)
@@ -1532,13 +1647,13 @@ def test_label_type_preservation(labels, expected_type, expected_dtype):
 def test_string_labels():
     # Create sample data
     bboxes = [(0, 0, 10, 10), (10, 10, 20, 20), (20, 20, 30, 30)]
-    labels = ['cat', 'dog', 'bird']
+    labels = ["cat", "dog", "bird"]
 
     transform = Compose(
         [NoOp(p=1.0)],
         bbox_params=BboxParams(
-            format='pascal_voc',
-            label_fields=['labels']
+            format="pascal_voc",
+            label_fields=["labels"],
         ),
         strict=True,
     )
@@ -1546,19 +1661,19 @@ def test_string_labels():
     transformed = transform(
         image=np.zeros((100, 100, 3), dtype=np.uint8),
         bboxes=bboxes,
-        labels=labels
+        labels=labels,
     )
 
     # Check that string labels are preserved exactly
-    assert transformed['labels'] == labels
+    assert transformed["labels"] == labels
 
 
 def test_empty_labels():
     transform = Compose(
         [NoOp(p=1.0)],
         bbox_params=BboxParams(
-            format='pascal_voc',
-            label_fields=['labels']
+            format="pascal_voc",
+            label_fields=["labels"],
         ),
         strict=True,
     )
@@ -1566,11 +1681,10 @@ def test_empty_labels():
     transformed = transform(
         image=np.zeros((100, 100, 3), dtype=np.uint8),
         bboxes=[],
-        labels=[]
+        labels=[],
     )
 
-    assert transformed['labels'] == []
-
+    assert transformed["labels"] == []
 
 
 @pytest.mark.parametrize(
@@ -1639,7 +1753,7 @@ def test_strict_validation_in_compose(
             Compose(transforms_config, strict=strict)
     else:
         with warnings.catch_warnings(record=True) as w:
-            transform = Compose(transforms_config, strict=strict)
+            Compose(transforms_config, strict=strict)
             if not strict and any("invalid" in str(t) for t in transforms_config):
                 assert len(w) > 0
                 assert any("are not valid for transform" in str(warn.message) for warn in w)
@@ -1648,13 +1762,15 @@ def test_strict_validation_in_compose(
 def test_transform_strict_mode_raises_error():
     # Test that strict=True raises error for invalid parameters
     with pytest.raises(ValueError, match="Argument\\(s\\) 'invalid_param' are not valid for transform Blur"):
-       A.Blur(strict=True, invalid_param=123)
+        A.Blur(strict=True, invalid_param=123)
+
 
 def test_transform_non_strict_mode_shows_warning():
     # Test that strict=False (default) shows warning for invalid parameters
     with pytest.warns(UserWarning, match="Argument\\(s\\) 'invalid_param' are not valid for transform Blur"):
         transform = A.Blur(invalid_param=123)
         assert transform.p == 0.5  # Check that transform was still created with default values
+
 
 def test_transform_valid_params_no_warning():
     # Test that no warning/error is raised for valid parameters
@@ -1664,10 +1780,12 @@ def test_transform_valid_params_no_warning():
         assert transform.p == 0.7
         assert transform.blur_limit == (3, 5)
 
+
 def test_transform_multiple_invalid_params():
     # Test handling of multiple invalid parameters
     with pytest.raises(ValueError, match="Argument\\(s\\) 'invalid1, invalid2' are not valid for transform Blur"):
         A.Blur(strict=True, invalid1=123, invalid2=456)
+
 
 def test_transform_strict_with_valid_params():
     # Test that strict mode doesn't affect valid parameters
@@ -1676,12 +1794,10 @@ def test_transform_strict_with_valid_params():
     assert transform.blur_limit == (3, 5)
 
 
-
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_dual_transforms(
-        custom_arguments={
-        },
+        custom_arguments={},
         except_augmentations={
             A.PixelDropout,
             A.RandomCrop,
@@ -1728,16 +1844,18 @@ def test_transform_strict_with_valid_params():
         },
     ),
 )
-@pytest.mark.parametrize("border_mode", [
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-            cv2.BORDER_REFLECT101,
-        ])
+@pytest.mark.parametrize(
+    "border_mode",
+    [
+        cv2.BORDER_CONSTANT,
+        cv2.BORDER_REPLICATE,
+        cv2.BORDER_REFLECT,
+        cv2.BORDER_WRAP,
+        cv2.BORDER_REFLECT_101,
+        cv2.BORDER_REFLECT101,
+    ],
+)
 def test_mask_interpolation(augmentation_cls, params, border_mode, image):
-
     mask = image.copy()
 
     params["interpolation"] = cv2.INTER_LINEAR
@@ -1757,32 +1875,43 @@ def test_mask_interpolation(augmentation_cls, params, border_mode, image):
         # Valid cases
         ({"rotate": 45}, False, "valid", []),
         ({"rotate": 45, "p": 0.5}, False, "valid", []),
-
         # Invalid parameter names (affected by strict)
         ({"rotate": 45, "invalid_param": 123}, False, "warning", []),
         ({"rotate": 45, "invalid_param": 123}, True, "error", ["invalid_param"]),
         ({"rotate": 45, "wrong_param": 0.5, "bad_param": 30}, False, "warning", []),
-
         # Invalid parameter values (always error, regardless of strict)
         ({"rotate": 45, "p": 1.5}, False, "value_error", ["p"]),
         ({"rotate": 45, "p": -0.5}, False, "value_error", ["p"]),
         # Multiple invalid values
-        ({"interpolation": -1, "mask_interpolation": -1, "p": 1.5}, False, "value_error",
-         ["interpolation", "mask_interpolation", "p"]),
-    ]
+        (
+            {"interpolation": -1, "mask_interpolation": -1, "p": 1.5},
+            False,
+            "value_error",
+            ["interpolation", "mask_interpolation", "p"],
+        ),
+    ],
 )
 def test_affine_invalid_parameters(params, strict, expected_outcome, expected_error_params):
     if expected_outcome == "valid":
         transform = A.Affine(**params)
         assert transform is not None
-        assert not hasattr(transform, 'invalid_args') or not transform.invalid_args
+        assert not hasattr(transform, "invalid_args") or not transform.invalid_args
 
     elif expected_outcome == "warning":
         transform = A.Affine(strict=strict, **params)
-        assert hasattr(transform, 'invalid_args')
-        invalid_params = set(params.keys()) - {"rotate", "p", "scale", "translate_percent",
-                                             "translate_px", "interpolation", "mask_interpolation",
-                                             "mode", "fit_output", "keep_ratio"}
+        assert hasattr(transform, "invalid_args")
+        invalid_params = set(params.keys()) - {
+            "rotate",
+            "p",
+            "scale",
+            "translate_percent",
+            "translate_px",
+            "interpolation",
+            "mask_interpolation",
+            "mode",
+            "fit_output",
+            "keep_ratio",
+        }
         assert set(transform.invalid_args) == invalid_params
 
     elif expected_outcome == "error":
@@ -1805,8 +1934,10 @@ def test_affine_invalid_parameters(params, strict, expected_outcome, expected_er
             # Count unique parameters mentioned in the error
             error_params = {param for param in expected_error_params if param in error_msg}
 
-            assert len(error_params) == len(expected_error_params), \
+            assert len(error_params) == len(expected_error_params), (
                 f"Expected validation errors for {expected_error_params}, got errors for {error_params}"
+            )
+
 
 @pytest.mark.parametrize(
     ["bbox_format", "bboxes"],
@@ -1814,8 +1945,13 @@ def test_affine_invalid_parameters(params, strict, expected_outcome, expected_er
         ("coco", [[15, 12, 30, 40], [50, 50, 15, 40]]),
         ("pascal_voc", [[15, 12, 45, 52], [50, 50, 65, 90]]),
         ("albumentations", [[0.15, 0.12, 0.45, 0.52], [0.5, 0.5, 0.65, 0.9]]),
-        ("yolo", [[(15 + 30 / 2) / 100, (12 + 40 / 2) / 100, 30 / 100, 40 / 100],
-                  [(50 + 15 / 2) / 100, (50 + 40 / 2) / 100, 15 / 100, 40 / 100]]),
+        (
+            "yolo",
+            [
+                [(15 + 30 / 2) / 100, (12 + 40 / 2) / 100, 30 / 100, 40 / 100],
+                [(50 + 15 / 2) / 100, (50 + 40 / 2) / 100, 15 / 100, 40 / 100],
+            ],
+        ),
     ],
 )
 def test_bbox_hflip_hflip_no_labels(bbox_format: str, bboxes: list[list[float]]):
@@ -1825,7 +1961,7 @@ def test_bbox_hflip_hflip_no_labels(bbox_format: str, bboxes: list[list[float]])
 
     aug = A.Compose(
         [A.HorizontalFlip(p=1.0), A.HorizontalFlip(p=1.0)],
-        bbox_params=A.BboxParams(format=bbox_format), # No label_fields specified
+        bbox_params=A.BboxParams(format=bbox_format),  # No label_fields specified
         strict=True,
     )
     transformed = aug(image=image, bboxes=original_bboxes)
@@ -1840,7 +1976,7 @@ def test_bbox_hflip_hflip_no_labels(bbox_format: str, bboxes: list[list[float]])
         ("yx", [[12, 15], [50, 50]]),  # Reversed (y, x)
         ("xya", [[15, 12, 90], [50, 50, 45]]),  # With angle
         ("xys", [[15, 12, 1.5], [50, 50, 0.8]]),  # With scale
-        ("xyz", [[15, 12, 5], [50, 50, 10]]), # With z-coordinate
+        ("xyz", [[15, 12, 5], [50, 50, 10]]),  # With z-coordinate
     ],
 )
 def test_keypoint_hflip_hflip_no_labels(kp_format: str, keypoints: list[list[float]]):
@@ -1850,7 +1986,7 @@ def test_keypoint_hflip_hflip_no_labels(kp_format: str, keypoints: list[list[flo
 
     aug = A.Compose(
         [A.HorizontalFlip(p=1.0), A.HorizontalFlip(p=1.0)],
-        keypoint_params=A.KeypointParams(format=kp_format), # No label_fields specified
+        keypoint_params=A.KeypointParams(format=kp_format),  # No label_fields specified
         strict=True,
     )
     transformed = aug(image=image, keypoints=original_keypoints)
@@ -1860,10 +1996,12 @@ def test_keypoint_hflip_hflip_no_labels(kp_format: str, keypoints: list[list[flo
 
 def test_compose_with_empty_masks():
     """Test that Compose can handle empty masks list."""
-    transform = Compose([
-        A.Resize(288, 384),
-        A.ToFloat(max_value=255)
-    ])
+    transform = Compose(
+        [
+            A.Resize(288, 384),
+            A.ToFloat(max_value=255),
+        ],
+    )
     image = np.zeros((288, 384, 3), dtype=np.uint8)
     result = transform(image=image, masks=np.array([]))
     # Verify that the result contains an empty masks list
@@ -1878,17 +2016,19 @@ def test_grayscale_image_handling():
     grayscale_image = np.random.rand(100, 200).astype(np.float32)
 
     # Create a simple transform pipeline
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-        A.RandomBrightnessContrast(p=1.0)
-    ])
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+            A.RandomBrightnessContrast(p=1.0),
+        ],
+    )
 
     # Apply transform
     result = transform(image=grayscale_image)
 
     # Check that output has same shape as input
-    assert result['image'].shape == grayscale_image.shape
-    assert result['image'].ndim == 2
+    assert result["image"].shape == grayscale_image.shape
+    assert result["image"].ndim == 2
 
 
 def test_grayscale_images_batch_handling():
@@ -1898,17 +2038,19 @@ def test_grayscale_images_batch_handling():
     grayscale_images = np.random.rand(batch_size, 100, 200).astype(np.float32)
 
     # Create a simple transform pipeline
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-        A.RandomBrightnessContrast(p=1.0)
-    ])
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+            A.RandomBrightnessContrast(p=1.0),
+        ],
+    )
 
     # Apply transform
     result = transform(images=grayscale_images)
 
     # Check that output has same shape as input
-    assert result['images'].shape == grayscale_images.shape
-    assert result['images'].ndim == 3
+    assert result["images"].shape == grayscale_images.shape
+    assert result["images"].ndim == 3
 
 
 def test_grayscale_volume_handling():
@@ -1917,16 +2059,18 @@ def test_grayscale_volume_handling():
     grayscale_volume = np.random.rand(50, 100, 200).astype(np.float32)
 
     # Create a simple transform pipeline that works with volumes
-    transform = A.Compose([
-        A.NoOp(p=1.0),  # NoOp supports all targets including volumes
-    ])
+    transform = A.Compose(
+        [
+            A.NoOp(p=1.0),  # NoOp supports all targets including volumes
+        ],
+    )
 
     # Apply transform
     result = transform(volume=grayscale_volume)
 
     # Check that output has same shape as input
-    assert result['volume'].shape == grayscale_volume.shape
-    assert result['volume'].ndim == 3
+    assert result["volume"].shape == grayscale_volume.shape
+    assert result["volume"].ndim == 3
 
 
 def test_grayscale_volumes_batch_handling():
@@ -1936,16 +2080,18 @@ def test_grayscale_volumes_batch_handling():
     grayscale_volumes = np.random.rand(batch_size, 50, 100, 200).astype(np.float32)
 
     # Create a simple transform pipeline that works with volumes
-    transform = A.Compose([
-        A.NoOp(p=1.0),  # NoOp supports all targets including volumes
-    ])
+    transform = A.Compose(
+        [
+            A.NoOp(p=1.0),  # NoOp supports all targets including volumes
+        ],
+    )
 
     # Apply transform
     result = transform(volumes=grayscale_volumes)
 
     # Check that output has same shape as input
-    assert result['volumes'].shape == grayscale_volumes.shape
-    assert result['volumes'].ndim == 4
+    assert result["volumes"].shape == grayscale_volumes.shape
+    assert result["volumes"].ndim == 4
 
 
 def test_mixed_grayscale_rgb_handling():
@@ -1955,16 +2101,18 @@ def test_mixed_grayscale_rgb_handling():
     rgb_mask = np.random.rand(100, 200, 3).astype(np.float32)
 
     # Create a simple transform pipeline
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-    ])
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+    )
 
     # Apply transform
     result = transform(image=grayscale_image, mask=rgb_mask)
 
     # Check shapes
-    assert result['image'].shape == grayscale_image.shape
-    assert result['mask'].shape == rgb_mask.shape
+    assert result["image"].shape == grayscale_image.shape
+    assert result["mask"].shape == rgb_mask.shape
 
 
 def test_grayscale_with_channel_dimension():
@@ -1973,17 +2121,19 @@ def test_grayscale_with_channel_dimension():
     image_with_channel = np.random.rand(100, 200, 1).astype(np.float32)
 
     # Create a simple transform pipeline
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-        A.RandomBrightnessContrast(p=1.0)
-    ])
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+            A.RandomBrightnessContrast(p=1.0),
+        ],
+    )
 
     # Apply transform
     result = transform(image=image_with_channel)
 
     # Check that shape is preserved (channel dimension remains)
-    assert result['image'].shape == image_with_channel.shape
-    assert result['image'].ndim == 3
+    assert result["image"].shape == image_with_channel.shape
+    assert result["image"].ndim == 3
 
 
 def test_grayscale_array_handling():
@@ -1992,9 +2142,11 @@ def test_grayscale_array_handling():
     grayscale_array = np.random.rand(3, 100, 200).astype(np.float32)
 
     # Create a simple transform pipeline
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-    ])
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+    )
 
     # Apply transform
     result = transform(images=grayscale_array)
@@ -2012,17 +2164,19 @@ def test_uint8_grayscale_handling():
     grayscale_uint8 = np.random.randint(0, 256, (100, 200), dtype=np.uint8)
 
     # Create a transform that works with uint8
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1.0)
-    ])
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1.0),
+        ],
+    )
 
     # Apply transform
     result = transform(image=grayscale_uint8)
 
     # Check shape and dtype
-    assert result['image'].shape == grayscale_uint8.shape
-    assert result['image'].dtype == np.uint8
+    assert result["image"].shape == grayscale_uint8.shape
+    assert result["image"].dtype == np.uint8
 
 
 def test_grayscale_with_transforms_expecting_channels():
@@ -2031,16 +2185,18 @@ def test_grayscale_with_transforms_expecting_channels():
     grayscale_image = np.random.rand(100, 200).astype(np.float32)
 
     # Create transform that typically expects channels
-    transform = A.Compose([
-        A.ChannelShuffle(p=1.0),  # Should handle single channel gracefully
-        A.ToGray(p=1.0),  # Should detect it's already grayscale
-    ])
+    transform = A.Compose(
+        [
+            A.ChannelShuffle(p=1.0),  # Should handle single channel gracefully
+            A.ToGray(p=1.0),  # Should detect it's already grayscale
+        ],
+    )
 
     # Apply transform - should not raise errors
     result = transform(image=grayscale_image)
 
     # Check output shape
-    assert result['image'].shape == grayscale_image.shape
+    assert result["image"].shape == grayscale_image.shape
 
 
 def test_grayscale_shape_check_with_strict():
@@ -2050,13 +2206,17 @@ def test_grayscale_shape_check_with_strict():
     grayscale_mask = np.random.rand(100, 200).astype(np.float32)
 
     # This should work - same H,W dimensions
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0)
-    ], strict=True, is_check_shapes=True)
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+        strict=True,
+        is_check_shapes=True,
+    )
 
     result = transform(image=grayscale_image, mask=grayscale_mask)
-    assert result['image'].shape == grayscale_image.shape
-    assert result['mask'].shape == grayscale_mask.shape
+    assert result["image"].shape == grayscale_image.shape
+    assert result["mask"].shape == grayscale_mask.shape
 
     # Create mask with different H,W - should fail
     wrong_mask = np.random.rand(150, 200).astype(np.float32)
@@ -2070,17 +2230,20 @@ def test_grayscale_with_bbox_params():
     grayscale_image = np.random.rand(100, 200).astype(np.float32)
     bboxes = [(10, 10, 50, 50)]
 
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-    ], bbox_params=A.BboxParams(format='pascal_voc'))
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+        bbox_params=A.BboxParams(format="pascal_voc"),
+    )
 
     result = transform(image=grayscale_image, bboxes=bboxes)
 
     # Check that image shape is preserved
-    assert result['image'].shape == grayscale_image.shape
-    assert result['image'].ndim == 2
+    assert result["image"].shape == grayscale_image.shape
+    assert result["image"].ndim == 2
     # Check that bboxes were transformed
-    assert len(result['bboxes']) == len(bboxes)
+    assert len(result["bboxes"]) == len(bboxes)
 
 
 def test_grayscale_with_keypoint_params():
@@ -2088,17 +2251,20 @@ def test_grayscale_with_keypoint_params():
     grayscale_image = np.random.rand(100, 200).astype(np.float32)
     keypoints = [(30, 40), (150, 80)]
 
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-    ], keypoint_params=A.KeypointParams(format='xy'))
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+        ],
+        keypoint_params=A.KeypointParams(format="xy"),
+    )
 
     result = transform(image=grayscale_image, keypoints=keypoints)
 
     # Check that image shape is preserved
-    assert result['image'].shape == grayscale_image.shape
-    assert result['image'].ndim == 2
+    assert result["image"].shape == grayscale_image.shape
+    assert result["image"].ndim == 2
     # Check that keypoints were transformed
-    assert len(result['keypoints']) == len(keypoints)
+    assert len(result["keypoints"]) == len(keypoints)
 
 
 def test_grayscale_mask_handling():
@@ -2107,17 +2273,19 @@ def test_grayscale_mask_handling():
     grayscale_mask = np.random.randint(0, 2, (100, 200)).astype(np.uint8)
 
     # Create a simple transform pipeline
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-        A.Rotate(limit=45, p=1.0)
-    ])
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+            A.Rotate(limit=45, p=1.0),
+        ],
+    )
 
     # Apply transform
     result = transform(mask=grayscale_mask)
 
     # Check that output has same shape as input
-    assert result['mask'].shape == grayscale_mask.shape
-    assert result['mask'].ndim == 2
+    assert result["mask"].shape == grayscale_mask.shape
+    assert result["mask"].ndim == 2
 
 
 def test_grayscale_masks_batch_handling():
@@ -2127,17 +2295,19 @@ def test_grayscale_masks_batch_handling():
     grayscale_masks = np.random.randint(0, 2, (batch_size, 100, 200)).astype(np.uint8)
 
     # Create a simple transform pipeline
-    transform = A.Compose([
-        A.HorizontalFlip(p=1.0),
-        A.Rotate(limit=45, p=1.0)
-    ])
+    transform = A.Compose(
+        [
+            A.HorizontalFlip(p=1.0),
+            A.Rotate(limit=45, p=1.0),
+        ],
+    )
 
     # Apply transform
     result = transform(masks=grayscale_masks)
 
     # Check that output has same shape as input
-    assert result['masks'].shape == grayscale_masks.shape
-    assert result['masks'].ndim == 3
+    assert result["masks"].shape == grayscale_masks.shape
+    assert result["masks"].ndim == 3
 
 
 def test_grayscale_mask3d_handling():
@@ -2146,16 +2316,18 @@ def test_grayscale_mask3d_handling():
     grayscale_mask3d = np.random.randint(0, 2, (50, 100, 200)).astype(np.uint8)
 
     # Create a simple transform pipeline that works with 3D masks
-    transform = A.Compose([
-        A.NoOp(p=1.0),  # NoOp supports all targets including mask3d
-    ])
+    transform = A.Compose(
+        [
+            A.NoOp(p=1.0),  # NoOp supports all targets including mask3d
+        ],
+    )
 
     # Apply transform
     result = transform(mask3d=grayscale_mask3d)
 
     # Check that output has same shape as input
-    assert result['mask3d'].shape == grayscale_mask3d.shape
-    assert result['mask3d'].ndim == 3
+    assert result["mask3d"].shape == grayscale_mask3d.shape
+    assert result["mask3d"].ndim == 3
 
 
 def test_grayscale_masks3d_batch_handling():
@@ -2165,13 +2337,15 @@ def test_grayscale_masks3d_batch_handling():
     grayscale_masks3d = np.random.randint(0, 2, (batch_size, 50, 100, 200)).astype(np.uint8)
 
     # Create a simple transform pipeline that works with 3D masks
-    transform = A.Compose([
-        A.NoOp(p=1.0),  # NoOp supports all targets including masks3d
-    ])
+    transform = A.Compose(
+        [
+            A.NoOp(p=1.0),  # NoOp supports all targets including masks3d
+        ],
+    )
 
     # Apply transform
     result = transform(masks3d=grayscale_masks3d)
 
     # Check that output has same shape as input
-    assert result['masks3d'].shape == grayscale_masks3d.shape
-    assert result['masks3d'].ndim == 4
+    assert result["masks3d"].shape == grayscale_masks3d.shape
+    assert result["masks3d"].ndim == 4

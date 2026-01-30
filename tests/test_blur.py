@@ -1,15 +1,13 @@
-
-from typing import Any
 import warnings
+from typing import Any
+
+import cv2
 import numpy as np
 import pytest
-
 from PIL import Image, ImageFilter
-import cv2
 
 import albumentations as A
 from albumentations.augmentations.blur import functional as fblur
-
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import UINT8_IMAGES
 
@@ -92,6 +90,7 @@ def test_advanced_blur_raises_on_incorrect_params(
     with pytest.raises(ValueError):
         A.AdvancedBlur(**params)
 
+
 class MockValidationInfo:
     def __init__(self, field_name: str):
         self.field_name = field_name
@@ -104,13 +103,14 @@ class MockValidationInfo:
         ((3, 5), 3, (3, 5), []),
         ((0, 3), 0, (0, 3), []),
         (5, 3, (3, 5), []),
-
         # Adjust values below min_value
         (
             (1, 2),
             3,
             (3, 3),
-            ["test_field: Invalid kernel size range (1, 2). Values less than 3 are not allowed. Range automatically adjusted to (3, 3)."]
+            [
+                "test_field: Invalid kernel size range (1, 2). Values less than 3 are not allowed. Range automatically adjusted to (3, 3).",
+            ],
         ),
         # Adjust values below min_value (with automatic odd adjustment)
         (
@@ -119,38 +119,36 @@ class MockValidationInfo:
             (0, 5),
             [
                 "test_field: Non-zero kernel sizes must be odd. Range (0, 4) automatically adjusted to (0, 5)",
-                "test_field: Invalid kernel size range (-1, 4). Values less than 0 are not allowed. Range automatically adjusted to (0, 4)."
-            ]
+                "test_field: Invalid kernel size range (-1, 4). "
+                "Values less than 0 are not allowed. Range automatically adjusted to (0, 4).",
+            ],
         ),
-
         # Adjust non-odd values
         (
             (3, 4),
             3,
             (3, 5),
-            ["test_field: Non-zero kernel sizes must be odd. Range (3, 4) automatically adjusted to (3, 5)."]
+            ["test_field: Non-zero kernel sizes must be odd. Range (3, 4) automatically adjusted to (3, 5)."],
         ),
         (
             (4, 8),
             0,
             (5, 9),
-            ["test_field: Non-zero kernel sizes must be odd. Range (4, 8) automatically adjusted to (5, 9)."]
+            ["test_field: Non-zero kernel sizes must be odd. Range (4, 8) automatically adjusted to (5, 9)."],
         ),
-
         # Special case: keep zero values
         (
             (0, 4),
             0,
             (0, 5),
-            ["test_field: Non-zero kernel sizes must be odd. Range (0, 4) automatically adjusted to (0, 5)."]
+            ["test_field: Non-zero kernel sizes must be odd. Range (0, 4) automatically adjusted to (0, 5)."],
         ),
-
         # Fix min > max
         (
             (7, 5),
             3,
             (5, 5),
-            ["test_field: Invalid range (7, 5) (min > max). Range automatically adjusted to (5, 5)."]
+            ["test_field: Invalid range (7, 5) (min > max). Range automatically adjusted to (5, 5)."],
         ),
         # Multiple adjustments
         (
@@ -158,17 +156,18 @@ class MockValidationInfo:
             3,
             (3, 5),
             [
-                "test_field: Invalid kernel size range (2, 4). Values less than 3 are not allowed. Range automatically adjusted to (3, 4).",
+                "test_field: Invalid kernel size range (2, 4). "
+                "Values less than 3 are not allowed. Range automatically adjusted to (3, 4).",
                 "test_field: Non-zero kernel sizes must be odd. Range (3, 4) automatically adjusted to (3, 5).",
-            ]
+            ],
         ),
-    ]
+    ],
 )
 def test_process_blur_limit(
     value: Any,
     min_value: int,
     expected: tuple[int, int],
-    warning_messages: list[str]
+    warning_messages: list[str],
 ) -> None:
     info = MockValidationInfo("test_field")
 
@@ -196,13 +195,16 @@ def test_process_blur_limit_sequence_check() -> None:
 
 
 def compute_sharpness(image: np.ndarray) -> float:
-    kernel = np.array([
-        [-1, -1, -1],
-        [-1,  8, -1],
-        [-1, -1, -1]
-    ])
+    kernel = np.array(
+        [
+            [-1, -1, -1],
+            [-1, 8, -1],
+            [-1, -1, -1],
+        ],
+    )
     edges = cv2.filter2D(image.astype(np.float32), -1, kernel)
     return np.std(edges)
+
 
 def test_gaussian_blur_matches_pil():
     # Create a test image with high-frequency details
@@ -225,7 +227,7 @@ def test_gaussian_blur_matches_pil():
         pil_sharpness.append(compute_sharpness(np.array(pil_blurred)))
 
         # Albumentations blur
-        alb_blurred = A.GaussianBlur(blur_limit=0, sigma_limit=(sigma, sigma), p=1.0)(image=image)['image']
+        alb_blurred = A.GaussianBlur(blur_limit=0, sigma_limit=(sigma, sigma), p=1.0)(image=image)["image"]
         alb_sharpness.append(compute_sharpness(alb_blurred))
 
     # Convert to numpy arrays for easier comparison
@@ -236,7 +238,6 @@ def test_gaussian_blur_matches_pil():
     abs_diff = np.abs(pil_sharpness - alb_sharpness)
     mean_diff = np.mean(abs_diff)
     max_diff = np.max(abs_diff)
-
 
     # Assert reasonable absolute differences
     assert mean_diff < 10, f"Average absolute difference too high: {mean_diff:.2f}"

@@ -1,4 +1,3 @@
-
 import functools
 import inspect
 import random
@@ -64,19 +63,19 @@ def set_seed(seed):
 
 
 def get_all_valid_transforms(use_cache=False):
-    """
-    Find all transforms that are children of BasicTransform or BaseCompose,
+    """Find all transforms that are children of BasicTransform or BaseCompose,
     and do not have DeprecationWarning or FutureWarning.
 
     Args:
         use_cache (bool): Whether to cache the results using lru_cache. Default: False
+
     """
     if use_cache:
         return _get_all_valid_transforms_cached()
     return _get_all_valid_transforms()
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _get_all_valid_transforms_cached():
     return _get_all_valid_transforms()
 
@@ -159,8 +158,9 @@ def get_dual_transforms(
         base_classes=(albumentations.DualTransform,),
         custom_arguments=custom_arguments,
         except_augmentations=except_augmentations,
-        exclude_base_classes=(albumentations.Transform3D,)
+        exclude_base_classes=(albumentations.Transform3D,),
     )
+
 
 def get_transforms(
     custom_arguments: dict[type[albumentations.BasicTransform], dict] | None = None,
@@ -173,6 +173,7 @@ def get_transforms(
         except_augmentations=except_augmentations,
     )
 
+
 def get_2d_transforms(
     custom_arguments: dict[type[albumentations.BasicTransform], dict] | None = None,
     except_augmentations: set[type[albumentations.BasicTransform]] | None = None,
@@ -182,8 +183,9 @@ def get_2d_transforms(
         base_classes=(albumentations.ImageOnlyTransform, albumentations.DualTransform),
         custom_arguments=custom_arguments,
         except_augmentations=except_augmentations,
-        exclude_base_classes=(albumentations.Transform3D,)  # Exclude Transform3D and its children
+        exclude_base_classes=(albumentations.Transform3D,),  # Exclude Transform3D and its children
     )
+
 
 def check_all_augs_exists(
     augmentations: list[list],

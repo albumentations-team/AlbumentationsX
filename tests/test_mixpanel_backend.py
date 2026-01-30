@@ -3,8 +3,6 @@
 import json
 from unittest.mock import Mock, patch
 
-import pytest
-
 from albumentations.core.analytics.backends.mixpanel import MixpanelBackend
 from albumentations.core.analytics.events import ComposeInitEvent
 
@@ -33,7 +31,7 @@ class TestMixpanelBackend:
         # Test invalid string
         assert backend._parse_timestamp("invalid") is None
 
-    @patch('urllib.request.urlopen')
+    @patch("urllib.request.urlopen")
     def test_send_event_success(self, mock_urlopen):
         """Test successful event sending."""
         # Mock successful response
@@ -70,7 +68,7 @@ class TestMixpanelBackend:
         assert request.get_header("Content-type") == "application/x-www-form-urlencoded"
 
         # Check data format
-        request_data = request.data.decode('utf-8')
+        request_data = request.data.decode("utf-8")
         assert request_data.startswith("data=")
 
     def test_event_data_format(self):
@@ -98,8 +96,9 @@ class TestMixpanelBackend:
             nonlocal sent_data
             # Decode the base64 data
             import base64
-            data_param = request.data.decode('utf-8').replace('data=', '')
-            sent_data = json.loads(base64.b64decode(data_param).decode('utf-8'))
+
+            data_param = request.data.decode("utf-8").replace("data=", "")
+            sent_data = json.loads(base64.b64decode(data_param).decode("utf-8"))
 
             mock_response = Mock()
             mock_response.read.return_value = b"1"
@@ -107,7 +106,7 @@ class TestMixpanelBackend:
             mock_response.__exit__ = Mock(return_value=None)
             return mock_response
 
-        with patch('urllib.request.urlopen', side_effect=mock_urlopen):
+        with patch("urllib.request.urlopen", side_effect=mock_urlopen):
             backend.send_event(event)
 
         # Check the data structure
@@ -138,7 +137,7 @@ class TestMixpanelBackend:
         assert props["$lib"] == "albumentationsx"
         assert props["$lib_version"] == "2.0.0"
 
-    @patch('urllib.request.urlopen')
+    @patch("urllib.request.urlopen")
     def test_send_event_failure_handled(self, mock_urlopen):
         """Test that failures are handled gracefully."""
         # Mock failed response with OSError (which is caught)
@@ -176,8 +175,9 @@ class TestMixpanelBackend:
         def mock_urlopen(request, timeout=None):
             nonlocal sent_data
             import base64
-            data_param = request.data.decode('utf-8').replace('data=', '')
-            sent_data = json.loads(base64.b64decode(data_param).decode('utf-8'))
+
+            data_param = request.data.decode("utf-8").replace("data=", "")
+            sent_data = json.loads(base64.b64decode(data_param).decode("utf-8"))
 
             mock_response = Mock()
             mock_response.read.return_value = b"1"
@@ -185,7 +185,7 @@ class TestMixpanelBackend:
             mock_response.__exit__ = Mock(return_value=None)
             return mock_response
 
-        with patch('urllib.request.urlopen', side_effect=mock_urlopen):
+        with patch("urllib.request.urlopen", side_effect=mock_urlopen):
             backend.send_event(event)
 
         # Check None values are not in properties

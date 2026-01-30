@@ -43,7 +43,7 @@ def test_torch_to_tensor_v2_augmentations_with_transpose_2d_mask(image):
 @pytest.mark.parametrize("image", UINT8_IMAGES)
 def test_torch_to_tensor_v2_augmentations_with_transpose_3d_mask(image):
     aug = A.ToTensorV2(transpose_mask=True)
-    mask_shape = image.shape[:2] + (4,)
+    mask_shape = (*image.shape[:2], 4)
     mask = np.random.randint(low=0, high=256, size=mask_shape, dtype=np.uint8)
     data = aug(image=image, mask=mask, force_apply=True)
     image_height, image_width, image_num_channels = image.shape
@@ -187,13 +187,17 @@ def test_color_jitter(brightness, contrast, saturation, hue):
 
 def test_post_data_check():
     img = np.empty([100, 100, 3], dtype=np.uint8)
-    bboxes = np.array([
-        [0, 0, 90, 90, 0],
-    ])
-    keypoints = np.array([
-        [90, 90],
-        [50, 50],
-    ])
+    bboxes = np.array(
+        [
+            [0, 0, 90, 90, 0],
+        ],
+    )
+    keypoints = np.array(
+        [
+            [90, 90],
+            [50, 50],
+        ],
+    )
 
     transform = A.Compose(
         [
@@ -286,7 +290,7 @@ def test_to_tensor_v2_images_masks():
         image=image,
         mask=mask,
         masks=np.stack([mask] * 2),  # Now passing stacked numpy array
-        images=np.stack([image] * 2)  # Stacked numpy array
+        images=np.stack([image] * 2),  # Stacked numpy array
     )
 
     # Check outputs are torch.Tensor

@@ -1,7 +1,7 @@
 import io
-from pathlib import Path
-from typing import Any, Dict, Set
 from io import StringIO
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -42,8 +42,7 @@ TEST_SEEDS = (137,)
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_transforms(
-        custom_arguments={
-        },
+        custom_arguments={},
         except_augmentations={
             A.Lambda,
         },
@@ -147,7 +146,7 @@ def test_augmentations_serialization_with_custom_parameters(
         (cls, param_set)
         for cls, params_list in check_all_augs_exists(AUGMENTATION_CLS_PARAMS, AUGMENTATION_CLS_EXCEPT)
         for param_set in (params_list if isinstance(params_list, list) else [params_list])
-    ]
+    ],
 )
 @pytest.mark.parametrize("p", [0.5])
 @pytest.mark.parametrize("seed", TEST_SEEDS)
@@ -221,8 +220,7 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_dual_transforms(
-        custom_arguments={
-        },
+        custom_arguments={},
         except_augmentations={
             A.Lambda,
             A.CoarseDropout,
@@ -242,9 +240,7 @@ def test_augmentations_for_bboxes_serialization(
     seed,
     albumentations_bboxes,
 ):
-    image = (
-        SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
-    )
+    image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
     aug = A.Compose([augmentation_cls(p=p, **params)], bbox_params={"format": "pascal_voc"})
     aug.set_random_seed(seed)
     data = {"image": image, "bboxes": albumentations_bboxes}
@@ -267,8 +263,7 @@ def test_augmentations_for_bboxes_serialization(
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_dual_transforms(
-        custom_arguments={
-        },
+        custom_arguments={},
         except_augmentations={
             A.Lambda,
             A.CropNonEmptyMaskIfExists,
@@ -283,11 +278,13 @@ def test_augmentations_for_bboxes_serialization(
 @pytest.mark.parametrize("p", [0.5])
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 def test_augmentations_for_keypoints_serialization(
-    augmentation_cls, params, p, seed, keypoints
+    augmentation_cls,
+    params,
+    p,
+    seed,
+    keypoints,
 ):
-    image = (
-        SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
-    )
+    image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
     aug = augmentation_cls(p=p, **params)
     aug.set_random_seed(seed)
     data = {"image": image, "keypoints": keypoints}
@@ -305,7 +302,8 @@ def test_augmentations_for_keypoints_serialization(
     deserialized_aug_data = deserialized_aug(**data)
     np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
     np.testing.assert_array_equal(
-        aug_data["keypoints"], deserialized_aug_data["keypoints"]
+        aug_data["keypoints"],
+        deserialized_aug_data["keypoints"],
     )
 
 
@@ -364,7 +362,9 @@ def test_transform_pipeline_serialization(seed, image):
                     [
                         A.Resize(1024, 1024),
                         A.RandomSizedCrop(
-                            min_max_height=(256, 1024), size=(512, 512), p=1
+                            min_max_height=(256, 1024),
+                            size=(512, 512),
+                            p=1,
                         ),
                         A.OneOf(
                             [
@@ -386,7 +386,9 @@ def test_transform_pipeline_serialization(seed, image):
                     [
                         A.Resize(1024, 1024),
                         A.RandomSizedCrop(
-                            min_max_height=(256, 1025), size=(256, 256), p=1
+                            min_max_height=(256, 1025),
+                            size=(256, 256),
+                            p=1,
                         ),
                         A.OneOf([A.HueSaturationValue(p=0.5), A.RGBShift(p=0.7)], p=1),
                     ],
@@ -428,7 +430,11 @@ def test_transform_pipeline_serialization(seed, image):
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 @pytest.mark.parametrize("image", IMAGES)
 def test_transform_pipeline_serialization_with_bboxes(
-    seed, image, bboxes, bbox_format, labels
+    seed,
+    image,
+    bboxes,
+    bbox_format,
+    labels,
 ):
     aug = A.Compose(
         [
@@ -480,7 +486,11 @@ def test_transform_pipeline_serialization_with_bboxes(
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 @pytest.mark.parametrize("image", IMAGES)
 def test_transform_pipeline_serialization_with_keypoints(
-    seed, image, keypoints, keypoint_format, labels
+    seed,
+    image,
+    keypoints,
+    keypoint_format,
+    labels,
 ):
     aug = A.Compose(
         [
@@ -519,12 +529,15 @@ def test_transform_pipeline_serialization_with_keypoints(
 
     aug_data = aug(image=image, keypoints=keypoints, labels=labels)
     deserialized_aug_data = deserialized_aug(
-        image=image, keypoints=keypoints, labels=labels
+        image=image,
+        keypoints=keypoints,
+        labels=labels,
     )
 
     np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
     np.testing.assert_array_equal(
-        aug_data["keypoints"], deserialized_aug_data["keypoints"]
+        aug_data["keypoints"],
+        deserialized_aug_data["keypoints"],
     )
 
 
@@ -538,11 +551,11 @@ def test_transform_pipeline_serialization_with_keypoints(
 )
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 def test_additional_targets_for_image_only_serialization(
-    augmentation_cls, params, seed
+    augmentation_cls,
+    params,
+    seed,
 ):
-    image = (
-        SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
-    )
+    image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
     aug = A.Compose(
         [augmentation_cls(p=1.0, **params)],
         additional_targets={"image2": "image"},
@@ -605,16 +618,23 @@ def test_lambda_serialization(image, albumentations_bboxes, keypoints, seed, p):
     deserialized_aug = A.from_dict(serialized_aug, nonserializable={"vflip": aug})
     deserialized_aug.set_random_seed(seed)
     aug_data = aug(
-        image=image, mask=mask, bboxes=albumentations_bboxes, keypoints=keypoints
+        image=image,
+        mask=mask,
+        bboxes=albumentations_bboxes,
+        keypoints=keypoints,
     )
     deserialized_aug_data = deserialized_aug(
-        image=image, mask=mask, bboxes=albumentations_bboxes, keypoints=keypoints
+        image=image,
+        mask=mask,
+        bboxes=albumentations_bboxes,
+        keypoints=keypoints,
     )
     np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
     np.testing.assert_array_equal(aug_data["mask"], deserialized_aug_data["mask"])
     np.testing.assert_array_equal(aug_data["bboxes"], deserialized_aug_data["bboxes"])
     np.testing.assert_array_equal(
-        aug_data["keypoints"], deserialized_aug_data["keypoints"]
+        aug_data["keypoints"],
+        deserialized_aug_data["keypoints"],
     )
 
 
@@ -627,7 +647,9 @@ def test_lambda_serialization(image, albumentations_bboxes, keypoints, seed, p):
 @pytest.mark.parametrize("data_format", ("yaml", "json"))
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 def test_serialization_conversion_without_totensor(
-    transform_file_name, data_format, seed
+    transform_file_name,
+    data_format,
+    seed,
 ):
     image = SQUARE_UINT8_IMAGE
 
@@ -655,13 +677,16 @@ def test_serialization_conversion_without_totensor(
             ignore_type_in_groups=[(tuple, list)],
         )
         == {}
-    ), f"The loaded transform is not equal to the original one {DeepDiff(transform.to_dict(), transform_from_buffer.to_dict(), ignore_type_in_groups=[(tuple, list)])}"
+    ), (
+        f"The loaded transform is not equal to the original one {DeepDiff(transform.to_dict(), transform_from_buffer.to_dict(), ignore_type_in_groups=[(tuple, list)])}"
+    )
 
     image1 = transform(image=image)["image"]
     image2 = transform_from_buffer(image=image)["image"]
 
     assert np.array_equal(
-        image1, image2
+        image1,
+        image2,
     ), f"The transformed images are not equal {(image1 - image2).mean()}"
 
 
@@ -674,7 +699,9 @@ def test_serialization_conversion_without_totensor(
 @pytest.mark.parametrize("data_format", ("yaml", "json"))
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 def test_serialization_conversion_with_totensor(
-    transform_file_name: str, data_format: str, seed: int
+    transform_file_name: str,
+    data_format: str,
+    seed: int,
 ) -> None:
     image = SQUARE_UINT8_IMAGE
 
@@ -703,7 +730,9 @@ def test_serialization_conversion_with_totensor(
             ignore_type_in_groups=[(tuple, list)],
         )
         == {}
-    ), f"The loaded transform is not equal to the original one {DeepDiff(transform.to_dict(), transform_from_buffer.to_dict(), ignore_type_in_groups=[(tuple, list)])}"
+    ), (
+        f"The loaded transform is not equal to the original one {DeepDiff(transform.to_dict(), transform_from_buffer.to_dict(), ignore_type_in_groups=[(tuple, list)])}"
+    )
 
     image1 = transform(image=image)["image"]
     image2 = transform_from_buffer(image=image)["image"]
@@ -719,10 +748,7 @@ def test_custom_transform_with_overlapping_name():
         pass
 
     assert SERIALIZABLE_REGISTRY["HorizontalFlip"] == A.HorizontalFlip
-    assert (
-        SERIALIZABLE_REGISTRY["tests.test_serialization.HorizontalFlip"]
-        == HorizontalFlip
-    )
+    assert SERIALIZABLE_REGISTRY["tests.test_serialization.HorizontalFlip"] == HorizontalFlip
 
 
 def test_serialization_v2_to_dict() -> None:
@@ -755,22 +781,22 @@ def test_shorten_class_name(class_fullname, expected_short_class_name):
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_transforms(
-        custom_arguments={
-        },
+        custom_arguments={},
         except_augmentations={
             A.Lambda,
         },
     ),
 )
 def test_augmentations_serialization(
-    augmentation_cls: A.BasicTransform, params: Dict[str, Any]
+    augmentation_cls: A.BasicTransform,
+    params: dict[str, Any],
 ) -> None:
     instance = augmentation_cls(**params)
 
     # Get expected args by examining the instance's class and its parents
     import inspect
 
-    def get_all_constructor_params(cls) -> Set[str]:
+    def get_all_constructor_params(cls) -> set[str]:
         fields = set()
         for parent_cls in cls.__mro__:
             if parent_cls.__init__ is not object.__init__:
@@ -784,7 +810,7 @@ def test_augmentations_serialization(
         return fields - {"self", "strict"}
 
     # Get fields from InitSchema hierarchy or constructor signatures
-    def get_all_init_schema_fields(model_cls: A.BasicTransform) -> Set[str]:
+    def get_all_init_schema_fields(model_cls: A.BasicTransform) -> set[str]:
         if not hasattr(model_cls, "InitSchema"):
             return get_all_constructor_params(model_cls)
 
@@ -814,9 +840,10 @@ def test_augmentations_serialization(
 
     # Check if the reported arguments are a subset of the expected arguments
     assert reported_args.issubset(
-        expected_args | {"p"}  # Always allow p
-    ), f"Mismatch in {augmentation_cls.__name__}: Serialized fields {reported_args} not a subset of expected fields {expected_args}"
-
+        expected_args | {"p"},  # Always allow p
+    ), (
+        f"Mismatch in {augmentation_cls.__name__}: Serialized fields {reported_args} not a subset of expected fields {expected_args}"
+    )
 
 
 def test_serialization_excludes_strict() -> None:

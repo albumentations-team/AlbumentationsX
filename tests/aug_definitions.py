@@ -3,7 +3,6 @@ import numpy as np
 
 import albumentations as A
 
-
 transforms2metadata_key = {
     A.FDA: "fda_metadata",
     A.HistogramMatching: "hm_metadata",
@@ -37,16 +36,18 @@ AUGMENTATION_CLS_PARAMS = [
     [A.RandomGamma, {"gamma_limit": (10, 90)}],
     [
         A.CoarseDropout,
-        [{
-            "num_holes_range": (2, 5),
-            "hole_height_range": (3, 4),
-            "hole_width_range": (4, 6),
-        },
-        {
-            "num_holes_range": (2, 5),
-            "hole_height_range": (0.1, 0.2),
-            "hole_width_range": (0.2, 0.3),
-        }]
+        [
+            {
+                "num_holes_range": (2, 5),
+                "hole_height_range": (3, 4),
+                "hole_width_range": (4, 6),
+            },
+            {
+                "num_holes_range": (2, 5),
+                "hole_height_range": (0.1, 0.2),
+                "hole_width_range": (0.2, 0.3),
+            },
+        ],
     ],
     [
         A.RandomSnow,
@@ -120,23 +121,25 @@ AUGMENTATION_CLS_PARAMS = [
     ],
     [
         A.ShiftScaleRotate,
-        [{
-            "shift_limit": (-0.2, 0.2),
-            "scale_limit": (-0.2, 0.2),
-            "rotate_limit": (-70, 70),
-            "interpolation": cv2.INTER_CUBIC,
-            "border_mode": cv2.BORDER_CONSTANT,
-            "fill": 10,
-        },
-        {
-            "shift_limit_x": (-0.3, 0.3),
-            "shift_limit_y": (-0.4, 0.4),
-            "scale_limit": (-0.2, 0.2),
-            "rotate_limit": (-70, 70),
-            "interpolation": cv2.INTER_CUBIC,
-            "border_mode": cv2.BORDER_CONSTANT,
-            "fill": 10,
-        }]
+        [
+            {
+                "shift_limit": (-0.2, 0.2),
+                "scale_limit": (-0.2, 0.2),
+                "rotate_limit": (-70, 70),
+                "interpolation": cv2.INTER_CUBIC,
+                "border_mode": cv2.BORDER_CONSTANT,
+                "fill": 10,
+            },
+            {
+                "shift_limit_x": (-0.3, 0.3),
+                "shift_limit_y": (-0.4, 0.4),
+                "scale_limit": (-0.2, 0.2),
+                "rotate_limit": (-70, 70),
+                "interpolation": cv2.INTER_CUBIC,
+                "border_mode": cv2.BORDER_CONSTANT,
+                "fill": 10,
+            },
+        ],
     ],
     [
         A.OpticalDistortion,
@@ -179,8 +182,7 @@ AUGMENTATION_CLS_PARAMS = [
     [A.RandomScale, {"scale_limit": 0.2, "interpolation": cv2.INTER_CUBIC}],
     [A.Resize, {"height": 64, "width": 64}],
     [A.SmallestMaxSize, {"max_size": 64, "interpolation": cv2.INTER_NEAREST}],
-    [A.LongestMaxSize, [{"max_size": 128, "interpolation": cv2.INTER_NEAREST},
-                        {"max_size_hw": (127, 126)}]],
+    [A.LongestMaxSize, [{"max_size": 128, "interpolation": cv2.INTER_NEAREST}, {"max_size_hw": (127, 126)}]],
     [A.RandomGridShuffle, {"grid": (4, 4)}],
     [A.Solarize, {"threshold_range": [0.5, 0.5]}],
     [A.Posterize, {"num_bits": (3, 5)}],
@@ -237,32 +239,33 @@ AUGMENTATION_CLS_PARAMS = [
     ],
     [
         A.Affine,
-        [{
-            "scale": 0.5,
-            "translate_percent": 0.1,
-            "translate_px": None,
-            "rotate": 33,
-            "shear": 21,
-            "interpolation": cv2.INTER_CUBIC,
-            "fill": 25,
-            "fill_mask": 0,
-            "border_mode": cv2.BORDER_CONSTANT,
-            "fit_output": False,
-        },
-        {
-            "scale": {"x": [0.3, 0.5], "y": [0.1, 0.2]},
-            "translate_percent": None,
-            "translate_px": {"x": [10, 20], "y": [5, 10]},
-            "rotate": [333, 360],
-            "shear": {"x": [31, 38], "y": [41, 48]},
-            "interpolation": 3,
-            "fill": [10, 20, 30],
-            "fill_mask": 1,
-            "border_mode": cv2.BORDER_REFLECT,
-            "fit_output": False,
-            "keep_ratio": False,  # Explicitly set to False since x and y scale ranges are different
-        }
-        ]
+        [
+            {
+                "scale": 0.5,
+                "translate_percent": 0.1,
+                "translate_px": None,
+                "rotate": 33,
+                "shear": 21,
+                "interpolation": cv2.INTER_CUBIC,
+                "fill": 25,
+                "fill_mask": 0,
+                "border_mode": cv2.BORDER_CONSTANT,
+                "fit_output": False,
+            },
+            {
+                "scale": {"x": [0.3, 0.5], "y": [0.1, 0.2]},
+                "translate_percent": None,
+                "translate_px": {"x": [10, 20], "y": [5, 10]},
+                "rotate": [333, 360],
+                "shear": {"x": [31, 38], "y": [41, 48]},
+                "interpolation": 3,
+                "fill": [10, 20, 30],
+                "fill_mask": 1,
+                "border_mode": cv2.BORDER_REFLECT,
+                "fit_output": False,
+                "keep_ratio": False,  # Explicitly set to False since x and y scale ranges are different
+            },
+        ],
     ],
     [
         A.PiecewiseAffine,
@@ -277,10 +280,16 @@ AUGMENTATION_CLS_PARAMS = [
     ],
     [A.ChannelDropout, dict(channel_drop_range=(1, 2), fill=1)],
     [A.ChannelShuffle, {}],
-    [A.Downscale, dict(scale_range=[0.5, 0.75], interpolation_pair={
-        "downscale": cv2.INTER_LINEAR,
-        "upscale": cv2.INTER_LINEAR,
-    })],
+    [
+        A.Downscale,
+        dict(
+            scale_range=[0.5, 0.75],
+            interpolation_pair={
+                "downscale": cv2.INTER_LINEAR,
+                "upscale": cv2.INTER_LINEAR,
+            },
+        ),
+    ],
     [A.FromFloat, dict(dtype="uint8", max_value=1)],
     [A.HorizontalFlip, {}],
     [A.ISONoise, dict(color_shift=(0.2, 0.3), intensity=(0.7, 0.9))],
@@ -301,7 +310,7 @@ AUGMENTATION_CLS_PARAMS = [
     [A.RingingOvershoot, dict(blur_limit=(7, 15), cutoff=(np.pi / 5, np.pi / 2))],
     [
         A.UnsharpMask,
-               {
+        {
             "blur_limit": (3, 7),  # Allow for stronger blur
             "sigma_limit": (0.5, 2.0),  # Increase sigma range
             "alpha": (0.5, 1.0),  # Allow for stronger sharpening
@@ -309,15 +318,18 @@ AUGMENTATION_CLS_PARAMS = [
         },
     ],
     [A.AdvancedBlur, dict(blur_limit=(3, 5), rotate_limit=(60, 90))],
-    [A.PixelDropout, [{"dropout_prob": 0.1, "per_channel": True, "drop_value": None},
-                         {
-                            "dropout_prob": 0.1,
-                            "per_channel": False,
-                            "drop_value": 2,
-                            "mask_drop_value": 15,
-        },
-                      ],
-     ],
+    [
+        A.PixelDropout,
+        [
+            {"dropout_prob": 0.1, "per_channel": True, "drop_value": None},
+            {
+                "dropout_prob": 0.1,
+                "per_channel": False,
+                "drop_value": 2,
+                "mask_drop_value": 15,
+            },
+        ],
+    ],
     [
         A.RandomCropFromBorders,
         dict(crop_left=0.2, crop_right=0.3, crop_top=0.05, crop_bottom=0.5),
@@ -326,22 +338,22 @@ AUGMENTATION_CLS_PARAMS = [
         A.Spatter,
         [
             dict(
-            mode="rain",
-            mean=(0.65, 0.65),
-            std=(0.3, 0.3),
-            gauss_sigma=(2, 2),
-            cutout_threshold=(0.68, 0.68),
-            intensity=(0.6, 0.6),
-        ),
-        dict(
-            mode="mud",
-            mean=(0.65, 0.65),
-            std=(0.3, 0.3),
-            gauss_sigma=(2, 2),
-            cutout_threshold=(0.68, 0.68),
-            intensity=(0.6, 0.6),
-        )
-    ],
+                mode="rain",
+                mean=(0.65, 0.65),
+                std=(0.3, 0.3),
+                gauss_sigma=(2, 2),
+                cutout_threshold=(0.68, 0.68),
+                intensity=(0.6, 0.6),
+            ),
+            dict(
+                mode="mud",
+                mean=(0.65, 0.65),
+                std=(0.3, 0.3),
+                gauss_sigma=(2, 2),
+                cutout_threshold=(0.68, 0.68),
+                intensity=(0.6, 0.6),
+            ),
+        ],
     ],
     [
         A.ChromaticAberration,
@@ -429,30 +441,85 @@ AUGMENTATION_CLS_PARAMS = [
     [A.PlasmaShadow, {}],
     [A.Illumination, {}],
     [A.ThinPlateSpline, {}],
-    [A.AutoContrast, [
-        {"cutoff": 0, "ignore": None, "method": "cdf"},
-        {"cutoff": 0, "ignore": None, "method": "pil"},
-    ]],
-    [A.PadIfNeeded3D, {"min_zyx": (300, 200, 400), "pad_divisor_zyx": (10, 10, 10), "position": "center", "fill": 10, "fill_mask": 20}],
+    [
+        A.AutoContrast,
+        [
+            {"cutoff": 0, "ignore": None, "method": "cdf"},
+            {"cutoff": 0, "ignore": None, "method": "pil"},
+        ],
+    ],
+    [
+        A.PadIfNeeded3D,
+        {
+            "min_zyx": (300, 200, 400),
+            "pad_divisor_zyx": (10, 10, 10),
+            "position": "center",
+            "fill": 10,
+            "fill_mask": 20,
+        },
+    ],
     [A.Pad3D, {"padding": 10}],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
-    [A.CoarseDropout3D, {"num_holes_range": (1, 3), "hole_depth_range": (0.1, 0.2), "hole_height_range": (0.1, 0.2), "hole_width_range": (0.1, 0.2), "fill": 0, "fill_mask": None}],
+    [
+        A.CoarseDropout3D,
+        {
+            "num_holes_range": (1, 3),
+            "hole_depth_range": (0.1, 0.2),
+            "hole_height_range": (0.1, 0.2),
+            "hole_width_range": (0.1, 0.2),
+            "fill": 0,
+            "fill_mask": None,
+        },
+    ],
     [A.CubicSymmetry, {}],
     [A.AtLeastOneBBoxRandomCrop, {"height": 80, "width": 80, "erosion_factor": 0.2}],
-    [A.ConstrainedCoarseDropout, {"num_holes_range": (1, 3), "hole_height_range": (0.1, 0.2), "hole_width_range": (0.1, 0.2), "fill": 0, "fill_mask": 0, "mask_indices": [1]}],
+    [
+        A.ConstrainedCoarseDropout,
+        {
+            "num_holes_range": (1, 3),
+            "hole_height_range": (0.1, 0.2),
+            "hole_width_range": (0.1, 0.2),
+            "fill": 0,
+            "fill_mask": 0,
+            "mask_indices": [1],
+        },
+    ],
     [A.RandomSizedBBoxSafeCrop, {"height": 80, "width": 80, "erosion_rate": 0.2}],
     [A.BBoxSafeRandomCrop, {"erosion_rate": 0.2}],
-    [A.HEStain, [
-        {"method": "vahadane", "intensity_scale_range": (0.5, 1.5), "intensity_shift_range": (-0.1, 0.1), "augment_background": False},
-        {"method": "macenko", "intensity_scale_range": (0.5, 1.5), "intensity_shift_range": (-0.1, 0.1), "augment_background": True},
-        {"method": "random_preset",
-         "intensity_scale_range": (0.5, 1.5), "intensity_shift_range": (-0.1, 0.1), "augment_background": True},
-    ]],
+    [
+        A.HEStain,
+        [
+            {
+                "method": "vahadane",
+                "intensity_scale_range": (0.5, 1.5),
+                "intensity_shift_range": (-0.1, 0.1),
+                "augment_background": False,
+            },
+            {
+                "method": "macenko",
+                "intensity_scale_range": (0.5, 1.5),
+                "intensity_shift_range": (-0.1, 0.1),
+                "augment_background": True,
+            },
+            {
+                "method": "random_preset",
+                "intensity_scale_range": (0.5, 1.5),
+                "intensity_shift_range": (-0.1, 0.1),
+                "augment_background": True,
+            },
+        ],
+    ],
     [A.FDA, {"beta_limit": (0.1, 0.3), "metadata_key": "fda_metadata"}],
     [A.HistogramMatching, {"blend_ratio": (0.5, 1.0), "metadata_key": "hm_metadata"}],
-    [A.PixelDistributionAdaptation, {"blend_ratio": (0.25, 1.0), "transform_type": "pca", "metadata_key": "pda_metadata"}],
-    [A.Mosaic, {"grid_yx": (2, 2), "target_size": (256, 256), "cell_shape": (128, 128), "metadata_key": "mosaic_metadata"}],
+    [
+        A.PixelDistributionAdaptation,
+        {"blend_ratio": (0.25, 1.0), "transform_type": "pca", "metadata_key": "pda_metadata"},
+    ],
+    [
+        A.Mosaic,
+        {"grid_yx": (2, 2), "target_size": (256, 256), "cell_shape": (128, 128), "metadata_key": "mosaic_metadata"},
+    ],
     [A.Dithering, {"method": "error_diffusion", "n_colors": 2}],
     [A.GridShuffle3D, {"grid_zyx": (2, 2, 2)}],
 ]

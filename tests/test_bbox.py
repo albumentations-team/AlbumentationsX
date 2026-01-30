@@ -2236,6 +2236,38 @@ def test_bbox_processor_clip_and_filter():
 
 
 @pytest.mark.parametrize(
+    "bbox_type,clip_after_transform,bboxes,expected_count",
+    [
+        # OBB: invalid box should be filtered
+        ("obb", "geometry", [[0.1, 0.1, 0.05, 0.2, 0.0], [0.3, 0.3, 0.5, 0.5, 45.0]], 1),
+        # OBB with clip_after_transform=None: should not clamp during filtering
+        ("obb", None, [[0.3, 0.3, 0.5, 0.5, 45.0]], 1),
+        # HBB with clip_after_transform=None: should not clamp during filtering
+        ("hbb", None, [[0.1, 0.1, 0.05, 0.2], [0.3, 0.3, 0.5, 0.5]], 1),
+    ],
+)
+def test_bbox_processor_filter_invalid_respects_params(bbox_type, clip_after_transform, bboxes, expected_count):
+    """Test that filter_invalid_bboxes in check_and_convert respects bbox_type and clip_after_transform."""
+    params = BboxParams(
+        format="albumentations",
+        bbox_type=bbox_type,
+        clip_after_transform=clip_after_transform,
+        filter_invalid_bboxes=True,
+    )
+    processor = BboxProcessor(params)
+
+    data = {
+        "image": np.zeros((100, 100, 3)),
+        "bboxes": np.array(bboxes, dtype=np.float32),
+    }
+
+    # This calls check_and_convert which should pass bbox_type and clip_after_transform to filter_bboxes
+    processor.preprocess(data)
+
+    assert len(data["bboxes"]) == expected_count
+
+
+@pytest.mark.parametrize(
     ["bboxes", "classes", "scores", "format", "expected_bboxes", "expected_classes", "expected_scores", "clip"],
     [
         # YOLO format tests
@@ -2748,3 +2780,165 @@ def test_resize_boxes_to_visible_area_with_empty_input():
     # Assertions
     assert len(updated_boxes) == 0, "Should return empty array"
     assert updated_boxes.shape == (0, 6), "Should preserve the shape with correct number of columns"
+
+
+def test_clip_bboxes_geometry_hbb():
+    """Test that clip_bboxes_geometry handles HBB correctly."""
+    from albumentations.core.bbox_utils import clip_bboxes_geometry
+
+    # Test HBB with out-of-bounds coordinates
+    bboxes = np.array(
+        [
+            [0.2, 0.3, 1.2, 0.8],  # x_max out of bounds
+            [-0.1, 0.2, 0.5, 0.6],  # x_min out of bounds
+            [0.3, -0.1, 0.7, 0.5],  # y_min out of bounds
+            [0.4, 0.5, 0.8, 1.3],  # y_max out of bounds
+            [0.1, 0.1, 0.9, 0.9],  # completely inside, should not change
+        ],
+    )
+    shape = (100, 100)
+    bbox_type = "hbb"
+
+    result = clip_bboxes_geometry(bboxes, shape, bbox_type)
+
+    expected = np.array(
+        [
+            [0.2, 0.3, 1.0, 0.8],
+            [0.0, 0.2, 0.5, 0.6],
+            [0.3, 0.0, 0.7, 0.5],
+            [0.4, 0.5, 0.8, 1.0],
+            [0.1, 0.1, 0.9, 0.9],
+        ],
+    )
+
+    np.testing.assert_array_almost_equal(result, expected, decimal=5)
+
+
+def test_clip_bboxes_geometry_obb_no_clipping():
+    """Test that clip_bboxes_geometry handles OBB that doesn't need clipping."""
+    from albumentations.core.bbox_utils import clip_bboxes_geometry
+
+    # OBB completely inside bounds
+    bboxes = np.array(
+        [
+            [0.3, 0.3, 0.7, 0.7, 45.0],
+            [0.2, 0.4, 0.5, 0.6, 30.0],
+        ],
+    )
+    shape = (100, 100)
+    bbox_type = "obb"
+
+    result = clip_bboxes_geometry(bboxes, shape, bbox_type)
+
+    # Should return original bboxes unchanged
+    np.testing.assert_array_almost_equal(result, bboxes, decimal=5)
+
+
+def test_clip_bboxes_geometry_obb_with_clipping():
+    """Test that clip_bboxes_geometry handles OBB that needs clipping."""
+    from albumentations.core.bbox_utils import clip_bboxes_geometry
+
+    # OBB with corners outside bounds
+    bboxes = np.array(
+        [
+            [0.5, 0.5, 1.2, 0.8, 45.0],  # Some corners outside
+            [0.3, 0.3, 0.7, 0.7, 30.0],  # Inside, should not be modified
+            [-0.1, 0.4, 0.5, 0.6, 60.0],  # Some corners outside
+        ],
+    )
+    shape = (100, 100)
+    bbox_type = "obb"
+
+    result = clip_bboxes_geometry(bboxes, shape, bbox_type)
+
+    # First bbox should be clipped and angle reset to 0
+    assert result[0, 4] == 0.0, "Clipped OBB should have angle=0"
+    assert 0.0 <= result[0, 0] <= 1.0, "x_min should be in bounds"
+    assert 0.0 <= result[0, 1] <= 1.0, "y_min should be in bounds"
+    assert 0.0 <= result[0, 2] <= 1.0, "x_max should be in bounds"
+    assert 0.0 <= result[0, 3] <= 1.0, "y_max should be in bounds"
+
+    # Second bbox should remain unchanged
+    np.testing.assert_array_almost_equal(result[1], bboxes[1], decimal=5)
+
+    # Third bbox should be clipped and angle reset to 0
+    assert result[2, 4] == 0.0, "Clipped OBB should have angle=0"
+    assert 0.0 <= result[2, 0] <= 1.0, "x_min should be in bounds"
+    assert 0.0 <= result[2, 1] <= 1.0, "y_min should be in bounds"
+    assert 0.0 <= result[2, 2] <= 1.0, "x_max should be in bounds"
+    assert 0.0 <= result[2, 3] <= 1.0, "y_max should be in bounds"
+
+
+def test_clip_bboxes_geometry_obb_vectorization():
+    """Test that clip_bboxes_geometry properly vectorizes OBB clipping."""
+    from albumentations.core.bbox_utils import clip_bboxes_geometry
+
+    # Multiple OBBs, some need clipping, some don't
+    bboxes = np.array(
+        [
+            [0.5, 0.5, 1.5, 1.5, 45.0],  # Way outside
+            [0.3, 0.3, 0.7, 0.7, 30.0],  # Inside
+            [-0.5, 0.4, 0.5, 0.6, 60.0],  # Way outside on left
+            [0.1, 0.1, 0.9, 0.9, 0.0],  # Inside
+            [0.5, 0.5, 1.4, 1.2, 90.0],  # Partially outside (wider to ensure clipping)
+        ],
+    )
+    shape = (100, 100)
+    bbox_type = "obb"
+
+    result = clip_bboxes_geometry(bboxes, shape, bbox_type)
+
+    # Check that all results are valid
+    assert result.shape == bboxes.shape, "Shape should be preserved"
+
+    # Check clipped boxes have angle=0
+    assert result[0, 4] == 0.0
+    assert result[2, 4] == 0.0
+    assert result[4, 4] == 0.0
+
+    # Check non-clipped boxes remain unchanged
+    np.testing.assert_array_almost_equal(result[1], bboxes[1], decimal=5)
+    np.testing.assert_array_almost_equal(result[3], bboxes[3], decimal=5)
+
+    # All coordinates should be in [0, 1]
+    assert np.all(result[:, :4] >= 0.0) and np.all(result[:, :4] <= 1.0)
+
+
+def test_clip_bboxes_geometry_obb_with_extra_columns():
+    """Test that clip_bboxes_geometry preserves extra columns for OBB."""
+    from albumentations.core.bbox_utils import clip_bboxes_geometry
+
+    # OBB with extra columns (labels, scores, etc.)
+    bboxes = np.array(
+        [
+            [0.5, 0.5, 1.2, 0.8, 45.0, 1.0, 2.0],  # Needs clipping + extra columns
+            [0.3, 0.3, 0.7, 0.7, 30.0, 3.0, 4.0],  # Inside + extra columns
+        ],
+    )
+    shape = (100, 100)
+    bbox_type = "obb"
+
+    result = clip_bboxes_geometry(bboxes, shape, bbox_type)
+
+    # Check shape preserved
+    assert result.shape == bboxes.shape
+
+    # Check extra columns preserved
+    assert result[0, 5] == 1.0
+    assert result[0, 6] == 2.0
+    assert result[1, 5] == 3.0
+    assert result[1, 6] == 4.0
+
+
+def test_clip_bboxes_geometry_obb_empty():
+    """Test that clip_bboxes_geometry handles empty OBB array."""
+    from albumentations.core.bbox_utils import clip_bboxes_geometry
+
+    bboxes = np.zeros((0, 5), dtype=np.float32)
+    shape = (100, 100)
+    bbox_type = "obb"
+
+    result = clip_bboxes_geometry(bboxes, shape, bbox_type)
+
+    assert result.shape == (0, 5)
+    assert result.dtype == np.float32

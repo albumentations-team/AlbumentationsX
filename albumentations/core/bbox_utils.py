@@ -609,12 +609,21 @@ def polygons_to_obb(
     extra_fields: np.ndarray | None = None,
     angle_range: tuple[float, float] = DEFAULT_BBOX_ANGLE_RANGE,
 ) -> np.ndarray:
-    """Fit oriented bbox from corner polygons (normalized coords).
+    """Fit oriented bbox from corner polygons.
+
+    The function is coordinate-system agnostic - it preserves the input coordinate
+    system. By convention, it's typically used with normalized coordinates [0, 1],
+    but it works with any coordinate system (e.g., pixel coordinates for improved
+    numerical accuracy with cv2.minAreaRect).
 
     Args:
-        polygons: array of shape (N, 4, 2) with corners.
+        polygons: array of shape (N, 4, 2) with corners in any coordinate system.
         extra_fields: optional array (N, M) to append after bbox coords + angle.
         angle_range: canonical range to wrap final angle into.
+
+    Returns:
+        Array of OBB bounding boxes in the same coordinate system as input polygons.
+        Format: [x_min, y_min, x_max, y_max, angle, *extra_fields].
 
     """
     if polygons.size == 0:

@@ -96,7 +96,7 @@ All bounding boxes are converted to **normalized Albumentations format** interna
 from albumentations import BboxParams
 
 bbox_params = BboxParams(
-    format='pascal_voc',           # Input format
+    bbox_format='pascal_voc',      # Input format
     bbox_type='hbb',               # 'hbb' or 'obb'
     label_fields=['class_labels'], # Names of label arrays
 )
@@ -119,7 +119,7 @@ Type of bounding box:
 #### `label_fields: list[str] | None = None`
 Names of additional arrays that correspond to bboxes (e.g., class labels, track IDs):
 ```python
-BboxParams(format='yolo', label_fields=['class_ids', 'track_ids'])
+BboxParams(bbox_format='yolo', label_fields=['class_ids', 'track_ids'])
 
 # Usage:
 transform(
@@ -187,14 +187,14 @@ Controls how bboxes are clipped **after each transform** in the pipeline:
 ```python
 # Strict: clip input errors AND after each transform
 BboxParams(
-    format='yolo',
+    bbox_format='yolo',
     clip_bboxes_on_input=True,     # Fix input errors once
     clip_after_transform='geometry' # Clip after each transform
 )
 
 # Lenient: allow temporary excursions
 BboxParams(
-    format='albumentations',
+    bbox_format='albumentations',
     clip_bboxes_on_input=True,    # Fix input errors once
     clip_after_transform=None      # Allow boxes outside [0,1] during pipeline
 )
@@ -332,7 +332,7 @@ Understanding the difference between `clip_bboxes_on_input` and `clip_after_tran
 
 ```python
 # Example: Fix bad YOLO coordinates
-BboxParams(format='yolo', clip_bboxes_on_input=True)
+BboxParams(bbox_format='yolo', clip_bboxes_on_input=True)
 # Input:  [0.5, 0.5, 0.4, 0.4, -0.000001]  # Tiny negative value
 # After:  [0.5, 0.5, 0.4, 0.4, 0.0]        # Clipped to [0, 1]
 ```
@@ -479,12 +479,12 @@ For OBB, transforms only affect the bounding rectangle coordinates:
 ```python
 # ❌ BAD: Assuming format without validation
 bboxes = load_bboxes_from_file()  # Unknown format!
-transform = A.Compose([...], bbox_params=A.BboxParams(format='pascal_voc'))
+transform = A.Compose([...], bbox_params=A.BboxParams(bbox_format='pascal_voc'))
 
 # ✅ GOOD: Explicit format handling
 bboxes = load_bboxes_from_file()
 if bbox_format == 'yolo':
-    bbox_params = A.BboxParams(format='yolo', bbox_type='obb')
+    bbox_params = A.BboxParams(bbox_format='yolo', bbox_type='obb')
 ```
 
 ### 2. Use `clip_bboxes_on_input=True` for External Data
@@ -492,7 +492,7 @@ if bbox_format == 'yolo':
 ```python
 # ✅ GOOD: Clip malformed external data
 bbox_params = A.BboxParams(
-    format='yolo',
+    bbox_format='yolo',
     clip_bboxes_on_input=True,  # Fix rounding errors from external sources
 )
 ```
@@ -511,11 +511,11 @@ bbox_params = A.BboxParams(clip_after_transform=None)
 
 ```python
 # ❌ BAD: No filtering (tiny/invalid boxes may remain)
-bbox_params = A.BboxParams(format='pascal_voc')
+bbox_params = A.BboxParams(bbox_format='pascal_voc')
 
 # ✅ GOOD: Filter out problematic boxes
 bbox_params = A.BboxParams(
-    format='pascal_voc',
+    bbox_format='pascal_voc',
     min_area=100.0,        # Remove tiny boxes
     min_visibility=0.3,    # Remove heavily cropped boxes
     min_width=5.0,         # Remove thin boxes
@@ -533,7 +533,7 @@ if bboxes.shape[1] >= 5:
 
 # ✅ GOOD: Explicit configuration
 bbox_params = A.BboxParams(
-    format='albumentations',
+    bbox_format='albumentations',
     bbox_type='obb',  # User knows their data format
     label_fields=['class_ids', 'track_ids'],  # May add columns
 )
@@ -546,7 +546,7 @@ bbox_params = A.BboxParams(
 transform = A.Compose([
     A.RandomCrop(width=512, height=512),
 ], bbox_params=A.BboxParams(
-    format='pascal_voc',
+    bbox_format='pascal_voc',
     label_fields=['class_labels', 'track_ids']
 ))
 
@@ -605,21 +605,21 @@ for bbox in test_cases:
 ```python
 # For HBB with many boxes and strict bounds:
 bbox_params = A.BboxParams(
-    format='yolo',
+    bbox_format='yolo',
     bbox_type='hbb',
     clip_after_transform='geometry',  # Fast for HBB
 )
 
 # For OBB with accurate geometry (slower):
 bbox_params = A.BboxParams(
-    format='albumentations',
+    bbox_format='albumentations',
     bbox_type='obb',
     clip_after_transform='geometry',  # Refits boxes, may change angle
 )
 
 # For maximum performance (careful!):
 bbox_params = A.BboxParams(
-    format='albumentations',
+    bbox_format='albumentations',
     clip_after_transform=None,  # No clipping after transforms
 )
 ```

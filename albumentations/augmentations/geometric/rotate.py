@@ -385,7 +385,6 @@ class Rotate(DualTransform):
                 bboxes_out,
                 (x_min, y_min, x_max, y_max),
                 image_shape,
-                bbox_type,
             )
         return bboxes_out
 

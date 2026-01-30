@@ -11,6 +11,7 @@
 >
 > **Design Documents:**
 >
+> - `docs/design/bounding_boxes.md` - **Complete bounding box processing guide (HBB/OBB, clipping, clamping, filtering)**
 > - `docs/design/dithering.md` - Dithering transform design
 > - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 > - `docs/design/mosaic.md` - Mosaic transform technical specification
@@ -31,6 +32,14 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - Use `ImageType` for image/mask/volume parameters and return types (not `np.ndarray`)
 - Use `np.ndarray` only for bboxes and keypoints
 - `ImageType` = `ImageUInt8 | ImageFloat32` (from `albumentations.core.type_definitions`)
+
+### Bbox Type Detection
+
+- **NEVER** auto-detect bbox type (HBB vs OBB) from the number of columns
+- Reason: Users can attach additional label fields (e.g., `[x_min, y_min, x_max, y_max, class_id, track_id]` for HBB)
+- Bbox type information comes from `BboxParams.bbox_type` in the transform's processors
+- Functional layer functions should be bbox-type agnostic when possible (simple coordinate shifts work for both)
+- **For complete details**, see `docs/design/bounding_boxes.md`
 
 ### Transform Standards
 

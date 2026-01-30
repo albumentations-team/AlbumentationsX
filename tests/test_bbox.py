@@ -623,7 +623,7 @@ def test_obb_rot90_updates_corners():
     ],
 )
 def test_bbox_processor_roundtrip_with_angle_and_labels(bbox_format, bboxes, labels, expected_angle):
-    params = BboxParams(format=bbox_format, label_fields=["labels"], bbox_type="obb")
+    params = BboxParams(format=bbox_format, label_fields=["labels"], bbox_type="obb", clip_after_transform=None)
     processor = BboxProcessor(params)
 
     data = {
@@ -1551,12 +1551,12 @@ def test_bboxes_hflip_extreme_values():
     ],
 )
 def test_crop_bboxes_by_coords(bboxes, crop_coords, image_shape, expected_bboxes):
-    result = crop_bboxes_by_coords(bboxes, crop_coords, image_shape, bbox_type="hbb")
+    result = crop_bboxes_by_coords(bboxes, crop_coords, image_shape)
     np.testing.assert_array_almost_equal(result, expected_bboxes, decimal=6)
 
 
 def test_crop_bboxes_by_coords_empty_input():
-    result = crop_bboxes_by_coords(np.array([]), (50, 50, 150, 150), (200, 200), bbox_type="hbb")
+    result = crop_bboxes_by_coords(np.array([]), (50, 50, 150, 150), (200, 200))
     assert result.size == 0
 
 

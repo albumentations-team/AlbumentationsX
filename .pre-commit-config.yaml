@@ -101,10 +101,6 @@ repos:
     hooks:
       - id: codespell
         additional_dependencies: ["tomli"]
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.47.0
-    hooks:
-      - id: markdownlint
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
     hooks:

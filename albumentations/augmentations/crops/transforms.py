@@ -17,7 +17,7 @@ from pydantic import AfterValidator, Field, model_validator
 from typing_extensions import Self
 
 from albumentations.augmentations.geometric import functional as fgeometric
-from albumentations.core.bbox_utils import BboxParams, denormalize_bboxes, normalize_bboxes, union_of_bboxes
+from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes, union_of_bboxes
 from albumentations.core.pydantic import (
     ZeroOneRangeType,
     check_range_bounds,
@@ -157,13 +157,7 @@ class BaseCrop(DualTransform):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> np.ndarray:
-        # Get bbox_type from processor if available (when used via Compose)
-        # Default to "hbb" for backward compatibility when called directly
-        bbox_processor = self.processors.get("bboxes")
-        bbox_type: Literal["obb", "hbb"] = "hbb"
-        if bbox_processor is not None and isinstance(bbox_processor.params, BboxParams):
-            bbox_type = bbox_processor.params.bbox_type
-        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"][:2], bbox_type)
+        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"][:2])
 
     def apply_to_keypoints(
         self,
@@ -1628,13 +1622,7 @@ class _BaseRandomSizedCrop(DualTransform):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> np.ndarray:
-        # Get bbox_type from processor if available (when used via Compose)
-        # Default to "hbb" for backward compatibility when called directly
-        bbox_processor = self.processors.get("bboxes")
-        bbox_type: Literal["obb", "hbb"] = "hbb"
-        if bbox_processor is not None and isinstance(bbox_processor.params, BboxParams):
-            bbox_type = bbox_processor.params.bbox_type
-        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"], bbox_type)
+        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"])
 
     def apply_to_keypoints(
         self,
@@ -2866,13 +2854,7 @@ class CropAndPad(DualTransform):
         result_shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        # Get bbox_type from processor if available (when used via Compose)
-        # Default to "hbb" for backward compatibility when called directly
-        bbox_processor = self.processors.get("bboxes")
-        bbox_type: Literal["obb", "hbb"] = "hbb"
-        if bbox_processor is not None and isinstance(bbox_processor.params, BboxParams):
-            bbox_type = bbox_processor.params.bbox_type
-        return fcrops.crop_and_pad_bboxes(bboxes, crop_params, pad_params, params["shape"][:2], result_shape, bbox_type)
+        return fcrops.crop_and_pad_bboxes(bboxes, crop_params, pad_params, params["shape"][:2], result_shape)
 
     def apply_to_keypoints(
         self,

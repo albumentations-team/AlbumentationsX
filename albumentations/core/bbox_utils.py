@@ -43,12 +43,14 @@ class BboxParams(Params):
     """Parameters for bounding box transforms.
 
     Args:
-        format (Literal["coco", "pascal_voc", "albumentations", "yolo"]): Format of bounding boxes.
+        bbox_format (Literal["coco", "pascal_voc", "albumentations", "yolo"]): Format of bounding boxes.
             Should be one of:
             - 'coco': [x_min, y_min, width, height], e.g. [97, 12, 150, 200].
             - 'pascal_voc': [x_min, y_min, x_max, y_max], e.g. [97, 12, 247, 212].
             - 'albumentations': like pascal_voc but normalized in [0, 1] range, e.g. [0.2, 0.3, 0.4, 0.5].
             - 'yolo': [x_center, y_center, width, height] normalized in [0, 1] range, e.g. [0.1, 0.2, 0.3, 0.4].
+
+            **Deprecated**: `format` parameter - use `bbox_format` instead to avoid shadowing built-in.
 
         bbox_type (Literal["hbb", "obb"]): Bounding box type.
             - 'hbb': axis-aligned boxes with 4 coords (default).
@@ -71,31 +73,50 @@ class BboxParams(Params):
 
         check_each_transform (bool): If True, performs checks for each dual transform. Default: True.
 
-        clip (bool): If True, clips bounding boxes to image boundaries before applying any transform. Default: False.
+        clip_bboxes_on_input (bool): If True, clips bounding boxes to image boundaries once at pipeline start
+            (during preprocessing). Use this to fix invalid input data (e.g., YOLO coordinates like -1e-6).
+            Default: False.
+
+            **Deprecated**: `clip` parameter - use `clip_bboxes_on_input` instead.
 
         filter_invalid_bboxes (bool): If True, filters out invalid bounding boxes (e.g., boxes with negative dimensions
-            or boxes where x_max < x_min or y_max < y_min) at the beginning of the pipeline. If clip=True, filtering
-            is applied after clipping. Default: False.
+            or boxes where x_max < x_min or y_max < y_min) at the beginning of the pipeline. If
+            clip_bboxes_on_input=True, filtering is applied after clipping. Default: False.
 
         max_accept_ratio (float | None): Maximum allowed aspect ratio for bounding boxes. The aspect ratio is calculated
             as max(width/height, height/width), so it's always >= 1. Boxes with aspect ratio greater than this value
             will be filtered out. For example, if max_accept_ratio=3.0, boxes with width:height or height:width ratios
             greater than 3:1 will be removed. Set to None to disable aspect ratio filtering. Default: None.
 
+        clip_after_transform (Literal[None, "geometry"]): Controls how bounding boxes are clipped AFTER EACH TRANSFORM
+            in the augmentation pipeline. This is different from `clip_bboxes_on_input` which only runs once before
+            the pipeline. Options:
+            - None: No clipping after transforms. Boxes may temporarily go outside [0, 1] bounds.
+                   Use for lenient pipelines where boxes may go outside temporarily (e.g., crop then pad).
+            - "geometry": Clip based on actual geometry (default).
+                         For HBB: clips (x_min, y_min, x_max, y_max) to [0, 1]. Fast, current behavior.
+                         For OBB: clips all 4 rotated corners and refits box with cv2.minAreaRect. Ensures
+                                all corners are inside bounds. May change angle/dimensions.
+            Default: "geometry".
 
     Note:
         The processing order for bounding boxes is:
         1. Convert to albumentations format (normalized pascal_voc)
-        2. Clip boxes to image boundaries (if clip=True)
+        2. Clip boxes to image boundaries (if clip_bboxes_on_input=True) - PRE-PIPELINE, fixes invalid input
         3. Filter invalid boxes (if filter_invalid_bboxes=True)
         4. Apply transformations
-        5. Filter boxes based on min_area, min_visibility, min_width, min_height
+        5. After each transform: clip (if clip_after_transform is set) and filter boxes based on
+           min_area, min_visibility, min_width, min_height
         6. Convert back to the original format
+
+        **clip_bboxes_on_input vs clip_after_transform:**
+        - `clip_bboxes_on_input=True`: Happens ONCE before pipeline (fixes YOLO coords like -1e-6)
+        - `clip_after_transform`: Happens AFTER EACH transform (handles augmentation-induced excursions)
 
     Examples:
         >>> # Create BboxParams for COCO format with class labels
         >>> bbox_params = BboxParams(
-        ...     format='coco',
+        ...     bbox_format='coco',
         ...     label_fields=['class_labels'],
         ...     min_area=1024,
         ...     min_visibility=0.1
@@ -103,22 +124,34 @@ class BboxParams(Params):
 
         >>> # Create BboxParams that clips and filters invalid boxes
         >>> bbox_params = BboxParams(
-        ...     format='pascal_voc',
-        ...     clip=True,
+        ...     bbox_format='pascal_voc',
+        ...     clip_bboxes_on_input=True,
         ...     filter_invalid_bboxes=True
         ... )
         >>> # Create BboxParams that filters extremely elongated boxes
         >>> bbox_params = BboxParams(
-        ...     format='yolo',
+        ...     bbox_format='yolo',
         ...     max_accept_ratio=5.0,  # Filter boxes with aspect ratio > 5:1
-        ...     clip=True
+        ...     clip_bboxes_on_input=True
+        ... )
+        >>> # Create BboxParams for OBB with geometry-based clipping after transforms
+        >>> bbox_params = BboxParams(
+        ...     bbox_format='albumentations',
+        ...     bbox_type='obb',
+        ...     clip_after_transform='geometry',  # Clip all corners inside bounds
+        ... )
+        >>> # Create BboxParams with lenient clipping (allows temporary excursions)
+        >>> bbox_params = BboxParams(
+        ...     bbox_format='yolo',
+        ...     clip_bboxes_on_input=True,  # Fix input errors
+        ...     clip_after_transform=None  # Allow boxes to go outside temporarily
         ... )
 
     """
 
     def __init__(
         self,
-        format: Literal["coco", "pascal_voc", "albumentations", "yolo"],  # noqa: A002
+        format: Literal["coco", "pascal_voc", "albumentations", "yolo"] | None = None,  # noqa: A002, Deprecated
         label_fields: Sequence[Any] | None = None,
         bbox_type: Literal["hbb", "obb"] = "hbb",
         min_area: float = 0.0,
@@ -126,24 +159,59 @@ class BboxParams(Params):
         min_width: float = 0.0,
         min_height: float = 0.0,
         check_each_transform: bool = True,
-        clip: bool = False,
+        clip: bool | None = None,  # Deprecated, use clip_bboxes_on_input
         filter_invalid_bboxes: bool = False,
         max_accept_ratio: float | None = None,
+        clip_bboxes_on_input: bool = False,
+        clip_after_transform: Literal["geometry"] | None = "geometry",
+        bbox_format: Literal["coco", "pascal_voc", "albumentations", "yolo"] | None = None,
     ):
-        super().__init__(format, label_fields)
+        # Handle deprecated 'format' parameter
+        if format is not None and bbox_format is None:
+            import warnings
+
+            warnings.warn(
+                "Parameter 'format' is deprecated and will be removed in a future version. "
+                "Use 'bbox_format' instead. "
+                "'bbox_format' avoids shadowing the built-in 'format' function.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            bbox_format = format
+        elif bbox_format is None:
+            raise ValueError("Either 'bbox_format' or deprecated 'format' parameter must be provided")
+
+        super().__init__(bbox_format, label_fields)
+        self.bbox_format = bbox_format
+
+        # Handle deprecated 'clip' parameter
+        if clip is not None:
+            import warnings
+
+            warnings.warn(
+                "Parameter 'clip' is deprecated and will be removed in a future version. "
+                "Use 'clip_bboxes_on_input' instead. "
+                "'clip_bboxes_on_input' makes it clear this clips bboxes once at pipeline start.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            clip_bboxes_on_input = clip
+
         self.bbox_type = bbox_type
         self.min_area = min_area
         self.min_visibility = min_visibility
         self.min_width = min_width
         self.min_height = min_height
         self.check_each_transform = check_each_transform
-        self.clip = clip
+        self.clip_bboxes_on_input = clip_bboxes_on_input
+        self.clip = clip_bboxes_on_input  # Keep for backwards compatibility
         self.filter_invalid_bboxes = filter_invalid_bboxes
         if max_accept_ratio is not None and max_accept_ratio < 1.0:
             raise ValueError(
                 "max_accept_ratio must be >= 1.0 when provided, as aspect ratio is calculated as max(w/h, h/w)",
             )
-        self.max_accept_ratio = max_accept_ratio  # e.g., 5.0
+        self.max_accept_ratio = max_accept_ratio
+        self.clip_after_transform = clip_after_transform
 
     def to_dict_private(self) -> dict[str, Any]:
         """Get the private dictionary representation of bounding box parameters.
@@ -161,8 +229,11 @@ class BboxParams(Params):
                 "min_width": self.min_width,
                 "min_height": self.min_height,
                 "check_each_transform": self.check_each_transform,
-                "clip": self.clip,
+                "clip_bboxes_on_input": self.clip_bboxes_on_input,
+                "clip": self.clip,  # Keep for backwards compatibility
                 "max_accept_ratio": self.max_accept_ratio,
+                "clip_after_transform": self.clip_after_transform,
+                "bbox_format": self.bbox_format,
             },
         )
         return data
@@ -189,10 +260,11 @@ class BboxParams(Params):
 
     def __repr__(self) -> str:
         return (
-            f"BboxParams(format={self.format}, label_fields={self.label_fields}, bbox_type={self.bbox_type},"
+            f"BboxParams(bbox_format={self.bbox_format}, label_fields={self.label_fields}, bbox_type={self.bbox_type},"
             f" min_area={self.min_area},"
             f" min_visibility={self.min_visibility}, min_width={self.min_width}, min_height={self.min_height},"
-            f" check_each_transform={self.check_each_transform}, clip={self.clip})"
+            f" check_each_transform={self.check_each_transform}, clip_bboxes_on_input={self.clip_bboxes_on_input},"
+            f" clip_after_transform={self.clip_after_transform})"
         )
 
 
@@ -343,6 +415,8 @@ class BboxProcessor(DataProcessor):
             min_width=self.params.min_width,
             min_height=self.params.min_height,
             max_accept_ratio=self.params.max_accept_ratio,
+            clip_after_transform=self.params.clip_after_transform,
+            bbox_type=self.params.bbox_type,
         )
 
     def check_and_convert(
@@ -421,7 +495,9 @@ class BboxProcessor(DataProcessor):
             shape (tuple[int, int] | tuple[int, int, int]): Shape to check against.
 
         """
-        check_bboxes(data)
+        # Skip validation if clip_after_transform=None (boxes may be outside [0, 1])
+        if self.params.clip_after_transform is not None:
+            check_bboxes(data)
 
     def convert_from_albumentations(
         self,
@@ -918,6 +994,78 @@ def clip_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     return normalize_bboxes(denorm_bboxes, shape)
 
 
+@handle_empty_array("bboxes")
+def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: str) -> np.ndarray:
+    """Clip bounding boxes based on actual geometry.
+
+    This function provides geometry-aware clipping that works correctly for both HBB and OBB:
+    - For HBB: clips (x_min, y_min, x_max, y_max) coordinates to [0, 1] (fast path)
+    - For OBB: clips all 4 rotated corners and returns axis-aligned wrapping box with angle=0
+
+    Args:
+        bboxes (np.ndarray): Array of bounding boxes in albumentations format (normalized).
+                            Shape: (N, 4+) for HBB or (N, 5+) for OBB.
+        shape (tuple[int, int]): Image shape (height, width).
+        bbox_type (str): Either "hbb" or "obb".
+
+    Returns:
+        np.ndarray: Clipped bounding boxes. For OBB, returns (N, 5+) with angle set to 0.
+
+    Note:
+        For HBB, this is equivalent to clip_bboxes() (fast coordinate clipping).
+        For OBB, clips the 4 rotated corners and returns the axis-aligned bounding box
+        that wraps them, with angle set to 0 since the result is axis-aligned.
+        cv2.minAreaRect is NOT used for clipping - only for actual rotations.
+
+    Examples:
+        >>> # HBB - simple coordinate clipping
+        >>> hbb = np.array([[0.2, 0.3, 1.2, 0.8]])
+        >>> clipped = clip_bboxes_geometry(hbb, (100, 100), "hbb")
+        >>> # Result: [[0.2, 0.3, 1.0, 0.8]]
+
+        >>> # OBB - clips corners and returns wrapping HBB with angle=0
+        >>> obb = np.array([[0.2, 0.3, 1.2, 0.8, 45.0]])  # rotated 45 degrees
+        >>> clipped = clip_bboxes_geometry(obb, (100, 100), "obb")
+        >>> # Result: [[x_min, y_min, x_max, y_max, 0.0]] - angle reset to 0
+
+    """
+    if bbox_type == "hbb" or bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
+        # HBB fast path - just clip coordinates (current behavior)
+        return clip_bboxes(bboxes, shape)
+
+    # OBB path - clip corners and return wrapping HBB with angle=0
+    # Convert OBB to polygons (4 corners each)
+    polygons = obb_to_polygons(bboxes)  # Shape: (N, 4, 2) in normalized coords
+
+    # Check if clipping is needed for each bbox
+    needs_clipping = (polygons < 0) | (polygons > 1)
+    needs_clipping_per_bbox = needs_clipping.any(axis=(1, 2))  # Shape: (N,)
+
+    # If no bboxes need clipping, return original
+    if not needs_clipping_per_bbox.any():
+        return bboxes
+
+    # Clip corners
+    polygons_clipped = np.clip(polygons, 0, 1)
+
+    # Build result array
+    result = bboxes.copy()
+
+    # Only process bboxes that needed clipping
+    for i in np.where(needs_clipping_per_bbox)[0]:
+        # Find axis-aligned bounding box for clipped polygon
+        x_min = polygons_clipped[i, :, 0].min()
+        y_min = polygons_clipped[i, :, 1].min()
+        x_max = polygons_clipped[i, :, 0].max()
+        y_max = polygons_clipped[i, :, 1].max()
+
+        # Update with angle=0 (now axis-aligned after clipping)
+        result[i, :4] = [x_min, y_min, x_max, y_max]
+        result[i, 4] = 0.0
+
+    return result
+
+
 def filter_bboxes(
     bboxes: np.ndarray,
     shape: tuple[int, int],
@@ -926,6 +1074,8 @@ def filter_bboxes(
     min_width: float = 1.0,
     min_height: float = 1.0,
     max_accept_ratio: float | None = None,
+    clip_after_transform: Literal["geometry"] | None = "geometry",
+    bbox_type: Literal["hbb", "obb"] = "hbb",
 ) -> np.ndarray:
     """Remove bounding boxes that either lie outside of the visible area by more than min_visibility
     or whose area in pixels is under the threshold set by `min_area`. Also crops boxes to final image size.
@@ -939,6 +1089,12 @@ def filter_bboxes(
         min_height (float): Minimum height of a bounding box in pixels. Default: 0.0.
         max_accept_ratio (float | None): Maximum allowed aspect ratio, calculated as max(width/height, height/width).
             Boxes with higher ratios will be filtered out. Default: None.
+        clip_after_transform (Literal[None, "geometry"]): How to clip bounding boxes to image bounds.
+            - None: No clipping, boxes may extend outside [0, 1].
+            - "geometry": Clip based on actual geometry (HBB: coords, OBB: corners).
+            Default: "geometry".
+        bbox_type (Literal["hbb", "obb"]): Type of bounding boxes. Used for geometry-aware clipping.
+            Default: "hbb".
 
     Returns:
         np.ndarray: Filtered bounding boxes.
@@ -952,8 +1108,8 @@ def filter_bboxes(
     # Calculate areas of bounding boxes before clipping in pixels
     denormalized_box_areas = calculate_bbox_areas_in_pixels(bboxes, shape)
 
-    # Clip bounding boxes in ratio
-    clipped_bboxes = clip_bboxes(bboxes, shape)
+    # Clip bounding boxes based on clip_after_transform
+    clipped_bboxes = bboxes if clip_after_transform is None else clip_bboxes_geometry(bboxes, shape, bbox_type)
 
     # Calculate areas of clipped bounding boxes in pixels
     clipped_box_areas = calculate_bbox_areas_in_pixels(clipped_bboxes, shape)
@@ -987,7 +1143,14 @@ def filter_bboxes(
     # Apply the mask to get the filtered bboxes
     filtered_bboxes = clipped_bboxes[mask]
 
-    return np.array([], dtype=np.float32).reshape(0, 4) if len(filtered_bboxes) == 0 else filtered_bboxes
+    if len(filtered_bboxes) == 0:
+        return np.array([], dtype=np.float32).reshape(0, 4)
+
+    # Normalize angles for OBB
+    if bbox_type == "obb" and filtered_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS:
+        filtered_bboxes = normalize_bbox_angles(filtered_bboxes)
+
+    return filtered_bboxes
 
 
 def union_of_bboxes(bboxes: np.ndarray, erosion_rate: float) -> np.ndarray | None:

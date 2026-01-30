@@ -95,8 +95,8 @@ class BboxParams(Params):
                    Use for lenient pipelines where boxes may go outside temporarily (e.g., crop then pad).
             - "geometry": Clip based on actual geometry (default).
                          For HBB: clips (x_min, y_min, x_max, y_max) to [0, 1]. Fast, current behavior.
-                         For OBB: clips all 4 rotated corners and refits box with cv2.minAreaRect. Ensures
-                                all corners are inside bounds. May change angle/dimensions.
+                         For OBB: clips all 4 rotated corners to [0, 1] and returns a wrapping
+                                axis-aligned bounding box (angle set to 0), without cv2.minAreaRect refit.
             Default: "geometry".
 
     Note:
@@ -477,6 +477,8 @@ class BboxProcessor(DataProcessor):
                     min_visibility=0,
                     min_width=0,
                     min_height=0,
+                    clip_after_transform=self.params.clip_after_transform,
+                    bbox_type=self.params.bbox_type,
                 )
 
             # Finally check the remaining boxes
@@ -1048,23 +1050,20 @@ def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: 
     # Clip corners
     polygons_clipped = np.clip(polygons, 0, 1)
 
-    # Vectorized computation of axis-aligned bounding boxes for all
-    x_min = polygons_clipped[:, :, 0].min(axis=1)  # Shape: (N,)
-    y_min = polygons_clipped[:, :, 1].min(axis=1)  # Shape: (N,)
-    x_max = polygons_clipped[:, :, 0].max(axis=1)  # Shape: (N,)
-    y_max = polygons_clipped[:, :, 1].max(axis=1)  # Shape: (N,)
-
     # Build result array
     result = bboxes.copy()
-    result[needs_clipping_per_bbox, :4] = np.column_stack(
-        [
-            x_min[needs_clipping_per_bbox],
-            y_min[needs_clipping_per_bbox],
-            x_max[needs_clipping_per_bbox],
-            y_max[needs_clipping_per_bbox],
-        ],
-    )
-    result[needs_clipping_per_bbox, 4] = 0.0
+
+    # Only process bboxes that needed clipping
+    for i in np.where(needs_clipping_per_bbox)[0]:
+        # Find axis-aligned bounding box for clipped polygon
+        x_min = polygons_clipped[i, :, 0].min()
+        y_min = polygons_clipped[i, :, 1].min()
+        x_max = polygons_clipped[i, :, 0].max()
+        y_max = polygons_clipped[i, :, 1].max()
+
+        # Update with angle=0 (now axis-aligned after clipping)
+        result[i, :4] = [x_min, y_min, x_max, y_max]
+        result[i, 4] = 0.0
 
     return result
 

@@ -290,8 +290,8 @@ if clip_after_transform == 'geometry':
         bbox[2] = max(0.0, min(1.0, bbox[2]))  # x_max
         bbox[3] = max(0.0, min(1.0, bbox[3]))  # y_max
     elif bbox_type == 'obb':
-        # Convert to polygon, clip corners, refit with cv2.minAreaRect
-        # May change angle and dimensions
+        # Convert to polygon, clip corners, return axis-aligned wrapping box with angle=0
+        # Angle is reset to 0; dimensions may change
 
 # 2. Check dimensions
 if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:

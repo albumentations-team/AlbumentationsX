@@ -142,7 +142,7 @@ def test_mosaic_identity_with_targets() -> None:
         [
             transform,
         ],
-        bbox_params=BboxParams(format="albumentations", label_fields=["class_labels"]),
+        bbox_params=BboxParams(coord_format="albumentations", label_fields=["class_labels"]),
     )
 
     data = {
@@ -296,8 +296,8 @@ def test_mosaic_simplified_deterministic() -> None:
         [
             transform,
         ],
-        bbox_params=BboxParams(format="albumentations", min_visibility=0.0, min_area=0.0),
-        keypoint_params=KeypointParams(format="albumentations"),
+        bbox_params=BboxParams(coord_format="albumentations", min_visibility=0.0, min_area=0.0),
+        keypoint_params=KeypointParams(coord_format="xy"),
     )
 
     # --- Input Data ---

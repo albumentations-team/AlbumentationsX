@@ -1101,7 +1101,7 @@ def test_calculate_affine_transform_padding_properties(transform_params, image_s
     ],
 )
 def test_rotate_by_90_bboxes_symmetric_bbox(transform_class, transform_params, format, bbox):
-    bbox_params = A.BboxParams(format=format, label_fields=["cl"])
+    bbox_params = A.BboxParams(coord_format=format, label_fields=["cl"])
 
     transform = A.Compose(
         [transform_class(p=1, **transform_params)],
@@ -1268,8 +1268,8 @@ def test_rot90(bboxes, angle, keypoints):
 
     transform = A.Compose(
         [A.Affine(rotate=(angle, angle), p=1)],
-        bbox_params=A.BboxParams(format="pascal_voc"),
-        keypoint_params=A.KeypointParams(format="xyas"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
     )
 
     transformed = transform(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)

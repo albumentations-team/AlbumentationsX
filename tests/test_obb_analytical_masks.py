@@ -93,7 +93,7 @@ def test_obb_rotation_centered_square_analytical(rotation_deg: int) -> None:
         [
             A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -141,7 +141,7 @@ def test_obb_rotation_centered_rectangular_analytical(rotation_deg: int) -> None
         [
             A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -189,7 +189,7 @@ def test_obb_rotation_with_initial_angle_analytical(rotation_deg: int, initial_a
         [
             A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -238,7 +238,7 @@ def test_obb_rotation_offset_box_analytical(offset_x: float, offset_y: float, ro
         [
             A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -278,7 +278,7 @@ def test_obb_horizontal_flip_centered_box_analytical() -> None:
         [
             A.HorizontalFlip(p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -318,7 +318,7 @@ def test_obb_vertical_flip_centered_box_analytical() -> None:
         [
             A.VerticalFlip(p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -366,7 +366,7 @@ def test_obb_horizontal_flip_offset_box_analytical(offset_x: float, offset_y: fl
         [
             A.HorizontalFlip(p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -414,7 +414,7 @@ def test_obb_vertical_flip_offset_box_analytical(offset_x: float, offset_y: floa
         [
             A.VerticalFlip(p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -537,7 +537,7 @@ def test_obb_transpose_centered_box_analytical() -> None:
         [
             A.Transpose(p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -585,7 +585,7 @@ def test_obb_transpose_offset_box_analytical(offset_x: float, offset_y: float) -
         [
             A.Transpose(p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -625,7 +625,7 @@ def test_obb_identity_transform_analytical() -> None:
         [
             A.Affine(scale=1.0, rotate=0, translate_px={"x": 0, "y": 0}, p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -663,7 +663,7 @@ def test_obb_360_rotation_analytical() -> None:
         [
             A.Rotate(limit=(360, 360), p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -706,7 +706,7 @@ def test_obb_combined_transforms_analytical() -> None:
             A.HorizontalFlip(p=1.0),
             A.Rotate(limit=(90, 90), p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -808,7 +808,7 @@ def test_obb_affine_identity_and_simple_transforms_mask(scale: float, rotation_d
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -862,7 +862,7 @@ def test_obb_affine_translation_mask(translate_x: float, translate_y: float) -> 
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -912,7 +912,7 @@ def test_obb_affine_scaling_mask(scale: float) -> None:
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -966,7 +966,7 @@ def test_obb_affine_shear_mask(shear_x: float, shear_y: float) -> None:
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])
@@ -1020,7 +1020,7 @@ def test_obb_affine_combined_transforms_mask(scale: float, rotation_deg: int, tr
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, mask=input_mask, bboxes=[input_obb])

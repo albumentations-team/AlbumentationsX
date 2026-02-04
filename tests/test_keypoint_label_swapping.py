@@ -28,7 +28,7 @@ class TestKeypointLabelSwapping:
                 transform_class(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping={
                     transform_class.__name__: {
@@ -67,7 +67,7 @@ class TestKeypointLabelSwapping:
                 transform_class(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping={
                     transform_class.__name__: {
@@ -94,7 +94,7 @@ class TestKeypointLabelSwapping:
                 A.HorizontalFlip(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 # No label_mapping defined
             ),
@@ -115,7 +115,7 @@ class TestKeypointLabelSwapping:
                 A.HorizontalFlip(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping={
                     "HorizontalFlip": {
@@ -145,7 +145,7 @@ class TestKeypointLabelSwapping:
                 A.HorizontalFlip(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels", "visibility"],
                 label_mapping={
                     "HorizontalFlip": {
@@ -182,7 +182,7 @@ class TestKeypointLabelSwapping:
                 A.HorizontalFlip(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping={
                     "HorizontalFlip": {
@@ -206,7 +206,7 @@ class TestKeypointLabelSwapping:
                 A.HorizontalFlip(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 # No label_fields specified
             ),
         )
@@ -227,7 +227,7 @@ class TestKeypointLabelSwapping:
                 A.HorizontalFlip(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping={
                     "HorizontalFlip": {
@@ -257,7 +257,7 @@ class TestKeypointLabelSwapping:
                 A.Rotate(limit=45, p=1.0),  # Rotation shouldn't affect semantic labels
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping={
                     "Rotate": {
@@ -291,7 +291,7 @@ class TestKeypointLabelSwapping:
                 transform_class(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping={
                     transform_class.__name__: {
@@ -334,7 +334,7 @@ class TestKeypointLabelSwapping:
                 MockD4(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping={
                     "HorizontalFlip": {
@@ -388,7 +388,7 @@ class TestKeypointLabelSwapping:
                 A.HorizontalFlip(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels"],
                 label_mapping=user_mapping,
             ),
@@ -411,7 +411,7 @@ class TestKeypointLabelSwapping:
                 A.HorizontalFlip(p=1.0),
             ],
             keypoint_params=A.KeypointParams(
-                format="xy",
+                coord_format="xy",
                 label_fields=["keypoint_labels", "keypoint_types", "visibility"],
                 label_mapping={
                     "HorizontalFlip": {

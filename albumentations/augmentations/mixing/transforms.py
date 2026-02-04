@@ -435,8 +435,8 @@ class Mosaic(DualTransform):
         ...         fit_mode="cover",
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_classes']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_classes']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_classes']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_classes']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(

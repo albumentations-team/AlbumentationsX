@@ -926,8 +926,8 @@ class NoOp(DualTransform):
         >>> # Create transform pipeline with NoOp
         >>> transform = A.Compose([
         ...     A.NoOp(p=1.0),  # Always applied, but does nothing
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(

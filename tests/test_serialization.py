@@ -241,7 +241,7 @@ def test_augmentations_for_bboxes_serialization(
     albumentations_bboxes,
 ):
     image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
-    aug = A.Compose([augmentation_cls(p=p, **params)], bbox_params={"format": "pascal_voc"})
+    aug = A.Compose([augmentation_cls(p=p, **params)], bbox_params={"coord_format": "pascal_voc"})
     aug.set_random_seed(seed)
     data = {"image": image, "bboxes": albumentations_bboxes}
     if augmentation_cls == A.MaskDropout:
@@ -462,7 +462,7 @@ def test_transform_pipeline_serialization_with_bboxes(
                 n=5,
             ),
         ],
-        bbox_params={"format": bbox_format, "label_fields": ["labels"]},
+        bbox_params={"coord_format": bbox_format, "label_fields": ["labels"]},
     )
     aug.set_random_seed(seed)
     serialized_aug = A.to_dict(aug)
@@ -519,7 +519,7 @@ def test_transform_pipeline_serialization_with_keypoints(
                 replace=False,
             ),
         ],
-        keypoint_params={"format": keypoint_format, "label_fields": ["labels"]},
+        keypoint_params={"coord_format": keypoint_format, "label_fields": ["labels"]},
         seed=seed,
     )
 

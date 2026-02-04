@@ -88,7 +88,7 @@ class BasePad3D(Transform3D):
         ...         fill_mask=1,
         ...         p=1.0
         ...     )
-        ... ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+        ... ], keypoint_params=A.KeypointParams(coord_format='xyz', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -234,7 +234,7 @@ class Pad3D(BasePad3D):
         ...         fill_mask=1,
         ...         p=1.0
         ...     )
-        ... ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+        ... ], keypoint_params=A.KeypointParams(coord_format='xyz', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -366,7 +366,7 @@ class PadIfNeeded3D(BasePad3D):
         ...         fill_mask=1,                    # Fill value for mask
         ...         p=1.0
         ...     )
-        ... ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+        ... ], keypoint_params=A.KeypointParams(coord_format='xyz', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -533,7 +533,7 @@ class BaseCropAndPad3D(Transform3D):
         ...         crop_size=(8, 64, 64),  # Crop first 8x64x64 voxels (with padding if needed)
         ...         p=1.0
         ...     )
-        ... ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+        ... ], keypoint_params=A.KeypointParams(coord_format='xyz', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -819,7 +819,7 @@ class CenterCrop3D(BaseCropAndPad3D):
         ...         fill_mask=1,                # Fill value for mask padding
         ...         p=1.0
         ...     )
-        ... ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+        ... ], keypoint_params=A.KeypointParams(coord_format='xyz', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -972,7 +972,7 @@ class RandomCrop3D(BaseCropAndPad3D):
         ...         fill_mask=1,                # Fill value for mask padding
         ...         p=1.0
         ...     )
-        ... ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+        ... ], keypoint_params=A.KeypointParams(coord_format='xyz', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -1473,7 +1473,7 @@ class GridShuffle3D(Transform3D):
         >>> # Define transform with grid_zyx as a tuple (Z, Y, X)
         >>> transform = A.Compose([
         ...     A.GridShuffle3D(grid_zyx=(2, 3, 3), p=1.0),
-        ... ], keypoint_params=A.KeypointParams(format='xyz', label_fields=['keypoint_labels']))
+        ... ], keypoint_params=A.KeypointParams(coord_format='xyz', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(

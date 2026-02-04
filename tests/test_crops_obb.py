@@ -38,7 +38,7 @@ def test_obb_format_preservation_through_crops(bbox_format: str, input_bbox: lis
 
     aug = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format=bbox_format, bbox_type="obb"),
     )
 
     np.random.seed(137)
@@ -71,7 +71,7 @@ def test_obb_fully_inside_crop_keeps_angle() -> None:
 
     transform = A.Compose(
         [A.Crop(x_min=20, y_min=20, x_max=80, y_max=80, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -102,7 +102,7 @@ def test_obb_partially_cropped_refits() -> None:
 
     transform = A.Compose(
         [A.Crop(x_min=50, y_min=50, x_max=95, y_max=95, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -130,7 +130,7 @@ def test_obb_completely_outside_crop_filtered() -> None:
 
     transform = A.Compose(
         [A.Crop(x_min=50, y_min=50, x_max=100, y_max=100, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -175,7 +175,7 @@ def test_crop_transforms_support_obb(transform_class, transform_kwargs) -> None:
 
     aug = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     np.random.seed(137)
@@ -200,7 +200,7 @@ def test_crop_and_pad_with_obb() -> None:
 
     transform = A.Compose(
         [A.CropAndPad(px=10, p=1.0)],  # Pad 10px on each side (negative values crop)
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -223,7 +223,7 @@ def test_obb_with_extra_fields_preserved() -> None:
 
     transform = A.Compose(
         [A.CenterCrop(height=60, width=60, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -252,7 +252,7 @@ def test_multiple_obb_crop() -> None:
 
     transform = A.Compose(
         [A.CenterCrop(height=70, width=70, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=bboxes)
@@ -275,7 +275,7 @@ def test_obb_angle_normalization() -> None:
 
     transform = A.Compose(
         [A.CenterCrop(height=80, width=80, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -300,7 +300,7 @@ def test_random_crop_near_bbox_with_obb() -> None:
 
     transform = A.Compose(
         [A.RandomCropNearBBox(max_part_shift=0.2, cropping_bbox_key="crop_bbox", p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     np.random.seed(137)
@@ -324,7 +324,7 @@ def test_random_sized_bbox_safe_crop_with_obb() -> None:
 
     transform = A.Compose(
         [A.RandomSizedBBoxSafeCrop(height=50, width=50, erosion_rate=0.0, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     np.random.seed(137)
@@ -346,7 +346,7 @@ def test_obb_crop_compose_validation() -> None:
     # This should work - BaseCrop supports OBB
     compose = A.Compose(
         [A.CenterCrop(height=50, width=50)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
     assert compose is not None
 
@@ -364,7 +364,7 @@ def test_obb_crop_compose_validation() -> None:
     with pytest.raises(ValueError, match="do not support OBB"):
         A.Compose(
             [UnsupportedTransform()],
-            bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+            bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
         )
 
 
@@ -378,7 +378,7 @@ def test_pad_with_obb() -> None:
 
     transform = A.Compose(
         [A.Pad(padding=10, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -412,7 +412,7 @@ def test_pad_with_obb_different_sides() -> None:
 
     transform = A.Compose(
         [A.Pad(padding=(5, 10, 15, 20), p=1.0)],  # left, top, right, bottom
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -440,7 +440,7 @@ def test_pad_if_needed_with_obb() -> None:
 
     transform = A.Compose(
         [A.PadIfNeeded(min_height=100, min_width=100, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -469,7 +469,7 @@ def test_pad_if_needed_divisor_with_obb() -> None:
 
     transform = A.Compose(
         [A.PadIfNeeded(min_height=None, min_width=None, pad_height_divisor=32, pad_width_divisor=32, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -499,7 +499,7 @@ def test_pad_with_obb_extra_fields() -> None:
 
     transform = A.Compose(
         [A.Pad(padding=10, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=[bbox])
@@ -529,7 +529,7 @@ def test_pad_with_multiple_obb() -> None:
 
     transform = A.Compose(
         [A.Pad(padding=20, p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=bboxes)

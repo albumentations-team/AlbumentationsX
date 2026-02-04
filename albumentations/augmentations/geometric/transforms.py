@@ -126,8 +126,8 @@ class Perspective(DualTransform):
         ...         border_mode=cv2.BORDER_CONSTANT,
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -494,8 +494,8 @@ class Affine(DualTransform):
         ...         fill_mask=0,
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -958,8 +958,8 @@ class ShiftScaleRotate(Affine):
         ...         rotate_method="largest_box",
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -1174,8 +1174,8 @@ class GridElasticDeform(DualTransform):
         ...         mask_interpolation=cv2.INTER_NEAREST,
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -1391,8 +1391,8 @@ class RandomGridShuffle(DualTransform):
         >>> # Define transform with grid as a tuple
         >>> transform = A.Compose([
         ...     A.RandomGridShuffle(grid=(3, 3), p=1.0),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(

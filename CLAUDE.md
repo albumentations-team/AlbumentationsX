@@ -122,8 +122,8 @@ Examples:
     >>> # Define transform (use tuples for ranges)
     >>> transform = A.Compose([
     ...     A.YourTransform(param_range=(0.1, 0.3), p=1.0)
-    ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-    ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+    ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+    ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
     >>>
     >>> # Apply and get all results
     >>> transformed = transform(

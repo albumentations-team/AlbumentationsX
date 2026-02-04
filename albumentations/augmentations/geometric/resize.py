@@ -96,8 +96,8 @@ class RandomScale(DualTransform):
         ...         area_for_downscale="image",  # Use INTER_AREA for image downscaling
         ...         p=1.0                         # Always apply
         ...     )
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform to all targets
         >>> result = transform(
@@ -299,8 +299,8 @@ class MaxSizeTransform(DualTransform):
         ...         area_for_downscale="image",  # Use INTER_AREA when downscaling images
         ...         p=1.0
         ...     )
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> result = transform(
@@ -743,8 +743,8 @@ class Resize(DualTransform):
         ...         area_for_downscale="image",  # Use INTER_AREA when downscaling images
         ...         p=1.0
         ...     )
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform to all targets
         >>> result = transform(

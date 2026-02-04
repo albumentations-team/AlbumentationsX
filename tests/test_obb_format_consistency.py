@@ -36,7 +36,7 @@ def test_obb_format_preservation(bbox_format: str, input_bbox: list, transform: 
 
     aug = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format=bbox_format, bbox_type="obb"),
     )
 
     np.random.seed(137)  # For consistent RandomRotate90
@@ -78,7 +78,7 @@ def test_obb_matches_hbb_for_axis_aligned_flips(
     # HBB
     aug_hbb = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="hbb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="hbb"),
     )
     result_hbb = aug_hbb(image=image, bboxes=[bbox_coords])
     bbox_hbb = result_hbb["bboxes"][0]
@@ -86,7 +86,7 @@ def test_obb_matches_hbb_for_axis_aligned_flips(
     # OBB with angle=0
     aug_obb = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
     result_obb = aug_obb(image=image, bboxes=[[*bbox_coords, 0.0]])
     bbox_obb = result_obb["bboxes"][0]
@@ -144,7 +144,7 @@ def test_obb_format_roundtrip_with_angle(bbox_format: str, input_bbox: list) -> 
     # Apply identity transform
     aug = A.Compose(
         [A.NoOp()],
-        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format=bbox_format, bbox_type="obb"),
     )
 
     result = aug(image=image, bboxes=[input_bbox])
@@ -180,7 +180,7 @@ def test_obb_format_preserved_through_pipeline(bbox_format: str, input_bbox: lis
             A.VerticalFlip(p=1.0),
             A.Rotate(limit=(30, 30), p=1.0),
         ],
-        bbox_params=A.BboxParams(format=bbox_format, bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format=bbox_format, bbox_type="obb"),
     )
 
     result = aug(image=image, bboxes=[input_bbox])
@@ -233,7 +233,7 @@ def test_compose_validates_obb_support_at_init():
     with pytest.raises(ValueError, match="do not support OBB"):
         A.Compose(
             [UnsupportedTransform()],
-            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb"),
+            bbox_params=A.BboxParams(coord_format="pascal_voc", bbox_type="obb"),
         )
 
 
@@ -243,7 +243,7 @@ def test_compose_allows_imageonly_with_obb():
     # Should NOT raise - ImageOnly transforms are skipped in validation
     compose = A.Compose(
         [A.Normalize(), A.HorizontalFlip()],
-        bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", bbox_type="obb"),
     )
     assert compose is not None
 
@@ -264,7 +264,7 @@ def test_no_runtime_obb_errors():
     # If this passes __init__, it should work at __call__ time
     compose = A.Compose(
         [A.HorizontalFlip(p=1.0)],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     # Should not raise at runtime
@@ -298,7 +298,7 @@ def test_nested_compose_obb_validation():
                     ],
                 ),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb"),
+            bbox_params=A.BboxParams(coord_format="pascal_voc", bbox_type="obb"),
         )
 
 
@@ -332,7 +332,7 @@ def test_deeply_nested_compose_obb_validation():
                     ],
                 ),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", bbox_type="obb"),
+            bbox_params=A.BboxParams(coord_format="pascal_voc", bbox_type="obb"),
         )
 
 
@@ -357,7 +357,7 @@ def test_obb_affine_filters_out_of_bounds_boxes() -> None:
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=bboxes)
@@ -380,7 +380,7 @@ def test_obb_affine_preserves_in_bounds_boxes() -> None:
         [
             A.Affine(rotate=45, p=1.0),
         ],
-        bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 
     result = transform(image=image, bboxes=bboxes)

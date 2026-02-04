@@ -162,23 +162,23 @@ class Params(Serializable, ABC):
     """Base class for parameter handling in transforms.
 
     Args:
-        format (Any): The format of the data this parameter object will process.
+        coord_format (Any): The coordinate format of the data this parameter object will process.
         label_fields (Sequence[str] | None): List of fields that are joined with the data, such as labels.
 
     """
 
-    def __init__(self, format: Any, label_fields: Sequence[str] | None):  # noqa: A002
-        self.format = format
+    def __init__(self, coord_format: Any, label_fields: Sequence[str] | None):
+        self.coord_format = coord_format
         self.label_fields = label_fields
 
     def to_dict_private(self) -> dict[str, Any]:
         """Return a dictionary containing the private parameters of this object.
 
         Returns:
-            dict[str, Any]: Dictionary with format and label_fields parameters.
+            dict[str, Any]: Dictionary with coord_format and label_fields parameters.
 
         """
-        return {"format": self.format, "label_fields": self.label_fields}
+        return {"coord_format": self.coord_format, "label_fields": self.label_fields}
 
 
 class DataProcessor(ABC):
@@ -247,7 +247,7 @@ class DataProcessor(ABC):
         shape: tuple[int, int] | tuple[int, int, int] = get_shape(data)
 
         # For xyz keypoints, get full 3D shape if available
-        if hasattr(self.params, "format") and self.params.format == "xyz":
+        if hasattr(self.params, "coord_format") and self.params.coord_format == "xyz":
             volume_shape = get_volume_shape(data)
             if volume_shape is not None:
                 shape = volume_shape
@@ -278,7 +278,7 @@ class DataProcessor(ABC):
         return self.check_and_convert(field_data, shape, direction="from")
 
     def _create_empty_keypoints_array(self) -> np.ndarray:
-        return np.array([], dtype=np.float32).reshape(0, len(self.params.format))
+        return np.array([], dtype=np.float32).reshape(0, len(self.params.coord_format))
 
     def preprocess(self, data: dict[str, Any]) -> None:
         """Process data before transformation.
@@ -321,7 +321,7 @@ class DataProcessor(ABC):
             np.ndarray: Converted data array.
 
         """
-        if self.params.format == "albumentations":
+        if self.params.coord_format == "albumentations":
             self.check(data, shape)
             return data
 

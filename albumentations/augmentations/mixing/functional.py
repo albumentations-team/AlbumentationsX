@@ -514,9 +514,9 @@ def process_cell_geometry(
     # Define the pipeline: PadIfNeeded first, then Crop
     compose_kwargs: dict[str, Any] = {"p": 1.0}
     if item.get("bboxes") is not None:
-        compose_kwargs["bbox_params"] = {"format": "albumentations"}
+        compose_kwargs["bbox_params"] = {"coord_format": "albumentations"}
     if item.get("keypoints") is not None:
-        compose_kwargs["keypoint_params"] = {"format": "albumentations"}
+        compose_kwargs["keypoint_params"] = {"coord_format": "xy"}
 
     crop_coords = get_opposite_crop_coords(cell_shape, target_shape, cell_position)
 

@@ -375,11 +375,11 @@ def test_compose_subtract_type_validation():
     "bbox_params,keypoint_params",
     [
         (None, None),
-        (BboxParams(format="pascal_voc", label_fields=["bbox_labels"]), None),
-        (None, KeypointParams(format="xy")),
+        (BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]), None),
+        (None, KeypointParams(coord_format="xy")),
         (
-            BboxParams(format="pascal_voc", label_fields=["bbox_labels"]),
-            KeypointParams(format="xy"),
+            BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+            KeypointParams(coord_format="xy"),
         ),
     ],
 )
@@ -407,13 +407,13 @@ def test_compose_operators_preserve_params(
     # Verify params are preserved
     if bbox_params:
         assert result_compose.processors.get("bboxes") is not None
-        assert result_compose.processors["bboxes"].params.format == bbox_params.format
+        assert result_compose.processors["bboxes"].params.coord_format == bbox_params.coord_format
     else:
         assert result_compose.processors.get("bboxes") is None
 
     if keypoint_params:
         assert result_compose.processors.get("keypoints") is not None
-        assert result_compose.processors["keypoints"].params.format == keypoint_params.format
+        assert result_compose.processors["keypoints"].params.coord_format == keypoint_params.coord_format
     else:
         assert result_compose.processors.get("keypoints") is None
 

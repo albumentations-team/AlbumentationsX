@@ -119,7 +119,7 @@ Type of bounding box:
 #### `label_fields: list[str] | None = None`
 Names of additional arrays that correspond to bboxes (e.g., class labels, track IDs):
 ```python
-BboxParams(bbox_format='yolo', label_fields=['class_ids', 'track_ids'])
+BboxParams(coord_format='yolo', label_fields=['class_ids', 'track_ids'])
 
 # Usage:
 transform(
@@ -332,7 +332,7 @@ Understanding the difference between `clip_bboxes_on_input` and `clip_after_tran
 
 ```python
 # Example: Fix bad YOLO coordinates
-BboxParams(bbox_format='yolo', clip_bboxes_on_input=True)
+BboxParams(coord_format='yolo', clip_bboxes_on_input=True)
 # Input:  [0.5, 0.5, 0.4, 0.4, -0.000001]  # Tiny negative value
 # After:  [0.5, 0.5, 0.4, 0.4, 0.0]        # Clipped to [0, 1]
 ```
@@ -479,12 +479,12 @@ For OBB, transforms only affect the bounding rectangle coordinates:
 ```python
 # ❌ BAD: Assuming format without validation
 bboxes = load_bboxes_from_file()  # Unknown format!
-transform = A.Compose([...], bbox_params=A.BboxParams(bbox_format='pascal_voc'))
+transform = A.Compose([...], bbox_params=A.BboxParams(coord_format='pascal_voc'))
 
 # ✅ GOOD: Explicit format handling
 bboxes = load_bboxes_from_file()
 if bbox_format == 'yolo':
-    bbox_params = A.BboxParams(bbox_format='yolo', bbox_type='obb')
+    bbox_params = A.BboxParams(coord_format='yolo', bbox_type='obb')
 ```
 
 ### 2. Use `clip_bboxes_on_input=True` for External Data
@@ -511,7 +511,7 @@ bbox_params = A.BboxParams(clip_after_transform=None)
 
 ```python
 # ❌ BAD: No filtering (tiny/invalid boxes may remain)
-bbox_params = A.BboxParams(bbox_format='pascal_voc')
+bbox_params = A.BboxParams(coord_format='pascal_voc')
 
 # ✅ GOOD: Filter out problematic boxes
 bbox_params = A.BboxParams(

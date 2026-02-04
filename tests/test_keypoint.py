@@ -460,12 +460,12 @@ def test_compose_with_keypoint_noop(keypoints, keypoint_format: str, labels: int
     if labels is not None:
         aug = A.Compose(
             [A.NoOp(p=1.0)],
-            keypoint_params={"format": keypoint_format, "label_fields": ["labels"]},
+            keypoint_params={"coord_format": keypoint_format, "label_fields": ["labels"]},
             strict=True,
         )
         transformed = aug(image=image, keypoints=keypoints, labels=labels)
     else:
-        aug = A.Compose([A.NoOp(p=1.0)], keypoint_params={"format": keypoint_format}, strict=True)
+        aug = A.Compose([A.NoOp(p=1.0)], keypoint_params={"coord_format": keypoint_format}, strict=True)
         transformed = aug(image=image, keypoints=keypoints)
 
     np.testing.assert_array_equal(transformed["image"], image)
@@ -477,14 +477,15 @@ def test_compose_with_keypoint_noop(keypoints, keypoint_format: str, labels: int
     [([[20, 30, 40, 50]], "xyas"), (np.array([[20, 30, 40, 50]]), "xyas")],
 )
 def test_compose_with_keypoint_noop_error_label_fields(keypoints, keypoint_format: str) -> None:
-    image = np.ones((100, 100, 3))
-    aug = A.Compose(
-        [A.NoOp(p=1.0)],
-        keypoint_params={"format": keypoint_format, "label_fields": "class_id"},
-        strict=True,
-    )
-    with pytest.raises(Exception):
-        aug(image=image, keypoints=keypoints, cls_id=["temp_label"])
+    # Now with Pydantic validation, the error is caught during Compose creation (fail fast)
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match=r"'str' instances are not allowed as a Sequence value"):
+        A.Compose(
+            [A.NoOp(p=1.0)],
+            keypoint_params={"coord_format": keypoint_format, "label_fields": "class_id"},
+            strict=True,
+        )
 
 
 @pytest.mark.parametrize(
@@ -502,7 +503,7 @@ def test_compose_with_keypoint_noop_label_outside(keypoints, keypoint_format: st
     aug = A.Compose(
         [A.NoOp(p=1.0)],
         keypoint_params={
-            "format": keypoint_format,
+            "coord_format": keypoint_format,
             "label_fields": list(labels.keys()),
         },
         strict=True,
@@ -536,7 +537,7 @@ def test_compose_with_keypoint_noop_label_outside(keypoints, keypoint_format: st
     ],
 )
 def test_keypoint_flips_transform_3x3(aug: BasicTransform, keypoints, expected) -> None:
-    transform = A.Compose([aug(p=1)], keypoint_params={"format": "xy"}, strict=True)
+    transform = A.Compose([aug(p=1)], keypoint_params={"coord_format": "xy"}, strict=True)
 
     image = np.ones((3, 3, 3))
     transformed = transform(
@@ -562,7 +563,7 @@ def test_keypoint_transform_format_xyas(aug: BasicTransform, keypoints, expected
     transform = A.Compose(
         [aug(p=1)],
         keypoint_params={
-            "format": "xyas",
+            "coord_format": "xyas",
             "angle_in_degrees": True,
             "label_fields": ["labels"],
         },
@@ -625,7 +626,7 @@ def test_compose_with_additional_targets() -> None:
 
     aug = A.Compose(
         [A.CenterCrop(50, 50, p=1)],
-        keypoint_params={"format": "xy"},
+        keypoint_params={"coord_format": "xy"},
         additional_targets={"kp1": "keypoints"},
         strict=True,
     )
@@ -633,7 +634,7 @@ def test_compose_with_additional_targets() -> None:
     np.testing.assert_array_equal(transformed["keypoints"], [(25, 25)])
     np.testing.assert_array_equal(transformed["kp1"], [(30, 30)])
 
-    aug = A.Compose([A.CenterCrop(50, 50, p=1)], keypoint_params={"format": "xy"}, strict=True)
+    aug = A.Compose([A.CenterCrop(50, 50, p=1)], keypoint_params={"coord_format": "xy"}, strict=True)
     aug.add_targets(additional_targets={"kp1": "keypoints"})
     transformed = aug(image=image, keypoints=keypoints, kp1=kp1)
     np.testing.assert_array_equal(transformed["keypoints"], [(25, 25)])
@@ -835,7 +836,7 @@ def test_remove_invisible_keypoints_false(transform, params):
 
     aug = A.Compose(
         [transform(**params, p=1)],
-        keypoint_params=A.KeypointParams(format="xy", remove_invisible=False),
+        keypoint_params=A.KeypointParams(coord_format="xy", remove_invisible=False),
         strict=True,
     )
     result = aug(image=image, keypoints=keypoints)
@@ -844,7 +845,7 @@ def test_remove_invisible_keypoints_false(transform, params):
 
     aug = A.Compose(
         [transform(**params, p=1)],
-        keypoint_params=A.KeypointParams(format="xy", remove_invisible=True),
+        keypoint_params=A.KeypointParams(coord_format="xy", remove_invisible=True),
         strict=True,
     )
     result = aug(image=image, keypoints=keypoints)

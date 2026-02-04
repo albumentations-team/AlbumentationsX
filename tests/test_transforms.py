@@ -985,7 +985,7 @@ def test_safe_rotate(angle: float, targets: dict, expected: dict):
         [
             A.SafeRotate(limit=(angle, angle), border_mode=0, fill=0, p=1),
         ],
-        bbox_params=A.BboxParams(format="pascal_voc", min_visibility=0.0),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", min_visibility=0.0),
         keypoint_params=A.KeypointParams("xyas", angle_in_degrees=True),
         p=1,
         seed=137,
@@ -1659,7 +1659,7 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
     ],
 )
 def test_random_fog_invalid_input(params):
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match=r"validation error"):
         A.RandomFog(**params)
 
 
@@ -1835,8 +1835,8 @@ def test_padding_color(transform, num_channels):
 def test_empty_bboxes_keypoints(augmentation_cls, params):
     aug = A.Compose(
         [augmentation_cls(p=1, **params)],
-        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
-        keypoint_params=A.KeypointParams(format="xy"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["labels"]),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
         seed=137,
         strict=False,
     )
@@ -1886,7 +1886,7 @@ def test_mask_dropout_bboxes(remove_invisible, expected_keypoints):
     transform = A.Compose(
         [A.MaskDropout(p=1, max_objects=1, fill_mask=0, fill=1)],
         keypoint_params=A.KeypointParams(
-            format="xy",
+            coord_format="xy",
             remove_invisible=remove_invisible,
         ),
         seed=137,
@@ -1953,8 +1953,8 @@ def test_keypoints_bboxes_match(augmentation_cls, params):
 
     transform = A.Compose(
         [aug],
-        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"], min_area=0, min_visibility=0),
-        keypoint_params=A.KeypointParams(format="xy", remove_invisible=False),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["labels"], min_area=0, min_visibility=0),
+        keypoint_params=A.KeypointParams(coord_format="xy", remove_invisible=False),
         seed=137,
         strict=False,
     )

@@ -214,8 +214,8 @@ class TestMapResolutionRange:
                 A.ElasticTransform(alpha=1, sigma=50, map_resolution_range=(0.5, 0.8), p=1.0),
                 A.GridDistortion(num_steps=5, map_resolution_range=(0.5, 0.8), p=1.0),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc"),
-            keypoint_params=A.KeypointParams(format="xy"),
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            keypoint_params=A.KeypointParams(coord_format="xy"),
         )
 
         result = transform(

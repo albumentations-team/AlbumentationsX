@@ -12,6 +12,8 @@ from collections.abc import Sequence
 from typing import Any, Literal
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict, model_validator
+from typing_extensions import Self
 
 from albumentations.core.label_manager import LabelMetadata
 from albumentations.core.type_definitions import NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS
@@ -51,7 +53,8 @@ class KeypointParams(Params):
     """Parameters of keypoints
 
     Args:
-        format (str): format of keypoints. Should be 'xy', 'yx', 'xya', 'xys', 'xyas', 'xysa', 'xyz'.
+        coord_format (Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"]): Coordinate format of keypoints.
+            Should be one of: 'xy', 'yx', 'xya', 'xys', 'xyas', 'xysa', 'xyz'.
 
             x - X coordinate,
 
@@ -81,32 +84,61 @@ class KeypointParams(Params):
 
     """
 
+    class InitSchema(BaseModel):
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+
+        # Coordinate format
+        coord_format: Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"]
+
+        # Label fields
+        label_fields: Sequence[str] | None
+
+        # Other parameters
+        remove_invisible: bool
+        angle_in_degrees: bool
+        check_each_transform: bool
+        label_mapping: dict[str, dict[str, dict[Any, Any]]] | None
+
+        @model_validator(mode="after")
+        def _validate_label_configuration(self) -> Self:
+            """Warn about potential label_fields misconfiguration."""
+            if self.label_fields and self.label_mapping is None:
+                import warnings
+
+                msg = (
+                    "label_fields are set but label_mapping is not provided. "
+                    "If you don't need label swapping, remove label_fields. "
+                    "If you need label swapping, provide label_mapping."
+                )
+                warnings.warn(msg, UserWarning, stacklevel=4)
+            return self
+
     def __init__(
         self,
-        format: str,  # noqa: A002
+        coord_format: Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"],
         label_fields: Sequence[str] | None = None,
         remove_invisible: bool = True,
         angle_in_degrees: bool = True,
         check_each_transform: bool = True,
         label_mapping: dict[str, dict[str, dict[Any, Any]]] | None = None,
     ):
-        super().__init__(format, label_fields)
-        self.remove_invisible = remove_invisible
-        self.angle_in_degrees = angle_in_degrees
-        self.check_each_transform = check_each_transform
+        # Validate all parameters using InitSchema
+        validated = self.InitSchema(
+            coord_format=coord_format,
+            label_fields=label_fields,
+            remove_invisible=remove_invisible,
+            angle_in_degrees=angle_in_degrees,
+            check_each_transform=check_each_transform,
+            label_mapping=label_mapping,
+        )
 
-        # Warn about potential misconfiguration
-        if label_fields and label_mapping is None:
-            import warnings
-
-            msg = (
-                "label_fields are set but label_mapping is not provided. "
-                "If you don't need label swapping, remove label_fields. "
-                "If you need label swapping, provide label_mapping."
-            )
-            warnings.warn(msg, UserWarning, stacklevel=2)
-
-        self.label_mapping = label_mapping if label_mapping is not None else {}
+        # Use validated values (warning already issued in InitSchema)
+        super().__init__(validated.coord_format, validated.label_fields)
+        self.coord_format = validated.coord_format
+        self.remove_invisible = validated.remove_invisible
+        self.angle_in_degrees = validated.angle_in_degrees
+        self.check_each_transform = validated.check_each_transform
+        self.label_mapping = validated.label_mapping if validated.label_mapping is not None else {}
 
     def to_dict_private(self) -> dict[str, Any]:
         """Get the private dictionary representation of keypoint parameters.
@@ -148,7 +180,7 @@ class KeypointParams(Params):
 
     def __repr__(self) -> str:
         return (
-            f"KeypointParams(format={self.format}, label_fields={self.label_fields},"
+            f"KeypointParams(coord_format={self.coord_format}, label_fields={self.label_fields},"
             f" remove_invisible={self.remove_invisible}, angle_in_degrees={self.angle_in_degrees},"
             f" check_each_transform={self.check_each_transform}, label_mapping={self.label_mapping})"
         )
@@ -334,7 +366,7 @@ class KeypointsProcessor(DataProcessor):
         params = self.params
         return convert_keypoints_from_albumentations(
             data,
-            params.format,
+            params.coord_format,
             shape,  # Pass full shape for proper 3D keypoint validation
             check_validity=params.remove_invisible,
             angle_in_degrees=params.angle_in_degrees,
@@ -360,7 +392,7 @@ class KeypointsProcessor(DataProcessor):
         params = self.params
         return convert_keypoints_to_albumentations(
             data,
-            params.format,
+            params.coord_format,
             shape[:2],  # Only use height, width for conversion
             check_validity=params.remove_invisible,
             angle_in_degrees=params.angle_in_degrees,

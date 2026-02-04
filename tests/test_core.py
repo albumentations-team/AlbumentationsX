@@ -923,7 +923,7 @@ def test_sequential_multiple_transformations(image, aug):
             },
         ],
         [
-            dict(bbox_params=A.BboxParams(format="yolo", label_fields=["class_labels"])),
+            dict(bbox_params=A.BboxParams(coord_format="yolo", label_fields=["class_labels"])),
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
                 "bboxes": np.array([[0.5, 0.5, 0.1, 0.1]]),
@@ -931,7 +931,7 @@ def test_sequential_multiple_transformations(image, aug):
             },
         ],
         [
-            dict(keypoint_params=A.KeypointParams(format="xy")),
+            dict(keypoint_params=A.KeypointParams(coord_format="xy")),
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
                 "keypoints": np.array([[10, 20]]),
@@ -939,8 +939,8 @@ def test_sequential_multiple_transformations(image, aug):
         ],
         [
             dict(
-                bbox_params=A.BboxParams(format="yolo", label_fields=["class_labels_1"]),
-                keypoint_params=A.KeypointParams(format="xy"),
+                bbox_params=A.BboxParams(coord_format="yolo", label_fields=["class_labels_1"]),
+                keypoint_params=A.KeypointParams(coord_format="xy"),
             ),
             {
                 "image": np.empty([100, 100, 3], dtype=np.uint8),
@@ -1171,7 +1171,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
         # requires "bboxes" arg
         aug = A.Compose(
             [augmentation_cls(p=1, **params)],
-            bbox_params=A.BboxParams(format="pascal_voc"),
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
             strict=True,
             seed=137,
         )
@@ -1179,7 +1179,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
     elif augmentation_cls == A.TextImage:
         aug = A.Compose(
             [augmentation_cls(p=1, **params)],
-            bbox_params=A.BboxParams(format="pascal_voc"),
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
             strict=True,
             seed=137,
         )
@@ -1622,7 +1622,7 @@ def test_label_type_preservation(labels, expected_type, expected_dtype):
     transform = Compose(
         [NoOp(p=1.0)],
         bbox_params=BboxParams(
-            format="pascal_voc",
+            coord_format="pascal_voc",
             label_fields=["labels"],
         ),
         strict=True,
@@ -1652,7 +1652,7 @@ def test_string_labels():
     transform = Compose(
         [NoOp(p=1.0)],
         bbox_params=BboxParams(
-            format="pascal_voc",
+            coord_format="pascal_voc",
             label_fields=["labels"],
         ),
         strict=True,
@@ -1672,7 +1672,7 @@ def test_empty_labels():
     transform = Compose(
         [NoOp(p=1.0)],
         bbox_params=BboxParams(
-            format="pascal_voc",
+            coord_format="pascal_voc",
             label_fields=["labels"],
         ),
         strict=True,
@@ -1961,7 +1961,7 @@ def test_bbox_hflip_hflip_no_labels(bbox_format: str, bboxes: list[list[float]])
 
     aug = A.Compose(
         [A.HorizontalFlip(p=1.0), A.HorizontalFlip(p=1.0)],
-        bbox_params=A.BboxParams(format=bbox_format),  # No label_fields specified
+        bbox_params=A.BboxParams(coord_format=bbox_format),  # No label_fields specified
         strict=True,
     )
     transformed = aug(image=image, bboxes=original_bboxes)
@@ -1986,7 +1986,7 @@ def test_keypoint_hflip_hflip_no_labels(kp_format: str, keypoints: list[list[flo
 
     aug = A.Compose(
         [A.HorizontalFlip(p=1.0), A.HorizontalFlip(p=1.0)],
-        keypoint_params=A.KeypointParams(format=kp_format),  # No label_fields specified
+        keypoint_params=A.KeypointParams(coord_format=kp_format),  # No label_fields specified
         strict=True,
     )
     transformed = aug(image=image, keypoints=original_keypoints)
@@ -2234,7 +2234,7 @@ def test_grayscale_with_bbox_params():
         [
             A.HorizontalFlip(p=1.0),
         ],
-        bbox_params=A.BboxParams(format="pascal_voc"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
     )
 
     result = transform(image=grayscale_image, bboxes=bboxes)
@@ -2255,7 +2255,7 @@ def test_grayscale_with_keypoint_params():
         [
             A.HorizontalFlip(p=1.0),
         ],
-        keypoint_params=A.KeypointParams(format="xy"),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
     )
 
     result = transform(image=grayscale_image, keypoints=keypoints)

@@ -85,8 +85,8 @@ class Pad(DualTransform):
         >>> # Example 1: Pad all sides by the same value
         >>> transform = A.Compose([
         ...     A.Pad(padding=20, border_mode=cv2.BORDER_CONSTANT, fill=0),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> padded = transform(
@@ -124,7 +124,7 @@ class Pad(DualTransform):
         ...         fill=0,
         ...         fill_mask=0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']))
         >>>
         >>> padded_sides = transform_sides(
         ...     image=image,
@@ -397,8 +397,8 @@ class PadIfNeeded(Pad):
         >>> # Example 1: Basic usage with min_height and min_width
         >>> transform = A.Compose([
         ...     A.PadIfNeeded(min_height=150, min_width=200, border_mode=cv2.BORDER_CONSTANT, fill=0),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> padded = transform(
@@ -498,7 +498,7 @@ class PadIfNeeded(Pad):
         ...         fill=0,          # Black padding for image
         ...         fill_mask=0      # Use 0 for mask padding (background)
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']))
         >>>
         >>> padded_mask_result = mask_transform(
         ...     image=image,

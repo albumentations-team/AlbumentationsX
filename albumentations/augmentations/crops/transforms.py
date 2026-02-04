@@ -116,8 +116,8 @@ class BaseCrop(DualTransform):
         >>> # Use the custom transform in a pipeline
         >>> transform = A.Compose(
         ...     [CustomCenterCrop(crop_height=80, crop_width=80)],
-        ...     bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...     keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels'])
+        ...     bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...     keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels'])
         ... )
         >>>
         >>> # Apply the transform to data
@@ -360,8 +360,8 @@ class BaseCropAndPad(BaseCrop):
         ...         fill=127,  # Gray color for padding
         ...         fill_mask=0
         ...     )],
-        ...     bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...     keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ...     bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...     keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform to data
         >>> result = transform(
@@ -661,8 +661,8 @@ class RandomCrop(BaseCropAndPad):
         >>> # Example 1: Basic random crop
         >>> transform = A.Compose([
         ...     A.RandomCrop(height=64, width=64),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -693,8 +693,8 @@ class RandomCrop(BaseCropAndPad):
         ...         fill=0,      # Black padding for image
         ...         fill_mask=0  # Zero padding for mask
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the padded transform
         >>> padded_transformed = transform_padded(
@@ -848,8 +848,8 @@ class CenterCrop(BaseCropAndPad):
         >>> # Example 1: Basic center crop without padding
         >>> transform = A.Compose([
         ...     A.CenterCrop(height=64, width=64),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -879,8 +879,8 @@ class CenterCrop(BaseCropAndPad):
         ...         fill=0,      # Black padding for image
         ...         fill_mask=0  # Zero padding for mask
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the padded transform
         >>> padded_transformed = transform_padded(
@@ -1033,8 +1033,8 @@ class Crop(BaseCropAndPad):
         >>> # Example 1: Basic crop with fixed coordinates
         >>> transform = A.Compose([
         ...     A.Crop(x_min=20, y_min=20, x_max=80, y_max=80),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -1061,8 +1061,8 @@ class Crop(BaseCropAndPad):
         ...         fill=0,      # Black padding for image
         ...         fill_mask=0  # Zero padding for mask
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the padded transform
         >>> padded_transformed = transform_padded(
@@ -1087,7 +1087,7 @@ class Crop(BaseCropAndPad):
         ...         border_mode=cv2.BORDER_REFLECT_101,  # Reflect image for padding
         ...         pad_position="top_left"  # Apply padding at top-left
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']))
         >>>
         >>> # The resulting crop will use reflection padding for the negative coordinates
         >>> reflect_result = transform_reflect(
@@ -1496,8 +1496,8 @@ class _BaseRandomSizedCrop(DualTransform):
         >>> # Create a pipeline with our custom transform
         >>> transform = A.Compose(
         ...     [CustomRandomCrop(size=(64, 64), custom_parameter=0.6, area_for_downscale="image")],
-        ...     bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...     keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels'])
+        ...     bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...     keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels'])
         ... )
         >>>
         >>> # Apply the transform
@@ -1743,8 +1743,8 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
         ...         area_for_downscale="image",  # Use INTER_AREA for image downscaling
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -1937,8 +1937,8 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         ...         area_for_downscale="image",  # Use INTER_AREA for image downscaling
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -2206,8 +2206,8 @@ class BBoxSafeRandomCrop(BaseCrop):
         >>> # Define transform with erosion_rate parameter
         >>> transform = A.Compose([
         ...     A.BBoxSafeRandomCrop(erosion_rate=0.2),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> result = transform(
@@ -2230,7 +2230,7 @@ class BBoxSafeRandomCrop(BaseCrop):
         >>> # Example with a different erosion_rate
         >>> transform_more_flexible = A.Compose([
         ...     A.BBoxSafeRandomCrop(erosion_rate=0.5),  # More flexibility in crop placement
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']))
         >>>
         >>> # Apply transform with only image and bboxes
         >>> result_bboxes_only = transform_more_flexible(
@@ -2641,8 +2641,8 @@ class CropAndPad(DualTransform):
         ...         keep_size=False,  # Don't resize back to original dimensions
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> result_px = transform_px(
@@ -2671,8 +2671,8 @@ class CropAndPad(DualTransform):
         ...         keep_size=True,  # Resize back to original dimensions
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> result_percent = transform_percent(
@@ -2704,8 +2704,8 @@ class CropAndPad(DualTransform):
         ...         keep_size=False,
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Result dimensions will vary based on the random padding values chosen
 
@@ -3064,8 +3064,8 @@ class RandomCropFromBorders(BaseCrop):
         ...         crop_bottom=0.05,  # Max 5% crop from bottom
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply transform
         >>> result = transform(
@@ -3228,8 +3228,8 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
         ...         erosion_factor=0.2,  # Allows moderate flexibility in crop placement
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -3260,7 +3260,7 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
         ...         erosion_factor=0.0,  # No erosion - crop must fully contain a bbox
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']))
         >>>
         >>> # With erosion_factor=1.0, the crop must only intersect with the selected reference bbox
         >>> flexible_transform = A.Compose([
@@ -3270,7 +3270,7 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
         ...         erosion_factor=1.0,  # Maximum erosion - crop only needs to intersect a bbox
         ...         p=1.0
         ...     ),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']))
 
     Note:
         - Uses fixed crop dimensions (height and width)

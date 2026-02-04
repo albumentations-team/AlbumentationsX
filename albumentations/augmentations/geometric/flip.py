@@ -171,8 +171,8 @@ class HorizontalFlip(DualTransform):
         >>> # Create a transform with horizontal flip
         >>> transform = A.Compose([
         ...     A.HorizontalFlip(p=1.0)  # Always apply for this example
-        ... ], bbox_params=A.BboxParams(format='yolo', label_fields=[]),
-        ...    keypoint_params=A.KeypointParams(format='normalized'))
+        ... ], bbox_params=A.BboxParams(coord_format='yolo', label_fields=[]),
+        ...    keypoint_params=A.KeypointParams(coord_format='normalized'))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)

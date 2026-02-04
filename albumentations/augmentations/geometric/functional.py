@@ -287,7 +287,7 @@ def keypoints_d4(
             keypoints_rot90(x, 2, image_shape),
         ),  # Reflect over anti diagonal
         "h": lambda x: keypoints_hflip(x, cols),  # Horizontal flip
-        "t": lambda x: keypoints_transpose(x),  # Transpose (reflect over main diagonal)
+        "t": keypoints_transpose,  # Transpose (reflect over main diagonal)
     }
     # Execute the appropriate transformation
     if group_member in transformations:

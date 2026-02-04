@@ -9,10 +9,11 @@ in the albumentations library.
 
 from collections.abc import Callable, Sequence
 from functools import wraps
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import cv2
 import numpy as np
+from pydantic import BaseModel, ConfigDict, Field
 
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS, NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS
@@ -43,14 +44,12 @@ class BboxParams(Params):
     """Parameters for bounding box transforms.
 
     Args:
-        bbox_format (Literal["coco", "pascal_voc", "albumentations", "yolo"]): Format of bounding boxes.
+        coord_format (Literal["coco", "pascal_voc", "albumentations", "yolo"]): Coordinate format of bounding boxes.
             Should be one of:
             - 'coco': [x_min, y_min, width, height], e.g. [97, 12, 150, 200].
             - 'pascal_voc': [x_min, y_min, x_max, y_max], e.g. [97, 12, 247, 212].
             - 'albumentations': like pascal_voc but normalized in [0, 1] range, e.g. [0.2, 0.3, 0.4, 0.5].
             - 'yolo': [x_center, y_center, width, height] normalized in [0, 1] range, e.g. [0.1, 0.2, 0.3, 0.4].
-
-            **Deprecated**: `format` parameter - use `bbox_format` instead to avoid shadowing built-in.
 
         bbox_type (Literal["hbb", "obb"]): Bounding box type.
             - 'hbb': axis-aligned boxes with 4 coords (default).
@@ -76,8 +75,6 @@ class BboxParams(Params):
         clip_bboxes_on_input (bool): If True, clips bounding boxes to image boundaries once at pipeline start
             (during preprocessing). Use this to fix invalid input data (e.g., YOLO coordinates like -1e-6).
             Default: False.
-
-            **Deprecated**: `clip` parameter - use `clip_bboxes_on_input` instead.
 
         filter_invalid_bboxes (bool): If True, filters out invalid bounding boxes (e.g., boxes with negative dimensions
             or boxes where x_max < x_min or y_max < y_min) at the beginning of the pipeline. If
@@ -116,7 +113,7 @@ class BboxParams(Params):
     Examples:
         >>> # Create BboxParams for COCO format with class labels
         >>> bbox_params = BboxParams(
-        ...     bbox_format='coco',
+        ...     coord_format='coco',
         ...     label_fields=['class_labels'],
         ...     min_area=1024,
         ...     min_visibility=0.1
@@ -124,34 +121,61 @@ class BboxParams(Params):
 
         >>> # Create BboxParams that clips and filters invalid boxes
         >>> bbox_params = BboxParams(
-        ...     bbox_format='pascal_voc',
+        ...     coord_format='pascal_voc',
         ...     clip_bboxes_on_input=True,
         ...     filter_invalid_bboxes=True
         ... )
         >>> # Create BboxParams that filters extremely elongated boxes
         >>> bbox_params = BboxParams(
-        ...     bbox_format='yolo',
+        ...     coord_format='yolo',
         ...     max_accept_ratio=5.0,  # Filter boxes with aspect ratio > 5:1
         ...     clip_bboxes_on_input=True
         ... )
         >>> # Create BboxParams for OBB with geometry-based clipping after transforms
         >>> bbox_params = BboxParams(
-        ...     bbox_format='albumentations',
+        ...     coord_format='albumentations',
         ...     bbox_type='obb',
         ...     clip_after_transform='geometry',  # Clip all corners inside bounds
         ... )
         >>> # Create BboxParams with lenient clipping (allows temporary excursions)
         >>> bbox_params = BboxParams(
-        ...     bbox_format='yolo',
+        ...     coord_format='yolo',
         ...     clip_bboxes_on_input=True,  # Fix input errors
         ...     clip_after_transform=None  # Allow boxes to go outside temporarily
         ... )
 
     """
 
+    class InitSchema(BaseModel):
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+
+        # Coordinate format
+        coord_format: Literal["coco", "pascal_voc", "albumentations", "yolo"]
+
+        # Bbox type
+        bbox_type: Literal["hbb", "obb"]
+
+        # Label fields
+        label_fields: Sequence[str] | None
+
+        # Filtering parameters with validation using Field constraints
+        min_area: Annotated[float, Field(ge=0)]
+        min_visibility: Annotated[float, Field(ge=0, le=1)]
+        min_width: Annotated[float, Field(ge=0)]
+        min_height: Annotated[float, Field(ge=0)]
+        max_accept_ratio: Annotated[float, Field(ge=1)] | None
+
+        # Clipping parameters
+        clip_bboxes_on_input: bool
+        filter_invalid_bboxes: bool
+        clip_after_transform: Literal["geometry"] | None
+
+        # Other
+        check_each_transform: bool
+
     def __init__(
         self,
-        format: Literal["coco", "pascal_voc", "albumentations", "yolo"] | None = None,  # noqa: A002, Deprecated
+        coord_format: Literal["coco", "pascal_voc", "albumentations", "yolo"],
         label_fields: Sequence[Any] | None = None,
         bbox_type: Literal["hbb", "obb"] = "hbb",
         min_area: float = 0.0,
@@ -159,59 +183,41 @@ class BboxParams(Params):
         min_width: float = 0.0,
         min_height: float = 0.0,
         check_each_transform: bool = True,
-        clip: bool | None = None,  # Deprecated, use clip_bboxes_on_input
         filter_invalid_bboxes: bool = False,
         max_accept_ratio: float | None = None,
         clip_bboxes_on_input: bool = False,
         clip_after_transform: Literal["geometry"] | None = "geometry",
-        bbox_format: Literal["coco", "pascal_voc", "albumentations", "yolo"] | None = None,
     ):
-        # Handle deprecated 'format' parameter
-        if format is not None and bbox_format is None:
-            import warnings
+        # Validate all parameters using InitSchema
+        validated = self.InitSchema(
+            coord_format=coord_format,
+            bbox_type=bbox_type,
+            label_fields=label_fields,
+            min_area=min_area,
+            min_visibility=min_visibility,
+            min_width=min_width,
+            min_height=min_height,
+            check_each_transform=check_each_transform,
+            clip_bboxes_on_input=clip_bboxes_on_input,
+            filter_invalid_bboxes=filter_invalid_bboxes,
+            max_accept_ratio=max_accept_ratio,
+            clip_after_transform=clip_after_transform,
+        )
 
-            warnings.warn(
-                "Parameter 'format' is deprecated and will be removed in a future version. "
-                "Use 'bbox_format' instead. "
-                "'bbox_format' avoids shadowing the built-in 'format' function.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            bbox_format = format
-        elif bbox_format is None:
-            raise ValueError("Either 'bbox_format' or deprecated 'format' parameter must be provided")
+        # Use validated values
+        super().__init__(validated.coord_format, validated.label_fields)
+        self.coord_format = validated.coord_format
 
-        super().__init__(bbox_format, label_fields)
-        self.bbox_format = bbox_format
-
-        # Handle deprecated 'clip' parameter
-        if clip is not None:
-            import warnings
-
-            warnings.warn(
-                "Parameter 'clip' is deprecated and will be removed in a future version. "
-                "Use 'clip_bboxes_on_input' instead. "
-                "'clip_bboxes_on_input' makes it clear this clips bboxes once at pipeline start.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            clip_bboxes_on_input = clip
-
-        self.bbox_type = bbox_type
-        self.min_area = min_area
-        self.min_visibility = min_visibility
-        self.min_width = min_width
-        self.min_height = min_height
-        self.check_each_transform = check_each_transform
-        self.clip_bboxes_on_input = clip_bboxes_on_input
-        self.clip = clip_bboxes_on_input  # Keep for backwards compatibility
-        self.filter_invalid_bboxes = filter_invalid_bboxes
-        if max_accept_ratio is not None and max_accept_ratio < 1.0:
-            raise ValueError(
-                "max_accept_ratio must be >= 1.0 when provided, as aspect ratio is calculated as max(w/h, h/w)",
-            )
-        self.max_accept_ratio = max_accept_ratio
-        self.clip_after_transform = clip_after_transform
+        self.bbox_type = validated.bbox_type
+        self.min_area = validated.min_area
+        self.min_visibility = validated.min_visibility
+        self.min_width = validated.min_width
+        self.min_height = validated.min_height
+        self.check_each_transform = validated.check_each_transform
+        self.clip_bboxes_on_input = validated.clip_bboxes_on_input
+        self.filter_invalid_bboxes = validated.filter_invalid_bboxes
+        self.max_accept_ratio = validated.max_accept_ratio
+        self.clip_after_transform = validated.clip_after_transform
 
     def to_dict_private(self) -> dict[str, Any]:
         """Get the private dictionary representation of bounding box parameters.
@@ -230,10 +236,8 @@ class BboxParams(Params):
                 "min_height": self.min_height,
                 "check_each_transform": self.check_each_transform,
                 "clip_bboxes_on_input": self.clip_bboxes_on_input,
-                "clip": self.clip,  # Keep for backwards compatibility
                 "max_accept_ratio": self.max_accept_ratio,
                 "clip_after_transform": self.clip_after_transform,
-                "bbox_format": self.bbox_format,
             },
         )
         return data
@@ -260,8 +264,8 @@ class BboxParams(Params):
 
     def __repr__(self) -> str:
         return (
-            f"BboxParams(bbox_format={self.bbox_format}, label_fields={self.label_fields}, bbox_type={self.bbox_type},"
-            f" min_area={self.min_area},"
+            f"BboxParams(coord_format={self.coord_format}, label_fields={self.label_fields}, "
+            f"bbox_type={self.bbox_type}, min_area={self.min_area},"
             f" min_visibility={self.min_visibility}, min_width={self.min_width}, min_height={self.min_height},"
             f" check_each_transform={self.check_each_transform}, clip_bboxes_on_input={self.clip_bboxes_on_input},"
             f" clip_after_transform={self.clip_after_transform})"
@@ -455,17 +459,17 @@ class BboxProcessor(DataProcessor):
 
         if direction == "to":
             # First convert to albumentations format
-            if self.params.format == "albumentations":
+            if self.params.coord_format == "albumentations":
                 converted_data = data
             else:
                 converted_data = convert_bboxes_to_albumentations(
                     data,
-                    self.params.format,
+                    self.params.coord_format,
                     shape_2d,
                     check_validity=False,  # Don't check validity yet
                 )
 
-            if self.params.clip and converted_data.size > 0:
+            if self.params.clip_bboxes_on_input and converted_data.size > 0:
                 converted_data[:, :4] = np.clip(converted_data[:, :4], 0, 1)
 
             # Then filter invalid boxes if requested
@@ -485,9 +489,9 @@ class BboxProcessor(DataProcessor):
             self.check(converted_data, shape)
             return converted_data
         self.check(data, shape)
-        if self.params.format == "albumentations":
+        if self.params.coord_format == "albumentations":
             return data
-        return convert_bboxes_from_albumentations(data, self.params.format, shape_2d)
+        return convert_bboxes_from_albumentations(data, self.params.coord_format, shape_2d)
 
     def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
         """Check if bounding boxes are valid.
@@ -519,7 +523,7 @@ class BboxProcessor(DataProcessor):
         # BboxProcessor only works with 2D shapes
         shape_2d = shape[:2] if len(shape) == 3 else shape
         return np.array(
-            convert_bboxes_from_albumentations(data, self.params.format, shape_2d, check_validity=True),
+            convert_bboxes_from_albumentations(data, self.params.coord_format, shape_2d, check_validity=True),
             dtype=data.dtype,
         )
 
@@ -537,13 +541,13 @@ class BboxProcessor(DataProcessor):
         # BboxProcessor only works with 2D shapes
         shape_2d = shape[:2] if len(shape) == 3 else shape
 
-        if self.params.clip:
-            data_np = convert_bboxes_to_albumentations(data, self.params.format, shape_2d, check_validity=False)
+        if self.params.clip_bboxes_on_input:
+            data_np = convert_bboxes_to_albumentations(data, self.params.coord_format, shape_2d, check_validity=False)
             data_np = filter_bboxes(data_np, shape_2d, min_area=0, min_visibility=0, min_width=0, min_height=0)
             check_bboxes(data_np)
             return data_np
 
-        return convert_bboxes_to_albumentations(data, self.params.format, shape_2d, check_validity=True)
+        return convert_bboxes_to_albumentations(data, self.params.coord_format, shape_2d, check_validity=True)
 
 
 @handle_empty_array("bboxes")

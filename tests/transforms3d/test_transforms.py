@@ -601,8 +601,8 @@ def test_image_transforms_matching(image, augmentation_cls, params):
 def test_keypoints_xy_xyz(augmentation_cls, params):
     """Test that xy and xyz keypoint formats produce identical results for x,y coordinates."""
     seed = 137
-    aug1 = A.Compose([augmentation_cls(**params, p=1)], seed=seed, keypoint_params={"format": "xy"})
-    aug2 = A.Compose([augmentation_cls(**params, p=1)], seed=seed, keypoint_params={"format": "xyz"})
+    aug1 = A.Compose([augmentation_cls(**params, p=1)], seed=seed, keypoint_params={"coord_format": "xy"})
+    aug2 = A.Compose([augmentation_cls(**params, p=1)], seed=seed, keypoint_params={"coord_format": "xyz"})
 
     # Create test keypoints
     keypoints_xy = np.array(
@@ -691,7 +691,7 @@ def test_pad3d_keypoints(padding, initial_coords, expected_coords):
     keypoints = np.array([[x, y, z]])  # XYZ order
 
     # Apply padding transform
-    transform = A.Compose([A.Pad3D(padding=padding, p=1.0)], seed=42, keypoint_params={"format": "xyz"})
+    transform = A.Compose([A.Pad3D(padding=padding, p=1.0)], seed=42, keypoint_params={"coord_format": "xyz"})
     transformed = transform(volume=volume, keypoints=keypoints)
 
     # Verify keypoint transformation
@@ -763,7 +763,7 @@ def test_pad_if_needed3d_keypoints(params, volume_shape, initial_coords, expecte
         [
             A.PadIfNeeded3D(position="center", **params, p=1.0),
         ],
-        keypoint_params={"format": "xyz"},
+        keypoint_params={"coord_format": "xyz"},
     )
 
     transformed = transform(volume=volume, keypoints=keypoints)
@@ -861,7 +861,7 @@ def test_center_crop3d_keypoints(
                 p=1.0,
             ),
         ],
-        keypoint_params={"format": "xyz"},
+        keypoint_params={"coord_format": "xyz"},
     )
 
     transformed = transform(volume=volume, keypoints=keypoints)
@@ -928,7 +928,7 @@ def test_3d_transforms_keypoint_positions(augmentation_cls, params):
         [
             augmentation_cls(p=1, **params),
         ],
-        keypoint_params={"format": "xyz"},
+        keypoint_params={"coord_format": "xyz"},
         seed=137,
     )
 
@@ -1019,7 +1019,7 @@ def test_grid_shuffle_3d_with_keypoints():
         [
             A.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0),
         ],
-        keypoint_params=A.KeypointParams(format="xyz"),
+        keypoint_params=A.KeypointParams(coord_format="xyz"),
         seed=137,
     )
 

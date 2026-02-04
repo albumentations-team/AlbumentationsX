@@ -623,7 +623,7 @@ def test_obb_rot90_updates_corners():
     ],
 )
 def test_bbox_processor_roundtrip_with_angle_and_labels(bbox_format, bboxes, labels, expected_angle):
-    params = BboxParams(format=bbox_format, label_fields=["labels"], bbox_type="obb", clip_after_transform=None)
+    params = BboxParams(coord_format=bbox_format, label_fields=["labels"], bbox_type="obb", clip_after_transform=None)
     processor = BboxProcessor(params)
 
     data = {
@@ -651,7 +651,7 @@ def test_obb_supported_for_perspective(transform):
     """Smoke test: verify OBB works with Perspective transform."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     bboxes = [(0.1, 0.2, 0.3, 0.4, 10.0)]
-    aug = A.Compose([transform], bbox_params=A.BboxParams(format="albumentations", bbox_type="obb"), strict=True)
+    aug = A.Compose([transform], bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"), strict=True)
     aug(image=image, bboxes=bboxes)
 
 
@@ -891,7 +891,7 @@ def test_filter_bboxes_noop():
         bboxes=np.array([[0.1, 0.2, 1e-3, 1e-3]]),
         classes=np.array([1]),
     )
-    bbox_conf = A.core.bbox_utils.BboxParams(format="yolo", label_fields=["classes"], min_area=1.0)
+    bbox_conf = A.core.bbox_utils.BboxParams(coord_format="yolo", label_fields=["classes"], min_area=1.0)
     transf = A.Compose([A.NoOp(p=1.0)], bbox_params=bbox_conf, is_check_shapes=False, strict=True)
 
     out_data = transf(**in_data)
@@ -963,7 +963,7 @@ def test_union_of_bboxes_precision():
     ],
 )
 def test_bbox_processor_roundtrip(bbox_format, bboxes, labels):
-    params = BboxParams(format=bbox_format, label_fields=["labels"])
+    params = BboxParams(coord_format=bbox_format, label_fields=["labels"])
     processor = BboxProcessor(params)
 
     data = {
@@ -993,7 +993,7 @@ def test_bbox_processor_roundtrip(bbox_format, bboxes, labels):
     ],
 )
 def test_bbox_processor_roundtrip_multiple_labels(bbox_format, bboxes, labels1, labels2):
-    params = BboxParams(format=bbox_format, label_fields=["labels1", "labels2"])
+    params = BboxParams(coord_format=bbox_format, label_fields=["labels1", "labels2"])
     processor = BboxProcessor(params)
 
     data = {
@@ -1035,12 +1035,12 @@ def test_compose_with_bbox_noop(
     if labels is not None:
         aug = Compose(
             [NoOp(p=1.0)],
-            bbox_params={"format": bbox_format, "label_fields": ["labels"]},
+            bbox_params={"coord_format": bbox_format, "label_fields": ["labels"]},
             strict=True,
         )
         transformed = aug(image=image, bboxes=bboxes, labels=labels)
     else:
-        aug = Compose([NoOp(p=1.0)], bbox_params={"format": bbox_format}, strict=True)
+        aug = Compose([NoOp(p=1.0)], bbox_params={"coord_format": bbox_format}, strict=True)
         transformed = aug(image=image, bboxes=bboxes)
     assert np.array_equal(transformed["image"], image)
     assert np.all(np.isclose(transformed["bboxes"], bboxes))
@@ -1075,7 +1075,7 @@ def test_compose_with_bbox_noop_label_outside(
     image = np.ones((100, 100, 3))
     aug = Compose(
         [NoOp(p=1.0)],
-        bbox_params={"format": bbox_format, "label_fields": list(labels.keys())},
+        bbox_params={"coord_format": bbox_format, "label_fields": list(labels.keys())},
         strict=True,
     )
     transformed = aug(image=image, bboxes=bboxes, **labels)
@@ -1094,7 +1094,7 @@ def test_random_sized_crop_size() -> None:
     bboxes = [(0.2, 0.3, 0.6, 0.8, 2), (0.3, 0.4, 0.7, 0.9, 99)]
     aug = A.Compose(
         [RandomSizedCrop(min_max_height=(70, 90), size=(50, 50), p=1.0)],
-        bbox_params={"format": "albumentations"},
+        bbox_params={"coord_format": "albumentations"},
         seed=42,
         strict=True,
     )
@@ -1108,7 +1108,7 @@ def test_random_resized_crop_size() -> None:
     bboxes = [(0.2, 0.3, 0.6, 0.8, 2), (0.3, 0.4, 0.7, 0.9, 99)]
     aug = A.Compose(
         [RandomResizedCrop(size=(50, 50), p=1.0)],
-        bbox_params={"format": "albumentations"},
+        bbox_params={"coord_format": "albumentations"},
         seed=42,
         strict=True,
     )
@@ -1122,7 +1122,7 @@ def test_random_rotate() -> None:
     bboxes = [(78, 42, 142, 80, 1), (32, 12, 42, 72, 2)]
     aug = A.Compose(
         [Rotate(limit=15, p=1.0, border_mode=cv2.BORDER_CONSTANT)],
-        bbox_params={"format": "pascal_voc"},
+        bbox_params={"coord_format": "pascal_voc"},
         strict=True,
     )
     transformed = aug(image=image, bboxes=bboxes)
@@ -1136,7 +1136,7 @@ def test_crop_boxes_replay_compose() -> None:
     transform = ReplayCompose(
         [RandomCrop(256, 256, p=1.0)],
         bbox_params=BboxParams(
-            format="pascal_voc",
+            coord_format="pascal_voc",
             min_area=16,
             label_fields=["labels"],
         ),
@@ -1154,7 +1154,7 @@ def test_bounding_box_partially_outside_no_clip() -> None:
     # Define a transformation with NoOp
     transform = Compose(
         [NoOp()],
-        bbox_params={"format": "pascal_voc", "label_fields": ["labels"]},
+        bbox_params={"coord_format": "pascal_voc", "label_fields": ["labels"]},
     )
 
     # Bounding box that exceeds the image dimensions
@@ -1185,7 +1185,7 @@ def test_bounding_box_outside_clip(
 ) -> None:
     transform = Compose(
         [A.NoOp()],
-        bbox_params={"format": "pascal_voc", "label_fields": ["labels"], "clip": True},
+        bbox_params={"coord_format": "pascal_voc", "label_fields": ["labels"], "clip_bboxes_on_input": True},
         strict=True,
     )
     transformed = transform(
@@ -1210,7 +1210,7 @@ def test_bounding_box_hflip(bbox, expected_bbox) -> None:
 
     transform = A.Compose(
         [A.HorizontalFlip(p=1.0)],
-        bbox_params=A.BboxParams(format="coco", label_fields=[]),
+        bbox_params=A.BboxParams(coord_format="coco", label_fields=[]),
         strict=True,
     )
 
@@ -1233,7 +1233,7 @@ def test_bounding_box_vflip(bbox, expected_bbox) -> None:
 
     transform = A.Compose(
         [A.VerticalFlip(p=1.0)],
-        bbox_params=A.BboxParams(format="coco", label_fields=[]),
+        bbox_params=A.BboxParams(coord_format="coco", label_fields=[]),
         strict=True,
     )
 
@@ -1276,7 +1276,7 @@ def test_bbox_clipping(
     transform.p = 1
     aug = A.Compose(
         [transform],
-        bbox_params=A.BboxParams(format="pascal_voc", min_visibility=min_visibility),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", min_visibility=min_visibility),
         strict=True,
     )
 
@@ -1291,7 +1291,7 @@ def test_bbox_clipping(
 def test_bbox_clipping_perspective() -> None:
     transform = A.Compose(
         [A.Perspective(scale=(0.05, 0.05), p=1)],
-        bbox_params=A.BboxParams(format="pascal_voc", min_visibility=0.6),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", min_visibility=0.6),
         seed=42,
         strict=True,
     )
@@ -1629,7 +1629,7 @@ def test_bbox_d4_obb_matches_primitives(group_member, fn):
 def test_small_bbox(bbox_format, bbox, expected):
     transform = A.Compose(
         [A.NoOp()],
-        bbox_params=A.BboxParams(format=bbox_format, label_fields=["category_id"]),
+        bbox_params=A.BboxParams(coord_format=bbox_format, label_fields=["category_id"]),
         strict=True,
     )
     transformed = transform(
@@ -1652,7 +1652,7 @@ def test_small_bbox(bbox_format, bbox, expected):
 def test_very_small_bbox(bbox_format, bboxes, expected):
     transform = A.Compose(
         [A.NoOp()],
-        bbox_params=A.BboxParams(format=bbox_format, label_fields=["category_id"]),
+        bbox_params=A.BboxParams(coord_format=bbox_format, label_fields=["category_id"]),
         strict=True,
     )
 
@@ -1760,7 +1760,7 @@ def test_random_resized_crop():
             A.RandomResizedCrop((100, 100), scale=(0.01, 0.1), ratio=(1, 1)),
         ],
         bbox_params=A.BboxParams(
-            format="coco",
+            coord_format="coco",
             label_fields=["label"],
         ),
         strict=True,
@@ -2148,7 +2148,7 @@ def test_empty_bboxes():
 )
 def test_bbox_processor_invalid_no_filter(bbox_format, bboxes):
     """Test that BboxProcessor raises error on invalid bboxes when filter_invalid_bboxes=False."""
-    params = BboxParams(format=bbox_format, filter_invalid_bboxes=False)
+    params = BboxParams(coord_format=bbox_format, filter_invalid_bboxes=False)
     processor = BboxProcessor(params)
 
     data = {
@@ -2180,7 +2180,7 @@ def test_bbox_processor_invalid_no_filter(bbox_format, bboxes):
 )
 def test_bbox_processor_filter_invalid(bbox_format, bboxes, expected_bboxes):
     """Test that BboxProcessor correctly filters invalid bboxes when filter_invalid_bboxes=True."""
-    params = BboxParams(format=bbox_format, filter_invalid_bboxes=True)
+    params = BboxParams(coord_format=bbox_format, filter_invalid_bboxes=True)
     processor = BboxProcessor(params)
 
     data = {
@@ -2208,9 +2208,9 @@ def test_bbox_processor_filter_invalid(bbox_format, bboxes, expected_bboxes):
 def test_bbox_processor_clip_and_filter():
     """Test that BboxProcessor correctly handles both clipping and filtering."""
     params = BboxParams(
-        format="pascal_voc",
+        coord_format="pascal_voc",
         filter_invalid_bboxes=True,
-        clip=True,
+        clip_bboxes_on_input=True,
     )
     processor = BboxProcessor(params)
 
@@ -2249,7 +2249,7 @@ def test_bbox_processor_clip_and_filter():
 def test_bbox_processor_filter_invalid_respects_params(bbox_type, clip_after_transform, bboxes, expected_count):
     """Test that filter_invalid_bboxes in check_and_convert respects bbox_type and clip_after_transform."""
     params = BboxParams(
-        format="albumentations",
+        coord_format="albumentations",
         bbox_type=bbox_type,
         clip_after_transform=clip_after_transform,
         filter_invalid_bboxes=True,
@@ -2495,9 +2495,9 @@ def test_compose_bbox_transform(
     transform = A.Compose(
         [A.NoOp()],
         bbox_params=A.BboxParams(
-            format=format,
+            coord_format=format,
             label_fields=["classes", "scores"],
-            clip=clip,
+            clip_bboxes_on_input=clip,
         ),
         strict=True,
     )
@@ -2595,7 +2595,7 @@ def test_bbox_processor_max_accept_ratio(bboxes, shape, max_accept_ratio, expect
     }
 
     params = BboxParams(
-        format="albumentations",
+        coord_format="albumentations",
         max_accept_ratio=max_accept_ratio,
     )
     processor = BboxProcessor(params)
@@ -2617,7 +2617,7 @@ def test_compose_with_max_accept_ratio(bboxes, shape, max_accept_ratio, expected
     transform = A.Compose(
         [A.NoOp(p=1.0)],
         bbox_params=BboxParams(
-            format="albumentations",
+            coord_format="albumentations",
             max_accept_ratio=max_accept_ratio,
             label_fields=[],
         ),
@@ -2676,7 +2676,7 @@ def test_compose_max_accept_ratio_all_formats(bbox_format, bboxes, shape, max_ac
     transform = A.Compose(
         [A.NoOp(p=1.0)],
         bbox_params=BboxParams(
-            format=bbox_format,
+            coord_format=bbox_format,
             max_accept_ratio=max_accept_ratio,
             label_fields=[],
         ),

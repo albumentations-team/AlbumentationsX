@@ -162,8 +162,8 @@ class BaseDistortion(DualTransform):
         ...         keypoint_remapping_method="mask",
         ...         p=1.0
         ...     )
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply the transform
         >>> transformed = transform(
@@ -1120,8 +1120,8 @@ class ThinPlateSpline(BaseDistortion):
         >>> # Set up transform with Compose to handle all targets
         >>> transform = A.Compose([
         ...     A.ThinPlateSpline(scale_range=(0.2, 0.4), p=1.0)
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Apply to all targets
         >>> result = transform(

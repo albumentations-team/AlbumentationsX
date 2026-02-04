@@ -89,8 +89,8 @@ class RandomRotate90(DualTransform):
         >>> # Define the transform
         >>> transform = A.Compose([
         ...     A.RandomRotate90(p=1.0),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>> # Apply the transform to all targets
         >>> transformed = transform(
         ...     image=image,
@@ -245,8 +245,8 @@ class Rotate(DualTransform):
         >>> # Define the transform
         >>> transform = A.Compose([
         ...     A.Rotate(limit=45, p=1.0),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>> # Apply the transform to all targets
         >>> transformed = transform(
         ...     image=image,
@@ -566,8 +566,8 @@ class SafeRotate(Affine):
         >>> # Define the transform
         >>> transform = A.Compose([
         ...     A.SafeRotate(limit=45, p=1.0),
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(format='xy', label_fields=['keypoint_labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>> # Apply the transform to all targets
         >>> transformed = transform(
         ...     image=image,

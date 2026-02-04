@@ -433,7 +433,7 @@ class TestDataCollectors:
         # Test with bboxes only
         compose_bbox = A.Compose(
             [A.RandomCrop(256, 256)],
-            bbox_params=A.BboxParams(format="pascal_voc"),
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
         )
         info = collect_pipeline_info(compose_bbox)
         assert info["targets"] == "bboxes"
@@ -441,7 +441,7 @@ class TestDataCollectors:
         # Test with keypoints only
         compose_kp = A.Compose(
             [A.RandomCrop(256, 256)],
-            keypoint_params=A.KeypointParams(format="xy"),
+            keypoint_params=A.KeypointParams(coord_format="xy"),
         )
         info = collect_pipeline_info(compose_kp)
         assert info["targets"] == "keypoints"
@@ -449,8 +449,8 @@ class TestDataCollectors:
         # Test with both bboxes and keypoints
         compose_both = A.Compose(
             [A.RandomCrop(256, 256)],
-            bbox_params=A.BboxParams(format="pascal_voc"),
-            keypoint_params=A.KeypointParams(format="xy"),
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            keypoint_params=A.KeypointParams(coord_format="xy"),
         )
         info = collect_pipeline_info(compose_both)
         assert info["targets"] == "bboxes_keypoints"
@@ -651,8 +651,8 @@ class TestComplexPipelines:
                         p=0.5,
                     ),
                 ],
-                bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
-                keypoint_params=A.KeypointParams(format="xy", label_fields=["keypoint_labels"]),
+                bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["labels"]),
+                keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
                 additional_targets={"image2": "image", "mask2": "mask"},
             )
 
@@ -848,8 +848,8 @@ class TestTelemetryIntegration:
                     p=0.5,
                 ),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
-            keypoint_params=A.KeypointParams(format="xy", label_fields=["keypoint_labels"]),
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["labels"]),
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
         )
 
         # Test with all targets

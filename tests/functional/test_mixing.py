@@ -827,8 +827,8 @@ def test_assemble_multiple_non_overlapping(processed_cell_data_1, processed_cell
 
 def test_preprocess_selected_mosaic_items_basic():
     # Setup processors
-    bbox_processor = BboxProcessor(BboxParams(format="pascal_voc", label_fields=["class_labels"]))
-    keypoint_processor = KeypointsProcessor(KeypointParams(format="xy", label_fields=["kp_labels"]))
+    bbox_processor = BboxProcessor(BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]))
+    keypoint_processor = KeypointsProcessor(KeypointParams(coord_format="xy", label_fields=["kp_labels"]))
 
     # Setup input data items with different shapes and unique labels
     item1 = {
@@ -911,8 +911,8 @@ def test_preprocess_selected_mosaic_items_basic():
 
 def test_preprocess_selected_mosaic_items_missing_data():
     # Setup processors
-    bbox_processor = BboxProcessor(BboxParams(format="pascal_voc", label_fields=["class_labels"]))
-    keypoint_processor = KeypointsProcessor(KeypointParams(format="xy", label_fields=["kp_labels"]))
+    bbox_processor = BboxProcessor(BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]))
+    keypoint_processor = KeypointsProcessor(KeypointParams(coord_format="xy", label_fields=["kp_labels"]))
 
     # Setup input data items
     item_bbox_only = {
@@ -968,8 +968,8 @@ def test_preprocess_selected_mosaic_items_missing_data():
 
 
 def test_preprocess_selected_mosaic_items_shared_labels():
-    bbox_processor = BboxProcessor(BboxParams(format="pascal_voc", label_fields=["class_labels"]))
-    keypoint_processor = KeypointsProcessor(KeypointParams(format="xy"))  # No kp labels needed
+    bbox_processor = BboxProcessor(BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]))
+    keypoint_processor = KeypointsProcessor(KeypointParams(coord_format="xy"))  # No kp labels needed
 
     item1 = {"image": np.zeros((10, 10, 3)), "bboxes": np.array([[1, 1, 2, 2]]), "class_labels": ["cat"]}
     item2 = {"image": np.zeros((10, 10, 3)), "bboxes": np.array([[3, 3, 4, 4]]), "class_labels": ["dog"]}
@@ -1015,7 +1015,7 @@ def test_preprocess_selected_mosaic_items_no_processors():
     assert res["keypoints"].shape == (1, 2)
 
     # --- Test with only bbox processor ---
-    bbox_processor = BboxProcessor(BboxParams(format="pascal_voc", label_fields=["class_labels"]))
+    bbox_processor = BboxProcessor(BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]))
     # Need copies because processors modify the temp dicts which might affect subsequent calls
     # if we reused the original selected_raw_items list directly.
     # However, preprocess_selected_mosaic_items makes internal copies, so this is safe.
@@ -1028,7 +1028,7 @@ def test_preprocess_selected_mosaic_items_no_processors():
     np.testing.assert_array_equal(res_bbox["keypoints"], item["keypoints"])  # Unchanged
 
     # --- Test with only keypoint processor ---
-    keypoint_processor = KeypointsProcessor(KeypointParams(format="xy", label_fields=["kp_labels"]))
+    keypoint_processor = KeypointsProcessor(KeypointParams(coord_format="xy", label_fields=["kp_labels"]))
     # Need a fresh item dict because the previous call might have altered labels if passed directly
     item_copy = {
         "image": np.zeros((50, 60, 3), dtype=np.uint8),

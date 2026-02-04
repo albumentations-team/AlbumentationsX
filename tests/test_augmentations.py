@@ -37,7 +37,11 @@ def test_image_only_augmentations_mask_persists(augmentation_cls, params):
         "mask": mask,
     }
     if augmentation_cls == A.TextImage:
-        aug = A.Compose([augmentation_cls(p=1, **params)], bbox_params=A.BboxParams(format="pascal_voc"), strict=True)
+        aug = A.Compose(
+            [augmentation_cls(p=1, **params)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            strict=True,
+        )
         data = aug(
             **data,
             textimage_metadata={"text": "May the transformations be ever in your favor!", "bbox": (0.1, 0.1, 0.9, 0.2)},
@@ -72,7 +76,11 @@ def test_image_only_augmentations(augmentation_cls, params):
         "mask": mask,
     }
     if augmentation_cls == A.TextImage:
-        aug = A.Compose([augmentation_cls(p=1, **params)], bbox_params=A.BboxParams(format="pascal_voc"), strict=True)
+        aug = A.Compose(
+            [augmentation_cls(p=1, **params)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            strict=True,
+        )
         data = aug(**data, textimage_metadata={"text": "Hello, world!", "bbox": (0.1, 0.1, 0.9, 0.2)})
     elif augmentation_cls == A.Mosaic:
         data["mosaic_metadata"] = [
@@ -1006,7 +1014,7 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
             ),
         ],
         strict=True,
-        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["class_labels"]),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]),
         seed=137,
         save_applied_params=True,
     )

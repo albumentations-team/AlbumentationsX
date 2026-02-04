@@ -674,7 +674,7 @@ class Compose(BaseCompose, HubMixin):
         >>> base_transform = A.Compose([
         ...     A.HorizontalFlip(p=0.5),
         ...     A.RandomCrop(width=512, height=512)
-        ... ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['labels']))
         >>>
         >>> # Add transforms using operators (bbox_params preserved)
         >>> extended = base_transform + A.RandomBrightnessContrast(p=0.3)

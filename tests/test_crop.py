@@ -18,14 +18,14 @@ def test_random_crop_vs_crop(bboxes, keypoints):
 
     random_crop_transform = A.Compose(
         [A.RandomCrop(height=image_height, width=image_width, p=1.0)],
-        bbox_params=A.BboxParams(format="pascal_voc"),
-        keypoint_params=A.KeypointParams(format="xyas"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
         strict=True,
     )
     crop_transform = A.Compose(
         [A.Crop(x_min=0, y_min=0, x_max=image_width, y_max=image_height, p=1.0)],
-        bbox_params=A.BboxParams(format="pascal_voc"),
-        keypoint_params=A.KeypointParams(format="xyas"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
         strict=True,
     )
 
@@ -47,8 +47,8 @@ def test_center_crop_vs_crop(bboxes, keypoints):
 
     center_crop_transform = A.Compose(
         [A.CenterCrop(height=height, width=width, p=1.0)],
-        bbox_params=A.BboxParams(format="pascal_voc"),
-        keypoint_params=A.KeypointParams(format="xyas"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
         strict=True,
     )
     crop_transform = A.Compose(
@@ -61,8 +61,8 @@ def test_center_crop_vs_crop(bboxes, keypoints):
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="pascal_voc"),
-        keypoint_params=A.KeypointParams(format="xyas"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
         strict=True,
     )
 
@@ -82,7 +82,7 @@ def test_crop_near_bbox(image, bboxes, keypoints):
     aug = A.Compose(
         [A.RandomCropNearBBox(max_part_shift=(0.1, 0.5), cropping_bbox_key=bbox_key, p=1)],
         bbox_params=A.BboxParams("pascal_voc"),
-        keypoint_params=A.KeypointParams(format="xyas"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
         strict=True,
     )
 
@@ -108,7 +108,7 @@ def test_crop_near_bbox(image, bboxes, keypoints):
     aug2 = A.Compose(
         [A.Sequential([A.RandomCropNearBBox(max_part_shift=(0.1, 0.5), cropping_bbox_key=bbox_key, p=1)])],
         bbox_params=A.BboxParams("pascal_voc"),
-        keypoint_params=A.KeypointParams(format="xyas"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
         strict=True,
     )
 
@@ -203,8 +203,8 @@ def test_pad_position_equivalence(
                 pad_position=pad_position,
             ),
         ],
-        keypoint_params=A.KeypointParams(format="xyas"),
-        bbox_params=A.BboxParams(format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
         strict=True,
     )
 
@@ -223,8 +223,8 @@ def test_pad_position_equivalence(
                 pad_if_needed=False,
             ),
         ],
-        keypoint_params=A.KeypointParams(format="xyas"),
-        bbox_params=A.BboxParams(format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
         strict=True,
     )
 
@@ -362,8 +362,8 @@ def test_at_least_one_bbox_random_crop_with_multiple_bboxes():
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["bbox_labels"]),
-        keypoint_params=A.KeypointParams(format="xy", label_fields=["keypoint_labels"]),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
     )
 
     # This should not raise ValueError
@@ -406,7 +406,7 @@ def test_at_least_one_bbox_random_crop_efficiency(num_bboxes):
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["bbox_labels"]),
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
     )
 
     # Should work efficiently without converting to list

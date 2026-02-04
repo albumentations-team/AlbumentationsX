@@ -1659,7 +1659,7 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
     ],
 )
 def test_random_fog_invalid_input(params):
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match=r"validation error"):
         A.RandomFog(**params)
 
 

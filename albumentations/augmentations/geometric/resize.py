@@ -13,6 +13,7 @@ from albucore import batch_transform
 from pydantic import Field, field_validator, model_validator
 from typing_extensions import Self
 
+from albumentations.core.bbox_utils import obb_to_polygons, polygons_to_obb
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import ALL_TARGETS, ImageType, VolumeType
 from albumentations.core.utils import to_tuple
@@ -51,7 +52,7 @@ class RandomScale(DualTransform):
         uint8, float32
 
     Supported bboxes:
-        hbb
+        hbb, obb
 
     Note:
         - The output image size is different from the input image size.
@@ -123,6 +124,7 @@ class RandomScale(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         scale_limit: tuple[float, float] | float
@@ -323,6 +325,7 @@ class MaxSizeTransform(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         max_size: int | Sequence[int] | None
@@ -476,9 +479,9 @@ class LongestMaxSize(MaxSizeTransform):
     Image types:
         uint8, float32
 
-
     Supported bboxes:
-        hbb
+        hbb, obb
+
     Note:
         - This transform scales images based on their longest side:
             * If the longest side is **smaller** than max_size: the image will be **upscaled** (scale > 1.0)
@@ -599,9 +602,9 @@ class SmallestMaxSize(MaxSizeTransform):
     Image types:
         uint8, float32
 
-
     Supported bboxes:
-        hbb
+        hbb, obb
+
     Note:
         - This transform scales images based on their smallest side:
             * If the smallest side is **smaller** than max_size: the image will be **upscaled** (scale > 1.0)
@@ -709,9 +712,9 @@ class Resize(DualTransform):
     Image types:
         uint8, float32
 
-
     Supported bboxes:
-        hbb
+        hbb, obb
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
@@ -772,6 +775,7 @@ class Resize(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         height: int = Field(ge=1)
@@ -849,8 +853,49 @@ class Resize(DualTransform):
         return fgeometric.resize(mask, (self.height, self.width), interpolation=interpolation)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        # Bounding box coordinates are scale invariant
-        return bboxes
+        bbox_type = params.get("bbox_type", "hbb")
+
+        if bbox_type == "hbb":
+            # HBB is scale-invariant in normalized coords
+            return bboxes
+
+        # OBB: handle empty array
+        if bboxes.size == 0:
+            return bboxes
+
+        # OBB: check if uniform scaling
+        height, width = params["shape"][:2]
+        scale_x = self.width / width
+        scale_y = self.height / height
+
+        if abs(scale_x - scale_y) < 1e-7:
+            # Uniform scaling: OBB angle is preserved, coordinates are scale-invariant
+            return bboxes
+
+        # Non-uniform scaling: use polygon transformation + cv2.minAreaRect
+        # Split OBB into polygons and extra fields
+        polygons = obb_to_polygons(bboxes)
+        extras = bboxes[:, 5:] if bboxes.shape[1] > 5 else None
+
+        # Denormalize to pixel coordinates
+        polygons = polygons.copy()
+        polygons[..., 0] *= width
+        polygons[..., 1] *= height
+
+        # Scale the polygons
+        polygons[..., 0] *= scale_x
+        polygons[..., 1] *= scale_y
+
+        # Convert back to OBB in pixel space (cv2.minAreaRect needs pixel coords)
+        transformed_bboxes_px = polygons_to_obb(polygons, extra_fields=extras)
+
+        # Normalize back
+        transformed_bboxes_px[:, 0] /= self.width
+        transformed_bboxes_px[:, 1] /= self.height
+        transformed_bboxes_px[:, 2] /= self.width
+        transformed_bboxes_px[:, 3] /= self.height
+
+        return transformed_bboxes_px
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         height, width = params["shape"][:2]

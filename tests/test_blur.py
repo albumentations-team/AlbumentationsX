@@ -242,3 +242,21 @@ def test_gaussian_blur_matches_pil():
     # Assert reasonable absolute differences
     assert mean_diff < 10, f"Average absolute difference too high: {mean_diff:.2f}"
     assert max_diff < 83, f"Maximum absolute difference too high: {max_diff:.2f}"
+
+
+def test_motion_blur_apply_to_images():
+    """Tests that MotionBlur apply_to_images works as expected."""
+    # generate large horizontal forward motion blur
+    transform = A.MotionBlur(p=1.0, blur_limit=21, angle_range=(0, 0), direction_range=(1.0, 1.0))
+
+    # generate batch of images
+    images = np.random.randint(low=0, high=255, size=(2, 100, 100, 3), dtype=np.uint8)
+
+    # extract kernel
+    kernel = transform.get_params()["kernel"]
+
+    # apply transformation to images in the batch
+    transformed = transform.apply_to_images(images, kernel=kernel)
+
+    assert transformed.shape == images.shape
+    assert not np.array_equal(images, transformed)

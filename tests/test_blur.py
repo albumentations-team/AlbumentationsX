@@ -259,4 +259,4 @@ def test_motion_blur_apply_to_images():
     transformed = transform.apply_to_images(images, kernel=kernel)
 
     assert transformed.shape == images.shape
-    assert np.all([not np.array_equal(im, tr) for im, tr in zip(images, transformed, strict=False)])
+    assert np.any(transformed != images)

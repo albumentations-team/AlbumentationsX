@@ -106,6 +106,57 @@ ROT90_270_FACTOR = 3
 
 
 @handle_empty_array("bboxes")
+def resize_bboxes(
+    bboxes: np.ndarray,
+    image_shape: tuple[int, int],
+    output_shape: tuple[int, int],
+    bbox_type: Literal["hbb", "obb"] = "hbb",
+) -> np.ndarray:
+    """Resize bounding boxes according to image scaling.
+
+    Args:
+        bboxes: Array of bboxes in normalized coords [x_min, y_min, x_max, y_max, (angle), ...]
+        image_shape: Original image shape (height, width)
+        output_shape: Target image shape (height, width)
+        bbox_type: Type of bboxes - "hbb" or "obb"
+
+    Returns:
+        Resized bboxes in normalized coordinates
+
+    """
+    if bbox_type == "hbb":
+        # HBB is scale-invariant in normalized coords
+        return bboxes
+
+    # OBB: check if uniform scaling
+    height, width = image_shape[:2]
+    output_height, output_width = output_shape[:2]
+    scale_x = output_width / width
+    scale_y = output_height / height
+
+    if abs(scale_x - scale_y) < 1e-7:
+        # Uniform scaling: OBB angle is preserved, coordinates are scale-invariant
+        return bboxes
+
+    # Non-uniform scaling: denormalize OBB, convert to polygons, scale, convert back
+    bboxes_px = denormalize_bboxes(bboxes, image_shape)
+    extras = bboxes_px[:, 5:] if bboxes_px.shape[1] > BBOX_OBB_MIN_COLUMNS else None
+
+    # Convert to polygons in pixel space
+    polygons_px = obb_to_polygons(bboxes_px)
+
+    # Scale the polygons
+    polygons_px[..., 0] *= scale_x
+    polygons_px[..., 1] *= scale_y
+
+    # Convert back to OBB in pixel space
+    transformed_bboxes_px = polygons_to_obb(polygons_px, extra_fields=extras)
+
+    # Normalize back to [0, 1]
+    return normalize_bboxes(transformed_bboxes_px, output_shape)
+
+
+@handle_empty_array("bboxes")
 def bboxes_rot90(bboxes: np.ndarray, factor: int, bbox_type: Literal["hbb", "obb"] = "hbb") -> np.ndarray:
     """Rotates bounding boxes by 90 degrees CCW (see np.rot90)
 

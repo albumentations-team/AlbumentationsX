@@ -1109,6 +1109,10 @@ def filter_bboxes(
     epsilon = 1e-7
 
     if len(bboxes) == 0:
+        # Preserve shape: OBB needs 5+ columns, HBB needs 4+ columns
+        if bbox_type == "obb":
+            num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else BBOX_OBB_MIN_COLUMNS, BBOX_OBB_MIN_COLUMNS)
+            return np.array([], dtype=np.float32).reshape(0, num_cols)
         return np.array([], dtype=np.float32).reshape(0, 4)
 
     # Calculate areas of bounding boxes before clipping in pixels

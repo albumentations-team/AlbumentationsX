@@ -280,7 +280,7 @@ class TestResizeOBB:
         # Check shape is preserved (including extra fields)
         assert result["bboxes"].shape == obb_boxes.shape
         # Check extra fields are preserved
-        assert result["bboxes"][0][5] == 0.95
+        assert np.isclose(result["bboxes"][0][5], 0.95)
         assert result["bboxes"][0][6] == 137
 
     def test_resize_empty_obb_array(self):

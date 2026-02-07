@@ -13,6 +13,7 @@ from tests.conftest import (
     SQUARE_MULTI_UINT8_IMAGE,
     SQUARE_UINT8_IMAGE,
 )
+from tests.helpers import TransformTestHelper
 
 from .aug_definitions import transforms2metadata_key
 from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms, set_seed
@@ -32,27 +33,20 @@ def test_image_only_augmentations_mask_persists(augmentation_cls, params):
     image = SQUARE_UINT8_IMAGE
     mask = image.copy()
 
-    data = {
-        "image": image,
-        "mask": mask,
-    }
+    # Use helper to prepare data with metadata
+    data = TransformTestHelper.prepare_test_data(augmentation_cls, image, mask=mask)
+
+    # Build compose with bbox params if needed for TextImage
     if augmentation_cls == A.TextImage:
         aug = A.Compose(
             [augmentation_cls(p=1, **params)],
             bbox_params=A.BboxParams(coord_format="pascal_voc"),
             strict=True,
         )
-        data = aug(
-            **data,
-            textimage_metadata={"text": "May the transformations be ever in your favor!", "bbox": (0.1, 0.1, 0.9, 0.2)},
-        )
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
-        aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
-        data = aug(**data)
     else:
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
-        data = aug(**data)
+
+    data = aug(**data)
 
     assert data["image"].dtype == image.dtype
     assert data["mask"].dtype == mask.dtype
@@ -115,20 +109,17 @@ def test_image_only_augmentations(augmentation_cls, params):
 def test_dual_augmentations(augmentation_cls, params):
     image = SQUARE_UINT8_IMAGE
     mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
-    aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
-    data = {"image": image, "mask": mask}
-    if augmentation_cls == A.OverlayElements:
-        data["overlay_metadata"] = []
-    elif augmentation_cls == A.RandomCropNearBBox:
+
+    # Use helper to prepare data with metadata
+    data = TransformTestHelper.prepare_test_data(augmentation_cls, image, mask=mask)
+
+    # Handle special case for RandomCropNearBBox
+    if augmentation_cls == A.RandomCropNearBBox:
         data["cropping_bbox"] = [0, 0, 10, 10]
-    elif augmentation_cls == A.Mosaic:
-        data["mosaic_metadata"] = [
-            {
-                "image": SQUARE_UINT8_IMAGE,
-                "mask": mask,
-            },
-        ]
+
+    aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
     data = aug(**data)
+
     assert data["image"].dtype == image.dtype
     assert data["mask"].dtype == mask.dtype
 
@@ -146,22 +137,15 @@ def test_dual_augmentations(augmentation_cls, params):
 def test_dual_augmentations_with_float_values(augmentation_cls, params):
     image = SQUARE_FLOAT_IMAGE
     mask = np.expand_dims(image.copy()[:, :, 0].astype(np.uint8), axis=-1)
-    aug = augmentation_cls(p=1, **params)
 
-    data = {"image": image, "mask": mask}
+    # Use helper to prepare data with metadata
+    data = TransformTestHelper.prepare_test_data(augmentation_cls, image, mask=mask)
 
-    if augmentation_cls == A.OverlayElements:
-        data["overlay_metadata"] = []
-    elif augmentation_cls == A.RandomCropNearBBox:
+    # Handle special case for RandomCropNearBBox
+    if augmentation_cls == A.RandomCropNearBBox:
         data["cropping_bbox"] = [0, 0, 10, 10]
-    elif augmentation_cls == A.Mosaic:
-        data["mosaic_metadata"] = [
-            {
-                "image": SQUARE_FLOAT_IMAGE,
-                "mask": mask,
-            },
-        ]
 
+    aug = augmentation_cls(p=1, **params)
     data = aug(**data)
 
     assert data["image"].dtype == np.float32
@@ -1270,10 +1254,12 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         p=1.0,
         rain_type="heavy",  # Use heavy to ensure enough rain drops
     )
-    transform.set_random_seed(137)
-    # Run multiple times to ensure slant stays within range
+
+    # Run multiple iterations with different seeds to ensure slant stays within range
     slants = []
-    for _ in range(50):  # Run 50 times to get a good sample
+    for iteration in range(50):  # Run 50 times to get a good sample
+        # Use different seed for each iteration
+        transform.set_random_seed(137 + iteration)
         # Get params without actually applying transform
         params = transform.get_params_dependent_on_data(
             {"shape": image.shape},

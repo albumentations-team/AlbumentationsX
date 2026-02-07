@@ -40,7 +40,11 @@ def test_label_function(shape, dtype, connectivity):
     ],
 )
 def test_label_function_return_num(shape, dtype, connectivity):
-    mask = np.random.randint(0, 2, shape).astype(dtype)
+    # Use independent RNG with unique seed for each test to avoid order-dependent results
+    # Derive seed from shape and connectivity for reproducibility
+    seed = 137 + shape[0] + connectivity
+    rng = np.random.default_rng(seed)
+    mask = rng.integers(0, 2, shape).astype(dtype)
 
     ski_result, ski_num = ski_label(mask, connectivity=connectivity, return_num=True)
     cv_result, cv_num = cv_label(mask, connectivity=connectivity, return_num=True)

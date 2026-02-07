@@ -157,6 +157,33 @@ def test_kernel_visual_comparison():
     np.testing.assert_allclose(our_kernel, pil_kernel, rtol=1e-5)
 
 
+@pytest.mark.parametrize("ksize", [3, 5, 7, 11, 15])
+def test_create_gaussian_kernel_1d_sigma_zero_uniform_kernel(ksize):
+    """Test that sigma=0 returns an identity (delta) kernel.
+
+    When sigma is 0, we guard against division by zero and return
+    an identity/delta kernel that applies no blur (passes image through unchanged).
+    """
+    kernel = fblur.create_gaussian_kernel_1d(sigma=0, ksize=ksize)
+
+    # Kernel length matches expected size
+    assert len(kernel) == ksize
+
+    # Kernel sums to 1 (normalized)
+    assert np.isclose(kernel.sum(), 1.0)
+
+    # Only center element is 1, all others are 0 (identity/delta kernel)
+    center_idx = ksize // 2
+    assert kernel[center_idx] == 1.0
+    assert np.all(kernel[:center_idx] == 0.0)
+    assert np.all(kernel[center_idx + 1 :] == 0.0)
+
+    # Verify it's a proper identity kernel (no blur)
+    expected = np.zeros(ksize, dtype=np.float64)
+    expected[center_idx] = 1.0
+    assert np.allclose(kernel, expected)
+
+
 # === Motion Kernel Tests ===
 
 

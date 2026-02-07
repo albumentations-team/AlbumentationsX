@@ -249,6 +249,46 @@ def test_deterministic_behavior_single_process():
         np.testing.assert_array_equal(results[0], results[i])
 
 
+def test_deterministic_behavior_property():
+    """Property test: same seed always produces same result for any image."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+    from hypothesis.extra import numpy as npst
+
+    @given(
+        image=npst.arrays(
+            dtype=np.uint8,
+            shape=st.tuples(
+                st.integers(20, 100),  # height
+                st.integers(20, 100),  # width
+                st.just(3),  # RGB channels
+            ),
+            elements=st.integers(0, 255),
+        ),
+        seed=st.integers(0, 10000),
+    )
+    @settings(max_examples=30, deadline=3000)
+    def property_test(image, seed):
+        transform = A.Compose(
+            [
+                A.HorizontalFlip(p=0.5),
+                A.RandomBrightnessContrast(p=0.5),
+            ],
+            seed=seed,
+        )
+
+        # Apply twice with same seed - must produce identical results
+        transform.set_random_seed(seed)
+        result1 = transform(image=image.copy())["image"]
+
+        transform.set_random_seed(seed)
+        result2 = transform(image=image.copy())["image"]
+
+        np.testing.assert_array_equal(result1, result2)
+
+    property_test()
+
+
 def test_multiple_compose_instances():
     """Test that multiple Compose instances with same seed produce same results."""
     # Create two instances with same configuration

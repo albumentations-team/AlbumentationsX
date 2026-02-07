@@ -2,9 +2,12 @@ albu-spec>=0.0.2
 deepdiff>=8.0.1
 eval-type-backport
 google-docstring-parser>=0.0.9
+hypothesis>=6.0.0
 opencv-python-headless>=4.9.0.80
 pre_commit>=4.5.1
 pytest>=9.0.2
+pytest-randomly>=3.15.0
+pytest-xdist>=3.6.0
 pytest_cov>=5.0.0
 pytest_mock>=3.14.0
 pytz

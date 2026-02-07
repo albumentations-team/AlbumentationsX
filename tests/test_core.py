@@ -27,6 +27,7 @@ from tests.conftest import (
     IMAGES,
     SQUARE_UINT8_IMAGE,
 )
+from tests.helpers import TransformTestHelper
 
 from .aug_definitions import transforms2metadata_key
 from .utils import (
@@ -224,36 +225,60 @@ def test_check_bboxes_with_end_greater_that_start():
 
 
 def test_deterministic_oneof() -> None:
-    aug = ReplayCompose([OneOf([A.HorizontalFlip(p=1), A.Blur(p=1)])], p=1)
-    for _ in range(10):
-        image = (np.random.random((8, 8)) * 255).astype(np.uint8)
+    """Test ReplayCompose determinism with OneOf using random images."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+    from hypothesis.extra import numpy as npst
+
+    @given(npst.arrays(dtype=np.uint8, shape=(8, 8, 3), elements=st.integers(0, 255)))
+    @settings(max_examples=20, deadline=2000)
+    def property_test(image):
+        aug = ReplayCompose([OneOf([A.HorizontalFlip(p=1), A.Blur(p=1)])], p=1)
         image2 = np.copy(image)
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
         assert np.array_equal(data["image"], data2["image"])
+
+    property_test()
 
 
 def test_deterministic_one_or_other() -> None:
-    aug = ReplayCompose([OneOrOther(A.HorizontalFlip(p=1), A.Blur(p=1))], p=1)
-    for _ in range(10):
-        image = (np.random.random((8, 8)) * 255).astype(np.uint8)
+    """Test ReplayCompose determinism with OneOrOther using random images."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+    from hypothesis.extra import numpy as npst
+
+    @given(npst.arrays(dtype=np.uint8, shape=(8, 8, 3), elements=st.integers(0, 255)))
+    @settings(max_examples=20, deadline=2000)
+    def property_test(image):
+        aug = ReplayCompose([OneOrOther(A.HorizontalFlip(p=1), A.Blur(p=1))], p=1)
         image2 = np.copy(image)
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
         assert np.array_equal(data["image"], data2["image"])
+
+    property_test()
 
 
 def test_deterministic_sequential() -> None:
-    aug = ReplayCompose([Sequential([A.HorizontalFlip(p=1), A.Blur(p=1)])], p=1)
-    for _ in range(10):
-        image = (np.random.random((8, 8)) * 255).astype(np.uint8)
+    """Test ReplayCompose determinism with Sequential using random images."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+    from hypothesis.extra import numpy as npst
+
+    @given(npst.arrays(dtype=np.uint8, shape=(8, 8, 3), elements=st.integers(0, 255)))
+    @settings(max_examples=20, deadline=2000)
+    def property_test(image):
+        aug = ReplayCompose([Sequential([A.HorizontalFlip(p=1), A.Blur(p=1)])], p=1)
         image2 = np.copy(image)
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
         assert np.array_equal(data["image"], data2["image"])
+
+    property_test()
 
 
 def test_replay_compose_reproducibility():
@@ -1047,30 +1072,16 @@ def test_compose_additional_targets_in_available_keys() -> None:
 )
 @pytest.mark.parametrize("shape", [(101, 99, 3), (101, 99)])
 def test_images_as_target(augmentation_cls, params, shape):
+    # Use helper for RGB-only check
+    if len(shape) == 2 and TransformTestHelper.is_rgb_only(augmentation_cls):
+        pytest.skip(f"{augmentation_cls.__name__} is not applicable to grayscale images")
+
+    # Use helper to adjust params for grayscale safely
     if len(shape) == 2:
-        if augmentation_cls in {
-            A.ChannelDropout,
-            A.Spatter,
-            A.ISONoise,
-            A.RandomGravel,
-            A.ChromaticAberration,
-            A.PlanckianJitter,
-            A.PixelDistributionAdaptation,
-            A.MaskDropout,
-            A.ConstrainedCoarseDropout,
-            A.ChannelShuffle,
-            A.ToRGB,
-            A.RandomSunFlare,
-            A.RandomFog,
-            A.RandomSnow,
-            A.RandomRain,
-            A.HEStain,
-        }:
-            pytest.skip(f"{augmentation_cls.__name__} is not applicable to grayscale images")
+        params = TransformTestHelper.adjust_params_for_grayscale(params)
 
-        if "fill" in params and not np.isscalar(params["fill"]):
-            params["fill"] = params["fill"][0]
-
+    # Use original method for deterministic behavior with resize transforms
+    # The specific pixel values affect OpenCV interpolation rounding
     image = (
         np.random.uniform(0, 255, shape).astype(np.float32)
         if augmentation_cls == A.FromFloat
@@ -1081,7 +1092,8 @@ def test_images_as_target(augmentation_cls, params, shape):
     images = np.stack([image] * 2)
     data = {"images": images}
 
-    if augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
+    # Use helper to add mask if needed
+    if TransformTestHelper.requires_mask(augmentation_cls):
         mask = np.zeros_like(image)[:, :, 0]
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -1114,28 +1126,8 @@ def test_images_as_target(augmentation_cls, params, shape):
     if len(shape) == 3:
         assert transformed["images"].shape[-1] == image.shape[2]  # Channels match input
 
-    if augmentation_cls not in [
-        A.RandomCrop,
-        A.AtLeastOneBBoxRandomCrop,
-        A.RandomResizedCrop,
-        A.Resize,
-        A.RandomSizedCrop,
-        A.RandomSizedBBoxSafeCrop,
-        A.BBoxSafeRandomCrop,
-        A.Transpose,
-        A.RandomCropNearBBox,
-        A.CenterCrop,
-        A.Crop,
-        A.CropAndPad,
-        A.LongestMaxSize,
-        A.RandomScale,
-        A.PadIfNeeded,
-        A.SmallestMaxSize,
-        A.RandomCropFromBorders,
-        A.RandomRotate90,
-        A.D4,
-        A.SquareSymmetry,
-    ]:
+    # Use helper for dimension-changing check
+    if not TransformTestHelper.changes_dimensions(augmentation_cls):
         assert image.shape[:2] == (H, W)
 
 
@@ -1322,26 +1314,15 @@ def test_masks_as_target(augmentation_cls, params, masks):
 )
 def test_mask_interpolation(augmentation_cls, params, interpolation, image):
     mask = image.copy()
-    if augmentation_cls in {
-        A.Affine,
-        A.GridElasticDeform,
-        A.SafeRotate,
-        A.ShiftScaleRotate,
-        A.OpticalDistortion,
-        A.ThinPlateSpline,
-        A.Perspective,
-        A.ElasticTransform,
-        A.GridDistortion,
-        A.PiecewiseAffine,
-        A.CropAndPad,
-        A.LongestMaxSize,
-        A.SmallestMaxSize,
-        A.RandomResizedCrop,
-        A.RandomScale,
-        A.Rotate,
-    } and interpolation in {cv2.INTER_NEAREST_EXACT, cv2.INTER_LINEAR_EXACT}:
+    # Use helper for interpolation restriction check
+    if augmentation_cls in TransformTestHelper.INTERPOLATION_RESTRICTED_TRANSFORMS and interpolation in {
+        cv2.INTER_NEAREST_EXACT,
+        cv2.INTER_LINEAR_EXACT,
+    }:
         return
 
+    # Use helper for safe param copying
+    params = TransformTestHelper.safe_copy_params(params)
     params["interpolation"] = interpolation
     params["mask_interpolation"] = interpolation
     params["border_mode"] = cv2.BORDER_CONSTANT
@@ -1858,6 +1839,8 @@ def test_transform_strict_with_valid_params():
 def test_mask_interpolation(augmentation_cls, params, border_mode, image):
     mask = image.copy()
 
+    # Use helper for safe param copying
+    params = TransformTestHelper.safe_copy_params(params)
     params["interpolation"] = cv2.INTER_LINEAR
     params["mask_interpolation"] = cv2.INTER_LINEAR
     params["border_mode"] = border_mode
@@ -1969,6 +1952,43 @@ def test_bbox_hflip_hflip_no_labels(bbox_format: str, bboxes: list[list[float]])
     assert np.allclose(transformed["bboxes"], original_bboxes, atol=1e-6)
 
 
+def test_bbox_hflip_idempotence_property():
+    """Property test: HorizontalFlip twice with random valid bboxes."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+
+    @given(
+        st.lists(
+            st.tuples(
+                st.floats(0.0, 0.7, allow_nan=False, allow_infinity=False),  # x_min
+                st.floats(0.0, 0.7, allow_nan=False, allow_infinity=False),  # y_min
+                st.floats(0.3, 1.0, allow_nan=False, allow_infinity=False),  # x_max
+                st.floats(0.3, 1.0, allow_nan=False, allow_infinity=False),  # y_max
+            ).filter(lambda x: x[2] > x[0] + 0.01 and x[3] > x[1] + 0.01),
+            min_size=1,
+            max_size=10,
+        ),
+    )
+    @settings(max_examples=50, deadline=2000)
+    def property_test(bboxes_list):
+        if not bboxes_list:
+            return
+
+        image = np.ones((100, 100, 3), dtype=np.uint8)
+        original_bboxes = np.array(bboxes_list, dtype=np.float32)
+
+        aug = A.Compose(
+            [A.HorizontalFlip(p=1.0), A.HorizontalFlip(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="albumentations"),
+            strict=True,
+        )
+        transformed = aug(image=image, bboxes=original_bboxes)
+
+        assert np.allclose(transformed["bboxes"], original_bboxes, atol=1e-6)
+
+    property_test()
+
+
 @pytest.mark.parametrize(
     ["kp_format", "keypoints"],
     [
@@ -1992,6 +2012,49 @@ def test_keypoint_hflip_hflip_no_labels(kp_format: str, keypoints: list[list[flo
     transformed = aug(image=image, keypoints=original_keypoints)
 
     assert np.allclose(transformed["keypoints"], original_keypoints, atol=1e-6)
+
+
+def test_keypoint_hflip_idempotence_property():
+    """Property test: HorizontalFlip twice with random valid keypoints.
+
+    Note: Keypoints near edges (>= image dimensions) or duplicates may be filtered out.
+    This tests that remaining keypoints preserve idempotence property.
+    """
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+
+    @given(
+        st.lists(
+            st.tuples(
+                st.floats(5.0, 94.99, allow_nan=False, allow_infinity=False),  # x (well inside bounds)
+                st.floats(5.0, 94.99, allow_nan=False, allow_infinity=False),  # y (well inside bounds)
+            ),
+            min_size=1,
+            max_size=20,
+            unique=True,  # avoid duplicates which may be filtered
+        ),
+    )
+    @settings(max_examples=50, deadline=2000)
+    def property_test(keypoints_list):
+        if not keypoints_list:
+            return
+
+        image = np.ones((100, 100, 3), dtype=np.uint8)
+        original_keypoints = np.array(keypoints_list, dtype=np.float32)
+
+        aug = A.Compose(
+            [A.HorizontalFlip(p=1.0), A.HorizontalFlip(p=1.0)],
+            keypoint_params=A.KeypointParams(coord_format="xy"),
+            strict=True,
+        )
+        transformed = aug(image=image, keypoints=original_keypoints)
+
+        # Result keypoints should match original (idempotence)
+        # Some might be filtered if invalid, but shape and values should match
+        assert transformed["keypoints"].shape == original_keypoints.shape
+        assert np.allclose(transformed["keypoints"], original_keypoints, atol=1e-5)
+
+    property_test()
 
 
 def test_compose_with_empty_masks():

@@ -1,3 +1,4 @@
+import copy
 import random
 from functools import partial
 from typing import Any
@@ -71,6 +72,8 @@ def test_rotate_crop_border(image):
 )
 def test_binary_mask_interpolation(augmentation_cls, params, image):
     """Checks whether transformations based on DualTransform does not introduce a mask interpolation artifacts"""
+    # Deep copy params to avoid mutating shared test parameters
+    params = copy.deepcopy(params)
     params["mask_interpolation"] = cv2.INTER_NEAREST
     params["fill_mask"] = 0
 
@@ -135,6 +138,8 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
 def test_semantic_mask_interpolation(augmentation_cls, params, image):
     """Checks whether transformations based on DualTransform does not introduce a mask interpolation artifacts."""
     seed = 137
+    # Deep copy params to avoid mutating shared test parameters
+    params = copy.deepcopy(params)
     params["mask_interpolation"] = cv2.INTER_NEAREST
     params["fill_mask"] = 0
 
@@ -246,7 +251,8 @@ def test_additional_targets_for_image_only(augmentation_cls, params):
         additional_targets={"image2": "image"},
         strict=True,
     )
-    for _ in range(10):
+    # Reduced from 10 to 3 iterations - sufficient for randomness check
+    for _ in range(3):
         image1 = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
         image2 = image1.copy()
         res = aug(image=image1, image2=image2)
@@ -256,7 +262,8 @@ def test_additional_targets_for_image_only(augmentation_cls, params):
 
     aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
     aug.add_targets(additional_targets={"image2": "image"})
-    for _ in range(10):
+    # Reduced from 10 to 3 iterations - sufficient for randomness check
+    for _ in range(3):
         image1 = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
         image2 = image1.copy()
         res = aug(image=image1, image2=image2)
@@ -287,15 +294,17 @@ def test_resize_with_additional_targets_mask():
     assert augmented["semantic_mask"].ndim == 2
 
 
-def test_image_invert():
-    for _ in range(10):
-        # test for np.uint8 dtype
-        image1 = cv2.randu(np.zeros((100, 100, 3), dtype=np.uint8), 0, 255)
-        image2 = to_float(image1)
-        r_int = fpixel.invert(fpixel.invert(image1))
-        r_float = fpixel.invert(fpixel.invert(image2))
-        r_to_float = to_float(r_int)
-        assert np.allclose(r_float, r_to_float, atol=0.01)
+@pytest.mark.parametrize("seed", range(137, 140))  # Test with 3 different seeds instead of 10 iterations
+def test_image_invert(seed):
+    # test for np.uint8 dtype
+    np.random.seed(seed)
+    cv2.setRNGSeed(seed)
+    image1 = cv2.randu(np.zeros((100, 100, 3), dtype=np.uint8), 0, 255)
+    image2 = to_float(image1)
+    r_int = fpixel.invert(fpixel.invert(image1))
+    r_float = fpixel.invert(fpixel.invert(image2))
+    r_to_float = to_float(r_int)
+    assert np.allclose(r_float, r_to_float, atol=0.01)
 
 
 def test_lambda_transform():

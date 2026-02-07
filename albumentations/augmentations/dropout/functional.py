@@ -547,7 +547,13 @@ def filter_bboxes_by_holes(
     box_areas = (bboxes_int[:, 2] - bboxes_int[:, 0]) * (bboxes_int[:, 3] - bboxes_int[:, 1])
     intersection_areas = np.array([np.sum(hole_mask[y:y2, x:x2]) for x, y, x2, y2 in bboxes_int[:, :4]])
     remaining_areas = box_areas - intersection_areas
-    visibility_ratios = remaining_areas / box_areas
+    # Safe division: avoid division by zero when box_areas=0
+    visibility_ratios = np.divide(
+        remaining_areas,
+        box_areas,
+        out=np.zeros_like(remaining_areas, dtype=np.float64),
+        where=box_areas != 0,
+    )
     mask = (remaining_areas >= min_area) & (visibility_ratios >= min_visibility) & (remaining_areas > 0)
 
     valid_boxes = bboxes[mask]

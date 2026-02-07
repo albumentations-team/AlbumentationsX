@@ -102,6 +102,63 @@ def __init__(self, brightness: float | tuple[float, float] = 0.2):
 - Use `np.testing` functions instead of plain `assert`
 - **NEVER** create temporary test files - add permanent tests to test suite
 
+#### Test Helper Utilities (tests/helpers/)
+
+Use the helper modules to simplify test code and ensure consistency:
+
+- **TestDataFactory** (`tests/helpers/data.py`): Create reproducible test data
+  ```python
+  from tests.helpers import TestDataFactory
+
+  # Create image with independent RNG (doesn't affect global state)
+  image = TestDataFactory.create_image((100, 100, 3), dtype=np.uint8, seed=137)
+  mask = TestDataFactory.create_mask((100, 100), seed=138)
+  ```
+
+- **TransformTestHelper** (`tests/helpers/transforms.py`): Transform categorization and metadata
+  ```python
+  from tests.helpers import TransformTestHelper
+
+  # Check if transform is RGB-only
+  if TransformTestHelper.is_rgb_only(A.ChannelDropout):
+      pytest.skip("RGB-only transform")
+
+  # Prepare test data with required metadata (overlay_metadata, mosaic_metadata, etc.)
+  data = TransformTestHelper.prepare_test_data(augmentation_cls, image, mask=mask)
+
+  # Safe param copying to avoid mutation
+  params = TransformTestHelper.safe_copy_params(params)
+  ```
+
+- **ComposeBuilder** (`tests/helpers/compose.py`): Fluent API for creating Compose instances
+  ```python
+  from tests.helpers import ComposeBuilder
+
+  aug = ComposeBuilder([A.HorizontalFlip(p=1)]).with_seed(137).with_strict(True).build()
+  ```
+
+#### Test Isolation and Determinism
+
+- **Use independent RNGs**: Avoid global `np.random.seed()` in tests - use `np.random.default_rng(seed)` instead
+- **Fixture independence**: Module-scoped fixtures should use `_make_rng()` helper from conftest
+- **No side effects**: Tests must not mutate shared parameters (use `safe_copy_params()` or `copy.deepcopy()`)
+- **Immutable params**: Test parameters from `get_*_transforms()` are wrapped in `FrozenParams` to prevent accidental mutation
+  ```python
+  from tests.utils import get_dual_transforms
+  import copy
+
+  # FrozenParams prevents mutation
+  for aug_cls, params in get_dual_transforms():
+      # params["new_key"] = value  # Would raise RuntimeError
+
+      # Use deepcopy to get a mutable copy
+      params = copy.deepcopy(params)
+      params["mask_interpolation"] = cv2.INTER_NEAREST  # OK now
+      aug = aug_cls(**params)
+  ```
+- **Hypothesis integration**: Use `@given` decorators for property-based testing
+- **Interpolation choice**: Use `INTER_AREA` for downscaling tests (avoids rounding issues in batch processing)
+
 ### Documentation Requirements
 
 Every transform MUST have a comprehensive Examples section in docstring:

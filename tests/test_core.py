@@ -27,6 +27,7 @@ from tests.conftest import (
     IMAGES,
     SQUARE_UINT8_IMAGE,
 )
+from tests.helpers import TransformTestHelper
 
 from .aug_definitions import transforms2metadata_key
 from .utils import (
@@ -1071,30 +1072,16 @@ def test_compose_additional_targets_in_available_keys() -> None:
 )
 @pytest.mark.parametrize("shape", [(101, 99, 3), (101, 99)])
 def test_images_as_target(augmentation_cls, params, shape):
+    # Use helper for RGB-only check
+    if len(shape) == 2 and TransformTestHelper.is_rgb_only(augmentation_cls):
+        pytest.skip(f"{augmentation_cls.__name__} is not applicable to grayscale images")
+
+    # Use helper to adjust params for grayscale safely
     if len(shape) == 2:
-        if augmentation_cls in {
-            A.ChannelDropout,
-            A.Spatter,
-            A.ISONoise,
-            A.RandomGravel,
-            A.ChromaticAberration,
-            A.PlanckianJitter,
-            A.PixelDistributionAdaptation,
-            A.MaskDropout,
-            A.ConstrainedCoarseDropout,
-            A.ChannelShuffle,
-            A.ToRGB,
-            A.RandomSunFlare,
-            A.RandomFog,
-            A.RandomSnow,
-            A.RandomRain,
-            A.HEStain,
-        }:
-            pytest.skip(f"{augmentation_cls.__name__} is not applicable to grayscale images")
+        params = TransformTestHelper.adjust_params_for_grayscale(params)
 
-        if "fill" in params and not np.isscalar(params["fill"]):
-            params["fill"] = params["fill"][0]
-
+    # Use original method for deterministic behavior with resize transforms
+    # The specific pixel values affect OpenCV interpolation rounding
     image = (
         np.random.uniform(0, 255, shape).astype(np.float32)
         if augmentation_cls == A.FromFloat
@@ -1105,7 +1092,8 @@ def test_images_as_target(augmentation_cls, params, shape):
     images = np.stack([image] * 2)
     data = {"images": images}
 
-    if augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
+    # Use helper to add mask if needed
+    if TransformTestHelper.requires_mask(augmentation_cls):
         mask = np.zeros_like(image)[:, :, 0]
         mask[:20, :20] = 1
         data["mask"] = mask
@@ -1138,28 +1126,8 @@ def test_images_as_target(augmentation_cls, params, shape):
     if len(shape) == 3:
         assert transformed["images"].shape[-1] == image.shape[2]  # Channels match input
 
-    if augmentation_cls not in [
-        A.RandomCrop,
-        A.AtLeastOneBBoxRandomCrop,
-        A.RandomResizedCrop,
-        A.Resize,
-        A.RandomSizedCrop,
-        A.RandomSizedBBoxSafeCrop,
-        A.BBoxSafeRandomCrop,
-        A.Transpose,
-        A.RandomCropNearBBox,
-        A.CenterCrop,
-        A.Crop,
-        A.CropAndPad,
-        A.LongestMaxSize,
-        A.RandomScale,
-        A.PadIfNeeded,
-        A.SmallestMaxSize,
-        A.RandomCropFromBorders,
-        A.RandomRotate90,
-        A.D4,
-        A.SquareSymmetry,
-    ]:
+    # Use helper for dimension-changing check
+    if not TransformTestHelper.changes_dimensions(augmentation_cls):
         assert image.shape[:2] == (H, W)
 
 
@@ -1346,26 +1314,15 @@ def test_masks_as_target(augmentation_cls, params, masks):
 )
 def test_mask_interpolation(augmentation_cls, params, interpolation, image):
     mask = image.copy()
-    if augmentation_cls in {
-        A.Affine,
-        A.GridElasticDeform,
-        A.SafeRotate,
-        A.ShiftScaleRotate,
-        A.OpticalDistortion,
-        A.ThinPlateSpline,
-        A.Perspective,
-        A.ElasticTransform,
-        A.GridDistortion,
-        A.PiecewiseAffine,
-        A.CropAndPad,
-        A.LongestMaxSize,
-        A.SmallestMaxSize,
-        A.RandomResizedCrop,
-        A.RandomScale,
-        A.Rotate,
-    } and interpolation in {cv2.INTER_NEAREST_EXACT, cv2.INTER_LINEAR_EXACT}:
+    # Use helper for interpolation restriction check
+    if augmentation_cls in TransformTestHelper.INTERPOLATION_RESTRICTED_TRANSFORMS and interpolation in {
+        cv2.INTER_NEAREST_EXACT,
+        cv2.INTER_LINEAR_EXACT,
+    }:
         return
 
+    # Use helper for safe param copying
+    params = TransformTestHelper.safe_copy_params(params)
     params["interpolation"] = interpolation
     params["mask_interpolation"] = interpolation
     params["border_mode"] = cv2.BORDER_CONSTANT
@@ -1882,6 +1839,8 @@ def test_transform_strict_with_valid_params():
 def test_mask_interpolation(augmentation_cls, params, border_mode, image):
     mask = image.copy()
 
+    # Use helper for safe param copying
+    params = TransformTestHelper.safe_copy_params(params)
     params["interpolation"] = cv2.INTER_LINEAR
     params["mask_interpolation"] = cv2.INTER_LINEAR
     params["border_mode"] = border_mode

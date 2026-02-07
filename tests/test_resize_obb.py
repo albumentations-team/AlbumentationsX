@@ -79,14 +79,14 @@ class TestRandomScaleOBB:
         assert np.allclose(result["bboxes"][0], obb_boxes[0], atol=1e-6)
 
 
+@pytest.mark.slow
 class TestLongestMaxSizeOBB:
     """Test LongestMaxSize transform with OBB bboxes."""
 
     @pytest.mark.parametrize("max_size", [137, 512, 1024])
     @pytest.mark.parametrize("angle", [0, 45, 90, -30, 135, -90])
-    def test_longest_max_size_preserves_obb_angles(self, max_size, angle):
+    def test_longest_max_size_preserves_obb_angles(self, max_size, angle, large_image_1000x500):
         """Test that LongestMaxSize preserves OBB angles (uniform scaling)."""
-        image = np.random.randint(0, 256, (1000, 500, 3), dtype=np.uint8)
         obb_boxes = np.array([[0.2, 0.3, 0.4, 0.5, angle]], dtype=np.float32)
         bbox_labels = [1]
 
@@ -99,14 +99,13 @@ class TestLongestMaxSizeOBB:
             ),
         )
 
-        result = transform(image=image, bboxes=obb_boxes, bbox_labels=bbox_labels)
+        result = transform(image=large_image_1000x500, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves normalized coordinates and angles
         assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
 
-    def test_longest_max_size_with_max_size_hw(self):
+    def test_longest_max_size_with_max_size_hw(self, large_image_1000x800):
         """Test LongestMaxSize with max_size_hw parameter."""
-        image = np.random.randint(0, 256, (1000, 800, 3), dtype=np.uint8)
         obb_boxes = np.array([[0.2, 0.3, 0.4, 0.5, 45.0]], dtype=np.float32)
         bbox_labels = [1]
 
@@ -119,20 +118,20 @@ class TestLongestMaxSizeOBB:
             ),
         )
 
-        result = transform(image=image, bboxes=obb_boxes, bbox_labels=bbox_labels)
+        result = transform(image=large_image_1000x800, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves coordinates
         assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
 
 
+@pytest.mark.slow
 class TestSmallestMaxSizeOBB:
     """Test SmallestMaxSize transform with OBB bboxes."""
 
     @pytest.mark.parametrize("max_size", [137, 512, 1024])
     @pytest.mark.parametrize("angle", [0, 45, 90, -30, 135, -90])
-    def test_smallest_max_size_preserves_obb_angles(self, max_size, angle):
+    def test_smallest_max_size_preserves_obb_angles(self, max_size, angle, large_image_500x1000):
         """Test that SmallestMaxSize preserves OBB angles (uniform scaling)."""
-        image = np.random.randint(0, 256, (500, 1000, 3), dtype=np.uint8)
         obb_boxes = np.array([[0.2, 0.3, 0.4, 0.5, angle]], dtype=np.float32)
         bbox_labels = [1]
 
@@ -145,14 +144,13 @@ class TestSmallestMaxSizeOBB:
             ),
         )
 
-        result = transform(image=image, bboxes=obb_boxes, bbox_labels=bbox_labels)
+        result = transform(image=large_image_500x1000, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves normalized coordinates and angles
         assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
 
-    def test_smallest_max_size_with_max_size_hw(self):
+    def test_smallest_max_size_with_max_size_hw(self, large_image_800x1000):
         """Test SmallestMaxSize with max_size_hw parameter."""
-        image = np.random.randint(0, 256, (800, 1000, 3), dtype=np.uint8)
         obb_boxes = np.array([[0.2, 0.3, 0.4, 0.5, -45.0]], dtype=np.float32)
         bbox_labels = [1]
 
@@ -165,7 +163,7 @@ class TestSmallestMaxSizeOBB:
             ),
         )
 
-        result = transform(image=image, bboxes=obb_boxes, bbox_labels=bbox_labels)
+        result = transform(image=large_image_800x1000, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves coordinates
         assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)

@@ -5,9 +5,14 @@ import cv2
 import numpy as np
 import pytest
 
+import albumentations as A
+
 cv2.setRNGSeed(137)
 
 np.random.seed(137)
+
+# Create RNG for efficient uint8 array generation (2-3x faster than cv2.randu for uint8)
+_rng = np.random.default_rng(137)
 
 
 @pytest.fixture
@@ -67,28 +72,85 @@ def mp_pool():
     return multiprocessing.get_context(method).Pool(4)
 
 
-SQUARE_UINT8_IMAGE = cv2.randu(np.zeros((100, 100, 3), dtype=np.uint8), 0, 255)
-RECTANGULAR_UINT8_IMAGE = cv2.randu(np.zeros((101, 99, 3), dtype=np.uint8), 0, 255)
+# Optimized: Use np.random.default_rng for uint8 (2-3x faster than cv2.randu)
+SQUARE_UINT8_IMAGE = _rng.integers(0, 256, (100, 100, 3), dtype=np.uint8)
+RECTANGULAR_UINT8_IMAGE = _rng.integers(0, 256, (101, 99, 3), dtype=np.uint8)
 
-SQUARE_FLOAT_IMAGE = cv2.randu(np.zeros((100, 100, 3), dtype=np.float32), 0, 1)
-RECTANGULAR_FLOAT_IMAGE = cv2.randu(np.zeros((101, 99, 3), dtype=np.float32), 0, 1)
+# Keep cv2.randu for float32 (2x faster than numpy)
+SQUARE_FLOAT_IMAGE = cv2.randu(np.empty((100, 100, 3), dtype=np.float32), 0, 1)
+RECTANGULAR_FLOAT_IMAGE = cv2.randu(np.empty((101, 99, 3), dtype=np.float32), 0, 1)
 
 UINT8_IMAGES = [SQUARE_UINT8_IMAGE, RECTANGULAR_UINT8_IMAGE]
 
 FLOAT32_IMAGES = [SQUARE_FLOAT_IMAGE, RECTANGULAR_FLOAT_IMAGE]
 
 IMAGES = UINT8_IMAGES + FLOAT32_IMAGES
-VOLUME = np.random.randint(0, 255, (4, 101, 99, 3), dtype=np.uint8)
+VOLUME = _rng.integers(0, 256, (4, 101, 99, 3), dtype=np.uint8)
 
 SQUARE_IMAGES = [SQUARE_UINT8_IMAGE, SQUARE_FLOAT_IMAGE]
 RECTANGULAR_IMAGES = [RECTANGULAR_UINT8_IMAGE, RECTANGULAR_FLOAT_IMAGE]
 
-SQUARE_MULTI_UINT8_IMAGE = np.random.randint(low=0, high=256, size=(100, 100, 5), dtype=np.uint8)
-SQUARE_MULTI_FLOAT_IMAGE = np.random.uniform(low=0.0, high=1.0, size=(100, 100, 5)).astype(np.float32)
+SQUARE_MULTI_UINT8_IMAGE = _rng.integers(0, 256, (100, 100, 5), dtype=np.uint8)
+SQUARE_MULTI_FLOAT_IMAGE = _rng.uniform(0.0, 1.0, (100, 100, 5)).astype(np.float32)
 
 MULTI_IMAGES = [SQUARE_MULTI_UINT8_IMAGE, SQUARE_MULTI_FLOAT_IMAGE]
 
 
 @pytest.fixture
 def image_float32():
-    return cv2.randu(np.zeros((100, 100, 3), dtype=np.float32), 0, 1)
+    return cv2.randu(np.empty((100, 100, 3), dtype=np.float32), 0, 1)
+
+
+# Module-scoped fixtures for large arrays (avoid recreation in parametrized tests)
+@pytest.fixture(scope="module")
+def large_image_1000x500():
+    """Large uint8 image for resize and performance tests."""
+    return _rng.integers(0, 256, (1000, 500, 3), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def large_image_1000x800():
+    """Large uint8 image for resize tests."""
+    return _rng.integers(0, 256, (1000, 800, 3), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def large_image_500x1000():
+    """Large uint8 image for resize tests (portrait orientation)."""
+    return _rng.integers(0, 256, (500, 1000, 3), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def large_image_800x1000():
+    """Large uint8 image for resize tests (portrait orientation)."""
+    return _rng.integers(0, 256, (800, 1000, 3), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def large_image_512x512():
+    """512x512 uint8 image for benchmark and integration tests."""
+    return _rng.integers(0, 256, (512, 512, 3), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def large_image_512x512_16ch():
+    """512x512 16-channel uint8 image for multi-channel tests."""
+    return _rng.integers(0, 256, (512, 512, 16), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def large_float_array_1000x1000():
+    """Large float32 array for SIMD integration tests."""
+    return _rng.uniform(0, 1, (1000, 1000, 3)).astype(np.float32)
+
+
+@pytest.fixture
+def compose_factory():
+    """Factory for creating Compose instances with standard settings."""
+
+    def _create(transforms, **kwargs):
+        defaults = {"seed": 137, "strict": True}
+        defaults.update(kwargs)
+        return A.Compose(transforms, **defaults)
+
+    return _create

@@ -2995,13 +2995,9 @@ def test_white_pixels_in_mixed_images(image_type, sat_shift):
     # Apply saturation increase
     result = fpixel.shift_hsv(image, hue_shift=0, sat_shift=sat_shift, val_shift=0)
 
-    # Check that white pixels remain white
-    for y in range(image.shape[0]):
-        for x in range(image.shape[1]):
-            if white_mask[y, x]:
-                assert np.array_equal(result[y, x], [255, 255, 255]), (
-                    f"White pixel at ({y},{x}) changed color in {image_type} image"
-                )
+    # Check that white pixels remain white (vectorized)
+    white_pixels = result[white_mask]
+    assert np.all(white_pixels == [255, 255, 255]), f"White pixels changed color in {image_type} image"
 
     # Non-white pixels should be affected by saturation (except black which has V=0)
     if image_type in {"white_and_color", "white_black_color"}:
@@ -3011,21 +3007,14 @@ def test_white_pixels_in_mixed_images(image_type, sat_shift):
         original_hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         result_hsv = cv2.cvtColor(result, cv2.COLOR_RGB2HSV)
 
-        # Check that saturation was properly applied (may not change RGB values if already at max)
-        for y in range(image.shape[0]):
-            for x in range(image.shape[1]):
-                # Instead of checking for exact equality, check that saturation increased
-                if colored_mask[y, x]:
-                    # Get original saturation
-                    orig_sat = original_hsv[y, x, 1]
-                    # Actual saturation
-                    actual_sat = result_hsv[y, x, 1]
+        # Check that saturation was properly applied (vectorized)
+        orig_sat = original_hsv[colored_mask, 1]
+        actual_sat = result_hsv[colored_mask, 1]
 
-                    # Check that saturation increased or reached maximum
-                    assert actual_sat > orig_sat or actual_sat == 255, (
-                        f"Saturation did not increase at ({y},{x}) in {image_type} image. "
-                        f"Original: {orig_sat}, Actual: {actual_sat}"
-                    )
+        # Check that saturation increased or reached maximum
+        assert np.all((actual_sat > orig_sat) | (actual_sat == 255)), (
+            f"Saturation did not increase for some colored pixels in {image_type} image"
+        )
 
 
 def test_grayscale_image_with_saturation():
@@ -3099,13 +3088,10 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
     # Apply saturation increase
     result = fpixel.shift_hsv(image, hue_shift=0, sat_shift=sat_shift, val_shift=0)
 
-    # Check that gray pixels remain unchanged
-    for y in range(image.shape[0]):
-        for x in range(image.shape[1]):
-            if gray_mask[y, x]:
-                assert np.array_equal(result[y, x], original_values[y, x]), (
-                    f"Gray pixel at ({y},{x}) changed from {original_values[y, x]} to {result[y, x]}"
-                )
+    # Check that gray pixels remain unchanged (vectorized)
+    gray_pixels_result = result[gray_mask]
+    gray_pixels_original = original_values[gray_mask]
+    assert np.all(gray_pixels_result == gray_pixels_original), "Gray pixels changed color"
 
     # Non-gray pixels should be affected by saturation
     colored_mask = ~gray_mask
@@ -3114,20 +3100,14 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
     original_hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
     result_hsv = cv2.cvtColor(result, cv2.COLOR_RGB2HSV)
 
-    # Check that saturation was properly applied to colored pixels
-    for y in range(image.shape[0]):
-        for x in range(image.shape[1]):
-            if colored_mask[y, x]:
-                # Get original saturation
-                orig_sat = original_hsv[y, x, 1]
-                # Actual saturation
-                actual_sat = result_hsv[y, x, 1]
+    # Check that saturation was properly applied to colored pixels (vectorized)
+    orig_sat = original_hsv[colored_mask, 1]
+    actual_sat = result_hsv[colored_mask, 1]
 
-                # Check that saturation increased or reached maximum
-                assert actual_sat > orig_sat or actual_sat == 255, (
-                    f"Saturation did not increase at ({y},{x}) in {image_type} image. "
-                    f"Original: {orig_sat}, Actual: {actual_sat}"
-                )
+    # Check that saturation increased or reached maximum
+    assert np.all((actual_sat > orig_sat) | (actual_sat == 255)), (
+        f"Saturation did not increase for some colored pixels in {image_type} image"
+    )
 
 
 @pytest.mark.parametrize(

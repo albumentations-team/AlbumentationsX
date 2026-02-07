@@ -372,6 +372,28 @@ skip_covered = false
 [tool.coverage.xml]
 output = "coverage.xml"
 
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "--strict-config",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "obb: tests for oriented bounding boxes",
+]
+filterwarnings = [
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning:torch.*",
+    "ignore::UserWarning:torchvision.*",
+    "ignore::pytest_benchmark.logger.PytestBenchmarkWarning",
+]
+
 [tool.google_docstring_parser]
 paths = [ "albumentations", "tools" ] # Directories or files to scan
 require_param_types = true            # Require parameter types in docstrings

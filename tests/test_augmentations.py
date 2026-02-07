@@ -1270,10 +1270,12 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         p=1.0,
         rain_type="heavy",  # Use heavy to ensure enough rain drops
     )
-    transform.set_random_seed(137)
-    # Run multiple times to ensure slant stays within range
+
+    # Run multiple iterations with different seeds to ensure slant stays within range
     slants = []
-    for _ in range(50):  # Run 50 times to get a good sample
+    for iteration in range(50):  # Run 50 times to get a good sample
+        # Use different seed for each iteration
+        transform.set_random_seed(137 + iteration)
         # Get params without actually applying transform
         params = transform.get_params_dependent_on_data(
             {"shape": image.shape},

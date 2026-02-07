@@ -39,21 +39,6 @@ AUGMENTATION_CLS_EXCEPT = {
 TEST_SEEDS = (137,)
 
 
-# Session-scoped fixtures to cache file I/O operations
-@pytest.fixture(scope="session")
-def transform_files_directory():
-    """Return the path to the test files directory."""
-    current_directory = Path(__file__).resolve().parent
-    return current_directory / "files"
-
-
-@pytest.fixture(scope="session")
-def loaded_transform_v2_json(transform_files_directory):
-    """Load transform from JSON file once per session."""
-    transform_file_path = transform_files_directory / "transform_serialization_v2_with_totensor.json"
-    return A.load(transform_file_path, data_format="json")
-
-
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_transforms(

@@ -410,6 +410,11 @@ def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
     # Create x coordinates
     x = create_gaussian_kernel_input_array(size=size)
 
+    # Guard against sigma=0 (would cause division by zero)
+    if sigma == 0:
+        # Return uniform kernel when sigma is zero
+        return np.ones(size, dtype=np.float64) / size
+
     # Compute 1D kernel using vectorized operations
     kernel_1d = np.exp(-0.5 * (x / sigma) ** 2)
     return kernel_1d / kernel_1d.sum()

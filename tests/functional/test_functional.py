@@ -269,37 +269,22 @@ def test_keypoint_image_rot90_match(factor, expected_positions):
     )
 
 
-def test_is_rgb_image():
-    image = np.ones((5, 5, 3), dtype=np.uint8)
-    assert fpixel.is_rgb_image(image)
+@pytest.mark.parametrize(
+    "image_shape,expected_is_rgb,expected_is_gray,expected_is_multi",
+    [
+        ((5, 5, 3), True, False, False),  # RGB image
+        ((5, 5, 1), False, True, False),  # Grayscale image
+        ((5, 5, 4), False, False, True),  # Multispectral image (4 channels)
+        ((5, 5, 5), False, False, True),  # Multispectral image (5 channels)
+    ],
+)
+def test_image_type_detection(image_shape, expected_is_rgb, expected_is_gray, expected_is_multi):
+    """Test is_rgb_image, is_grayscale_image, and is_multispectral_image functions."""
+    image = np.ones(image_shape, dtype=np.uint8)
 
-    multispectral_image = np.ones((5, 5, 4), dtype=np.uint8)
-    assert not fpixel.is_rgb_image(multispectral_image)
-
-    gray_image = np.ones((5, 5, 1), dtype=np.uint8)
-    assert not fpixel.is_rgb_image(gray_image)
-
-
-def test_is_grayscale_image():
-    image = np.ones((5, 5, 3), dtype=np.uint8)
-    assert not fpixel.is_grayscale_image(image)
-
-    multispectral_image = np.ones((5, 5, 4), dtype=np.uint8)
-    assert not fpixel.is_grayscale_image(multispectral_image)
-
-    gray_image = np.ones((5, 5, 1), dtype=np.uint8)
-    assert fpixel.is_grayscale_image(gray_image)
-
-
-def test_is_multispectral_image():
-    image = np.ones((5, 5, 3), dtype=np.uint8)
-    assert not is_multispectral_image(image)
-
-    multispectral_image = np.ones((5, 5, 4), dtype=np.uint8)
-    assert is_multispectral_image(multispectral_image)
-
-    gray_image = np.ones((5, 5, 1), dtype=np.uint8)
-    assert not is_multispectral_image(gray_image)
+    assert fpixel.is_rgb_image(image) == expected_is_rgb
+    assert fpixel.is_grayscale_image(image) == expected_is_gray
+    assert is_multispectral_image(image) == expected_is_multi
 
 
 @pytest.mark.parametrize(
@@ -363,17 +348,52 @@ def test_solarize(image, threshold):
     assert np.max(result_img) <= max_value
 
 
-def test_equalize_grayscale():
-    img = np.random.randint(0, 255, (256, 256, 1), dtype=np.uint8)
+def test_solarize_value_range_property():
+    """Property test: solarize preserves value ranges for any threshold."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+
+    @given(
+        dtype=st.sampled_from([np.uint8, np.float32]),
+        shape=st.tuples(
+            st.integers(10, 100),  # height
+            st.integers(10, 100),  # width
+            st.integers(1, 3),  # channels
+        ),
+        threshold=st.floats(0.0, 1.0),
+    )
+    @settings(max_examples=50, deadline=3000)
+    def property_test(dtype, shape, threshold):
+        # Generate appropriate data for dtype
+        if dtype == np.uint8:
+            image = np.random.randint(0, 256, shape, dtype=np.uint8)
+        else:
+            image = np.random.uniform(0, 1, shape).astype(np.float32)
+
+        max_value = MAX_VALUES_BY_DTYPE[dtype]
+        result = fpixel.solarize(image, threshold=threshold)
+
+        # Value range must be preserved
+        assert np.min(result) >= 0
+        assert np.max(result) <= max_value
+        # Shape and dtype must be preserved
+        assert result.shape == image.shape
+        assert result.dtype == dtype
+
+    property_test()
+
+
+def test_equalize_grayscale(image_256x256_1ch_uint8):
+    img = image_256x256_1ch_uint8
     assert np.all(cv2.equalizeHist(img) == fpixel.equalize(img, mode="cv")[:, :, 0])
 
 
 def test_equalize_rgb():
     img = SQUARE_UINT8_IMAGE
 
+    # Vectorized: use list comprehension instead of manual loop (cleaner and equally fast)
     _img = img.copy()
-    for i in range(3):
-        _img[..., i] = cv2.equalizeHist(_img[..., i])
+    _img = np.stack([cv2.equalizeHist(_img[..., i]) for i in range(3)], axis=-1)
     assert np.all(_img == fpixel.equalize(img, mode="cv"))
 
     _img = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
@@ -384,26 +404,30 @@ def test_equalize_rgb():
 
 
 def test_equalize_grayscale_mask():
-    img = np.random.randint(0, 255, (256, 256, 1), dtype=np.uint8)
+    # Need fresh image for this test - equalize depends on histogram
+    rng = np.random.default_rng(137)
+    img = rng.integers(0, 256, (256, 256, 1), dtype=np.uint8)
 
     mask = np.zeros((256, 256, 1), dtype=bool)
     mask[:10, :10] = True
 
-    cv2_result = cv2.equalizeHist(img[:10, :10])
+    cv2_result = cv2.equalizeHist(img[:10, :10, 0])  # cv2.equalizeHist expects 2D array
     albumentations_result = fpixel.equalize(img, mask=mask, mode="cv")[:10, :10, 0]
 
     np.testing.assert_array_equal(cv2_result, albumentations_result)
 
 
 def test_equalize_rgb_mask():
-    img = np.random.randint(0, 255, (256, 256, 3), dtype=np.uint8)
+    # Need fresh image for this test - equalize depends on histogram
+    rng = np.random.default_rng(137)
+    img = rng.integers(0, 256, (256, 256, 3), dtype=np.uint8)
 
     mask = np.zeros((256, 256, 1), dtype=bool)
     mask[:10, :10] = True
 
+    # Vectorized: use list comprehension instead of manual loop
     _img = img.copy()[:10, :10]
-    for i in range(3):
-        _img[..., i] = cv2.equalizeHist(_img[..., i])
+    _img = np.stack([cv2.equalizeHist(_img[..., i]) for i in range(3)], axis=-1)
     assert np.all(_img == fpixel.equalize(img, mask, mode="cv")[:10, :10])
 
     _img = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)

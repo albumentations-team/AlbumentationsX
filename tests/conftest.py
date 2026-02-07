@@ -17,12 +17,12 @@ _rng = np.random.default_rng(137)
 
 @pytest.fixture
 def mask():
-    return cv2.randu(np.empty((100, 100), dtype=np.uint8), 0, 2)
+    return _rng.integers(0, 2, (100, 100), dtype=np.uint8)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def image():
-    return cv2.randu(np.zeros((100, 100, 3), dtype=np.uint8), low=np.array([0, 0, 0]), high=np.array([255, 255, 255]))
+    return _rng.integers(0, 256, (100, 100, 3), dtype=np.uint8)
 
 
 @pytest.fixture
@@ -142,6 +142,31 @@ def large_image_512x512_16ch():
 def large_float_array_1000x1000():
     """Large float32 array for SIMD integration tests."""
     return _rng.uniform(0, 1, (1000, 1000, 3)).astype(np.float32)
+
+
+# Commonly used image sizes for functional tests
+@pytest.fixture(scope="module")
+def image_256x256_uint8():
+    """256x256 uint8 image for equalize and other functional tests."""
+    return _rng.integers(0, 256, (256, 256, 3), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def image_256x256_1ch_uint8():
+    """256x256 single-channel uint8 image for grayscale tests."""
+    return _rng.integers(0, 256, (256, 256, 1), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def image_512x512_1ch_uint8():
+    """512x512 single-channel uint8 image for mask tests."""
+    return _rng.integers(0, 256, (512, 512, 1), dtype=np.uint8)
+
+
+@pytest.fixture(scope="module")
+def mask_256x256():
+    """256x256 boolean mask for functional tests."""
+    return _rng.integers(0, 2, (256, 256, 1), dtype=np.uint8)
 
 
 @pytest.fixture

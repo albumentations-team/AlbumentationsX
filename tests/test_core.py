@@ -224,36 +224,60 @@ def test_check_bboxes_with_end_greater_that_start():
 
 
 def test_deterministic_oneof() -> None:
-    aug = ReplayCompose([OneOf([A.HorizontalFlip(p=1), A.Blur(p=1)])], p=1)
-    for _ in range(10):
-        image = (np.random.random((8, 8)) * 255).astype(np.uint8)
+    """Test ReplayCompose determinism with OneOf using random images."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+    from hypothesis.extra import numpy as npst
+
+    @given(npst.arrays(dtype=np.uint8, shape=(8, 8, 3), elements=st.integers(0, 255)))
+    @settings(max_examples=20, deadline=2000)
+    def property_test(image):
+        aug = ReplayCompose([OneOf([A.HorizontalFlip(p=1), A.Blur(p=1)])], p=1)
         image2 = np.copy(image)
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
         assert np.array_equal(data["image"], data2["image"])
+
+    property_test()
 
 
 def test_deterministic_one_or_other() -> None:
-    aug = ReplayCompose([OneOrOther(A.HorizontalFlip(p=1), A.Blur(p=1))], p=1)
-    for _ in range(10):
-        image = (np.random.random((8, 8)) * 255).astype(np.uint8)
+    """Test ReplayCompose determinism with OneOrOther using random images."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+    from hypothesis.extra import numpy as npst
+
+    @given(npst.arrays(dtype=np.uint8, shape=(8, 8, 3), elements=st.integers(0, 255)))
+    @settings(max_examples=20, deadline=2000)
+    def property_test(image):
+        aug = ReplayCompose([OneOrOther(A.HorizontalFlip(p=1), A.Blur(p=1))], p=1)
         image2 = np.copy(image)
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
         assert np.array_equal(data["image"], data2["image"])
+
+    property_test()
 
 
 def test_deterministic_sequential() -> None:
-    aug = ReplayCompose([Sequential([A.HorizontalFlip(p=1), A.Blur(p=1)])], p=1)
-    for _ in range(10):
-        image = (np.random.random((8, 8)) * 255).astype(np.uint8)
+    """Test ReplayCompose determinism with Sequential using random images."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+    from hypothesis.extra import numpy as npst
+
+    @given(npst.arrays(dtype=np.uint8, shape=(8, 8, 3), elements=st.integers(0, 255)))
+    @settings(max_examples=20, deadline=2000)
+    def property_test(image):
+        aug = ReplayCompose([Sequential([A.HorizontalFlip(p=1), A.Blur(p=1)])], p=1)
         image2 = np.copy(image)
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
         assert np.array_equal(data["image"], data2["image"])
+
+    property_test()
 
 
 def test_replay_compose_reproducibility():
@@ -1969,6 +1993,43 @@ def test_bbox_hflip_hflip_no_labels(bbox_format: str, bboxes: list[list[float]])
     assert np.allclose(transformed["bboxes"], original_bboxes, atol=1e-6)
 
 
+def test_bbox_hflip_idempotence_property():
+    """Property test: HorizontalFlip twice with random valid bboxes."""
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+
+    @given(
+        st.lists(
+            st.tuples(
+                st.floats(0.0, 0.7),  # x_min
+                st.floats(0.0, 0.7),  # y_min
+                st.floats(0.3, 1.0),  # x_max
+                st.floats(0.3, 1.0),  # y_max
+            ).filter(lambda x: x[2] > x[0] + 0.01 and x[3] > x[1] + 0.01),
+            min_size=1,
+            max_size=10,
+        ),
+    )
+    @settings(max_examples=50, deadline=2000)
+    def property_test(bboxes_list):
+        if not bboxes_list:
+            return
+
+        image = np.ones((100, 100, 3), dtype=np.uint8)
+        original_bboxes = np.array(bboxes_list, dtype=np.float32)
+
+        aug = A.Compose(
+            [A.HorizontalFlip(p=1.0), A.HorizontalFlip(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="albumentations"),
+            strict=True,
+        )
+        transformed = aug(image=image, bboxes=original_bboxes)
+
+        assert np.allclose(transformed["bboxes"], original_bboxes, atol=1e-6)
+
+    property_test()
+
+
 @pytest.mark.parametrize(
     ["kp_format", "keypoints"],
     [
@@ -1992,6 +2053,49 @@ def test_keypoint_hflip_hflip_no_labels(kp_format: str, keypoints: list[list[flo
     transformed = aug(image=image, keypoints=original_keypoints)
 
     assert np.allclose(transformed["keypoints"], original_keypoints, atol=1e-6)
+
+
+def test_keypoint_hflip_idempotence_property():
+    """Property test: HorizontalFlip twice with random valid keypoints.
+
+    Note: Keypoints near edges (>= image dimensions) or duplicates may be filtered out.
+    This tests that remaining keypoints preserve idempotence property.
+    """
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+
+    @given(
+        st.lists(
+            st.tuples(
+                st.floats(5.0, 94.99),  # x (well inside bounds)
+                st.floats(5.0, 94.99),  # y (well inside bounds)
+            ),
+            min_size=1,
+            max_size=20,
+            unique=True,  # avoid duplicates which may be filtered
+        ),
+    )
+    @settings(max_examples=50, deadline=2000)
+    def property_test(keypoints_list):
+        if not keypoints_list:
+            return
+
+        image = np.ones((100, 100, 3), dtype=np.uint8)
+        original_keypoints = np.array(keypoints_list, dtype=np.float32)
+
+        aug = A.Compose(
+            [A.HorizontalFlip(p=1.0), A.HorizontalFlip(p=1.0)],
+            keypoint_params=A.KeypointParams(coord_format="xy"),
+            strict=True,
+        )
+        transformed = aug(image=image, keypoints=original_keypoints)
+
+        # Result keypoints should match original (idempotence)
+        # Some might be filtered if invalid, but shape and values should match
+        assert transformed["keypoints"].shape == original_keypoints.shape
+        assert np.allclose(transformed["keypoints"], original_keypoints, atol=1e-5)
+
+    property_test()
 
 
 def test_compose_with_empty_masks():

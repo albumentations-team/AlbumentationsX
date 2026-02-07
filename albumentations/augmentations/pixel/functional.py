@@ -235,7 +235,9 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
 
     total = np.sum(histogram)
 
-    scale = 255.0 / (total - histogram[i])
+    # Safe division for equalize: handle edge case of uniform histograms
+    denominator = total - histogram[i]
+    scale = 255.0 / denominator if denominator > 0 else 0.0
 
     # Optimize cumulative sum and scale to generate LUT
     cumsum_histogram = np.cumsum(histogram)

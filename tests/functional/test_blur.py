@@ -157,6 +157,29 @@ def test_kernel_visual_comparison():
     np.testing.assert_allclose(our_kernel, pil_kernel, rtol=1e-5)
 
 
+@pytest.mark.parametrize("ksize", [3, 5, 7, 11, 15])
+def test_create_gaussian_kernel_1d_sigma_zero_uniform_kernel(ksize):
+    """Test that sigma=0 returns a uniform (averaging) kernel.
+
+    When sigma is 0, we guard against division by zero and return
+    a uniform kernel that averages all values equally.
+    """
+    kernel = fblur.create_gaussian_kernel_1d(sigma=0, ksize=ksize)
+
+    # Kernel length matches expected size
+    assert len(kernel) == ksize
+
+    # Kernel sums to 1 (normalized)
+    assert np.isclose(kernel.sum(), 1.0)
+
+    # All entries are equal (uniform kernel for averaging)
+    expected_value = 1.0 / ksize
+    assert np.allclose(kernel, expected_value, rtol=1e-10)
+
+    # Verify it's a proper averaging kernel
+    assert np.allclose(kernel, np.ones(ksize) / ksize)
+
+
 # === Motion Kernel Tests ===
 
 

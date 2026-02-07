@@ -456,6 +456,27 @@ def test_equalize_rgb_mask():
     assert np.all(img_b == result_img[20:30, 20:30, 2])
 
 
+def test_equalize_uniform_image():
+    """Test that equalize with uniform histogram returns identity (no change).
+
+    When the image has a uniform histogram (all pixels same value),
+    equalization should return the image unchanged (identity LUT).
+    """
+    # Create uniform image (all pixels same value)
+    uniform_img = np.full((100, 100, 1), 128, dtype=np.uint8)
+
+    # Apply equalize
+    result = fpixel.equalize(uniform_img, mode="cv")
+
+    # Should be unchanged (identity operation)
+    np.testing.assert_array_equal(result, uniform_img)
+
+    # Test with mask as well
+    mask = np.ones((100, 100, 1), dtype=bool)
+    result_masked = fpixel.equalize(uniform_img, mask=mask, mode="cv")
+    np.testing.assert_array_equal(result_masked, uniform_img)
+
+
 @pytest.mark.parametrize(
     "img",
     [

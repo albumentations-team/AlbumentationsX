@@ -236,16 +236,16 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     total = np.sum(histogram)
 
     # Safe division for equalize: handle edge case of uniform histograms
-    # If histogram is uniform (denominator == 0), return identity LUT (no change)
+    # If histogram is uniform (denominator == 0), return image unchanged
     denominator = total - histogram[i]
     if denominator == 0:
-        # Uniform histogram - return identity LUT to preserve original values
-        lut = np.arange(256, dtype=np.uint8)
-    else:
-        scale = 255.0 / denominator
-        # Optimize cumulative sum and scale to generate LUT
-        cumsum_histogram = np.cumsum(histogram)
-        lut = np.clip(((cumsum_histogram - cumsum_histogram[i]) * scale).round(), 0, 255).astype(np.uint8)
+        # Uniform histogram - no equalization needed
+        return img
+
+    scale = 255.0 / denominator
+    # Optimize cumulative sum and scale to generate LUT
+    cumsum_histogram = np.cumsum(histogram)
+    lut = np.clip(((cumsum_histogram - cumsum_histogram[i]) * scale).round(), 0, 255).astype(np.uint8)
 
     return sz_lut(img, lut, inplace=True)
 

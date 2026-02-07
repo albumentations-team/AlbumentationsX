@@ -1,3 +1,4 @@
+import copy
 import random
 from functools import partial
 from typing import Any
@@ -71,6 +72,8 @@ def test_rotate_crop_border(image):
 )
 def test_binary_mask_interpolation(augmentation_cls, params, image):
     """Checks whether transformations based on DualTransform does not introduce a mask interpolation artifacts"""
+    # Deep copy params to avoid mutating shared test parameters
+    params = copy.deepcopy(params)
     params["mask_interpolation"] = cv2.INTER_NEAREST
     params["fill_mask"] = 0
 
@@ -135,6 +138,8 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
 def test_semantic_mask_interpolation(augmentation_cls, params, image):
     """Checks whether transformations based on DualTransform does not introduce a mask interpolation artifacts."""
     seed = 137
+    # Deep copy params to avoid mutating shared test parameters
+    params = copy.deepcopy(params)
     params["mask_interpolation"] = cv2.INTER_NEAREST
     params["fill_mask"] = 0
 

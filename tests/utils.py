@@ -1,3 +1,4 @@
+import copy
 import functools
 import inspect
 import random
@@ -7,6 +8,52 @@ import numpy as np
 
 import albumentations
 from tests.aug_definitions import AUGMENTATION_CLS_PARAMS
+
+
+class FrozenParams(dict):
+    """Immutable dict that returns a deep copy on iteration/unpacking.
+
+    This prevents accidental mutation of shared test parameters by:
+    1. Making the dict itself immutable (raises on setitem/delitem)
+    2. Returning a deep copy when unpacked with **params
+
+    Example:
+        >>> params = FrozenParams({"a": 1})
+        >>> params["a"]  # Read access works
+        1
+        >>> params["b"] = 2  # Raises error
+        RuntimeError: Cannot modify FrozenParams
+        >>> aug = Transform(**params)  # Auto-copies on unpack
+
+    """
+
+    def __setitem__(self, key, value):
+        """Prevent modification."""
+        raise RuntimeError(
+            "Cannot modify FrozenParams. Use copy.deepcopy(params) first to get a mutable copy.",
+        )
+
+    def __delitem__(self, key):
+        """Prevent deletion."""
+        raise RuntimeError(
+            "Cannot modify FrozenParams. Use copy.deepcopy(params) first to get a mutable copy.",
+        )
+
+    def __deepcopy__(self, memo):
+        """Return a regular mutable dict on deepcopy."""
+        return copy.deepcopy(dict(self), memo)
+
+    def keys(self):
+        """Return keys from a deep copy (for ** unpacking)."""
+        return copy.deepcopy(dict(self)).keys()
+
+    def items(self):
+        """Return items from a deep copy (for ** unpacking)."""
+        return copy.deepcopy(dict(self)).items()
+
+    def values(self):
+        """Return values from a deep copy."""
+        return copy.deepcopy(dict(self)).values()
 
 
 def convert_2d_to_3d(arrays, num_channels=3):
@@ -96,7 +143,6 @@ def get_filtered_transforms(
     except_augmentations=None,
     exclude_base_classes=None,
 ):
-    import copy
 
     custom_arguments = custom_arguments or {}
     except_augmentations = except_augmentations or set()
@@ -134,14 +180,14 @@ def get_filtered_transforms(
             if isinstance(params, dict):
                 params = [params]
             for param_set in params:
-                # Deep copy to prevent test pollution
-                result.append((cls, copy.deepcopy(param_set)))
+                # Wrap in FrozenParams to prevent mutation across tests
+                result.append((cls, FrozenParams(param_set)))
         elif cls in default_params:
             for param_set in default_params[cls]:
-                # Deep copy to prevent test pollution
-                result.append((cls, copy.deepcopy(param_set)))
+                # Wrap in FrozenParams to prevent mutation across tests
+                result.append((cls, FrozenParams(param_set)))
         else:
-            result.append((cls, {}))
+            result.append((cls, FrozenParams({})))
 
     return result
 

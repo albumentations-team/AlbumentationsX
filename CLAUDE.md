@@ -141,7 +141,21 @@ Use the helper modules to simplify test code and ensure consistency:
 
 - **Use independent RNGs**: Avoid global `np.random.seed()` in tests - use `np.random.default_rng(seed)` instead
 - **Fixture independence**: Module-scoped fixtures should use `_make_rng()` helper from conftest
-- **No side effects**: Tests must not mutate shared parameters (use `safe_copy_params()`)
+- **No side effects**: Tests must not mutate shared parameters (use `safe_copy_params()` or `copy.deepcopy()`)
+- **Immutable params**: Test parameters from `get_*_transforms()` are wrapped in `FrozenParams` to prevent accidental mutation
+  ```python
+  from tests.utils import get_dual_transforms
+  import copy
+
+  # FrozenParams prevents mutation
+  for aug_cls, params in get_dual_transforms():
+      # params["new_key"] = value  # Would raise RuntimeError
+
+      # Use deepcopy to get a mutable copy
+      params = copy.deepcopy(params)
+      params["mask_interpolation"] = cv2.INTER_NEAREST  # OK now
+      aug = aug_cls(**params)
+  ```
 - **Hypothesis integration**: Use `@given` decorators for property-based testing
 - **Interpolation choice**: Use `INTER_AREA` for downscaling tests (avoids rounding issues in batch processing)
 

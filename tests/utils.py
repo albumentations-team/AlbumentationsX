@@ -96,6 +96,8 @@ def get_filtered_transforms(
     except_augmentations=None,
     exclude_base_classes=None,
 ):
+    import copy
+
     custom_arguments = custom_arguments or {}
     except_augmentations = except_augmentations or set()
     exclude_base_classes = exclude_base_classes or ()
@@ -132,10 +134,12 @@ def get_filtered_transforms(
             if isinstance(params, dict):
                 params = [params]
             for param_set in params:
-                result.append((cls, param_set))
+                # Deep copy to prevent test pollution
+                result.append((cls, copy.deepcopy(param_set)))
         elif cls in default_params:
             for param_set in default_params[cls]:
-                result.append((cls, param_set))
+                # Deep copy to prevent test pollution
+                result.append((cls, copy.deepcopy(param_set)))
         else:
             result.append((cls, {}))
 

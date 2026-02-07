@@ -1101,7 +1101,7 @@ def test_images_as_target(augmentation_cls, params, shape):
     aug = A.Compose(
         [augmentation_cls(p=1, **params)],
         p=1,
-        strict=False,
+        strict=True,
         seed=137,
     )
 

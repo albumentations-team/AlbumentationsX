@@ -1543,3 +1543,71 @@ def test_unsharp_mask_apply_to_volumes(dtype):
 
     expected = np.stack([transform(volume=volumes[i])["volume"] for i in range(volumes.shape[0])])
     np.testing.assert_array_equal(transformed, expected)
+
+
+@pytest.mark.parametrize(
+    ["dtype", "method"],
+    [
+        (np.uint8, "kernel"),
+        (np.float32, "kernel"),
+        (np.uint8, "gaussian"),
+        (np.float32, "gaussian"),
+    ],
+)
+def test_sharpen_apply_to_images(dtype, method):
+    if dtype == np.uint8:
+        images = np.random.RandomState(137).randint(0, 256, (2, 100, 100, 3), dtype=np.uint8)
+    else:
+        images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
+
+    transform = A.Sharpen(
+        alpha=(0.3, 0.3),
+        lightness=(0.7, 0.7),
+        method=method,
+        kernel_size=5,
+        sigma=1.0,
+        p=1.0,
+    )
+
+    transformed = transform(images=images)["images"]
+
+    assert transformed.shape == images.shape
+    assert transformed.dtype == images.dtype
+
+    expected = np.stack([transform(image=images[i])["image"] for i in range(images.shape[0])])
+    np.testing.assert_array_equal(transformed, expected)
+
+
+@pytest.mark.parametrize(
+    ["dtype", "method"],
+    [
+        (np.uint8, "kernel"),
+        (np.float32, "kernel"),
+        (np.uint8, "gaussian"),
+        (np.float32, "gaussian"),
+    ],
+)
+def test_sharpen_apply_to_volumes(dtype, method):
+    shape = (2, 4, 32, 32, 3)
+
+    if dtype == np.uint8:
+        volumes = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
+    else:
+        volumes = np.random.RandomState(137).random(shape).astype(np.float32)
+
+    transform = A.Sharpen(
+        alpha=(0.3, 0.3),
+        lightness=(0.7, 0.7),
+        method=method,
+        kernel_size=5,
+        sigma=1.0,
+        p=1.0,
+    )
+
+    transformed = transform(volumes=volumes)["volumes"]
+
+    assert transformed.shape == volumes.shape
+    assert transformed.dtype == volumes.dtype
+
+    expected = np.stack([transform(volume=volumes[i])["volume"] for i in range(volumes.shape[0])])
+    np.testing.assert_array_equal(transformed, expected)

@@ -4289,8 +4289,7 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         np.ndarray: Convolved image.
 
     """
-    conv_fn = maybe_process_in_chunks(cv2.filter2D, ddepth=-1, kernel=kernel)
-    return conv_fn(img)
+    return cv2.filter2D(img, ddepth=-1, kernel=kernel)
 
 
 @clipped
@@ -4308,5 +4307,4 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         np.ndarray: Convolved image.
 
     """
-    conv_fn = maybe_process_in_chunks(cv2.sepFilter2D, ddepth=-1, kernelX=kernel, kernelY=kernel)
-    return conv_fn(img)
+    return cv2.sepFilter2D(img, ddepth=-1, kernelX=kernel, kernelY=kernel)

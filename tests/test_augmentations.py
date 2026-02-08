@@ -945,6 +945,32 @@ def test_solarize_apply_to_images(dtype):
         np.testing.assert_array_equal(transformed[i], expected)
 
 
+@pytest.mark.parametrize(
+    "dtype",
+    [np.uint8, np.float32],
+)
+def test_solarize_apply_to_volumes(dtype):
+    shape = (2, 4, 32, 32, 3)
+
+    if dtype == np.uint8:
+        volumes = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
+    else:
+        volumes = np.random.RandomState(137).random(shape).astype(np.float32)
+
+    threshold = 0.5
+    transform = A.Solarize(threshold_range=(threshold, threshold), p=1.0)
+
+    transformed = transform.apply_to_volumes(volumes, threshold=threshold)
+
+    assert transformed.shape == volumes.shape
+    assert transformed.dtype == volumes.dtype
+
+    # Verify each volume in the batch matches individual application
+    for i in range(volumes.shape[0]):
+        expected = transform.apply(volumes[i], threshold=threshold)
+        np.testing.assert_array_equal(transformed[i], expected)
+
+
 def test_constrained_coarse_dropout_with_mask():
     """Test ConstrainedCoarseDropout with segmentation mask."""
     # Create test data

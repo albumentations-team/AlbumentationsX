@@ -1,0 +1,42 @@
+---
+description: Testing conventions for transform tests
+globs: tests/**/*.py
+alwaysApply: false
+---
+
+# Testing Conventions
+
+## Prefer Standard Transform Calls Over Direct Method Calls
+
+Use `transform(image=image)` / `transform(images=images)` through `Compose`, not direct calls like `transform.apply()` or `transform.apply_to_images()`.
+
+This exercises the full pipeline (parameter generation, dtype handling, Compose routing) and catches integration issues.
+
+```python
+# CORRECT - use transform call interface
+transform = A.Compose([A.MedianBlur(blur_limit=(3, 7), p=1.0)])
+
+# Single image
+result = transform(image=image)["image"]
+
+# Batch of images
+batch_result = transform(images=images)["images"]
+
+# INCORRECT - avoid direct method calls in tests
+result = transform.apply(image, kernel=3)
+batch_result = transform.apply_to_images(images, kernel=3)
+```
+
+## Parallel Test Execution
+
+Use `pytest-xdist` to run tests in parallel:
+
+```bash
+# Run tests using all available CPU cores
+pytest -n auto
+
+# Run tests using a specific number of workers
+pytest -n 4
+```
+
+Ensure tests are independent and don't share mutable global state so they can run safely in parallel.

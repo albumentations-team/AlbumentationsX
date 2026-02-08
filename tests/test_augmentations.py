@@ -934,15 +934,13 @@ def test_solarize_apply_to_images(dtype):
     threshold = 0.5
     transform = A.Solarize(threshold_range=(threshold, threshold), p=1.0)
 
-    transformed = transform.apply_to_images(images, threshold=threshold)
+    transformed = transform(images=images)["images"]
 
     assert transformed.shape == images.shape
     assert transformed.dtype == images.dtype
 
-    # Verify each image in the batch matches individual application
-    for i in range(images.shape[0]):
-        expected = transform.apply(images[i], threshold=threshold)
-        np.testing.assert_array_equal(transformed[i], expected)
+    expected = np.stack([transform(image=images[i])["image"] for i in range(images.shape[0])])
+    np.testing.assert_array_equal(transformed, expected)
 
 
 @pytest.mark.parametrize(
@@ -960,15 +958,13 @@ def test_solarize_apply_to_volumes(dtype):
     threshold = 0.5
     transform = A.Solarize(threshold_range=(threshold, threshold), p=1.0)
 
-    transformed = transform.apply_to_volumes(volumes, threshold=threshold)
+    transformed = transform(volumes=volumes)["volumes"]
 
     assert transformed.shape == volumes.shape
     assert transformed.dtype == volumes.dtype
 
-    # Verify each volume in the batch matches individual application
-    for i in range(volumes.shape[0]):
-        expected = transform.apply(volumes[i], threshold=threshold)
-        np.testing.assert_array_equal(transformed[i], expected)
+    expected = np.stack([transform(image=volumes[i])["image"] for i in range(volumes.shape[0])])
+    np.testing.assert_array_equal(transformed, expected)
 
 
 def test_constrained_coarse_dropout_with_mask():

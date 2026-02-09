@@ -2122,6 +2122,96 @@ def test_mask_to_bboxes(test_case):
         assert np.all(result[:, 4:] == original_bboxes[:, 4:])
 
 
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        pytest.param(
+            {
+                "name": "simple_square_obb",
+                "masks": np.array(
+                    [  # 5x5 mask with filled square
+                        [[1], [1], [1], [1], [1]],
+                        [[1], [1], [1], [1], [1]],
+                        [[1], [1], [1], [1], [1]],
+                        [[1], [1], [1], [1], [1]],
+                        [[1], [1], [1], [1], [1]],
+                    ],
+                    dtype=np.uint8,
+                ),
+                "original_bboxes": np.array([[0, 0, 5, 5, 45]]),
+            },
+            id="simple_square_obb",
+        ),
+        pytest.param(
+            {
+                "name": "obb_with_labels",
+                "masks": np.array(
+                    [  # 5x5 mask
+                        [[1], [1], [1], [0], [0]],
+                        [[1], [1], [1], [0], [0]],
+                        [[1], [1], [1], [0], [0]],
+                        [[0], [0], [0], [0], [0]],
+                        [[0], [0], [0], [0], [0]],
+                    ],
+                    dtype=np.uint8,
+                ),
+                "original_bboxes": np.array([[0, 0, 3, 3, 30, 1, 0.9]]),
+            },
+            id="obb_with_labels",
+        ),
+        pytest.param(
+            {
+                "name": "empty_mask_obb",
+                "masks": np.zeros((5, 5, 1), dtype=np.uint8),
+                "original_bboxes": np.array([[10, 20, 30, 40, 45]]),
+            },
+            id="empty_mask_obb",
+        ),
+    ],
+)
+@pytest.mark.obb
+def test_mask_to_bboxes_obb(test_case):
+    """Test mask_to_bboxes correctly handles OBB using cv2.minAreaRect."""
+    masks = test_case["masks"]
+    original_bboxes = test_case["original_bboxes"]
+
+    result = mask_to_bboxes(masks, original_bboxes, bbox_type="obb")
+
+    # Check shape - should have 5 values for OBB
+    assert result.shape[1] >= 5, f"Expected at least 5 values for OBB, got {result.shape[1]}"
+
+    # For non-empty masks, check bbox is valid
+    if np.any(masks):
+        # First 4 coords should form valid bbox
+        assert result[0, 0] < result[0, 2], "x_min should be less than x_max"
+        assert result[0, 1] < result[0, 3], "y_min should be less than y_max"
+        # Angle should be present (5th value)
+        assert result.shape[1] >= 5
+    else:
+        # Empty mask should preserve original coords
+        np.testing.assert_array_equal(result[0, :5], original_bboxes[0, :5])
+
+    # Check label preservation if present
+    if original_bboxes.shape[1] > 5:
+        assert result.shape[1] == original_bboxes.shape[1]
+        np.testing.assert_array_equal(result[:, 5:], original_bboxes[:, 5:])
+
+
+@pytest.mark.obb
+def test_empty_bboxes_obb():
+    """Test bboxes_to_mask and mask_to_bboxes with empty OBB input."""
+    empty_bboxes = np.zeros((0, 5))
+    image_shape = (100, 100)
+
+    # Test bboxes_to_mask with empty OBB input
+    masks = bboxes_to_mask(empty_bboxes, image_shape)
+    assert masks.shape == (100, 100, 0)
+
+    # Test mask_to_bboxes with empty OBB input
+    result = mask_to_bboxes(masks, empty_bboxes, bbox_type="obb")
+    assert result.shape == (0, 5)
+
+
 def test_empty_bboxes():
     empty_bboxes = np.zeros((0, 4))
     image_shape = (100, 100)

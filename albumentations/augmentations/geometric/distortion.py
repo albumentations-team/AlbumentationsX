@@ -184,6 +184,7 @@ class BaseDistortion(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         interpolation: Literal[cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
@@ -300,12 +301,14 @@ class BaseDistortion(DualTransform):
         **params: Any,
     ) -> np.ndarray:
         image_shape = params["shape"][:2]
+        bbox_type = params.get("bbox_type", "hbb")
         bboxes_denorm = denormalize_bboxes(bboxes, image_shape)
         bboxes_returned = fgeometric.remap_bboxes(
             bboxes_denorm,
             map_x,
             map_y,
             image_shape,
+            bbox_type=bbox_type,
         )
         return normalize_bboxes(bboxes_returned, image_shape)
 
@@ -339,7 +342,7 @@ class ElasticTransform(BaseDistortion):
         uint8, float32
 
     Supported bboxes:
-        hbb
+        hbb, obb
 
     Args:
         alpha (float): Scaling factor for the random displacement fields. Higher values result in
@@ -556,7 +559,7 @@ class PiecewiseAffine(BaseDistortion):
         uint8, float32
 
     Supported bboxes:
-        hbb
+        hbb, obb
 
     Note:
         - This augmentation is very slow. Consider using `ElasticTransform` instead, which is at least 10x faster.
@@ -741,7 +744,7 @@ class OpticalDistortion(BaseDistortion):
 
 
     Supported bboxes:
-        hbb
+        hbb, obb
     Note:
         - The distortion is applied using OpenCV's initUndistortRectifyMap and remap functions.
         - The distortion coefficient (k) is randomly sampled from the distort_limit range.
@@ -898,7 +901,7 @@ class GridDistortion(BaseDistortion):
 
 
     Supported bboxes:
-        hbb
+        hbb, obb
     Note:
         - The same distortion is applied to all targets (image, mask, bboxes, keypoints)
           to maintain consistency.
@@ -1095,7 +1098,7 @@ class ThinPlateSpline(BaseDistortion):
         uint8, float32
 
     Supported bboxes:
-        hbb
+        hbb, obb
 
     Note:
         - The transformation preserves smoothness and continuity

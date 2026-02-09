@@ -2046,7 +2046,7 @@ def unsharp_mask_images(
     need_conversion = input_dtype != np.float32
     num_channels = images.shape[-1] if images.ndim > 3 else 0
     ksize_tuple = (ksize, ksize)
-    threshold = threshold / 255.0
+    threshold_f = threshold / 255.0
 
     result = np.empty_like(images)
 
@@ -2064,7 +2064,7 @@ def unsharp_mask_images(
         cv2.subtract(image, cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma), dst=dst)
 
         mask = np.abs(dst)
-        cv2.threshold(mask, threshold, 1.0, cv2.THRESH_BINARY, dst=mask)
+        cv2.threshold(mask, threshold_f, 1.0, cv2.THRESH_BINARY, dst=mask)
 
         cv2.scaleAdd(dst, alpha, image, dst=dst)
         np.clip(dst, 0, 1, out=dst)

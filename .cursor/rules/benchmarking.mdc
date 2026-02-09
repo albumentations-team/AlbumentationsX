@@ -1,0 +1,136 @@
+---
+description: Benchmarking requirements for performance-sensitive changes
+globs: albumentations/**/*.py
+alwaysApply: false
+---
+
+# Benchmarking Requirements
+
+Any change that might affect the speed of transforms (functional layer, apply methods, `get_params`, `get_params_dependent_on_data`, core pipeline code) **must** include benchmark results comparing before and after.
+
+## When to Benchmark
+
+- Changes to `apply`, `apply_to_images`, `apply_to_masks`, `apply_to_volumes`, or any `apply_*` method
+- Changes to functions in `functional.py` files
+- Changes to `get_params` or `get_params_dependent_on_data`
+- Changes to core pipeline code (`composition.py`, `transforms_interface.py`)
+- Replacing numpy operations with cv2 or vice versa
+- Adding or removing array copies, allocations, or in-place operations
+- Any refactoring of hot-path code
+
+## Standard Benchmark Matrix
+
+All benchmarks must cover **3 image sizes x 3 channel counts**:
+
+### Image Sizes (real neural network training workloads)
+
+| Name   | Resolution | Typical use case                                        |
+|--------|------------|---------------------------------------------------------|
+| Small  | 256x256    | Classification (EfficientNet-B0, MobileNet, ResNet-18)  |
+| Medium | 512x512    | Detection (YOLO), segmentation (U-Net, DeepLab)        |
+| Large  | 1024x1024  | High-res segmentation, medical imaging, satellite       |
+
+### Channel Counts
+
+| Channels | Typical use case                                         |
+|----------|----------------------------------------------------------|
+| 1        | Grayscale, depth maps, masks, single-band satellite      |
+| 3        | RGB — the most common case                               |
+| 5        | Multispectral (e.g., Sentinel-2 subsets, RGBD+IR)        |
+
+Skip channel counts that the transform explicitly does not support (e.g., RGB-only transforms skip 1-channel).
+
+## Two Required Benchmarks
+
+Every performance-sensitive change requires **both** benchmarks, each run across the full size x channel matrix.
+
+### 1. Isolated Function Benchmark
+
+Benchmark the affected function or method directly to measure the raw impact.
+
+```python
+import timeit
+import numpy as np
+
+SIZES = {
+    "small":  (256, 256),
+    "medium": (512, 512),
+    "large":  (1024, 1024),
+}
+CHANNELS = [1, 3, 5]
+
+for name, (h, w) in SIZES.items():
+    for ch in CHANNELS:
+        shape = (h, w) if ch == 1 else (h, w, ch)
+        img = np.random.randint(0, 256, shape, dtype=np.uint8)
+        old_time = timeit.timeit(lambda img=img: old_func(img, **params), number=100)
+        new_time = timeit.timeit(lambda img=img: new_func(img, **params), number=100)
+        print(f"Function [{name} {h}x{w}x{ch}] — Old: {old_time:.4f}s, New: {new_time:.4f}s, Speedup: {old_time/new_time:.2f}x")
+```
+
+### 2. Full Pipeline Benchmark (Compose)
+
+Benchmark through `A.Compose` to measure real-world impact including parameter generation, dtype handling, and pipeline overhead.
+
+```python
+import timeit
+import numpy as np
+import albumentations as A
+
+SIZES = {
+    "small":  (256, 256),
+    "medium": (512, 512),
+    "large":  (1024, 1024),
+}
+CHANNELS = [1, 3, 5]
+
+transform = A.Compose([A.YourTransform(p=1.0)])
+
+for name, (h, w) in SIZES.items():
+    for ch in CHANNELS:
+        shape = (h, w) if ch == 1 else (h, w, ch)
+        img = np.random.randint(0, 256, shape, dtype=np.uint8)
+
+        # Single-image pipeline
+        time_single = timeit.timeit(lambda img=img: transform(image=img), number=100)
+        print(f"Compose single [{name} {h}x{w}x{ch}] — {time_single:.4f}s for 100 calls")
+
+        # Batch pipeline (if apply_to_images is involved)
+        images = [np.random.randint(0, 256, shape, dtype=np.uint8) for _ in range(5)]
+        time_batch = timeit.timeit(lambda images=images: transform(images=images), number=20)
+        print(f"Compose batch  [{name} {h}x{w}x{ch}] — {time_batch:.4f}s for 20 calls")
+```
+
+## Reporting Format
+
+Include benchmark results as a comment in the PR or commit message:
+
+```
+Benchmark (uint8, 100 iterations):
+
+Function direct:
+  256x256x1   — Before: 0.02s, After: 0.01s, Speedup: 2.00x
+  256x256x3   — Before: 0.05s, After: 0.03s, Speedup: 1.67x
+  256x256x5   — Before: 0.08s, After: 0.05s, Speedup: 1.60x
+  512x512x1   — Before: 0.08s, After: 0.05s, Speedup: 1.60x
+  512x512x3   — Before: 0.20s, After: 0.14s, Speedup: 1.43x
+  512x512x5   — Before: 0.33s, After: 0.23s, Speedup: 1.43x
+  1024x1024x1 — Before: 0.30s, After: 0.21s, Speedup: 1.43x
+  1024x1024x3 — Before: 0.82s, After: 0.58s, Speedup: 1.41x
+  1024x1024x5 — Before: 1.35s, After: 0.96s, Speedup: 1.41x
+
+Compose single:
+  (same matrix)
+
+Compose batch (5 images, 20 iterations):
+  (same matrix)
+```
+
+## Guidelines
+
+- Always benchmark all three sizes: 256x256, 512x512, 1024x1024
+- Always benchmark all three channel counts: 1, 3, 5 (skip only if the transform does not support a channel count)
+- Run enough iterations for stable results (at least 100 for fast functions, fewer for slow ones)
+- Test both `uint8` and `float32` if the change affects dtype handling
+- Run benchmarks on the same machine, same conditions, back-to-back
+- A regression of more than 5% on any combination requires justification or rework

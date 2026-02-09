@@ -1001,7 +1001,7 @@ def clip_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
 
 
 @handle_empty_array("bboxes")
-def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: str) -> np.ndarray:
+def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: Literal["hbb", "obb"]) -> np.ndarray:
     """Clip bounding boxes based on actual geometry.
 
     This function provides geometry-aware clipping that works correctly for both HBB and OBB:
@@ -1012,7 +1012,7 @@ def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: 
         bboxes (np.ndarray): Array of bounding boxes in albumentations format (normalized).
                             Shape: (N, 4+) for HBB or (N, 5+) for OBB.
         shape (tuple[int, int]): Image shape (height, width).
-        bbox_type (str): Either "hbb" or "obb".
+        bbox_type (Literal["hbb", "obb"]): Either "hbb" or "obb".
 
     Returns:
         np.ndarray: Clipped bounding boxes. For OBB, returns (N, 5+) with angle set to 0.
@@ -1296,7 +1296,7 @@ def bboxes_to_mask(
 def mask_to_bboxes(
     masks: np.ndarray,
     original_bboxes: np.ndarray,
-    bbox_type: str = "hbb",
+    bbox_type: Literal["hbb", "obb"] = "hbb",
 ) -> np.ndarray:
     """Convert masks back to bounding boxes.
 
@@ -1304,7 +1304,7 @@ def mask_to_bboxes(
         masks (np.ndarray): A numpy array of masks with shape (num_masks, height, width).
         original_bboxes (np.ndarray): Original bounding boxes with shape (num_bboxes, 4+) for HBB
             or (num_bboxes, 5+) for OBB.
-        bbox_type (str): Type of bounding box - "hbb" for axis-aligned or "obb" for oriented.
+        bbox_type (Literal["hbb", "obb"]): Type of bounding box - "hbb" for axis-aligned or "obb" for oriented.
             Default: "hbb".
 
     Returns:

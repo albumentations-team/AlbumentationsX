@@ -2289,7 +2289,7 @@ def remap_bboxes(
     map_x: np.ndarray,
     map_y: np.ndarray,
     image_shape: tuple[int, int],
-    bbox_type: str = "hbb",
+    bbox_type: Literal["hbb", "obb"] = "hbb",
 ) -> np.ndarray:
     """Remap bounding boxes using displacement maps.
 

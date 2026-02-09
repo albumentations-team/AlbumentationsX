@@ -256,7 +256,8 @@ class PixelDropout(DualTransform):
 
 
     Supported bboxes:
-        hbb
+        hbb, obb
+
     Note:
         - When applied to bounding boxes, this transform may cause some boxes to have zero area
           if all pixels within the box are dropped. Such boxes will be removed.
@@ -281,6 +282,7 @@ class PixelDropout(DualTransform):
         mask_drop_value: tuple[float, ...] | float | None
 
     _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     def __init__(
         self,

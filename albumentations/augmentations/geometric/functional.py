@@ -2289,8 +2289,21 @@ def remap_bboxes(
     map_x: np.ndarray,
     map_y: np.ndarray,
     image_shape: tuple[int, int],
+    bbox_type: Literal["hbb", "obb"] = "hbb",
 ) -> np.ndarray:
-    """Remap bounding boxes using displacement maps."""
+    """Remap bounding boxes using displacement maps.
+
+    Args:
+        bboxes: Bounding boxes array
+        map_x: X displacement map
+        map_y: Y displacement map
+        image_shape: Image shape (height, width)
+        bbox_type: Type of bounding box - "hbb" for axis-aligned or "obb" for oriented
+
+    Returns:
+        Remapped bounding boxes
+
+    """
     # Convert bboxes to mask
     bbox_masks = bboxes_to_mask(bboxes, image_shape)
 
@@ -2301,7 +2314,7 @@ def remap_bboxes(
     transformed_masks = remap(bbox_masks, map_x, map_y, cv2.INTER_NEAREST, cv2.BORDER_CONSTANT, value=0)
 
     # Convert masks back to bboxes
-    return mask_to_bboxes(transformed_masks, bboxes)
+    return mask_to_bboxes(transformed_masks, bboxes, bbox_type=bbox_type)
 
 
 def generate_displacement_fields(

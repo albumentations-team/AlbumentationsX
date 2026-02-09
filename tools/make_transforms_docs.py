@@ -76,8 +76,12 @@ def get_dual_transforms_info():
             and not issubclass(cls, albumentations.Transform3D)  # Exclude 3D transforms
             and name not in IGNORED_CLASSES
         ) and not is_deprecated(cls):
+            # Get supported bbox types
+            supported_bbox_types = getattr(cls, "_supported_bbox_types", frozenset({"hbb"}))
+
             dual_transforms_info[name] = {
                 "targets": cls._targets,
+                "supported_bbox_types": supported_bbox_types,
                 "docs_link": make_augmentation_docs_link(cls),
             }
     return dual_transforms_info
@@ -100,14 +104,21 @@ def get_3d_transforms_info():
     return transforms_3d_info
 
 
-def make_transforms_targets_table(transforms_info, header, targets_to_check=None):
+def make_transforms_targets_table(transforms_info, header, targets_to_check=None, split_bboxes=False):
     rows = [header]
     for transform, info in sorted(transforms_info.items(), key=lambda kv: kv[0]):
         transform_targets = []
         targets_iter = targets_to_check or Targets
         for target in targets_iter:
-            mark = "✓" if target in info["targets"] else ""
-            transform_targets.append(mark)
+            if split_bboxes and target == Targets.BBOXES:
+                # Split BBoxes into HBB and OBB columns
+                supported_bbox_types = info.get("supported_bbox_types", frozenset({"hbb"}))
+                hbb_mark = "✓" if target in info["targets"] and "hbb" in supported_bbox_types else ""
+                obb_mark = "✓" if target in info["targets"] and "obb" in supported_bbox_types else ""
+                transform_targets.extend([hbb_mark, obb_mark])
+            else:
+                mark = "✓" if target in info["targets"] else ""
+                transform_targets.append(mark)
         row = [info["docs_link"] or transform, *transform_targets]
         rows.append(row)
 
@@ -229,9 +240,19 @@ def main() -> None:
     transforms_3d = get_3d_transforms_info()
 
     image_only_transforms_links = make_transforms_targets_links(image_only_transforms)
+
+    # Build header for dual transforms with split BBoxes columns
+    dual_header = []
+    for target in Targets:
+        if target == Targets.BBOXES:
+            dual_header.extend(["BBoxes (HBB)", "BBoxes (OBB)"])
+        else:
+            dual_header.append(target.value)
+
     dual_transforms_table = make_transforms_targets_table(
         dual_transforms,
-        header=["Transform"] + [target.value for target in Targets],
+        header=["Transform", *dual_header],
+        split_bboxes=True,
     )
 
     transforms_3d_table = make_transforms_targets_table(

@@ -26,7 +26,6 @@ from albucore import (
     float32_io,
     from_float,
     get_num_channels,
-    to_float,
     is_grayscale_image,
     is_rgb_image,
     maybe_process_in_chunks,
@@ -42,6 +41,7 @@ from albucore import (
     restore_ndhwc_channel,
     restore_xhwc_channel,
     sz_lut,
+    to_float,
     uint8_io,
 )
 
@@ -2046,12 +2046,12 @@ def unsharp_mask_images(
     need_conversion = input_dtype != np.float32
     num_channels = images.shape[-1] if images.ndim > 3 else 0
     ksize_tuple = (ksize, ksize)
-    threshold_f = np.float32(threshold / 255.0)
+    threshold = threshold / 255.0
 
     result = np.empty_like(images)
 
     # Single-image float32 working buffer for uint8 path
-    buf = np.empty(images.shape[1:], dtype=np.float32) if need_conversion else None
+    buf: np.ndarray = np.empty(images.shape[1:], dtype=np.float32) if need_conversion else result
 
     for i in range(images.shape[0]):
         if need_conversion:
@@ -2064,7 +2064,7 @@ def unsharp_mask_images(
         cv2.subtract(image, cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma), dst=dst)
 
         mask = np.abs(dst)
-        cv2.threshold(mask, threshold_f, 1.0, cv2.THRESH_BINARY, dst=mask)
+        cv2.threshold(mask, threshold, 1.0, cv2.THRESH_BINARY, dst=mask)
 
         cv2.scaleAdd(dst, alpha, image, dst=dst)
         np.clip(dst, 0, 1, out=dst)
@@ -2077,7 +2077,8 @@ def unsharp_mask_images(
         cv2.add(dst, image, dst=dst)
 
         if need_conversion:
-            result[i] = from_float(clip(buf, np.float32), target_dtype=input_dtype)
+            np.clip(buf, 0, 1, out=buf)
+            result[i] = from_float(buf, target_dtype=input_dtype)
 
     if not need_conversion:
         np.clip(result, 0, 1, out=result)

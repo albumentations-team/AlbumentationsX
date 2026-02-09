@@ -356,8 +356,19 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         """
         # Handle batched numpy array input
-        transformed = np.stack([self.apply(image, **params) for image in images])
-        return np.require(transformed, requirements=["C_CONTIGUOUS"])
+        # Process first image to determine output shape (for transforms that change dimensions)
+        results = [self.apply(images[0], **params)]
+
+        # Pre-allocate for remaining images based on first result
+        if len(images) > 1:
+            result_shape = (len(images), *results[0].shape)
+            result = np.empty(result_shape, dtype=results[0].dtype)
+            result[0] = results[0]
+
+            for i in range(1, len(images)):
+                result[i] = self.apply(images[i], **params)
+            return np.require(result, requirements=["C_CONTIGUOUS"])
+        return np.require(np.array(results), requirements=["C_CONTIGUOUS"])
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform slice by slice to a volume.
@@ -375,7 +386,19 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to multiple volumes."""
-        return np.stack([self.apply_to_volume(vol, *args, **params) for vol in volumes])
+        # Process first volume to determine output shape
+        results = [self.apply_to_volume(volumes[0], *args, **params)]
+
+        # Pre-allocate for remaining volumes based on first result
+        if len(volumes) > 1:
+            result_shape = (len(volumes), *results[0].shape)
+            result = np.empty(result_shape, dtype=results[0].dtype)
+            result[0] = results[0]
+
+            for i in range(1, len(volumes)):
+                result[i] = self.apply_to_volume(volumes[i], *args, **params)
+            return result
+        return np.array(results)
 
     def get_params(self) -> dict[str, Any]:
         """Returns parameters independent of input."""
@@ -709,7 +732,19 @@ class DualTransform(BasicTransform):
     def apply_to_masks(self, masks: ImageType, *args: Any, **params: Any) -> ImageType:
         if masks.size == 0:
             return masks
-        return np.stack([self.apply_to_mask(mask, *args, **params) for mask in masks])
+        # Process first mask to determine output shape
+        results = [self.apply_to_mask(masks[0], *args, **params)]
+
+        # Pre-allocate for remaining masks based on first result
+        if len(masks) > 1:
+            result_shape = (len(masks), *results[0].shape)
+            result = np.empty(result_shape, dtype=results[0].dtype)
+            result[0] = results[0]
+
+            for i in range(1, len(masks)):
+                result[i] = self.apply_to_mask(masks[i], *args, **params)
+            return result
+        return np.array(results)
 
     @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
@@ -717,7 +752,19 @@ class DualTransform(BasicTransform):
 
     @batch_transform("spatial")
     def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return np.stack([self.apply_to_mask3d(mask3d, **params) for mask3d in masks3d])
+        # Process first mask3d to determine output shape
+        results = [self.apply_to_mask3d(masks3d[0], **params)]
+
+        # Pre-allocate for remaining masks3d based on first result
+        if len(masks3d) > 1:
+            result_shape = (len(masks3d), *results[0].shape)
+            result = np.empty(result_shape, dtype=results[0].dtype)
+            result[0] = results[0]
+
+            for i in range(1, len(masks3d)):
+                result[i] = self.apply_to_mask3d(masks3d[i], **params)
+            return result
+        return np.array(results)
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping.

@@ -1657,7 +1657,10 @@ class _BaseRandomSizedCrop(DualTransform):
         interpolation = self._get_interpolation_for_resize(crop.shape[1:3], "image")
 
         # Then resize the smaller cropped volume using the selected interpolation
-        return np.stack([fgeometric.resize(crop[i], self.size, interpolation) for i in range(images.shape[0])])
+        result = np.empty((images.shape[0], self.size[0], self.size[1], crop.shape[-1]), dtype=crop.dtype)
+        for i in range(images.shape[0]):
+            result[i] = fgeometric.resize(crop[i], self.size, interpolation)
+        return result
 
     def apply_to_mask3d(
         self,

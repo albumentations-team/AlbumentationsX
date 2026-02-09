@@ -195,7 +195,10 @@ def draw_text_on_multi_channel_image(image: ImageType, metadata_list: list[dict[
             # For single-channel PIL images, color must be an integer
             pil_image.text(position, text, font=font, fill=font_color[channel_id])
 
-    return np.stack([np.array(channel) for channel in channels], axis=2)
+    result = np.empty((*channels[0].size[::-1], len(channels)), dtype=np.uint8)
+    for i, channel in enumerate(channels):
+        result[..., i] = np.array(channel)
+    return result
 
 
 @uint8_io

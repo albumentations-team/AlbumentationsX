@@ -1296,15 +1296,20 @@ def bboxes_to_mask(
 def mask_to_bboxes(
     masks: np.ndarray,
     original_bboxes: np.ndarray,
+    bbox_type: str = "hbb",
 ) -> np.ndarray:
     """Convert masks back to bounding boxes.
 
     Args:
         masks (np.ndarray): A numpy array of masks with shape (num_masks, height, width).
-        original_bboxes (np.ndarray): Original bounding boxes with shape (num_bboxes, 4+).
+        original_bboxes (np.ndarray): Original bounding boxes with shape (num_bboxes, 4+) for HBB
+            or (num_bboxes, 5+) for OBB.
+        bbox_type (str): Type of bounding box - "hbb" for axis-aligned or "obb" for oriented.
+            Default: "hbb".
 
     Returns:
-        np.ndarray: A numpy array of bounding boxes with shape (num_masks, 4+).
+        np.ndarray: A numpy array of bounding boxes with shape (num_masks, 4+) for HBB
+            or (num_masks, 5+) for OBB.
 
     """
     num_boxes = masks.shape[-1]
@@ -1320,17 +1325,39 @@ def mask_to_bboxes(
         mask = masks[..., idx]
         if np.any(mask):
             y_coords, x_coords = np.where(mask)
-            x_min, x_max = x_coords.min(), x_coords.max()
-            y_min, y_max = y_coords.min(), y_coords.max()
-            new_bboxes.append([x_min, y_min, x_max, y_max])
+
+            if bbox_type == "obb":
+                # Use cv2.minAreaRect for oriented bounding boxes
+                points = np.column_stack([x_coords, y_coords]).astype(np.float32)
+                rect = cv2.minAreaRect(points)
+                center_x, center_y = rect[0]
+                width, height = rect[1]
+                angle = rect[2]
+
+                # Convert from center/size format to axis-aligned bbox format
+                # The axis-aligned bbox that contains the rotated box
+                x_min = center_x - width / 2
+                x_max = center_x + width / 2
+                y_min = center_y - height / 2
+                y_max = center_y + height / 2
+
+                new_bboxes.append([x_min, y_min, x_max, y_max, angle])
+            else:
+                # HBB: axis-aligned bounding box
+                x_min, x_max = x_coords.min(), x_coords.max()
+                y_min, y_max = y_coords.min(), y_coords.max()
+                new_bboxes.append([x_min, y_min, x_max, y_max])
         else:
             # If bbox disappeared, use original coords
-            new_bboxes.append(original_bboxes[idx, :4])
+            bbox_coords_count = 5 if bbox_type == "obb" else 4
+            new_bboxes.append(original_bboxes[idx, :bbox_coords_count])
 
     new_bboxes = np.array(new_bboxes)
 
+    # Preserve additional columns (labels, etc.)
+    bbox_coords_count = 5 if bbox_type == "obb" else 4
     return (
-        np.column_stack([new_bboxes, original_bboxes[:, 4:]])
-        if original_bboxes.shape[1] > NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS
+        np.column_stack([new_bboxes, original_bboxes[:, bbox_coords_count:]])
+        if original_bboxes.shape[1] > bbox_coords_count
         else new_bboxes
     )

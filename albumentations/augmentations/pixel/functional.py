@@ -404,10 +404,10 @@ def move_tone_curve(
             np.uint8,
             inplace=False,
         )
-        return np.stack(
-            [sz_lut(img[..., i], np.ascontiguousarray(luts[i]), inplace=False) for i in range(num_channels)],
-            axis=-1,
-        )
+        result = np.empty_like(img)
+        for i in range(num_channels):
+            result[..., i] = sz_lut(img[..., i], np.ascontiguousarray(luts[i]), inplace=False)
+        return result
 
     raise TypeError(
         f"low_y and high_y must both be of type float or np.ndarray. Got {type(low_y)} and {type(high_y)}",

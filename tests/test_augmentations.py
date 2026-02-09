@@ -1487,3 +1487,59 @@ def test_median_blur_apply_to_images(dtype: np.dtype, num_channels: int, kernel:
     assert batch_result.shape == images.shape
     assert batch_result.dtype == images.dtype
     np.testing.assert_array_equal(batch_result, per_image_results)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [np.uint8, np.float32],
+)
+def test_unsharp_mask_apply_to_images(dtype):
+    if dtype == np.uint8:
+        images = np.random.RandomState(137).randint(0, 256, (2, 100, 100, 3), dtype=np.uint8)
+    else:
+        images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
+
+    transform = A.UnsharpMask(
+        blur_limit=(3, 3),
+        sigma_limit=(0.5, 0.5),
+        alpha=(0.3, 0.3),
+        threshold=10,
+        p=1.0,
+    )
+
+    transformed = transform(images=images)["images"]
+
+    assert transformed.shape == images.shape
+    assert transformed.dtype == images.dtype
+
+    expected = np.stack([transform(image=images[i])["image"] for i in range(images.shape[0])])
+    np.testing.assert_array_equal(transformed, expected)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [np.uint8, np.float32],
+)
+def test_unsharp_mask_apply_to_volumes(dtype):
+    shape = (2, 4, 32, 32, 3)
+
+    if dtype == np.uint8:
+        volumes = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
+    else:
+        volumes = np.random.RandomState(137).random(shape).astype(np.float32)
+
+    transform = A.UnsharpMask(
+        blur_limit=(3, 3),
+        sigma_limit=(0.5, 0.5),
+        alpha=(0.3, 0.3),
+        threshold=10,
+        p=1.0,
+    )
+
+    transformed = transform(volumes=volumes)["volumes"]
+
+    assert transformed.shape == volumes.shape
+    assert transformed.dtype == volumes.dtype
+
+    expected = np.stack([transform(volume=volumes[i])["volume"] for i in range(volumes.shape[0])])
+    np.testing.assert_array_equal(transformed, expected)

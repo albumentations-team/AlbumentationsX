@@ -4209,6 +4209,22 @@ class UnsharpMask(ImageOnlyTransform):
             threshold=self.threshold,
         )
 
+    def apply_to_images(
+        self,
+        images: ImageType,
+        ksize: int,
+        sigma: int,
+        alpha: float,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.unsharp_mask_images(
+            images,
+            ksize,
+            sigma=sigma,
+            alpha=alpha,
+            threshold=self.threshold,
+        )
+
 
 class Spatter(ImageOnlyTransform):
     """Apply spatter transform. It simulates corruption which can occlude a lens in the form of rain or mud.

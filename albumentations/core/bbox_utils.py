@@ -1350,7 +1350,7 @@ def mask_to_bboxes(
         else:
             # If bbox disappeared, use original coords
             bbox_coords_count = 5 if bbox_type == "obb" else 4
-            new_bboxes.append(original_bboxes[idx, :bbox_coords_count])
+            new_bboxes.append(original_bboxes[idx, :bbox_coords_count].tolist())
 
     new_bboxes = np.array(new_bboxes)
 

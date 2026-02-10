@@ -233,7 +233,7 @@ def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> Image
     for zoom_factor in zoom_factors:
         out += central_zoom(img, zoom_factor)
 
-    return (img + out) / (len(zoom_factors) + 1)
+    return (img + out) * np.float32(1.0 / (len(zoom_factors) + 1))
 
 
 def _ensure_min_value(result: tuple[int, int], min_value: int, field_name: str | None) -> tuple[int, int]:

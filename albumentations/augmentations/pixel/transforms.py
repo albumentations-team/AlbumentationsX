@@ -3558,6 +3558,9 @@ class Sharpen(ImageOnlyTransform):
 
         p (float): Probability of applying the transform. Default: 0.5.
 
+    Targets:
+        image, volume
+
     Image types:
         uint8, float32
 
@@ -3703,6 +3706,12 @@ class Sharpen(ImageOnlyTransform):
         if self.method == "kernel":
             return fpixel.convolve(img, sharpening_matrix)
         return fpixel.sharpen_gaussian(img, alpha, self.kernel_size, self.sigma)
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result
 
 
 class Emboss(ImageOnlyTransform):

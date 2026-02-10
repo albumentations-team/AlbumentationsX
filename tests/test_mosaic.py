@@ -403,6 +403,94 @@ def test_mosaic_obb_empty_result() -> None:
     assert result["bboxes"].shape == (0, 5)
 
 
+def test_mosaic_obb_empty_with_labels() -> None:
+    """Test Mosaic with OBB preserves label columns when empty."""
+    target_size = (100, 100)
+    grid_yx = (1, 1)
+    cell_shape = (100, 100)
+
+    img_primary = np.ones((*target_size, 3), dtype=np.uint8)
+    # Empty bboxes array in OBB format WITH label column (6 columns total)
+    bboxes_primary = np.empty((0, 6), dtype=np.float32)
+    bbox_classes_primary = []
+
+    transform = Compose(
+        [
+            Mosaic(
+                target_size=target_size,
+                cell_shape=cell_shape,
+                grid_yx=grid_yx,
+                p=1.0,
+            ),
+        ],
+        bbox_params=BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            label_fields=["bbox_classes"],
+            min_area=0.0,
+            min_visibility=0.0,
+        ),
+        seed=137,
+    )
+
+    data = {
+        "image": img_primary,
+        "bboxes": bboxes_primary,
+        "bbox_classes": bbox_classes_primary,
+        "mosaic_metadata": [],
+    }
+
+    result = transform(**data)
+
+    # Should preserve 6 columns (5 for OBB + 1 for label)
+    assert result["bboxes"].shape == (0, 6), f"Expected (0, 6), got {result['bboxes'].shape}"
+    assert len(result["bbox_classes"]) == 0
+
+
+def test_mosaic_hbb_empty_with_labels() -> None:
+    """Test Mosaic with HBB preserves label columns when empty."""
+    target_size = (100, 100)
+    grid_yx = (1, 1)
+    cell_shape = (100, 100)
+
+    img_primary = np.ones((*target_size, 3), dtype=np.uint8)
+    # Empty bboxes array in HBB format WITH label column (5 columns total)
+    bboxes_primary = np.empty((0, 5), dtype=np.float32)
+    bbox_classes_primary = []
+
+    transform = Compose(
+        [
+            Mosaic(
+                target_size=target_size,
+                cell_shape=cell_shape,
+                grid_yx=grid_yx,
+                p=1.0,
+            ),
+        ],
+        bbox_params=BboxParams(
+            coord_format="albumentations",
+            bbox_type="hbb",
+            label_fields=["bbox_classes"],
+            min_area=0.0,
+            min_visibility=0.0,
+        ),
+        seed=137,
+    )
+
+    data = {
+        "image": img_primary,
+        "bboxes": bboxes_primary,
+        "bbox_classes": bbox_classes_primary,
+        "mosaic_metadata": [],
+    }
+
+    result = transform(**data)
+
+    # Should preserve 5 columns (4 for HBB + 1 for label)
+    assert result["bboxes"].shape == (0, 5), f"Expected (0, 5), got {result['bboxes'].shape}"
+    assert len(result["bbox_classes"]) == 0
+
+
 def test_mosaic_simplified_deterministic() -> None:
     """Test Mosaic with fixed parameters, albumentations format, no labels."""
     target_size = (100, 100)

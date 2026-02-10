@@ -726,9 +726,9 @@ class Mosaic(DualTransform):
         if not all_shifted_bboxes:
             # Preserve correct column count for empty result
             if bbox_processor.params.bbox_type == "obb":
-                num_cols = max(bboxes.shape[1] if bboxes.size > 0 else 5, 5)
+                num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 5, 5)
             else:
-                num_cols = max(bboxes.shape[1] if bboxes.size > 0 else 4, 4)
+                num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 4, 4)
             return np.empty((0, num_cols), dtype=bboxes.dtype)
 
         # Concatenate (these are absolute pixel coordinates)

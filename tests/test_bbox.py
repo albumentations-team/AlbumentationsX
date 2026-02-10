@@ -828,7 +828,7 @@ def test_check_bboxes_additional_columns():
             0,
             0,
             0,
-            np.array([]).reshape(0, 4),
+            np.array([]).reshape(0, 5),  # Preserve 5 columns from input
         ),
         (
             np.array([]),

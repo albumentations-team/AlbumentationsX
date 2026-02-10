@@ -1121,8 +1121,9 @@ def filter_bboxes(
         # Preserve shape: OBB needs 5+ columns, HBB needs 4+ columns
         if bbox_type == "obb":
             num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else BBOX_OBB_MIN_COLUMNS, BBOX_OBB_MIN_COLUMNS)
-            return np.array([], dtype=np.float32).reshape(0, num_cols)
-        return np.array([], dtype=np.float32).reshape(0, 4)
+        else:
+            num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 4, 4)
+        return np.array([], dtype=np.float32).reshape(0, num_cols)
 
     # Calculate areas of bounding boxes before clipping in pixels
     denormalized_box_areas = calculate_bbox_areas_in_pixels(bboxes, shape)
@@ -1163,7 +1164,9 @@ def filter_bboxes(
     filtered_bboxes = clipped_bboxes[mask]
 
     if len(filtered_bboxes) == 0:
-        return np.array([], dtype=np.float32).reshape(0, 4)
+        # Preserve column count from input
+        num_cols = max(bboxes.shape[1], BBOX_OBB_MIN_COLUMNS) if bbox_type == "obb" else max(bboxes.shape[1], 4)
+        return np.array([], dtype=np.float32).reshape(0, num_cols)
 
     # Normalize angles for OBB
     if bbox_type == "obb" and filtered_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS:

@@ -566,6 +566,9 @@ class MedianBlur(Blur):
     def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return fblur.median_blur(img, kernel)
 
+    def apply_to_images(self, images: ImageType, kernel: int, **params: Any) -> ImageType:
+        return fblur.median_blur_images(images, kernel)
+
 
 class GaussianBlur(ImageOnlyTransform):
     """Apply Gaussian blur to the input image using a randomly sized kernel.

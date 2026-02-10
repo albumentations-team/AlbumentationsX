@@ -1407,3 +1407,37 @@ def test_to_sepia_rgb_multiple_images():
 
     assert images.shape == transformed.shape
     assert np.all([not np.array_equal(im, tr) for im, tr in zip(images, transformed, strict=False)])
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [np.uint8, np.float32],
+)
+@pytest.mark.parametrize(
+    "num_channels",
+    [1, 3, 5],
+)
+@pytest.mark.parametrize(
+    "kernel",
+    [3, 5, 7],
+)
+def test_median_blur_apply_to_images(dtype: np.dtype, num_channels: int, kernel: int):
+    """Test that MedianBlur batch processing via images= produces the same results as per-image."""
+    rng = np.random.default_rng(137)
+
+    if dtype == np.uint8:
+        images = rng.integers(0, 256, size=(3, 50, 50, num_channels), dtype=np.uint8)
+    else:
+        images = rng.random((3, 50, 50, num_channels), dtype=np.float32)
+
+    transform = A.Compose([A.MedianBlur(blur_limit=(kernel, kernel), p=1.0)])
+
+    # Batch result via images= key
+    batch_result = transform(images=images)["images"]
+
+    # Per-image results via image= key
+    per_image_results = np.stack([transform(image=img)["image"] for img in images])
+
+    assert batch_result.shape == images.shape
+    assert batch_result.dtype == images.dtype
+    np.testing.assert_array_equal(batch_result, per_image_results)

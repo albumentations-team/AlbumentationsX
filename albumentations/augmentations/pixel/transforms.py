@@ -1755,6 +1755,12 @@ class Solarize(ImageOnlyTransform):
     def apply(self, img: ImageType, threshold: float, **params: Any) -> ImageType:
         return fpixel.solarize(img, threshold)
 
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        return self.apply(images, **params)
+
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
+        return self.apply(volumes, **params)
+
     def get_params(self) -> dict[str, float]:
         return {"threshold": self.py_random.uniform(*self.threshold_range)}
 

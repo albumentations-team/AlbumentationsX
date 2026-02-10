@@ -355,10 +355,10 @@ class Affine(DualTransform):
 
     Affine transformations involve:
 
-        - Translation ("move" image on the x-/y-axis)
-        - Rotation
-        - Scaling ("zoom" in/out)
-        - Shear (move one side of the image, turning a square into a trapezoid)
+    - Translation ("move" image on the x-/y-axis)
+    - Rotation
+    - Scaling ("zoom" in/out)
+    - Shear (move one side of the image, turning a square into a trapezoid)
 
     All such transformations can create "new" pixels in the image without a defined content, e.g.
     if the image is translated to the left, pixels are created on the right.

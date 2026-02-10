@@ -967,6 +967,52 @@ def test_solarize_apply_to_volumes(dtype):
     np.testing.assert_array_equal(transformed, expected)
 
 
+@pytest.mark.parametrize(
+    "dtype",
+    [np.uint8, np.float32],
+)
+def test_zoom_blur_apply_to_images(dtype):
+    if dtype == np.uint8:
+        images = np.random.RandomState(137).randint(0, 256, (2, 100, 100, 3), dtype=np.uint8)
+    else:
+        images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
+
+    # Use fixed parameters so get_params produces deterministic zoom_factors
+    transform = A.ZoomBlur(max_factor=(1.1, 1.1), step_factor=(0.01, 0.01), p=1.0)
+
+    transformed = transform(images=images)["images"]
+
+    assert transformed.shape == images.shape
+    assert transformed.dtype == images.dtype
+
+    expected = np.stack([transform(image=images[i])["image"] for i in range(images.shape[0])])
+    np.testing.assert_array_equal(transformed, expected)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [np.uint8, np.float32],
+)
+def test_zoom_blur_apply_to_volumes(dtype):
+    shape = (2, 4, 32, 32, 3)
+
+    if dtype == np.uint8:
+        volumes = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
+    else:
+        volumes = np.random.RandomState(137).random(shape).astype(np.float32)
+
+    # Use fixed parameters so get_params produces deterministic zoom_factors
+    transform = A.ZoomBlur(max_factor=(1.1, 1.1), step_factor=(0.01, 0.01), p=1.0)
+
+    transformed = transform(volumes=volumes)["volumes"]
+
+    assert transformed.shape == volumes.shape
+    assert transformed.dtype == volumes.dtype
+
+    expected = np.stack([transform(volume=volumes[i])["volume"] for i in range(volumes.shape[0])])
+    np.testing.assert_array_equal(transformed, expected)
+
+
 def test_constrained_coarse_dropout_with_mask():
     """Test ConstrainedCoarseDropout with segmentation mask."""
     # Create test data

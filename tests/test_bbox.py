@@ -828,7 +828,7 @@ def test_check_bboxes_additional_columns():
             0,
             0,
             0,
-            np.array([]).reshape(0, 4),
+            np.array([]).reshape(0, 5),  # Preserve 5 columns from input
         ),
         (
             np.array([]),
@@ -851,7 +851,7 @@ def test_check_bboxes_additional_columns():
     ],
 )
 def test_filter_bboxes(bboxes, image_shape, min_area, min_visibility, min_width, min_height, expected):
-    result = filter_bboxes(bboxes, image_shape, min_area, min_visibility, min_width, min_height)
+    result = filter_bboxes(bboxes, image_shape, "hbb", min_area, min_visibility, min_width, min_height)
     np.testing.assert_array_almost_equal(result, expected)
 
 
@@ -860,7 +860,7 @@ def test_filter_bboxes_preserves_input():
     original_bboxes = bboxes.copy()
     image_shape = (100, 100)
 
-    filter_bboxes(bboxes, image_shape)
+    filter_bboxes(bboxes, image_shape, "hbb")
 
     np.testing.assert_array_equal(bboxes, original_bboxes)
 
@@ -869,7 +869,7 @@ def test_filter_bboxes_output_type():
     bboxes = np.array([[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4], [0.5, 0.5, 0.6, 0.6]])
     image_shape = (100, 100)
 
-    result = filter_bboxes(bboxes, image_shape)
+    result = filter_bboxes(bboxes, image_shape, "hbb")
 
     assert isinstance(result, np.ndarray)
     assert result.dtype == bboxes.dtype
@@ -879,7 +879,7 @@ def test_filter_bboxes_clipping():
     bboxes = np.array([[-0.1, -0.1, 1.1, 1.1], [0.3, 0.3, 0.4, 0.4]])
     image_shape = (100, 100)
 
-    result = filter_bboxes(bboxes, image_shape)
+    result = filter_bboxes(bboxes, image_shape, "hbb")
 
     expected = np.array([[0.0, 0.0, 1.0, 1.0], [0.3, 0.3, 0.4, 0.4]])
     np.testing.assert_allclose(result, expected, rtol=1e-5)
@@ -2670,7 +2670,7 @@ MAX_ACCEPT_RATIO_TEST_CASES = [
     MAX_ACCEPT_RATIO_TEST_CASES,
 )
 def test_filter_bboxes_aspect_ratio(bboxes, shape, max_accept_ratio, expected):
-    filtered = filter_bboxes(bboxes, shape, max_accept_ratio=max_accept_ratio)
+    filtered = filter_bboxes(bboxes, shape, "hbb", max_accept_ratio=max_accept_ratio)
     np.testing.assert_array_almost_equal(filtered, expected)
 
 

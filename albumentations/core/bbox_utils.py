@@ -414,13 +414,13 @@ class BboxProcessor(DataProcessor):
         return filter_bboxes(
             data,
             shape_2d,
+            self.params.bbox_type,
             min_area=self.params.min_area,
             min_visibility=self.params.min_visibility,
             min_width=self.params.min_width,
             min_height=self.params.min_height,
             max_accept_ratio=self.params.max_accept_ratio,
             clip_after_transform=self.params.clip_after_transform,
-            bbox_type=self.params.bbox_type,
         )
 
     def check_and_convert(
@@ -477,12 +477,12 @@ class BboxProcessor(DataProcessor):
                 converted_data = filter_bboxes(
                     converted_data,
                     shape_2d,
+                    self.params.bbox_type,
                     min_area=0,
                     min_visibility=0,
                     min_width=0,
                     min_height=0,
                     clip_after_transform=self.params.clip_after_transform,
-                    bbox_type=self.params.bbox_type,
                 )
 
             # Finally check the remaining boxes
@@ -543,7 +543,16 @@ class BboxProcessor(DataProcessor):
 
         if self.params.clip_bboxes_on_input:
             data_np = convert_bboxes_to_albumentations(data, self.params.coord_format, shape_2d, check_validity=False)
-            data_np = filter_bboxes(data_np, shape_2d, min_area=0, min_visibility=0, min_width=0, min_height=0)
+            data_np = filter_bboxes(
+                data_np,
+                shape_2d,
+                self.params.bbox_type,
+                min_area=0,
+                min_visibility=0,
+                min_width=0,
+                min_height=0,
+                clip_after_transform="geometry",
+            )
             check_bboxes(data_np)
             return data_np
 
@@ -1075,13 +1084,13 @@ def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: 
 def filter_bboxes(
     bboxes: np.ndarray,
     shape: tuple[int, int],
+    bbox_type: Literal["hbb", "obb"],
     min_area: float = 0.0,
     min_visibility: float = 0.0,
     min_width: float = 1.0,
     min_height: float = 1.0,
     max_accept_ratio: float | None = None,
     clip_after_transform: Literal["geometry"] | None = "geometry",
-    bbox_type: Literal["hbb", "obb"] = "hbb",
 ) -> np.ndarray:
     """Remove bounding boxes that either lie outside of the visible area by more than min_visibility
     or whose area in pixels is under the threshold set by `min_area`. Also crops boxes to final image size.
@@ -1089,6 +1098,8 @@ def filter_bboxes(
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
         shape (tuple[int, int]): The shape of the image (height, width).
+        bbox_type (Literal["hbb", "obb"]): Type of bounding boxes. Used for geometry-aware clipping.
+            Required parameter, no default.
         min_area (float): Minimum area of a bounding box in pixels. Default: 0.0.
         min_visibility (float): Minimum fraction of area for a bounding box to remain. Default: 0.0.
         min_width (float): Minimum width of a bounding box in pixels. Default: 0.0.
@@ -1099,8 +1110,6 @@ def filter_bboxes(
             - None: No clipping, boxes may extend outside [0, 1].
             - "geometry": Clip based on actual geometry (HBB: coords, OBB: corners).
             Default: "geometry".
-        bbox_type (Literal["hbb", "obb"]): Type of bounding boxes. Used for geometry-aware clipping.
-            Default: "hbb".
 
     Returns:
         np.ndarray: Filtered bounding boxes.
@@ -1112,8 +1121,9 @@ def filter_bboxes(
         # Preserve shape: OBB needs 5+ columns, HBB needs 4+ columns
         if bbox_type == "obb":
             num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else BBOX_OBB_MIN_COLUMNS, BBOX_OBB_MIN_COLUMNS)
-            return np.array([], dtype=np.float32).reshape(0, num_cols)
-        return np.array([], dtype=np.float32).reshape(0, 4)
+        else:
+            num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 4, 4)
+        return np.array([], dtype=np.float32).reshape(0, num_cols)
 
     # Calculate areas of bounding boxes before clipping in pixels
     denormalized_box_areas = calculate_bbox_areas_in_pixels(bboxes, shape)
@@ -1154,7 +1164,9 @@ def filter_bboxes(
     filtered_bboxes = clipped_bboxes[mask]
 
     if len(filtered_bboxes) == 0:
-        return np.array([], dtype=np.float32).reshape(0, 4)
+        # Preserve column count from input
+        num_cols = max(bboxes.shape[1], BBOX_OBB_MIN_COLUMNS) if bbox_type == "obb" else max(bboxes.shape[1], 4)
+        return np.array([], dtype=np.float32).reshape(0, num_cols)
 
     # Normalize angles for OBB
     if bbox_type == "obb" and filtered_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS:

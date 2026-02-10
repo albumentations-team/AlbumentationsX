@@ -721,23 +721,30 @@ class Mosaic(DualTransform):
             if shifted_bboxes.size > 0:
                 all_shifted_bboxes.append(shifted_bboxes)
 
+        bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
+
         if not all_shifted_bboxes:
-            return np.empty((0, bboxes.shape[1]), dtype=bboxes.dtype)
+            # Preserve correct column count for empty result
+            if bbox_processor.params.bbox_type == "obb":
+                num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 5, 5)
+            else:
+                num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 4, 4)
+            return np.empty((0, num_cols), dtype=bboxes.dtype)
 
         # Concatenate (these are absolute pixel coordinates)
         combined_bboxes = np.concatenate(all_shifted_bboxes, axis=0)
 
         # Apply filtering using processor parameters
-        bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
-        # Assume processor exists if bboxes are being processed
         return filter_bboxes(
             combined_bboxes,
             self.target_size,
+            bbox_processor.params.bbox_type,
             min_area=bbox_processor.params.min_area,
             min_visibility=bbox_processor.params.min_visibility,
             min_width=bbox_processor.params.min_width,
             min_height=bbox_processor.params.min_height,
             max_accept_ratio=bbox_processor.params.max_accept_ratio,
+            clip_after_transform=bbox_processor.params.clip_after_transform,
         )
 
     def apply_to_keypoints(

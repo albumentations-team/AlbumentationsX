@@ -249,6 +249,248 @@ def test_mosaic_primary_mask_metadata_no_mask() -> None:
         assert 0 not in unique_values  # Assuming default image fill value 0 wasn't used for mask
 
 
+def test_mosaic_obb_support() -> None:
+    """Test that Mosaic declares OBB support."""
+    transform = Mosaic()
+    assert hasattr(transform, "_supported_bbox_types")
+    assert "obb" in transform._supported_bbox_types
+    assert "hbb" in transform._supported_bbox_types
+
+
+def test_mosaic_obb_basic() -> None:
+    """Test Mosaic with OBB bboxes - basic functionality."""
+    target_size = (100, 100)
+    grid_yx = (1, 1)
+    cell_shape = (100, 100)
+
+    # Primary data with OBB
+    img_primary = np.ones((*target_size, 3), dtype=np.uint8) * 1
+    # OBB format: [x_min, y_min, x_max, y_max, angle] in albumentations normalized format
+    bboxes_primary = np.array([[0.2, 0.2, 0.8, 0.8, 45.0]], dtype=np.float32)
+
+    transform = Compose(
+        [
+            Mosaic(
+                target_size=target_size,
+                cell_shape=cell_shape,
+                grid_yx=grid_yx,
+                p=1.0,
+            ),
+        ],
+        bbox_params=BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            min_area=0.0,
+            min_visibility=0.0,
+        ),
+        seed=137,
+    )
+
+    data = {
+        "image": img_primary,
+        "bboxes": bboxes_primary,
+        "mosaic_metadata": [],
+    }
+
+    result = transform(**data)
+
+    # Check OBB format is preserved (5 columns)
+    assert result["bboxes"].shape[1] == 5
+
+
+def test_mosaic_obb_with_metadata() -> None:
+    """Test Mosaic with OBB bboxes from primary and metadata."""
+    target_size = (100, 100)
+    grid_yx = (2, 2)
+    cell_shape = (60, 60)
+    center_range = (0.5, 0.5)
+
+    # Primary data with OBB
+    img_primary = np.ones((*target_size, 3), dtype=np.uint8) * 1
+    # OBB format: [x_min, y_min, x_max, y_max, angle]
+    bboxes_primary = np.array([[0.3, 0.3, 0.7, 0.7, 30.0]], dtype=np.float32)
+    bbox_classes_primary = [1]
+
+    # Metadata with OBB
+    img_meta1 = np.ones((80, 80, 3), dtype=np.uint8) * 2
+    bboxes_meta1 = np.array([[0.25, 0.25, 0.75, 0.65, 60.0]], dtype=np.float32)
+    bbox_classes_meta1 = [2]
+
+    img_meta2 = np.ones((90, 90, 3), dtype=np.uint8) * 3
+    bboxes_meta2 = np.array([[0.2, 0.2, 0.6, 0.6, 90.0]], dtype=np.float32)
+    bbox_classes_meta2 = [3]
+
+    metadata_list = [
+        {"image": img_meta1, "bboxes": bboxes_meta1, "bbox_classes": bbox_classes_meta1},
+        {"image": img_meta2, "bboxes": bboxes_meta2, "bbox_classes": bbox_classes_meta2},
+    ]
+
+    transform = Compose(
+        [
+            Mosaic(
+                target_size=target_size,
+                cell_shape=cell_shape,
+                grid_yx=grid_yx,
+                center_range=center_range,
+                p=1.0,
+            ),
+        ],
+        bbox_params=BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            label_fields=["bbox_classes"],
+            min_area=0.0,
+            min_visibility=0.0,
+        ),
+        seed=137,
+    )
+
+    data = {
+        "image": img_primary,
+        "bboxes": bboxes_primary,
+        "bbox_classes": bbox_classes_primary,
+        "mosaic_metadata": metadata_list,
+    }
+
+    result = transform(**data)
+
+    # Check OBB format is preserved
+    assert result["bboxes"].shape[1] == 5
+    # Should have bboxes from multiple cells
+    assert len(result["bboxes"]) > 0
+    # Labels should be preserved
+    assert "bbox_classes" in result
+    assert len(result["bbox_classes"]) == len(result["bboxes"])
+
+
+def test_mosaic_obb_empty_result() -> None:
+    """Test Mosaic with OBB when all bboxes are filtered out."""
+    target_size = (100, 100)
+    grid_yx = (1, 1)
+    cell_shape = (100, 100)
+
+    img_primary = np.ones((*target_size, 3), dtype=np.uint8)
+    # Empty bboxes array in OBB format
+    bboxes_primary = np.empty((0, 5), dtype=np.float32)
+
+    transform = Compose(
+        [
+            Mosaic(
+                target_size=target_size,
+                cell_shape=cell_shape,
+                grid_yx=grid_yx,
+                p=1.0,
+            ),
+        ],
+        bbox_params=BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            min_area=0.0,
+            min_visibility=0.0,
+        ),
+        seed=137,
+    )
+
+    data = {
+        "image": img_primary,
+        "bboxes": bboxes_primary,
+        "mosaic_metadata": [],
+    }
+
+    result = transform(**data)
+
+    # Even if empty, should preserve OBB format (5 columns)
+    assert result["bboxes"].shape == (0, 5)
+
+
+def test_mosaic_obb_empty_with_labels() -> None:
+    """Test Mosaic with OBB preserves label columns when empty."""
+    target_size = (100, 100)
+    grid_yx = (1, 1)
+    cell_shape = (100, 100)
+
+    img_primary = np.ones((*target_size, 3), dtype=np.uint8)
+    # Empty bboxes array in OBB format WITH label column (6 columns total)
+    bboxes_primary = np.empty((0, 6), dtype=np.float32)
+    bbox_classes_primary = []
+
+    transform = Compose(
+        [
+            Mosaic(
+                target_size=target_size,
+                cell_shape=cell_shape,
+                grid_yx=grid_yx,
+                p=1.0,
+            ),
+        ],
+        bbox_params=BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            label_fields=["bbox_classes"],
+            min_area=0.0,
+            min_visibility=0.0,
+        ),
+        seed=137,
+    )
+
+    data = {
+        "image": img_primary,
+        "bboxes": bboxes_primary,
+        "bbox_classes": bbox_classes_primary,
+        "mosaic_metadata": [],
+    }
+
+    result = transform(**data)
+
+    # Should preserve 6 columns (5 for OBB + 1 for label)
+    assert result["bboxes"].shape == (0, 6), f"Expected (0, 6), got {result['bboxes'].shape}"
+    assert len(result["bbox_classes"]) == 0
+
+
+def test_mosaic_hbb_empty_with_labels() -> None:
+    """Test Mosaic with HBB preserves label columns when empty."""
+    target_size = (100, 100)
+    grid_yx = (1, 1)
+    cell_shape = (100, 100)
+
+    img_primary = np.ones((*target_size, 3), dtype=np.uint8)
+    # Empty bboxes array in HBB format WITH label column (5 columns total)
+    bboxes_primary = np.empty((0, 5), dtype=np.float32)
+    bbox_classes_primary = []
+
+    transform = Compose(
+        [
+            Mosaic(
+                target_size=target_size,
+                cell_shape=cell_shape,
+                grid_yx=grid_yx,
+                p=1.0,
+            ),
+        ],
+        bbox_params=BboxParams(
+            coord_format="albumentations",
+            bbox_type="hbb",
+            label_fields=["bbox_classes"],
+            min_area=0.0,
+            min_visibility=0.0,
+        ),
+        seed=137,
+    )
+
+    data = {
+        "image": img_primary,
+        "bboxes": bboxes_primary,
+        "bbox_classes": bbox_classes_primary,
+        "mosaic_metadata": [],
+    }
+
+    result = transform(**data)
+
+    # Should preserve 5 columns (4 for HBB + 1 for label)
+    assert result["bboxes"].shape == (0, 5), f"Expected (0, 5), got {result['bboxes'].shape}"
+    assert len(result["bbox_classes"]) == 0
+
+
 def test_mosaic_simplified_deterministic() -> None:
     """Test Mosaic with fixed parameters, albumentations format, no labels."""
     target_size = (100, 100)

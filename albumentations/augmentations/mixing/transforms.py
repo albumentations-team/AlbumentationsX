@@ -355,9 +355,9 @@ class Mosaic(DualTransform):
     Image types:
         uint8, float32
 
-
     Supported bboxes:
-        hbb
+        hbb, obb
+
     Reference:
         YOLOv4: Optimal Speed and Accuracy of Object Detection: https://arxiv.org/pdf/2004.10934
 
@@ -460,6 +460,7 @@ class Mosaic(DualTransform):
     """
 
     _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS)
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
         grid_yx: tuple[int, int]

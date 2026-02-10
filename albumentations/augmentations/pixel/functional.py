@@ -41,6 +41,7 @@ from albucore import (
     restore_ndhwc_channel,
     restore_xhwc_channel,
     sz_lut,
+    to_float,
     uint8_io,
 )
 
@@ -2014,9 +2015,77 @@ def superpixels(
     return fgeometric.resize(image, orig_shape[:2], interpolation) if orig_shape != image.shape else image
 
 
-@float32_io
-@clipped
-@preserve_channel_dim
+def unsharp_mask_images(
+    images: np.ndarray,
+    ksize: int,
+    sigma: float,
+    alpha: float,
+    threshold: int,
+) -> np.ndarray:
+    """Apply unsharp mask to a batch of images.
+
+    Processes a batch of images (N, H, W, C) by applying the unsharp mask to each image
+    and writing directly into a pre-allocated output array.
+
+    Args:
+        images: Batch of images with shape (N, H, W, C) or (N, H, W).
+        ksize: The kernel size for Gaussian blur.
+        sigma: The sigma value for Gaussian blur.
+        alpha: The alpha value for the unsharp mask.
+        threshold: The threshold value for the unsharp mask.
+
+    Returns:
+        Batch of unsharp masked images with same shape and dtype as input.
+
+    Note: we intentionally avoid @float32_io/@clipped decorators here.
+        Those decorators convert the entire batch at once, which is ~2x slower for uint8
+        than per-image conversion due to poor cache locality on large 4D arrays.
+
+    """
+    input_dtype = images.dtype
+    need_conversion = input_dtype != np.float32
+    num_channels = images.shape[-1] if images.ndim > 3 else 0
+    ksize_tuple = (ksize, ksize)
+    threshold_f = threshold / 255.0
+
+    result = np.empty_like(images)
+
+    # Single-image float32 working buffer for uint8 path
+    buf: np.ndarray = np.empty(images.shape[1:], dtype=np.float32) if need_conversion else result
+
+    for i in range(images.shape[0]):
+        if need_conversion:
+            image = to_float(images[i])
+            dst = buf if num_channels != 1 else buf[:, :, 0]
+        else:
+            image = images[i]
+            dst = result[i] if num_channels != 1 else result[i, :, :, 0]
+
+        cv2.subtract(image, cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma), dst=dst)
+
+        mask = np.abs(dst)
+        cv2.threshold(mask, threshold_f, 1.0, cv2.THRESH_BINARY, dst=mask)
+
+        cv2.scaleAdd(dst, alpha, image, dst=dst)
+        np.clip(dst, 0, 1, out=dst)
+
+        cv2.GaussianBlur(mask, ksize_tuple, sigmaX=sigma, dst=mask)
+
+        # Blend: image + mask * (sharp - image), all in-place
+        cv2.subtract(dst, image, dst=dst)
+        cv2.multiply(dst, mask, dst=dst)
+        cv2.add(dst, image, dst=dst)
+
+        if need_conversion:
+            np.clip(buf, 0, 1, out=buf)
+            result[i] = from_float(buf, target_dtype=input_dtype)
+
+    if not need_conversion:
+        np.clip(result, 0, 1, out=result)
+
+    return result
+
+
 def unsharp_mask(
     image: np.ndarray,
     ksize: int,
@@ -2024,55 +2093,22 @@ def unsharp_mask(
     alpha: float,
     threshold: int,
 ) -> np.ndarray:
-    """Apply an unsharp mask to an image.
-    This function applies an unsharp mask to an image using the Gaussian blur function.
-    The unsharp mask is applied by subtracting the blurred image from the original image and
-    then adding the result to the original image.
+    """Apply unsharp mask to a single image.
+
+    Backward-compatible wrapper around unsharp_mask_images for a single image.
 
     Args:
-        image (np.ndarray): Input image as a numpy array.
-        ksize (int): The kernel size to use for the Gaussian blur.
-        sigma (float): The sigma value to use for the Gaussian blur.
-        alpha (float): The alpha value to use for the unsharp mask.
-        threshold (int): The threshold value to use for the unsharp mask.
+        image: Single image, shape (H, W, C) or (H, W).
+        ksize: The kernel size for Gaussian blur.
+        sigma: The sigma value for Gaussian blur.
+        alpha: The alpha value for the unsharp mask.
+        threshold: The threshold value for the unsharp mask.
 
     Returns:
-        np.ndarray: The unsharp mask applied to the image.
+        Unsharp masked image with same shape and dtype as input.
 
     """
-    num_channels = get_num_channels(image)
-
-    blur_fn = maybe_process_in_chunks(
-        cv2.GaussianBlur,
-        ksize=(ksize, ksize),
-        sigmaX=sigma,
-    )
-
-    blur = blur_fn(image)
-
-    if num_channels == 1:
-        image = np.squeeze(image, axis=-1)
-
-    residual = image - blur
-
-    # Do not sharpen noise
-    mask = np.abs(residual) * 255 > threshold
-    mask = mask.astype(np.float32)
-
-    sharp = image + alpha * residual
-    # Avoid color noise artefacts.
-    sharp = np.clip(sharp, 0, 1, out=sharp)
-
-    if num_channels == 1:
-        mask = np.expand_dims(mask, axis=-1)
-
-    soft_mask = blur_fn(mask)
-
-    return add_array(
-        multiply(sharp, soft_mask),
-        multiply(image, 1 - soft_mask),
-        inplace=True,
-    )
+    return unsharp_mask_images(np.expand_dims(image, axis=0), ksize, sigma, alpha, threshold)[0]
 
 
 @preserve_channel_dim

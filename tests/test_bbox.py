@@ -664,7 +664,7 @@ def test_obb_rot90_updates_corners():
     ],
 )
 def test_bbox_processor_roundtrip_with_angle_and_labels(bbox_format, bboxes, labels, expected_angle):
-    params = BboxParams(coord_format=bbox_format, label_fields=["labels"], bbox_type="obb", clip_after_transform=None)
+    params = BboxParams(coord_format=bbox_format, label_fields=["labels"], bbox_type="obb", clip_after_transform=False)
     processor = BboxProcessor(params)
 
     data = {
@@ -702,7 +702,7 @@ def test_cxcywh_obb_compose_roundtrip():
     bboxes = [(50, 50, 30, 40, 45.0)]
     aug = A.Compose(
         [A.RandomRotate90(p=1.0)],
-        bbox_params=A.BboxParams(coord_format="cxcywh", bbox_type="obb", clip_after_transform=None),
+        bbox_params=A.BboxParams(coord_format="cxcywh", bbox_type="obb", clip_after_transform=False),
         strict=True,
         seed=137,
     )
@@ -2394,11 +2394,11 @@ def test_bbox_processor_clip_and_filter():
     "bbox_type,clip_after_transform,bboxes,expected_count",
     [
         # OBB: invalid box should be filtered
-        ("obb", "geometry", [[0.1, 0.1, 0.05, 0.2, 0.0], [0.3, 0.3, 0.5, 0.5, 45.0]], 1),
-        # OBB with clip_after_transform=None: should not clamp during filtering
-        ("obb", None, [[0.3, 0.3, 0.5, 0.5, 45.0]], 1),
-        # HBB with clip_after_transform=None: should not clamp during filtering
-        ("hbb", None, [[0.1, 0.1, 0.05, 0.2], [0.3, 0.3, 0.5, 0.5]], 1),
+        ("obb", True, [[0.1, 0.1, 0.05, 0.2, 0.0], [0.3, 0.3, 0.5, 0.5, 45.0]], 1),
+        # OBB with clip_after_transform=False: should not clamp during filtering
+        ("obb", False, [[0.3, 0.3, 0.5, 0.5, 45.0]], 1),
+        # HBB with clip_after_transform=False: should not clamp during filtering
+        ("hbb", False, [[0.1, 0.1, 0.05, 0.2], [0.3, 0.3, 0.5, 0.5]], 1),
     ],
 )
 def test_bbox_processor_filter_invalid_respects_params(bbox_type, clip_after_transform, bboxes, expected_count):

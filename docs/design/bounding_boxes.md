@@ -61,7 +61,14 @@ Albumentations supports multiple input formats:
 # Example: [0.3, 0.283, 0.45, 0.433] (relative to image size)
 ```
 
-### 4. Albumentations (normalized coordinates)
+### 4. cxcywh (pixel coordinates)
+```python
+[x_center, y_center, width, height]  # absolute pixel values
+# Example: [50, 50, 90, 130] on 200x300 image
+# For OBB: add angle as 5th element, e.g. [50, 50, 90, 130, 45.0]
+```
+
+### 5. Albumentations (normalized coordinates)
 ```python
 [x_min, y_min, x_max, y_max]  # normalized to [0, 1]
 # Example: [0.05, 0.1, 0.5, 0.75] (relative to image size)
@@ -104,8 +111,8 @@ bbox_params = BboxParams(
 
 ### Complete Parameter Reference
 
-#### `bbox_format: Literal['pascal_voc', 'coco', 'yolo', 'albumentations']`
-Input coordinate format: `'pascal_voc'`, `'coco'`, `'yolo'`, or `'albumentations'`
+#### `bbox_format: Literal['pascal_voc', 'coco', 'yolo', 'cxcywh', 'albumentations']`
+Input coordinate format: `'pascal_voc'`, `'coco'`, `'yolo'`, `'cxcywh'`, or `'albumentations'`
 
 **Deprecated**: The `format` parameter is deprecated. Use `bbox_format` instead to avoid shadowing the built-in `format()` function.
 

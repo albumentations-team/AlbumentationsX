@@ -175,19 +175,19 @@ BboxParams(clip_bboxes_on_input=True)  # Fix invalid input coordinates (e.g., YO
 
 **Deprecated**: The `clip` parameter is deprecated. Use `clip_bboxes_on_input` instead for clarity.
 
-#### `clip_after_transform: Literal[None, 'geometry'] = 'geometry'`
+#### `clip_after_transform: bool = True`
 Controls how bboxes are clipped **after each transform** in the pipeline:
 
-- `None`: No clipping after transforms. Boxes may temporarily go outside [0, 1] bounds.
-  - Use for lenient pipelines (e.g., crop then pad)
-  - Boxes can have negative coords or coords > 1
-
-- `'geometry'`: Clip based on actual geometry (default)
+- `True` (default): Clip based on actual geometry.
   - **For HBB**: Clips `(x_min, y_min, x_max, y_max)` to [0, 1]. Fast, current behavior.
   - **For OBB**: Clips all 4 rotated corners to [0, 1] and returns axis-aligned wrapping box.
     - Ensures all corners are inside bounds
     - Sets angle to 0 (result is axis-aligned after clipping)
     - Does NOT use `cv2.minAreaRect` - that's only for rotations
+
+- `False`: No clipping after transforms. Boxes may temporarily go outside [0, 1] bounds.
+  - Use for lenient pipelines (e.g., crop then pad)
+  - Boxes can have negative coords or coords > 1
 
 **Example configurations:**
 
@@ -195,15 +195,15 @@ Controls how bboxes are clipped **after each transform** in the pipeline:
 # Strict: clip input errors AND after each transform
 BboxParams(
     bbox_format='yolo',
-    clip_bboxes_on_input=True,     # Fix input errors once
-    clip_after_transform='geometry' # Clip after each transform
+    clip_bboxes_on_input=True,  # Fix input errors once
+    clip_after_transform=True,  # Clip after each transform
 )
 
 # Lenient: allow temporary excursions
 BboxParams(
     bbox_format='albumentations',
-    clip_bboxes_on_input=True,    # Fix input errors once
-    clip_after_transform=None      # Allow boxes outside [0,1] during pipeline
+    clip_bboxes_on_input=True,   # Fix input errors once
+    clip_after_transform=False,  # Allow boxes outside [0,1] during pipeline
 )
 ```
 
@@ -227,7 +227,7 @@ If `True`, removes bboxes with invalid coordinates (e.g., x_min >= x_max) during
 3. Apply Transforms (Compose)
    For each transform:
      - Execute transform.apply_to_bboxes()
-     - Apply clipping (if clip_after_transform is set)
+     - Apply clipping (if clip_after_transform=True)
      - Filter by min_area, min_visibility, min_width, min_height
    ↓
 4. Postprocess (BboxProcessor.postprocess)
@@ -289,7 +289,7 @@ After **each** transform, `Compose` applies filtering (in `filter_bboxes()`):
 
 ```python
 # 1. Apply clip_after_transform
-if clip_after_transform == 'geometry':
+if clip_after_transform:
     if bbox_type == 'hbb':
         # Clip coordinates to [0, 1]
         bbox[0] = max(0.0, min(1.0, bbox[0]))  # x_min
@@ -352,11 +352,11 @@ BboxParams(coord_format='yolo', clip_bboxes_on_input=True)
 
 ```python
 # Example: Crop that moves bbox outside bounds
-BboxParams(clip_after_transform='geometry')
+BboxParams(clip_after_transform=True)
 # After crop: [-0.1, -0.1, 1.1, 1.1]  # Outside bounds
-# After clip: [0.0, 0.0, 1.0, 1.0]    # Clipped to [0, 1]
+# After clip: [0.0, 0.0, 1.0, 1.0]   # Clipped to [0, 1]
 
-BboxParams(clip_after_transform=None)
+BboxParams(clip_after_transform=False)
 # After crop: [-0.1, -0.1, 1.1, 1.1]  # Left as-is
 # Later transform (e.g., pad) may bring it back inside
 ```
@@ -366,10 +366,10 @@ BboxParams(clip_after_transform=None)
 | Scenario | `clip_bboxes_on_input` | `clip_after_transform` |
 |----------|------------------------|------------------------|
 | Fix malformed input | ✅ `True` | N/A |
-| Strict bounds enforcement | Optional | `'geometry'` |
-| Lenient pipeline (crop→pad) | Optional | `None` |
-| OBB with accurate geometry | Optional | `'geometry'` |
-| Performance critical (HBB only) | Optional | `'geometry'` (fast) |
+| Strict bounds enforcement | Optional | `True` |
+| Lenient pipeline (crop→pad) | Optional | `False` |
+| OBB with accurate geometry | Optional | `True` |
+| Performance critical (HBB only) | Optional | `True` (fast) |
 
 ---
 
@@ -508,10 +508,10 @@ bbox_params = A.BboxParams(
 
 ```python
 # Strict pipeline - always keep boxes in bounds
-bbox_params = A.BboxParams(clip_after_transform='geometry')
+bbox_params = A.BboxParams(clip_after_transform=True)
 
 # Lenient pipeline - allow temporary excursions
-bbox_params = A.BboxParams(clip_after_transform=None)
+bbox_params = A.BboxParams(clip_after_transform=False)
 ```
 
 ### 4. Set Meaningful Filters
@@ -614,20 +614,20 @@ for bbox in test_cases:
 bbox_params = A.BboxParams(
     bbox_format='yolo',
     bbox_type='hbb',
-    clip_after_transform='geometry',  # Fast for HBB
+    clip_after_transform=True,  # Fast for HBB
 )
 
 # For OBB with accurate geometry (slower):
 bbox_params = A.BboxParams(
     bbox_format='albumentations',
     bbox_type='obb',
-    clip_after_transform='geometry',  # Refits boxes, may change angle
+    clip_after_transform=True,  # Refits boxes, may change angle
 )
 
 # For maximum performance (careful!):
 bbox_params = A.BboxParams(
     bbox_format='albumentations',
-    clip_after_transform=None,  # No clipping after transforms
+    clip_after_transform=False,  # No clipping after transforms
 )
 ```
 

@@ -87,16 +87,11 @@ class BboxParams(Params):
             will be filtered out. For example, if max_accept_ratio=3.0, boxes with width:height or height:width ratios
             greater than 3:1 will be removed. Set to None to disable aspect ratio filtering. Default: None.
 
-        clip_after_transform (Literal[None, "geometry"]): Controls how bounding boxes are clipped AFTER EACH TRANSFORM
-            in the augmentation pipeline. This is different from `clip_bboxes_on_input` which only runs once before
-            the pipeline. Options:
-            - None: No clipping after transforms. Boxes may temporarily go outside [0, 1] bounds.
-                   Use for lenient pipelines where boxes may go outside temporarily (e.g., crop then pad).
-            - "geometry": Clip based on actual geometry (default).
-                         For HBB: clips (x_min, y_min, x_max, y_max) to [0, 1]. Fast, current behavior.
-                         For OBB: clips all 4 rotated corners to [0, 1] and returns a wrapping
-                                axis-aligned bounding box (angle set to 0), without cv2.minAreaRect refit.
-            Default: "geometry".
+        clip_after_transform (bool): If True, clip bounding boxes to image bounds AFTER EACH TRANSFORM in the
+            augmentation pipeline. If False, boxes may temporarily go outside [0, 1] bounds. This is different
+            from `clip_bboxes_on_input` which only runs once before the pipeline. When True: for HBB, clips
+            (x_min, y_min, x_max, y_max) to [0, 1]; for OBB, clips all 4 rotated corners to [0, 1] and returns
+            a wrapping axis-aligned bounding box (angle set to 0). Default: True.
 
     Note:
         The processing order for bounding boxes is:
@@ -104,7 +99,7 @@ class BboxParams(Params):
         2. Clip boxes to image boundaries (if clip_bboxes_on_input=True) - PRE-PIPELINE, fixes invalid input
         3. Filter invalid boxes (if filter_invalid_bboxes=True)
         4. Apply transformations
-        5. After each transform: clip (if clip_after_transform is set) and filter boxes based on
+        5. After each transform: clip (if clip_after_transform=True) and filter boxes based on
            min_area, min_visibility, min_width, min_height
         6. Convert back to the original format
 
@@ -133,17 +128,17 @@ class BboxParams(Params):
         ...     max_accept_ratio=5.0,  # Filter boxes with aspect ratio > 5:1
         ...     clip_bboxes_on_input=True
         ... )
-        >>> # Create BboxParams for OBB with geometry-based clipping after transforms
+        >>> # Create BboxParams for OBB with clipping after transforms
         >>> bbox_params = BboxParams(
         ...     coord_format='albumentations',
         ...     bbox_type='obb',
-        ...     clip_after_transform='geometry',  # Clip all corners inside bounds
+        ...     clip_after_transform=True,  # Clip all corners inside bounds
         ... )
         >>> # Create BboxParams with lenient clipping (allows temporary excursions)
         >>> bbox_params = BboxParams(
         ...     coord_format='yolo',
         ...     clip_bboxes_on_input=True,  # Fix input errors
-        ...     clip_after_transform=None  # Allow boxes to go outside temporarily
+        ...     clip_after_transform=False  # Allow boxes to go outside temporarily
         ... )
         >>> # Create BboxParams for cxcywh (center + wh in pixels)
         >>> bbox_params = BboxParams(
@@ -175,7 +170,7 @@ class BboxParams(Params):
         # Clipping parameters
         clip_bboxes_on_input: bool
         filter_invalid_bboxes: bool
-        clip_after_transform: Literal["geometry"] | None
+        clip_after_transform: bool
 
         # Other
         check_each_transform: bool
@@ -193,7 +188,7 @@ class BboxParams(Params):
         filter_invalid_bboxes: bool = False,
         max_accept_ratio: float | None = None,
         clip_bboxes_on_input: bool = False,
-        clip_after_transform: Literal["geometry"] | None = "geometry",
+        clip_after_transform: bool = True,
     ):
         # Validate all parameters using InitSchema
         validated = self.InitSchema(
@@ -508,8 +503,8 @@ class BboxProcessor(DataProcessor):
             shape (tuple[int, int] | tuple[int, int, int]): Shape to check against.
 
         """
-        # Skip validation if clip_after_transform=None (boxes may be outside [0, 1])
-        if self.params.clip_after_transform is not None:
+        # Skip validation if clip_after_transform=False (boxes may be outside [0, 1])
+        if self.params.clip_after_transform:
             check_bboxes(data)
 
     def convert_from_albumentations(
@@ -558,7 +553,7 @@ class BboxProcessor(DataProcessor):
                 min_visibility=0,
                 min_width=0,
                 min_height=0,
-                clip_after_transform="geometry",
+                clip_after_transform=True,
             )
             check_bboxes(data_np)
             return data_np
@@ -1097,7 +1092,7 @@ def filter_bboxes(
     min_width: float = 1.0,
     min_height: float = 1.0,
     max_accept_ratio: float | None = None,
-    clip_after_transform: Literal["geometry"] | None = "geometry",
+    clip_after_transform: bool = True,
 ) -> np.ndarray:
     """Remove bounding boxes that either lie outside of the visible area by more than min_visibility
     or whose area in pixels is under the threshold set by `min_area`. Also crops boxes to final image size.
@@ -1113,10 +1108,8 @@ def filter_bboxes(
         min_height (float): Minimum height of a bounding box in pixels. Default: 0.0.
         max_accept_ratio (float | None): Maximum allowed aspect ratio, calculated as max(width/height, height/width).
             Boxes with higher ratios will be filtered out. Default: None.
-        clip_after_transform (Literal[None, "geometry"]): How to clip bounding boxes to image bounds.
-            - None: No clipping, boxes may extend outside [0, 1].
-            - "geometry": Clip based on actual geometry (HBB: coords, OBB: corners).
-            Default: "geometry".
+        clip_after_transform (bool): If True, clip bounding boxes to image bounds (HBB: coords, OBB: corners).
+            If False, boxes may extend outside [0, 1]. Default: True.
 
     Returns:
         np.ndarray: Filtered bounding boxes.
@@ -1136,7 +1129,7 @@ def filter_bboxes(
     denormalized_box_areas = calculate_bbox_areas_in_pixels(bboxes, shape)
 
     # Clip bounding boxes based on clip_after_transform
-    clipped_bboxes = bboxes if clip_after_transform is None else clip_bboxes_geometry(bboxes, shape, bbox_type)
+    clipped_bboxes = bboxes if not clip_after_transform else clip_bboxes_geometry(bboxes, shape, bbox_type)
 
     # Calculate areas of clipped bounding boxes in pixels
     clipped_box_areas = calculate_bbox_areas_in_pixels(clipped_bboxes, shape)

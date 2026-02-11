@@ -858,21 +858,15 @@ def convert_bboxes_to_albumentations(
         converted_bboxes[:, 1] = bboxes[:, 1]  # y_min
         converted_bboxes[:, 2] = bboxes[:, 0] + bboxes[:, 2]  # x_max
         converted_bboxes[:, 3] = bboxes[:, 1] + bboxes[:, 3]  # y_max
-    elif source_format == "yolo":
-        if check_validity and np.any((bboxes[:, :4] <= 0) | (bboxes[:, :4] > 1)):
+    elif source_format in {"yolo", "cxcywh"}:
+        if source_format == "yolo" and check_validity and np.any((bboxes[:, :4] <= 0) | (bboxes[:, :4] > 1)):
             raise ValueError(f"In YOLO format all coordinates must be float and in range (0, 1], got {bboxes}")
-
+        # center+wh → corners (YOLO: normalized; cxcywh: pixels, normalized below)
         w_half, h_half = bboxes[:, 2] / 2, bboxes[:, 3] / 2
-        converted_bboxes[:, 0] = bboxes[:, 0] - w_half  # x_min
-        converted_bboxes[:, 1] = bboxes[:, 1] - h_half  # y_min
-        converted_bboxes[:, 2] = bboxes[:, 0] + w_half  # x_max
-        converted_bboxes[:, 3] = bboxes[:, 1] + h_half  # y_max
-    elif source_format == "cxcywh":
-        w_half, h_half = bboxes[:, 2] / 2, bboxes[:, 3] / 2
-        converted_bboxes[:, 0] = bboxes[:, 0] - w_half  # x_min
-        converted_bboxes[:, 1] = bboxes[:, 1] - h_half  # y_min
-        converted_bboxes[:, 2] = bboxes[:, 0] + w_half  # x_max
-        converted_bboxes[:, 3] = bboxes[:, 1] + h_half  # y_max
+        converted_bboxes[:, 0] = bboxes[:, 0] - w_half
+        converted_bboxes[:, 1] = bboxes[:, 1] - h_half
+        converted_bboxes[:, 2] = bboxes[:, 0] + w_half
+        converted_bboxes[:, 3] = bboxes[:, 1] + h_half
     else:  # pascal_voc
         converted_bboxes[:, :4] = bboxes[:, :4]
 

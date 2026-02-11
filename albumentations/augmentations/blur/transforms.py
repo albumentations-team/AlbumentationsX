@@ -409,7 +409,7 @@ class MotionBlur(Blur):
         return fpixel.convolve(img, kernel=kernel)
 
     def apply_to_images(self, images: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
-        return fpixel.convolve(images, kernel=kernel)
+        return self.apply(images, kernel=kernel)
 
     def get_params(self) -> dict[str, Any]:
         ksize = fblur.sample_odd_from_range(

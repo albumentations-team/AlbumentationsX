@@ -4306,7 +4306,7 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         # computation
         img = np.pad(img, ((0, 0), (pad_size, pad_size), (0, 0), (0, 0)), mode="reflect")
 
-        # flatten the kernel alongside batch and height dimension (B, H, W, C) -> (B * H, W, C)
+        # flatten the batch alongside batch and height dimension (B, H, W, C) -> (B * H, W, C)
         transformed, original_shape = reshape_xhwc_channel(img)
 
         # apply the kernel

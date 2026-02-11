@@ -4317,7 +4317,7 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
 
         # slice to remove padding and return
         return transformed[:, pad_size:-pad_size, :, :]
-    raise ValueError(f"Expected input shape (H, W, 3), (B, H, W, 3), got {img.shape}")
+    raise ValueError(f"Expected input shape (H, W, C), (B, H, W, C), got {img.shape}")
 
 
 @clipped

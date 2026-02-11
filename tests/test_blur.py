@@ -11,6 +11,8 @@ from albumentations.augmentations.blur import functional as fblur
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import UINT8_IMAGES
 
+import random
+
 
 @pytest.mark.parametrize("aug", [A.Blur, A.MedianBlur, A.MotionBlur])
 @pytest.mark.parametrize(
@@ -246,6 +248,10 @@ def test_gaussian_blur_matches_pil():
 
 def test_motion_blur_apply_to_images():
     """Tests that MotionBlur apply_to_images works as expected."""
+    # make test deterministic
+    random.seed(42)
+    np.random.seed(42)
+
     # generate large horizontal forward motion blur
     transform = A.MotionBlur(p=1.0, blur_limit=21, angle_range=(0, 0), direction_range=(1.0, 1.0))
 

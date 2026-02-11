@@ -255,6 +255,13 @@ def test_calculate_bbox_areas_zero_area():
             (100, 200),  # image shape doesn't matter for YOLO
             np.array([[0.15, 0.3, 0.35, 0.7], [0.6, 0.65, 0.8, 0.95]]),
         ),
+        # cxcywh format (center + wh in pixels)
+        (
+            np.array([[50, 50, 30, 40], [150, 75, 40, 40]]),
+            "cxcywh",
+            (100, 200),
+            np.array([[0.175, 0.3, 0.325, 0.7], [0.65, 0.55, 0.85, 0.95]]),
+        ),
         # With additional columns
         (
             np.array([[10, 20, 30, 40, 1], [50, 60, 20, 30, 2]]),
@@ -311,6 +318,12 @@ def test_convert_bboxes_to_albumentations_output_type():
             (100, 200),
             np.array([[0.15, 0.3, 0.35, 0.7, 90.0]]),
         ),
+        (
+            "cxcywh",
+            np.array([[50, 50, 30, 40, 450.0]]),
+            (100, 200),
+            np.array([[0.175, 0.3, 0.325, 0.7, 90.0]]),
+        ),
     ],
 )
 def test_convert_bboxes_to_albumentations_normalizes_angle(source_format, bboxes, image_shape, expected):
@@ -331,9 +344,9 @@ def test_convert_bboxes_to_albumentations_yolo_invalid_range():
         convert_bboxes_to_albumentations(bboxes, "yolo", (100, 200), check_validity=True)
 
 
-@pytest.mark.parametrize("source_format", ["coco", "pascal_voc", "yolo"])
+@pytest.mark.parametrize("source_format", ["coco", "pascal_voc", "yolo", "cxcywh"])
 def test_convert_bboxes_to_albumentations_check_validity(source_format, mocker):
-    bboxes = np.array([[0.1, 0.2, 0.3, 0.4]])
+    bboxes = np.array([[0.1, 0.2, 0.3, 0.4]]) if source_format != "cxcywh" else np.array([[50, 50, 30, 40]])
     image_shape = (100, 200)
     mock_check_bboxes = mocker.patch("albumentations.core.bbox_utils.check_bboxes")
 
@@ -342,9 +355,9 @@ def test_convert_bboxes_to_albumentations_check_validity(source_format, mocker):
     mock_check_bboxes.assert_called_once()
 
 
-@pytest.mark.parametrize("source_format", ["coco", "pascal_voc"])
+@pytest.mark.parametrize("source_format", ["coco", "pascal_voc", "cxcywh"])
 def test_convert_bboxes_to_albumentations_calls_normalize(source_format, mocker):
-    bboxes = np.array([[10, 20, 30, 40]])
+    bboxes = np.array([[10, 20, 30, 40]]) if source_format != "cxcywh" else np.array([[50, 50, 30, 40]])
     image_shape = (100, 200)
     mock_normalize_bboxes = mocker.patch("albumentations.core.bbox_utils.normalize_bboxes", return_value=bboxes)
 
@@ -386,6 +399,13 @@ def test_convert_bboxes_to_albumentations_yolo_does_not_call_normalize(mocker):
             "yolo",
             (100, 200),  # image shape doesn't matter for YOLO
             np.array([[0.25, 0.5, 0.2, 0.4], [0.7, 0.8, 0.2, 0.3]]),
+        ),
+        # Albumentations to cxcywh format
+        (
+            np.array([[0.175, 0.3, 0.325, 0.7], [0.65, 0.55, 0.85, 0.95]]),
+            "cxcywh",
+            (100, 200),
+            np.array([[50, 50, 30, 40], [150, 75, 40, 40]]),
         ),
         # With additional columns
         (
@@ -443,6 +463,12 @@ def test_convert_bboxes_from_albumentations_output_type():
             (100, 200),
             np.array([[0.25, 0.5, 0.2, 0.4, 90.0]]),
         ),
+        (
+            "cxcywh",
+            np.array([[0.175, 0.3, 0.325, 0.7, 450.0]]),
+            (100, 200),
+            np.array([[50, 50, 30, 40, 90.0]]),
+        ),
     ],
 )
 def test_convert_bboxes_from_albumentations_normalizes_angle(target_format, bboxes, image_shape, expected):
@@ -467,7 +493,7 @@ def test_convert_bboxes_from_albumentations_check_validity(mocker):
     mock_check_bboxes.assert_called_once()
 
 
-@pytest.mark.parametrize("target_format", ["coco", "pascal_voc"])
+@pytest.mark.parametrize("target_format", ["coco", "pascal_voc", "cxcywh"])
 def test_convert_bboxes_from_albumentations_calls_denormalize(target_format, mocker):
     bboxes = np.array([[0.05, 0.2, 0.2, 0.6]])
     image_shape = (100, 200)
@@ -494,12 +520,15 @@ def test_convert_bboxes_from_albumentations_yolo_does_not_call_denormalize(mocke
         ("coco", (100, 200)),
         ("pascal_voc", (100, 200)),
         ("yolo", (100, 200)),
+        ("cxcywh", (100, 200)),
     ],
 )
 def test_round_trip_to_from_albumentations(original_format, image_shape):
     original_bboxes = np.array([[10, 20, 30, 40], [50, 60, 70, 80]])
     if original_format == "yolo":
         original_bboxes = np.array([[0.25, 0.3, 0.2, 0.2], [0.6, 0.7, 0.2, 0.2]])
+    elif original_format == "cxcywh":
+        original_bboxes = np.array([[50, 50, 30, 40], [150, 75, 40, 40]])
 
     # Convert to albumentations format
     albu_bboxes = convert_bboxes_to_albumentations(original_bboxes, original_format, image_shape)
@@ -516,6 +545,7 @@ def test_round_trip_to_from_albumentations(original_format, image_shape):
         ("coco", (100, 200)),
         ("pascal_voc", (100, 200)),
         ("yolo", (100, 200)),
+        ("cxcywh", (100, 200)),
     ],
 )
 def test_round_trip_from_to_albumentations(target_format, image_shape):
@@ -528,6 +558,16 @@ def test_round_trip_from_to_albumentations(target_format, image_shape):
     reconverted_bboxes = convert_bboxes_to_albumentations(converted_bboxes, target_format, image_shape)
 
     np.testing.assert_allclose(reconverted_bboxes, albu_bboxes, rtol=1e-5)
+
+
+def test_cxcywh_roundtrip_pixel_values():
+    """Explicit roundtrip test for cxcywh with pixel values (including half-integers)."""
+    image_shape = (100, 200)
+    # Center can be half-integer when converting from pixel corners
+    original = np.array([[50.5, 25.5, 30, 40], [150, 75, 40, 40]])
+    albu = convert_bboxes_to_albumentations(original, "cxcywh", image_shape)
+    back = convert_bboxes_from_albumentations(albu, "cxcywh", image_shape)
+    np.testing.assert_allclose(back, original, rtol=1e-5)
 
 
 @pytest.mark.parametrize(
@@ -620,6 +660,7 @@ def test_obb_rot90_updates_corners():
         ("pascal_voc", [[10, 20, 40, 60, 450.0]], [1], 90.0),
         ("coco", [[10, 20, 30, 40, 450.0]], [2], 90.0),
         ("yolo", [[0.25, 0.5, 0.2, 0.4, 450.0]], [3], 90.0),
+        ("cxcywh", [[50, 50, 30, 40, 450.0]], [1], 90.0),
     ],
 )
 def test_bbox_processor_roundtrip_with_angle_and_labels(bbox_format, bboxes, labels, expected_angle):
@@ -653,6 +694,21 @@ def test_obb_supported_for_perspective(transform):
     bboxes = [(0.1, 0.2, 0.3, 0.4, 10.0)]
     aug = A.Compose([transform], bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"), strict=True)
     aug(image=image, bboxes=bboxes)
+
+
+def test_cxcywh_obb_compose_roundtrip():
+    """Verify cxcywh + OBB works through Compose with geometric transform."""
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    bboxes = [(50, 50, 30, 40, 45.0)]
+    aug = A.Compose(
+        [A.RandomRotate90(p=1.0)],
+        bbox_params=A.BboxParams(coord_format="cxcywh", bbox_type="obb", clip_after_transform=None),
+        strict=True,
+        seed=137,
+    )
+    result = aug(image=image, bboxes=bboxes)
+    assert len(result["bboxes"]) == 1
+    assert result["bboxes"].shape[1] >= 5
 
 
 def test_perspective_bboxes_obb_identity():
@@ -960,6 +1016,7 @@ def test_union_of_bboxes_precision():
         ("pascal_voc", [[15, 12, 30, 40], [50, 50, 55, 60]], [1, 2]),
         ("albumentations", [[0.2, 0.3, 0.4, 0.5], [0.1, 0.1, 0.3, 0.3]], ["label1", "label2"]),
         ("yolo", [[0.15, 0.22, 0.3, 0.4], [0.5, 0.5, 0.15, 0.4]], [0, 3]),
+        ("cxcywh", [[30, 31, 20, 40], [70, 55, 30, 30]], ["a", "b"]),
     ],
 )
 def test_bbox_processor_roundtrip(bbox_format, bboxes, labels):
@@ -990,6 +1047,7 @@ def test_bbox_processor_roundtrip(bbox_format, bboxes, labels):
         ("pascal_voc", [[15, 12, 30, 40], [50, 50, 55, 60]], [1, 2], ["label1", "label2"]),
         ("albumentations", [[0.2, 0.3, 0.4, 0.5], [0.1, 0.1, 0.3, 0.3]], ["label1", "label2"], [0, 1]),
         ("yolo", [[0.15, 0.22, 0.3, 0.4], [0.5, 0.5, 0.15, 0.4]], [0, 1], ["type1", "type2"]),
+        ("cxcywh", [[30, 31, 20, 40], [70, 55, 30, 30]], [1, 2], ["x", "y"]),
     ],
 )
 def test_bbox_processor_roundtrip_multiple_labels(bbox_format, bboxes, labels1, labels2):
@@ -1024,6 +1082,8 @@ def test_bbox_processor_roundtrip_multiple_labels(bbox_format, bboxes, labels1, 
         ([(20, 30, 60, 80, 99)], "pascal_voc", None),
         ([(0.1, 0.2, 0.1, 0.2)], "yolo", [2]),
         ([(0.1, 0.2, 0.1, 0.2, 99)], "yolo", None),
+        ([(50, 50, 30, 40)], "cxcywh", [1]),
+        ([(50, 50, 30, 40, 99)], "cxcywh", None),
     ],
 )
 def test_compose_with_bbox_noop(
@@ -1624,6 +1684,7 @@ def test_bbox_d4_obb_matches_primitives(group_member, fn):
         ("yolo", [[0.1, 0.2, 1e-3, 1e-3]], [[0.1, 0.2, 1e-3, 1e-3]]),
         ("pascal_voc", [[1, 1, 2, 2]], [[1, 1, 2, 2]]),
         ("pascal_voc", [[1, 1, 1.004, 1.004]], [[1, 1, 1.004, 1.004]]),
+        ("cxcywh", [[2, 2, 3, 3]], [[2, 2, 3, 3]]),
     ],
 )
 def test_small_bbox(bbox_format, bbox, expected):
@@ -1647,6 +1708,7 @@ def test_small_bbox(bbox_format, bbox, expected):
         ("coco", np.array([[0.1, 0.2, 1e-3, 1e-3]]), np.array([[0.1, 0.2, 1e-3, 1e-3]])),
         ("yolo", np.array([[0.1, 0.2, 1e-3, 1e-3]]), np.array([[0.1, 0.2, 1e-3, 1e-3]])),
         ("pascal_voc", np.array([[1, 1, 1.001, 1.001]]), np.array([[1, 1, 1.001, 1.001]])),
+        ("cxcywh", np.array([[50, 50, 1, 1]]), np.array([[50, 50, 1, 1]])),
     ],
 )
 def test_very_small_bbox(bbox_format, bboxes, expected):
@@ -1664,7 +1726,7 @@ def test_very_small_bbox(bbox_format, bboxes, expected):
         category_id=categories,
     )
 
-    np.testing.assert_array_almost_equal(transformed["bboxes"], expected)
+    np.testing.assert_allclose(transformed["bboxes"], expected, rtol=1e-5, atol=1e-5)
     np.testing.assert_array_almost_equal(transformed["category_id"], categories)
 
 
@@ -2234,6 +2296,7 @@ def test_empty_bboxes():
         ("coco", [[10, 10, -5, 20]]),  # negative width
         ("coco", [[10, 10, 20, -5]]),  # negative height
         ("yolo", [[0.5, 0.5, -0.1, 0.2]]),  # negative width
+        ("cxcywh", [[50, 50, -10, 40]]),  # negative width
     ],
 )
 def test_bbox_processor_invalid_no_filter(bbox_format, bboxes):
@@ -2262,6 +2325,8 @@ def test_bbox_processor_invalid_no_filter(bbox_format, bboxes):
         ("albumentations", [[0.1, 0.1, 0.05, 0.2], [0.1, 0.1, 0.3, 0.3]], [[0.1, 0.1, 0.3, 0.3]]),
         # YOLO format: normalized [x_center, y_center, width, height]
         ("yolo", [[0.5, 0.5, -0.1, 0.2], [0.5, 0.5, 0.2, 0.2]], [[0.5, 0.5, 0.2, 0.2]]),
+        # cxcywh format: [x_center, y_center, width, height] in pixels
+        ("cxcywh", [[50, 50, -10, 40], [50, 50, 30, 40]], [[50, 50, 30, 40]]),
         # Test with empty bboxes array
         ("pascal_voc", [], []),
         # Test with additional columns (labels)

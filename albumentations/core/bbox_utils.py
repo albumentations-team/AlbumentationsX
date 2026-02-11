@@ -1,6 +1,6 @@
 """Utilities for handling bounding box operations during image augmentation.
 
-This module provides tools for processing bounding boxes in various formats (COCO, Pascal VOC, YOLO),
+This module provides tools for processing bounding boxes in various formats (COCO, Pascal VOC, YOLO, cxcywh),
 converting between coordinate systems, normalizing and denormalizing coordinates, filtering
 boxes based on visibility and size criteria, and performing transformations on boxes to match
 image augmentations. It forms the core functionality for all bounding box-related operations
@@ -44,12 +44,14 @@ class BboxParams(Params):
     """Parameters for bounding box transforms.
 
     Args:
-        coord_format (Literal["coco", "pascal_voc", "albumentations", "yolo"]): Coordinate format of bounding boxes.
+        coord_format (Literal["coco", "pascal_voc", "albumentations", "yolo", "cxcywh"]):
+            Coordinate format of bounding boxes.
             Should be one of:
             - 'coco': [x_min, y_min, width, height], e.g. [97, 12, 150, 200].
             - 'pascal_voc': [x_min, y_min, x_max, y_max], e.g. [97, 12, 247, 212].
             - 'albumentations': like pascal_voc but normalized in [0, 1] range, e.g. [0.2, 0.3, 0.4, 0.5].
             - 'yolo': [x_center, y_center, width, height] normalized in [0, 1] range, e.g. [0.1, 0.2, 0.3, 0.4].
+            - 'cxcywh': [x_center, y_center, width, height] in pixel coordinates, e.g. [50, 50, 40, 60].
 
         bbox_type (Literal["hbb", "obb"]): Bounding box type.
             - 'hbb': axis-aligned boxes with 4 coords (default).
@@ -143,6 +145,11 @@ class BboxParams(Params):
         ...     clip_bboxes_on_input=True,  # Fix input errors
         ...     clip_after_transform=None  # Allow boxes to go outside temporarily
         ... )
+        >>> # Create BboxParams for cxcywh (center + wh in pixels)
+        >>> bbox_params = BboxParams(
+        ...     coord_format='cxcywh',
+        ...     label_fields=['class_ids'],
+        ... )
 
     """
 
@@ -150,7 +157,7 @@ class BboxParams(Params):
         model_config = ConfigDict(arbitrary_types_allowed=True)
 
         # Coordinate format
-        coord_format: Literal["coco", "pascal_voc", "albumentations", "yolo"]
+        coord_format: Literal["coco", "pascal_voc", "albumentations", "yolo", "cxcywh"]
 
         # Bbox type
         bbox_type: Literal["hbb", "obb"]
@@ -175,7 +182,7 @@ class BboxParams(Params):
 
     def __init__(
         self,
-        coord_format: Literal["coco", "pascal_voc", "albumentations", "yolo"],
+        coord_format: Literal["coco", "pascal_voc", "albumentations", "yolo", "cxcywh"],
         label_fields: Sequence[Any] | None = None,
         bbox_type: Literal["hbb", "obb"] = "hbb",
         min_area: float = 0.0,
@@ -815,7 +822,7 @@ def calculate_bbox_areas_in_pixels(bboxes: np.ndarray, shape: tuple[int, int]) -
 @handle_empty_array("bboxes")
 def convert_bboxes_to_albumentations(
     bboxes: np.ndarray,
-    source_format: Literal["coco", "pascal_voc", "yolo"],
+    source_format: Literal["coco", "pascal_voc", "yolo", "cxcywh"],
     shape: tuple[int, int],
     check_validity: bool = False,
 ) -> np.ndarray:
@@ -825,7 +832,7 @@ def convert_bboxes_to_albumentations(
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
-        source_format (Literal["coco", "pascal_voc", "yolo"]): Format of the input bounding boxes.
+        source_format (Literal["coco", "pascal_voc", "yolo", "cxcywh"]): Format of the input bounding boxes.
         shape (tuple[int, int]): Image shape (height, width).
         check_validity (bool): Check if all boxes are valid boxes.
 
@@ -833,13 +840,13 @@ def convert_bboxes_to_albumentations(
         np.ndarray: An array of bounding boxes in albumentations format with shape (num_bboxes, 4+).
 
     Raises:
-        ValueError: If `source_format` is not 'coco', 'pascal_voc', or 'yolo'.
+        ValueError: If `source_format` is not 'coco', 'pascal_voc', 'yolo' or 'cxcywh'.
         ValueError: If in YOLO format, any coordinates are not in the range (0, 1].
 
     """
-    if source_format not in {"coco", "pascal_voc", "yolo"}:
+    if source_format not in {"coco", "pascal_voc", "yolo", "cxcywh"}:
         raise ValueError(
-            f"Unknown source_format {source_format}. Supported formats are: 'coco', 'pascal_voc' and 'yolo'",
+            f"Unknown source_format {source_format}. Supported formats are: 'coco', 'pascal_voc', 'yolo' and 'cxcywh'",
         )
 
     bboxes = bboxes.copy().astype(np.float32)
@@ -851,15 +858,15 @@ def convert_bboxes_to_albumentations(
         converted_bboxes[:, 1] = bboxes[:, 1]  # y_min
         converted_bboxes[:, 2] = bboxes[:, 0] + bboxes[:, 2]  # x_max
         converted_bboxes[:, 3] = bboxes[:, 1] + bboxes[:, 3]  # y_max
-    elif source_format == "yolo":
-        if check_validity and np.any((bboxes[:, :4] <= 0) | (bboxes[:, :4] > 1)):
+    elif source_format in {"yolo", "cxcywh"}:
+        if source_format == "yolo" and check_validity and np.any((bboxes[:, :4] <= 0) | (bboxes[:, :4] > 1)):
             raise ValueError(f"In YOLO format all coordinates must be float and in range (0, 1], got {bboxes}")
-
+        # center+wh → corners (YOLO: normalized; cxcywh: pixels, normalized below)
         w_half, h_half = bboxes[:, 2] / 2, bboxes[:, 3] / 2
-        converted_bboxes[:, 0] = bboxes[:, 0] - w_half  # x_min
-        converted_bboxes[:, 1] = bboxes[:, 1] - h_half  # y_min
-        converted_bboxes[:, 2] = bboxes[:, 0] + w_half  # x_max
-        converted_bboxes[:, 3] = bboxes[:, 1] + h_half  # y_max
+        converted_bboxes[:, 0] = bboxes[:, 0] - w_half
+        converted_bboxes[:, 1] = bboxes[:, 1] - h_half
+        converted_bboxes[:, 2] = bboxes[:, 0] + w_half
+        converted_bboxes[:, 3] = bboxes[:, 1] + h_half
     else:  # pascal_voc
         converted_bboxes[:, :4] = bboxes[:, :4]
 
@@ -878,7 +885,7 @@ def convert_bboxes_to_albumentations(
 @handle_empty_array("bboxes")
 def convert_bboxes_from_albumentations(
     bboxes: np.ndarray,
-    target_format: Literal["coco", "pascal_voc", "yolo"],
+    target_format: Literal["coco", "pascal_voc", "yolo", "cxcywh"],
     shape: tuple[int, int],
     check_validity: bool = False,
 ) -> np.ndarray:
@@ -887,7 +894,7 @@ def convert_bboxes_from_albumentations(
     Args:
         bboxes (np.ndarray): A numpy array of albumentations bounding boxes with shape (num_bboxes, 4+).
                 The first 4 columns are [x_min, y_min, x_max, y_max].
-        target_format (Literal["coco", "pascal_voc", "yolo"]): Required format of the output bounding boxes.
+        target_format (Literal["coco", "pascal_voc", "yolo", "cxcywh"]): Required format of the output bounding boxes.
         shape (tuple[int, int]): Image shape (height, width).
         check_validity (bool): Check if all boxes are valid boxes.
 
@@ -895,12 +902,12 @@ def convert_bboxes_from_albumentations(
         np.ndarray: An array of bounding boxes in the target format with shape (num_bboxes, 4+).
 
     Raises:
-        ValueError: If `target_format` is not 'coco', 'pascal_voc' or 'yolo'.
+        ValueError: If `target_format` is not 'coco', 'pascal_voc', 'yolo' or 'cxcywh'.
 
     """
-    if target_format not in {"coco", "pascal_voc", "yolo"}:
+    if target_format not in {"coco", "pascal_voc", "yolo", "cxcywh"}:
         raise ValueError(
-            f"Unknown target_format {target_format}. Supported formats are: 'coco', 'pascal_voc' and 'yolo'",
+            f"Unknown target_format {target_format}. Supported formats are: 'coco', 'pascal_voc', 'yolo' and 'cxcywh'",
         )
 
     if check_validity:
@@ -916,7 +923,7 @@ def convert_bboxes_from_albumentations(
         converted_bboxes[:, 1] = denormalized_bboxes[:, 1]  # y_min
         converted_bboxes[:, 2] = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]  # width
         converted_bboxes[:, 3] = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]  # height
-    elif target_format == "yolo":
+    elif target_format in {"yolo", "cxcywh"}:
         converted_bboxes[:, 0] = (denormalized_bboxes[:, 0] + denormalized_bboxes[:, 2]) / 2  # x_center
         converted_bboxes[:, 1] = (denormalized_bboxes[:, 1] + denormalized_bboxes[:, 3]) / 2  # y_center
         converted_bboxes[:, 2] = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]  # width

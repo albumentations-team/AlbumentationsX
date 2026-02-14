@@ -179,6 +179,8 @@ BboxParams(clip_bboxes_on_input=True)  # Fix invalid input coordinates (e.g., YO
 - Fixes malformed input bboxes
 - Independent of `clip_after_transform`
 
+**OBB warning**: For OBB, clipping converts boxes whose corners extend outside [0, 1] to axis-aligned boxes (angle=0). This destroys orientation and causes misalignment with Affine/rotation transforms. **Recommend `clip_bboxes_on_input=False` for OBB** unless you only need to fix minor coordinate errors (boxes fully inside bounds are not affected).
+
 **Deprecated**: The `clip` parameter is deprecated. Use `clip_bboxes_on_input` instead for clarity.
 
 #### `clip_after_transform: bool = True`

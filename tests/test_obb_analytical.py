@@ -928,7 +928,11 @@ def test_obb_affine_pure_translation(translate_x: float, translate_y: float) -> 
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     result = transform(image=image, bboxes=[input_bbox])
@@ -989,6 +993,13 @@ def _obb_oriented_dims(obb: np.ndarray, shape: tuple[int, int]) -> tuple[float, 
     rect = cv2.minAreaRect(poly.astype(np.float32))
     (_, _), (w, h), _ = rect
     return (min(w, h), max(w, h))
+
+
+def _obb_area_normalized(obb: np.ndarray) -> float:
+    """Area of OBB in normalized coords: (x_max - x_min) * (y_max - y_min)."""
+    w = obb[2] - obb[0]
+    h = obb[3] - obb[1]
+    return w * h
 
 
 @pytest.mark.obb
@@ -1190,6 +1201,388 @@ def test_obb_affine_pure_rotation_preserves_dims_and_angle(rotate: float) -> Non
     )
 
 
+def _obb_after_rotation_analytical(
+    obb: np.ndarray,
+    shape: tuple[int, int],
+    rotation_deg: float,
+    use_center: bool,
+) -> np.ndarray:
+    """Compute OBB after rotation analytically.
+
+    use_center: If True, use center() (image center); if False, use center_bbox().
+    Affine uses center_bbox for bboxes, so use_center=False should match Affine.
+    """
+    h, w = shape[0], shape[1]
+    shift = fgeometric.center(shape) if use_center else fgeometric.center_bbox(shape)
+    translate = {"x": 0, "y": 0}
+    shear = {"x": 0, "y": 0}
+    scale = {"x": 1.0, "y": 1.0}
+    matrix = fgeometric.create_affine_transformation_matrix(
+        translate,
+        shear,
+        scale,
+        rotation_deg,
+        shift,
+    )
+    polygon = obb_to_polygons(obb.reshape(1, -1).astype(np.float32))[0].copy()
+    polygon[:, 0] *= w
+    polygon[:, 1] *= h
+    rotated = fgeometric.apply_affine_to_points(
+        polygon.reshape(-1, 2),
+        matrix,
+    ).reshape(4, 2)
+    obb_px = polygons_to_obb(rotated.reshape(1, 4, 2))[0]
+    obb_norm = obb_px.copy()
+    obb_norm[0] /= w
+    obb_norm[1] /= h
+    obb_norm[2] /= w
+    obb_norm[3] /= h
+    return obb_norm
+
+
+@pytest.mark.obb
+@pytest.mark.parametrize("rotate", [30, 45, 90])
+def test_obb_affine_rotation_matches_analytical_center_bbox(rotate: float) -> None:
+    """Affine OBB rotation matches analytical computation using center_bbox.
+
+    Affine uses center_bbox for bbox matrix; analytical with same center should match.
+    """
+    shape = (100, 100)
+    cx, cy = 0.5, 0.5
+    box_w, box_h = 0.2, 0.15
+    angle = 15.0
+    obb = np.array(
+        [[cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2, angle]],
+        dtype=np.float32,
+    )
+
+    analytical = _obb_after_rotation_analytical(obb, shape, rotate, use_center=False)
+
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=(1.0, 1.0),
+                rotate=(rotate, rotate),
+                translate_px={"x": (0, 0), "y": (0, 0)},
+                shear={"x": (0, 0), "y": (0, 0)},
+                fit_output=False,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
+    )
+    image = np.zeros((*shape, 3), dtype=np.uint8)
+    result = transform(image=image, bboxes=obb.tolist())
+    affined = np.array(result["bboxes"], dtype=np.float32)[0]
+
+    np.testing.assert_allclose(
+        affined[:4],
+        analytical[:4],
+        rtol=1e-4,
+        atol=1e-3,
+        err_msg=f"Affine should match analytical (center_bbox) for rotate={rotate}",
+    )
+    np.testing.assert_allclose(
+        _obb_canonical_angle(float(affined[4])),
+        _obb_canonical_angle(float(analytical[4])),
+        rtol=1e-4,
+        atol=1e-2,
+        err_msg=f"Angle should match for rotate={rotate}",
+    )
+
+
+@pytest.mark.obb
+def test_obb_affine_center_vs_center_bbox_offset() -> None:
+    """Quantify offset between center() and center_bbox() for OBB rotation.
+
+    center() = (w/2-0.5, h/2-0.5), center_bbox() = (w/2, h/2).
+    For 100x100: 0.5 px difference. Documents expected ~0.5 px drift at edges.
+    """
+    shape = (100, 100)
+    cx, cy = 0.5, 0.5
+    box_w, box_h = 0.2, 0.15
+    angle = 0.0
+    obb = np.array(
+        [[cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2, angle]],
+        dtype=np.float32,
+    )
+    rotate = 30.0
+
+    analytical_center = _obb_after_rotation_analytical(obb, shape, rotate, use_center=True)
+    analytical_bbox = _obb_after_rotation_analytical(obb, shape, rotate, use_center=False)
+
+    # Center of rotated box: both should be near (0.5, 0.5) for centered input
+    cx_center = (analytical_center[0] + analytical_center[2]) / 2
+    cy_center = (analytical_center[1] + analytical_center[3]) / 2
+    cx_bbox = (analytical_bbox[0] + analytical_bbox[2]) / 2
+    cy_bbox = (analytical_bbox[1] + analytical_bbox[3]) / 2
+
+    # Offset in normalized coords: 0.5/100 = 0.005
+    offset_x = abs(cx_center - cx_bbox)
+    offset_y = abs(cy_center - cy_bbox)
+    assert offset_x < 0.02 and offset_y < 0.02, "Offset should be small (~0.5 px)"
+
+
+@pytest.mark.obb
+def test_obb_affine_clip_bboxes_on_input_preserves_orientation() -> None:
+    """Regression: clip_bboxes_on_input=False preserves OBB orientation through Affine.
+
+    With clip_bboxes_on_input=True, OBBs extending outside [0,1] get angle=0 (lossy).
+    With clip_bboxes_on_input=False, orientation is preserved. See plot_boats_obb fix.
+    """
+    shape = (100, 100)
+    # OBB extending outside: center at edge, rotated
+    cx, cy = 0.95, 0.5
+    box_w, box_h = 0.2, 0.1
+    angle = 45.0
+    obb = np.array(
+        [[cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2, angle]],
+        dtype=np.float32,
+    )
+    min_before, max_before = _obb_oriented_dims(obb, shape)
+
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=(1.0, 1.0),
+                rotate=(30, 30),
+                translate_px={"x": (0, 0), "y": (0, 0)},
+                shear={"x": (0, 0), "y": (0, 0)},
+                fit_output=False,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_bboxes_on_input=False,
+            clip_after_transform=False,
+        ),
+    )
+    image = np.zeros((*shape, 3), dtype=np.uint8)
+    result = transform(image=image, bboxes=obb.tolist())
+    out_bboxes = result["bboxes"]
+    assert len(out_bboxes) > 0, "OBB should not be filtered"
+    out_obb = np.array(out_bboxes, dtype=np.float32)
+    min_after, max_after = _obb_oriented_dims(out_obb, shape)
+
+    # Oriented dims preserved (translate+rotate only)
+    np.testing.assert_allclose(
+        [min_before, max_before],
+        [min_after, max_after],
+        rtol=1e-4,
+        atol=1e-3,
+        err_msg="clip_bboxes_on_input=False should preserve OBB dims",
+    )
+
+
+@pytest.mark.obb
+@pytest.mark.parametrize(
+    "translate_px_x,translate_px_y",
+    [
+        (5, 0),
+        (0, -3),
+        (10, 5),
+        (-7, 8),
+    ],
+)
+def test_obb_affine_pure_translate_px_analytical(
+    translate_px_x: int,
+    translate_px_y: int,
+) -> None:
+    """Affine with only translate_px: center shifts by exact pixels, dims preserved."""
+    shape = (100, 100)
+    image = np.zeros((*shape, 3), dtype=np.uint8)
+    h, w = shape[0], shape[1]
+
+    cx, cy = 0.5, 0.5
+    box_w, box_h = 0.2, 0.15
+    angle = 45.0
+    obb = np.array(
+        [[cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2, angle]],
+        dtype=np.float32,
+    )
+    min_before, max_before = _obb_oriented_dims(obb, shape)
+    area_before = _obb_area_normalized(obb[0])
+
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=(1.0, 1.0),
+                rotate=(0, 0),
+                translate_px={"x": (translate_px_x, translate_px_x), "y": (translate_px_y, translate_px_y)},
+                shear={"x": (0, 0), "y": (0, 0)},
+                fit_output=False,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
+    )
+    result = transform(image=image, bboxes=obb.tolist())
+    out_obb = np.array(result["bboxes"], dtype=np.float32)
+
+    # Center shifts by (tx/w, ty/h) in normalized coords
+    expected_cx = cx + translate_px_x / w
+    expected_cy = cy + translate_px_y / h
+    out_cx = (out_obb[0, 0] + out_obb[0, 2]) / 2
+    out_cy = (out_obb[0, 1] + out_obb[0, 3]) / 2
+    np.testing.assert_allclose(
+        [out_cx, out_cy],
+        [expected_cx, expected_cy],
+        rtol=1e-5,
+        atol=1e-5,
+        err_msg=f"Center should shift by ({translate_px_x}, {translate_px_y}) px",
+    )
+
+    # Oriented dims preserved
+    min_after, max_after = _obb_oriented_dims(out_obb, shape)
+    np.testing.assert_allclose(
+        [min_before, max_before],
+        [min_after, max_after],
+        rtol=1e-4,
+        atol=1e-3,
+        err_msg="Oriented dims should be preserved",
+    )
+
+    # Area preserved
+    area_after = _obb_area_normalized(out_obb[0])
+    np.testing.assert_allclose(area_after, area_before, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.obb
+@pytest.mark.parametrize(
+    "scale",
+    [0.5, 0.8, 1.2, 1.5, 2.0],
+)
+def test_obb_affine_pure_scale_analytical(scale: float) -> None:
+    """Affine with only scale: area scales by scale², oriented dims scale by scale."""
+    shape = (100, 100)
+    image = np.zeros((*shape, 3), dtype=np.uint8)
+
+    cx, cy = 0.5, 0.5
+    box_w, box_h = 0.2, 0.15
+    angle = 30.0
+    obb = np.array(
+        [[cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2, angle]],
+        dtype=np.float32,
+    )
+    min_before, max_before = _obb_oriented_dims(obb, shape)
+    area_before = _obb_area_normalized(obb[0])
+
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=(scale, scale),
+                rotate=(0, 0),
+                translate_px={"x": (0, 0), "y": (0, 0)},
+                shear={"x": (0, 0), "y": (0, 0)},
+                fit_output=False,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
+    )
+    result = transform(image=image, bboxes=obb.tolist())
+    out_obb = np.array(result["bboxes"], dtype=np.float32)
+
+    # Center stays at (0.5, 0.5)
+    out_cx = (out_obb[0, 0] + out_obb[0, 2]) / 2
+    out_cy = (out_obb[0, 1] + out_obb[0, 3]) / 2
+    np.testing.assert_allclose([out_cx, out_cy], [0.5, 0.5], rtol=1e-5, atol=1e-5)
+
+    # Oriented dims scale by scale
+    min_after, max_after = _obb_oriented_dims(out_obb, shape)
+    np.testing.assert_allclose(
+        [min_after, max_after],
+        [min_before * scale, max_before * scale],
+        rtol=1e-4,
+        atol=1e-3,
+        err_msg=f"Oriented dims should scale by {scale}",
+    )
+
+    # Area scales by scale²
+    area_after = _obb_area_normalized(out_obb[0])
+    np.testing.assert_allclose(
+        area_after,
+        area_before * (scale * scale),
+        rtol=1e-4,
+        atol=1e-5,
+        err_msg=f"Area should scale by {scale}²",
+    )
+
+
+@pytest.mark.obb
+@pytest.mark.parametrize(
+    "shear_x,shear_y",
+    [
+        (10, 0),
+        (0, 10),
+        (15, 5),
+        (-10, 10),
+    ],
+)
+def test_obb_affine_pure_shear_preserves_area(shear_x: float, shear_y: float) -> None:
+    """Affine with only shear: area is approximately preserved.
+
+    Shear is mathematically area-preserving, but the OBB fitting (minAreaRect of
+    sheared polygon) and center_bbox vs image center can introduce small drift.
+    Use relaxed tolerance to catch gross violations.
+    """
+    shape = (100, 100)
+    image = np.zeros((*shape, 3), dtype=np.uint8)
+
+    cx, cy = 0.5, 0.5
+    box_w, box_h = 0.2, 0.15
+    angle = 0.0
+    obb = np.array(
+        [[cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2, angle]],
+        dtype=np.float32,
+    )
+    area_before = _obb_area_normalized(obb[0])
+
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=(1.0, 1.0),
+                rotate=(0, 0),
+                translate_px={"x": (0, 0), "y": (0, 0)},
+                shear={"x": (shear_x, shear_x), "y": (shear_y, shear_y)},
+                fit_output=False,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
+    )
+    result = transform(image=image, bboxes=obb.tolist())
+    out_obb = np.array(result["bboxes"], dtype=np.float32)
+    area_after = _obb_area_normalized(out_obb[0])
+
+    # Relaxed: shear+minAreaRect can drift; catch >50% change
+    np.testing.assert_allclose(
+        area_after,
+        area_before,
+        rtol=0.5,
+        atol=0.02,
+        err_msg=f"Shear ({shear_x}, {shear_y}) area changed too much",
+    )
+
+
 @pytest.mark.obb
 @pytest.mark.parametrize(
     "scale",
@@ -1222,10 +1615,15 @@ def test_obb_affine_pure_scaling(scale: float) -> None:
                 rotate=0,
                 translate_px=0,
                 shear=0,
+                fit_output=False,
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     result = transform(image=image, bboxes=[input_bbox])
@@ -1291,7 +1689,11 @@ def test_obb_affine_rotation_vs_rotate_transform(rotation_deg: int) -> None:
         [
             A.Affine(rotate=rotation_deg, scale=1.0, translate_px=0, shear=0, p=1.0),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     affine_result = affine_transform(image=image, bboxes=[input_bbox])
@@ -1302,7 +1704,11 @@ def test_obb_affine_rotation_vs_rotate_transform(rotation_deg: int) -> None:
         [
             A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     rotate_result = rotate_transform(image=image, bboxes=[input_bbox])
@@ -1351,7 +1757,11 @@ def test_obb_affine_combined_scale_rotate(scale: float, rotation_deg: int) -> No
         [
             A.Affine(scale=scale, rotate=rotation_deg, translate_px=0, shear=0, p=1.0),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     result = transform(image=image, bboxes=[input_bbox])
@@ -1411,7 +1821,11 @@ def test_obb_affine_different_image_sizes(image_size: int) -> None:
         [
             A.Affine(rotate=45, scale=1.0, translate_px=0, shear=0, p=1.0),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     result = transform(image=image, bboxes=[input_bbox])
@@ -1469,7 +1883,11 @@ def test_obb_affine_very_small_boxes(box_size: float, rotation_deg: int) -> None
         [
             A.Affine(rotate=rotation_deg, scale=1.0, translate_px=0, shear=0, p=1.0),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     result = transform(image=image, bboxes=[input_bbox])
@@ -1531,10 +1949,15 @@ def test_obb_affine_shear_transforms(shear_x: float, shear_y: float) -> None:
                 rotate=0,
                 translate_px=0,
                 shear={"x": shear_x, "y": shear_y},
+                fit_output=False,
                 p=1.0,
             ),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     result = transform(image=image, bboxes=[input_bbox])
@@ -1594,7 +2017,11 @@ def test_obb_affine_non_square_images(image_height: int, image_width: int) -> No
         [
             A.Affine(rotate=90, scale=1.0, translate_px=0, shear=0, p=1.0),
         ],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
     )
 
     result = transform(image=image, bboxes=[input_bbox])

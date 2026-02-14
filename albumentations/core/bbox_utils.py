@@ -76,7 +76,8 @@ class BboxParams(Params):
 
         clip_bboxes_on_input (bool): If True, clips bounding boxes to image boundaries once at pipeline start
             (during preprocessing). Use this to fix invalid input data (e.g., YOLO coordinates like -1e-6).
-            Default: False.
+            For OBB: clipping is lossy—boxes with corners outside [0, 1] become axis-aligned (angle=0).
+            Recommend False for OBB when using Affine/rotation. Default: False.
 
         filter_invalid_bboxes (bool): If True, filters out invalid bounding boxes (e.g., boxes with negative dimensions
             or boxes where x_max < x_min or y_max < y_min) at the beginning of the pipeline. If

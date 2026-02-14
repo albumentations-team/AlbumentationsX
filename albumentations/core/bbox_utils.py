@@ -536,7 +536,7 @@ class BboxProcessor(DataProcessor):
                 self.params.coord_format,
                 shape_2d,
                 self.params.bbox_type,
-                check_validity=True,
+                check_validity=self.params.clip_after_transform,
             ),
             dtype=data.dtype,
         )

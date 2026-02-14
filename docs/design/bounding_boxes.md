@@ -30,20 +30,14 @@ Albumentations supports two types of bounding boxes:
 ### Oriented Bounding Boxes (OBB)
 - **Format**: `[x_min, y_min, x_max, y_max, angle, ...]`
 - Rotated rectangles
-- First 4 values define the axis-aligned bounding rectangle (AABB) enclosing the rotated box
+- First 4 values: `[cx-w/2, cy-h/2, cx+w/2, cy+h/2]` — center ± half-dims in local frame (minAreaRect convention)
 - `angle` (5th value) defines rotation in degrees
 - Can represent rotated objects accurately
 - Angle is normalized to [-180, 180) range
 
-**OBB convention: minAreaRect (not AABB)**
+**OBB convention: minAreaRect**
 
-We use the **cv2.minAreaRect** convention for OBB: width and height are the **side lengths** of the oriented rectangle (dimensions along its local axes). They do **not** depend on the rotation angle.
-
-- Take a rectangle with side lengths (width, height), axis-aligned
-- Rotate it by `angle` around its center
-- The AABB is computed from the 4 corners of this rotated rectangle
-
-We do **not** use AABB convention for width/height (where width = x_max - x_min of the enclosing axis-aligned box).
+We use the **cv2.minAreaRect** convention: width and height are the **side lengths** of the oriented rectangle. The stored `(x_min, y_min, x_max, y_max)` are center ± half-dims, so `width = x_max - x_min` and `height = y_max - y_min` are the oriented dimensions. No AABB in the internal format (AABB is only used when clipping OBBs that went out of the image).
 
 **Important**: Both formats can have additional columns for labels, class IDs, track IDs, etc.
 

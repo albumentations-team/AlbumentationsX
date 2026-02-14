@@ -966,6 +966,16 @@ def test_obb_affine_pure_translation(translate_x: float, translate_y: float) -> 
     # For translation-only, we mainly care about position preservation
 
 
+def _obb_canonical_angle(angle_deg: float) -> float:
+    """Canonical form for rectangle angle: [0, 90].
+
+    Handles θ≡θ+180, θ≡-θ (w/h swap), and θ≡θ+90 (minAreaRect picks either edge).
+    Like sorted(w,h) for dims.
+    """
+    a = ((angle_deg % 360) + 360) % 360 % 180
+    return min(a, 180 - a, (a + 90) % 180, (90 - a) % 180)
+
+
 def _obb_oriented_dims(obb: np.ndarray, shape: tuple[int, int]) -> tuple[float, float]:
     """Get oriented-rect dimensions (minAreaRect style) from OBB in albumentations format.
 
@@ -1114,6 +1124,69 @@ def test_obb_affine_translate_rotate_preserves_dimensions_parametrized(
         rtol=1e-4,
         atol=1e-3,
         err_msg=f"OBB dims (min,max) should be preserved: before ({min_before},{max_before}) vs after ({min_after},{max_after})",
+    )
+
+
+@pytest.mark.obb
+@pytest.mark.parametrize("rotate", [30, 90, -45, 180])
+def test_obb_affine_pure_rotation_preserves_dims_and_angle(rotate: float) -> None:
+    """Affine with only rotation (scale=1, shear=0, translate=0), clip_after_transform=False.
+
+    Checks:
+    1. (min(w,h), max(w,h)) of OBB preserved
+    2. When initial angle=0, output angle equals Affine rotation (mod 360, normalized to [-180,180))
+    """
+    cx, cy = 0.5, 0.5
+    box_w, box_h = 0.2, 0.15
+    initial_angle = 0.0
+    obb = np.array(
+        [[cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2, initial_angle]],
+        dtype=np.float32,
+    )
+    shape = (100, 100)
+    min_before, max_before = _obb_oriented_dims(obb, shape)
+
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=(1.0, 1.0),
+                rotate=(rotate, rotate),
+                translate_px={"x": (0, 0), "y": (0, 0)},
+                shear={"x": (0, 0), "y": (0, 0)},
+                fit_output=False,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
+    )
+    image = np.zeros((*shape, 3), dtype=np.uint8)
+    result = transform(image=image, bboxes=obb.tolist())
+    out_obb = np.array(result["bboxes"], dtype=np.float32)
+    out_shape = result["image"].shape[:2]
+    min_after, max_after = _obb_oriented_dims(out_obb, out_shape)
+
+    np.testing.assert_allclose(
+        [min_before, max_before],
+        [min_after, max_after],
+        rtol=1e-4,
+        atol=1e-3,
+        err_msg="OBB dims (min,max) should be preserved",
+    )
+
+    # When initial angle=0, output angle should equal Affine rotation (canonical form handles
+    # θ≡θ+180 and θ≡-θ from minAreaRect w/h swap).
+    out_can = _obb_canonical_angle(float(out_obb[0, 4]))
+    rot_can = _obb_canonical_angle(rotate)
+    np.testing.assert_allclose(
+        out_can,
+        rot_can,
+        rtol=1e-5,
+        atol=1e-3,
+        err_msg=f"Angle canonical form: out={out_can} should match rotate={rot_can}",
     )
 
 

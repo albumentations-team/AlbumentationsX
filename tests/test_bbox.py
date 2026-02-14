@@ -279,20 +279,21 @@ def test_calculate_bbox_areas_zero_area():
     ],
 )
 def test_convert_bboxes_to_albumentations(bboxes, source_format, image_shape, expected):
-    result = convert_bboxes_to_albumentations(bboxes, source_format, image_shape)
+    bbox_type = "obb" if source_format == "cxcywh" and bboxes.shape[1] >= 5 else "hbb"
+    result = convert_bboxes_to_albumentations(bboxes, source_format, image_shape, bbox_type)
     np.testing.assert_allclose(result, expected, rtol=1e-5)
 
 
 def test_convert_bboxes_to_albumentations_preserves_input():
     bboxes = np.array([[10, 20, 30, 40], [50, 60, 20, 30]])
     original_bboxes = bboxes.copy()
-    convert_bboxes_to_albumentations(bboxes, "coco", (100, 200))
+    convert_bboxes_to_albumentations(bboxes, "coco", (100, 200), "hbb")
     np.testing.assert_array_equal(bboxes, original_bboxes)
 
 
 def test_convert_bboxes_to_albumentations_output_type():
     bboxes = np.array([[10, 20, 30, 40], [50, 60, 20, 30]], dtype=np.float32)
-    result = convert_bboxes_to_albumentations(bboxes, "coco", (100, 200))
+    result = convert_bboxes_to_albumentations(bboxes, "coco", (100, 200), "hbb")
     assert isinstance(result, np.ndarray)
     assert result.dtype == bboxes.dtype
 
@@ -318,16 +319,18 @@ def test_convert_bboxes_to_albumentations_output_type():
             (100, 200),
             np.array([[0.15, 0.3, 0.35, 0.7, 90.0]]),
         ),
+        # cxcywh OBB: minAreaRect convention (w,h = oriented-rect side lengths). 30x40 at 90° -> AABB (30,35,70,65)
         (
             "cxcywh",
             np.array([[50, 50, 30, 40, 450.0]]),
             (100, 200),
-            np.array([[0.175, 0.3, 0.325, 0.7, 90.0]]),
+            np.array([[0.15, 0.35, 0.35, 0.65, 90.0]]),
         ),
     ],
 )
 def test_convert_bboxes_to_albumentations_normalizes_angle(source_format, bboxes, image_shape, expected):
-    result = convert_bboxes_to_albumentations(bboxes, source_format, image_shape)
+    bbox_type = "obb" if source_format == "cxcywh" and bboxes.shape[1] >= 5 else "hbb"
+    result = convert_bboxes_to_albumentations(bboxes, source_format, image_shape, bbox_type)
     np.testing.assert_allclose(result, expected, rtol=1e-5)
 
 
@@ -335,13 +338,13 @@ def test_convert_bboxes_to_albumentations_normalizes_angle(source_format, bboxes
 def test_convert_bboxes_to_albumentations_invalid_format(source_format):
     bboxes = np.array([[10, 20, 30, 40]])
     with pytest.raises(ValueError, match="Unknown source_format"):
-        convert_bboxes_to_albumentations(bboxes, source_format, (100, 200))
+        convert_bboxes_to_albumentations(bboxes, source_format, (100, 200), "hbb")
 
 
 def test_convert_bboxes_to_albumentations_yolo_invalid_range():
     bboxes = np.array([[0, 0.5, 0.2, 0.4], [1.1, 0.8, 0.2, 0.3]])
     with pytest.raises(ValueError, match="In YOLO format all coordinates must be float and in range"):
-        convert_bboxes_to_albumentations(bboxes, "yolo", (100, 200), check_validity=True)
+        convert_bboxes_to_albumentations(bboxes, "yolo", (100, 200), "hbb", check_validity=True)
 
 
 @pytest.mark.parametrize("source_format", ["coco", "pascal_voc", "yolo", "cxcywh"])
@@ -350,7 +353,7 @@ def test_convert_bboxes_to_albumentations_check_validity(source_format, mocker):
     image_shape = (100, 200)
     mock_check_bboxes = mocker.patch("albumentations.core.bbox_utils.check_bboxes")
 
-    convert_bboxes_to_albumentations(bboxes, source_format, image_shape, check_validity=True)
+    convert_bboxes_to_albumentations(bboxes, source_format, image_shape, "hbb", check_validity=True)
 
     mock_check_bboxes.assert_called_once()
 
@@ -361,7 +364,7 @@ def test_convert_bboxes_to_albumentations_calls_normalize(source_format, mocker)
     image_shape = (100, 200)
     mock_normalize_bboxes = mocker.patch("albumentations.core.bbox_utils.normalize_bboxes", return_value=bboxes)
 
-    convert_bboxes_to_albumentations(bboxes, source_format, image_shape)
+    convert_bboxes_to_albumentations(bboxes, source_format, image_shape, "hbb")
 
     mock_normalize_bboxes.assert_called_once()
 
@@ -371,7 +374,7 @@ def test_convert_bboxes_to_albumentations_yolo_does_not_call_normalize(mocker):
     image_shape = (100, 200)
     mock_normalize_bboxes = mocker.patch("albumentations.core.bbox_utils.normalize_bboxes")
 
-    convert_bboxes_to_albumentations(bboxes, "yolo", image_shape)
+    convert_bboxes_to_albumentations(bboxes, "yolo", image_shape, "hbb")
 
     mock_normalize_bboxes.assert_not_called()
 
@@ -424,20 +427,21 @@ def test_convert_bboxes_to_albumentations_yolo_does_not_call_normalize(mocker):
     ],
 )
 def test_convert_bboxes_from_albumentations(bboxes, target_format, image_shape, expected):
-    result = convert_bboxes_from_albumentations(bboxes, target_format, image_shape)
+    bbox_type = "obb" if target_format == "cxcywh" and bboxes.shape[1] >= 5 else "hbb"
+    result = convert_bboxes_from_albumentations(bboxes, target_format, image_shape, bbox_type)
     np.testing.assert_allclose(result, expected, rtol=1e-5)
 
 
 def test_convert_bboxes_from_albumentations_preserves_input():
     bboxes = np.array([[0.05, 0.2, 0.2, 0.6], [0.25, 0.6, 0.35, 0.9]])
     original_bboxes = bboxes.copy()
-    convert_bboxes_from_albumentations(bboxes, "coco", (100, 200))
+    convert_bboxes_from_albumentations(bboxes, "coco", (100, 200), "hbb")
     np.testing.assert_array_equal(bboxes, original_bboxes)
 
 
 def test_convert_bboxes_from_albumentations_output_type():
     bboxes = np.array([[0.05, 0.2, 0.2, 0.6], [0.25, 0.6, 0.35, 0.9]])
-    result = convert_bboxes_from_albumentations(bboxes, "coco", (100, 200))
+    result = convert_bboxes_from_albumentations(bboxes, "coco", (100, 200), "hbb")
     assert isinstance(result, np.ndarray)
     assert result.dtype == bboxes.dtype
 
@@ -463,16 +467,18 @@ def test_convert_bboxes_from_albumentations_output_type():
             (100, 200),
             np.array([[0.25, 0.5, 0.2, 0.4, 90.0]]),
         ),
+        # cxcywh OBB: minAreaRect output. AABB (30,35,70,65) at 90° -> polygon 30×40 px, minAreaRect (30,40), angle preserved
         (
             "cxcywh",
-            np.array([[0.175, 0.3, 0.325, 0.7, 450.0]]),
+            np.array([[0.15, 0.35, 0.35, 0.65, 450.0]]),
             (100, 200),
-            np.array([[50, 50, 30, 40, 90.0]]),
+            np.array([[50.0, 50.0, 30.0, 40.0, 90.0]]),
         ),
     ],
 )
 def test_convert_bboxes_from_albumentations_normalizes_angle(target_format, bboxes, image_shape, expected):
-    result = convert_bboxes_from_albumentations(bboxes, target_format, image_shape)
+    bbox_type = "obb" if target_format == "cxcywh" and bboxes.shape[1] >= 5 else "hbb"
+    result = convert_bboxes_from_albumentations(bboxes, target_format, image_shape, bbox_type)
     np.testing.assert_allclose(result, expected, rtol=1e-5)
 
 
@@ -480,7 +486,7 @@ def test_convert_bboxes_from_albumentations_normalizes_angle(target_format, bbox
 def test_convert_bboxes_from_albumentations_invalid_format(target_format):
     bboxes = np.array([[0.05, 0.2, 0.2, 0.6]])
     with pytest.raises(ValueError, match="Unknown target_format"):
-        convert_bboxes_from_albumentations(bboxes, target_format, (100, 200))
+        convert_bboxes_from_albumentations(bboxes, target_format, (100, 200), "hbb")
 
 
 def test_convert_bboxes_from_albumentations_check_validity(mocker):
@@ -488,7 +494,7 @@ def test_convert_bboxes_from_albumentations_check_validity(mocker):
     image_shape = (100, 200)
     mock_check_bboxes = mocker.patch("albumentations.core.bbox_utils.check_bboxes")
 
-    convert_bboxes_from_albumentations(bboxes, "coco", image_shape, check_validity=True)
+    convert_bboxes_from_albumentations(bboxes, "coco", image_shape, "hbb", check_validity=True)
 
     mock_check_bboxes.assert_called_once()
 
@@ -499,7 +505,7 @@ def test_convert_bboxes_from_albumentations_calls_denormalize(target_format, moc
     image_shape = (100, 200)
     mock_denormalize_bboxes = mocker.patch("albumentations.core.bbox_utils.denormalize_bboxes", return_value=bboxes)
 
-    convert_bboxes_from_albumentations(bboxes, target_format, image_shape)
+    convert_bboxes_from_albumentations(bboxes, target_format, image_shape, "hbb")
 
     mock_denormalize_bboxes.assert_called_once()
 
@@ -509,7 +515,7 @@ def test_convert_bboxes_from_albumentations_yolo_does_not_call_denormalize(mocke
     image_shape = (100, 200)
     mock_denormalize_bboxes = mocker.patch("albumentations.core.bbox_utils.denormalize_bboxes")
 
-    convert_bboxes_from_albumentations(bboxes, "yolo", image_shape)
+    convert_bboxes_from_albumentations(bboxes, "yolo", image_shape, "hbb")
 
     mock_denormalize_bboxes.assert_not_called()
 
@@ -531,10 +537,20 @@ def test_round_trip_to_from_albumentations(original_format, image_shape):
         original_bboxes = np.array([[50, 50, 30, 40], [150, 75, 40, 40]])
 
     # Convert to albumentations format
-    albu_bboxes = convert_bboxes_to_albumentations(original_bboxes, original_format, image_shape)
+    albu_bboxes = convert_bboxes_to_albumentations(
+        original_bboxes,
+        original_format,
+        image_shape,
+        "hbb",
+    )
 
     # Convert back to original format
-    converted_bboxes = convert_bboxes_from_albumentations(albu_bboxes, original_format, image_shape)
+    converted_bboxes = convert_bboxes_from_albumentations(
+        albu_bboxes,
+        original_format,
+        image_shape,
+        "hbb",
+    )
 
     np.testing.assert_allclose(converted_bboxes, original_bboxes, rtol=1e-5)
 
@@ -552,10 +568,20 @@ def test_round_trip_from_to_albumentations(target_format, image_shape):
     albu_bboxes = np.array([[0.05, 0.1, 0.15, 0.2], [0.25, 0.3, 0.35, 0.4]])
 
     # Convert from albumentations format
-    converted_bboxes = convert_bboxes_from_albumentations(albu_bboxes, target_format, image_shape)
+    converted_bboxes = convert_bboxes_from_albumentations(
+        albu_bboxes,
+        target_format,
+        image_shape,
+        "hbb",
+    )
 
     # Convert back to albumentations format
-    reconverted_bboxes = convert_bboxes_to_albumentations(converted_bboxes, target_format, image_shape)
+    reconverted_bboxes = convert_bboxes_to_albumentations(
+        converted_bboxes,
+        target_format,
+        image_shape,
+        "hbb",
+    )
 
     np.testing.assert_allclose(reconverted_bboxes, albu_bboxes, rtol=1e-5)
 
@@ -565,8 +591,8 @@ def test_cxcywh_roundtrip_pixel_values():
     image_shape = (100, 200)
     # Center can be half-integer when converting from pixel corners
     original = np.array([[50.5, 25.5, 30, 40], [150, 75, 40, 40]])
-    albu = convert_bboxes_to_albumentations(original, "cxcywh", image_shape)
-    back = convert_bboxes_from_albumentations(albu, "cxcywh", image_shape)
+    albu = convert_bboxes_to_albumentations(original, "cxcywh", image_shape, "hbb")
+    back = convert_bboxes_from_albumentations(albu, "cxcywh", image_shape, "hbb")
     np.testing.assert_allclose(back, original, rtol=1e-5)
 
 
@@ -677,9 +703,15 @@ def test_bbox_processor_roundtrip_with_angle_and_labels(bbox_format, bboxes, lab
     processed_data = processor.postprocess(data)
 
     assert processed_data["labels"] == labels
-    np.testing.assert_allclose(processed_data["bboxes"][0][:4], np.array(bboxes)[0][:4], rtol=1e-6)
-    assert -180.0 <= processed_data["bboxes"][0][4] < 180.0
-    np.testing.assert_allclose(processed_data["bboxes"][0][4], expected_angle)
+    out_bbox = np.array(processed_data["bboxes"][0])
+    in_bbox = np.array(bboxes[0])
+    np.testing.assert_allclose(out_bbox[:2], in_bbox[:2], rtol=1e-6)  # cx, cy
+    # cxcywh OBB: (w, h) order may differ per minAreaRect; accept (min,max) match
+    out_w, out_h = out_bbox[2], out_bbox[3]
+    in_w, in_h = in_bbox[2], in_bbox[3]
+    np.testing.assert_allclose([min(out_w, out_h), max(out_w, out_h)], [min(in_w, in_h), max(in_w, in_h)], rtol=1e-6)
+    assert -180.0 <= out_bbox[4] < 180.0
+    np.testing.assert_allclose(out_bbox[4], expected_angle)
 
 
 @pytest.mark.parametrize(
@@ -2352,6 +2384,7 @@ def test_bbox_processor_filter_invalid(bbox_format, bboxes, expected_bboxes):
             data["bboxes"],
             bbox_format,
             (100, 100),
+            "hbb",
         )
 
     # Check that invalid bboxes were filtered out
@@ -2383,6 +2416,7 @@ def test_bbox_processor_clip_and_filter():
         data["bboxes"],
         "pascal_voc",
         (100, 100),
+        "hbb",
     )
 
     # After clipping, the bbox should be valid and preserved

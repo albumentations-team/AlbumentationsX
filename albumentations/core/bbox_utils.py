@@ -468,6 +468,7 @@ class BboxProcessor(DataProcessor):
                     data,
                     self.params.coord_format,
                     shape_2d,
+                    self.params.bbox_type,
                     check_validity=False,  # Don't check validity yet
                 )
 
@@ -493,7 +494,12 @@ class BboxProcessor(DataProcessor):
         self.check(data, shape)
         if self.params.coord_format == "albumentations":
             return data
-        return convert_bboxes_from_albumentations(data, self.params.coord_format, shape_2d)
+        return convert_bboxes_from_albumentations(
+            data,
+            self.params.coord_format,
+            shape_2d,
+            self.params.bbox_type,
+        )
 
     def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
         """Check if bounding boxes are valid.
@@ -525,7 +531,13 @@ class BboxProcessor(DataProcessor):
         # BboxProcessor only works with 2D shapes
         shape_2d = shape[:2] if len(shape) == 3 else shape
         return np.array(
-            convert_bboxes_from_albumentations(data, self.params.coord_format, shape_2d, check_validity=True),
+            convert_bboxes_from_albumentations(
+                data,
+                self.params.coord_format,
+                shape_2d,
+                self.params.bbox_type,
+                check_validity=True,
+            ),
             dtype=data.dtype,
         )
 
@@ -544,7 +556,13 @@ class BboxProcessor(DataProcessor):
         shape_2d = shape[:2] if len(shape) == 3 else shape
 
         if self.params.clip_bboxes_on_input:
-            data_np = convert_bboxes_to_albumentations(data, self.params.coord_format, shape_2d, check_validity=False)
+            data_np = convert_bboxes_to_albumentations(
+                data,
+                self.params.coord_format,
+                shape_2d,
+                self.params.bbox_type,
+                check_validity=False,
+            )
             data_np = filter_bboxes(
                 data_np,
                 shape_2d,
@@ -558,7 +576,13 @@ class BboxProcessor(DataProcessor):
             check_bboxes(data_np)
             return data_np
 
-        return convert_bboxes_to_albumentations(data, self.params.coord_format, shape_2d, check_validity=True)
+        return convert_bboxes_to_albumentations(
+            data,
+            self.params.coord_format,
+            shape_2d,
+            self.params.bbox_type,
+            check_validity=True,
+        )
 
 
 @handle_empty_array("bboxes")
@@ -814,21 +838,91 @@ def calculate_bbox_areas_in_pixels(bboxes: np.ndarray, shape: tuple[int, int]) -
     return widths * heights
 
 
+def _cxcywh_minarearect_to_albumentations(
+    bboxes: np.ndarray,
+    shape: tuple[int, int],
+) -> np.ndarray:
+    """Convert cxcywh OBB (minAreaRect: width/height = oriented-rect side lengths) to AABB in pixels."""
+    cx, cy = bboxes[:, 0], bboxes[:, 1]
+    w, h = bboxes[:, 2], bboxes[:, 3]
+    angle_rad = np.deg2rad(bboxes[:, 4]).astype(np.float32)
+    cos_a = np.cos(angle_rad)
+    sin_a = np.sin(angle_rad)
+    base = np.array([[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]], dtype=np.float32)
+    scaled = base[None, :, :] * np.stack([w, h], axis=1)[:, None, :]
+    rotation = np.stack(
+        [
+            np.stack([cos_a, -sin_a], axis=1),
+            np.stack([sin_a, cos_a], axis=1),
+        ],
+        axis=1,
+    )
+    corners = np.einsum("nki,nij->nkj", scaled, rotation) + np.stack([cx, cy], axis=1)[:, None, :]
+    x_min = corners[:, :, 0].min(axis=1)
+    y_min = corners[:, :, 1].min(axis=1)
+    x_max = corners[:, :, 0].max(axis=1)
+    y_max = corners[:, :, 1].max(axis=1)
+    return np.column_stack([x_min, y_min, x_max, y_max])
+
+
+def _albumentations_obb_to_cxcywh_minarearect(
+    bboxes: np.ndarray,
+    denormalized_bboxes: np.ndarray,
+) -> np.ndarray:
+    """Convert albumentations OBB (AABB + angle) to cxcywh minAreaRect format."""
+    x_min_px = denormalized_bboxes[:, 0]
+    y_min_px = denormalized_bboxes[:, 1]
+    x_max_px = denormalized_bboxes[:, 2]
+    y_max_px = denormalized_bboxes[:, 3]
+    w_px = x_max_px - x_min_px
+    h_px = y_max_px - y_min_px
+    cx_px = (x_min_px + x_max_px) * 0.5
+    cy_px = (y_min_px + y_max_px) * 0.5
+    angle_rad = np.deg2rad(bboxes[:, 4]).astype(np.float32)
+    cos_a = np.cos(angle_rad)
+    sin_a = np.sin(angle_rad)
+    base = np.array([[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]], dtype=np.float32)
+    scaled = base[None, :, :] * np.stack([w_px, h_px], axis=1)[:, None, :]
+    rotation = np.stack(
+        [
+            np.stack([cos_a, -sin_a], axis=1),
+            np.stack([sin_a, cos_a], axis=1),
+        ],
+        axis=1,
+    )
+    corners_px = np.einsum("nki,nij->nkj", scaled, rotation) + np.stack([cx_px, cy_px], axis=1)[:, None, :]
+    cxcywh_list = []
+    for i in range(len(bboxes)):
+        rect = cv2.minAreaRect(corners_px[i].astype(np.float32))
+        (cx, cy), (w, h), ma_angle = rect
+        angle = float(bboxes[i, 4])
+        angle_diff = abs((angle - ma_angle + 180) % 360 - 180)
+        if angle_diff > 45:
+            w, h = h, w
+        cxcywh_list.append([float(cx), float(cy), float(w), float(h), angle])
+    return np.array(cxcywh_list, dtype=bboxes.dtype)
+
+
 @handle_empty_array("bboxes")
 def convert_bboxes_to_albumentations(
     bboxes: np.ndarray,
     source_format: Literal["coco", "pascal_voc", "yolo", "cxcywh"],
     shape: tuple[int, int],
+    bbox_type: Literal["hbb", "obb"],
     check_validity: bool = False,
 ) -> np.ndarray:
     """Convert bounding boxes from a specified format to the format used by albumentations:
     normalized coordinates of top-left and bottom-right corners of the bounding box in the form of
     `(x_min, y_min, x_max, y_max)` e.g. `(0.15, 0.27, 0.67, 0.5)`.
 
+    For cxcywh with OBB (5+ columns): uses minAreaRect convention (width/height = oriented-rect
+    side lengths), matching cv2.minAreaRect and cv2.boxPoints.
+
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
         source_format (Literal["coco", "pascal_voc", "yolo", "cxcywh"]): Format of the input bounding boxes.
         shape (tuple[int, int]): Image shape (height, width).
+        bbox_type (Literal["hbb", "obb"]): Bounding box type; required for cxcywh OBB conversion.
         check_validity (bool): Check if all boxes are valid boxes.
 
     Returns:
@@ -853,15 +947,24 @@ def convert_bboxes_to_albumentations(
         converted_bboxes[:, 1] = bboxes[:, 1]  # y_min
         converted_bboxes[:, 2] = bboxes[:, 0] + bboxes[:, 2]  # x_max
         converted_bboxes[:, 3] = bboxes[:, 1] + bboxes[:, 3]  # y_max
-    elif source_format in {"yolo", "cxcywh"}:
-        if source_format == "yolo" and check_validity and np.any((bboxes[:, :4] <= 0) | (bboxes[:, :4] > 1)):
+    elif source_format == "yolo":
+        if check_validity and np.any((bboxes[:, :4] <= 0) | (bboxes[:, :4] > 1)):
             raise ValueError(f"In YOLO format all coordinates must be float and in range (0, 1], got {bboxes}")
-        # center+wh → corners (YOLO: normalized; cxcywh: pixels, normalized below)
         w_half, h_half = bboxes[:, 2] / 2, bboxes[:, 3] / 2
         converted_bboxes[:, 0] = bboxes[:, 0] - w_half
         converted_bboxes[:, 1] = bboxes[:, 1] - h_half
         converted_bboxes[:, 2] = bboxes[:, 0] + w_half
         converted_bboxes[:, 3] = bboxes[:, 1] + h_half
+    elif source_format == "cxcywh":
+        is_obb = bbox_type == "obb" and bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS
+        if is_obb:
+            converted_bboxes[:, :4] = _cxcywh_minarearect_to_albumentations(bboxes, shape)
+        else:
+            w_half, h_half = bboxes[:, 2] / 2, bboxes[:, 3] / 2
+            converted_bboxes[:, 0] = bboxes[:, 0] - w_half
+            converted_bboxes[:, 1] = bboxes[:, 1] - h_half
+            converted_bboxes[:, 2] = bboxes[:, 0] + w_half
+            converted_bboxes[:, 3] = bboxes[:, 1] + h_half
     else:  # pascal_voc
         converted_bboxes[:, :4] = bboxes[:, :4]
 
@@ -882,9 +985,13 @@ def convert_bboxes_from_albumentations(
     bboxes: np.ndarray,
     target_format: Literal["coco", "pascal_voc", "yolo", "cxcywh"],
     shape: tuple[int, int],
+    bbox_type: Literal["hbb", "obb"],
     check_validity: bool = False,
 ) -> np.ndarray:
     """Convert bounding boxes from the format used by albumentations to a specified format.
+
+    For cxcywh with OBB (5+ columns): outputs minAreaRect format (width/height = oriented-rect
+    side lengths), matching cv2.minAreaRect and cv2.boxPoints.
 
     Args:
         bboxes (np.ndarray): A numpy array of albumentations bounding boxes with shape (num_bboxes, 4+).
@@ -892,6 +999,7 @@ def convert_bboxes_from_albumentations(
         target_format (Literal["coco", "pascal_voc", "yolo", "cxcywh"]): Required format of the output bounding boxes.
         shape (tuple[int, int]): Image shape (height, width).
         check_validity (bool): Check if all boxes are valid boxes.
+        bbox_type (Literal["hbb", "obb"]): Bounding box type; required for cxcywh OBB conversion.
 
     Returns:
         np.ndarray: An array of bounding boxes in the target format with shape (num_bboxes, 4+).
@@ -918,11 +1026,20 @@ def convert_bboxes_from_albumentations(
         converted_bboxes[:, 1] = denormalized_bboxes[:, 1]  # y_min
         converted_bboxes[:, 2] = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]  # width
         converted_bboxes[:, 3] = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]  # height
-    elif target_format in {"yolo", "cxcywh"}:
+    elif target_format == "yolo":
         converted_bboxes[:, 0] = (denormalized_bboxes[:, 0] + denormalized_bboxes[:, 2]) / 2  # x_center
         converted_bboxes[:, 1] = (denormalized_bboxes[:, 1] + denormalized_bboxes[:, 3]) / 2  # y_center
         converted_bboxes[:, 2] = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]  # width
         converted_bboxes[:, 3] = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]  # height
+    elif target_format == "cxcywh":
+        is_obb = bbox_type == "obb" and converted_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS
+        if is_obb:
+            converted_bboxes[:, :5] = _albumentations_obb_to_cxcywh_minarearect(bboxes, denormalized_bboxes)
+        else:
+            converted_bboxes[:, 0] = (denormalized_bboxes[:, 0] + denormalized_bboxes[:, 2]) / 2  # x_center
+            converted_bboxes[:, 1] = (denormalized_bboxes[:, 1] + denormalized_bboxes[:, 3]) / 2  # y_center
+            converted_bboxes[:, 2] = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]  # width
+            converted_bboxes[:, 3] = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]  # height
     else:  # pascal_voc
         converted_bboxes[:, :4] = denormalized_bboxes
 

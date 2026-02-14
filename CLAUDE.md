@@ -39,6 +39,7 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - Reason: Users can attach additional label fields (e.g., `[x_min, y_min, x_max, y_max, class_id, track_id]` for HBB)
 - Bbox type information comes from `BboxParams.bbox_type` in the transform's processors
 - Functional layer functions should be bbox-type agnostic when possible (simple coordinate shifts work for both)
+- **NEVER** use default values for `bbox_type` (e.g. `bbox_type: Literal["hbb", "obb"] = "hbb"`); require explicit passing so fallbacks to hbb are easy to debug
 - **For complete details**, see `docs/design/bounding_boxes.md`
 
 ### Transform Standards

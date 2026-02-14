@@ -30,10 +30,20 @@ Albumentations supports two types of bounding boxes:
 ### Oriented Bounding Boxes (OBB)
 - **Format**: `[x_min, y_min, x_max, y_max, angle, ...]`
 - Rotated rectangles
-- First 4 values define the axis-aligned bounding rectangle
+- First 4 values define the axis-aligned bounding rectangle (AABB) enclosing the rotated box
 - `angle` (5th value) defines rotation in degrees
 - Can represent rotated objects accurately
 - Angle is normalized to [-180, 180) range
+
+**OBB convention: minAreaRect (not AABB)**
+
+We use the **cv2.minAreaRect** convention for OBB: width and height are the **side lengths** of the oriented rectangle (dimensions along its local axes). They do **not** depend on the rotation angle.
+
+- Take a rectangle with side lengths (width, height), axis-aligned
+- Rotate it by `angle` around its center
+- The AABB is computed from the 4 corners of this rotated rectangle
+
+We do **not** use AABB convention for width/height (where width = x_max - x_min of the enclosing axis-aligned box).
 
 **Important**: Both formats can have additional columns for labels, class IDs, track IDs, etc.
 
@@ -67,6 +77,8 @@ Albumentations supports multiple input formats:
 # Example: [50, 50, 90, 130] on 200x300 image
 # For OBB: add angle as 5th element, e.g. [50, 50, 90, 130, 45.0]
 ```
+
+**For OBB**: width and height use **minAreaRect** convention (oriented-rect side lengths), matching cv2.minAreaRect and cv2.boxPoints.
 
 ### 5. Albumentations (normalized coordinates)
 ```python

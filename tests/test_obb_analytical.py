@@ -22,6 +22,7 @@ Note on OBB format:
 
 import math
 
+import cv2
 import numpy as np
 import pytest
 
@@ -963,6 +964,157 @@ def test_obb_affine_pure_translation(translate_x: float, translate_y: float) -> 
     # Note: Angle might have ambiguity due to cv2.minAreaRect behavior
     # The important thing is that AABB center and dimensions are preserved
     # For translation-only, we mainly care about position preservation
+
+
+def _obb_oriented_dims(obb: np.ndarray, shape: tuple[int, int]) -> tuple[float, float]:
+    """Get oriented-rect dimensions (minAreaRect style) from OBB in albumentations format.
+
+    Returns (min_dim, max_dim) so we can compare before/after regardless of w/h flip.
+    """
+    height, width = shape[0], shape[1]
+    polygons = obb_to_polygons(obb.reshape(1, -1).astype(np.float32))
+    poly = polygons[0].copy()
+    poly[:, 0] *= width
+    poly[:, 1] *= height
+    rect = cv2.minAreaRect(poly.astype(np.float32))
+    (_, _), (w, h), _ = rect
+    return (min(w, h), max(w, h))
+
+
+@pytest.mark.obb
+def test_obb_affine_translate_rotate_preserves_dimensions() -> None:
+    """Affine with only translate+rotate (no scale/shear) preserves OBB oriented-rect dimensions.
+
+    (min(W,H), max(W,H)) should be unchanged; w and h may flip due to minAreaRect convention.
+    Uses centered boxes so they stay inside after rotation.
+    """
+    import hypothesis.strategies as st
+    from hypothesis import given, settings
+
+    @given(
+        rotate=st.floats(-180, 180),
+        translate_x=st.integers(-10, 10),
+        translate_y=st.integers(-10, 10),
+        box_w=st.floats(0.05, 0.25),
+        box_h=st.floats(0.05, 0.25),
+        angle=st.floats(-90, 90),
+    )
+    @settings(max_examples=50, deadline=5000)
+    def _run(
+        rotate: float,
+        translate_x: int,
+        translate_y: int,
+        box_w: float,
+        box_h: float,
+        angle: float,
+    ) -> None:
+        # Centered box so it stays inside after any rotation
+        cx, cy = 0.5, 0.5
+        x_min = cx - box_w / 2
+        y_min = cy - box_h / 2
+        x_max = cx + box_w / 2
+        y_max = cy + box_h / 2
+
+        obb = np.array([[x_min, y_min, x_max, y_max, angle]], dtype=np.float32)
+        shape = (100, 100)
+        min_before, max_before = _obb_oriented_dims(obb, shape)
+
+        transform = A.Compose(
+            [
+                A.Affine(
+                    scale=(1.0, 1.0),
+                    rotate=(rotate, rotate),
+                    translate_px={"x": (translate_x, translate_x), "y": (translate_y, translate_y)},
+                    shear={"x": (0, 0), "y": (0, 0)},
+                    fit_output=False,
+                    p=1.0,
+                ),
+            ],
+            bbox_params=A.BboxParams(
+                coord_format="albumentations",
+                bbox_type="obb",
+                clip_after_transform=False,
+            ),
+        )
+        image = np.zeros((*shape, 3), dtype=np.uint8)
+        result = transform(image=image, bboxes=obb.tolist())
+        out_bboxes = result["bboxes"]
+        if len(out_bboxes) == 0:
+            return  # filtered out
+        out_obb = np.array(out_bboxes, dtype=np.float32)
+        out_shape = result["image"].shape[:2]
+        min_after, max_after = _obb_oriented_dims(out_obb, out_shape)
+
+        np.testing.assert_allclose(
+            [min_before, max_before],
+            [min_after, max_after],
+            rtol=1e-4,
+            atol=1e-3,
+            err_msg=f"OBB dims (min,max) should be preserved: before ({min_before},{max_before}) vs after ({min_after},{max_after})",
+        )
+
+    _run()
+
+
+@pytest.mark.obb
+@pytest.mark.parametrize(
+    "rotate,translate_x,translate_y,box_w,box_h,angle",
+    [
+        (30, 5, -3, 0.2, 0.15, 45.0),
+        (90, 0, 0, 0.1, 0.2, 0.0),
+        (-45, -10, 10, 0.15, 0.15, -30.0),
+        (180, 0, 0, 0.25, 0.1, 60.0),
+    ],
+)
+def test_obb_affine_translate_rotate_preserves_dimensions_parametrized(
+    rotate: float,
+    translate_x: int,
+    translate_y: int,
+    box_w: float,
+    box_h: float,
+    angle: float,
+) -> None:
+    """Parametrized: Affine translate+rotate only preserves (min(W,H), max(W,H))."""
+    cx, cy = 0.5, 0.5
+    obb = np.array(
+        [
+            [cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2, angle],
+        ],
+        dtype=np.float32,
+    )
+    shape = (100, 100)
+    min_before, max_before = _obb_oriented_dims(obb, shape)
+
+    transform = A.Compose(
+        [
+            A.Affine(
+                scale=(1.0, 1.0),
+                rotate=(rotate, rotate),
+                translate_px={"x": (translate_x, translate_x), "y": (translate_y, translate_y)},
+                shear={"x": (0, 0), "y": (0, 0)},
+                fit_output=False,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(
+            coord_format="albumentations",
+            bbox_type="obb",
+            clip_after_transform=False,
+        ),
+    )
+    image = np.zeros((*shape, 3), dtype=np.uint8)
+    result = transform(image=image, bboxes=obb.tolist())
+    out_obb = np.array(result["bboxes"], dtype=np.float32)
+    out_shape = result["image"].shape[:2]
+    min_after, max_after = _obb_oriented_dims(out_obb, out_shape)
+
+    np.testing.assert_allclose(
+        [min_before, max_before],
+        [min_after, max_after],
+        rtol=1e-4,
+        atol=1e-3,
+        err_msg=f"OBB dims (min,max) should be preserved: before ({min_before},{max_before}) vs after ({min_after},{max_after})",
+    )
 
 
 @pytest.mark.obb

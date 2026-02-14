@@ -23,6 +23,7 @@ from .utils import DataProcessor, Params
 __all__ = [
     "BboxParams",
     "BboxProcessor",
+    "canonicalize_obb",
     "check_bboxes",
     "convert_bboxes_from_albumentations",
     "convert_bboxes_to_albumentations",
@@ -614,6 +615,31 @@ def _canonicalize_angles(angles: np.ndarray, angle_range: tuple[float, float]) -
     return np.remainder(angles - start_arr, span_arr) + start_arr
 
 
+def canonicalize_obb(bboxes: np.ndarray) -> np.ndarray:
+    """Canonicalize OBB: enforce width >= height to avoid minAreaRect 90° ambiguity.
+
+    cv2.minAreaRect can return (w,h) or (h,w) with angle differing by 90°.
+    This ensures consistent representation. For near-squares (w≈h), no swap.
+    """
+    if bboxes.size == 0 or bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
+        return bboxes
+    out = bboxes.copy()
+    w = out[:, 2] - out[:, 0]
+    h = out[:, 3] - out[:, 1]
+    cx = (out[:, 0] + out[:, 2]) * 0.5
+    cy = (out[:, 1] + out[:, 3]) * 0.5
+    swap = h > w * (1.0 + 1e-6)
+    new_w = np.where(swap, h, w)
+    new_h = np.where(swap, w, h)
+    new_angle = np.where(swap, out[:, 4] + 90.0, out[:, 4])
+    out[:, 0] = cx - new_w * 0.5
+    out[:, 2] = cx + new_w * 0.5
+    out[:, 1] = cy - new_h * 0.5
+    out[:, 3] = cy + new_h * 0.5
+    out[:, 4] = new_angle
+    return out
+
+
 def normalize_bbox_angles_decorator(
     angle_range: tuple[float, float] = DEFAULT_BBOX_ANGLE_RANGE,
 ) -> Callable[[Callable[..., np.ndarray]], Callable[..., np.ndarray]]:
@@ -765,6 +791,7 @@ def polygons_to_obb(
         obb_list.append([x_min, y_min, x_max, y_max, angle])
 
     obb = np.array(obb_list, dtype=polygons.dtype)
+    obb = canonicalize_obb(obb)
 
     # Normalize angles
     if obb.shape[1] >= BBOX_OBB_MIN_COLUMNS:
@@ -1444,7 +1471,10 @@ def mask_to_bboxes(
                 y_min = center_y - height / 2
                 y_max = center_y + height / 2
 
-                new_bboxes.append([x_min, y_min, x_max, y_max, angle])
+                obb = np.array([[x_min, y_min, x_max, y_max, angle]], dtype=np.float32)
+                obb = canonicalize_obb(obb)
+                obb[:, 4] = _canonicalize_angles(obb[:, 4], DEFAULT_BBOX_ANGLE_RANGE)
+                new_bboxes.append(obb[0].tolist())
             else:
                 # HBB: axis-aligned bounding box
                 x_min, x_max = x_coords.min(), x_coords.max()

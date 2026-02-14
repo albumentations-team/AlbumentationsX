@@ -39,6 +39,10 @@ Albumentations supports two types of bounding boxes:
 
 We use the **cv2.minAreaRect** convention: width and height are the **side lengths** of the oriented rectangle. The stored `(x_min, y_min, x_max, y_max)` are center ± half-dims, so `width = x_max - x_min` and `height = y_max - y_min` are the oriented dimensions. No AABB in the internal format (AABB is only used when clipping OBBs that went out of the image).
 
+**OBB canonical form: width ≥ height**
+
+After any polygon fitting (e.g. `cv2.minAreaRect`), we enforce **width ≥ height**: the longest side is always width, the shortest is height. This eliminates the 90° w/h swap ambiguity from minAreaRect, reducing angle equivalence to **θ ≡ θ + 180°** only (instead of θ ≡ θ + 90°). For near-squares (w ≈ h), no swap is applied to avoid numerical instability. See `canonicalize_obb()` in `bbox_utils.py`.
+
 **Important**: Both formats can have additional columns for labels, class IDs, track IDs, etc.
 
 ---

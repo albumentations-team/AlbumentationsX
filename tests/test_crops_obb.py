@@ -81,7 +81,7 @@ def test_obb_fully_inside_crop_keeps_angle() -> None:
     assert len(output_bbox) == 5
 
     # Angle should be preserved (within tolerance, might be normalized to equivalent angle)
-    # 45 and -45 are 90 degrees apart, but cv2.minAreaRect may return either depending on box orientation
+    # With width>=height convention, only 180° ambiguity; for squares, 90° possible (no swap when w≈h)
     angle_diff = abs(output_bbox[4] - 45.0)
     # Allow for angle normalization: angles can differ by 90, 180, or 270 degrees and still be equivalent
     angle_diff = min(angle_diff, abs(angle_diff - 90), abs(angle_diff - 180), abs(angle_diff - 270))
@@ -611,8 +611,7 @@ def test_crop_and_pad_bboxes_obb_with_crop_and_pad() -> None:
     assert len(result) == 1
     assert result.shape[1] == 5
 
-    # Angle may differ by 90 degrees due to cv2.minAreaRect ambiguity (30 vs -60 vs 120 etc.)
-    # Just verify it's a valid angle in the canonical range
+    # With width>=height convention, angle is canonical; verify it's in [-180, 180)
     assert -180 <= result[0, 4] < 180, f"Angle {result[0, 4]} out of range"
 
 

@@ -45,9 +45,11 @@ from albumentations.core.bbox_utils import (
     BBOX_OBB_MIN_COLUMNS,
     bboxes_from_masks,
     bboxes_to_mask,
+    canonicalize_obb,
     denormalize_bboxes,
     mask_to_bboxes,
     masks_from_bboxes,
+    normalize_bbox_angles,
     normalize_bbox_angles_decorator,
     normalize_bboxes,
     obb_to_polygons,
@@ -185,7 +187,8 @@ def bboxes_rot90(bboxes: np.ndarray, factor: int, bbox_type: Literal["hbb", "obb
             width, height = height, width
 
         angle = angle + factor * 90
-        return _merge_obb_params(new_center_x, new_center_y, width, height, angle, extras)
+        result = _merge_obb_params(new_center_x, new_center_y, width, height, angle, extras)
+        return normalize_bbox_angles(canonicalize_obb(result))
 
     rotated_bboxes = bboxes.copy()
     x_min, y_min, x_max, y_max = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
@@ -1763,7 +1766,8 @@ def bboxes_transpose(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"] = "hbb
         center_x, center_y = center_y, center_x
         width, height = height, width
         angle = 90.0 - angle
-        return _merge_obb_params(center_x, center_y, width, height, angle, extras)
+        result = _merge_obb_params(center_x, center_y, width, height, angle, extras)
+        return normalize_bbox_angles(canonicalize_obb(result))
     transposed_bboxes = bboxes.copy()
     transposed_bboxes[:, [0, 1, 2, 3]] = bboxes[:, [1, 0, 3, 2]]
 

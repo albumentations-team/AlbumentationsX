@@ -132,21 +132,16 @@ def test_obb_rotation_centered_square_box_square_image(rotation_deg: int) -> Non
         err_msg=f"OBB AABB incorrect after {rotation_deg}° rotation",
     )
 
-    # Check angle (allowing for equivalence modulo 360 and potential 90° ambiguity from minAreaRect)
-    # For centered square, angle might be ambiguous
-    actual_angle = output_bbox[4] % 360
-    expected_angle = expected[4] % 360
+    # Check angle: with width>=height, non-squares have 180° only; squares have 90° (no swap when w≈h)
+    # Use [0,90] canonical for squares: min(θ%180, 180-θ%180)
+    def _canon_90(a: float) -> float:
+        x = ((a % 360) + 360) % 360 % 180
+        return min(x, 180 - x)
 
-    # Allow for 90-degree ambiguity in angle representation
-    angle_diff = min(
-        abs(actual_angle - expected_angle),
-        abs(actual_angle - expected_angle + 90) % 360,
-        abs(actual_angle - expected_angle - 90) % 360,
-        abs(actual_angle - expected_angle + 180) % 360,
-    )
-
-    assert angle_diff < 1.0, (
-        f"OBB angle incorrect after {rotation_deg}° rotation: got {actual_angle}, expected {expected_angle}"
+    actual_can = _canon_90(output_bbox[4])
+    expected_can = _canon_90(expected[4])
+    assert abs(actual_can - expected_can) < 1.0, (
+        f"OBB angle incorrect after {rotation_deg}° rotation: got {output_bbox[4]}, expected {expected[4]}"
     )
 
 
@@ -655,16 +650,16 @@ def test_obb_transpose_centered_box() -> None:
         err_msg="Centered OBB should stay centered after transpose",
     )
 
-    # For centered box, AABB dimensions swap
+    # Physical dimensions (0.3, 0.4) preserved; canonical form may have width>=height
     out_width = output_bbox[2] - output_bbox[0]
     out_height = output_bbox[3] - output_bbox[1]
 
     np.testing.assert_allclose(
-        [out_width, out_height],
-        [height, width],  # Note: swapped
+        [min(out_width, out_height), max(out_width, out_height)],
+        [min(width, height), max(width, height)],
         rtol=1e-4,
         atol=1e-4,
-        err_msg="AABB dimensions should swap for centered box after transpose",
+        err_msg="OBB oriented dimensions (min,max) should be preserved after transpose",
     )
 
 
@@ -971,13 +966,12 @@ def test_obb_affine_pure_translation(translate_x: float, translate_y: float) -> 
 
 
 def _obb_canonical_angle(angle_deg: float) -> float:
-    """Canonical form for rectangle angle: [0, 90].
+    """Canonical form for rectangle angle: [0, 180).
 
-    Handles θ≡θ+180, θ≡-θ (w/h swap), and θ≡θ+90 (minAreaRect picks either edge).
-    Like sorted(w,h) for dims.
+    With width>=height convention (canonicalize_obb), only θ≡θ+180°.
+    No 90° w/h swap ambiguity for non-square boxes.
     """
-    a = ((angle_deg % 360) + 360) % 360 % 180
-    return min(a, 180 - a, (a + 90) % 180, (90 - a) % 180)
+    return ((angle_deg % 360) + 360) % 360 % 180
 
 
 def _obb_oriented_dims(obb: np.ndarray, shape: tuple[int, int]) -> tuple[float, float]:
@@ -1188,10 +1182,10 @@ def test_obb_affine_pure_rotation_preserves_dims_and_angle(rotate: float) -> Non
         err_msg="OBB dims (min,max) should be preserved",
     )
 
-    # When initial angle=0, output angle should equal Affine rotation (canonical form handles
-    # θ≡θ+180 and θ≡-θ from minAreaRect w/h swap).
+    # When initial angle=0, output angle equals Affine rotation. Affine uses clockwise rotation
+    # (positive rotate = CW), so output angle = -rotate. With width>=height, only θ≡θ+180.
     out_can = _obb_canonical_angle(float(out_obb[0, 4]))
-    rot_can = _obb_canonical_angle(rotate)
+    rot_can = _obb_canonical_angle(-rotate)
     np.testing.assert_allclose(
         out_can,
         rot_can,

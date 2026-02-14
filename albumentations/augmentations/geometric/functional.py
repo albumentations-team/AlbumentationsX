@@ -1051,15 +1051,12 @@ def keypoints_affine(
     # Extract x, y coordinates (z is preserved)
     xy = keypoints[:, :2]
 
-    # Ensure matrix is 2x3
-    if matrix.shape == (3, 3):
-        matrix = matrix[:2]
-
-    # Transform x, y coordinates
-    xy_transformed = cv2.transform(xy.reshape(-1, 1, 2), matrix).squeeze()
+    # Transform x, y coordinates (same code path as bboxes_affine OBB)
+    xy_transformed = apply_affine_to_points(xy, matrix)
 
     # Calculate angle adjustment
-    angle_adjustment = rotation2d_matrix_to_euler_angles(matrix[:2, :2], y_up=False)
+    rot = matrix[:2, :2] if matrix.shape == (3, 3) else matrix
+    angle_adjustment = rotation2d_matrix_to_euler_angles(rot, y_up=False)
 
     # Update angles (now at index 3)
     keypoints[:, 3] = keypoints[:, 3] + angle_adjustment

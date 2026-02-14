@@ -319,12 +319,12 @@ def test_convert_bboxes_to_albumentations_output_type():
             (100, 200),
             np.array([[0.15, 0.3, 0.35, 0.7, 90.0]]),
         ),
-        # cxcywh OBB: minAreaRect convention (w,h = oriented-rect side lengths). 30x40 at 90° -> AABB (30,35,70,65)
+        # cxcywh OBB: minAreaRect. 30x40 at 90° -> [cx±w/2, cy±h/2] = (35,30,65,70) norm
         (
             "cxcywh",
             np.array([[50, 50, 30, 40, 450.0]]),
             (100, 200),
-            np.array([[0.15, 0.35, 0.35, 0.65, 90.0]]),
+            np.array([[0.175, 0.3, 0.325, 0.7, 90.0]]),
         ),
     ],
 )
@@ -467,10 +467,10 @@ def test_convert_bboxes_from_albumentations_output_type():
             (100, 200),
             np.array([[0.25, 0.5, 0.2, 0.4, 90.0]]),
         ),
-        # cxcywh OBB: minAreaRect output. AABB (30,35,70,65) at 90° -> polygon 30×40 px, minAreaRect (30,40), angle preserved
+        # cxcywh OBB: albumentations [cx±w/2, cy±h/2] = (0.175,0.3,0.325,0.7) -> cxcywh (50,50,30,40)
         (
             "cxcywh",
-            np.array([[0.15, 0.35, 0.35, 0.65, 450.0]]),
+            np.array([[0.175, 0.3, 0.325, 0.7, 450.0]]),
             (100, 200),
             np.array([[50.0, 50.0, 30.0, 40.0, 90.0]]),
         ),

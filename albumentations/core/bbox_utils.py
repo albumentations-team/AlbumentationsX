@@ -842,26 +842,17 @@ def _cxcywh_minarearect_to_albumentations(
     bboxes: np.ndarray,
     shape: tuple[int, int],
 ) -> np.ndarray:
-    """Convert cxcywh OBB (minAreaRect: width/height = oriented-rect side lengths) to AABB in pixels."""
+    """Convert cxcywh OBB (minAreaRect) to albumentations OBB format, in pixels.
+
+    Albumentations OBB stores [cx-w/2, cy-h/2, cx+w/2, cy+h/2, angle] - center ± half-dims
+    in local frame (same as polygons_to_obb). No AABB. Caller normalizes.
+    """
     cx, cy = bboxes[:, 0], bboxes[:, 1]
     w, h = bboxes[:, 2], bboxes[:, 3]
-    angle_rad = np.deg2rad(bboxes[:, 4]).astype(np.float32)
-    cos_a = np.cos(angle_rad)
-    sin_a = np.sin(angle_rad)
-    base = np.array([[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]], dtype=np.float32)
-    scaled = base[None, :, :] * np.stack([w, h], axis=1)[:, None, :]
-    rotation = np.stack(
-        [
-            np.stack([cos_a, -sin_a], axis=1),
-            np.stack([sin_a, cos_a], axis=1),
-        ],
-        axis=1,
-    )
-    corners = np.einsum("nki,nij->nkj", scaled, rotation) + np.stack([cx, cy], axis=1)[:, None, :]
-    x_min = corners[:, :, 0].min(axis=1)
-    y_min = corners[:, :, 1].min(axis=1)
-    x_max = corners[:, :, 0].max(axis=1)
-    y_max = corners[:, :, 1].max(axis=1)
+    x_min = cx - w / 2
+    y_min = cy - h / 2
+    x_max = cx + w / 2
+    y_max = cy + h / 2
     return np.column_stack([x_min, y_min, x_max, y_max])
 
 
@@ -869,38 +860,20 @@ def _albumentations_obb_to_cxcywh_minarearect(
     bboxes: np.ndarray,
     denormalized_bboxes: np.ndarray,
 ) -> np.ndarray:
-    """Convert albumentations OBB (AABB + angle) to cxcywh minAreaRect format."""
-    x_min_px = denormalized_bboxes[:, 0]
-    y_min_px = denormalized_bboxes[:, 1]
-    x_max_px = denormalized_bboxes[:, 2]
-    y_max_px = denormalized_bboxes[:, 3]
-    w_px = x_max_px - x_min_px
-    h_px = y_max_px - y_min_px
-    cx_px = (x_min_px + x_max_px) * 0.5
-    cy_px = (y_min_px + y_max_px) * 0.5
-    angle_rad = np.deg2rad(bboxes[:, 4]).astype(np.float32)
-    cos_a = np.cos(angle_rad)
-    sin_a = np.sin(angle_rad)
-    base = np.array([[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]], dtype=np.float32)
-    scaled = base[None, :, :] * np.stack([w_px, h_px], axis=1)[:, None, :]
-    rotation = np.stack(
-        [
-            np.stack([cos_a, -sin_a], axis=1),
-            np.stack([sin_a, cos_a], axis=1),
-        ],
-        axis=1,
-    )
-    corners_px = np.einsum("nki,nij->nkj", scaled, rotation) + np.stack([cx_px, cy_px], axis=1)[:, None, :]
-    cxcywh_list = []
-    for i in range(len(bboxes)):
-        rect = cv2.minAreaRect(corners_px[i].astype(np.float32))
-        (cx, cy), (w, h), ma_angle = rect
-        angle = float(bboxes[i, 4])
-        angle_diff = abs((angle - ma_angle + 180) % 360 - 180)
-        if angle_diff > 45:
-            w, h = h, w
-        cxcywh_list.append([float(cx), float(cy), float(w), float(h), angle])
-    return np.array(cxcywh_list, dtype=bboxes.dtype)
+    """Convert albumentations OBB to cxcywh minAreaRect format.
+
+    Albumentations OBB is [cx-w/2, cy-h/2, cx+w/2, cy+h/2, angle]. Extract cx,cy,w,h directly.
+    """
+    x_min = denormalized_bboxes[:, 0]
+    y_min = denormalized_bboxes[:, 1]
+    x_max = denormalized_bboxes[:, 2]
+    y_max = denormalized_bboxes[:, 3]
+    cx = (x_min + x_max) * 0.5
+    cy = (y_min + y_max) * 0.5
+    w = x_max - x_min
+    h = y_max - y_min
+    angle = bboxes[:, 4]
+    return np.column_stack([cx, cy, w, h, angle]).astype(bboxes.dtype)
 
 
 @handle_empty_array("bboxes")

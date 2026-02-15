@@ -271,8 +271,10 @@ def test_apply_histogram_shapes_and_types(img_shape, ref_shape, dtype):
 
 @pytest.mark.parametrize("blend_ratio", [0.0, 0.25, 0.5, 0.75, 1.0])
 def test_apply_histogram_blend_ratio(blend_ratio):
-    img = create_reference_image((100, 100, 3))
-    reference_image = create_reference_image((100, 100, 3))
+    # Use images with deliberately different histograms to avoid flakiness
+    # (random images can have similar histograms, making blend produce ~img)
+    img = np.full((100, 100, 3), 30, dtype=np.uint8)
+    reference_image = np.full((100, 100, 3), 220, dtype=np.uint8)
 
     result = apply_histogram(img, reference_image, blend_ratio)
 

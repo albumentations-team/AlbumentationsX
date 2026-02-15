@@ -598,24 +598,30 @@ def test_lambda_serialization(image, albumentations_bboxes, keypoints, seed, p):
         return fgeometric.vflip(mask)
 
     def vflip_bbox(bboxes, **kwargs):
-        return fgeometric.bboxes_vflip(bboxes)
+        return fgeometric.bboxes_vflip(bboxes, bbox_type=kwargs["bbox_type"])
 
     def vflip_keypoint(keypoints, **kwargs):
         return fgeometric.keypoints_vflip(keypoints, kwargs["shape"][0])
 
     mask = image.copy()
 
-    aug = A.Lambda(
-        name="vflip",
-        image=vflip_image,
-        mask=vflip_mask,
-        bboxes=vflip_bbox,
-        keypoints=vflip_keypoint,
-        p=p,
+    aug = A.Compose(
+        [
+            A.Lambda(
+                name="vflip",
+                image=vflip_image,
+                mask=vflip_mask,
+                bboxes=vflip_bbox,
+                keypoints=vflip_keypoint,
+                p=p,
+            ),
+        ],
+        bbox_params=A.BboxParams(coord_format="albumentations"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
     )
     aug.set_random_seed(seed)
     serialized_aug = A.to_dict(aug)
-    deserialized_aug = A.from_dict(serialized_aug, nonserializable={"vflip": aug})
+    deserialized_aug = A.from_dict(serialized_aug, nonserializable={"vflip": aug.transforms[0]})
     deserialized_aug.set_random_seed(seed)
     aug_data = aug(
         image=image,

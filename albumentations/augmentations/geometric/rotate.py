@@ -131,7 +131,7 @@ class RandomRotate90(DualTransform):
         factor: Literal[0, 1, 2, 3],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.bboxes_rot90(bboxes, factor)
+        return fgeometric.bboxes_rot90(bboxes, factor, bbox_type=params["bbox_type"])
 
     def apply_to_keypoints(
         self,
@@ -370,7 +370,7 @@ class Rotate(DualTransform):
         **params: Any,
     ) -> np.ndarray:
         image_shape = params["shape"][:2]
-        bbox_type = params.get("bbox_type", "hbb")
+        bbox_type = params["bbox_type"]
         bboxes_out = fgeometric.bboxes_affine(
             bboxes,
             bbox_matrix,

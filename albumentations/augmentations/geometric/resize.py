@@ -856,7 +856,7 @@ class Resize(DualTransform):
             bboxes,
             image_shape=params["shape"][:2],
             output_shape=(self.height, self.width),
-            bbox_type=params.get("bbox_type", "hbb"),
+            bbox_type=params["bbox_type"],
         )
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:

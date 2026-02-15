@@ -30,10 +30,27 @@ Albumentations supports two types of bounding boxes:
 ### Oriented Bounding Boxes (OBB)
 - **Format**: `[x_min, y_min, x_max, y_max, angle, ...]`
 - Rotated rectangles
-- First 4 values define the axis-aligned bounding rectangle
+- First 4 values: `[cx-w/2, cy-h/2, cx+w/2, cy+h/2]` — center ± half-dims in local frame (minAreaRect convention)
 - `angle` (5th value) defines rotation in degrees
 - Can represent rotated objects accurately
-- Angle is normalized to [-180, 180) range
+
+**OBB convention: corner-based**
+
+We derive OBB parameters from the 4 corners (via `cv2.minAreaRect` + `cv2.boxPoints`), not from minAreaRect's raw `(w,h,angle)`. Our convention:
+
+- **width** = length of the edge more parallel to horizontal
+- **height** = length of the other edge
+- **angle** = rotation of the width edge, in [-90, 90) degrees
+
+No requirement that width >= height (like HBB). The stored `(x_min, y_min, x_max, y_max)` are center ± half-dims in the local frame, so `width = x_max - x_min` and `height = y_max - y_min`. This ensures `obb_to_polygons` and `cv2.boxPoints` produce visually correct results regardless of minAreaRect's internal representation.
+
+**OBB corner-based invariance**
+
+We use `cv2.minAreaRect` only to obtain the 4 corners via `cv2.boxPoints`; we derive `(w, h, angle)` from corners via `_corners_to_obb_params`. This makes us **OpenCV-version-invariant**: minAreaRect's raw angle range has changed across versions (pre-4.5.1: [-90, 0); 4.5.1–4.12: [0, 90]; 4.13+: [-90, 0)) — we ignore all of that.
+
+**Why angle is [-90, 90) and not [0, 180]?** The width edge is an undirected line. Two angles that differ by 180° describe the same line (e.g., 0° = horizontal right, 180° = horizontal left). We canonicalize to [-90, 90) to avoid redundancy.
+
+**Rule:** Never use `cv2.minAreaRect`'s raw `(w, h, angle)` output. Always use `cv2.boxPoints(rect)` to get corners, then `polygons_to_obb` to derive our canonical OBB.
 
 **Important**: Both formats can have additional columns for labels, class IDs, track IDs, etc.
 
@@ -67,6 +84,8 @@ Albumentations supports multiple input formats:
 # Example: [50, 50, 90, 130] on 200x300 image
 # For OBB: add angle as 5th element, e.g. [50, 50, 90, 130, 45.0]
 ```
+
+**For OBB**: width and height use **minAreaRect** convention (oriented-rect side lengths), matching cv2.minAreaRect and cv2.boxPoints.
 
 ### 5. Albumentations (normalized coordinates)
 ```python
@@ -172,6 +191,8 @@ BboxParams(clip_bboxes_on_input=True)  # Fix invalid input coordinates (e.g., YO
 - Runs during `preprocess()` only
 - Fixes malformed input bboxes
 - Independent of `clip_after_transform`
+
+**OBB warning**: For OBB, clipping converts boxes whose corners extend outside [0, 1] to axis-aligned boxes (angle=0). This destroys orientation and causes misalignment with Affine/rotation transforms. **Recommend `clip_bboxes_on_input=False` for OBB** unless you only need to fix minor coordinate errors (boxes fully inside bounds are not affected).
 
 **Deprecated**: The `clip` parameter is deprecated. Use `clip_bboxes_on_input` instead for clarity.
 

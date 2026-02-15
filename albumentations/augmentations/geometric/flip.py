@@ -106,7 +106,7 @@ class VerticalFlip(DualTransform):
         return vflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params.get("bbox_type", "hbb")
+        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_vflip(bboxes, bbox_type=bbox_type)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
@@ -192,7 +192,7 @@ class HorizontalFlip(DualTransform):
         return hflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params.get("bbox_type", "hbb")
+        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_hflip(bboxes, bbox_type=bbox_type)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
@@ -289,7 +289,7 @@ class Transpose(DualTransform):
         return fgeometric.transpose(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params.get("bbox_type", "hbb")
+        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_transpose(bboxes, bbox_type=bbox_type)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
@@ -411,7 +411,7 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params.get("bbox_type", "hbb")
+        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_d4(bboxes, group_element, bbox_type=bbox_type)
 
     def apply_to_keypoints(

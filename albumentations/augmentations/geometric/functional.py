@@ -48,7 +48,6 @@ from albumentations.core.bbox_utils import (
     denormalize_bboxes,
     mask_to_bboxes,
     masks_from_bboxes,
-    normalize_bbox_angles_decorator,
     normalize_bboxes,
     obb_to_polygons,
     polygons_to_obb,
@@ -82,7 +81,6 @@ def _split_obb_params(
     return center_x, center_y, width, height, angle, extras
 
 
-@normalize_bbox_angles_decorator()
 def _merge_obb_params(
     center_x: np.ndarray,
     center_y: np.ndarray,
@@ -110,7 +108,7 @@ def resize_bboxes(
     bboxes: np.ndarray,
     image_shape: tuple[int, int],
     output_shape: tuple[int, int],
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Resize bounding boxes according to image scaling.
 
@@ -157,7 +155,7 @@ def resize_bboxes(
 
 
 @handle_empty_array("bboxes")
-def bboxes_rot90(bboxes: np.ndarray, factor: int, bbox_type: Literal["hbb", "obb"] = "hbb") -> np.ndarray:
+def bboxes_rot90(bboxes: np.ndarray, factor: int, bbox_type: Literal["hbb", "obb"]) -> np.ndarray:
     """Rotates bounding boxes by 90 degrees CCW (see np.rot90)
 
     Args:
@@ -213,7 +211,7 @@ def bboxes_rot90(bboxes: np.ndarray, factor: int, bbox_type: Literal["hbb", "obb
 def bboxes_d4(
     bboxes: np.ndarray,
     group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Applies a `D_4` symmetry group transformation to a bounding box.
 
@@ -705,7 +703,7 @@ def perspective_bboxes(
     max_width: int,
     max_height: int,
     keep_size: bool,
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Applies perspective transformation to bounding boxes.
 
@@ -1048,14 +1046,10 @@ def keypoints_affine(
     # Extract x, y coordinates (z is preserved)
     xy = keypoints[:, :2]
 
-    # Ensure matrix is 2x3
-    if matrix.shape == (3, 3):
-        matrix = matrix[:2]
+    # Transform x, y coordinates (same code path as bboxes_affine OBB)
+    xy_transformed = apply_affine_to_points(xy, matrix)
 
-    # Transform x, y coordinates
-    xy_transformed = cv2.transform(xy.reshape(-1, 1, 2), matrix).squeeze()
-
-    # Calculate angle adjustment
+    # Calculate angle adjustment (always extract 2x2 rotation; 2x3 affine has rotation in [:2,:2])
     angle_adjustment = rotation2d_matrix_to_euler_angles(matrix[:2, :2], y_up=False)
 
     # Update angles (now at index 3)
@@ -1152,7 +1146,7 @@ def calculate_affine_transform_padding(
 def bboxes_affine_largest_box(
     bboxes: np.ndarray,
     matrix: np.ndarray,
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Apply an affine transformation to bounding boxes and return the largest enclosing boxes.
 
@@ -1217,7 +1211,7 @@ def bboxes_affine_largest_box(
 def bboxes_affine_ellipse(
     bboxes: np.ndarray,
     matrix: np.ndarray,
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Apply an affine transformation to bounding boxes using an ellipse approximation method.
 
@@ -1288,7 +1282,7 @@ def bboxes_affine(
     image_shape: tuple[int, int],
     border_mode: int,
     output_shape: tuple[int, int],
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Apply an affine transformation to bounding boxes.
 
@@ -1320,20 +1314,13 @@ def bboxes_affine(
         return bboxes
 
     if bbox_type == "obb":
-        # For OBB: convert to polygons, apply transform, convert back
-        polygons, extras = _split_polygons_and_extras(bboxes)
+        # polygons → transform → polygons_to_obb (corner-based; pixel coords for accuracy)
+        denormalized_bboxes = denormalize_bboxes(bboxes, image_shape)
+        polygons, extras = _split_polygons_and_extras(denormalized_bboxes)
         polygons = polygons.copy()
-        polygons[..., 0] *= image_shape[1]
-        polygons[..., 1] *= image_shape[0]
         transformed_polygons = apply_affine_to_points(polygons.reshape(-1, 2), matrix).reshape(polygons.shape)
-        # Convert to OBB in PIXEL space (cv2.minAreaRect requires pixel coordinates for accuracy)
         transformed_bboxes_px = polygons_to_obb(transformed_polygons, extra_fields=extras)
-        # Normalize the bbox coordinates (not angle or extras)
-        transformed_bboxes_px[:, 0] /= output_shape[1]  # x_min
-        transformed_bboxes_px[:, 1] /= output_shape[0]  # y_min
-        transformed_bboxes_px[:, 2] /= output_shape[1]  # x_max
-        transformed_bboxes_px[:, 3] /= output_shape[0]  # y_max
-        # transformed_bboxes are in normalized coordinates; validate against a virtual 1x1 image
+        transformed_bboxes_px[:, :4] = normalize_bboxes(transformed_bboxes_px[:, :4], output_shape)
         return validate_bboxes(transformed_bboxes_px, (1, 1))
 
     bboxes = denormalize_bboxes(bboxes, image_shape)
@@ -1699,7 +1686,7 @@ def rot90_images(images: ImageType, factor: Literal[0, 1, 2, 3]) -> ImageType:
 
 
 @handle_empty_array("bboxes")
-def bboxes_vflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"] = "hbb") -> np.ndarray:
+def bboxes_vflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.ndarray:
     """Flip bounding boxes vertically.
 
     Args:
@@ -1723,7 +1710,7 @@ def bboxes_vflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"] = "hbb") -
 
 
 @handle_empty_array("bboxes")
-def bboxes_hflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"] = "hbb") -> np.ndarray:
+def bboxes_hflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.ndarray:
     """Flip bounding boxes horizontally.
 
     Args:
@@ -1747,7 +1734,7 @@ def bboxes_hflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"] = "hbb") -
 
 
 @handle_empty_array("bboxes")
-def bboxes_transpose(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"] = "hbb") -> np.ndarray:
+def bboxes_transpose(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.ndarray:
     """Transpose bounding boxes along the main diagonal.
 
     Args:
@@ -2289,7 +2276,7 @@ def remap_bboxes(
     map_x: np.ndarray,
     map_y: np.ndarray,
     image_shape: tuple[int, int],
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Remap bounding boxes using displacement maps.
 
@@ -4050,7 +4037,7 @@ def bboxes_grid_shuffle(
     image_shape: tuple[int, int],
     min_area: float,
     min_visibility: float,
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Shuffle bounding boxes according to grid mapping.
 
@@ -4528,7 +4515,7 @@ def bboxes_morphology(
     kernel: np.ndarray,
     operation: Literal["dilation", "erosion"],
     image_shape: tuple[int, int],
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Apply morphology to bounding boxes.
 

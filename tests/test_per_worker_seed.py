@@ -8,12 +8,67 @@ import pytest
 
 import albumentations as A
 
+try:
+    import torch
+    import torch.utils.data
+
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    _TORCH_AVAILABLE = False
+
 
 class MockWorkerInfo:
     """Mock torch.utils.data.get_worker_info() response."""
 
     def __init__(self, id: int):
         self.id = id
+
+
+if _TORCH_AVAILABLE:
+
+    class TestDataset(torch.utils.data.Dataset):
+        """Dataset for worker seed testing - must be at module level for pickling."""
+
+        def __init__(self, transform):
+            self.transform = transform
+            self.worker_results = {}
+
+        def __len__(self):
+            return 10
+
+        def __getitem__(self, idx):
+            worker_info = torch.utils.data.get_worker_info()
+            worker_id = worker_info.id if worker_info else -1
+
+            img = np.zeros((10, 10, 3), dtype=np.uint8)
+            img[:, :5] = 255
+
+            result = self.transform(image=img)
+            was_flipped = result["image"][0, 0, 0] == 0
+
+            if worker_id not in self.worker_results:
+                self.worker_results[worker_id] = []
+            self.worker_results[worker_id].append((idx, was_flipped))
+
+            return float(was_flipped)
+
+    class SimpleDataset(torch.utils.data.Dataset):
+        """Dataset for epoch diversity testing - must be at module level for pickling."""
+
+        def __init__(self, transform):
+            self.transform = transform
+            self.data = [np.ones((10, 10, 3), dtype=np.uint8) * 255] * 4
+
+        def __len__(self):
+            return len(self.data)
+
+        def __getitem__(self, idx):
+            image = self.data[idx].copy()
+            if self.transform:
+                augmented = self.transform(image=image)
+                image = augmented["image"]
+            return float(np.sum(image))
 
 
 def test_worker_seed_without_torch():
@@ -42,37 +97,6 @@ def test_worker_seed_without_torch():
 )
 def test_worker_seed_with_torch():
     """Test worker seed functionality with PyTorch available."""
-    import torch
-    import torch.utils.data
-
-    class TestDataset(torch.utils.data.Dataset):
-        def __init__(self, transform):
-            self.transform = transform
-            self.worker_results = {}
-
-        def __len__(self):
-            return 10
-
-        def __getitem__(self, idx):
-            # Track which worker processed which index
-            worker_info = torch.utils.data.get_worker_info()
-            worker_id = worker_info.id if worker_info else -1
-
-            # Create an asymmetric test image to properly detect flips
-            img = np.zeros((10, 10, 3), dtype=np.uint8)
-            img[:, :5] = 255  # Left half white, right half black
-
-            result = self.transform(image=img)
-            # Return whether the image was flipped (check if left corner is black)
-            was_flipped = result["image"][0, 0, 0] == 0
-
-            # Store result by worker
-            if worker_id not in self.worker_results:
-                self.worker_results[worker_id] = []
-            self.worker_results[worker_id].append((idx, was_flipped))
-
-            return float(was_flipped)
-
     # Test with worker-aware seed (now always enabled)
     transform = A.Compose(
         [
@@ -128,26 +152,6 @@ def test_worker_seed_with_torch():
 )
 def test_dataloader_epoch_diversity():
     """Test that DataLoader produces different augmentations across epochs with worker-aware seed."""
-    import torch
-    import torch.utils.data
-
-    class SimpleDataset(torch.utils.data.Dataset):
-        def __init__(self, transform):
-            self.transform = transform
-            # Create identical images
-            self.data = [np.ones((10, 10, 3), dtype=np.uint8) * 255] * 4
-
-        def __len__(self):
-            return len(self.data)
-
-        def __getitem__(self, idx):
-            image = self.data[idx].copy()
-            if self.transform:
-                augmented = self.transform(image=image)
-                image = augmented["image"]
-            # Return sum of pixel values as a simple hash
-            return float(np.sum(image))
-
     # Create transform with fixed seed (worker-aware seed is always enabled)
     transform = A.Compose(
         [

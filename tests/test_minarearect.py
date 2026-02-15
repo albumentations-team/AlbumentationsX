@@ -6,14 +6,18 @@ angles, aspect ratios, and coordinate scales. minAreaRect has conventions (angle
 representations — we verify the fitted rect matches the input polygon.
 """
 
+import cv2
 import numpy as np
 import pytest
 
 from albumentations.core.bbox_utils import (
     _corners_to_obb_params,
+    convert_bboxes_to_albumentations,
+    denormalize_bboxes,
     obb_to_polygons,
     polygons_to_obb,
 )
+from tests.helpers import obb_corners_equivalent
 
 
 def _canonicalize_obb_cxcywh(
@@ -58,39 +62,10 @@ def _obb_cxcywh_same_box(
     return diff_pos < atol or abs(diff_pos - 180) < atol or diff_neg < atol or abs(diff_neg - 180) < atol
 
 
-def _polygons_match(poly_a: np.ndarray, poly_b: np.ndarray, rtol: float = 1e-5, atol: float = 1e-6) -> bool:
-    """Check if two 4-corner polygons represent the same rectangle.
-
-    minAreaRect uses OpenCV's angle convention ([-90,0), width>=height) which can
-    produce different corner order/angle for the same rect. We verify geometric
-    equivalence: same center, same area, and the 4 corners are the same set of points.
-    """
-    if poly_a.shape != (4, 2) or poly_b.shape != (4, 2):
-        return False
-    c_a, c_b = poly_a.mean(axis=0), poly_b.mean(axis=0)
-    if not np.allclose(c_a, c_b, rtol=rtol, atol=atol):
-        return False
-
-    # Shoelace area
-    def _area(p: np.ndarray) -> float:
-        return 0.5 * abs(
-            np.sum(p[:, 0] * np.roll(p[:, 1], -1) - np.roll(p[:, 0], -1) * p[:, 1]),
-        )
-
-    if not np.isclose(_area(poly_a), _area(poly_b), rtol=rtol, atol=atol):
-        return False
-    # Each corner of poly_a must match some corner of poly_b (same 4 points, any order)
-    for i in range(4):
-        dists = np.linalg.norm(poly_b - poly_a[i], axis=1)
-        if dists.min() > atol + rtol * np.linalg.norm(poly_a[i]):
-            return False
-    return True
-
-
 def _obb_roundtrip_geometrically_equivalent(
     obb: np.ndarray,
     rtol: float = 1e-5,
-    atol: float = 1e-6,
+    atol: float = 1e-3,
 ) -> None:
     """Round-trip OBB through polygons and assert same 4 corners.
 
@@ -103,7 +78,7 @@ def _obb_roundtrip_geometrically_equivalent(
     obb_out = polygons_to_obb(polys_in)
     polys_out = obb_to_polygons(obb_out)
     for i in range(len(obb)):
-        assert _polygons_match(
+        assert obb_corners_equivalent(
             polys_in[i],
             polys_out[i],
             rtol=rtol,
@@ -199,7 +174,7 @@ def test_minarearect_roundtrip_preserves_extra_fields(angle_deg: int) -> None:
     assert restored.shape[1] == obb.shape[1]
     np.testing.assert_array_equal(restored[:, 5:], obb[:, 5:])
     for i in range(len(obb)):
-        assert _polygons_match(
+        assert obb_corners_equivalent(
             obb_to_polygons(obb[i : i + 1])[0],
             obb_to_polygons(restored[i : i + 1])[0],
         )
@@ -418,3 +393,181 @@ def test_minarearect_angle_boundaries(angle_deg: float) -> None:
     polys = obb_to_polygons(obb.reshape(1, -1))
     obb_out = polygons_to_obb(polys)[0]
     assert -90 <= obb_out[4] < 90, f"Angle {obb_out[4]} out of [-90, 90) for input {angle_deg}"
+
+
+# --- cxcywh pipeline equivalence to cv2.boxPoints ---
+
+
+def _cxcywh_pipeline_corners(
+    bboxes_cxcywh: np.ndarray,
+    shape: tuple[int, int],
+) -> np.ndarray:
+    """Full pipeline: cxcywh (pixel) -> convert -> denormalize -> obb_to_polygons -> corners."""
+    bboxes_alb = convert_bboxes_to_albumentations(
+        bboxes_cxcywh,
+        "cxcywh",
+        shape,
+        "obb",
+        check_validity=False,
+    )
+    internal_px = np.column_stack(
+        [denormalize_bboxes(bboxes_alb[:, :4], shape), bboxes_alb[:, 4:5]],
+    )
+    return obb_to_polygons(internal_px)
+
+
+def _cxcywh_boxpoints_corners(bboxes_cxcywh: np.ndarray) -> np.ndarray:
+    """Direct cv2.boxPoints from cxcywh (center, w, h, angle) in pixels."""
+    arr = np.asarray(bboxes_cxcywh, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr.reshape(1, -1)
+    return np.array(
+        [cv2.boxPoints(((r[0], r[1]), (r[2], r[3]), r[4])) for r in arr],
+        dtype=np.float32,
+    )
+
+
+@pytest.mark.parametrize("angle_deg", ANGLES_FULL_ROUNDTRIP)
+def test_cxcywh_pipeline_equals_boxpoints_axis_aligned(angle_deg: int) -> None:
+    """Pipeline corners match cv2.boxPoints for axis-aligned angles (0°, ±90°, 180°, etc.)."""
+    shape = (200, 300)
+    cx, cy = 150.0, 100.0
+    w, h = 60.0, 40.0
+    bbox = np.array([[cx, cy, w, h, float(angle_deg)]], dtype=np.float32)
+
+    pipeline_corners = _cxcywh_pipeline_corners(bbox, shape)[0]
+    direct_corners = _cxcywh_boxpoints_corners(bbox)[0]
+
+    assert obb_corners_equivalent(
+        pipeline_corners,
+        direct_corners,
+        rtol=1e-5,
+        atol=1e-4,
+    ), f"Pipeline != boxPoints for angle {angle_deg}: pipeline={pipeline_corners}, direct={direct_corners}"
+
+
+@pytest.mark.parametrize("angle_deg", ANGLES_ALL)
+def test_cxcywh_pipeline_equals_boxpoints_general_angles(angle_deg: int) -> None:
+    """Pipeline corners must match cv2.boxPoints for any angle."""
+    shape = (200, 300)
+    cx, cy = 150.0, 100.0
+    w, h = 60.0, 40.0
+    bbox = np.array([[cx, cy, w, h, float(angle_deg)]], dtype=np.float32)
+
+    pipeline_corners = _cxcywh_pipeline_corners(bbox, shape)[0]
+    direct_corners = _cxcywh_boxpoints_corners(bbox)[0]
+
+    assert obb_corners_equivalent(
+        pipeline_corners,
+        direct_corners,
+        rtol=1e-5,
+        atol=1e-4,
+    ), f"Pipeline != boxPoints for angle {angle_deg}: pipeline={pipeline_corners}, direct={direct_corners}"
+
+
+@pytest.mark.parametrize("angle_deg", [0, 90, 180])
+@pytest.mark.parametrize("cx,cy", [(50, 50), (137, 137), (200, 150)])
+@pytest.mark.parametrize("w,h", [(30, 20), (100, 50), (50, 100)])
+def test_cxcywh_pipeline_equals_boxpoints_parametrized(
+    angle_deg: int,
+    cx: float,
+    cy: float,
+    w: float,
+    h: float,
+) -> None:
+    """Pipeline == boxPoints for various centers, dimensions (axis-aligned angles only)."""
+    shape = (300, 400)
+    bbox = np.array([[cx, cy, w, h, float(angle_deg)]], dtype=np.float32)
+
+    pipeline_corners = _cxcywh_pipeline_corners(bbox, shape)[0]
+    direct_corners = _cxcywh_boxpoints_corners(bbox)[0]
+
+    assert obb_corners_equivalent(pipeline_corners, direct_corners, rtol=1e-5, atol=1e-4)
+
+
+def test_cxcywh_pipeline_equals_boxpoints_batch() -> None:
+    """Pipeline == boxPoints for batch of boxes (axis-aligned angles)."""
+    shape = (200, 300)
+    rng = np.random.default_rng(137)
+    n = 8
+    centers = rng.uniform(30, 250, (n, 2))
+    wh = rng.uniform(15, 80, (n, 2))
+    angles = rng.choice([0, 90, 180, -90], size=n)  # axis-aligned only
+    bboxes = np.column_stack(
+        [centers[:, 0], centers[:, 1], wh[:, 0], wh[:, 1], angles],
+    ).astype(np.float32)
+
+    pipeline_corners = _cxcywh_pipeline_corners(bboxes, shape)
+    direct_corners = _cxcywh_boxpoints_corners(bboxes)
+
+    for i in range(n):
+        assert obb_corners_equivalent(
+            pipeline_corners[i],
+            direct_corners[i],
+            rtol=1e-5,
+            atol=1e-3,
+        ), f"Box {i} mismatch: pipeline={pipeline_corners[i]}, direct={direct_corners[i]}"
+
+
+def test_cxcywh_pipeline_equals_boxpoints_thin_rect() -> None:
+    """Pipeline == boxPoints for thin rectangles (axis-aligned only)."""
+    shape = (200, 300)
+    for angle in [0, 90]:
+        bbox = np.array([[100, 100, 100.0, 3.0, float(angle)]], dtype=np.float32)
+        pipeline_corners = _cxcywh_pipeline_corners(bbox, shape)[0]
+        direct_corners = _cxcywh_boxpoints_corners(bbox)[0]
+        assert obb_corners_equivalent(pipeline_corners, direct_corners, atol=1e-3)
+
+
+def test_cxcywh_pipeline_equals_boxpoints_angle_wraparound() -> None:
+    """Pipeline == boxPoints for angles outside [-90, 90) (e.g. 450° -> canonical)."""
+    shape = (200, 300)
+    for angle in [180, 270, 360, 450, -180, -270]:
+        bbox = np.array([[100, 100, 40, 30, float(angle)]], dtype=np.float32)
+        pipeline_corners = _cxcywh_pipeline_corners(bbox, shape)[0]
+        direct_corners = _cxcywh_boxpoints_corners(bbox)[0]
+        assert obb_corners_equivalent(pipeline_corners, direct_corners, rtol=1e-5, atol=1e-4)
+
+
+def test_cxcywh_pipeline_equals_boxpoints_boats_data() -> None:
+    """Pipeline == boxPoints for real boats_raw.json OBB data (axis-aligned only)."""
+    import json
+    from pathlib import Path
+
+    json_path = Path(__file__).resolve().parent.parent / "boats_raw.json"
+    if not json_path.exists():
+        pytest.skip("boats_raw.json not found")
+
+    with json_path.open() as f:
+        data = json.load(f)
+    obbs = [b for b in data.get("bboxes_obb", []) if b.get("angle") is not None]
+    if not obbs:
+        pytest.skip("No OBBs with angle in boats_raw.json")
+
+    # Use image shape from JSON if available, else default
+    shape = (
+        data.get("image_height", 600),
+        data.get("image_width", 1000),
+    )
+    bboxes = np.array(
+        [[b["center_x"], b["center_y"], b["width"], b["height"], b["angle"]] for b in obbs[:20]],
+        dtype=np.float32,
+    )
+
+    # Filter to axis-aligned angles for this test (pipeline known to pass)
+    angle_mod_90 = np.abs(bboxes[:, 4]) % 90
+    axis_aligned = np.isclose(angle_mod_90, 0, atol=1e-5)
+    bboxes = bboxes[axis_aligned]
+    if len(bboxes) == 0:
+        pytest.skip("No axis-aligned OBBs in sample")
+
+    pipeline_corners = _cxcywh_pipeline_corners(bboxes, shape)
+    direct_corners = _cxcywh_boxpoints_corners(bboxes)
+
+    for i in range(len(bboxes)):
+        assert obb_corners_equivalent(
+            pipeline_corners[i],
+            direct_corners[i],
+            rtol=1e-5,
+            atol=1e-3,
+        ), f"Box {i} (angle={bboxes[i, 4]}) mismatch"

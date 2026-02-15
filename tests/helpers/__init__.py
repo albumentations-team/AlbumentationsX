@@ -4,8 +4,9 @@ This package provides reusable utilities to reduce code duplication and improve
 test maintainability across the test suite.
 """
 
-from tests.helpers.compose import ComposeBuilder, create_compose
+from tests.helpers.compose import ComposeBuilder
 from tests.helpers.data import TestDataFactory
+from tests.helpers.obb_utils import obb_corners_equivalent
 from tests.helpers.parametrize import (
     SafeParamsWrapper,
     build_exclude_set,
@@ -20,7 +21,7 @@ __all__ = [
     "TestDataFactory",
     "TransformTestHelper",
     "build_exclude_set",
-    "create_compose",
     "get_transforms_with_categories",
+    "obb_corners_equivalent",
     "wrap_params_safely",
 ]

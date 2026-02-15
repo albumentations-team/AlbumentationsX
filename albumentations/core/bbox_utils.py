@@ -634,7 +634,9 @@ def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
     )
     scaled = base[None, :, :] * np.stack([width, height], axis=1)[:, None, :]
 
-    angles_rad = np.deg2rad(bboxes[:, 4]).astype(bboxes.dtype)
+    # OpenCV RotatedRect uses clockwise angle; standard rotation matrix is CCW.
+    # Negate angle so our corners match cv2.boxPoints.
+    angles_rad = np.deg2rad(-bboxes[:, 4]).astype(bboxes.dtype)
     cos_a = np.cos(angles_rad)
     sin_a = np.sin(angles_rad)
     rotation = np.stack(

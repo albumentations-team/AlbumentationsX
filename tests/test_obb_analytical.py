@@ -29,33 +29,7 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.bbox_utils import obb_to_polygons, polygons_to_obb
-
-
-def _polygons_match(
-    poly_a: np.ndarray,
-    poly_b: np.ndarray,
-    rtol: float = 1e-5,
-    atol: float = 1e-6,
-) -> bool:
-    """Check if two 4-corner polygons represent the same rectangle (geometric equivalence)."""
-    if poly_a.shape != (4, 2) or poly_b.shape != (4, 2):
-        return False
-    c_a, c_b = poly_a.mean(axis=0), poly_b.mean(axis=0)
-    if not np.allclose(c_a, c_b, rtol=rtol, atol=atol):
-        return False
-
-    def _area(p: np.ndarray) -> float:
-        return 0.5 * abs(
-            np.sum(p[:, 0] * np.roll(p[:, 1], -1) - np.roll(p[:, 0], -1) * p[:, 1]),
-        )
-
-    if not np.isclose(_area(poly_a), _area(poly_b), rtol=rtol, atol=atol):
-        return False
-    for i in range(4):
-        dists = np.linalg.norm(poly_b - poly_a[i], axis=1)
-        if dists.min() > atol + rtol * np.linalg.norm(poly_a[i]):
-            return False
-    return True
+from tests.helpers import obb_corners_equivalent
 
 
 def _assert_obb_geometrically_equivalent(
@@ -68,7 +42,7 @@ def _assert_obb_geometrically_equivalent(
     """Assert two OBBs represent the same polygon (allows different w/h/angle ordering)."""
     poly_out = obb_to_polygons(np.array([output_bbox], dtype=np.float32))[0]
     poly_exp = obb_to_polygons(np.array([expected], dtype=np.float32))[0]
-    assert _polygons_match(poly_out, poly_exp, rtol=rtol, atol=atol), (
+    assert obb_corners_equivalent(poly_out, poly_exp, rtol=rtol, atol=atol), (
         err_msg or "OBBs should represent the same polygon"
     )
 

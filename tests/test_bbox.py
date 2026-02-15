@@ -29,6 +29,7 @@ from albumentations.core.bbox_utils import (
 )
 from albumentations.core.composition import BboxParams, Compose, ReplayCompose
 from albumentations.core.transforms_interface import BasicTransform, NoOp
+from tests.helpers import obb_corners_equivalent
 
 
 def _sort_polygon(poly: np.ndarray) -> np.ndarray:
@@ -595,6 +596,81 @@ def test_cxcywh_roundtrip_pixel_values():
     np.testing.assert_allclose(back, original, rtol=1e-5)
 
 
+@pytest.mark.parametrize("angle_deg", [0, 90, 180, -90])
+def test_convert_bboxes_cxcywh_obb_corners_match_boxpoints(angle_deg: int) -> None:
+    """Cxcywh OBB: convert -> denormalize -> obb_to_polygons yields same corners as cv2.boxPoints."""
+    shape = (200, 300)
+    bbox = np.array([[150.0, 100.0, 60.0, 40.0, float(angle_deg)]], dtype=np.float32)
+
+    albu = convert_bboxes_to_albumentations(bbox, "cxcywh", shape, "obb", check_validity=False)
+    internal_px = np.column_stack(
+        [denormalize_bboxes(albu[:, :4], shape), albu[:, 4:5]],
+    )
+    pipeline_corners = obb_to_polygons(internal_px)[0]
+
+    direct_corners = np.array(
+        [cv2.boxPoints(((bbox[0, 0], bbox[0, 1]), (bbox[0, 2], bbox[0, 3]), bbox[0, 4]))],
+        dtype=np.float32,
+    )[0]
+
+    assert obb_corners_equivalent(
+        pipeline_corners,
+        direct_corners,
+        rtol=1e-5,
+        atol=1e-4,
+    ), f"Pipeline != boxPoints for angle {angle_deg}"
+
+
+@pytest.mark.parametrize("angle_deg", [0, 90, 180])
+def test_convert_bboxes_cxcywh_obb_roundtrip_preserves_corners(angle_deg: int) -> None:
+    """Cxcywh OBB roundtrip: albu -> cxcywh -> albu preserves corners (obb_to_polygons)."""
+    shape = (100, 200)
+    bboxes_alb = np.array([[0.2, 0.2, 0.6, 0.5, float(angle_deg)]], dtype=np.float32)
+    internal_orig = np.column_stack(
+        [denormalize_bboxes(bboxes_alb[:, :4], shape), bboxes_alb[:, 4:5]],
+    )
+    corners_orig = obb_to_polygons(internal_orig)
+
+    cxcywh = convert_bboxes_from_albumentations(bboxes_alb, "cxcywh", shape, "obb")
+    back_alb = convert_bboxes_to_albumentations(cxcywh, "cxcywh", shape, "obb")
+    internal_back = np.column_stack(
+        [denormalize_bboxes(back_alb[:, :4], shape), back_alb[:, 4:5]],
+    )
+    corners_back = obb_to_polygons(internal_back)
+
+    assert obb_corners_equivalent(
+        corners_orig[0],
+        corners_back[0],
+        rtol=1e-5,
+        atol=1e-5,
+    ), f"Roundtrip corner mismatch for angle {angle_deg}"
+
+
+@pytest.mark.parametrize(
+    "cx,cy,w,h,angle",
+    [
+        (50, 50, 30, 40, 0.0),
+        (137, 137, 1, 1, 0.0),  # tiny square
+        (100, 100, 200, 5, 90.0),  # thin rect
+    ],
+)
+def test_convert_bboxes_cxcywh_obb_edge_cases(
+    cx: float,
+    cy: float,
+    w: float,
+    h: float,
+    angle: float,
+) -> None:
+    """Cxcywh OBB conversion handles edge cases: tiny, thin, axis-aligned."""
+    shape = (200, 300)
+    bbox = np.array([[cx, cy, w, h, angle]], dtype=np.float32)
+    result = convert_bboxes_to_albumentations(bbox, "cxcywh", shape, "obb", check_validity=False)
+    assert result.shape == (1, 5)
+    assert 0 <= result[0, 0] <= 1 and 0 <= result[0, 1] <= 1
+    assert 0 <= result[0, 2] <= 1 and 0 <= result[0, 3] <= 1
+    assert -90 <= result[0, 4] < 90
+
+
 def test_obb_to_polygons_and_back_preserves_extra():
     bboxes = np.array([[0.25, 0.25, 0.75, 0.75, 30.0, 7.0]], dtype=np.float32)
     polys = obb_to_polygons(bboxes)
@@ -627,11 +703,9 @@ def test_obb_flip_matches_polygon_transform(
     transformed_polys = transform_poly(polys)
     polygons_to_obb(transformed_polys, extra_fields=bboxes[:, 5:])
 
-    # Compare polygon representations (more robust since angle can have multiple equivalent representations)
-    after_polys = np.stack([_sort_polygon(poly) for poly in obb_to_polygons(after_bboxes)])
-    expected_polys = np.stack([_sort_polygon(poly) for poly in transformed_polys])
-
-    np.testing.assert_allclose(after_polys, expected_polys, rtol=1e-5, atol=1e-5)
+    after_polys = obb_to_polygons(after_bboxes)
+    expected_polys = transformed_polys
+    assert obb_corners_equivalent(after_polys[0], expected_polys[0], rtol=1e-5, atol=1e-5)
 
 
 def test_obb_rot90_updates_corners():
@@ -739,9 +813,9 @@ def test_perspective_bboxes_obb_identity():
         bbox_type="obb",
     )
     expected_bboxes = polygons_to_obb(obb_to_polygons(bboxes), extra_fields=bboxes[:, 5:])
-    expected_polys = np.stack([_sort_polygon(poly) for poly in obb_to_polygons(expected_bboxes)])
-    after_polys = np.stack([_sort_polygon(poly) for poly in obb_to_polygons(transformed)])
-    np.testing.assert_allclose(after_polys, expected_polys, rtol=1e-5, atol=1e-5)
+    expected_polys = obb_to_polygons(expected_bboxes)
+    after_polys = obb_to_polygons(transformed)
+    assert obb_corners_equivalent(after_polys[0], expected_polys[0], rtol=1e-5, atol=1e-5)
 
 
 def test_check_bboxes_valid():

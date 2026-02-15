@@ -288,7 +288,7 @@ class Perspective(DualTransform):
         max_width: int,
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params.get("bbox_type", "hbb")
+        bbox_type = params["bbox_type"]
         return fgeometric.perspective_bboxes(
             bboxes,
             params["shape"],
@@ -733,7 +733,7 @@ class Affine(DualTransform):
         output_shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params.get("bbox_type", "hbb")
+        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_affine(
             bboxes,
             bbox_matrix,
@@ -1635,6 +1635,7 @@ class Morphological(DualTransform):
             kernel,
             self.operation,
             image_shape,
+            bbox_type=params["bbox_type"],
         )
 
         return normalize_bboxes(result, image_shape)

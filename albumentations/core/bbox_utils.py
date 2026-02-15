@@ -7,8 +7,7 @@ image augmentations. It forms the core functionality for all bounding box-relate
 in the albumentations library.
 """
 
-from collections.abc import Callable, Sequence
-from functools import wraps
+from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
 import cv2
@@ -23,14 +22,11 @@ from .utils import DataProcessor, Params
 __all__ = [
     "BboxParams",
     "BboxProcessor",
-    "canonicalize_obb",
     "check_bboxes",
     "convert_bboxes_from_albumentations",
     "convert_bboxes_to_albumentations",
     "denormalize_bboxes",
     "filter_bboxes",
-    "normalize_bbox_angles",
-    "normalize_bbox_angles_decorator",
     "normalize_bboxes",
     "obb_to_polygons",
     "polygons_to_obb",
@@ -38,7 +34,6 @@ __all__ = [
 ]
 
 BBOX_OBB_MIN_COLUMNS = 5
-DEFAULT_BBOX_ANGLE_RANGE = (-180.0, 180.0)
 
 
 class BboxParams(Params):
@@ -607,109 +602,22 @@ def normalize_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     return normalized
 
 
-def _canonicalize_angles(angles: np.ndarray, angle_range: tuple[float, float]) -> np.ndarray:
-    start, end = angle_range
-    span = end - start
-    start_arr = np.array(start, dtype=angles.dtype)
-    span_arr = np.array(span, dtype=angles.dtype)
-    return np.remainder(angles - start_arr, span_arr) + start_arr
-
-
-def canonicalize_obb(bboxes: np.ndarray) -> np.ndarray:
-    """Canonicalize OBB: enforce width >= height to avoid minAreaRect 90° ambiguity.
-
-    cv2.minAreaRect can return (w,h) or (h,w) with angle differing by 90°.
-    This ensures consistent representation. For near-squares (w≈h), no swap.
-    """
-    if bboxes.size == 0 or bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
-        return bboxes
-    out = bboxes.copy()
-    w = out[:, 2] - out[:, 0]
-    h = out[:, 3] - out[:, 1]
-    cx = (out[:, 0] + out[:, 2]) * 0.5
-    cy = (out[:, 1] + out[:, 3]) * 0.5
-    swap = h > w * (1.0 + 1e-6)
-    new_w = np.where(swap, h, w)
-    new_h = np.where(swap, w, h)
-    new_angle = np.where(swap, out[:, 4] + 90.0, out[:, 4])
-    out[:, 0] = cx - new_w * 0.5
-    out[:, 2] = cx + new_w * 0.5
-    out[:, 1] = cy - new_h * 0.5
-    out[:, 3] = cy + new_h * 0.5
-    out[:, 4] = new_angle
-    return out
-
-
-def normalize_bbox_angles_decorator(
-    angle_range: tuple[float, float] = DEFAULT_BBOX_ANGLE_RANGE,
-) -> Callable[[Callable[..., np.ndarray]], Callable[..., np.ndarray]]:
-    """Decorator that normalizes bounding box angles in the return value.
-
-    Args:
-        angle_range (tuple[float, float]): Inclusive-exclusive range [start, end) to wrap angles into.
-
-    Returns:
-        Decorator function that wraps bbox-returning functions.
-
-    """
-
-    def decorator(func: Callable[..., np.ndarray]) -> Callable[..., np.ndarray]:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> np.ndarray:
-            bboxes = func(*args, **kwargs)
-
-            # Handle empty arrays
-            if not isinstance(bboxes, np.ndarray) or bboxes.size == 0:
-                return bboxes
-
-            if bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
-                return bboxes
-
-            normalized = bboxes.copy()
-            normalized[:, 4] = _canonicalize_angles(normalized[:, 4], angle_range)
-            return normalized
-
-        return wrapper
-
-    return decorator
-
-
-@handle_empty_array("bboxes")
-def normalize_bbox_angles(
-    bboxes: np.ndarray,
-    angle_range: tuple[float, float] = DEFAULT_BBOX_ANGLE_RANGE,
-) -> np.ndarray:
-    """Normalize bounding box angles to a canonical range.
-
-    Args:
-        bboxes (np.ndarray): Bounding boxes where angle is stored in the 5th column.
-        angle_range (tuple[float, float]): Inclusive-exclusive range [start, end) to wrap angles into.
-
-    Returns:
-        np.ndarray: Bounding boxes with angle column wrapped into the provided range.
-
-    """
-    if bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
-        return bboxes
-
-    normalized = bboxes.copy()
-    normalized[:, 4] = _canonicalize_angles(normalized[:, 4], angle_range)
-    return normalized
-
-
 @handle_empty_array("bboxes")
 def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
-    """Convert oriented bounding boxes to corner polygons (normalized coords).
+    """Convert oriented bounding boxes to corner polygons (vectorized).
+
+    Same convention as cv2.minAreaRect/cv2.boxPoints for consistency with
+    polygons_to_obb. Base rect corners [-w/2,-h/2], [w/2,-h/2], [w/2,h/2], [-w/2,h/2]
+    rotated by angle and translated to center.
 
     Args:
         bboxes (np.ndarray): Array of shape (N, >=5) where each row is
-            [x_min, y_min, x_max, y_max, angle_deg, ...] with normalized coordinates.
+            [x_min, y_min, x_max, y_max, angle_deg, ...]. Coordinate-system agnostic.
             Additional columns beyond the first 5 are preserved but not used.
 
     Returns:
-        np.ndarray: Array of shape (N, 4, 2) containing the corner coordinates of each bounding box,
-            ordered clockwise starting from the top-left corner relative to the rotation.
-            Each corner is represented as [x, y] in normalized coordinates.
+        np.ndarray: Array of shape (N, 4, 2) containing the corner coordinates of each
+            bounding box. Each corner is [x, y] in the same coordinate system as input.
 
     """
     if bboxes.shape[1] < BBOX_OBB_MIN_COLUMNS:
@@ -720,14 +628,8 @@ def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
     center_x = (bboxes[:, 0] + bboxes[:, 2]) * 0.5
     center_y = (bboxes[:, 1] + bboxes[:, 3]) * 0.5
 
-    # Base rectangle corners relative to center
     base = np.array(
-        [
-            [-0.5, -0.5],
-            [0.5, -0.5],
-            [0.5, 0.5],
-            [-0.5, 0.5],
-        ],
+        [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
         dtype=bboxes.dtype,
     )
     scaled = base[None, :, :] * np.stack([width, height], axis=1)[:, None, :]
@@ -741,29 +643,74 @@ def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
             np.stack([sin_a, cos_a], axis=1),
         ],
         axis=1,
-    )  # (N, 2, 2)
-
+    )
     rotated = np.einsum("nki,nij->nkj", scaled, rotation)
     return rotated + np.stack([center_x, center_y], axis=1)[:, None, :]
+
+
+def _norm_angle_90(a: float) -> float:
+    """Normalize angle to [-90, 90) degrees."""
+    a = a % 360.0
+    if a >= 180.0:
+        a -= 360.0
+    if a >= 90.0:
+        a -= 180.0
+    elif a < -90.0:
+        a += 180.0
+    return a
+
+
+def _corners_to_obb_params(corners: np.ndarray) -> tuple[float, float, float, float, float]:
+    """Derive (cx, cy, width, height, angle) from 4 corners.
+
+    Ignores cv2.minAreaRect (w,h,angle) conventions. Uses corners directly:
+    - width = length of edge more parallel to horizontal
+    - height = length of the other edge
+    - angle = rotation of width edge, in [-90, 90) degrees
+
+    Order-invariant: considers all 4 edges so boxPoints corner order does not matter.
+    """
+    # Collect all 4 edges (rectangle: 2 unique lengths, 2 unique angles)
+    edges: list[tuple[float, float]] = []
+    for i in range(4):
+        v = corners[(i + 1) % 4] - corners[i]
+        length = float(np.linalg.norm(v))
+        a = _norm_angle_90(np.degrees(np.arctan2(v[1], v[0])))
+        edges.append((length, a))
+
+    # Pick width = edge with smaller |angle| (more parallel to horizontal)
+    (len1, a1), (len2, a2) = edges[0], edges[1]
+    if abs(a1) <= abs(a2):
+        width, height = len1, len2
+        angle = a1
+    else:
+        width, height = len2, len1
+        angle = a2
+
+    cx = float(corners[:, 0].mean())
+    cy = float(corners[:, 1].mean())
+    return cx, cy, width, height, angle
 
 
 @handle_empty_array("points")
 def polygons_to_obb(
     polygons: np.ndarray,
     extra_fields: np.ndarray | None = None,
-    angle_range: tuple[float, float] = DEFAULT_BBOX_ANGLE_RANGE,
 ) -> np.ndarray:
     """Fit oriented bbox from corner polygons.
 
-    The function is coordinate-system agnostic - it preserves the input coordinate
-    system. By convention, it's typically used with normalized coordinates [0, 1],
-    but it works with any coordinate system (e.g., pixel coordinates for improved
-    numerical accuracy with cv2.minAreaRect).
+    Uses cv2.minAreaRect only to get the 4 corners (via boxPoints). From those
+    corners we derive (w, h, angle) with our convention: width = edge more
+    parallel to horizontal, angle in [-90, 90). This ensures obb_to_polygons
+    and cv2.boxPoints produce visually correct results regardless of
+    minAreaRect's internal (w,h,angle) representation.
+
+    The function is coordinate-system agnostic - it preserves the input
+    coordinate system.
 
     Args:
         polygons: array of shape (N, 4, 2) with corners in any coordinate system.
         extra_fields: optional array (N, M) to append after bbox coords + angle.
-        angle_range: canonical range to wrap final angle into.
 
     Returns:
         Array of OBB bounding boxes in the same coordinate system as input polygons.
@@ -783,19 +730,16 @@ def polygons_to_obb(
 
     for poly in polygons32:
         rect = cv2.minAreaRect(poly)
-        (cx, cy), (w, h), angle = rect
-        x_min = cx - w / 2.0
-        x_max = cx + w / 2.0
-        y_min = cy - h / 2.0
-        y_max = cy + h / 2.0
+        corners = cv2.boxPoints(rect).astype(np.float64)
+        cx, cy, width, height, angle = _corners_to_obb_params(corners)
+
+        x_min = cx - width / 2.0
+        x_max = cx + width / 2.0
+        y_min = cy - height / 2.0
+        y_max = cy + height / 2.0
         obb_list.append([x_min, y_min, x_max, y_max, angle])
 
     obb = np.array(obb_list, dtype=polygons.dtype)
-    obb = canonicalize_obb(obb)
-
-    # Normalize angles
-    if obb.shape[1] >= BBOX_OBB_MIN_COLUMNS:
-        obb[:, 4] = _canonicalize_angles(obb[:, 4], angle_range)
 
     if extra_fields is not None:
         return np.concatenate([obb, extra_fields], axis=1)
@@ -866,44 +810,6 @@ def calculate_bbox_areas_in_pixels(bboxes: np.ndarray, shape: tuple[int, int]) -
     return widths * heights
 
 
-def _cxcywh_minarearect_to_albumentations(
-    bboxes: np.ndarray,
-    shape: tuple[int, int],
-) -> np.ndarray:
-    """Convert cxcywh OBB (minAreaRect) to albumentations OBB format, in pixels.
-
-    Albumentations OBB stores [cx-w/2, cy-h/2, cx+w/2, cy+h/2, angle] - center ± half-dims
-    in local frame (same as polygons_to_obb). No AABB. Caller normalizes.
-    """
-    cx, cy = bboxes[:, 0], bboxes[:, 1]
-    w, h = bboxes[:, 2], bboxes[:, 3]
-    x_min = cx - w / 2
-    y_min = cy - h / 2
-    x_max = cx + w / 2
-    y_max = cy + h / 2
-    return np.column_stack([x_min, y_min, x_max, y_max])
-
-
-def _albumentations_obb_to_cxcywh_minarearect(
-    bboxes: np.ndarray,
-    denormalized_bboxes: np.ndarray,
-) -> np.ndarray:
-    """Convert albumentations OBB to cxcywh minAreaRect format.
-
-    Albumentations OBB is [cx-w/2, cy-h/2, cx+w/2, cy+h/2, angle]. Extract cx,cy,w,h directly.
-    """
-    x_min = denormalized_bboxes[:, 0]
-    y_min = denormalized_bboxes[:, 1]
-    x_max = denormalized_bboxes[:, 2]
-    y_max = denormalized_bboxes[:, 3]
-    cx = (x_min + x_max) * 0.5
-    cy = (y_min + y_max) * 0.5
-    w = x_max - x_min
-    h = y_max - y_min
-    angle = bboxes[:, 4]
-    return np.column_stack([cx, cy, w, h, angle]).astype(bboxes.dtype)
-
-
 @handle_empty_array("bboxes")
 def convert_bboxes_to_albumentations(
     bboxes: np.ndarray,
@@ -915,9 +821,6 @@ def convert_bboxes_to_albumentations(
     """Convert bounding boxes from a specified format to the format used by albumentations:
     normalized coordinates of top-left and bottom-right corners of the bounding box in the form of
     `(x_min, y_min, x_max, y_max)` e.g. `(0.15, 0.27, 0.67, 0.5)`.
-
-    For cxcywh with OBB (5+ columns): uses minAreaRect convention (width/height = oriented-rect
-    side lengths), matching cv2.minAreaRect and cv2.boxPoints.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -943,6 +846,7 @@ def convert_bboxes_to_albumentations(
     converted_bboxes = np.zeros_like(bboxes)
     converted_bboxes[:, 4:] = bboxes[:, 4:]  # Preserve additional columns
 
+    skip_normalize = False
     if source_format == "coco":
         converted_bboxes[:, 0] = bboxes[:, 0]  # x_min
         converted_bboxes[:, 1] = bboxes[:, 1]  # y_min
@@ -957,10 +861,18 @@ def convert_bboxes_to_albumentations(
         converted_bboxes[:, 2] = bboxes[:, 0] + w_half
         converted_bboxes[:, 3] = bboxes[:, 1] + h_half
     elif source_format == "cxcywh":
-        is_obb = bbox_type == "obb" and bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS
-        if is_obb:
-            converted_bboxes[:, :4] = _cxcywh_minarearect_to_albumentations(bboxes, shape)
+        if bbox_type == "obb":
+            # OBB cxcywh is typically OpenCV minAreaRect format; convert via corners
+            corners = np.array(
+                [cv2.boxPoints(((b[0], b[1]), (b[2], b[3]), b[4])) for b in bboxes.astype(np.float32)],
+                dtype=np.float32,
+            )
+            internal_px = polygons_to_obb(corners)
+            converted_bboxes[:, :4] = normalize_bboxes(internal_px[:, :4], shape)
+            converted_bboxes[:, 4:5] = internal_px[:, 4:5]
+            skip_normalize = True
         else:
+            # HBB: center ± half-dims
             w_half, h_half = bboxes[:, 2] / 2, bboxes[:, 3] / 2
             converted_bboxes[:, 0] = bboxes[:, 0] - w_half
             converted_bboxes[:, 1] = bboxes[:, 1] - h_half
@@ -969,11 +881,8 @@ def convert_bboxes_to_albumentations(
     else:  # pascal_voc
         converted_bboxes[:, :4] = bboxes[:, :4]
 
-    if source_format != "yolo":
+    if source_format != "yolo" and not skip_normalize:
         converted_bboxes[:, :4] = normalize_bboxes(converted_bboxes[:, :4], shape)
-
-    if converted_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS:
-        converted_bboxes[:, 4] = _canonicalize_angles(converted_bboxes[:, 4], DEFAULT_BBOX_ANGLE_RANGE)
 
     if check_validity:
         check_bboxes(converted_bboxes)
@@ -990,9 +899,6 @@ def convert_bboxes_from_albumentations(
     check_validity: bool = False,
 ) -> np.ndarray:
     """Convert bounding boxes from the format used by albumentations to a specified format.
-
-    For cxcywh with OBB (5+ columns): outputs minAreaRect format (width/height = oriented-rect
-    side lengths), matching cv2.minAreaRect and cv2.boxPoints.
 
     Args:
         bboxes (np.ndarray): A numpy array of albumentations bounding boxes with shape (num_bboxes, 4+).
@@ -1033,19 +939,13 @@ def convert_bboxes_from_albumentations(
         converted_bboxes[:, 2] = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]  # width
         converted_bboxes[:, 3] = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]  # height
     elif target_format == "cxcywh":
-        is_obb = bbox_type == "obb" and converted_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS
-        if is_obb:
-            converted_bboxes[:, :5] = _albumentations_obb_to_cxcywh_minarearect(bboxes, denormalized_bboxes)
-        else:
-            converted_bboxes[:, 0] = (denormalized_bboxes[:, 0] + denormalized_bboxes[:, 2]) / 2  # x_center
-            converted_bboxes[:, 1] = (denormalized_bboxes[:, 1] + denormalized_bboxes[:, 3]) / 2  # y_center
-            converted_bboxes[:, 2] = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]  # width
-            converted_bboxes[:, 3] = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]  # height
+        # albumentations corners -> cxcywh (center, w, h), same for HBB and OBB; angle preserved in [4:]
+        converted_bboxes[:, 0] = (denormalized_bboxes[:, 0] + denormalized_bboxes[:, 2]) / 2  # x_center
+        converted_bboxes[:, 1] = (denormalized_bboxes[:, 1] + denormalized_bboxes[:, 3]) / 2  # y_center
+        converted_bboxes[:, 2] = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]  # width
+        converted_bboxes[:, 3] = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]  # height
     else:  # pascal_voc
         converted_bboxes[:, :4] = denormalized_bboxes
-
-    if converted_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS:
-        converted_bboxes[:, 4] = _canonicalize_angles(converted_bboxes[:, 4], DEFAULT_BBOX_ANGLE_RANGE)
 
     return converted_bboxes
 
@@ -1286,10 +1186,6 @@ def filter_bboxes(
         num_cols = max(bboxes.shape[1], BBOX_OBB_MIN_COLUMNS) if bbox_type == "obb" else max(bboxes.shape[1], 4)
         return np.array([], dtype=np.float32).reshape(0, num_cols)
 
-    # Normalize angles for OBB
-    if bbox_type == "obb" and filtered_bboxes.shape[1] >= BBOX_OBB_MIN_COLUMNS:
-        filtered_bboxes = normalize_bbox_angles(filtered_bboxes)
-
     return filtered_bboxes
 
 
@@ -1426,7 +1322,7 @@ def bboxes_to_mask(
 def mask_to_bboxes(
     masks: np.ndarray,
     original_bboxes: np.ndarray,
-    bbox_type: Literal["hbb", "obb"] = "hbb",
+    bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
     """Convert masks back to bounding boxes.
 
@@ -1457,24 +1353,12 @@ def mask_to_bboxes(
             y_coords, x_coords = np.where(mask)
 
             if bbox_type == "obb":
-                # Use cv2.minAreaRect for oriented bounding boxes
+                # Use boxPoints + polygons_to_obb for OpenCV-version-invariant OBB
                 points = np.column_stack([x_coords, y_coords]).astype(np.float32)
                 rect = cv2.minAreaRect(points)
-                center_x, center_y = rect[0]
-                width, height = rect[1]
-                angle = rect[2]
-
-                # Convert from center/size format to axis-aligned bbox format
-                # The axis-aligned bbox that contains the rotated box
-                x_min = center_x - width / 2
-                x_max = center_x + width / 2
-                y_min = center_y - height / 2
-                y_max = center_y + height / 2
-
-                obb = np.array([[x_min, y_min, x_max, y_max, angle]], dtype=np.float32)
-                obb = canonicalize_obb(obb)
-                obb[:, 4] = _canonicalize_angles(obb[:, 4], DEFAULT_BBOX_ANGLE_RANGE)
-                new_bboxes.append(obb[0].tolist())
+                corners = cv2.boxPoints(rect).astype(np.float64)
+                obb = polygons_to_obb(corners.reshape(1, 4, 2))[0]
+                new_bboxes.append(obb.tolist())
             else:
                 # HBB: axis-aligned bounding box
                 x_min, x_max = x_coords.min(), x_coords.max()

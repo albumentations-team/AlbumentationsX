@@ -31,6 +31,48 @@ from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.bbox_utils import obb_to_polygons, polygons_to_obb
 
 
+def _polygons_match(
+    poly_a: np.ndarray,
+    poly_b: np.ndarray,
+    rtol: float = 1e-5,
+    atol: float = 1e-6,
+) -> bool:
+    """Check if two 4-corner polygons represent the same rectangle (geometric equivalence)."""
+    if poly_a.shape != (4, 2) or poly_b.shape != (4, 2):
+        return False
+    c_a, c_b = poly_a.mean(axis=0), poly_b.mean(axis=0)
+    if not np.allclose(c_a, c_b, rtol=rtol, atol=atol):
+        return False
+
+    def _area(p: np.ndarray) -> float:
+        return 0.5 * abs(
+            np.sum(p[:, 0] * np.roll(p[:, 1], -1) - np.roll(p[:, 0], -1) * p[:, 1]),
+        )
+
+    if not np.isclose(_area(poly_a), _area(poly_b), rtol=rtol, atol=atol):
+        return False
+    for i in range(4):
+        dists = np.linalg.norm(poly_b - poly_a[i], axis=1)
+        if dists.min() > atol + rtol * np.linalg.norm(poly_a[i]):
+            return False
+    return True
+
+
+def _assert_obb_geometrically_equivalent(
+    output_bbox: np.ndarray,
+    expected: np.ndarray,
+    rtol: float = 1e-4,
+    atol: float = 1e-4,
+    err_msg: str = "",
+) -> None:
+    """Assert two OBBs represent the same polygon (allows different w/h/angle ordering)."""
+    poly_out = obb_to_polygons(np.array([output_bbox], dtype=np.float32))[0]
+    poly_exp = obb_to_polygons(np.array([expected], dtype=np.float32))[0]
+    assert _polygons_match(poly_out, poly_exp, rtol=rtol, atol=atol), (
+        err_msg or "OBBs should represent the same polygon"
+    )
+
+
 def rotate_polygon(
     polygon: np.ndarray,
     cx: float,
@@ -182,12 +224,12 @@ def test_obb_rotation_centered_rectangular_box_square_image(rotation_deg: int) -
 
     expected = compute_obb_after_rotation(input_bbox, 0.5, 0.5, rotation_deg)
 
-    np.testing.assert_allclose(
-        output_bbox[:4],
-        expected[:4],
+    _assert_obb_geometrically_equivalent(
+        output_bbox,
+        expected,
         rtol=1e-4,
         atol=1e-4,
-        err_msg=f"Rectangular OBB AABB incorrect after {rotation_deg}° rotation",
+        err_msg=f"Rectangular OBB incorrect after {rotation_deg}° rotation",
     )
 
 
@@ -228,9 +270,9 @@ def test_obb_rotation_with_initial_angle(rotation_deg: int, initial_angle: float
 
     expected = compute_obb_after_rotation(input_bbox, 0.5, 0.5, rotation_deg)
 
-    np.testing.assert_allclose(
-        output_bbox[:4],
-        expected[:4],
+    _assert_obb_geometrically_equivalent(
+        output_bbox,
+        expected,
         rtol=1e-4,
         atol=1e-4,
         err_msg=f"OBB with initial angle {initial_angle}° incorrect after {rotation_deg}° rotation",
@@ -966,10 +1008,9 @@ def test_obb_affine_pure_translation(translate_x: float, translate_y: float) -> 
 
 
 def _obb_canonical_angle(angle_deg: float) -> float:
-    """Canonical form for rectangle angle: [0, 180).
+    """Reduce rectangle angle to [0, 180) for comparison.
 
-    With width>=height convention (canonicalize_obb), only θ≡θ+180°.
-    No 90° w/h swap ambiguity for non-square boxes.
+    Same rect can have θ or θ+180°; minAreaRect may also swap w/h (θ≡θ+90°).
     """
     return ((angle_deg % 360) + 360) % 360 % 180
 
@@ -1183,15 +1224,13 @@ def test_obb_affine_pure_rotation_preserves_dims_and_angle(rotate: float) -> Non
     )
 
     # When initial angle=0, output angle equals Affine rotation. Affine uses clockwise rotation
-    # (positive rotate = CW), so output angle = -rotate. With width>=height, only θ≡θ+180.
+    # (positive rotate = CW), so output angle = -rotate. minAreaRect may return θ or θ+90° (w/h swap).
     out_can = _obb_canonical_angle(float(out_obb[0, 4]))
     rot_can = _obb_canonical_angle(-rotate)
-    np.testing.assert_allclose(
-        out_can,
-        rot_can,
-        rtol=1e-5,
-        atol=1e-3,
-        err_msg=f"Angle canonical form: out={out_can} should match rotate={rot_can}",
+    diff = abs(out_can - rot_can)
+    # Allow θ≡θ+90° (minAreaRect w/h swap) and θ≡θ+180°
+    assert diff < 1e-3 or abs(diff - 90) < 1e-3 or abs(diff - 180) < 1e-3, (
+        f"Angle canonical form: out={out_can} should match rotate={rot_can} (mod 90°)"
     )
 
 
@@ -1273,19 +1312,12 @@ def test_obb_affine_rotation_matches_analytical_center_bbox(rotate: float) -> No
     result = transform(image=image, bboxes=obb.tolist())
     affined = np.array(result["bboxes"], dtype=np.float32)[0]
 
-    np.testing.assert_allclose(
-        affined[:4],
-        analytical[:4],
+    _assert_obb_geometrically_equivalent(
+        affined,
+        analytical,
         rtol=1e-4,
         atol=1e-3,
         err_msg=f"Affine should match analytical (center) for rotate={rotate}",
-    )
-    np.testing.assert_allclose(
-        _obb_canonical_angle(float(affined[4])),
-        _obb_canonical_angle(float(analytical[4])),
-        rtol=1e-4,
-        atol=1e-2,
-        err_msg=f"Angle should match for rotate={rotate}",
     )
 
 
@@ -1775,10 +1807,9 @@ def test_obb_affine_combined_scale_rotate(scale: float, rotation_deg: int) -> No
 
     expected_obb = polygons_to_obb(rotated_polygon.reshape(1, 4, 2))[0]
 
-    # AABB should be close
-    np.testing.assert_allclose(
-        output_bbox[:4],
-        expected_obb[:4],
+    _assert_obb_geometrically_equivalent(
+        output_bbox,
+        expected_obb,
         rtol=1e-3,
         atol=1e-3,
         err_msg=f"Combined scale={scale}, rotate={rotation_deg} incorrect",

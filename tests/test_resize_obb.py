@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 import albumentations as A
-from albumentations.core.bbox_utils import normalize_bbox_angles
 
 
 class TestRandomScaleOBB:
@@ -222,9 +221,8 @@ class TestResizeOBB:
         assert np.all(result["bboxes"][0][:4] >= 0)
         assert np.all(result["bboxes"][0][:4] <= 1)
 
-        # Angle should be normalized to [-180, 180]
-        normalized_result = normalize_bbox_angles(result["bboxes"])
-        assert -180 <= normalized_result[0][4] <= 180
+        # Angle should be valid (not NaN)
+        assert not np.isnan(result["bboxes"][0][4])
 
     def test_resize_non_uniform_with_multiple_obbs(self):
         """Test non-uniform resize with multiple OBB boxes."""
@@ -347,6 +345,5 @@ class TestResizeOBBEdgeCases:
 
         # Result angle should be in range after normalization
         result_angle = result["bboxes"][0][4]
-        # cv2.minAreaRect returns angles in [-90, 0], but normalize_bbox_angles normalizes to [-180, 180]
         # After any transformation, the angle should be valid
         assert not np.isnan(result_angle)

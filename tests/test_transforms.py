@@ -312,20 +312,27 @@ def test_lambda_transform():
         return -image
 
     def one_hot_mask(mask, num_channels, **kwargs):
-        return np.eye(num_channels, dtype=np.uint8)[mask]
+        m = mask[:, :, 0] if mask.ndim == 3 else mask
+        return np.eye(num_channels, dtype=np.uint8)[m]
 
     def vflip_bboxes(bboxes, **kwargs):
-        return fgeometric.bboxes_vflip(bboxes)
+        return fgeometric.bboxes_vflip(bboxes, bbox_type=kwargs["bbox_type"])
 
     def vflip_keypoints(keypoints, **kwargs):
         return fgeometric.keypoints_vflip(keypoints, kwargs["shape"][0])
 
-    aug = A.Lambda(
-        image=negate_image,
-        mask=partial(one_hot_mask, num_channels=16),
-        bboxes=vflip_bboxes,
-        keypoints=vflip_keypoints,
-        p=1,
+    aug = A.Compose(
+        [
+            A.Lambda(
+                image=negate_image,
+                mask=partial(one_hot_mask, num_channels=16),
+                bboxes=vflip_bboxes,
+                keypoints=vflip_keypoints,
+                p=1,
+            ),
+        ],
+        bbox_params=A.BboxParams(coord_format="albumentations"),
+        keypoint_params=A.KeypointParams(coord_format="xyas", angle_in_degrees=False),
     )
 
     bboxes = np.array([[0.1, 0.1, 0.4, 0.5]])
@@ -334,7 +341,8 @@ def test_lambda_transform():
     height, width = 10, 10
 
     image = np.ones((height, width, 3), dtype=np.float32)
-    mask = np.tile(np.arange(0, height), (width, 1)).T
+    # Use (H, W, 1) so Compose won't add channel dim; one_hot expects 2D indices
+    mask = np.tile(np.arange(0, height), (width, 1)).T.astype(np.uint8)[..., np.newaxis]
 
     output = aug(
         image=image,
@@ -347,12 +355,13 @@ def test_lambda_transform():
     assert output["mask"].shape[2] == 16  # num_channels
     np.testing.assert_array_almost_equal(
         output["bboxes"],
-        fgeometric.bboxes_vflip(np.array(bboxes)),
+        fgeometric.bboxes_vflip(np.array(bboxes), bbox_type="hbb"),
     )
-    np.testing.assert_array_almost_equal(
-        output["keypoints"],
-        fgeometric.keypoints_vflip(np.array(keypoints), height),
-    )
+    # Keypoints: vflip y and negate angle; Lambda receives albumentations format [x,y,z,angle,scale]
+    albu_kp = np.array([[2, 3, 0, np.pi / 4, 5]], dtype=np.float32)
+    flipped_albu = fgeometric.keypoints_vflip(albu_kp, height)
+    expected_xyas = np.column_stack([flipped_albu[:, 0], flipped_albu[:, 1], flipped_albu[:, 3], flipped_albu[:, 4]])
+    np.testing.assert_array_almost_equal(output["keypoints"], expected_xyas)
 
 
 def test_channel_droput():
@@ -1461,7 +1470,11 @@ def test_pad_if_needed_functionality(params, expected):
 )
 def test_dual_transforms_methods(augmentation_cls, params):
     """Checks whether transformations based on DualTransform dont has abstract methods."""
-    aug = augmentation_cls(p=1, **params)
+    aug = A.Compose(
+        [augmentation_cls(p=1, **params)],
+        bbox_params=A.BboxParams(coord_format="albumentations"),
+        keypoint_params=A.KeypointParams(coord_format="xyas"),
+    )
     aug.set_random_seed(42)
 
     image = SQUARE_UINT8_IMAGE
@@ -1475,7 +1488,7 @@ def test_dual_transforms_methods(augmentation_cls, params):
         "keypoints": np.array([(0, 0, 1, 0, 0), (1, 1, 1, 0, 0)]),
     }
 
-    for target in aug.targets:
+    for target in aug.transforms[0].targets:
         if target in arg:
             kwarg = {target: arg[target]}
             try:

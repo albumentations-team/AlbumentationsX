@@ -33,15 +33,24 @@ Albumentations supports two types of bounding boxes:
 - First 4 values: `[cx-w/2, cy-h/2, cx+w/2, cy+h/2]` — center ± half-dims in local frame (minAreaRect convention)
 - `angle` (5th value) defines rotation in degrees
 - Can represent rotated objects accurately
-- Angle is normalized to [-180, 180) range
 
-**OBB convention: minAreaRect**
+**OBB convention: corner-based**
 
-We use the **cv2.minAreaRect** convention: width and height are the **side lengths** of the oriented rectangle. The stored `(x_min, y_min, x_max, y_max)` are center ± half-dims, so `width = x_max - x_min` and `height = y_max - y_min` are the oriented dimensions. No AABB in the internal format (AABB is only used when clipping OBBs that went out of the image).
+We derive OBB parameters from the 4 corners (via `cv2.minAreaRect` + `cv2.boxPoints`), not from minAreaRect's raw `(w,h,angle)`. Our convention:
 
-**OBB canonical form: width ≥ height**
+- **width** = length of the edge more parallel to horizontal
+- **height** = length of the other edge
+- **angle** = rotation of the width edge, in [-90, 90) degrees
 
-After any polygon fitting (e.g. `cv2.minAreaRect`), we enforce **width ≥ height**: the longest side is always width, the shortest is height. This eliminates the 90° w/h swap ambiguity from minAreaRect, reducing angle equivalence to **θ ≡ θ + 180°** only (instead of θ ≡ θ + 90°). For near-squares (w ≈ h), no swap is applied to avoid numerical instability. See `canonicalize_obb()` in `bbox_utils.py`.
+No requirement that width >= height (like HBB). The stored `(x_min, y_min, x_max, y_max)` are center ± half-dims in the local frame, so `width = x_max - x_min` and `height = y_max - y_min`. This ensures `obb_to_polygons` and `cv2.boxPoints` produce visually correct results regardless of minAreaRect's internal representation.
+
+**OBB corner-based invariance**
+
+We use `cv2.minAreaRect` only to obtain the 4 corners via `cv2.boxPoints`; we derive `(w, h, angle)` from corners via `_corners_to_obb_params`. This makes us **OpenCV-version-invariant**: minAreaRect's raw angle range has changed across versions (pre-4.5.1: [-90, 0); 4.5.1–4.12: [0, 90]; 4.13+: [-90, 0)) — we ignore all of that.
+
+**Why angle is [-90, 90) and not [0, 180]?** The width edge is an undirected line. Two angles that differ by 180° describe the same line (e.g., 0° = horizontal right, 180° = horizontal left). We canonicalize to [-90, 90) to avoid redundancy.
+
+**Rule:** Never use `cv2.minAreaRect`'s raw `(w, h, angle)` output. Always use `cv2.boxPoints(rect)` to get corners, then `polygons_to_obb` to derive our canonical OBB.
 
 **Important**: Both formats can have additional columns for labels, class IDs, track IDs, etc.
 

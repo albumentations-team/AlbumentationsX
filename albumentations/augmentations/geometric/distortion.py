@@ -301,7 +301,7 @@ class BaseDistortion(DualTransform):
         **params: Any,
     ) -> np.ndarray:
         image_shape = params["shape"][:2]
-        bbox_type = params.get("bbox_type", "hbb")
+        bbox_type = params["bbox_type"]
         bboxes_denorm = denormalize_bboxes(bboxes, image_shape)
         bboxes_returned = fgeometric.remap_bboxes(
             bboxes_denorm,

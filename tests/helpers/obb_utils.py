@@ -3,11 +3,38 @@
 import numpy as np
 
 
-def _polygon_area(corners: np.ndarray) -> float:
-    """Shoelace formula for polygon area."""
-    return 0.5 * abs(
-        np.sum(corners[:, 0] * np.roll(corners[:, 1], -1)) - np.sum(np.roll(corners[:, 0], -1) * corners[:, 1]),
+def polygon_area(corners: np.ndarray) -> float | np.ndarray:
+    """Shoelace formula for polygon area.
+
+    Args:
+        corners: (4, 2) or (N, 4, 2) array of corner coordinates.
+
+    Returns:
+        Scalar area for single polygon, or (N,) array for batched.
+
+    """
+    if corners.ndim == 2:
+        term = corners[:, 0] * np.roll(corners[:, 1], -1) - np.roll(corners[:, 0], -1) * corners[:, 1]
+        return 0.5 * abs(float(np.sum(term)))
+    term = (
+        corners[:, :, 0] * np.roll(corners[:, :, 1], -1, axis=1)
+        - np.roll(corners[:, :, 0], -1, axis=1) * corners[:, :, 1]
     )
+    return 0.5 * np.abs(np.sum(term, axis=1))
+
+
+def polygon_center(corners: np.ndarray) -> np.ndarray:
+    """Mean of polygon corners (center).
+
+    Args:
+        corners: (4, 2) or (N, 4, 2) array of corner coordinates.
+
+    Returns:
+        (2,) or (N, 2) array of center coordinates.
+
+    """
+    axis = 0 if corners.ndim == 2 else 1
+    return corners.mean(axis=axis)
 
 
 def obb_corners_equivalent(
@@ -29,14 +56,14 @@ def obb_corners_equivalent(
         return False
 
     # Center
-    c_a = corners_a.mean(axis=0)
-    c_b = corners_b.mean(axis=0)
+    c_a = polygon_center(corners_a)
+    c_b = polygon_center(corners_b)
     if not np.allclose(c_a, c_b, rtol=rtol, atol=atol):
         return False
 
     # Area
-    area_a = _polygon_area(corners_a)
-    area_b = _polygon_area(corners_b)
+    area_a = polygon_area(corners_a)
+    area_b = polygon_area(corners_b)
     if not np.isclose(area_a, area_b, rtol=rtol, atol=atol):
         return False
 

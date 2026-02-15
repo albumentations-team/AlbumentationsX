@@ -29,11 +29,11 @@ from albumentations.core.bbox_utils import (
 )
 from albumentations.core.composition import BboxParams, Compose, ReplayCompose
 from albumentations.core.transforms_interface import BasicTransform, NoOp
-from tests.helpers import obb_corners_equivalent
+from tests.helpers import obb_corners_equivalent, polygon_area, polygon_center
 
 
 def _sort_polygon(poly: np.ndarray) -> np.ndarray:
-    center = poly.mean(axis=0)
+    center = polygon_center(poly)
     angles = np.arctan2(poly[:, 1] - center[1], poly[:, 0] - center[0])
     order = np.argsort(angles)
     return poly[order]
@@ -2382,16 +2382,8 @@ def test_mask_to_bboxes_obb_uses_corner_based_convention():
     polys_in = obb_to_polygons(result)
     obb_rt = polygons_to_obb(polys_in)
     polys_out = obb_to_polygons(obb_rt)
-    np.testing.assert_allclose(polys_in.mean(axis=1), polys_out.mean(axis=1), rtol=1e-5)
-    area_in = 0.5 * abs(
-        np.sum(polys_in[0, :, 0] * np.roll(polys_in[0, :, 1], -1) - np.roll(polys_in[0, :, 0], -1) * polys_in[0, :, 1]),
-    )
-    area_out = 0.5 * abs(
-        np.sum(
-            polys_out[0, :, 0] * np.roll(polys_out[0, :, 1], -1) - np.roll(polys_out[0, :, 0], -1) * polys_out[0, :, 1],
-        ),
-    )
-    np.testing.assert_allclose(area_in, area_out, rtol=1e-5)
+    np.testing.assert_allclose(polygon_center(polys_in), polygon_center(polys_out), rtol=1e-5)
+    np.testing.assert_allclose(polygon_area(polys_in), polygon_area(polys_out), rtol=1e-5)
 
 
 @pytest.mark.obb
@@ -2406,20 +2398,8 @@ def test_convert_bboxes_cxcywh_obb_roundtrip():
     back_alb = convert_bboxes_to_albumentations(cxcywh, "cxcywh", shape, "obb")
     corners_back = obb_to_polygons(denormalize_bboxes(back_alb, shape))
 
-    np.testing.assert_allclose(corners_orig.mean(axis=1), corners_back.mean(axis=1), rtol=1e-5)
-    area_orig = 0.5 * abs(
-        np.sum(
-            corners_orig[0, :, 0] * np.roll(corners_orig[0, :, 1], -1)
-            - np.roll(corners_orig[0, :, 0], -1) * corners_orig[0, :, 1],
-        ),
-    )
-    area_back = 0.5 * abs(
-        np.sum(
-            corners_back[0, :, 0] * np.roll(corners_back[0, :, 1], -1)
-            - np.roll(corners_back[0, :, 0], -1) * corners_back[0, :, 1],
-        ),
-    )
-    np.testing.assert_allclose(area_orig, area_back, rtol=1e-5)
+    np.testing.assert_allclose(polygon_center(corners_orig), polygon_center(corners_back), rtol=1e-5)
+    np.testing.assert_allclose(polygon_area(corners_orig), polygon_area(corners_back), rtol=1e-5)
 
 
 def test_empty_bboxes():

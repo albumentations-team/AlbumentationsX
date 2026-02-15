@@ -6,7 +6,7 @@ test maintainability across the test suite.
 
 from tests.helpers.compose import ComposeBuilder, create_compose
 from tests.helpers.data import TestDataFactory
-from tests.helpers.obb_utils import obb_corners_equivalent
+from tests.helpers.obb_utils import obb_corners_equivalent, polygon_area, polygon_center
 from tests.helpers.parametrize import (
     SafeParamsWrapper,
     build_exclude_set,
@@ -24,5 +24,7 @@ __all__ = [
     "create_compose",
     "get_transforms_with_categories",
     "obb_corners_equivalent",
+    "polygon_area",
+    "polygon_center",
     "wrap_params_safely",
 ]

@@ -17,7 +17,7 @@ from albumentations.core.bbox_utils import (
     obb_to_polygons,
     polygons_to_obb,
 )
-from tests.helpers import obb_corners_equivalent
+from tests.helpers import obb_corners_equivalent, polygon_area, polygon_center
 
 
 def _canonicalize_obb_cxcywh(
@@ -301,14 +301,8 @@ def test_minarearect_center_and_area_preserved(angle_deg: int) -> None:
     obb_out = polygons_to_obb(polys_in.reshape(1, 4, 2))[0]
     polys_out = obb_to_polygons(obb_out.reshape(1, -1))[0]
     # Center and area must match
-    np.testing.assert_allclose(polys_in.mean(axis=0), polys_out.mean(axis=0), rtol=1e-5)
-    area_in = 0.5 * abs(
-        np.sum(polys_in[:, 0] * np.roll(polys_in[:, 1], -1) - np.roll(polys_in[:, 0], -1) * polys_in[:, 1]),
-    )
-    area_out = 0.5 * abs(
-        np.sum(polys_out[:, 0] * np.roll(polys_out[:, 1], -1) - np.roll(polys_out[:, 0], -1) * polys_out[:, 1]),
-    )
-    np.testing.assert_allclose(area_in, area_out, rtol=1e-5)
+    np.testing.assert_allclose(polygon_center(polys_in), polygon_center(polys_out), rtol=1e-5)
+    np.testing.assert_allclose(polygon_area(polys_in), polygon_area(polys_out), rtol=1e-5)
 
 
 @pytest.mark.parametrize("angle_deg", ANGLES_FULL_ROUNDTRIP)

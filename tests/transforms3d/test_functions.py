@@ -20,7 +20,7 @@ def test_uniqueness(input_shape: tuple, n_channels: int | None):
     transformations = [f3d.transform_cube(test_cube, i) for i in range(48)]
 
     # Check uniqueness
-    unique_transforms = set(str(t) for t in transformations)
+    unique_transforms = {str(t) for t in transformations}
     assert len(unique_transforms) == 48, "Not all transformations are unique!"
 
     # Check shape preservation

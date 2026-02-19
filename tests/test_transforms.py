@@ -1664,7 +1664,7 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
             ]
             assert np.all(central_region == 255)
         elif all(p <= 0 for p in px):  # Cropping
-            crop_top, crop_right, crop_bottom, crop_left = [-p for p in px]
+            crop_top, crop_right, crop_bottom, crop_left = (-p for p in px)
             cropped_region = image[
                 crop_top : image.shape[0] - crop_bottom,
                 crop_left : image.shape[1] - crop_right,

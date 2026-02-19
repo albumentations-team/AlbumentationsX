@@ -135,6 +135,25 @@ def convert_to_0plus_range(value: tuple[float, float] | float) -> tuple[float, f
     return to_tuple(value, low=0)
 
 
+def convert_to_1centered_range(value: tuple[float, float] | float) -> tuple[float, float]:
+    """Convert value to a range centered at 1: (max(0, 1-x), 1+x) for scalar x.
+
+    Args:
+        value (tuple[float, float] | float): Input value. Scalar x becomes (max(0, 1-x), 1+x).
+            Tuple is used as-is. Scalar must be non-negative.
+
+    Returns:
+        tuple[float, float]: Range suitable for brightness/contrast/saturation factors.
+
+    """
+    if isinstance(value, (int, float)) and value < 0:
+        raise ValueError("If value is a single number, it must be non negative.")
+    if isinstance(value, (tuple, list)) and len(value) == 2:
+        return (float(value[0]), float(value[1]))
+    result = to_tuple(value, bias=1)
+    return (max(0.0, result[0]), result[1])
+
+
 def repeat_if_scalar(value: tuple[float, float] | float) -> tuple[float, float]:
     """Convert a scalar value to a tuple by repeating it, or return the tuple as is.
 
@@ -213,6 +232,13 @@ ZeroOneRangeType = Annotated[
     tuple[float, float] | float,
     AfterValidator(convert_to_0plus_range),
     AfterValidator(check_range_bounds(0, 1)),
+    AfterValidator(nondecreasing),
+]
+
+OneCenteredRangeType = Annotated[
+    tuple[float, float] | float,
+    AfterValidator(convert_to_1centered_range),
+    AfterValidator(check_range_bounds(0, None)),
     AfterValidator(nondecreasing),
 ]
 

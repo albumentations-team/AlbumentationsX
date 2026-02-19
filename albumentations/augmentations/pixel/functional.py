@@ -1879,15 +1879,15 @@ def adjust_saturation_torchvision(
     factor: float,
     gamma: float = 0,
 ) -> ImageType:
-    """Adjust the saturation of an image.
+    """Adjust the saturation of an image by blending with grayscale.
 
-    This function adjusts the saturation of an image by multiplying each pixel value by a factor.
-    The saturation is adjusted by multiplying the image by the factor.
+    Uses to_gray for conversion: weighted_average for RGB (matches OpenCV), average for
+    arbitrary channels. Works on batches (4D) and volumes (5D).
 
     Args:
         img (np.ndarray): Input image as a numpy array.
         factor (float): The factor to adjust the saturation by.
-        gamma (float): The gamma value to use for the adjustment.
+        gamma (float): Unused, kept for API compatibility.
 
     Returns:
         np.ndarray: The adjusted image.
@@ -1896,10 +1896,10 @@ def adjust_saturation_torchvision(
     if factor == 1 or is_grayscale_image(img):
         return img
 
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    gray = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    gray = to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img)
+    gray_expanded = grayscale_to_multichannel(gray, img.shape[-1])
 
-    return gray if factor == 0 else cv2.addWeighted(img, factor, gray, 1 - factor, gamma=gamma)
+    return gray_expanded if factor == 0 else add_weighted(img, factor, gray_expanded, 1 - factor)
 
 
 def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
@@ -1934,6 +1934,72 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
     img[..., 0] = np.mod(img[..., 0] + factor * 360, 360)
     return cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+
+
+def apply_brightness_contrast_torchvision(
+    img: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    brightness_first: bool,
+) -> ImageType:
+    """Apply brightness and contrast adjustments fused into a single LUT (uint8) or two passes (float32).
+
+    Both operations are ``clip(a*x + b)``. The image grayscale mean is computed once and propagated
+    analytically through the pipeline: if brightness comes first, ``mean_at_contrast = mean * brightness_factor``
+    (clipped to valid range). This avoids re-reading the image after brightness is applied.
+
+    For uint8 images the composition is pre-computed over all 256 input values into a single
+    256-entry LUT applied in one ``cv2.LUT`` call. For float32, two sequential clipped passes are used.
+
+    Args:
+        img: Input image (uint8 or float32).
+        brightness_factor: Brightness multiplicative factor.
+        contrast_factor: Contrast multiplicative factor.
+        brightness_first: Whether brightness is applied before contrast.
+
+    Returns:
+        ImageType: Adjusted image with the same dtype as input.
+
+    """
+    # Compute original grayscale mean once, normalised to [0, 1].
+    gray_for_mean = (
+        img
+        if is_grayscale_image(img)
+        else (to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img))
+    )
+    mean = float(gray_for_mean.mean())
+    if img.dtype == np.uint8:
+        mean /= 255.0
+
+    # Propagate mean analytically: brightness scales the mean, clipped to [0, 1].
+    mean_at_contrast = float(np.clip(mean * brightness_factor, 0.0, 1.0)) if brightness_first else float(mean)
+
+    if img.dtype == np.uint8:
+        lut = np.arange(256, dtype=np.float32)
+        if brightness_first:
+            lut = np.clip(lut * brightness_factor, 0.0, 255.0)
+            lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+        else:
+            lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+            lut = np.clip(lut * brightness_factor, 0.0, 255.0)
+        return sz_lut(img, lut.astype(np.uint8), inplace=False)
+
+    # float32: two clipped passes, single buffer, in-place ops
+    offset = mean_at_contrast * (1.0 - contrast_factor)
+    out = np.empty_like(img)
+    if brightness_first:
+        np.multiply(img, brightness_factor, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+        np.multiply(out, contrast_factor, out=out)
+        np.add(out, offset, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+    else:
+        np.multiply(img, contrast_factor, out=out)
+        np.add(out, offset, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+        np.multiply(out, brightness_factor, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+    return out
 
 
 @uint8_io

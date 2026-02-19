@@ -211,6 +211,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [MotionBlur](https://explore.albumentations.ai/transform/MotionBlur)
 - [MultiplicativeNoise](https://explore.albumentations.ai/transform/MultiplicativeNoise)
 - [Normalize](https://explore.albumentations.ai/transform/Normalize)
+- [PhotoMetricDistort](https://explore.albumentations.ai/transform/PhotoMetricDistort)
 - [PixelDistributionAdaptation](https://explore.albumentations.ai/transform/PixelDistributionAdaptation)
 - [PlanckianJitter](https://explore.albumentations.ai/transform/PlanckianJitter)
 - [PlasmaBrightnessContrast](https://explore.albumentations.ai/transform/PlasmaBrightnessContrast)

@@ -92,9 +92,6 @@ class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
         return {
             "param1": self.py_random.uniform(*self.param_range),
         }
-
-    def get_transform_init_args_names(self) -> tuple[str, ...]:
-        return ("param_range",)
 ```
 
 ### Critical rules:

@@ -31,8 +31,7 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 - [ ] **No default values in `InitSchema`** (except Pydantic discriminator fields)
 - [ ] **No default values in `apply_*` method args** (other than `self`, `**params`)
 - [ ] All `InitSchema` fields use `Annotated[...]` validators where applicable
-- [ ] `get_transform_init_args_names()` returns ALL user-facing params
-- [ ] `get_transform_init_args()` override only if names don't match attribute names
+- [ ] **No `get_transform_init_args_names()` override** — the base class auto-detects from `__init__` via MRO
 
 ## 4. Random Number Generation (🔴 Critical)
 

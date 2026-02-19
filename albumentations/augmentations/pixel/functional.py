@@ -1984,13 +1984,22 @@ def apply_brightness_contrast_torchvision(
             lut = np.clip(lut * brightness_factor, 0.0, 255.0)
         return sz_lut(img, lut.astype(np.uint8), inplace=False)
 
-    # float32: two clipped passes
+    # float32: two clipped passes, single buffer, in-place ops
     offset = mean_at_contrast * (1.0 - contrast_factor)
+    out = np.empty_like(img)
     if brightness_first:
-        img = np.clip(img * brightness_factor, 0.0, 1.0).astype(np.float32)
-        return np.clip(img * contrast_factor + offset, 0.0, 1.0).astype(np.float32)
-    img = np.clip(img * contrast_factor + offset, 0.0, 1.0).astype(np.float32)
-    return np.clip(img * brightness_factor, 0.0, 1.0).astype(np.float32)
+        np.multiply(img, brightness_factor, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+        np.multiply(out, contrast_factor, out=out)
+        np.add(out, offset, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+    else:
+        np.multiply(img, contrast_factor, out=out)
+        np.add(out, offset, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+        np.multiply(out, brightness_factor, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+    return out
 
 
 @uint8_io

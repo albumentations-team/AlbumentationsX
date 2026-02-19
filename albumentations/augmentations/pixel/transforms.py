@@ -6686,10 +6686,26 @@ class PhotoMetricDistort(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        brightness_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
-        contrast_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
-        saturation_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
-        hue_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
+        brightness_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        contrast_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        saturation_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        hue_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(-0.5, 0.5)),
+            AfterValidator(nondecreasing),
+        ]
         distort_p: float = Field(ge=0.0, le=1.0)
 
     def __init__(

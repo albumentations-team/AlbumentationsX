@@ -86,6 +86,7 @@ __all__ = [
     "InvertImg",
     "MultiplicativeNoise",
     "Normalize",
+    "PhotoMetricDistort",
     "PlanckianJitter",
     "PlasmaBrightnessContrast",
     "PlasmaShadow",
@@ -6605,3 +6606,173 @@ class Dithering(ImageOnlyTransform):
             noise_range=self.noise_range,
             random_generator=self.random_generator,
         )
+
+
+class PhotoMetricDistort(ImageOnlyTransform):
+    """Randomly distorts an image's photometric properties, as used in SSD object detection training.
+
+    Applies brightness, contrast, saturation, and hue adjustments independently with probability
+    ``distort_p`` each. Contrast is applied either before or after the HSV-space adjustments
+    (randomly chosen). Optionally permutes channels with probability ``distort_p``.
+
+    This mirrors the ``RandomPhotometricDistort`` transform from torchvision but uses our
+    existing ``adjust_*_torchvision`` functional primitives.
+
+    Args:
+        brightness_range (tuple[float, float]): Multiplicative factor range for brightness.
+            Factor is drawn uniformly from this range. Must be non-negative.
+            Default: ``(0.875, 1.125)``.
+        contrast_range (tuple[float, float]): Multiplicative factor range for contrast.
+            Factor is drawn uniformly from this range. Must be non-negative.
+            Default: ``(0.5, 1.5)``.
+        saturation_range (tuple[float, float]): Multiplicative factor range for saturation.
+            Factor is drawn uniformly from this range. Must be non-negative.
+            Default: ``(0.5, 1.5)``.
+        hue_range (tuple[float, float]): Additive factor range for hue.
+            Factor is drawn uniformly from this range. Must be in ``[-0.5, 0.5]``.
+            Default: ``(-0.05, 0.05)``.
+        distort_p (float): Probability of applying each individual distortion (brightness,
+            contrast, saturation, hue, channel permutation). Default: ``0.5``.
+        p (float): Probability of applying the overall transform. Default: ``0.5``.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        1, 3
+
+    Note:
+        - Each of the five distortions (brightness, contrast, saturation, hue, channel shuffle)
+          is applied independently with probability ``distort_p``.
+        - Contrast is randomly applied either before or after saturation/hue adjustment.
+        - For single-channel images, saturation and hue adjustments have no effect.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
+        >>> bboxes = np.array([[10, 10, 50, 50]], dtype=np.float32)
+        >>> bbox_labels = [1]
+        >>> keypoints = np.array([[20, 30]], dtype=np.float32)
+        >>> keypoint_labels = [0]
+        >>>
+        >>> transform = A.Compose([
+        ...     A.PhotoMetricDistort(
+        ...         brightness_range=(0.875, 1.125),
+        ...         contrast_range=(0.5, 1.5),
+        ...         saturation_range=(0.5, 1.5),
+        ...         hue_range=(-0.05, 0.05),
+        ...         distort_p=0.5,
+        ...         p=1.0,
+        ...     )
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
+        >>>
+        >>> result = transform(
+        ...     image=image,
+        ...     mask=mask,
+        ...     bboxes=bboxes,
+        ...     bbox_labels=bbox_labels,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels,
+        ... )
+        >>> transformed_image = result['image']
+
+    References:
+        - SSD: https://arxiv.org/abs/1512.02325
+        - torchvision RandomPhotometricDistort:
+          https://pytorch.org/vision/stable/generated/torchvision.transforms.v2.RandomPhotometricDistort.html
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        brightness_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
+        contrast_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
+        saturation_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
+        hue_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
+        distort_p: float = Field(ge=0.0, le=1.0)
+
+    def __init__(
+        self,
+        brightness_range: tuple[float, float] = (0.875, 1.125),
+        contrast_range: tuple[float, float] = (0.5, 1.5),
+        saturation_range: tuple[float, float] = (0.5, 1.5),
+        hue_range: tuple[float, float] = (-0.05, 0.05),
+        distort_p: float = 0.5,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.brightness_range = brightness_range
+        self.contrast_range = contrast_range
+        self.saturation_range = saturation_range
+        self.hue_range = hue_range
+        self.distort_p = distort_p
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        shape = params["shape"]
+        num_channels = 1 if len(shape) == 2 else shape[-1]
+
+        brightness_factor = (
+            self.py_random.uniform(*self.brightness_range) if self.py_random.random() < self.distort_p else None
+        )
+        contrast_factor = (
+            self.py_random.uniform(*self.contrast_range) if self.py_random.random() < self.distort_p else None
+        )
+        saturation_factor = (
+            self.py_random.uniform(*self.saturation_range) if self.py_random.random() < self.distort_p else None
+        )
+        hue_factor = self.py_random.uniform(*self.hue_range) if self.py_random.random() < self.distort_p else None
+        contrast_before = self.py_random.random() < 0.5
+
+        if self.py_random.random() < self.distort_p and num_channels > 1:
+            ch_arr = list(range(num_channels))
+            self.py_random.shuffle(ch_arr)
+            channel_permutation: list[int] | None = ch_arr
+        else:
+            channel_permutation = None
+
+        return {
+            "brightness_factor": brightness_factor,
+            "contrast_factor": contrast_factor,
+            "saturation_factor": saturation_factor,
+            "hue_factor": hue_factor,
+            "contrast_before": contrast_before,
+            "channel_permutation": channel_permutation,
+        }
+
+    def apply(
+        self,
+        img: ImageType,
+        brightness_factor: float | None,
+        contrast_factor: float | None,
+        saturation_factor: float | None,
+        hue_factor: float | None,
+        contrast_before: bool,
+        channel_permutation: list[int] | None,
+        **params: Any,
+    ) -> ImageType:
+        if not is_rgb_image(img) and not is_grayscale_image(img):
+            msg = "PhotoMetricDistort expects 1-channel or 3-channel images."
+            raise TypeError(msg)
+
+        if brightness_factor is not None:
+            img = fpixel.adjust_brightness_torchvision(img, brightness_factor)
+        if contrast_factor is not None and contrast_before:
+            img = fpixel.adjust_contrast_torchvision(img, contrast_factor)
+        if saturation_factor is not None:
+            img = fpixel.adjust_saturation_torchvision(img, saturation_factor)
+        if hue_factor is not None:
+            img = fpixel.adjust_hue_torchvision(img, hue_factor)
+        if contrast_factor is not None and not contrast_before:
+            img = fpixel.adjust_contrast_torchvision(img, contrast_factor)
+        if channel_permutation is not None:
+            img = fpixel.channel_shuffle(img, channel_permutation)
+        return img

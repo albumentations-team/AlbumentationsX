@@ -201,6 +201,16 @@ AUGMENTATION_CLS_PARAMS = [
         },
     ],
     [
+        A.PhotoMetricDistort,
+        {
+            "brightness_range": (0.875, 1.125),
+            "contrast_range": (0.5, 1.5),
+            "saturation_range": (0.5, 1.5),
+            "hue_range": (-0.05, 0.05),
+            "distort_p": 0.5,
+        },
+    ],
+    [
         A.Perspective,
         {
             "scale": 0.5,

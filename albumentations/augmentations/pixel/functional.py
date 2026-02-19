@@ -4343,19 +4343,47 @@ def apply_he_stain_augmentation(
 @clipped
 @preserve_channel_dim
 def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
-    """Convolve an image with a kernel.
+    """Convolve an image or a batch of images with a kernel.
 
-    This function convolves an image with a kernel.
+    This function convolves an image or a batch of images with a kernel.
 
     Args:
-        img (np.ndarray): Input image.
+        img (np.ndarray): Input image or batch of images.
         kernel (np.ndarray): Kernel.
 
     Returns:
-        np.ndarray: Convolved image.
+        np.ndarray: Convolved image or batch of images.
+
+    Raises:
+        ValueError: When the input image tensor doesn't match the batch shape (B, H, W, C)
+                    or the image shape (H, W, C)
 
     """
-    return cv2.filter2D(img, ddepth=-1, kernel=kernel)
+    if img.ndim == 3:
+        # image case: (H, W, C)
+        return cv2.filter2D(img, ddepth=-1, kernel=kernel)
+    if img.ndim == 4:
+        # batch case: (B, H, W, C)
+        # define padding size as the height of the kernel
+        pad_size = kernel.shape[0]
+
+        # apply a vertical padding to top and bottom of the the images to avoid kernel bleeding,
+        # using 'reflect' mode to ensure minimum influence of the padding over the convolution
+        # computation
+        img = np.pad(img, ((0, 0), (pad_size, pad_size), (0, 0), (0, 0)), mode="reflect")
+
+        # flatten the batch alongside batch and height dimension (B, H, W, C) -> (B * H, W, C)
+        transformed, original_shape = reshape_xhwc_channel(img)
+
+        # apply the kernel
+        transformed = cv2.filter2D(transformed, ddepth=-1, kernel=kernel)
+
+        # restore original shape (B * H, W, C) -> (B, H, W, C)
+        transformed = restore_xhwc_channel(transformed, original_shape)
+
+        # slice to remove padding and return
+        return transformed[:, pad_size:-pad_size, :, :]
+    raise ValueError(f"Expected input shape (H, W, C), (B, H, W, C), got {img.shape}")
 
 
 @clipped

@@ -11,6 +11,8 @@ from albumentations.augmentations.blur import functional as fblur
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import UINT8_IMAGES
 
+import random
+
 
 @pytest.mark.parametrize("aug", [A.Blur, A.MedianBlur, A.MotionBlur])
 @pytest.mark.parametrize(
@@ -242,3 +244,34 @@ def test_gaussian_blur_matches_pil():
     # Assert reasonable absolute differences
     assert mean_diff < 10, f"Average absolute difference too high: {mean_diff:.2f}"
     assert max_diff < 83, f"Maximum absolute difference too high: {max_diff:.2f}"
+
+
+def test_motion_blur_apply_to_images():
+    """Tests that MotionBlur apply_to_images works as expected."""
+    # make test deterministic
+    random.seed(42)
+    np.random.seed(42)
+
+    # generate large horizontal forward motion blur
+    transform = A.MotionBlur(p=1.0, blur_limit=21, angle_range=(0, 0), direction_range=(1.0, 1.0))
+
+    # generate batch of images made by random noise
+    images = np.random.randint(low=0, high=255, size=(32, 100, 100, 3), dtype=np.uint8)
+
+    # extract kernel
+    kernel = transform.get_params()["kernel"]
+
+    # compute ground truth by applying iteratively transformation to the images
+    gt = np.stack([transform.apply(img, kernel) for img in images])
+
+    # apply transformation to images in the batch
+    transformed = transform.apply_to_images(images, kernel=kernel)
+
+    # check that the input shape is equal to the image shape
+    assert transformed.shape == images.shape
+
+    # check that the output of apply_to_image is equal in shape to the ground truth shape
+    assert transformed.shape == gt.shape
+
+    # check that the output of apply_to_image is close to the ground truth
+    assert np.allclose(transformed, gt, atol=4, rtol=1e-1)

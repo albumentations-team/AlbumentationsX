@@ -6,7 +6,6 @@ and other pixel-level manipulations.
 """
 
 import math
-import numbers
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, Literal, cast
@@ -41,14 +40,16 @@ import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.blur.transforms import BlurInitSchema
 from albumentations.augmentations.pixel import functional as fpixel
-from albumentations.augmentations.utils import check_range, non_rgb_error
+from albumentations.augmentations.utils import non_rgb_error
 from albumentations.core.pydantic import (
     NonNegativeFloatRangeType,
+    OneCenteredRangeType,
     OnePlusFloatRangeType,
     OnePlusIntRangeType,
     SymmetricRangeType,
     ZeroOneRangeType,
     check_range_bounds,
+    create_symmetric_range,
     nondecreasing,
 )
 from albumentations.core.transforms_interface import (
@@ -3435,40 +3436,15 @@ class ColorJitter(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        brightness: tuple[float, float] | float
-        contrast: tuple[float, float] | float
-        saturation: tuple[float, float] | float
-        hue: tuple[float, float] | float
-
-        @field_validator("brightness", "contrast", "saturation", "hue")
-        @classmethod
-        def _check_ranges(
-            cls,
-            value: tuple[float, float] | float,
-            info: ValidationInfo,
-        ) -> tuple[float, float]:
-            if info.field_name == "hue":
-                bounds = -0.5, 0.5
-                bias = 0
-                clip = False
-            elif info.field_name in ["brightness", "contrast", "saturation"]:
-                bounds = 0, float("inf")
-                bias = 1
-                clip = True
-
-            if isinstance(value, numbers.Number):
-                if value < 0:
-                    raise ValueError(
-                        f"If {info.field_name} is a single number, it must be non negative.",
-                    )
-                left = bias - value
-                if clip:
-                    left = max(left, 0)
-                value = (left, bias + value)
-            elif isinstance(value, tuple) and len(value) == PAIR:
-                check_range(value, *bounds, info.field_name)
-
-            return cast("tuple[float, float]", value)
+        brightness: OneCenteredRangeType
+        contrast: OneCenteredRangeType
+        saturation: OneCenteredRangeType
+        hue: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+            AfterValidator(check_range_bounds(-0.5, 0.5)),
+            AfterValidator(nondecreasing),
+        ]
 
     def __init__(
         self,
@@ -3485,21 +3461,21 @@ class ColorJitter(ImageOnlyTransform):
         self.saturation = cast("tuple[float, float]", saturation)
         self.hue = cast("tuple[float, float]", hue)
 
-        self.transforms = [
-            fpixel.adjust_brightness_torchvision,
-            fpixel.adjust_contrast_torchvision,
-            fpixel.adjust_saturation_torchvision,
-            fpixel.adjust_hue_torchvision,
-        ]
-
     def get_params(self) -> dict[str, Any]:
         brightness = self.py_random.uniform(*self.brightness)
         contrast = self.py_random.uniform(*self.contrast)
         saturation = self.py_random.uniform(*self.saturation)
         hue = self.py_random.uniform(*self.hue)
 
-        order = [0, 1, 2, 3]
+        order = ["brightness", "contrast", "saturation", "hue"]
         self.random_generator.shuffle(order)
+
+        # Merge adjacent brightness+contrast into one slot for fused LUT.
+        idx_b, idx_c = order.index("brightness"), order.index("contrast")
+        if abs(idx_b - idx_c) == 1:
+            merged = "brightness_contrast" if idx_b < idx_c else "contrast_brightness"
+            order = [o for o in order if o not in ("brightness", "contrast")]
+            order.insert(min(idx_b, idx_c), merged)
 
         return {
             "brightness": brightness,
@@ -3516,16 +3492,36 @@ class ColorJitter(ImageOnlyTransform):
         contrast: float,
         saturation: float,
         hue: float,
-        order: list[int],
+        order: list[str],
         **params: Any,
     ) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "ColorJitter transformation expects 1-channel or 3-channel images."
             raise TypeError(msg)
 
-        color_transforms = [brightness, contrast, saturation, hue]
-        for i in order:
-            img = self.transforms[i](img, color_transforms[i])
+        for op in order:
+            if op == "brightness_contrast":
+                img = fpixel.apply_brightness_contrast_torchvision(
+                    img,
+                    brightness,
+                    contrast,
+                    brightness_first=True,
+                )
+            elif op == "contrast_brightness":
+                img = fpixel.apply_brightness_contrast_torchvision(
+                    img,
+                    brightness,
+                    contrast,
+                    brightness_first=False,
+                )
+            elif op == "brightness":
+                img = fpixel.adjust_brightness_torchvision(img, brightness)
+            elif op == "contrast":
+                img = fpixel.adjust_contrast_torchvision(img, contrast)
+            elif op == "saturation":
+                img = fpixel.adjust_saturation_torchvision(img, saturation)
+            elif op == "hue":
+                img = fpixel.adjust_hue_torchvision(img, hue)
         return img
 
 
@@ -6730,6 +6726,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
             self.py_random.uniform(*self.saturation_range) if self.py_random.random() < self.distort_p else None
         )
         hue_factor = self.py_random.uniform(*self.hue_range) if self.py_random.random() < self.distort_p else None
+        # contrast_before controls where contrast sits relative to sat/hue; brightness always precedes contrast
         contrast_before = self.py_random.random() < 0.5
 
         if self.py_random.random() < self.distort_p and num_channels > 1:
@@ -6748,6 +6745,25 @@ class PhotoMetricDistort(ImageOnlyTransform):
             "channel_permutation": channel_permutation,
         }
 
+    def _apply_brightness_contrast_before(
+        self,
+        img: ImageType,
+        brightness_factor: float | None,
+        contrast_factor: float | None,
+    ) -> ImageType:
+        if brightness_factor is not None and contrast_factor is not None:
+            return fpixel.apply_brightness_contrast_torchvision(
+                img,
+                brightness_factor,
+                contrast_factor,
+                brightness_first=True,
+            )
+        if brightness_factor is not None:
+            return fpixel.adjust_brightness_torchvision(img, brightness_factor)
+        if contrast_factor is not None:
+            return fpixel.adjust_contrast_torchvision(img, contrast_factor)
+        return img
+
     def apply(
         self,
         img: ImageType,
@@ -6763,16 +6779,23 @@ class PhotoMetricDistort(ImageOnlyTransform):
             msg = "PhotoMetricDistort expects 1-channel or 3-channel images."
             raise TypeError(msg)
 
-        if brightness_factor is not None:
+        if contrast_before:
+            img = self._apply_brightness_contrast_before(
+                img,
+                brightness_factor,
+                contrast_factor,
+            )
+        elif brightness_factor is not None:
             img = fpixel.adjust_brightness_torchvision(img, brightness_factor)
-        if contrast_factor is not None and contrast_before:
-            img = fpixel.adjust_contrast_torchvision(img, contrast_factor)
+
         if saturation_factor is not None:
             img = fpixel.adjust_saturation_torchvision(img, saturation_factor)
         if hue_factor is not None:
             img = fpixel.adjust_hue_torchvision(img, hue_factor)
-        if contrast_factor is not None and not contrast_before:
+
+        if not contrast_before and contrast_factor is not None:
             img = fpixel.adjust_contrast_torchvision(img, contrast_factor)
+
         if channel_permutation is not None:
             img = fpixel.channel_shuffle(img, channel_permutation)
         return img

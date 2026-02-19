@@ -1936,6 +1936,58 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     return cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
 
 
+def apply_brightness_contrast_torchvision(
+    img: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    brightness_first: bool,
+) -> ImageType:
+    """Apply brightness and contrast adjustments fused into a single LUT (uint8) or two passes (float32).
+
+    Both operations are ``clip(a*x + b)``. The image grayscale mean is computed once and propagated
+    analytically through the pipeline: if brightness comes first, ``mean_at_contrast = mean * brightness_factor``
+    (clipped to valid range). This avoids re-reading the image after brightness is applied.
+
+    For uint8 images the composition is pre-computed over all 256 input values into a single
+    256-entry LUT applied in one ``cv2.LUT`` call. For float32, two sequential clipped passes are used.
+
+    Args:
+        img: Input image (uint8 or float32).
+        brightness_factor: Brightness multiplicative factor.
+        contrast_factor: Contrast multiplicative factor.
+        brightness_first: Whether brightness is applied before contrast.
+
+    Returns:
+        ImageType: Adjusted image with the same dtype as input.
+
+    """
+    # Compute original grayscale mean once, normalised to [0, 1].
+    mean = img.mean() if is_grayscale_image(img) else cv2.cvtColor(img, cv2.COLOR_RGB2GRAY).mean()
+    if img.dtype == np.uint8:
+        mean /= 255.0
+
+    # Propagate mean analytically: brightness scales the mean, clipped to [0, 1].
+    mean_at_contrast = float(np.clip(mean * brightness_factor, 0.0, 1.0)) if brightness_first else float(mean)
+
+    if img.dtype == np.uint8:
+        lut = np.arange(256, dtype=np.float32)
+        if brightness_first:
+            lut = np.clip(lut * brightness_factor, 0.0, 255.0)
+            lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+        else:
+            lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+            lut = np.clip(lut * brightness_factor, 0.0, 255.0)
+        return sz_lut(img, lut.astype(np.uint8), inplace=False)
+
+    # float32: two clipped passes
+    offset = mean_at_contrast * (1.0 - contrast_factor)
+    if brightness_first:
+        img = np.clip(img * brightness_factor, 0.0, 1.0).astype(np.float32)
+        return np.clip(img * contrast_factor + offset, 0.0, 1.0).astype(np.float32)
+    img = np.clip(img * contrast_factor + offset, 0.0, 1.0).astype(np.float32)
+    return np.clip(img * brightness_factor, 0.0, 1.0).astype(np.float32)
+
+
 @uint8_io
 @preserve_channel_dim
 def superpixels(

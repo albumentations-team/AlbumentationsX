@@ -1879,15 +1879,15 @@ def adjust_saturation_torchvision(
     factor: float,
     gamma: float = 0,
 ) -> ImageType:
-    """Adjust the saturation of an image.
+    """Adjust the saturation of an image by blending with grayscale.
 
-    This function adjusts the saturation of an image by multiplying each pixel value by a factor.
-    The saturation is adjusted by multiplying the image by the factor.
+    Uses to_gray for conversion: weighted_average for RGB (matches OpenCV), average for
+    arbitrary channels. Works on batches (4D) and volumes (5D).
 
     Args:
         img (np.ndarray): Input image as a numpy array.
         factor (float): The factor to adjust the saturation by.
-        gamma (float): The gamma value to use for the adjustment.
+        gamma (float): Unused, kept for API compatibility.
 
     Returns:
         np.ndarray: The adjusted image.
@@ -1896,10 +1896,10 @@ def adjust_saturation_torchvision(
     if factor == 1 or is_grayscale_image(img):
         return img
 
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    gray = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    gray = to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img)
+    gray_expanded = grayscale_to_multichannel(gray, img.shape[-1])
 
-    return gray if factor == 0 else cv2.addWeighted(img, factor, gray, 1 - factor, gamma=gamma)
+    return gray_expanded if factor == 0 else add_weighted(img, factor, gray_expanded, 1 - factor)
 
 
 def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
@@ -1962,7 +1962,12 @@ def apply_brightness_contrast_torchvision(
 
     """
     # Compute original grayscale mean once, normalised to [0, 1].
-    mean = img.mean() if is_grayscale_image(img) else cv2.cvtColor(img, cv2.COLOR_RGB2GRAY).mean()
+    gray_for_mean = (
+        img
+        if is_grayscale_image(img)
+        else (to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img))
+    )
+    mean = float(gray_for_mean.mean())
     if img.dtype == np.uint8:
         mean /= 255.0
 

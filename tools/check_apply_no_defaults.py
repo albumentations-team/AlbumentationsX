@@ -35,13 +35,10 @@ def get_apply_methods_with_defaults(tree: ast.AST) -> list[tuple[int, str, str, 
                 continue
 
             args = item.args
-            # defaults align to the END of args.args
-            n_defaults = len(args.defaults)
-            if n_defaults == 0:
-                continue
 
-            # The params that have defaults
-            args_with_defaults = args.args[-n_defaults:]
+            # Positional/regular args — defaults align to the END of args.args
+            n_defaults = len(args.defaults)
+            args_with_defaults = args.args[-n_defaults:] if n_defaults else []
             for arg, default in zip(args_with_defaults, args.defaults, strict=True):
                 if arg.arg == "self":
                     continue
@@ -51,6 +48,19 @@ def get_apply_methods_with_defaults(tree: ast.AST) -> list[tuple[int, str, str, 
                         class_name,
                         item.name,
                         f"parameter '{arg.arg}' has default value '{ast.unparse(default)}'",
+                    ),
+                )
+
+            # Keyword-only args — kw_defaults entries are None when no default is set
+            for arg, default in zip(args.kwonlyargs, args.kw_defaults, strict=True):
+                if default is None:
+                    continue
+                errors.append(
+                    (
+                        item.lineno,
+                        class_name,
+                        item.name,
+                        f"keyword-only parameter '{arg.arg}' has default value '{ast.unparse(default)}'",
                     ),
                 )
 

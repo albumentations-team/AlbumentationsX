@@ -12,7 +12,6 @@ from typing import TypeAlias, TypeVar
 
 import cv2
 import numpy as np
-from albucore.utils import MAX_VALUES_BY_DTYPE
 from numpy import float32, uint8
 from numpy.typing import NDArray
 from typing_extensions import NotRequired, TypedDict
@@ -95,7 +94,7 @@ SEVEN = 7
 EIGHT = 8
 THREE_SIXTY = 360
 
-BIG_INTEGER = MAX_VALUES_BY_DTYPE[np.uint32]
+BIG_INTEGER = np.iinfo(np.uint32).max
 MAX_RAIN_ANGLE = 45  # Maximum angle for rain augmentation in degrees
 
 LENGTH_RAW_BBOX = 4

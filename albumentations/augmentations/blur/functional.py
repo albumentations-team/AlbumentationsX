@@ -15,7 +15,6 @@ from warnings import warn
 import cv2
 import numpy as np
 from albucore import (
-    MAX_OPENCV_WORKING_CHANNELS,
     clipped,
     float32_io,
     from_float,
@@ -47,8 +46,9 @@ def box_blur(img: ImageType, ksize: int) -> ImageType:
         np.ndarray: Blurred image.
 
     """
-    blur_fn = maybe_process_in_chunks(cv2.blur, ksize=(ksize, ksize))
-    return blur_fn(img)
+    img = np.asarray(img, copy=True)
+    cv2.blur(img, (ksize, ksize), dst=img)
+    return img
 
 
 @preserve_channel_dim
@@ -66,6 +66,7 @@ def median_blur(img: ImageType, ksize: int) -> ImageType:
         np.ndarray: Median blurred image.
 
     """
+    # OpenCV 4.13 CI: medianBlur asserts cn in {1,3,4}; chunk for >4ch
     blur_fn = maybe_process_in_chunks(cv2.medianBlur, ksize=ksize)
     return blur_fn(img)
 
@@ -74,9 +75,7 @@ def median_blur_images(images: ImageType, ksize: int) -> ImageType:
     """Apply median blur to a batch of images.
 
     Uses cv2.medianBlur dst argument to write directly into a pre-allocated
-    output array for images with <= 4 channels. Falls back to
-    maybe_process_in_chunks for > 4 channels. Dtype conversion is performed
-    once for the entire batch.
+    output array. Dtype conversion is performed once for the entire batch.
 
     Args:
         images: Batch of images of shape (N, H, W) or (N, H, W, C).
@@ -92,10 +91,9 @@ def median_blur_images(images: ImageType, ksize: int) -> ImageType:
     if input_dtype != np.uint8:
         images = from_float(images, target_dtype=np.uint8)
 
-    num_channels = images.shape[-1] if images.ndim == 4 else 1
     result = np.empty_like(images)
-
-    if num_channels <= MAX_OPENCV_WORKING_CHANNELS:
+    num_channels = images.shape[-1] if images.ndim == 4 else 1
+    if num_channels <= 4:
         for i, img in enumerate(images):
             cv2.medianBlur(img, ksize, dst=result[i])
     else:

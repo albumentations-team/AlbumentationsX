@@ -42,8 +42,6 @@ class ToFloat(ImageOnlyTransform):
         max_value (float | None): The maximum possible input value. If None, the transform
             will try to infer the maximum value by inspecting the data type of the input image:
             - uint8: 255
-            - uint16: 65535
-            - uint32: 4294967295
             - float32: 1.0
             Default: None.
         p (float): Probability of applying the transform. Default: 1.0.
@@ -52,14 +50,14 @@ class ToFloat(ImageOnlyTransform):
         image, volume
 
     Image types:
-        uint8, uint16, uint32, float32
+        uint8, float32
 
     Returns:
         np.ndarray: Image in floating point representation, with values in range [0, 1.0].
 
     Note:
         - If the input image is already float32 with values in [0, 1], it will be returned unchanged.
-        - For integer types (uint8, uint16, uint32), the function will scale the values to [0, 1] range.
+        - For uint8, the function will scale the values to [0, 1] range.
         - The output will always be float32, regardless of the input type.
         - This transform is often used as a preprocessing step before applying other transformations
           or feeding the image into a neural network.
@@ -78,13 +76,6 @@ class ToFloat(ImageOnlyTransform):
         >>> assert float_image.dtype == np.float32
         >>> assert 0 <= float_image.min() <= float_image.max() <= 1.0
         >>>
-        # Convert uint16 image to float with custom max_value
-        >>> image = np.random.randint(0, 4096, (100, 100, 3), dtype=np.uint16)
-        >>> transform = A.ToFloat(max_value=4095)
-        >>> float_image = transform(image=image)['image']
-        >>> assert float_image.dtype == np.float32
-        >>> assert 0 <= float_image.min() <= float_image.max() <= 1.0
-
     See Also:
         FromFloat: The inverse operation, converting from float back to the original data type.
 
@@ -118,25 +109,20 @@ class FromFloat(ImageOnlyTransform):
     (typically with values in the range [0, 1]) to other data types, scaling the values appropriately.
 
     Args:
-        dtype (str): The desired output data type. Supported types include 'uint8', 'uint16',
-                     'uint32'. Default: 'uint8'.
-        max_value (float | None): The maximum value for the output dtype. If None, the transform
-                                  will attempt to infer the maximum value based on the dtype.
-                                  Default: None.
+        dtype (str): The desired output data type. Only 'uint8' is supported. Default: 'uint8'.
+        max_value (float | None): The maximum value for the output dtype. If None, 255 for uint8.
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
         image, volume
 
     Image types:
-        float32, float64
+        float32
 
     Note:
         - This is the inverse transform for ToFloat.
         - Input images are expected to be in floating point format with values in the range [0, 1].
-        - For integer output types (uint8, uint16, uint32), the function will scale the values
-          to the appropriate range (e.g., 0-255 for uint8).
-        - For float output types (float32, float64), the values will remain in the [0, 1] range.
+        - Output is uint8 with values scaled to [0, 255].
         - The transform uses the `from_float` function internally, which ensures output values
           are within the valid range for the specified dtype.
 
@@ -153,7 +139,7 @@ class FromFloat(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        dtype: Literal["uint8", "uint16", "uint32"]
+        dtype: Literal["uint8"]
         max_value: float | None
 
         @model_validator(mode="after")
@@ -165,7 +151,7 @@ class FromFloat(ImageOnlyTransform):
 
     def __init__(
         self,
-        dtype: Literal["uint8", "uint16", "uint32"] = "uint8",
+        dtype: Literal["uint8"] = "uint8",
         max_value: float | None = None,
         p: float = 1.0,
     ):

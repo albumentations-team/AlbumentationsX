@@ -721,6 +721,7 @@ def test_planckian_jitter_blackbody():
         ],
     )
 
+    img = img.astype(np.float32)
     blackbody_plankian_jitter = fpixel.planckian_jitter(
         img,
         temperature=3500,
@@ -791,6 +792,7 @@ def test_planckian_jitter_cied():
             ],
         ],
     )
+    img = img.astype(np.float32)
     cied_plankian_jitter = fpixel.planckian_jitter(img, temperature=4500, mode="cied")
     assert np.allclose(cied_plankian_jitter, expected_cied_plankian_jitter, atol=1e-4)
 

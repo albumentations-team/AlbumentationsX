@@ -5,7 +5,7 @@ from albucore.utils import get_max_value
 from albumentations.augmentations import FromFloat, ToFloat
 
 
-@pytest.mark.parametrize("dtype", ["uint8", "uint16", "float32", "float64"])
+@pytest.mark.parametrize("dtype", ["uint8", "float32"])
 @pytest.mark.parametrize(
     "param, shape",
     [
@@ -27,7 +27,7 @@ def test_to_float(param, shape, dtype):
     np.testing.assert_allclose(data, result * get_max_value(np.dtype(dtype)))
 
 
-@pytest.mark.parametrize("dtype", ["uint8", "uint16"])
+@pytest.mark.parametrize("dtype", ["uint8"])
 @pytest.mark.parametrize(
     "param, shape",
     [

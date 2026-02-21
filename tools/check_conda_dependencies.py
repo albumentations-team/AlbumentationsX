@@ -77,27 +77,46 @@ def versions_match(version1: str, version2: str) -> bool:
     return ver1_normalized == ver2_normalized
 
 
+def load_pyproject() -> dict:
+    """Load pyproject.toml."""
+    pyproject_path = Path("pyproject.toml")
+    if not pyproject_path.exists():
+        msg = "Error: pyproject.toml not found"
+        raise FileNotFoundError(msg)
+    with pyproject_path.open("rb") as f:
+        return tomllib.load(f)
+
+
 def load_pip_dependencies() -> dict[str, str]:
-    """Load dependencies from pyproject.toml.
+    """Load core dependencies from pyproject.toml.
 
     Returns:
         Dictionary mapping normalized package names to version specs
 
     """
-    pyproject_path = Path("pyproject.toml")
-    if not pyproject_path.exists():
-        msg = "Error: pyproject.toml not found"
-        raise FileNotFoundError(msg)
-
-    with pyproject_path.open("rb") as f:
-        pyproject = tomllib.load(f)
-
+    pyproject = load_pyproject()
     pip_deps = {}
     for dep in pyproject["project"]["dependencies"]:
         name, version = parse_requirement(dep)
         pip_deps[normalize_package_name(name)] = version
-
     return pip_deps
+
+
+def load_pip_optional_dependencies() -> dict[str, str]:
+    """Load optional dependencies from pyproject.toml (merged from all groups).
+
+    Returns:
+        Dictionary mapping normalized package names to version specs
+
+    """
+    pyproject = load_pyproject()
+    optional = pyproject.get("project", {}).get("optional-dependencies", {})
+    pip_optional = {}
+    for deps in optional.values():
+        for dep in deps:
+            name, version = parse_requirement(dep)
+            pip_optional[normalize_package_name(name)] = version
+    return pip_optional
 
 
 def load_conda_dependencies() -> dict[str, str]:
@@ -133,12 +152,17 @@ def load_conda_dependencies() -> dict[str, str]:
     return conda_deps
 
 
-def find_version_mismatches(pip_deps: dict[str, str], conda_deps: dict[str, str]) -> list[str]:
+def find_version_mismatches(
+    pip_deps: dict[str, str],
+    pip_optional_deps: dict[str, str],
+    conda_deps: dict[str, str],
+) -> list[str]:
     """Find version mismatches between pip and conda dependencies.
 
     Args:
-        pip_deps: Dictionary of pip dependencies
-        conda_deps: Dictionary of conda dependencies
+        pip_deps: Core dependencies from pyproject.toml
+        pip_optional_deps: Optional dependencies from pyproject.toml (merged)
+        conda_deps: Dependencies from conda meta.yaml run section
 
     Returns:
         List of error messages for mismatches
@@ -162,6 +186,19 @@ def find_version_mismatches(pip_deps: dict[str, str], conda_deps: dict[str, str]
                 f"  meta.yaml:      {normalized_name}{conda_version}",
             )
 
+    for pkg_name, conda_version in conda_deps.items():
+        if pkg_name in pip_deps:
+            continue
+        if pkg_name not in pip_optional_deps:
+            continue
+        pip_version = pip_optional_deps[pkg_name]
+        if not versions_match(pip_version, conda_version):
+            errors.append(
+                f"Version mismatch for '{pkg_name}' (optional):\n"
+                f"  pyproject.toml: {pkg_name}{pip_version}\n"
+                f"  meta.yaml:      {pkg_name}{conda_version}",
+            )
+
     return errors
 
 
@@ -169,12 +206,13 @@ def check_conda_dependencies() -> int:
     """Check that conda meta.yaml uses correct versions from pyproject.toml."""
     try:
         pip_deps = load_pip_dependencies()
+        pip_optional_deps = load_pip_optional_dependencies()
         conda_deps = load_conda_dependencies()
     except (FileNotFoundError, ValueError) as e:
         print(str(e))
         return 1
 
-    errors = find_version_mismatches(pip_deps, conda_deps)
+    errors = find_version_mismatches(pip_deps, pip_optional_deps, conda_deps)
 
     if errors:
         print("Error: Dependency version mismatches found:\n")

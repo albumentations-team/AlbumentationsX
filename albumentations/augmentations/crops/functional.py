@@ -11,7 +11,7 @@ from typing import Any
 
 import cv2
 import numpy as np
-from albucore import maybe_process_in_chunks, preserve_channel_dim
+from albucore import preserve_channel_dim
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
@@ -243,8 +243,7 @@ def crop_and_pad(
 
     if keep_size:
         rows, cols = image_shape[:2]
-        resize_fn = maybe_process_in_chunks(cv2.resize, dsize=(cols, rows), interpolation=interpolation)
-        return resize_fn(img)
+        return fgeometric.resize_cv2(img, (rows, cols), interpolation)
 
     return img
 

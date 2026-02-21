@@ -4355,7 +4355,9 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         np.ndarray: Convolved image.
 
     """
-    return cv2.filter2D(img, ddepth=-1, kernel=kernel)
+    img = np.asarray(img, copy=True)
+    cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img)
+    return img
 
 
 @clipped
@@ -4373,4 +4375,6 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         np.ndarray: Convolved image.
 
     """
-    return cv2.sepFilter2D(img, ddepth=-1, kernelX=kernel, kernelY=kernel)
+    img = np.asarray(img, copy=True)
+    cv2.sepFilter2D(img, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=img)
+    return img

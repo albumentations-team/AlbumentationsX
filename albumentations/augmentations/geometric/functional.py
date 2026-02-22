@@ -694,6 +694,62 @@ def perspective(
     )
 
 
+def perspective_images(
+    images: np.ndarray,
+    matrix: np.ndarray,
+    max_width: int,
+    max_height: int,
+    border_val: float | list[float] | np.ndarray,
+    border_mode: int,
+    keep_size: bool,
+    interpolation: int,
+) -> np.ndarray:
+    """Apply perspective transformation to a batch of images.
+
+    Args:
+        images: Batch of images of shape (N, H, W) or (N, H, W, C).
+        matrix: 3x3 perspective transformation matrix.
+        max_width: Maximum width of the output image if keep_size is False.
+        max_height: Maximum height of the output image if keep_size is False.
+        border_val: Border value(s) to fill areas outside the transformed image.
+        border_mode: OpenCV border mode (e.g., cv2.BORDER_CONSTANT).
+        keep_size: If True, maintain the original image dimensions.
+        interpolation: Interpolation method for resampling (cv2 interpolation flag).
+
+    Returns:
+        Batch of perspective-transformed images with the same shape as input
+        when keep_size is True, or (N, max_height, max_width, C) when False.
+
+    """
+    height, width = images.shape[1], images.shape[2]
+
+    if keep_size:
+        scale_x = width / max_width
+        scale_y = height / max_height
+        scale_matrix = np.array([[scale_x, 0, 0], [0, scale_y, 0], [0, 0, 1]])
+        adjusted_matrix = scale_matrix @ matrix
+        dsize = (width, height)
+        result = np.empty_like(images)
+    else:
+        adjusted_matrix = matrix
+        dsize = (max_width, max_height)
+        out_shape = (images.shape[0], max_height, max_width, *images.shape[3:])
+        result = np.empty(out_shape, dtype=images.dtype)
+
+    for i in range(images.shape[0]):
+        cv2.warpPerspective(
+            images[i],
+            adjusted_matrix,
+            dsize,
+            dst=result[i],
+            borderMode=border_mode,
+            borderValue=border_val,
+            flags=interpolation,
+        )
+
+    return result
+
+
 @handle_empty_array("bboxes")
 def perspective_bboxes(
     bboxes: np.ndarray,

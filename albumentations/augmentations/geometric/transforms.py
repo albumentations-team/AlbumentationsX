@@ -239,9 +239,17 @@ class Perspective(DualTransform):
             self.interpolation,
         )
 
-    @batch_transform("spatial")
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
+        return fgeometric.perspective_images(
+            images,
+            params["matrix"],
+            params["max_width"],
+            params["max_height"],
+            self.fill,
+            self.border_mode,
+            self.keep_size,
+            self.interpolation,
+        )
 
     @batch_transform("spatial")
     def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:

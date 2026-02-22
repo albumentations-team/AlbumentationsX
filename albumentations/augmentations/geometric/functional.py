@@ -671,7 +671,7 @@ def perspective(
 
     """
     return perspective_images(
-        img.unsqueeze(0), matrix, max_width, max_height, border_val, border_mode, keep_size, interpolation,
+        np.expand_dims(img, 0), matrix, max_width, max_height, border_val, border_mode, keep_size, interpolation,
     )[0]
 
 

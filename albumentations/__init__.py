@@ -1,14 +1,6 @@
-from importlib.metadata import metadata
-
-try:
-    _metadata = metadata("albumentationsx")
-    __version__ = _metadata["Version"]
-    __author__ = _metadata["Author"]
-    __maintainer__ = _metadata["Maintainer"]
-except Exception:  # noqa: BLE001
-    __version__ = "unknown"
-    __author__ = "Vladimir Iglovikov"
-    __maintainer__ = "Vladimir Iglovikov"
+from albumentations._version import __author__ as __author__
+from albumentations._version import __maintainer__ as __maintainer__
+from albumentations._version import __version__ as __version__
 
 # Check for OpenCV at import time
 try:

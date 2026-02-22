@@ -23,17 +23,10 @@ from albucore import (
     hflip,
     maybe_process_in_chunks,
     preserve_channel_dim,
+    remap,
     to_float,
     vflip,
-)
-from albucore import (
-    remap as albucore_remap,
-)
-from albucore import (
-    warp_affine as albucore_warp_affine,
-)
-from albucore import (
-    warp_perspective as albucore_warp_perspective,
+    warp_perspective,
 )
 
 # Optional dependencies
@@ -678,12 +671,12 @@ def perspective(
 
     """
     if not keep_size:
-        return albucore_warp_perspective(
+        return warp_perspective(
             img,
             matrix,
-            (max_width, max_height),
             flags=interpolation,
             border_mode=border_mode,
+            dsize=(max_width, max_height),
             border_value=border_val,
         )
     height, width = img.shape[:2]
@@ -691,12 +684,12 @@ def perspective(
     scale_y = height / max_height
     scale_matrix = np.array([[scale_x, 0, 0], [0, scale_y, 0], [0, 0, 1]])
     adjusted_matrix = np.dot(scale_matrix, matrix)
-    return albucore_warp_perspective(
+    return warp_perspective(
         img,
         adjusted_matrix,
-        (width, height),
         flags=interpolation,
         border_mode=border_mode,
+        dsize=(width, height),
         border_value=border_val,
     )
 
@@ -898,49 +891,6 @@ def is_identity_matrix(matrix: np.ndarray) -> bool:
 
     """
     return np.allclose(matrix, np.eye(3, dtype=matrix.dtype))
-
-
-@preserve_channel_dim
-def warp_affine(
-    image: np.ndarray,
-    matrix: np.ndarray,
-    interpolation: int,
-    fill: tuple[float, ...] | float,
-    border_mode: int,
-    output_shape: tuple[int, int],
-) -> np.ndarray:
-    """Apply an affine transformation to an image.
-
-    This function transforms an image using the specified affine transformation matrix.
-    If the transformation matrix is an identity matrix, the original image is returned.
-
-    Args:
-        image (np.ndarray): Input image to transform.
-        matrix (np.ndarray): 2x3 or 3x3 affine transformation matrix.
-        interpolation (int): Interpolation method for resampling.
-        fill (tuple[float, ...] | float): Border value(s) to fill areas outside the transformed image.
-        border_mode (int): OpenCV border mode for handling pixels outside the image boundaries.
-        output_shape (tuple[int, int]): Shape (height, width) of the output image.
-
-    Returns:
-        np.ndarray: Affine-transformed image with dimensions specified by output_shape.
-
-    """
-    if is_identity_matrix(matrix):
-        return image
-
-    height = int(np.round(output_shape[0]))
-    width = int(np.round(output_shape[1]))
-    cv2_matrix = matrix[:2, :]
-
-    return albucore_warp_affine(
-        image,
-        cv2_matrix,
-        (width, height),
-        flags=interpolation,
-        border_mode=border_mode,
-        border_value=fill,
-    )
 
 
 @handle_empty_array("keypoints")
@@ -1972,42 +1922,6 @@ def pad_images_with_params(
     return images
 
 
-@preserve_channel_dim
-def remap(
-    img: ImageType,
-    map_x: np.ndarray,
-    map_y: np.ndarray,
-    interpolation: int,
-    border_mode: int,
-    value: tuple[float, ...] | float | None = None,
-) -> np.ndarray:
-    """Remap an image according to given coordinate maps.
-
-    This function applies a generic geometrical transformation using
-    mapping functions that specify the position of each pixel in the output image.
-
-    Args:
-        img (np.ndarray): Input image to transform.
-        map_x (np.ndarray): Map of x-coordinates with same height and width as the input image.
-        map_y (np.ndarray): Map of y-coordinates with same height and width as the input image.
-        interpolation (int): Interpolation method for resampling.
-        border_mode (int): OpenCV border mode for handling pixels outside the image boundaries.
-        value (tuple[float, ...] | float | None, optional): Border value(s) if border_mode is BORDER_CONSTANT.
-
-    Returns:
-        np.ndarray: Remapped image with the same shape as the input image.
-
-    """
-    return albucore_remap(
-        img,
-        map_x.astype(np.float32),
-        map_y.astype(np.float32),
-        interpolation=interpolation,
-        border_mode=border_mode,
-        border_value=value,
-    )
-
-
 def remap_keypoints_via_mask(
     keypoints: np.ndarray,
     map_x: np.ndarray,
@@ -2210,7 +2124,14 @@ def remap_bboxes(
     map_x = map_x.astype(np.float32)
     map_y = map_y.astype(np.float32)
 
-    transformed_masks = remap(bbox_masks, map_x, map_y, cv2.INTER_NEAREST, cv2.BORDER_CONSTANT, value=0)
+    transformed_masks = remap(
+        bbox_masks,
+        map_x,
+        map_y,
+        interpolation=cv2.INTER_NEAREST,
+        border_mode=cv2.BORDER_CONSTANT,
+        border_value=0,
+    )
 
     # Convert masks back to bboxes
     return mask_to_bboxes(transformed_masks, bboxes, bbox_type=bbox_type)
@@ -2604,10 +2525,10 @@ def distort_image(
         perspective_mat = cv2.getPerspectiveTransform(src_quad, dst_quad)
 
         # Apply Perspective transformation
-        warped = albucore_warp_perspective(
+        warped = warp_perspective(
             image,
             perspective_mat,
-            (image.shape[1], image.shape[0]),
+            dsize=(image.shape[1], image.shape[0]),
             flags=interpolation,
             border_mode=cv2.BORDER_CONSTANT,
             border_value=0,
@@ -3702,13 +3623,13 @@ def bboxes_piecewise_affine(
     """
     masks = masks_from_bboxes(bboxes, image_shape).transpose(1, 2, 0)
 
-    transformed_masks = albucore_remap(
+    transformed_masks = cv2.remap(
         masks,
-        map_x.astype(np.float32),
-        map_y.astype(np.float32),
+        map_x,
+        map_y,
         interpolation=cv2.INTER_NEAREST,
-        border_mode=border_mode,
-        border_value=0,
+        borderMode=border_mode,
+        borderValue=0,
     )
 
     if transformed_masks.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:

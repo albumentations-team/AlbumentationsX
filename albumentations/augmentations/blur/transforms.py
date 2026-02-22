@@ -9,6 +9,7 @@ and support parameters for controlling the intensity and properties of the blur 
 from typing import Annotated, Any, Literal, cast
 
 import numpy as np
+from albucore import median_blur
 from pydantic import (
     AfterValidator,
     Field,
@@ -564,10 +565,7 @@ class MedianBlur(Blur):
         super().__init__(blur_limit=blur_limit, p=p)
 
     def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
-        return fblur.median_blur(img, kernel)
-
-    def apply_to_images(self, images: ImageType, kernel: int, **params: Any) -> ImageType:
-        return fblur.median_blur_images(images, kernel)
+        return median_blur(img, kernel)
 
 
 class GaussianBlur(ImageOnlyTransform):

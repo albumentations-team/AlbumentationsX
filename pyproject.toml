@@ -124,7 +124,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "albucore==0.0.36",
+  "albucore==0.0.39",
   "numpy>=1.24.4",
   "pydantic>=2.12.4",
   "pyyaml",
@@ -133,10 +133,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-contrib = ["opencv-contrib-python>=4.9.0.80"]
-contrib-headless = ["opencv-contrib-python-headless>=4.9.0.80"]
-gui = ["opencv-python>=4.9.0.80"]
-headless = ["opencv-python-headless>=4.9.0.80"]
+contrib = ["opencv-contrib-python>=4.13.0.92"]
+contrib-headless = ["opencv-contrib-python-headless>=4.13.0.92"]
+gui = ["opencv-python>=4.13.0.92"]
+headless = ["opencv-python-headless>=4.13.0.92"]
 hub = ["huggingface-hub"]
 pillow = ["pillow"]
 pytorch = ["torch"]

@@ -16,13 +16,17 @@ from warnings import warn
 import cv2
 import numpy as np
 from albucore import (
+    copy_make_border as albucore_copy_make_border,
+)
+from albucore import (
     from_float,
-    get_num_channels,
     hflip,
     maybe_process_in_chunks,
     preserve_channel_dim,
+    remap,
     to_float,
     vflip,
+    warp_perspective,
 )
 
 # Optional dependencies
@@ -667,32 +671,27 @@ def perspective(
 
     """
     if not keep_size:
-        perspective_func = maybe_process_in_chunks(
-            cv2.warpPerspective,
-            M=matrix,
+        return warp_perspective(
+            img,
+            matrix,
+            flags=interpolation,
+            border_mode=border_mode,
             dsize=(max_width, max_height),
-            borderMode=border_mode,
-            borderValue=border_val,
-            flags=interpolation,
+            border_value=border_val,
         )
-    else:
-        height, width = img.shape[:2]
-
-        scale_x = width / max_width
-        scale_y = height / max_height
-        scale_matrix = np.array([[scale_x, 0, 0], [0, scale_y, 0], [0, 0, 1]])
-        adjusted_matrix = np.dot(scale_matrix, matrix)
-
-        perspective_func = maybe_process_in_chunks(
-            cv2.warpPerspective,
-            M=adjusted_matrix,
-            dsize=(width, height),
-            borderMode=border_mode,
-            borderValue=border_val,
-            flags=interpolation,
-        )
-
-    return perspective_func(img)
+    height, width = img.shape[:2]
+    scale_x = width / max_width
+    scale_y = height / max_height
+    scale_matrix = np.array([[scale_x, 0, 0], [0, scale_y, 0], [0, 0, 1]])
+    adjusted_matrix = np.dot(scale_matrix, matrix)
+    return warp_perspective(
+        img,
+        adjusted_matrix,
+        flags=interpolation,
+        border_mode=border_mode,
+        dsize=(width, height),
+        border_value=border_val,
+    )
 
 
 @handle_empty_array("bboxes")
@@ -892,89 +891,6 @@ def is_identity_matrix(matrix: np.ndarray) -> bool:
 
     """
     return np.allclose(matrix, np.eye(3, dtype=matrix.dtype))
-
-
-def warp_affine_with_value_extension(
-    image: np.ndarray,
-    matrix: np.ndarray,
-    dsize: tuple[int, int],
-    flags: int,
-    border_mode: int,
-    border_value: tuple[float, ...] | float,
-) -> np.ndarray:
-    """Warp affine with value extension.
-
-    This function warps an image with a given affine transformation matrix.
-    It also extends the value to a sequence of floats.
-
-    Args:
-        image (np.ndarray): The image to warp.
-        matrix (np.ndarray): The affine transformation matrix.
-        dsize (tuple[int, int]): The size of the output image.
-        flags (int): The flags for the warp.
-        border_mode (int): The border mode to use.
-        border_value (tuple[float, ...] | float): The value to pad the image with.
-
-    Returns:
-        np.ndarray: The warped image.
-
-    """
-    num_channels = get_num_channels(image)
-    extended_value = extend_value(border_value, num_channels)
-
-    return cv2.warpAffine(
-        image,
-        matrix,
-        dsize,
-        flags=flags,
-        borderMode=border_mode,
-        borderValue=extended_value,
-    )
-
-
-@preserve_channel_dim
-def warp_affine(
-    image: np.ndarray,
-    matrix: np.ndarray,
-    interpolation: int,
-    fill: tuple[float, ...] | float,
-    border_mode: int,
-    output_shape: tuple[int, int],
-) -> np.ndarray:
-    """Apply an affine transformation to an image.
-
-    This function transforms an image using the specified affine transformation matrix.
-    If the transformation matrix is an identity matrix, the original image is returned.
-
-    Args:
-        image (np.ndarray): Input image to transform.
-        matrix (np.ndarray): 2x3 or 3x3 affine transformation matrix.
-        interpolation (int): Interpolation method for resampling.
-        fill (tuple[float, ...] | float): Border value(s) to fill areas outside the transformed image.
-        border_mode (int): OpenCV border mode for handling pixels outside the image boundaries.
-        output_shape (tuple[int, int]): Shape (height, width) of the output image.
-
-    Returns:
-        np.ndarray: Affine-transformed image with dimensions specified by output_shape.
-
-    """
-    if is_identity_matrix(matrix):
-        return image
-
-    height = int(np.round(output_shape[0]))
-    width = int(np.round(output_shape[1]))
-
-    cv2_matrix = matrix[:2, :]
-
-    warp_fn = maybe_process_in_chunks(
-        warp_affine_with_value_extension,
-        matrix=cv2_matrix,
-        dsize=(width, height),
-        flags=interpolation,
-        border_mode=border_mode,
-        border_value=fill,
-    )
-    return warp_fn(image)
 
 
 @handle_empty_array("keypoints")
@@ -1891,72 +1807,6 @@ def pad(
     return img
 
 
-def extend_value(value: tuple[float, ...] | float, num_channels: int) -> Sequence[float]:
-    """Extend value to a sequence of floats.
-
-    This function extends a value to a sequence of floats.
-    It is used to pad an image with a given value.
-
-    Args:
-        value (tuple[float, ...] | float): The value to extend.
-        num_channels (int): The number of channels in the image.
-
-    Returns:
-        Sequence[float]: The extended value.
-
-    """
-    return [value] * num_channels if isinstance(value, float) else value
-
-
-def copy_make_border_with_value_extension(
-    img: ImageType,
-    top: int,
-    bottom: int,
-    left: int,
-    right: int,
-    border_mode: int,
-    value: tuple[float, ...] | float,
-) -> np.ndarray:
-    """Copy and make border with value extension.
-
-    This function copies and makes border with value extension.
-    It is used to pad an image with a given value.
-
-    Args:
-        img (np.ndarray): The image to pad.
-        top (int): The amount to pad the top of the image.
-        bottom (int): The amount to pad the bottom of the image.
-        left (int): The amount to pad the left of the image.
-        right (int): The amount to pad the right of the image.
-        border_mode (int): The border mode to use.
-        value (tuple[float, ...] | float): The value to pad the image with.
-
-    Returns:
-        np.ndarray: The padded image.
-
-    """
-    # For 0-channel images, return empty array of correct padded size
-    if img.size == 0:
-        height, width = img.shape[:2]
-        return np.zeros(
-            (height + top + bottom, width + left + right, 0),
-            dtype=img.dtype,
-        )
-
-    num_channels = get_num_channels(img)
-    extended_value = extend_value(value, num_channels)
-
-    return cv2.copyMakeBorder(
-        img,
-        top,
-        bottom,
-        left,
-        right,
-        borderType=border_mode,
-        value=extended_value,
-    )
-
-
 @preserve_channel_dim
 def pad_with_params(
     img: ImageType,
@@ -1984,17 +1834,36 @@ def pad_with_params(
         np.ndarray: Padded image.
 
     """
-    pad_fn = maybe_process_in_chunks(
-        copy_make_border_with_value_extension,
+    # For 0-channel images, return empty array of correct padded size
+    if img.size == 0:
+        height, width = img.shape[:2]
+        return np.zeros(
+            (height + h_pad_top + h_pad_bottom, width + w_pad_left + w_pad_right, 0),
+            dtype=img.dtype,
+        )
+
+    num_channels = img.shape[-1] if img.ndim >= 3 else 1
+    if value is not None and border_mode == cv2.BORDER_CONSTANT:
+        if isinstance(value, (int, float)):
+            value = (float(value),) * min(num_channels, 4)
+        elif isinstance(value, (tuple, list)) and len(value) < num_channels:
+            # Extend to match channels; use scalar for >4ch to avoid albucore chunked path
+            val_list = [float(v) for v in value]
+            if num_channels <= 4:
+                last = val_list[-1] if val_list else 0.0
+                value = tuple(val_list) + (last,) * (num_channels - len(val_list))
+            else:
+                value = (float(val_list[0]),) * 4
+
+    return albucore_copy_make_border(
+        img,
         top=h_pad_top,
         bottom=h_pad_bottom,
         left=w_pad_left,
         right=w_pad_right,
-        border_mode=border_mode,
-        value=value,
+        border_type=border_mode,
+        value=value if value is not None else 0,
     )
-
-    return pad_fn(img)
 
 
 def pad_images_with_params(
@@ -2051,49 +1920,6 @@ def pad_images_with_params(
         images = images[..., 0]
 
     return images
-
-
-@preserve_channel_dim
-def remap(
-    img: ImageType,
-    map_x: np.ndarray,
-    map_y: np.ndarray,
-    interpolation: int,
-    border_mode: int,
-    value: tuple[float, ...] | float | None = None,
-) -> np.ndarray:
-    """Remap an image according to given coordinate maps.
-
-    This function applies a generic geometrical transformation using
-    mapping functions that specify the position of each pixel in the output image.
-
-    Args:
-        img (np.ndarray): Input image to transform.
-        map_x (np.ndarray): Map of x-coordinates with same height and width as the input image.
-        map_y (np.ndarray): Map of y-coordinates with same height and width as the input image.
-        interpolation (int): Interpolation method for resampling.
-        border_mode (int): OpenCV border mode for handling pixels outside the image boundaries.
-        value (tuple[float, ...] | float | None, optional): Border value(s) if border_mode is BORDER_CONSTANT.
-
-    Returns:
-        np.ndarray: Remapped image with the same shape as the input image.
-
-    """
-    # Combine map_x and map_y into a single map array of type CV_32FC2
-    map_xy = np.stack([map_x, map_y], axis=-1).astype(np.float32)
-
-    # Create remap function with chunks processing
-    remap_func = maybe_process_in_chunks(
-        cv2.remap,
-        map1=map_xy,
-        map2=None,
-        interpolation=interpolation,
-        borderMode=border_mode,
-        borderValue=value,
-    )
-
-    # Apply the remapping
-    return remap_func(img)
 
 
 def remap_keypoints_via_mask(
@@ -2298,7 +2124,14 @@ def remap_bboxes(
     map_x = map_x.astype(np.float32)
     map_y = map_y.astype(np.float32)
 
-    transformed_masks = remap(bbox_masks, map_x, map_y, cv2.INTER_NEAREST, cv2.BORDER_CONSTANT, value=0)
+    transformed_masks = remap(
+        bbox_masks,
+        map_x,
+        map_y,
+        interpolation=cv2.INTER_NEAREST,
+        border_mode=cv2.BORDER_CONSTANT,
+        border_value=0,
+    )
 
     # Convert masks back to bboxes
     return mask_to_bboxes(transformed_masks, bboxes, bbox_type=bbox_type)
@@ -2692,11 +2525,13 @@ def distort_image(
         perspective_mat = cv2.getPerspectiveTransform(src_quad, dst_quad)
 
         # Apply Perspective transformation
-        warped = cv2.warpPerspective(
+        warped = warp_perspective(
             image,
             perspective_mat,
-            (image.shape[1], image.shape[0]),
+            dsize=(image.shape[1], image.shape[0]),
             flags=interpolation,
+            border_mode=cv2.BORDER_CONSTANT,
+            border_value=0,
         )
 
         # Create mask for the transformed region
@@ -3788,14 +3623,11 @@ def bboxes_piecewise_affine(
     """
     masks = masks_from_bboxes(bboxes, image_shape).transpose(1, 2, 0)
 
-    map_xy = np.stack([map_x, map_y], axis=-1).astype(np.float32)
-
-    # Call remap with the combined map and empty second map
     transformed_masks = cv2.remap(
         masks,
-        map_xy,
-        None,
-        cv2.INTER_NEAREST,
+        map_x,
+        map_y,
+        interpolation=cv2.INTER_NEAREST,
         borderMode=border_mode,
         borderValue=0,
     )

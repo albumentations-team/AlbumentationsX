@@ -10,6 +10,7 @@ from typing import Any, Literal, cast
 
 import cv2
 import numpy as np
+from albucore import warp_affine
 
 from albumentations.augmentations.crops import functional as fcrops
 from albumentations.augmentations.geometric.transforms import Affine
@@ -325,13 +326,14 @@ class Rotate(DualTransform):
         y_max: int,
         **params: Any,
     ) -> ImageType:
-        img_out = fgeometric.warp_affine(
+        height, width = params["shape"][:2]
+        img_out = warp_affine(
             img,
             matrix,
-            self.interpolation,
-            self.fill,
-            self.border_mode,
-            params["shape"][:2],
+            dsize=(width, height),
+            flags=self.interpolation,
+            border_mode=self.border_mode,
+            border_value=self.fill,
         )
         if self.crop_border:
             return fcrops.crop(img_out, x_min, y_min, x_max, y_max)
@@ -347,13 +349,14 @@ class Rotate(DualTransform):
         y_max: int,
         **params: Any,
     ) -> ImageType:
-        img_out = fgeometric.warp_affine(
+        height, width = params["shape"][:2]
+        img_out = warp_affine(
             mask,
             matrix,
-            self.mask_interpolation,
-            self.fill_mask,
-            self.border_mode,
-            params["shape"][:2],
+            dsize=(width, height),
+            flags=self.mask_interpolation,
+            border_mode=self.border_mode,
+            border_value=self.fill_mask,
         )
         if self.crop_border:
             return fcrops.crop(img_out, x_min, y_min, x_max, y_max)

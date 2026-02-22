@@ -95,6 +95,12 @@ repos:
       types: [python]
       files: ^albumentations/
       pass_filenames: true
+    - id: check-cv2-geometric-forbidden
+      name: Forbid cv2.warpAffine/warpPerspective/copyMakeBorder/remap (use albucore)
+      entry: python tools/check_cv2_geometric_forbidden.py
+      language: system
+      files: ^albumentations/
+      pass_filenames: false
   - repo: local
     hooks:
       - id: check-albucore-version
@@ -106,7 +112,7 @@ repos:
         name: Check conda dependencies match pyproject.toml
         entry: python ./tools/check_conda_dependencies.py
         language: system
-        files: ^(pyproject\.toml|conda\.recipe/meta\.yaml)$
+        files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.1
     hooks:

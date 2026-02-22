@@ -12,7 +12,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import batch_transform, is_grayscale_image, is_rgb_image
+from albucore import batch_transform, is_grayscale_image, is_rgb_image, warp_affine
 from pydantic import (
     AfterValidator,
     Field,
@@ -701,13 +701,15 @@ class Affine(DualTransform):
         output_shape: tuple[int, int],
         **params: Any,
     ) -> ImageType:
-        return fgeometric.warp_affine(
+        height, width = output_shape
+
+        return warp_affine(
             img,
             matrix,
-            interpolation=self.interpolation,
-            fill=self.fill,
+            flags=self.interpolation,
             border_mode=self.border_mode,
-            output_shape=output_shape,
+            border_value=self.fill,
+            dsize=(width, height),
         )
 
     def apply_to_mask(
@@ -717,13 +719,14 @@ class Affine(DualTransform):
         output_shape: tuple[int, int],
         **params: Any,
     ) -> ImageType:
-        return fgeometric.warp_affine(
+        height, width = output_shape
+        return warp_affine(
             mask,
             matrix,
-            interpolation=self.mask_interpolation,
-            fill=self.fill_mask,
+            flags=self.mask_interpolation,
             border_mode=self.border_mode,
-            output_shape=output_shape,
+            border_value=self.fill_mask,
+            dsize=(width, height),
         )
 
     def apply_to_bboxes(

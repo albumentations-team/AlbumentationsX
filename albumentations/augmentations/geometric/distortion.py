@@ -31,7 +31,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import batch_transform
+from albucore import batch_transform, remap
 from pydantic import (
     AfterValidator,
     Field,
@@ -256,13 +256,13 @@ class BaseDistortion(DualTransform):
         map_y: np.ndarray,
         **params: Any,
     ) -> ImageType:
-        return fgeometric.remap(
+        return remap(
             img,
             map_x,
             map_y,
-            self.interpolation,
-            self.border_mode,
-            self.fill,
+            interpolation=self.interpolation,
+            border_mode=self.border_mode,
+            border_value=self.fill,
         )
 
     @batch_transform("spatial")
@@ -284,13 +284,13 @@ class BaseDistortion(DualTransform):
         map_y: np.ndarray,
         **params: Any,
     ) -> ImageType:
-        return fgeometric.remap(
+        return remap(
             mask,
             map_x,
             map_y,
-            self.mask_interpolation,
-            self.border_mode,
-            self.fill_mask,
+            interpolation=self.mask_interpolation,
+            border_mode=self.border_mode,
+            border_value=self.fill_mask,
         )
 
     def apply_to_bboxes(

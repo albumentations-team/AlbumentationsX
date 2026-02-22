@@ -467,18 +467,17 @@ def test_create_piecewise_affine_maps_grid_points(
             ), f"No points near grid intersection ({x}, {y}) within allowed deviation"
 
 
-def test_copy_make_border_with_value_extension_zero_channels():
-    """Test that border extension works correctly with 0-channel images."""
+def test_pad_with_params_zero_channels():
+    """Test that padding works correctly with 0-channel images."""
     # Create a 0-channel image
     img = np.zeros((10, 10, 0), dtype=np.uint8)
 
-    # Test with different padding values
-    result = fgeometric.copy_make_border_with_value_extension(
+    result = fgeometric.pad_with_params(
         img=img,
-        top=2,
-        bottom=3,
-        left=4,
-        right=5,
+        h_pad_top=2,
+        h_pad_bottom=3,
+        w_pad_left=4,
+        w_pad_right=5,
         border_mode=cv2.BORDER_CONSTANT,
         value=0,
     )

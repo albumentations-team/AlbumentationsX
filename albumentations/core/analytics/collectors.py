@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from albumentations import __version__ as albumentationsx_version
+from albumentations._version import __version__ as albumentationsx_version
 from albumentations.core.analytics.events import ComposeInitEvent
 
 if TYPE_CHECKING:

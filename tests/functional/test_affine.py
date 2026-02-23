@@ -727,7 +727,8 @@ def test_rot90(bboxes, angle, keypoints):
     image_shape = image.shape[:2]
     normalized_bboxes = normalize_bboxes(bboxes, image_shape)
 
-    angle2factor = {90: 1, 180: 2, -90: 3}
+    angle2group_element = {90: "r90", 180: "r180", -90: "r270"}
+    group_element = angle2group_element[angle]
 
     transform = A.Compose(
         [A.Affine(rotate=(angle, angle), p=1)],
@@ -737,14 +738,12 @@ def test_rot90(bboxes, angle, keypoints):
 
     transformed = transform(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)
 
-    factor = angle2factor[angle]
-
-    image_rotated = fgeometric.rot90(image, factor)
-    mask_rotated = fgeometric.rot90(image, factor)
-    bboxes_rotated = fgeometric.bboxes_rot90(normalized_bboxes, factor, bbox_type="hbb")
+    image_rotated = fgeometric.rot90(image, group_element)
+    mask_rotated = fgeometric.rot90(image, group_element)
+    bboxes_rotated = fgeometric.bboxes_rot90(normalized_bboxes, group_element, bbox_type="hbb")
     bboxes_rotated = denormalize_bboxes(bboxes_rotated, image_shape)
 
-    keypoints_rotated = fgeometric.keypoints_rot90(keypoints, factor, image_shape)
+    keypoints_rotated = fgeometric.keypoints_rot90(keypoints, group_element, image_shape)
 
     np.testing.assert_array_equal(transformed["image"], image_rotated)
     np.testing.assert_array_equal(transformed["mask"], mask_rotated)

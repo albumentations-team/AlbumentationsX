@@ -19,7 +19,12 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS, ImageType, VolumeType
+from albumentations.core.type_definitions import (
+    ALL_TARGETS,
+    ImageType,
+    VolumeType,
+    c4_group_elements,
+)
 
 from . import functional as fgeometric
 
@@ -63,10 +68,17 @@ class RandomRotate90(DualTransform):
         - Properly represents the dihedral group D4 symmetries
         - Avoids potential correlation between separate rotation and flip augmentations
 
+    When `group_element` is specified, the transform is deterministic—useful for TTA (Test Time
+    Augmentation) where you need to apply each of the 4 rotations (0°, 90°, 180°, 270°) explicitly
+    and invert predictions. Uses the same naming as D4: C4 is the rotation subgroup of D4.
+
     Args:
         p (float): probability of applying the transform. Default: 1.0.
             Note that even with p=1.0, there's still a 0.25 probability
             of getting a 0-degree rotation (identity transform).
+        group_element (Literal["e", "r90", "r180", "r270"] | None): If set, always apply this
+            C4 group element: "e"=identity, "r90"=90°, "r180"=180°, "r270"=270° counterclockwise.
+            Use for TTA. Default: None (random choice).
 
     Targets:
         image, mask, bboxes, keypoints, volume, mask3d
@@ -108,51 +120,89 @@ class RandomRotate90(DualTransform):
         >>> rotated_keypoints = transformed["keypoints"]
         >>> rotated_keypoint_labels = transformed["keypoint_labels"]
 
+        >>> # TTA: apply each of the 4 rotations explicitly (same pattern as D4)
+        >>> from albumentations.core.type_definitions import c4_group_elements
+        >>> for element in c4_group_elements:
+        ...     tta_transform = A.RandomRotate90(p=1.0, group_element=element)
+        ...     augmented = tta_transform(image=image)
+        ...     # Run inference on augmented['image'], then invert prediction using element
+
     """
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
+    class InitSchema(BaseTransformInitSchema):
+        group_element: Literal["e", "r90", "r180", "r270"] | None
+
     def __init__(
         self,
         p: float = 1,
+        group_element: Literal["e", "r90", "r180", "r270"] | None = None,
     ):
         super().__init__(p=p)
+        self.group_element = group_element
 
-    def apply(self, img: ImageType, factor: Literal[0, 1, 2, 3], **params: Any) -> ImageType:
-        return fgeometric.rot90(img, factor)
+    def apply(
+        self,
+        img: ImageType,
+        group_element: Literal["e", "r90", "r180", "r270"],
+        **params: Any,
+    ) -> ImageType:
+        return fgeometric.rot90(img, group_element)
 
-    def get_params(self) -> dict[str, int]:
-        # Random int in the range [0, 3]
-        return {"factor": self.py_random.randint(0, 3)}
+    def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270"]]:
+        if self.group_element is not None:
+            return {"group_element": self.group_element}
+        return {"group_element": self.random_generator.choice(c4_group_elements)}
 
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,
-        factor: Literal[0, 1, 2, 3],
+        group_element: Literal["e", "r90", "r180", "r270"],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.bboxes_rot90(bboxes, factor, bbox_type=params["bbox_type"])
+        return fgeometric.bboxes_rot90(bboxes, group_element, bbox_type=params["bbox_type"])
 
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
-        factor: Literal[0, 1, 2, 3],
+        group_element: Literal["e", "r90", "r180", "r270"],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.keypoints_rot90(keypoints, factor, params["shape"])
+        return fgeometric.keypoints_rot90(keypoints, group_element, params["shape"])
 
-    def apply_to_images(self, images: ImageType, factor: Literal[0, 1, 2, 3], **params: Any) -> ImageType:
-        return fgeometric.rot90_images(images, factor)
+    def apply_to_images(
+        self,
+        images: ImageType,
+        group_element: Literal["e", "r90", "r180", "r270"],
+        **params: Any,
+    ) -> ImageType:
+        return fgeometric.rot90_images(images, group_element)
 
-    def apply_to_volumes(self, volumes: VolumeType, factor: Literal[0, 1, 2, 3], **params: Any) -> VolumeType:
-        return fgeometric.rot90_volumes(volumes, factor)
+    def apply_to_volumes(
+        self,
+        volumes: VolumeType,
+        group_element: Literal["e", "r90", "r180", "r270"],
+        **params: Any,
+    ) -> VolumeType:
+        return fgeometric.rot90_volumes(volumes, group_element)
 
-    def apply_to_mask3d(self, mask3d: VolumeType, factor: Literal[0, 1, 2, 3], **params: Any) -> VolumeType:
-        return self.apply_to_images(mask3d, factor, **params)
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType,
+        group_element: Literal["e", "r90", "r180", "r270"],
+        **params: Any,
+    ) -> VolumeType:
+        return self.apply_to_images(mask3d, group_element, **params)
 
-    def apply_to_masks3d(self, masks3d: VolumeType, factor: Literal[0, 1, 2, 3], **params: Any) -> VolumeType:
-        return self.apply_to_volumes(masks3d, factor, **params)
+    def apply_to_masks3d(
+        self,
+        masks3d: VolumeType,
+        group_element: Literal["e", "r90", "r180", "r270"],
+        **params: Any,
+    ) -> VolumeType:
+        return self.apply_to_volumes(masks3d, group_element, **params)
 
 
 class RotateInitSchema(BaseTransformInitSchema):

@@ -543,8 +543,9 @@ def test_obb_rot90_centered_box_analytical(k: int) -> None:
     ]
 
     # Use functional API
+    k_to_group_element = {1: "r90", 2: "r180", 3: "r270"}
     bboxes = np.array([input_bbox], dtype=np.float32)
-    result_bboxes = fgeometric.bboxes_rot90(bboxes, k, bbox_type="obb")
+    result_bboxes = fgeometric.bboxes_rot90(bboxes, k_to_group_element[k], bbox_type="obb")
     output_bbox = result_bboxes[0]
 
     # Compute expected by rotating polygon
@@ -598,8 +599,9 @@ def test_obb_rot90_offset_box_analytical(offset_x: float, offset_y: float, k: in
         angle,
     ]
 
+    k_to_group_element = {1: "r90", 2: "r180", 3: "r270"}
     bboxes = np.array([input_bbox], dtype=np.float32)
-    result_bboxes = fgeometric.bboxes_rot90(bboxes, k, bbox_type="obb")
+    result_bboxes = fgeometric.bboxes_rot90(bboxes, k_to_group_element[k], bbox_type="obb")
     output_bbox = result_bboxes[0]
 
     # Compute expected

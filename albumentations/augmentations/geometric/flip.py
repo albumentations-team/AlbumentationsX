@@ -351,8 +351,14 @@ class D4(DualTransform):
     Even if the probability (`p`) of applying the transform is set to 1, the identity transformation
     'e' may still occur, which means the input will remain unchanged in one out of eight cases.
 
+    When `group_element` is specified, the transform is deterministic—useful for TTA (Test Time
+    Augmentation) where you need to apply each of the 8 symmetries explicitly and invert predictions.
+
     Args:
         p (float): Probability of applying the transform. Default: 1.0.
+        group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None): If set,
+            always apply this specific D4 group element instead of sampling randomly. Use for TTA.
+            Default: None (random choice).
 
     Targets:
         image, mask, bboxes, keypoints, volume, mask3d
@@ -383,19 +389,28 @@ class D4(DualTransform):
         >>> transformed_image = transformed['image']
         # The resulting image will be one of the 8 possible D4 transformations of the input
 
+        >>> # TTA: apply each D4 symmetry explicitly
+        >>> from albumentations.core.type_definitions import d4_group_elements
+        >>> for element in d4_group_elements:
+        ...     tta_transform = A.D4(p=1.0, group_element=element)
+        ...     augmented = tta_transform(image=image)
+        ...     # Run inference on augmented['image'], then invert prediction using element
+
     """
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
-        pass
+        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None
 
     def __init__(
         self,
         p: float = 1,
+        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None = None,
     ):
         super().__init__(p=p)
+        self.group_element = group_element
 
     def apply(
         self,
@@ -509,6 +524,8 @@ class D4(DualTransform):
         return self.apply_to_volumes(masks3d, group_element)
 
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
+        if self.group_element is not None:
+            return {"group_element": self.group_element}
         return {
             "group_element": self.random_generator.choice(d4_group_elements),
         }
@@ -528,8 +545,14 @@ class SquareSymmetry(D4):
     - Horizontal flip: Mirror across horizontal axis
     - Main diagonal flip: Mirror across main diagonal
 
+    When `group_element` is specified, the transform is deterministic—useful for TTA (Test Time
+    Augmentation) where you need to apply each of the 8 symmetries explicitly and invert predictions.
+
     Args:
         p (float): Probability of applying the transform. Default: 1.0.
+        group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None): If set,
+            always apply this specific D4 group element instead of sampling randomly. Use for TTA.
+            Default: None (random choice).
 
     Targets:
         image, mask, bboxes, keypoints, volume, mask3d
@@ -559,5 +582,11 @@ class SquareSymmetry(D4):
         >>> transformed = transform(image=image)
         >>> transformed_image = transformed['image']
         # The resulting image will be one of the 8 possible square symmetry transformations of the input
+
+        >>> # TTA: apply each symmetry explicitly
+        >>> from albumentations.core.type_definitions import d4_group_elements
+        >>> for element in d4_group_elements:
+        ...     tta_transform = A.SquareSymmetry(p=1.0, group_element=element)
+        ...     augmented = tta_transform(image=image)
 
     """

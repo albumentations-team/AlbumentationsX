@@ -32,6 +32,9 @@ VolumeType: TypeAlias = ImageType
 
 d4_group_elements = ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]
 
+# C4: cyclic subgroup of D4 (rotations only). RandomRotate90 uses these.
+c4_group_elements = ["e", "r90", "r180", "r270"]
+
 
 class ReferenceImage(TypedDict):
     """Dictionary-like container for reference image data.

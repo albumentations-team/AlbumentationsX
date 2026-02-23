@@ -106,6 +106,9 @@ def _merge_obb_params(
 ROT90_180_FACTOR = 2
 ROT90_270_FACTOR = 3
 
+# C4 group element to np.rot90 k parameter
+C4_GROUP_ELEMENT_TO_K: dict[str, int] = {"e": 0, "r90": 1, "r180": 2, "r270": 3}
+
 
 @handle_empty_array("bboxes")
 def resize_bboxes(
@@ -159,50 +162,55 @@ def resize_bboxes(
 
 
 @handle_empty_array("bboxes")
-def bboxes_rot90(bboxes: np.ndarray, factor: int, bbox_type: Literal["hbb", "obb"]) -> np.ndarray:
+def bboxes_rot90(
+    bboxes: np.ndarray,
+    group_element: Literal["e", "r90", "r180", "r270"],
+    bbox_type: Literal["hbb", "obb"],
+) -> np.ndarray:
     """Rotates bounding boxes by 90 degrees CCW (see np.rot90)
 
     Args:
         bboxes (np.ndarray): Array of bounding boxes with shape (num_boxes, 4+)
-        factor (int): Number of 90-degree rotations (1, 2, or 3)
+        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
         bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB uses center/size/angle update.
 
     Returns:
         np.ndarray: Rotated bounding boxes
 
     """
-    if factor == 0:
+    k = C4_GROUP_ELEMENT_TO_K[group_element]
+    if k == 0:
         return bboxes
 
     if bbox_type == "obb":
         center_x, center_y, width, height, angle, extras = _split_obb_params(bboxes)
-        if factor == 1:
+        if k == 1:
             new_center_x, new_center_y = center_y, 1 - center_x
-        elif factor == ROT90_180_FACTOR:
+        elif k == ROT90_180_FACTOR:
             new_center_x, new_center_y = 1 - center_x, 1 - center_y
-        else:  # factor == ROT90_270_FACTOR
+        else:  # k == ROT90_270_FACTOR
             new_center_x, new_center_y = 1 - center_y, center_x
 
-        if factor % 2 == 1:
+        if k % 2 == 1:
             width, height = height, width
 
-        angle = angle + factor * 90
+        angle = angle + k * 90
         return _merge_obb_params(new_center_x, new_center_y, width, height, angle, extras)
 
     rotated_bboxes = bboxes.copy()
     x_min, y_min, x_max, y_max = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
 
-    if factor == 1:
+    if k == 1:
         rotated_bboxes[:, 0] = y_min
         rotated_bboxes[:, 1] = 1 - x_max
         rotated_bboxes[:, 2] = y_max
         rotated_bboxes[:, 3] = 1 - x_min
-    elif factor == ROT90_180_FACTOR:
+    elif k == ROT90_180_FACTOR:
         rotated_bboxes[:, 0] = 1 - x_max
         rotated_bboxes[:, 1] = 1 - y_max
         rotated_bboxes[:, 2] = 1 - x_min
         rotated_bboxes[:, 3] = 1 - y_min
-    elif factor == ROT90_270_FACTOR:
+    elif k == ROT90_270_FACTOR:
         rotated_bboxes[:, 0] = 1 - y_max
         rotated_bboxes[:, 1] = x_min
         rotated_bboxes[:, 2] = 1 - y_min
@@ -239,12 +247,12 @@ def bboxes_d4(
     """
     transformations = {
         "e": lambda x: x,  # Identity transformation
-        "r90": lambda x: bboxes_rot90(x, 1, bbox_type=bbox_type),  # Rotate 90 degrees
-        "r180": lambda x: bboxes_rot90(x, 2, bbox_type=bbox_type),  # Rotate 180 degrees
-        "r270": lambda x: bboxes_rot90(x, 3, bbox_type=bbox_type),  # Rotate 270 degrees
+        "r90": lambda x: bboxes_rot90(x, "r90", bbox_type=bbox_type),  # Rotate 90 degrees
+        "r180": lambda x: bboxes_rot90(x, "r180", bbox_type=bbox_type),  # Rotate 180 degrees
+        "r270": lambda x: bboxes_rot90(x, "r270", bbox_type=bbox_type),  # Rotate 270 degrees
         "v": lambda x: bboxes_vflip(x, bbox_type=bbox_type),  # Vertical flip
         "hvt": lambda x: bboxes_transpose(
-            bboxes_rot90(x, 2, bbox_type=bbox_type),
+            bboxes_rot90(x, "r180", bbox_type=bbox_type),
             bbox_type=bbox_type,
         ),  # Reflect over anti-diagonal
         "h": lambda x: bboxes_hflip(x, bbox_type=bbox_type),  # Horizontal flip
@@ -262,21 +270,22 @@ def bboxes_d4(
 @angle_2pi_range
 def keypoints_rot90(
     keypoints: np.ndarray,
-    factor: Literal[0, 1, 2, 3],
+    group_element: Literal["e", "r90", "r180", "r270"],
     image_shape: tuple[int, int],
 ) -> np.ndarray:
     """Rotate keypoints by 90 degrees counter-clockwise (CCW) a specified number of times.
 
     Args:
         keypoints (np.ndarray): An array of keypoints with shape (N, 4+) in the format (x, y, angle, scale, ...).
-        factor (int): The number of 90 degree CCW rotations to apply. Must be in the range [0, 3].
+        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
         image_shape (tuple[int, int]): The shape of the image (height, width).
 
     Returns:
         np.ndarray: The rotated keypoints with the same shape as the input.
 
     """
-    if factor == 0:
+    k = C4_GROUP_ELEMENT_TO_K[group_element]
+    if k == 0:
         return keypoints
 
     height, width = image_shape[:2]
@@ -284,15 +293,15 @@ def keypoints_rot90(
 
     x, y, angle = keypoints[:, 0], keypoints[:, 1], keypoints[:, 3]
 
-    if factor == 1:
+    if k == 1:
         rotated_keypoints[:, 0] = y
         rotated_keypoints[:, 1] = width - 1 - x
         rotated_keypoints[:, 3] = angle - np.pi / 2
-    elif factor == ROT90_180_FACTOR:
+    elif k == ROT90_180_FACTOR:
         rotated_keypoints[:, 0] = width - 1 - x
         rotated_keypoints[:, 1] = height - 1 - y
         rotated_keypoints[:, 3] = angle - np.pi
-    elif factor == ROT90_270_FACTOR:
+    elif k == ROT90_270_FACTOR:
         rotated_keypoints[:, 0] = height - 1 - y
         rotated_keypoints[:, 1] = x
         rotated_keypoints[:, 3] = angle + np.pi / 2
@@ -332,12 +341,12 @@ def keypoints_d4(
     rows, cols = image_shape[:2]
     transformations = {
         "e": lambda x: x,  # Identity transformation
-        "r90": lambda x: keypoints_rot90(x, 1, image_shape),  # Rotate 90 degrees
-        "r180": lambda x: keypoints_rot90(x, 2, image_shape),  # Rotate 180 degrees
-        "r270": lambda x: keypoints_rot90(x, 3, image_shape),  # Rotate 270 degrees
+        "r90": lambda x: keypoints_rot90(x, "r90", image_shape),  # Rotate 90 degrees
+        "r180": lambda x: keypoints_rot90(x, "r180", image_shape),  # Rotate 180 degrees
+        "r270": lambda x: keypoints_rot90(x, "r270", image_shape),  # Rotate 270 degrees
         "v": lambda x: keypoints_vflip(x, rows),  # Vertical flip
         "hvt": lambda x: keypoints_transpose(
-            keypoints_rot90(x, 2, image_shape),
+            keypoints_rot90(x, "r180", image_shape),
         ),  # Reflect over anti diagonal
         "h": lambda x: keypoints_hflip(x, cols),  # Horizontal flip
         "t": keypoints_transpose,  # Transpose (reflect over main diagonal)
@@ -1507,11 +1516,11 @@ def transpose(img: ImageType) -> ImageType:
 
 D4_TRANSFORMATIONS = {
     "e": lambda x: x,  # Identity transformation
-    "r90": lambda x: rot90(x, 1),  # Rotate 90 degrees
-    "r180": lambda x: rot90(x, 2),  # Rotate 180 degrees
-    "r270": lambda x: rot90(x, 3),  # Rotate 270 degrees
+    "r90": lambda x: rot90(x, "r90"),  # Rotate 90 degrees
+    "r180": lambda x: rot90(x, "r180"),  # Rotate 180 degrees
+    "r270": lambda x: rot90(x, "r270"),  # Rotate 270 degrees
     "v": vflip,  # Vertical flip
-    "hvt": lambda x: transpose(rot90(x, 2)),  # Reflect over anti-diagonal
+    "hvt": lambda x: transpose(rot90(x, "r180")),  # Reflect over anti-diagonal
     "h": hflip,  # Horizontal flip
     "t": transpose,  # Transpose (reflect over main diagonal)
 }
@@ -1565,21 +1574,21 @@ def transpose_volumes(volumes: np.ndarray) -> np.ndarray:
     return volumes.transpose(new_axes)
 
 
-def rot90(img: ImageType, factor: Literal[0, 1, 2, 3]) -> ImageType:
+def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
     """Rotate an image 90 degrees counterclockwise.
 
     Args:
         img (np.ndarray): The input image to rotate.
-        factor (Literal[0, 1, 2, 3]): The number of 90-degree rotations to apply.
+        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
 
     Returns:
         np.ndarray: The rotated image.
 
     """
-    return np.rot90(img, factor)
+    return np.rot90(img, C4_GROUP_ELEMENT_TO_K[group_element])
 
 
-def rot90_images(images: ImageType, factor: Literal[0, 1, 2, 3]) -> ImageType:
+def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
     """Rotate a batch of images 90 degrees counter-clockwise multiple times.
 
     Args:
@@ -1587,18 +1596,18 @@ def rot90_images(images: ImageType, factor: Literal[0, 1, 2, 3]) -> ImageType:
             - (N, H, W) for grayscale images
             - (N, H, W, C) for multi-channel images
             where N is the batch size, H is height, W is width, C is channels
-        factor (Literal[0, 1, 2, 3]): The number of 90-degree rotations to apply.
+        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
 
     Returns:
         np.ndarray: Rotated batch of images with shape:
-            - (N, W, H) for grayscale images when factor is 1 or 3
-            - (N, H, W) for grayscale images when factor is 0 or 2
-            - (N, W, H, C) for multi-channel images when factor is 1 or 3
-            - (N, H, W, C) for multi-channel images when factor is 0 or 2
+            - (N, W, H) for grayscale images when group_element is r90 or r270
+            - (N, H, W) for grayscale images when group_element is e or r180
+            - (N, W, H, C) for multi-channel images when group_element is r90 or r270
+            - (N, H, W, C) for multi-channel images when group_element is e or r180
 
     """
-    # Axes 1 (height) and 2 (width) for rotation, preserving batch dimension
-    return np.rot90(images, k=factor, axes=(1, 2))
+    k = C4_GROUP_ELEMENT_TO_K[group_element]
+    return np.rot90(images, k=k, axes=(1, 2))
 
 
 @handle_empty_array("bboxes")
@@ -4263,7 +4272,7 @@ def vflip_volumes(volumes: np.ndarray) -> np.ndarray:
     return np.flip(volumes, axis=2)
 
 
-def rot90_volumes(volumes: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarray:
+def rot90_volumes(volumes: np.ndarray, group_element: Literal["e", "r90", "r180", "r270"]) -> np.ndarray:
     """Rotate a batch of volumes 90 degrees counter-clockwise multiple times.
 
     Rotates the volumes in the height-width plane (axes 2 and 3).
@@ -4271,14 +4280,14 @@ def rot90_volumes(volumes: np.ndarray, factor: Literal[0, 1, 2, 3]) -> np.ndarra
 
     Args:
         volumes (np.ndarray): Input batch of volumes.
-        factor (Literal[0, 1, 2, 3]): Number of 90-degree rotations
+        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
 
     Returns:
         np.ndarray: Rotated batch of volumes.
 
     """
-    # Axes 2 (height) and 3 (width) for rotation
-    return np.rot90(volumes, k=factor, axes=(2, 3))
+    k = C4_GROUP_ELEMENT_TO_K[group_element]
+    return np.rot90(volumes, k=k, axes=(2, 3))
 
 
 @preserve_channel_dim
@@ -4374,11 +4383,11 @@ def bboxes_morphology(
 
 D4_TRANSFORMATIONS_IMAGES = {
     "e": lambda x: x,  # Identity transformation
-    "r90": lambda x: rot90_images(x, 1),  # Rotate 90 degrees
-    "r180": lambda x: rot90_images(x, 2),  # Rotate 180 degrees
-    "r270": lambda x: rot90_images(x, 3),  # Rotate 270 degrees
+    "r90": lambda x: rot90_images(x, "r90"),  # Rotate 90 degrees
+    "r180": lambda x: rot90_images(x, "r180"),  # Rotate 180 degrees
+    "r270": lambda x: rot90_images(x, "r270"),  # Rotate 270 degrees
     "v": vflip_images,  # Vertical flip (already batch-aware)
-    "hvt": lambda x: transpose_images(rot90_images(x, 2)),  # Reflect over anti-diagonal
+    "hvt": lambda x: transpose_images(rot90_images(x, "r180")),  # Reflect over anti-diagonal
     "h": hflip_images,  # Horizontal flip (already batch-aware)
     "t": transpose_images,  # Transpose (reflect over main diagonal)
 }

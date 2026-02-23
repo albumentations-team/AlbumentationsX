@@ -50,7 +50,7 @@ def test_rot90(target):
     img = np.array([[0, 0, 1], [0, 0, 1], [0, 0, 1]], dtype=np.uint8)
     expected = np.array([[1, 1, 1], [0, 0, 0], [0, 0, 0]], dtype=np.uint8)
     img, expected = convert_2d_to_target_format([img, expected], target=target)
-    rotated = fgeometric.rot90(img, factor=1)
+    rotated = fgeometric.rot90(img, "r90")
     np.testing.assert_array_equal(rotated, expected)
 
 
@@ -65,7 +65,7 @@ def test_rot90_float(target):
         dtype=np.float32,
     )
     img, expected = convert_2d_to_target_format([img, expected], target=target)
-    rotated = fgeometric.rot90(img, factor=1)
+    rotated = fgeometric.rot90(img, "r90")
     np.testing.assert_array_almost_equal_nulp(rotated, expected)
 
 
@@ -260,14 +260,14 @@ def test_resize_nearest_interpolation_float(target):
 
 
 @pytest.mark.parametrize(
-    "factor, expected_positions",
+    "group_element, expected_positions",
     [
-        (1, (299, 150)),  # Rotated 90 degrees CCW
-        (2, (249, 199)),  # Rotated 180 degrees
-        (3, (100, 249)),  # Rotated 270 degrees CCW
+        ("r90", (299, 150)),  # Rotated 90 degrees CCW
+        ("r180", (249, 199)),  # Rotated 180 degrees
+        ("r270", (100, 249)),  # Rotated 270 degrees CCW
     ],
 )
-def test_keypoint_image_rot90_match(factor, expected_positions):
+def test_keypoint_image_rot90_match(group_element, expected_positions):
     image_shape = (300, 400)  # Non-square dimensions
     img = np.zeros(image_shape, dtype=np.uint8)
     # Placing the keypoint away from the center and edge: (150, 100)
@@ -276,14 +276,14 @@ def test_keypoint_image_rot90_match(factor, expected_positions):
     img[keypoints[0][1], keypoints[0][0]] = 1
 
     # Rotate the image
-    rotated_img = fgeometric.rot90(img, factor)
+    rotated_img = fgeometric.rot90(img, group_element)
 
     # Rotate the keypoint
-    rotated_keypoints = fgeometric.keypoints_rot90(keypoints, factor, img.shape)[0]
+    rotated_keypoints = fgeometric.keypoints_rot90(keypoints, group_element, img.shape)[0]
 
     # Assert that the rotated keypoint lands where expected
     assert rotated_img[int(rotated_keypoints[1]), int(rotated_keypoints[0])] == 1, (
-        f"Key point after rotation factor {factor} is not at the expected position {expected_positions}, "
+        f"Key point after rotation {group_element} is not at the expected position {expected_positions}, "
         f"but at {rotated_keypoints}"
     )
 
@@ -629,10 +629,10 @@ def test_transpose_output_shape(image):
 
 
 @pytest.mark.parametrize("image", RECTANGULAR_IMAGES)
-@pytest.mark.parametrize("factor", [0, 1, 2, 3])
-def test_d4_output_shape_with_factor(image, factor):
-    result = fgeometric.rot90(image, factor)
-    if factor in {1, 3}:
+@pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270"])
+def test_d4_output_shape_with_group_element(image, group_element):
+    result = fgeometric.rot90(image, group_element)
+    if group_element in {"r90", "r270"}:
         assert result.shape[:2] == image.shape[:2][::-1], "Output shape should be the transpose of input shape"
     else:
         assert result.shape == image.shape, "Output shape should match input shape"
@@ -658,7 +658,7 @@ def test_transpose_2(shape):
     expected_second = create_test_matrix(expected_second_diagonal, shape)
 
     assert np.array_equal(fgeometric.transpose(img), expected_main)
-    transposed_axis1 = fgeometric.transpose(fgeometric.rot90(img, 2))
+    transposed_axis1 = fgeometric.transpose(fgeometric.rot90(img, "r180"))
     assert np.array_equal(transposed_axis1, expected_second)
 
 

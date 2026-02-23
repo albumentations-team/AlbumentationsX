@@ -580,16 +580,16 @@ def test_keypoint_transform_format_xyas(aug: BasicTransform, keypoints, expected
 
 
 @pytest.mark.parametrize(
-    ["keypoint", "expected", "factor"],
+    ["keypoint", "expected", "group_element"],
     [
-        ((20, 30, 1, math.pi / 2, 0), (20, 30, 1, math.pi / 2, 0), 0),
-        ((20, 30, 1, math.pi / 2, 0), (30, 179, 1, 0, 0), 1),
-        ((20, 30, 1, math.pi / 2, 0), (179, 69, 1, 3 * math.pi / 2, 0), 2),
-        ((20, 30, 1, math.pi / 2, 0), (69, 20, 1, math.pi, 0), 3),
+        ((20, 30, 1, math.pi / 2, 0), (20, 30, 1, math.pi / 2, 0), "e"),
+        ((20, 30, 1, math.pi / 2, 0), (30, 179, 1, 0, 0), "r90"),
+        ((20, 30, 1, math.pi / 2, 0), (179, 69, 1, 3 * math.pi / 2, 0), "r180"),
+        ((20, 30, 1, math.pi / 2, 0), (69, 20, 1, math.pi, 0), "r270"),
     ],
 )
-def test_keypoint_rotate90(keypoint, expected, factor: int) -> None:
-    actual = fgeometric.keypoints_rot90(np.array([keypoint]), factor, (100, 200))
+def test_keypoint_rotate90(keypoint, expected, group_element: str) -> None:
+    actual = fgeometric.keypoints_rot90(np.array([keypoint]), group_element, (100, 200))
     np.testing.assert_allclose(actual, [expected], atol=1e-7)
 
 
@@ -721,7 +721,7 @@ def test_keypoint_vh_flip_equivalence(keypoint, rows, cols):
         hvflipped_keypoints,
     ), "Sequential vflip + hflip not equivalent to hflip + vflip"
     assert vhflipped_keypoints == pytest.approx(
-        fgeometric.keypoints_rot90(keypoints, 2, (rows, cols)),
+        fgeometric.keypoints_rot90(keypoints, "r180", (rows, cols)),
     ), "rot180 not equivalent to vflip + hflip"
 
 

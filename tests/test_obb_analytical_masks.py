@@ -457,8 +457,9 @@ def test_obb_rot90_centered_box_analytical(k: int) -> None:
     rotated_mask = np.rot90(input_mask, k)
 
     # Apply rot90 to OBB using functional API
+    k_to_group_element = {1: "r90", 2: "r180", 3: "r270"}
     bboxes = np.array([input_obb], dtype=np.float32)
-    result_bboxes = fgeometric.bboxes_rot90(bboxes, k, bbox_type="obb")
+    result_bboxes = fgeometric.bboxes_rot90(bboxes, k_to_group_element[k], bbox_type="obb")
     output_obb = result_bboxes[0]
 
     # Create mask from output OBB
@@ -500,8 +501,9 @@ def test_obb_rot90_offset_box_analytical(offset_x: float, offset_y: float, k: in
     input_mask = obb_to_mask(input_obb, image_shape)
     rotated_mask = np.rot90(input_mask, k)
 
+    k_to_group_element = {1: "r90", 2: "r180", 3: "r270"}
     bboxes = np.array([input_obb], dtype=np.float32)
-    result_bboxes = fgeometric.bboxes_rot90(bboxes, k, bbox_type="obb")
+    result_bboxes = fgeometric.bboxes_rot90(bboxes, k_to_group_element[k], bbox_type="obb")
     output_obb = result_bboxes[0]
 
     output_mask = obb_to_mask(output_obb, image_shape)

@@ -324,14 +324,9 @@ class TestKeypointLabelSwapping:
         keypoints = np.array([[50, 25]], dtype=np.float32)
         labels = ["left_eye"]
 
-        # Mock D4 transform to always return specific group element
-        class MockD4(A.D4):
-            def get_params(self):
-                return {"group_element": group_element}
-
         transform = A.Compose(
             [
-                MockD4(p=1.0),
+                A.D4(p=1.0, group_element=group_element),
             ],
             keypoint_params=A.KeypointParams(
                 coord_format="xy",

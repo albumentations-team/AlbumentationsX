@@ -2041,3 +2041,32 @@ def test_smallest_max_size(input_shape, max_size, max_size_hw, expected_shape):
     aug = A.SmallestMaxSize(max_size=max_size, max_size_hw=max_size_hw)
     transformed = aug(image=image)["image"]
     assert transformed.shape == expected_shape
+
+
+@pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"])
+def test_d4_tta_deterministic(group_element):
+    """D4 with group_element produces deterministic output for TTA."""
+    image = np.arange(100 * 100 * 3, dtype=np.uint8).reshape(100, 100, 3)
+    transform = A.D4(p=1.0, group_element=group_element)
+    results = [transform(image=image)["image"] for _ in range(3)]
+    np.testing.assert_array_equal(results[0], results[1])
+    np.testing.assert_array_equal(results[1], results[2])
+
+
+@pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270"])
+def test_random_rotate90_tta_deterministic(group_element):
+    """RandomRotate90 with group_element produces deterministic output for TTA."""
+    image = np.arange(100 * 100 * 3, dtype=np.uint8).reshape(100, 100, 3)
+    transform = A.RandomRotate90(p=1.0, group_element=group_element)
+    results = [transform(image=image)["image"] for _ in range(3)]
+    np.testing.assert_array_equal(results[0], results[1])
+    np.testing.assert_array_equal(results[1], results[2])
+
+
+@pytest.mark.parametrize("group_element", ["e", "r90", "h", "t"])
+def test_square_symmetry_tta_same_as_d4(group_element):
+    """SquareSymmetry with group_element produces same result as D4."""
+    image = np.arange(64 * 64 * 3, dtype=np.uint8).reshape(64, 64, 3)
+    d4_result = A.D4(p=1.0, group_element=group_element)(image=image)["image"]
+    square_result = A.SquareSymmetry(p=1.0, group_element=group_element)(image=image)["image"]
+    np.testing.assert_array_equal(d4_result, square_result)

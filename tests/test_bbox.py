@@ -710,7 +710,7 @@ def test_obb_flip_matches_polygon_transform(
 
 def test_obb_rot90_updates_corners():
     bboxes = np.array([[0.1, 0.2, 0.3, 0.4, 15.0, 5.0]], dtype=np.float32)
-    rotated = fgeometric.bboxes_rot90(bboxes, 1, bbox_type="obb")
+    rotated = fgeometric.bboxes_rot90(bboxes, "r90", bbox_type="obb")
 
     cx = (bboxes[:, 0] + bboxes[:, 2]) * 0.5
     cy = (bboxes[:, 1] + bboxes[:, 3]) * 0.5
@@ -1711,16 +1711,25 @@ def test_crop_bboxes_by_coords_empty_input():
 def test_bboxes_rot90():
     bboxes = np.array([[0.1, 0.2, 0.3, 0.4]])
 
-    np.testing.assert_array_almost_equal(fgeometric.bboxes_rot90(bboxes, 0, bbox_type="hbb")[0], (0.1, 0.2, 0.3, 0.4))
-    np.testing.assert_array_almost_equal(fgeometric.bboxes_rot90(bboxes, 1, bbox_type="hbb")[0], (0.2, 0.7, 0.4, 0.9))
-    np.testing.assert_array_almost_equal(fgeometric.bboxes_rot90(bboxes, 2, bbox_type="hbb")[0], (0.7, 0.6, 0.9, 0.8))
-    np.testing.assert_array_almost_equal(fgeometric.bboxes_rot90(bboxes, 3, bbox_type="hbb")[0], (0.6, 0.1, 0.8, 0.3))
+    np.testing.assert_array_almost_equal(fgeometric.bboxes_rot90(bboxes, "e", bbox_type="hbb")[0], (0.1, 0.2, 0.3, 0.4))
+    np.testing.assert_array_almost_equal(
+        fgeometric.bboxes_rot90(bboxes, "r90", bbox_type="hbb")[0],
+        (0.2, 0.7, 0.4, 0.9),
+    )
+    np.testing.assert_array_almost_equal(
+        fgeometric.bboxes_rot90(bboxes, "r180", bbox_type="hbb")[0],
+        (0.7, 0.6, 0.9, 0.8),
+    )
+    np.testing.assert_array_almost_equal(
+        fgeometric.bboxes_rot90(bboxes, "r270", bbox_type="hbb")[0],
+        (0.6, 0.1, 0.8, 0.3),
+    )
 
 
 def test_bboxes_transpose():
     bboxes = np.array([[0.7, 0.1, 0.8, 0.4]])
     assert np.allclose(fgeometric.bboxes_transpose(bboxes, bbox_type="hbb"), (0.1, 0.7, 0.4, 0.8))
-    rot90 = fgeometric.bboxes_rot90(bboxes, 2, bbox_type="hbb")
+    rot90 = fgeometric.bboxes_rot90(bboxes, "r180", bbox_type="hbb")
     reflected_anti_diagonal = fgeometric.bboxes_transpose(rot90, bbox_type="hbb")
     assert np.allclose(reflected_anti_diagonal, (0.6, 0.2, 0.9, 0.3))
 
@@ -1747,9 +1756,9 @@ def test_bbox_d4(bbox, group_member, expected):
 @pytest.mark.parametrize(
     "group_member, fn",
     [
-        ("r90", lambda b: fgeometric.bboxes_rot90(b, 1, bbox_type="obb")),
-        ("r180", lambda b: fgeometric.bboxes_rot90(b, 2, bbox_type="obb")),
-        ("r270", lambda b: fgeometric.bboxes_rot90(b, 3, bbox_type="obb")),
+        ("r90", lambda b: fgeometric.bboxes_rot90(b, "r90", bbox_type="obb")),
+        ("r180", lambda b: fgeometric.bboxes_rot90(b, "r180", bbox_type="obb")),
+        ("r270", lambda b: fgeometric.bboxes_rot90(b, "r270", bbox_type="obb")),
         ("h", lambda b: fgeometric.bboxes_hflip(b, bbox_type="obb")),
         ("v", lambda b: fgeometric.bboxes_vflip(b, bbox_type="obb")),
         ("t", lambda b: fgeometric.bboxes_transpose(b, bbox_type="obb")),

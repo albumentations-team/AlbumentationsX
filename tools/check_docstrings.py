@@ -4,7 +4,8 @@ from pathlib import Path
 
 DOCSTRING_PATTERN = re.compile(r'["\']{3}[\s\S]+?["\']{3}')
 DASH_PATTERN = re.compile(r"---{2,}")
-DOUBLE_BACKTICK_PATTERN = re.compile(r"``")
+# Match exactly two backticks, not part of triple (```) - allows fenced code blocks
+DOUBLE_BACKTICK_PATTERN = re.compile(r"(?<!`)``(?!`)")
 
 
 def check_docstrings_for_dashes(file_path: str) -> bool:

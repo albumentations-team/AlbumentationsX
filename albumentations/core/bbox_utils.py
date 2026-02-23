@@ -366,7 +366,7 @@ class BboxProcessor(DataProcessor):
         from albumentations.core.composition import BaseCompose
         from albumentations.core.transforms_interface import DualTransform, ImageOnlyTransform
 
-        unsupported = []
+        unsupported: list[str] = []
 
         def check_transform(transform: object) -> None:
             # Skip ImageOnly (they don't touch bboxes)

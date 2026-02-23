@@ -165,6 +165,8 @@ conda_build/
 
 .ruff_cache/
 
+uv.lock
+
 data/
 
 notebooks/

@@ -739,7 +739,7 @@ def test_rot90(bboxes, angle, keypoints):
     transformed = transform(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)
 
     image_rotated = fgeometric.rot90(image, group_element)
-    mask_rotated = fgeometric.rot90(image, group_element)
+    mask_rotated = fgeometric.rot90(mask, group_element)
     bboxes_rotated = fgeometric.bboxes_rot90(normalized_bboxes, group_element, bbox_type="hbb")
     bboxes_rotated = denormalize_bboxes(bboxes_rotated, image_shape)
 

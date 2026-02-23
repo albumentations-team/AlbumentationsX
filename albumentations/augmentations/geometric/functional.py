@@ -1289,9 +1289,9 @@ def to_distance_maps(
     image_shape: tuple[int, int],
     inverted: bool = False,
 ) -> np.ndarray:
-    """Generate a ``(H,W,N)`` array of distance maps for ``N`` keypoints.
-    The ``n``-th distance map contains at every location ``(y, x)`` the
-    euclidean distance to the ``n``-th keypoint.
+    """Generate a `(H,W,N)` array of distance maps for `N` keypoints.
+    The `n`-th distance map contains at every location `(y, x)` the
+    euclidean distance to the `n`-th keypoint.
     This function can be used as a helper when augmenting keypoints with a
     method that only supports the augmentation of images.
 
@@ -1299,18 +1299,18 @@ def to_distance_maps(
         keypoints (np.ndarray): A numpy array of shape (N, 2+) where N is the number of keypoints.
                    Each row represents a keypoint's (x, y) coordinates.
         image_shape (tuple[int, int]): Shape of the image (height, width)
-        inverted (bool): If ``True``, inverted distance maps are returned where each
-            distance value d is replaced by ``d/(d+1)``, i.e. the distance
-            maps have values in the range ``(0.0, 1.0]`` with ``1.0`` denoting
+        inverted (bool): If `True`, inverted distance maps are returned where each
+            distance value d is replaced by `d/(d+1)`, i.e. the distance
+            maps have values in the range `(0.0, 1.0]` with `1.0` denoting
             exactly the position of the respective keypoint.
 
     Returns:
-        np.ndarray: A float32 array of shape (H, W, N) containing ``N`` distance maps for ``N``
-            keypoints. Each location ``(y, x, n)`` in the array denotes the
-            euclidean distance at ``(y, x)`` to the ``n``-th keypoint.
-            If `inverted` is ``True``, the distance ``d`` is replaced
-            by ``d/(d+1)``. The height and width of the array match the
-            height and width in ``image_shape``.
+        np.ndarray: A float32 array of shape (H, W, N) containing `N` distance maps for `N`
+            keypoints. Each location `(y, x, n)` in the array denotes the
+            euclidean distance at `(y, x)` to the `n`-th keypoint.
+            If `inverted` is `True`, the distance `d` is replaced
+            by `d/(d+1)`. The height and width of the array match the
+            height and width in `image_shape`.
 
     """
     height, width = image_shape[:2]

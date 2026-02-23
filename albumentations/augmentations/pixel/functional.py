@@ -1944,12 +1944,12 @@ def apply_brightness_contrast_torchvision(
 ) -> ImageType:
     """Apply brightness and contrast adjustments fused into a single LUT (uint8) or two passes (float32).
 
-    Both operations are ``clip(a*x + b)``. The image grayscale mean is computed once and propagated
-    analytically through the pipeline: if brightness comes first, ``mean_at_contrast = mean * brightness_factor``
+    Both operations are `clip(a*x + b)`. The image grayscale mean is computed once and propagated
+    analytically through the pipeline: if brightness comes first, `mean_at_contrast = mean * brightness_factor`
     (clipped to valid range). This avoids re-reading the image after brightness is applied.
 
     For uint8 images the composition is pre-computed over all 256 input values into a single
-    256-entry LUT applied in one ``cv2.LUT`` call. For float32, two sequential clipped passes are used.
+    256-entry LUT applied in one `cv2.LUT` call. For float32, two sequential clipped passes are used.
 
     Args:
         img: Input image (uint8 or float32).

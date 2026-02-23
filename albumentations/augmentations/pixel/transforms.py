@@ -3819,35 +3819,35 @@ class Superpixels(ImageOnlyTransform):
             segment are replaced by their average color (otherwise, the pixels are not changed).
 
 
-            * A probability of ``0.0`` would mean, that the pixels in no
+            * A probability of `0.0` would mean, that the pixels in no
                 segment are replaced by their average color (image is not
                 changed at all).
-            * A probability of ``0.5`` would mean, that around half of all
+            * A probability of `0.5` would mean, that around half of all
                 segments are replaced by their average color.
-            * A probability of ``1.0`` would mean, that all segments are
+            * A probability of `1.0` would mean, that all segments are
                 replaced by their average color (resulting in a voronoi
                 image).
 
             Behavior based on chosen data types for this parameter:
-            * If a ``float``, then that ``float`` will always be used.
-            * If ``tuple`` ``(a, b)``, then a random probability will be
-            sampled from the interval ``[a, b]`` per image.
+            * If a `float`, then that `float` will always be used.
+            * If `tuple` `(a, b)`, then a random probability will be
+            sampled from the interval `[a, b]` per image.
             Default: (0.1, 0.3)
 
         n_segments (tuple[int, int] | int): Rough target number of how many superpixels to generate.
             The algorithm may deviate from this number.
             Lower value will lead to coarser superpixels.
             Higher values are computationally more intensive and will hence lead to a slowdown.
-            If tuple ``(a, b)``, then a value from the discrete interval ``[a..b]`` will be sampled per image.
+            If tuple `(a, b)`, then a value from the discrete interval `[a..b]` will be sampled per image.
             Default: (15, 120)
 
         max_size (int | None): Maximum image size at which the augmentation is performed.
             If the width or height of an image exceeds this value, it will be
             downscaled before the augmentation so that the longest side matches `max_size`.
             This is done to speed up the process. The final output image has the same size as the input image.
-            Note that in case `p_replace` is below ``1.0``,
+            Note that in case `p_replace` is below `1.0`,
             the down-/upscaling will affect the not-replaced pixels too.
-            Use ``None`` to apply no down-/upscaling.
+            Use `None` to apply no down-/upscaling.
             Default: 128
 
         interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm. Should be one of:
@@ -6608,28 +6608,28 @@ class PhotoMetricDistort(ImageOnlyTransform):
     """Randomly distorts an image's photometric properties, as used in SSD object detection training.
 
     Applies brightness, contrast, saturation, and hue adjustments independently with probability
-    ``distort_p`` each. Contrast is applied either before or after the HSV-space adjustments
-    (randomly chosen). Optionally permutes channels with probability ``distort_p``.
+    `distort_p` each. Contrast is applied either before or after the HSV-space adjustments
+    (randomly chosen). Optionally permutes channels with probability `distort_p`.
 
-    This mirrors the ``RandomPhotometricDistort`` transform from torchvision but uses our
-    existing ``adjust_*_torchvision`` functional primitives.
+    This mirrors the `RandomPhotometricDistort` transform from torchvision but uses our
+    existing `adjust_*_torchvision` functional primitives.
 
     Args:
         brightness_range (tuple[float, float]): Multiplicative factor range for brightness.
             Factor is drawn uniformly from this range. Must be non-negative.
-            Default: ``(0.875, 1.125)``.
+            Default: `(0.875, 1.125)`.
         contrast_range (tuple[float, float]): Multiplicative factor range for contrast.
             Factor is drawn uniformly from this range. Must be non-negative.
-            Default: ``(0.5, 1.5)``.
+            Default: `(0.5, 1.5)`.
         saturation_range (tuple[float, float]): Multiplicative factor range for saturation.
             Factor is drawn uniformly from this range. Must be non-negative.
-            Default: ``(0.5, 1.5)``.
+            Default: `(0.5, 1.5)`.
         hue_range (tuple[float, float]): Additive factor range for hue.
-            Factor is drawn uniformly from this range. Must be in ``[-0.5, 0.5]``.
-            Default: ``(-0.05, 0.05)``.
+            Factor is drawn uniformly from this range. Must be in `[-0.5, 0.5]`.
+            Default: `(-0.05, 0.05)`.
         distort_p (float): Probability of applying each individual distortion (brightness,
-            contrast, saturation, hue, channel permutation). Default: ``0.5``.
-        p (float): Probability of applying the overall transform. Default: ``0.5``.
+            contrast, saturation, hue, channel permutation). Default: `0.5`.
+        p (float): Probability of applying the overall transform. Default: `0.5`.
 
     Targets:
         image, volume
@@ -6642,7 +6642,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
 
     Note:
         - Each of the five distortions (brightness, contrast, saturation, hue, channel shuffle)
-          is applied independently with probability ``distort_p``.
+          is applied independently with probability `distort_p`.
         - Contrast is randomly applied either before or after saturation/hue adjustment.
         - For single-channel images, saturation and hue adjustments have no effect.
 

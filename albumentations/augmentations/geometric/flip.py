@@ -74,7 +74,7 @@ class VerticalFlip(DualTransform):
         - Bounding boxes are adjusted to match their new positions in the flipped image.
         - Keypoints are moved to their new positions in the flipped image.
         - This transform is self-inverse: applying it twice returns the original image.
-          Call ``inverse()`` to get a new instance that undoes the flip (which is identical to
+          Call `inverse()` to get a new instance that undoes the flip (which is identical to
           applying the flip again), useful for TTA pipelines.
 
     Mathematical Details:
@@ -177,7 +177,7 @@ class HorizontalFlip(DualTransform):
 
     Note:
         - This transform is self-inverse: applying it twice returns the original image.
-          Call ``inverse()`` to get a new instance that undoes the flip (identical to applying
+          Call `inverse()` to get a new instance that undoes the flip (identical to applying
           the flip again), useful for TTA pipelines.
 
     Examples:
@@ -283,7 +283,7 @@ class Transpose(DualTransform):
         - The dimensions of the output will be swapped compared to the input. For example,
           an input image of shape (100, 200, 3) will result in an output of shape (200, 100, 3).
         - This transform is self-inverse: applying it twice returns the original image.
-          Call ``inverse()`` to get a new instance that undoes the transpose (identical to
+          Call `inverse()` to get a new instance that undoes the transpose (identical to
           applying it again), useful for TTA pipelines.
         - For multi-channel images (like RGB), the channels are preserved in their original order.
         - Bounding boxes will have their coordinates adjusted to match the new image dimensions.
@@ -397,7 +397,7 @@ class D4(DualTransform):
 
     When `group_element` is specified, the transform is deterministic—useful for TTA (Test Time
     Augmentation) where you need to apply each of the 8 symmetries explicitly and invert predictions.
-    Call ``inverse()`` on a deterministic instance to get a new transform that undoes the operation.
+    Call `inverse()` on a deterministic instance to get a new transform that undoes the operation.
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0.
@@ -422,7 +422,7 @@ class D4(DualTransform):
         - When applied to bounding boxes or keypoints, their coordinates will be adjusted according
           to the selected transformation.
         - This transform preserves the aspect ratio and size of the input.
-        - ``inverse()`` requires ``group_element`` to be set explicitly; raises ``ValueError`` otherwise.
+        - `inverse()` requires `group_element` to be set explicitly; raises `ValueError` otherwise.
 
     Examples:
         >>> import numpy as np
@@ -583,7 +583,7 @@ class D4(DualTransform):
         """Return a new D4 configured with the inverse group element.
 
         Raises:
-            ValueError: If ``group_element`` is ``None`` (random mode cannot be inverted).
+            ValueError: If `group_element` is `None` (random mode cannot be inverted).
 
         """
         if self.group_element is None:
@@ -609,7 +609,7 @@ class SquareSymmetry(D4):
 
     When `group_element` is specified, the transform is deterministic—useful for TTA (Test Time
     Augmentation) where you need to apply each of the 8 symmetries explicitly and invert predictions.
-    Call ``inverse()`` on a deterministic instance to get a new transform that undoes the operation.
+    Call `inverse()` on a deterministic instance to get a new transform that undoes the operation.
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0.
@@ -634,7 +634,7 @@ class SquareSymmetry(D4):
         - When applied to bounding boxes or keypoints, their coordinates will be adjusted according
           to the selected transformation.
         - This transform preserves the aspect ratio and size of the input.
-        - ``inverse()`` requires ``group_element`` to be set explicitly; raises ``ValueError`` otherwise.
+        - `inverse()` requires `group_element` to be set explicitly; raises `ValueError` otherwise.
 
     Examples:
         >>> import numpy as np
@@ -663,7 +663,7 @@ class SquareSymmetry(D4):
         """Return a new SquareSymmetry configured with the inverse group element.
 
         Raises:
-            ValueError: If ``group_element`` is ``None`` (random mode cannot be inverted).
+            ValueError: If `group_element` is `None` (random mode cannot be inverted).
 
         """
         if self.group_element is None:

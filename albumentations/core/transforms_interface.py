@@ -290,8 +290,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         before inference, then apply its inverse to the predicted mask to bring it back to
         the original image space.
 
-        Only transforms that override ``inverse()`` support this operation, typically
-        group-based transforms with a fixed ``group_element`` (e.g., D4, RandomRotate90,
+        Only transforms that override `inverse()` support this operation, typically
+        group-based transforms with a fixed `group_element` (e.g., D4, RandomRotate90,
         HorizontalFlip, VerticalFlip, Transpose).
 
         Raises:

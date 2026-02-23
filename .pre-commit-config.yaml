@@ -43,7 +43,7 @@ repos:
   - repo: local
     hooks:
     - id: check-docstrings
-      name: Check Docstrings for '---' sequences
+      name: Check Docstrings for '---' and '``' (double backticks)
       entry: python tools/check_docstrings.py
       language: python
       types: [python]

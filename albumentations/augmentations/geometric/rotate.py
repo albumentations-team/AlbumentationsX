@@ -71,12 +71,12 @@ class RandomRotate90(DualTransform):
         - Properly represents the dihedral group D4 symmetries
         - Avoids potential correlation between separate rotation and flip augmentations
 
-        ``inverse()`` requires ``group_element`` to be set explicitly; raises ``ValueError`` otherwise.
+        `inverse()` requires `group_element` to be set explicitly; raises `ValueError` otherwise.
 
     When `group_element` is specified, the transform is deterministic—useful for TTA (Test Time
     Augmentation) where you need to apply each of the 4 rotations (0°, 90°, 180°, 270°) explicitly
     and invert predictions. Uses the same naming as D4: C4 is the rotation subgroup of D4.
-    Call ``inverse()`` on a deterministic instance to get a new transform that undoes the rotation
+    Call `inverse()` on a deterministic instance to get a new transform that undoes the rotation
     (r90 ↔ r270, r180 ↔ r180, e ↔ e).
 
     Args:
@@ -218,7 +218,7 @@ class RandomRotate90(DualTransform):
         """Return a new RandomRotate90 configured with the inverse group element.
 
         Raises:
-            ValueError: If ``group_element`` is ``None`` (random mode cannot be inverted).
+            ValueError: If `group_element` is `None` (random mode cannot be inverted).
 
         """
         if self.group_element is None:

@@ -642,7 +642,7 @@ class PiecewiseAffine(BaseDistortion):
         )
 
         warn(
-            "This augmenter is very slow. Try to use ``ElasticTransform`` instead, which is at least 10x faster.",
+            "This augmenter is very slow. Try to use `ElasticTransform` instead, which is at least 10x faster.",
             stacklevel=2,
         )
 

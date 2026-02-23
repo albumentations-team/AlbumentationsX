@@ -2070,3 +2070,62 @@ def test_square_symmetry_tta_same_as_d4(group_element):
     d4_result = A.D4(p=1.0, group_element=group_element)(image=image)["image"]
     square_result = A.SquareSymmetry(p=1.0, group_element=group_element)(image=image)["image"]
     np.testing.assert_array_equal(d4_result, square_result)
+
+
+@pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"])
+def test_d4_inverse_roundtrip(group_element: str) -> None:
+    """Applying D4 then its inverse returns the original image."""
+    image = np.arange(64 * 64 * 3, dtype=np.uint8).reshape(64, 64, 3)
+    aug = A.D4(p=1, group_element=group_element)
+    augmented = aug(image=image)["image"]
+    restored = aug.inverse()(image=augmented)["image"]
+    np.testing.assert_array_equal(restored, image)
+
+
+@pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"])
+def test_square_symmetry_inverse_roundtrip(group_element: str) -> None:
+    """Applying SquareSymmetry then its inverse returns the original image."""
+    image = np.arange(64 * 64 * 3, dtype=np.uint8).reshape(64, 64, 3)
+    aug = A.SquareSymmetry(p=1, group_element=group_element)
+    augmented = aug(image=image)["image"]
+    restored = aug.inverse()(image=augmented)["image"]
+    np.testing.assert_array_equal(restored, image)
+    assert isinstance(aug.inverse(), A.SquareSymmetry)
+
+
+@pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270"])
+def test_random_rotate90_inverse_roundtrip(group_element: str) -> None:
+    """Applying RandomRotate90 then its inverse returns the original image."""
+    image = np.arange(64 * 64 * 3, dtype=np.uint8).reshape(64, 64, 3)
+    aug = A.RandomRotate90(p=1, group_element=group_element)
+    augmented = aug(image=image)["image"]
+    restored = aug.inverse()(image=augmented)["image"]
+    np.testing.assert_array_equal(restored, image)
+
+
+def test_random_rotate90_inverse_requires_group_element() -> None:
+    """inverse() on RandomRotate90 without group_element raises ValueError."""
+    aug = A.RandomRotate90(p=1)
+    with pytest.raises(ValueError, match="group_element"):
+        aug.inverse()
+
+
+def test_d4_inverse_requires_group_element() -> None:
+    """inverse() on D4 without group_element raises ValueError."""
+    aug = A.D4(p=1)
+    with pytest.raises(ValueError, match="group_element"):
+        aug.inverse()
+
+
+@pytest.mark.parametrize(
+    "transform_cls",
+    [A.HorizontalFlip, A.VerticalFlip, A.Transpose],
+)
+def test_flip_inverse_roundtrip(transform_cls: type) -> None:
+    """Flips and Transpose are self-inverse: applying twice returns original."""
+    image = np.arange(64 * 64 * 3, dtype=np.uint8).reshape(64, 64, 3)
+    aug = transform_cls(p=1)
+    augmented = aug(image=image)["image"]
+    restored = aug.inverse()(image=augmented)["image"]
+    np.testing.assert_array_equal(restored, image)
+    assert isinstance(aug.inverse(), transform_cls)

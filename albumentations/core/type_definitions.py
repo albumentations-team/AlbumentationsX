@@ -35,6 +35,21 @@ d4_group_elements = ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]
 # C4: cyclic subgroup of D4 (rotations only). RandomRotate90 uses these.
 c4_group_elements = ["e", "r90", "r180", "r270"]
 
+# Inverse tables for TTA: applying element then its inverse yields identity.
+# Rotations: r90 and r270 are mutual inverses; r180 and e are self-inverse.
+# Reflections in D4 are all self-inverse.
+C4_INVERSE: dict[str, str] = {"e": "e", "r90": "r270", "r180": "r180", "r270": "r90"}
+D4_INVERSE: dict[str, str] = {
+    "e": "e",
+    "r90": "r270",
+    "r180": "r180",
+    "r270": "r90",
+    "v": "v",
+    "h": "h",
+    "t": "t",
+    "hvt": "hvt",
+}
+
 
 class ReferenceImage(TypedDict):
     """Dictionary-like container for reference image data.

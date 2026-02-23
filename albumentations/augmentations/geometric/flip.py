@@ -22,6 +22,8 @@ keypoints, volumes, and 3D masks, ensuring consistent transformation across
 different data modalities.
 """
 
+from __future__ import annotations
+
 from typing import Any, Literal
 
 import numpy as np
@@ -47,6 +49,17 @@ __all__ = [
     "Transpose",
     "VerticalFlip",
 ]
+
+_D4_INVERSE: dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]] = {
+    "e": "e",
+    "r90": "r270",
+    "r180": "r180",
+    "r270": "r90",
+    "v": "v",
+    "h": "h",
+    "t": "t",
+    "hvt": "hvt",
+}
 
 
 class VerticalFlip(DualTransform):
@@ -142,6 +155,10 @@ class VerticalFlip(DualTransform):
             return masks3d
         return self.apply_to_volumes(masks3d, **params)
 
+    def inverse(self) -> VerticalFlip:
+        """Return a new VerticalFlip (vertical flip is self-inverse)."""
+        return VerticalFlip(p=1)
+
 
 class HorizontalFlip(DualTransform):
     """Flip the input horizontally around the y-axis.
@@ -227,6 +244,10 @@ class HorizontalFlip(DualTransform):
             # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
             return masks3d
         return self.apply_to_volumes(masks3d, **params)
+
+    def inverse(self) -> HorizontalFlip:
+        """Return a new HorizontalFlip (horizontal flip is self-inverse)."""
+        return HorizontalFlip(p=1)
 
 
 class Transpose(DualTransform):
@@ -331,6 +352,10 @@ class Transpose(DualTransform):
                 dtype=masks3d.dtype,
             )
         return self.apply_to_volumes(masks3d, **params)
+
+    def inverse(self) -> Transpose:
+        """Return a new Transpose (transpose is self-inverse)."""
+        return Transpose(p=1)
 
 
 class D4(DualTransform):
@@ -530,6 +555,19 @@ class D4(DualTransform):
             "group_element": self.random_generator.choice(d4_group_elements),
         }
 
+    def inverse(self) -> D4:
+        """Return a new D4 configured with the inverse group element.
+
+        Raises:
+            ValueError: If ``group_element`` is ``None`` (random mode cannot be inverted).
+
+        """
+        if self.group_element is None:
+            raise ValueError(
+                "Cannot invert D4 with random group_element. Set group_element explicitly for TTA.",
+            )
+        return D4(p=1, group_element=_D4_INVERSE[self.group_element])
+
 
 class SquareSymmetry(D4):
     """Applies one of the eight possible square symmetry transformations to a square-shaped input.
@@ -590,3 +628,16 @@ class SquareSymmetry(D4):
         ...     augmented = tta_transform(image=image)
 
     """
+
+    def inverse(self) -> SquareSymmetry:
+        """Return a new SquareSymmetry configured with the inverse group element.
+
+        Raises:
+            ValueError: If ``group_element`` is ``None`` (random mode cannot be inverted).
+
+        """
+        if self.group_element is None:
+            raise ValueError(
+                "Cannot invert SquareSymmetry with random group_element. Set group_element explicitly for TTA.",
+            )
+        return SquareSymmetry(p=1, group_element=_D4_INVERSE[self.group_element])

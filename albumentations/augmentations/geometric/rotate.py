@@ -5,6 +5,8 @@ Includes transforms for 90-degree rotations and arbitrary angle rotations with v
 border handling options.
 """
 
+from __future__ import annotations
+
 import math
 from typing import Any, Literal, cast
 
@@ -31,6 +33,13 @@ from . import functional as fgeometric
 __all__ = ["RandomRotate90", "Rotate", "SafeRotate"]
 
 SMALL_NUMBER = 1e-10
+
+_C4_INVERSE: dict[str, Literal["e", "r90", "r180", "r270"]] = {
+    "e": "e",
+    "r90": "r270",
+    "r180": "r180",
+    "r270": "r90",
+}
 
 
 class RandomRotate90(DualTransform):
@@ -203,6 +212,19 @@ class RandomRotate90(DualTransform):
         **params: Any,
     ) -> VolumeType:
         return self.apply_to_volumes(masks3d, group_element, **params)
+
+    def inverse(self) -> RandomRotate90:
+        """Return a new RandomRotate90 configured with the inverse group element.
+
+        Raises:
+            ValueError: If ``group_element`` is ``None`` (random mode cannot be inverted).
+
+        """
+        if self.group_element is None:
+            raise ValueError(
+                "Cannot invert RandomRotate90 with random group_element. Set group_element explicitly for TTA.",
+            )
+        return RandomRotate90(p=1, group_element=_C4_INVERSE[self.group_element])
 
 
 class RotateInitSchema(BaseTransformInitSchema):

@@ -8,7 +8,7 @@ and provide a centralized location for commonly used values.
 """
 
 from enum import Enum
-from typing import TypeAlias, TypeVar
+from typing import Literal, TypeAlias, TypeVar
 
 import cv2
 import numpy as np
@@ -38,8 +38,15 @@ c4_group_elements = ["e", "r90", "r180", "r270"]
 # Inverse tables for TTA: applying element then its inverse yields identity.
 # Rotations: r90 and r270 are mutual inverses; r180 and e are self-inverse.
 # Reflections in D4 are all self-inverse.
-C4_INVERSE: dict[str, str] = {"e": "e", "r90": "r270", "r180": "r180", "r270": "r90"}
-D4_INVERSE: dict[str, str] = {
+C4GroupElement: TypeAlias = Literal["e", "r90", "r180", "r270"]
+D4GroupElement: TypeAlias = Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]
+C4_INVERSE: dict[C4GroupElement, C4GroupElement] = {
+    "e": "e",
+    "r90": "r270",
+    "r180": "r180",
+    "r270": "r90",
+}
+D4_INVERSE: dict[D4GroupElement, D4GroupElement] = {
     "e": "e",
     "r90": "r270",
     "r180": "r180",

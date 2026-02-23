@@ -2080,6 +2080,7 @@ def test_d4_inverse_roundtrip(group_element: str) -> None:
     augmented = aug(image=image)["image"]
     restored = aug.inverse()(image=augmented)["image"]
     np.testing.assert_array_equal(restored, image)
+    assert isinstance(aug.inverse(), A.D4)
 
 
 @pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"])

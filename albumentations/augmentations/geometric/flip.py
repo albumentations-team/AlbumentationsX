@@ -35,6 +35,7 @@ from albumentations.core.transforms_interface import (
 )
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
+    D4_INVERSE,
     ImageType,
     VolumeType,
     d4_group_elements,
@@ -49,17 +50,6 @@ __all__ = [
     "Transpose",
     "VerticalFlip",
 ]
-
-_D4_INVERSE: dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]] = {
-    "e": "e",
-    "r90": "r270",
-    "r180": "r180",
-    "r270": "r90",
-    "v": "v",
-    "h": "h",
-    "t": "t",
-    "hvt": "hvt",
-}
 
 
 class VerticalFlip(DualTransform):
@@ -600,7 +590,7 @@ class D4(DualTransform):
             raise ValueError(
                 "Cannot invert D4 with random group_element. Set group_element explicitly for TTA.",
             )
-        return D4(p=1, group_element=_D4_INVERSE[self.group_element])
+        return D4(p=1, group_element=D4_INVERSE[self.group_element])
 
 
 class SquareSymmetry(D4):
@@ -680,4 +670,4 @@ class SquareSymmetry(D4):
             raise ValueError(
                 "Cannot invert SquareSymmetry with random group_element. Set group_element explicitly for TTA.",
             )
-        return SquareSymmetry(p=1, group_element=_D4_INVERSE[self.group_element])
+        return SquareSymmetry(p=1, group_element=D4_INVERSE[self.group_element])

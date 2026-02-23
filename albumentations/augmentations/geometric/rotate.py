@@ -23,6 +23,7 @@ from albumentations.core.transforms_interface import (
 )
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
+    C4_INVERSE,
     ImageType,
     VolumeType,
     c4_group_elements,
@@ -33,13 +34,6 @@ from . import functional as fgeometric
 __all__ = ["RandomRotate90", "Rotate", "SafeRotate"]
 
 SMALL_NUMBER = 1e-10
-
-_C4_INVERSE: dict[str, Literal["e", "r90", "r180", "r270"]] = {
-    "e": "e",
-    "r90": "r270",
-    "r180": "r180",
-    "r270": "r90",
-}
 
 
 class RandomRotate90(DualTransform):
@@ -138,8 +132,8 @@ class RandomRotate90(DualTransform):
         >>> predictions = []
         >>> for element in c4_group_elements:
         ...     aug = A.RandomRotate90(p=1.0, group_element=element)
-        ...     aug_image = aug(image=image)
-        ...     pred_mask = np.zeros_like(mask)  # placeholder for model output
+        ...     aug_image = aug(image=image)["image"]
+        ...     pred_mask = np.zeros((100, 100, 1), dtype=np.uint8)  # placeholder for model output
         ...     restored = aug.inverse()(image=pred_mask)["image"]
         ...     predictions.append(restored)
 
@@ -231,7 +225,7 @@ class RandomRotate90(DualTransform):
             raise ValueError(
                 "Cannot invert RandomRotate90 with random group_element. Set group_element explicitly for TTA.",
             )
-        return RandomRotate90(p=1, group_element=_C4_INVERSE[self.group_element])
+        return RandomRotate90(p=1, group_element=C4_INVERSE[self.group_element])
 
 
 class RotateInitSchema(BaseTransformInitSchema):

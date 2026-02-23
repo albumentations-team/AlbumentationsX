@@ -44,6 +44,22 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 
 ## Naming Conventions
 
+### Variable Names
+
+- Avoid unclear or single-letter variable names when a descriptive name improves readability:
+
+  ```python
+  # Correct - descriptive
+  rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
+  return np.rot90(img, rot90_count)
+
+  # Avoid - unclear
+  k = C4_GROUP_ELEMENT_TO_K[group_element]
+  return np.rot90(img, k)
+  ```
+
+- Note: Ruff does not flag single-letter names; this is a manual style preference.
+
 ### Transform Names
 
 - Avoid adding "Random" prefix to new transforms

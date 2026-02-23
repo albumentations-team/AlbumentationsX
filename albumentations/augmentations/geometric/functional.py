@@ -178,39 +178,39 @@ def bboxes_rot90(
         np.ndarray: Rotated bounding boxes
 
     """
-    k = C4_GROUP_ELEMENT_TO_K[group_element]
-    if k == 0:
+    rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
+    if rot90_count == 0:
         return bboxes
 
     if bbox_type == "obb":
         center_x, center_y, width, height, angle, extras = _split_obb_params(bboxes)
-        if k == 1:
+        if rot90_count == 1:
             new_center_x, new_center_y = center_y, 1 - center_x
-        elif k == ROT90_180_FACTOR:
+        elif rot90_count == ROT90_180_FACTOR:
             new_center_x, new_center_y = 1 - center_x, 1 - center_y
-        else:  # k == ROT90_270_FACTOR
+        else:  # rot90_count == ROT90_270_FACTOR
             new_center_x, new_center_y = 1 - center_y, center_x
 
-        if k % 2 == 1:
+        if rot90_count % 2 == 1:
             width, height = height, width
 
-        angle = angle + k * 90
+        angle = angle + rot90_count * 90
         return _merge_obb_params(new_center_x, new_center_y, width, height, angle, extras)
 
     rotated_bboxes = bboxes.copy()
     x_min, y_min, x_max, y_max = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
 
-    if k == 1:
+    if rot90_count == 1:
         rotated_bboxes[:, 0] = y_min
         rotated_bboxes[:, 1] = 1 - x_max
         rotated_bboxes[:, 2] = y_max
         rotated_bboxes[:, 3] = 1 - x_min
-    elif k == ROT90_180_FACTOR:
+    elif rot90_count == ROT90_180_FACTOR:
         rotated_bboxes[:, 0] = 1 - x_max
         rotated_bboxes[:, 1] = 1 - y_max
         rotated_bboxes[:, 2] = 1 - x_min
         rotated_bboxes[:, 3] = 1 - y_min
-    elif k == ROT90_270_FACTOR:
+    elif rot90_count == ROT90_270_FACTOR:
         rotated_bboxes[:, 0] = 1 - y_max
         rotated_bboxes[:, 1] = x_min
         rotated_bboxes[:, 2] = 1 - y_min
@@ -284,8 +284,8 @@ def keypoints_rot90(
         np.ndarray: The rotated keypoints with the same shape as the input.
 
     """
-    k = C4_GROUP_ELEMENT_TO_K[group_element]
-    if k == 0:
+    rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
+    if rot90_count == 0:
         return keypoints
 
     height, width = image_shape[:2]
@@ -293,15 +293,15 @@ def keypoints_rot90(
 
     x, y, angle = keypoints[:, 0], keypoints[:, 1], keypoints[:, 3]
 
-    if k == 1:
+    if rot90_count == 1:
         rotated_keypoints[:, 0] = y
         rotated_keypoints[:, 1] = width - 1 - x
         rotated_keypoints[:, 3] = angle - np.pi / 2
-    elif k == ROT90_180_FACTOR:
+    elif rot90_count == ROT90_180_FACTOR:
         rotated_keypoints[:, 0] = width - 1 - x
         rotated_keypoints[:, 1] = height - 1 - y
         rotated_keypoints[:, 3] = angle - np.pi
-    elif k == ROT90_270_FACTOR:
+    elif rot90_count == ROT90_270_FACTOR:
         rotated_keypoints[:, 0] = height - 1 - y
         rotated_keypoints[:, 1] = x
         rotated_keypoints[:, 3] = angle + np.pi / 2
@@ -1585,7 +1585,8 @@ def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) ->
         np.ndarray: The rotated image.
 
     """
-    return np.rot90(img, C4_GROUP_ELEMENT_TO_K[group_element])
+    rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
+    return np.rot90(img, rot90_count)
 
 
 def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
@@ -1606,8 +1607,8 @@ def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "
             - (N, H, W, C) for multi-channel images when group_element is e or r180
 
     """
-    k = C4_GROUP_ELEMENT_TO_K[group_element]
-    return np.rot90(images, k=k, axes=(1, 2))
+    rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
+    return np.rot90(images, k=rot90_count, axes=(1, 2))
 
 
 @handle_empty_array("bboxes")
@@ -4286,8 +4287,8 @@ def rot90_volumes(volumes: np.ndarray, group_element: Literal["e", "r90", "r180"
         np.ndarray: Rotated batch of volumes.
 
     """
-    k = C4_GROUP_ELEMENT_TO_K[group_element]
-    return np.rot90(volumes, k=k, axes=(2, 3))
+    rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
+    return np.rot90(volumes, k=rot90_count, axes=(2, 3))
 
 
 @preserve_channel_dim

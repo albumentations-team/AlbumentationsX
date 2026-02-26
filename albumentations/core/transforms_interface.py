@@ -24,7 +24,7 @@ from albumentations.core.validation import ValidatedTransformMeta
 
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
 from .type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
-from .utils import ensure_contiguous_output, format_args
+from .utils import format_args
 
 __all__ = ["BasicTransform", "DualTransform", "ImageOnlyTransform", "NoOp", "Transform3D"]
 
@@ -329,9 +329,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
                     res[key] = arg  # Keep empty list as is
                 else:
                     target_function = self._key2func[key]
-                    res[key] = ensure_contiguous_output(
-                        target_function(ensure_contiguous_output(arg), **params),
-                    )
+                    res[key] = target_function(arg, **params)
             else:
                 res[key] = arg
         return res

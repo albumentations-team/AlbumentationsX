@@ -2513,7 +2513,7 @@ def distort_image(
         (100, 100, 3)
 
     """
-    distorted_image = np.zeros_like(image)
+    distorted_image = np.zeros(image.shape, dtype=image.dtype)
 
     for mesh in generated_mesh:
         # Extract source rectangle and destination quadrilateral

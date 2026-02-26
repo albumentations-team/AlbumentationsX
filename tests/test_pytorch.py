@@ -220,7 +220,6 @@ def test_post_data_check():
 def test_to_tensor_v2_on_non_contiguous_array():
     # Create a contiguous array
     img = np.random.randint(0, 256, [100, 100, 3], dtype=np.uint8)
-    assert img.flags["C_CONTIGUOUS"]
 
     # Create a non-contiguous array by slicing
     non_contiguous_img = img[::2, ::2, :]

@@ -579,7 +579,8 @@ def ensure_contiguous_output(arg: np.ndarray | Sequence[np.ndarray]) -> np.ndarr
 
     """
     if isinstance(arg, np.ndarray):
-        arg = np.ascontiguousarray(arg)
+        if not arg.flags["C_CONTIGUOUS"]:
+            arg = np.ascontiguousarray(arg)
     elif isinstance(arg, Sequence):
         arg = list(map(ensure_contiguous_output, arg))
     return arg

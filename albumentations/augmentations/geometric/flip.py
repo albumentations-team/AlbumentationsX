@@ -139,6 +139,9 @@ class VerticalFlip(DualTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.vflip_images(images)
 
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        return fgeometric.vflip_images(volume)
+
     def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return fgeometric.vflip_volumes(volumes)
 
@@ -240,6 +243,9 @@ class HorizontalFlip(DualTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.hflip_images(images)
+
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        return fgeometric.hflip_images(volume)
 
     def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return fgeometric.hflip_volumes(volumes)

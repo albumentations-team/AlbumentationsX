@@ -42,7 +42,7 @@ def box_blur(img: ImageType, ksize: int) -> ImageType:
         np.ndarray: Blurred image.
 
     """
-    img = np.asarray(img, copy=True)
+    img = np.array(img, copy=True, order="C")
     cv2.blur(img, (ksize, ksize), dst=img)
     return img
 

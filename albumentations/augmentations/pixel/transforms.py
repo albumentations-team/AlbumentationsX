@@ -246,6 +246,9 @@ class Normalize(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        return self.apply(volume, **params)
+
     def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volumes, **params)
 

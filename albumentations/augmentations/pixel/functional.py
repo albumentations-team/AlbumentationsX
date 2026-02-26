@@ -1229,7 +1229,8 @@ def channel_shuffle(img: ImageType, channels_shuffled: list[int]) -> ImageType:
         np.ndarray: The shuffled image.
 
     """
-    output = np.empty_like(img)
+    img = np.ascontiguousarray(img)
+    output = np.empty(img.shape, dtype=img.dtype)
     from_to = []
     for i, j in enumerate(channels_shuffled):
         from_to.extend([j, i])  # Use [src, dst]
@@ -4355,7 +4356,7 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         np.ndarray: Convolved image.
 
     """
-    img = np.asarray(img, copy=True)
+    img = np.array(img, copy=True, order="C")
     cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img)
     return img
 
@@ -4375,6 +4376,6 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         np.ndarray: Convolved image.
 
     """
-    img = np.asarray(img, copy=True)
+    img = np.array(img, copy=True, order="C")
     cv2.sepFilter2D(img, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=img)
     return img

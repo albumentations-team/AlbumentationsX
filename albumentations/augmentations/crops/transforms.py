@@ -203,6 +203,14 @@ class BaseCrop(DualTransform):
     ) -> ImageType:
         return fcrops.volume_crop_yx(images, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
 
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        crop_coords: tuple[int, int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return fcrops.volume_crop_yx(volume, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
+
     def apply_to_volumes(
         self,
         volumes: VolumeType,

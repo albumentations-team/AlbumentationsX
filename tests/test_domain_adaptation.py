@@ -3,10 +3,12 @@ import pytest
 from skimage.exposure import match_histograms as skimage_match_histograms
 from skimage.metrics import structural_similarity as ssim
 
+import albumentations as A
 from albumentations.augmentations.mixing.domain_adaptation_functional import (
     PCA,
     MinMaxScaler,
     StandardScaler,
+    adapt_pixel_distribution,
     apply_histogram,
 )
 from albumentations.augmentations.mixing.domain_adaptation_functional import match_histograms as our_match_histograms
@@ -439,3 +441,74 @@ def test_match_histograms_different_shapes():
     reference = generate_random_image((50, 50, 3), np.uint8)
     result = our_match_histograms(source, reference)
     assert result.shape == source.shape
+
+
+# ── 5-channel tests ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("num_channels", [5, 6])
+def test_apply_histogram_5plus_channels(num_channels):
+    rng = np.random.default_rng(137)
+    img = rng.integers(0, 256, (100, 100, num_channels), dtype=np.uint8)
+    ref = rng.integers(0, 256, (80, 80, num_channels), dtype=np.uint8)
+    result = apply_histogram(img, ref, blend_ratio=0.5)
+    assert result.shape == img.shape
+    assert result.dtype == img.dtype
+
+
+@pytest.mark.parametrize("num_channels", [5, 6])
+@pytest.mark.parametrize("transform_type", ["pca", "standard", "minmax"])
+def test_adapt_pixel_distribution_5plus_channels(num_channels, transform_type):
+    rng = np.random.default_rng(137)
+    img = rng.integers(0, 256, (100, 100, num_channels), dtype=np.uint8)
+    ref = rng.integers(0, 256, (80, 80, num_channels), dtype=np.uint8)
+    result = adapt_pixel_distribution(img, ref, transform_type=transform_type, weight=0.5)
+    assert result.shape == img.shape
+    assert result.dtype == img.dtype
+
+
+@pytest.mark.parametrize("num_channels", [5, 6])
+def test_histogram_matching_transform_5plus_channels(num_channels):
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (100, 100, num_channels), dtype=np.uint8)
+    reference = rng.integers(0, 256, (100, 100, num_channels), dtype=np.uint8)
+    transform = A.HistogramMatching(
+        blend_ratio=(0.5, 0.5),
+        metadata_key="hm_metadata",
+        p=1.0,
+    )
+    result = transform(image=image, hm_metadata=[reference])["image"]
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+
+
+@pytest.mark.parametrize("num_channels", [5, 6])
+def test_fda_transform_5plus_channels(num_channels):
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (100, 100, num_channels), dtype=np.uint8)
+    reference = rng.integers(0, 256, (120, 120, num_channels), dtype=np.uint8)
+    transform = A.FDA(
+        beta_limit=(0.05, 0.05),
+        metadata_key="fda_metadata",
+        p=1.0,
+    )
+    result = transform(image=image, fda_metadata=[reference])["image"]
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+
+
+@pytest.mark.parametrize("num_channels", [5, 6])
+@pytest.mark.parametrize("transform_type", ["pca", "standard", "minmax"])
+def test_pixel_distribution_adaptation_transform_5plus_channels(num_channels, transform_type):
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (100, 100, num_channels), dtype=np.uint8)
+    reference = rng.integers(0, 256, (80, 80, num_channels), dtype=np.uint8)
+    transform = A.PixelDistributionAdaptation(
+        transform_type=transform_type,
+        blend_ratio=(0.5, 0.5),
+        metadata_key="pda_metadata",
+        p=1.0,
+    )
+    result = transform(image=image, pda_metadata=[reference])["image"]
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype

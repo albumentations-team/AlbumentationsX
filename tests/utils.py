@@ -143,7 +143,6 @@ def get_filtered_transforms(
     except_augmentations=None,
     exclude_base_classes=None,
 ):
-
     custom_arguments = custom_arguments or {}
     except_augmentations = except_augmentations or set()
     exclude_base_classes = exclude_base_classes or ()

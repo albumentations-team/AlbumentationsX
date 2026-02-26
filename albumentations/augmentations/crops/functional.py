@@ -243,7 +243,7 @@ def crop_and_pad(
 
     if keep_size:
         rows, cols = image_shape[:2]
-        return fgeometric.resize_cv2(img, (rows, cols), interpolation)
+        return fgeometric.resize(img, (rows, cols), interpolation)
 
     return img
 

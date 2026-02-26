@@ -44,8 +44,8 @@ jobs:
     - name: Install all dependencies
       run: |
         uv pip install wheel
+        uv pip install .  # project first so albucore etc. from pyproject.toml
         uv pip install -r requirements-dev.txt
-        uv pip install .
 
     - name: Run PyTest with coverage
       run: pytest -n auto --cov=albumentations --cov-branch --cov-report=xml
@@ -78,8 +78,8 @@ jobs:
 
     - name: Install all requirements
       run: |
+        uv pip install .  # project first so albucore etc. from pyproject.toml
         uv pip install -r requirements-dev.txt
-        uv pip install .
 
     - name: Run checks
       run: pre-commit run --files $(find albumentations -type f)

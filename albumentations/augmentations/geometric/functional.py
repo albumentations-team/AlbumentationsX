@@ -13,7 +13,6 @@ from functools import lru_cache
 from typing import Any, Literal, cast
 from warnings import warn
 
-import albucore
 import cv2
 import numpy as np
 from albucore import (
@@ -27,6 +26,9 @@ from albucore import (
     to_float,
     vflip,
     warp_perspective,
+)
+from albucore import (
+    resize as albucore_resize,
 )
 
 # Optional dependencies
@@ -368,7 +370,6 @@ def _get_resize_backend() -> str:
     return "opencv"
 
 
-@preserve_channel_dim
 def resize(
     img: ImageType,
     target_shape: tuple[int, int],
@@ -394,9 +395,13 @@ def resize(
     if target_shape == img.shape[:2]:
         return img
 
+    height, width = target_shape
+    if img.ndim == 2:
+        return cv2.resize(img, (width, height), interpolation=interpolation)
+
     backend = _get_resize_backend()
     if backend == "opencv":
-        return resize_cv2(img, target_shape, interpolation)
+        return albucore_resize(img, (width, height), interpolation=interpolation)
     if backend == "pyvips":
         return resize_pyvips(img, target_shape, interpolation)
     if backend == "pillow":
@@ -453,29 +458,6 @@ def resize_pyvips(
     )
 
     return resized_img_vips.numpy().astype(original_dtype)
-
-
-def resize_cv2(
-    img: ImageType,
-    target_shape: tuple[int, int],
-    interpolation: int,
-) -> np.ndarray:
-    """Resize an image to the specified dimensions using albucore.
-
-    This function resizes an input image to the target shape using the specified interpolation method.
-
-    Args:
-        img (np.ndarray): Input image to resize.
-        target_shape (tuple[int, int]): Target (height, width) dimensions.
-        interpolation (int): Interpolation method to use (cv2 interpolation flag).
-            Examples: cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_NEAREST, etc.
-
-    Returns:
-        np.ndarray: Resized image with shape target_shape + original channel dimensions.
-
-    """
-    height, width = target_shape[:2]
-    return albucore.resize(img, dsize=(width, height), interpolation=interpolation)
 
 
 def resize_pil(
@@ -2086,7 +2068,7 @@ def upscale_distortion_maps(
     scale_y = small_h / h
     scale_x = small_w / w
 
-    # Upscale the maps (2D float32: use cv2.resize for coordinate semantics; albucore.resize differs)
+    # Upscale the maps (2D float32)
     map_x_scaled = cv2.resize(map_x, (w, h), interpolation=interpolation)
     map_y_scaled = cv2.resize(map_y, (w, h), interpolation=interpolation)
 

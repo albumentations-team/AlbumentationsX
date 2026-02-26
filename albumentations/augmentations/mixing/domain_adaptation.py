@@ -9,10 +9,11 @@ like histograms, frequency spectra, or overall pixel distributions.
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 
+import cv2
 import numpy as np
-from albucore import resize
 from pydantic import AfterValidator, field_validator
 
+from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.mixing.domain_adaptation_functional import (
     adapt_pixel_distribution,
     apply_histogram,
@@ -469,7 +470,7 @@ class FDA(BaseDomainAdaptation):
         height, width = params["shape"][:2]
 
         # Resize the target image to match the input image dimensions
-        target_image_resized = resize(target_image, dsize=(width, height))
+        target_image_resized = fgeometric.resize(target_image, (height, width), cv2.INTER_LINEAR)
 
         return {"target_image": target_image_resized, "beta": self.py_random.uniform(*self.beta_limit)}
 

@@ -3,6 +3,7 @@ import os
 import cv2
 import numpy as np
 import pytest
+from albucore import resize as albucore_resize
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.geometric.functional import (
@@ -698,10 +699,10 @@ def test_memory_efficiency(random_generator):
         ((150, 100), (150, 200)),
     ],
 )
-def test_resize_cv2(input_shape, target_shape):
+def test_albucore_resize(input_shape, target_shape):
     img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
 
-    resized = fgeometric.resize_cv2(img, target_shape, interpolation=0)
+    resized = albucore_resize(img, (target_shape[1], target_shape[0]), interpolation=0)
 
     assert resized.shape == (*target_shape, 3)
 
@@ -715,11 +716,11 @@ def test_resize_cv2(input_shape, target_shape):
         ((150, 100), (150, 200)),
     ],
 )
-def test_resize_cv2_2d_mask(input_shape, target_shape):
-    """Test that resize_cv2 handles 2D arrays (masks) correctly."""
+def test_albucore_resize_2d_mask(input_shape, target_shape):
+    """Test that albucore.resize handles 2D arrays (masks) correctly."""
     mask = np.random.randint(0, 2, input_shape, dtype=np.uint8)
 
-    resized = fgeometric.resize_cv2(mask, target_shape, interpolation=cv2.INTER_NEAREST)
+    resized = albucore_resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
 
     assert resized.shape == target_shape
     assert resized.ndim == 2
@@ -754,9 +755,9 @@ def test_resize_pyvips(input_shape, target_shape):
 def test_resize_cv2_vs_pyvips(input_shape, target_shape, interpolation):
     img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
 
-    resized_cv2 = fgeometric.resize_cv2(img, target_shape, interpolation=interpolation)
+    resized_opencv = albucore_resize(img, (target_shape[1], target_shape[0]), interpolation=interpolation)
     resized_pyvips = fgeometric.resize_pyvips(img, target_shape, interpolation=interpolation)
-    np.testing.assert_allclose(resized_cv2, resized_pyvips, atol=1)
+    np.testing.assert_allclose(resized_opencv, resized_pyvips, atol=1)
 
 
 @pytest.mark.xfail(reason="Pillow and OpenCV have different interpolation implementations")
@@ -772,9 +773,9 @@ def test_resize_cv2_vs_pyvips(input_shape, target_shape, interpolation):
 def test_resize_cv2_vs_pillow(input_shape, target_shape, interpolation):
     img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
 
-    resized_cv2 = fgeometric.resize_cv2(img, target_shape, interpolation=interpolation)
+    resized_opencv = albucore_resize(img, (target_shape[1], target_shape[0]), interpolation=interpolation)
     resized_pil = fgeometric.resize_pil(img, target_shape, interpolation=interpolation)
-    np.testing.assert_allclose(resized_cv2, resized_pil, atol=1)
+    np.testing.assert_allclose(resized_opencv, resized_pil, atol=1)
 
 
 @pytest.mark.skipif(not _PIL_AVAILABLE, reason="pillow is not installed")

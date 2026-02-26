@@ -51,11 +51,12 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 
 Priority order to check:
 1. **`cv2.LUT`** used for pixel lookup operations (fastest)
-2. **`cv2` over numpy** for image ops where applicable (except resize: use **`albucore.resize`**, not `cv2.resize` — enforced by pre-commit)
-3. **Vectorized numpy** instead of Python loops
-4. **In-place ops** where safe (avoid unnecessary `.copy()`)
-5. No repeated array allocations in tight loops
-6. Expensive computations cached in `get_params` / `get_params_dependent_on_data`
+2. **`albucore.resize` not `cv2.resize`** for image resizing (handles 5+ channels, INTER_AREA, etc.)
+3. **`cv2` over numpy** for image ops where applicable
+4. **Vectorized numpy** instead of Python loops
+5. **In-place ops** where safe (avoid unnecessary `.copy()`)
+6. No repeated array allocations in tight loops
+7. Expensive computations cached in `get_params` / `get_params_dependent_on_data`
 
 Flag any violations with a concrete speedup suggestion.
 

@@ -1,9 +1,9 @@
-albu-spec>=0.0.2
+albu-spec>=0.0.4
 deepdiff>=8.0.1
 eval-type-backport
 google-docstring-parser>=0.0.9
 hypothesis>=6.0.0
-opencv-python-headless>=4.9.0.80
+opencv-python-headless>=4.13.0.92
 pre_commit>=4.5.1
 pytest>=9.0.2
 pytest-randomly>=3.15.0
@@ -15,7 +15,7 @@ requests>=2.31.0
 scikit-image
 scikit-learn
 tomli>=2.0.1
-torch>=2.3.1
-torchvision>=0.18.1
+torch>=2.10.0
+torchvision>=0.25.0
 types-PyYAML
 types-setuptools

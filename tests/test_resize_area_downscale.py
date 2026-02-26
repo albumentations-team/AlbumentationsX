@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+import albumentations.augmentations.geometric.functional as fgeometric
 
 
 def get_downscale_image():
@@ -179,3 +180,42 @@ class TestAreaForDownscaleOutput:
             result2["image"],
             err_msg="Upscale outputs differ with/without area_for_downscale",
         )
+
+
+# ── cv2.resize channel-count behaviour (documents OpenCV 4.13 limitation) ────
+
+WORKING_INTERPOLATIONS = [
+    cv2.INTER_LINEAR,
+    cv2.INTER_NEAREST,
+    cv2.INTER_CUBIC,
+    cv2.INTER_LANCZOS4,
+]
+
+
+@pytest.mark.parametrize("num_channels", [5, 6])
+@pytest.mark.parametrize("interpolation", WORKING_INTERPOLATIONS)
+def test_cv2_resize_works_for_5plus_channels(num_channels, interpolation):
+    """cv2.resize succeeds for 5+ channels with all interpolations except INTER_AREA."""
+    img = np.zeros((100, 100, num_channels), dtype=np.uint8)
+    result = cv2.resize(img, (50, 50), interpolation=interpolation)
+    assert result.shape == (50, 50, num_channels)
+
+
+@pytest.mark.parametrize("num_channels", [5, 6])
+def test_cv2_resize_inter_area_fails_for_5plus_channels_non_integer_scale(num_channels):
+    """cv2.resize raises for INTER_AREA + 5+ channels when the scale is non-integer (OpenCV 4.13 limitation).
+
+    Integer scale factors (e.g. 100->50, exact 2x) happen to work, but non-integer
+    scale factors (e.g. 100->37) hit the cn<=4 assertion in the INTER_AREA path.
+    """
+    img = np.zeros((100, 100, num_channels), dtype=np.uint8)
+    with pytest.raises(cv2.error):
+        cv2.resize(img, (37, 37), interpolation=cv2.INTER_AREA)
+
+
+@pytest.mark.parametrize("num_channels", [5, 6])
+def test_fgeometric_resize_handles_inter_area_for_5plus_channels(num_channels):
+    """fgeometric.resize (via albucore.resize) handles INTER_AREA for 5+ channels via chunking."""
+    img = np.zeros((100, 100, num_channels), dtype=np.uint8)
+    result = fgeometric.resize(img, (37, 37), interpolation=cv2.INTER_AREA)
+    assert result.shape == (37, 37, num_channels)

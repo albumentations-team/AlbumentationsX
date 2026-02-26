@@ -9,12 +9,11 @@ from typing import Any, Literal, cast
 
 import cv2
 import numpy as np
-from albucore import batch_transform
 from pydantic import Field, field_validator, model_validator
 from typing_extensions import Self
 
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ALL_TARGETS, ImageType, VolumeType
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 from albumentations.core.utils import to_tuple
 
 from . import functional as fgeometric
@@ -430,22 +429,6 @@ class MaxSizeTransform(DualTransform):
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.keypoints_scale(keypoints, scale, scale)
-
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        return self.apply(images, *args, **params)
-
-    @batch_transform("spatial")
-    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self.apply(volumes, *args, **params)
-
-    @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self.apply_to_mask(mask3d, *args, **params)
-
-    @batch_transform("spatial")
-    def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self.apply_to_mask(masks3d, *args, **params)
 
 
 class LongestMaxSize(MaxSizeTransform):

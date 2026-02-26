@@ -276,8 +276,7 @@ def test_resize_with_additional_targets_mask():
     """Test that Resize works correctly with additional_targets for 2D masks.
 
     Regression test for issue where 2D masks passed via additional_targets
-    would fail with IndexError in resize_cv2 due to maybe_process_in_chunks
-    expecting 3D arrays.
+    would fail with IndexError due to chunking expecting 3D arrays.
     """
     image = np.zeros((256, 256, 3), dtype=np.uint8)
     mask = np.ones((256, 256), dtype=np.uint8)

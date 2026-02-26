@@ -1,11 +1,16 @@
-"""Pre-commit hook: forbid cv2.warpAffine, warpPerspective, copyMakeBorder, remap, resize in albumentations.
+"""Pre-commit hook: forbid raw cv2 geometric ops in albumentations/.
 
-These must use albucore equivalents (warp_affine, warp_perspective, copy_make_border, remap, resize)
-for multi-channel support and consistent behavior.
+Use albucore equivalents for multi-channel support:
+  cv2.resize        → albucore.resize
+  cv2.warpAffine    → albucore.warp_affine
+  cv2.warpPerspective → albucore.warp_perspective
+  cv2.copyMakeBorder → albucore.copy_make_border
+  cv2.remap         → albucore.remap
 
 Allowlist:
-- cv2.remap in functional.py: 2D data (mask/single channel); albucore.remap expects (H,W,C).
-- cv2.resize in geometric/functional.py: 2D map upscaling; albucore.resize differs for 2D float.
+- cv2.remap in geometric/functional.py and pixel/functional.py: 2D data only.
+- cv2.resize in geometric/functional.py: upscale_distortion_maps uses 2D float32 maps,
+  not images, so albucore.resize does not apply there.
 """
 
 from __future__ import annotations
@@ -16,11 +21,11 @@ from pathlib import Path
 
 # Forbidden in albumentations/ (use albucore instead). Keys for allowlist.
 FORBIDDEN: list[tuple[str, str]] = [
+    (r"cv2\.resize\s*\(", "resize"),
     (r"cv2\.warpAffine\s*\(", "warpAffine"),
     (r"cv2\.warpPerspective\s*\(", "warpPerspective"),
     (r"cv2\.copyMakeBorder\s*\(", "copyMakeBorder"),
     (r"cv2\.remap\s*\(", "remap"),
-    (r"cv2\.resize\s*\(", "resize"),
 ]
 
 # (path, forbidden_key) — allow forbidden_key in path. Key is the cv2 method name.
@@ -28,7 +33,7 @@ ALLOWLIST: list[tuple[str, str]] = [
     # 2D remap: remap_keypoints_via_mask (int16 mask), _distort_channel (single channel)
     ("albumentations/augmentations/geometric/functional.py", "remap"),
     ("albumentations/augmentations/pixel/functional.py", "remap"),
-    # 2D float distortion maps: albucore.resize semantics differ from cv2 for 2D
+    # upscale_distortion_maps: resizes 2D float32 coordinate maps, not images
     ("albumentations/augmentations/geometric/functional.py", "resize"),
 ]
 
@@ -78,7 +83,7 @@ def main() -> int:
         errors.extend(_scan_file(path, root))
 
     if errors:
-        print("Forbidden cv2 usage (use albucore: warp_affine, warp_perspective, copy_make_border, remap, resize):")
+        print("Forbidden cv2 usage (use albucore: resize, warp_affine, warp_perspective, copy_make_border, remap):")
         for rel, line_no, content in errors:
             print(f"  {rel}:{line_no}: {content[:80]}{'...' if len(content) > 80 else ''}")
         return 1

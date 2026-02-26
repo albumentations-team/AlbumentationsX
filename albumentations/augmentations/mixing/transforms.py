@@ -12,10 +12,10 @@ from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
-from albucore import resize
 from pydantic import AfterValidator, model_validator
 from typing_extensions import Self
 
+from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.mixing import functional as fmixing
 from albumentations.core.bbox_utils import BboxProcessor, check_bboxes, denormalize_bboxes, filter_bboxes
 from albumentations.core.keypoints_utils import KeypointsProcessor
@@ -167,11 +167,11 @@ class OverlayElements(DualTransform):
 
             if "mask" in metadata:
                 mask = metadata["mask"]
-                mask = resize(mask, dsize=(x_max - x_min, y_max - y_min), interpolation=cv2.INTER_NEAREST)
+                mask = fgeometric.resize(mask, (y_max - y_min, x_max - x_min), cv2.INTER_NEAREST)
             else:
                 mask = np.ones((y_max - y_min, x_max - x_min), dtype=np.uint8)
 
-            overlay_image = resize(overlay_image, dsize=(x_max - x_min, y_max - y_min), interpolation=cv2.INTER_AREA)
+            overlay_image = fgeometric.resize(overlay_image, (y_max - y_min, x_max - x_min), cv2.INTER_AREA)
             offset = (y_min, x_min)
 
             if len(bbox) == LENGTH_RAW_BBOX and "bbox_id" in metadata:
@@ -180,7 +180,7 @@ class OverlayElements(DualTransform):
                 bbox = (x_min, y_min, x_max, y_max, *bbox[4:])
         else:
             if image_height < overlay_height or image_width < overlay_width:
-                overlay_image = resize(overlay_image, dsize=(image_width, image_height), interpolation=cv2.INTER_AREA)
+                overlay_image = fgeometric.resize(overlay_image, (image_height, image_width), cv2.INTER_AREA)
                 overlay_height, overlay_width = overlay_image.shape[:2]
 
             mask = metadata["mask"] if "mask" in metadata else np.ones_like(overlay_image, dtype=np.uint8)

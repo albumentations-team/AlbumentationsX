@@ -38,7 +38,6 @@ from albucore import (
     preserve_channel_dim,
     reshape_ndhwc_channel,
     reshape_xhwc_channel,
-    resize,
     restore_ndhwc_channel,
     restore_xhwc_channel,
     sz_lut,
@@ -1720,12 +1719,8 @@ def downscale(
     """
     height, width = img.shape[:2]
 
-    downscaled = resize(
-        img,
-        dsize=(int(width * scale), int(height * scale)),
-        interpolation=down_interpolation,
-    )
-    return resize(downscaled, dsize=(width, height), interpolation=up_interpolation)
+    downscaled = fgeometric.resize(img, (int(height * scale), int(width * scale)), down_interpolation)
+    return fgeometric.resize(downscaled, (height, width), up_interpolation)
 
 
 def noop(input_obj: Any, **params: Any) -> Any:

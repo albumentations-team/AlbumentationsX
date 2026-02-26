@@ -51,7 +51,7 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 
 Priority order to check:
 1. **`cv2.LUT`** used for pixel lookup operations (fastest)
-2. **`cv2` over numpy** for image ops where applicable
+2. **`cv2` over numpy** for image ops where applicable (except resize: use **`albucore.resize`**, not `cv2.resize` — enforced by pre-commit)
 3. **Vectorized numpy** instead of Python loops
 4. **In-place ops** where safe (avoid unnecessary `.copy()`)
 5. No repeated array allocations in tight loops

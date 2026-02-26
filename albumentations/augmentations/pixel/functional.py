@@ -38,6 +38,7 @@ from albucore import (
     preserve_channel_dim,
     reshape_ndhwc_channel,
     reshape_xhwc_channel,
+    resize,
     restore_ndhwc_channel,
     restore_xhwc_channel,
     sz_lut,
@@ -1705,7 +1706,7 @@ def downscale(
     """Downscale and upscale an image.
 
     This function downscales and upscales an image using the specified interpolation methods.
-    The downscaling and upscaling are performed using the cv2.resize function.
+    The downscaling and upscaling are performed using albucore.resize.
 
     Args:
         img (np.ndarray): Input image as a numpy array.
@@ -1719,14 +1720,12 @@ def downscale(
     """
     height, width = img.shape[:2]
 
-    downscaled = cv2.resize(
+    downscaled = resize(
         img,
-        None,
-        fx=scale,
-        fy=scale,
+        dsize=(int(width * scale), int(height * scale)),
         interpolation=down_interpolation,
     )
-    return cv2.resize(downscaled, (width, height), interpolation=up_interpolation)
+    return resize(downscaled, dsize=(width, height), interpolation=up_interpolation)
 
 
 def noop(input_obj: Any, **params: Any) -> Any:

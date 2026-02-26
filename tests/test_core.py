@@ -751,7 +751,7 @@ def test_single_transform_compose(
         },
     ),
 )
-def test_contiguous_output_dual(augmentation_cls, params):
+def test_non_contiguous_input_dual(augmentation_cls, params):
     set_seed(42)
     image = np.ones([3, 100, 100], dtype=np.uint8).transpose(1, 2, 0)
     mask = np.ones([2, 100, 100], dtype=np.uint8).transpose(1, 2, 0)
@@ -768,10 +768,14 @@ def test_contiguous_output_dual(augmentation_cls, params):
         mask[:20, :20] = 1
         data["mask"] = mask
 
-    # pipeline always outputs contiguous results
+    # pipeline gracefully handles non-contiguous inputs
     data = transform(**data)
 
     # Confirm output for mask and image
+    assert "image" in data
+    assert "mask" in data
+    assert isinstance(data["image"], np.ndarray)
+    assert isinstance(data["mask"], np.ndarray)
 
 
 @pytest.mark.parametrize(
@@ -795,7 +799,7 @@ def test_contiguous_output_dual(augmentation_cls, params):
         },
     ),
 )
-def test_contiguous_output_volume(augmentation_cls, params):
+def test_non_contiguous_input_volume(augmentation_cls, params):
     set_seed(42)
     # create non-contiguous volume (D, H, W, C)
     volume = np.ones([3, 100, 100, 3], dtype=np.uint8).transpose(0, 2, 1, 3)
@@ -806,6 +810,8 @@ def test_contiguous_output_volume(augmentation_cls, params):
     data = {"volume": volume}
 
     data = transform(**data)
+    assert "volume" in data
+    assert isinstance(data["volume"], np.ndarray)
 
 
 @pytest.mark.parametrize(
@@ -822,7 +828,7 @@ def test_contiguous_output_volume(augmentation_cls, params):
         },
     ),
 )
-def test_contiguous_output_imageonly(augmentation_cls, params):
+def test_non_contiguous_input_imageonly(augmentation_cls, params):
     set_seed(137)
     image = np.zeros([3, 100, 100], dtype=np.uint8).transpose(1, 2, 0)
 
@@ -837,10 +843,11 @@ def test_contiguous_output_imageonly(augmentation_cls, params):
     if augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
 
-    # pipeline always outputs contiguous results
+    # pipeline gracefully handles non-contiguous inputs
     data = transform(**data)
 
-    # confirm output contiguous
+    assert "image" in data
+    assert isinstance(data["image"], np.ndarray)
 
 
 @pytest.mark.parametrize(
@@ -1233,7 +1240,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
 
     # Check if the augmentation is not an ImageOnlyTransform and mask is in the output
     if not issubclass(augmentation_cls, ImageOnlyTransform) and "mask" in transformed:
-        pass
+        assert isinstance(transformed["mask"], np.ndarray)
 
 
 @pytest.mark.parametrize(

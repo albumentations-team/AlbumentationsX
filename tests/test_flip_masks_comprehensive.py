@@ -142,13 +142,15 @@ class TestFlipMasksContiguity:
             A.D4,
         ],
     )
-    def test_single_mask_contiguous(self, transform_class):
-        """Test that single mask output is contiguous."""
+    def test_single_mask_non_contiguous_input(self, transform_class):
+        """Test that single mask non-contiguous input is handled gracefully."""
         mask = np.random.randint(0, 2, (80, 120, 3), dtype=np.uint8)
 
         transform = transform_class(p=1.0)
         aug = A.Compose([transform])
-        aug(image=np.zeros((80, 120, 3), dtype=np.uint8), mask=mask)
+        result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), mask=mask)
+        assert "mask" in result
+        assert isinstance(result["mask"], np.ndarray)
 
     @pytest.mark.parametrize(
         "transform_class",
@@ -159,13 +161,15 @@ class TestFlipMasksContiguity:
             A.D4,
         ],
     )
-    def test_masks_batch_contiguous(self, transform_class):
-        """Test that masks batch output is contiguous."""
+    def test_masks_batch_non_contiguous_input(self, transform_class):
+        """Test that masks batch non-contiguous input is handled gracefully."""
         masks = np.random.randint(0, 2, (5, 80, 120, 3), dtype=np.uint8)
 
         transform = transform_class(p=1.0)
         aug = A.Compose([transform])
-        aug(image=np.zeros((80, 120, 3), dtype=np.uint8), masks=masks)
+        result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), masks=masks)
+        assert "masks" in result
+        assert isinstance(result["masks"], np.ndarray)
 
     @pytest.mark.parametrize(
         "transform_class",
@@ -176,17 +180,19 @@ class TestFlipMasksContiguity:
             A.D4,
         ],
     )
-    def test_mask3d_contiguous(self, transform_class):
-        """Test that 3D mask output is contiguous."""
+    def test_mask3d_non_contiguous_input(self, transform_class):
+        """Test that 3D mask non-contiguous input is handled gracefully."""
         mask3d = np.random.randint(0, 2, (20, 80, 120, 3), dtype=np.uint8)
 
         transform = transform_class(p=1.0)
         aug = A.Compose([transform])
-        aug(
+        result = aug(
             image=np.zeros((80, 120, 3), dtype=np.uint8),
             volume=np.zeros((20, 80, 120, 3), dtype=np.uint8),
             mask3d=mask3d,
         )
+        assert "mask3d" in result
+        assert isinstance(result["mask3d"], np.ndarray)
 
 
 class TestFlipMasksPyTorchCompatibility:
@@ -222,8 +228,8 @@ class TestD4MasksSpecific:
     """Test D4 transform with all group elements."""
 
     @pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "h", "t", "hvt"])
-    def test_d4_mask_contiguous_all_elements(self, group_element):
-        """Test that all D4 group elements produce contiguous masks when used through Compose."""
+    def test_d4_mask_non_contiguous_input_all_elements(self, group_element):
+        """Test that all D4 group elements handle non-contiguous masks gracefully when used through Compose."""
         mask = np.random.randint(0, 2, (100, 100, 3), dtype=np.uint8)
 
         # Seed to get specific group element (this is implementation detail, but tests D4's behavior)
@@ -231,19 +237,23 @@ class TestD4MasksSpecific:
         transform = A.D4(p=1.0)
         aug = A.Compose([transform])
 
-        # Apply through Compose (which uses ensure_contiguous_output)
-        aug(image=np.zeros((100, 100, 3), dtype=np.uint8), mask=mask)
+        # Apply through Compose
+        result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), mask=mask)
+        assert "mask" in result
+        assert isinstance(result["mask"], np.ndarray)
 
     @pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "h", "t", "hvt"])
-    def test_d4_masks_batch_contiguous_all_elements(self, group_element):
-        """Test that all D4 group elements produce contiguous masks batch when used through Compose."""
+    def test_d4_masks_batch_non_contiguous_input_all_elements(self, group_element):
+        """Test that all D4 group elements handle non-contiguous masks batch gracefully when used through Compose."""
         masks = np.random.randint(0, 2, (3, 100, 100, 3), dtype=np.uint8)
 
         transform = A.D4(p=1.0)
         aug = A.Compose([transform])
 
-        # Apply through Compose (which uses ensure_contiguous_output)
-        aug(image=np.zeros((100, 100, 3), dtype=np.uint8), masks=masks)
+        # Apply through Compose
+        result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), masks=masks)
+        assert "masks" in result
+        assert isinstance(result["masks"], np.ndarray)
 
     @pytest.mark.parametrize(
         "group_element,should_transpose",

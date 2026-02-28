@@ -2770,3 +2770,25 @@ def test_user_data_targets_as_params() -> None:
 
     assert result["user_data"]["seen"] is True
     assert result["user_data"]["x"] == 137
+
+
+def test_user_data_additional_targets_transform_without_user_data_in_targets() -> None:
+    """additional_targets={'x': 'user_data'} works for transforms whose targets omit user_data.
+
+    Transforms like ToTensorV2 define targets without user_data. add_targets() must use
+    _key2func (which always has user_data) rather than self.targets to avoid KeyError.
+    """
+
+    # Minimal transform whose targets dict does NOT include user_data (like ToTensorV2)
+    class ImageOnlyTargets(A.NoOp):
+        @property
+        def targets(self) -> dict[str, Any]:
+            return {"image": self.apply_to_images, "images": self.apply_to_images}
+
+    image = np.zeros((50, 50, 3), dtype=np.uint8)
+    transform = A.Compose(
+        [ImageOnlyTargets(p=1.0)],
+        additional_targets={"caption": "user_data"},
+    )
+    result = transform(image=image, caption={"text": "a dog"})
+    assert result["caption"] == {"text": "a dog"}

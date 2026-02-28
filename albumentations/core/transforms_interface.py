@@ -575,7 +575,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
                 )
             if v in self._available_keys:
                 self._additional_targets[k] = v
-                self._key2func[k] = self.targets[v]
+                self._key2func[k] = self._key2func[v]
                 self._available_keys.add(k)
 
     @property

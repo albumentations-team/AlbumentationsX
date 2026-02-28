@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.append("..")
 import albumentations
-from albumentations.core.type_definitions import Targets
+from albumentations.core.type_definitions import ALL_TARGETS, Targets
 
 IGNORED_CLASSES = {
     "BasicTransform",
@@ -242,8 +242,9 @@ def main() -> None:
     image_only_transforms_links = make_transforms_targets_links(image_only_transforms)
 
     # Build header for dual transforms with split BBoxes columns
+    # Exclude USER_DATA - it is passthrough by default, not a spatial target
     dual_header = []
-    for target in Targets:
+    for target in ALL_TARGETS:
         if target == Targets.BBOXES:
             dual_header.extend(["BBoxes (HBB)", "BBoxes (OBB)"])
         else:
@@ -252,6 +253,7 @@ def main() -> None:
     dual_transforms_table = make_transforms_targets_table(
         dual_transforms,
         header=["Transform", *dual_header],
+        targets_to_check=ALL_TARGETS,
         split_bboxes=True,
     )
 

@@ -239,6 +239,25 @@ class Perspective(DualTransform):
             self.interpolation,
         )
 
+    def apply_to_images(
+        self,
+        images: ImageType,
+        matrix: np.ndarray,
+        max_height: int,
+        max_width: int,
+        **params: Any,
+    ) -> ImageType:
+        return fgeometric.perspective_images(
+            images,
+            matrix,
+            max_width,
+            max_height,
+            self.fill,
+            self.border_mode,
+            self.keep_size,
+            self.interpolation,
+        )
+
     def apply_to_mask(
         self,
         mask: ImageType,

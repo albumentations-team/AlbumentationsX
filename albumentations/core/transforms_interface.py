@@ -514,6 +514,28 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         # >>  {"masks": self.apply_to_masks}
         raise NotImplementedError
 
+    def apply_to_user_data(self, data: Any, **params: Any) -> Any:
+        """Apply transform to user-defined data.
+
+        By default, returns the data unchanged (passthrough). Override in a subclass to
+        update arbitrary user data in response to geometric or photometric transforms.
+
+        Args:
+            data: Arbitrary user-defined data of any type.
+            **params: Transform parameters (same as passed to other apply_* methods).
+
+        Returns:
+            The (optionally modified) user data. Must return the same type as the input.
+
+        Examples:
+            >>> import albumentations as A
+            >>> class FlipAwareTransform(A.HorizontalFlip):
+            ...     def apply_to_user_data(self, data: dict, **params) -> dict:
+            ...         return {"caption": data["caption"].replace("left", "right")}
+
+        """
+        return data
+
     def _set_keys(self) -> None:
         """Set _available_keys."""
         if not hasattr(self, "_targets"):
@@ -525,6 +547,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             }
         self._available_keys.update(self.targets.keys())
         self._key2func = {key: self.targets[key] for key in self._available_keys if key in self.targets}
+        # user_data is always available regardless of _targets - passthrough by default
+        self._available_keys.add("user_data")
+        self._key2func["user_data"] = self.apply_to_user_data
 
     @property
     def available_keys(self) -> set[str]:
@@ -550,7 +575,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
                 )
             if v in self._available_keys:
                 self._additional_targets[k] = v
-                self._key2func[k] = self.targets[v]
+                self._key2func[k] = self._key2func[v]
                 self._available_keys.add(k)
 
     @property
@@ -750,6 +775,7 @@ class DualTransform(BasicTransform):
             "keypoints": self.apply_to_keypoints,
             "volume": self.apply_to_images,
             "volumes": self.apply_to_volumes,
+            "user_data": self.apply_to_user_data,
         }
 
     def apply_to_keypoints(self, keypoints: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
@@ -952,6 +978,7 @@ class ImageOnlyTransform(BasicTransform):
             "images": self.apply_to_images,
             "volume": self.apply_to_volume,
             "volumes": self.apply_to_volumes,
+            "user_data": self.apply_to_user_data,
         }
 
 
@@ -1080,4 +1107,5 @@ class Transform3D(DualTransform):
             "mask3d": self.apply_to_mask3d,
             "masks3d": self.apply_to_masks3d,
             "keypoints": self.apply_to_keypoints,
+            "user_data": self.apply_to_user_data,
         }

@@ -714,43 +714,48 @@ def perspective_images(
         adjusted_matrix = matrix
         dsize = (max_width, max_height)
 
-    border_val_cv2 = int(border_val) if isinstance(border_val, float) and border_val == int(border_val) else border_val
-
     if num_channels == 1:
         # Small images: stack N frames → (H,W,N), one warp call (albucore C++ chunks avoid N crossings).
-        # Large images: per-frame cv2 (transpose copy cost > per-call savings).
-        _STACK_PX = 256 * 256
-        flat = images if images.ndim == 3 else images[:, :, :, 0]       # (N,H,W)
-        if height * width <= _STACK_PX:
-            stacked = np.ascontiguousarray(flat.transpose(1, 2, 0))     # (H,W,N)
+        # Large images: per-frame warp (transpose copy cost > per-call savings).
+        _stack_px = 256 * 256
+        flat = images if images.ndim == 3 else images[:, :, :, 0]  # (N,H,W)
+        if height * width <= _stack_px:
+            stacked = np.ascontiguousarray(flat.transpose(1, 2, 0))  # (H,W,N)
             border_scalar = border_val[0] if isinstance(border_val, (list, np.ndarray)) else border_val
             warped = warp_perspective(
-                stacked, adjusted_matrix, dsize,
-                flags=interpolation, border_mode=border_mode, border_value=border_scalar,
+                stacked,
+                adjusted_matrix,
+                dsize,
+                flags=interpolation,
+                border_mode=border_mode,
+                border_value=border_scalar,
             )
-            out = np.moveaxis(warped, -1, 0)                            # view (N,H',W')
+            out = np.moveaxis(warped, -1, 0)  # view (N,H',W')
         else:
             out = np.empty((n, dsize[1], dsize[0]), dtype=images.dtype)
             for i in range(n):
-                cv2.warpPerspective(
-                    flat[i], adjusted_matrix, dsize, dst=out[i],
-                    flags=interpolation, borderMode=border_mode, borderValue=border_val_cv2,
+                warp_perspective(
+                    flat[i],
+                    adjusted_matrix,
+                    dsize,
+                    flags=interpolation,
+                    border_mode=border_mode,
+                    border_value=border_val,
+                    dst=out[i],
                 )
         return out[:, :, :, np.newaxis] if images.ndim == 4 else out
 
-    result = np.empty((n, dsize[1], dsize[0]) + images.shape[3:], dtype=images.dtype)
-    if num_channels <= 4:
-        for i in range(n):
-            cv2.warpPerspective(
-                images[i], adjusted_matrix, dsize, dst=result[i],
-                flags=interpolation, borderMode=border_mode, borderValue=border_val_cv2,
-            )
-    else:
-        for i in range(n):
-            warp_perspective(
-                images[i], adjusted_matrix, dsize,
-                flags=interpolation, border_mode=border_mode, border_value=border_val, dst=result[i],
-            )
+    result = np.empty((n, dsize[1], dsize[0], *images.shape[3:]), dtype=images.dtype)
+    for i in range(n):
+        warp_perspective(
+            images[i],
+            adjusted_matrix,
+            dsize,
+            flags=interpolation,
+            border_mode=border_mode,
+            border_value=border_val,
+            dst=result[i],
+        )
     return result
 
 

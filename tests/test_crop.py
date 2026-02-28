@@ -100,6 +100,7 @@ def test_crop_near_bbox(image, bboxes, keypoints):
         "volumes",
         "mask3d",
         "masks3d",
+        "user_data",
         bbox_key,
     }
 

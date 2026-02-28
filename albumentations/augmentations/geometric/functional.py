@@ -652,28 +652,16 @@ def perspective(
         np.ndarray: Perspective-transformed image.
 
     """
-    if not keep_size:
-        return warp_perspective(
-            img,
-            matrix,
-            flags=interpolation,
-            border_mode=border_mode,
-            dsize=(max_width, max_height),
-            border_value=border_val,
-        )
-    height, width = img.shape[:2]
-    scale_x = width / max_width
-    scale_y = height / max_height
-    scale_matrix = np.array([[scale_x, 0, 0], [0, scale_y, 0], [0, 0, 1]])
-    adjusted_matrix = np.dot(scale_matrix, matrix)
-    return warp_perspective(
-        img,
-        adjusted_matrix,
-        flags=interpolation,
-        border_mode=border_mode,
-        dsize=(width, height),
-        border_value=border_val,
-    )
+    return perspective_images(
+        np.expand_dims(img, axis=0),
+        matrix,
+        max_width,
+        max_height,
+        border_val,
+        border_mode,
+        keep_size,
+        interpolation,
+    )[0]
 
 
 def perspective_images(

@@ -239,6 +239,9 @@ class Perspective(DualTransform):
             self.interpolation,
         )
 
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
+        return self.apply_to_images(volumes, **params)
+
     def apply_to_images(
         self,
         images: ImageType,

@@ -123,6 +123,28 @@ def shift_hsv(
     return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if is_gray else img
 
 
+def shift_hsv_images(
+    images: np.ndarray,
+    hue_shift: float,
+    sat_shift: float,
+    val_shift: float,
+) -> np.ndarray:
+    """Apply HSV shift to a batch of images (N, H, W, C) or (N, H, W).
+
+    Uses a pre-allocated output array with per-frame shift_hsv calls.
+    This is faster than the base-class np.stack loop because it avoids
+    N intermediate allocations and the final stack copy.
+
+    A reshape-to-tall-image approach (N,H,W,3) -> (N*H,W,3) was benchmarked
+    but was slower for images >= 512x512 due to cv2.cvtColor and cv2.LUT
+    cache thrashing on the large intermediate arrays.
+    """
+    res = np.empty_like(images)
+    for i in range(images.shape[0]):
+        res[i] = shift_hsv(images[i], hue_shift, sat_shift, val_shift)
+    return res
+
+
 @clipped
 def solarize(img: ImageType, threshold: float) -> ImageType:
     """Invert all pixel values above a threshold.

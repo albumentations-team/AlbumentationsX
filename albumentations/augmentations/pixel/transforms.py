@@ -1664,6 +1664,16 @@ class HueSaturationValue(ImageOnlyTransform):
             raise TypeError(msg)
         return fpixel.shift_hsv(img, hue_shift, sat_shift, val_shift)
 
+    def apply_to_images(
+        self,
+        images: ImageType,
+        hue_shift: float,
+        sat_shift: float,
+        val_shift: float,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.shift_hsv_images(images, hue_shift, sat_shift, val_shift)
+
     def get_params(self) -> dict[str, float]:
         return {
             "hue_shift": self.py_random.uniform(*self.hue_shift_limit),

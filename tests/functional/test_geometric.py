@@ -923,31 +923,52 @@ class TestPiecewiseAffineNumericalAccuracy:
         return map_x, map_y
 
     @pytest.mark.parametrize(
-        ["image_shape", "grid", "scale"],
+        ["image_shape", "grid", "scale", "absolute_scale"],
         [
-            ((64, 64), (4, 4), 0.05),
-            ((48, 80), (3, 5), 0.03),
-            ((32, 32), (2, 2), 0.1),
+            ((64, 64), (4, 4), 0.05, False),
+            ((48, 80), (3, 5), 0.03, False),
+            ((32, 32), (2, 2), 0.1, False),
+            ((64, 64), (4, 4), 1.5, True),
         ],
     )
-    def test_maps_match_reference(self, image_shape, grid, scale):
+    def test_maps_match_reference(self, image_shape, grid, scale, absolute_scale):
         """Vectorized IDW must match per-pixel reference to float32 precision."""
         ref_mx, ref_my = self._reference_piecewise_affine_maps(
             image_shape,
             grid,
             scale,
-            False,
+            absolute_scale,
             np.random.default_rng(137),
         )
         vec_mx, vec_my = fgeometric.create_piecewise_affine_maps(
             image_shape,
             grid,
             scale,
-            False,
+            absolute_scale,
             np.random.default_rng(137),
         )
         np.testing.assert_allclose(vec_mx, ref_mx, atol=1e-3, rtol=1e-5)
         np.testing.assert_allclose(vec_my, ref_my, atol=1e-3, rtol=1e-5)
+
+    @pytest.mark.parametrize("scale", [0.0, -0.01])
+    def test_nonpositive_scale_returns_none(self, scale):
+        """Non-positive scale must return (None, None) in both implementations."""
+        ref = self._reference_piecewise_affine_maps(
+            (32, 32),
+            (4, 4),
+            scale,
+            False,
+            np.random.default_rng(137),
+        )
+        vec = fgeometric.create_piecewise_affine_maps(
+            (32, 32),
+            (4, 4),
+            scale,
+            False,
+            np.random.default_rng(137),
+        )
+        assert ref == (None, None)
+        assert vec == (None, None)
 
     def test_remapped_images_match(self):
         """End-to-end: remap with vectorized maps must produce near-identical output."""
@@ -993,7 +1014,7 @@ class TestGenerateInverseDistortionMap:
         assert inv_my.dtype == np.float32
 
     def test_inverse_map_approximate_inversion(self):
-        """Applying forward then inverse should approximately recover identity for smooth maps."""
+        """Forward then inverse should approximately recover identity for smooth maps."""
         h, w = 64, 64
         yy, xx = np.mgrid[:h, :w]
         map_x = (xx + 2 * np.sin(yy * 0.1)).astype(np.float32)
@@ -1005,6 +1026,19 @@ class TestGenerateInverseDistortionMap:
 
         interior = (inv_mx > 0) | (inv_my > 0)
         assert interior.sum() > h * w * 0.5, "Inverse map should fill most of the image"
+
+        dst_x = np.clip(np.round(map_x).astype(np.int32), 0, w - 1)
+        dst_y = np.clip(np.round(map_y).astype(np.int32), 0, h - 1)
+        valid = interior[dst_y, dst_x]
+        assert valid.sum() > h * w * 0.25, "Too few valid round-trip samples"
+
+        src_x = xx[valid].astype(np.float32)
+        src_y = yy[valid].astype(np.float32)
+        rec_x = inv_mx[dst_y[valid], dst_x[valid]]
+        rec_y = inv_my[dst_y[valid], dst_x[valid]]
+
+        max_err = max(np.abs(rec_x - src_x).max(), np.abs(rec_y - src_y).max())
+        assert max_err < 3.0, f"Round-trip max error too large: {max_err}"
 
     def test_identity_map_produces_identity_inverse(self):
         """Identity forward map should produce near-identity inverse."""

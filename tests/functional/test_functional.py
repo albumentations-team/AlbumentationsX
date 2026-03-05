@@ -3475,6 +3475,26 @@ class TestToGrayDesaturationUint8FastPath:
         assert result[0, 0] == expected
 
 
+class TestToGrayDesaturationNonUint8:
+    """Verify non-uint8 desaturation paths remain correct."""
+
+    def test_float32_matches_formula(self):
+        rng = np.random.default_rng(137)
+        img = rng.random((32, 32, 3)).astype(np.float32)
+        result = fpixel.to_gray_desaturation(img)
+        ref = (np.max(img, axis=-1) + np.min(img, axis=-1)) * 0.5
+        assert result.dtype == np.float32
+        np.testing.assert_allclose(result, ref, rtol=1e-6, atol=1e-6)
+
+    @pytest.mark.parametrize("channels", [3, 5])
+    def test_float32_multichannel(self, channels):
+        rng = np.random.default_rng(137)
+        img = rng.random((32, 32, channels)).astype(np.float32)
+        result = fpixel.to_gray_desaturation(img)
+        ref = (np.max(img, axis=-1) + np.min(img, axis=-1)) * 0.5
+        np.testing.assert_allclose(result, ref, rtol=1e-6, atol=1e-6)
+
+
 class TestSharpenGaussianFused:
     """Verify add_weighted fusion matches explicit unsharp mask formula."""
 

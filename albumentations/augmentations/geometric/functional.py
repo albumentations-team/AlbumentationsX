@@ -2065,8 +2065,8 @@ def generate_inverse_distortion_map(
     h, w = shape
 
     src_y, src_x = np.mgrid[:h, :w]
-    src_x_f = src_x.astype(np.float32)
-    src_y_f = src_y.astype(np.float32)
+    src_x_flat = src_x.ravel().astype(np.float32)
+    src_y_flat = src_y.ravel().astype(np.float32)
 
     valid = (map_x >= 0) & (map_x < w) & (map_y >= 0) & (map_y < h)
 
@@ -2077,24 +2077,31 @@ def generate_inverse_distortion_map(
     inv_map_y = np.zeros((h, w), dtype=np.float32)
     best_dist = np.full((h, w), np.inf, dtype=np.float32)
 
+    map_x_flat = map_x.ravel()
+    map_y_flat = map_y.ravel()
+
     for dy in range(2):
         for dx in range(2):
             ny = dst_y_floor + dy
             nx = dst_x_floor + dx
 
             mask = valid & (ny >= 0) & (ny < h) & (nx >= 0) & (nx < w)
+            flat_mask = np.flatnonzero(mask.ravel())
 
-            ny_m = ny[mask]
-            nx_m = nx[mask]
-            dist = np.abs(nx_m.astype(np.float32) - map_x[mask]) + np.abs(ny_m.astype(np.float32) - map_y[mask])
+            ny_m = ny.ravel()[flat_mask]
+            nx_m = nx.ravel()[flat_mask]
+            dist = np.abs(nx_m.astype(np.float32) - map_x_flat[flat_mask]) + np.abs(
+                ny_m.astype(np.float32) - map_y_flat[flat_mask],
+            )
 
             improve = dist < best_dist[ny_m, nx_m]
 
             ny_upd = ny_m[improve]
             nx_upd = nx_m[improve]
+            flat_upd = flat_mask[improve]
 
-            inv_map_x[ny_upd, nx_upd] = src_x_f[mask][improve]
-            inv_map_y[ny_upd, nx_upd] = src_y_f[mask][improve]
+            inv_map_x[ny_upd, nx_upd] = src_x_flat[flat_upd]
+            inv_map_y[ny_upd, nx_upd] = src_y_flat[flat_upd]
             best_dist[ny_upd, nx_upd] = dist[improve]
 
     return inv_map_x, inv_map_y

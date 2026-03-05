@@ -826,8 +826,13 @@ def perspective_bboxes(
     )
     transformed_points = transformed_points.reshape(-1, 4, 2)
 
-    new_coords = np.array(
-        [[np.min(box[:, 0]), np.min(box[:, 1]), np.max(box[:, 0]), np.max(box[:, 1])] for box in transformed_points],
+    new_coords = np.column_stack(
+        [
+            transformed_points[:, :, 0].min(axis=1),
+            transformed_points[:, :, 1].min(axis=1),
+            transformed_points[:, :, 0].max(axis=1),
+            transformed_points[:, :, 1].max(axis=1),
+        ],
     )
 
     if keep_size:
@@ -1393,22 +1398,6 @@ def validate_if_not_found_coords(
 
     msg = "Expected if_not_found_coords to be None, tuple, list, or dict."
     raise ValueError(msg)
-
-
-def find_keypoint(
-    position: tuple[int, int],
-    distance_map: np.ndarray,
-    threshold: float | None,
-    inverted: bool,
-) -> tuple[float, float] | None:
-    """Determine if a valid keypoint can be found at the given position."""
-    y, x = position
-    value = distance_map[y, x]
-    if not inverted and threshold is not None and value >= threshold:
-        return None
-    if inverted and threshold is not None and value <= threshold:
-        return None
-    return float(x), float(y)
 
 
 def from_distance_maps(
@@ -2075,35 +2064,38 @@ def generate_inverse_distortion_map(
     """Generate inverse mapping for strong distortions."""
     h, w = shape
 
-    # Initialize inverse maps
+    src_y, src_x = np.mgrid[:h, :w]
+    src_x_f = src_x.astype(np.float32)
+    src_y_f = src_y.astype(np.float32)
+
+    valid = (map_x >= 0) & (map_x < w) & (map_y >= 0) & (map_y < h)
+
+    dst_x_floor = np.floor(map_x).astype(np.int32)
+    dst_y_floor = np.floor(map_y).astype(np.int32)
+
     inv_map_x = np.zeros((h, w), dtype=np.float32)
     inv_map_y = np.zeros((h, w), dtype=np.float32)
+    best_dist = np.full((h, w), np.inf, dtype=np.float32)
 
-    # For each source point, record where it maps to
-    for y in range(h):
-        for x in range(w):
-            # Get destination point
-            dst_x = map_x[y, x]
-            dst_y = map_y[y, x]
+    for dy in range(2):
+        for dx in range(2):
+            ny = dst_y_floor + dy
+            nx = dst_x_floor + dx
 
-            # If destination is within bounds
-            if 0 <= dst_x < w and 0 <= dst_y < h:
-                # Get neighborhood coordinates
-                dst_x_floor = int(np.floor(dst_x))
-                dst_x_ceil = min(dst_x_floor + 1, w - 1)
-                dst_y_floor = int(np.floor(dst_y))
-                dst_y_ceil = min(dst_y_floor + 1, h - 1)
+            mask = valid & (ny >= 0) & (ny < h) & (nx >= 0) & (nx < w)
 
-                # Fill neighborhood
-                for ny in range(dst_y_floor, dst_y_ceil + 1):
-                    for nx in range(dst_x_floor, dst_x_ceil + 1):
-                        # Only update if empty or closer to pixel center
-                        if inv_map_x[ny, nx] == 0 or (
-                            abs(nx - dst_x) + abs(ny - dst_y)
-                            < abs(nx - inv_map_x[ny, nx]) + abs(ny - inv_map_y[ny, nx])
-                        ):
-                            inv_map_x[ny, nx] = x
-                            inv_map_y[ny, nx] = y
+            ny_m = ny[mask]
+            nx_m = nx[mask]
+            dist = np.abs(nx_m.astype(np.float32) - map_x[mask]) + np.abs(ny_m.astype(np.float32) - map_y[mask])
+
+            improve = dist < best_dist[ny_m, nx_m]
+
+            ny_upd = ny_m[improve]
+            nx_upd = nx_m[improve]
+
+            inv_map_x[ny_upd, nx_upd] = src_x_f[mask][improve]
+            inv_map_y[ny_upd, nx_upd] = src_y_f[mask][improve]
+            best_dist[ny_upd, nx_upd] = dist[improve]
 
     return inv_map_x, inv_map_y
 
@@ -2558,27 +2550,24 @@ def distort_image(
 
     """
     distorted_image = np.zeros(image.shape, dtype=image.dtype)
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
 
     for mesh in generated_mesh:
-        # Extract source rectangle and destination quadrilateral
-        x1, y1, x2, y2 = mesh[:4]  # Source rectangle
-        dst_quad = mesh[4:].reshape(4, 2)  # Destination quadrilateral
+        x1, y1, x2, y2 = mesh[:4]
+        dst_quad = mesh[4:].reshape(4, 2)
 
-        # Convert source rectangle to quadrilateral
         src_quad = np.array(
             [
-                [x1, y1],  # Top-left
-                [x2, y1],  # Top-right
-                [x2, y2],  # Bottom-right
-                [x1, y2],  # Bottom-left
+                [x1, y1],
+                [x2, y1],
+                [x2, y2],
+                [x1, y2],
             ],
             dtype=np.float32,
         )
 
-        # Calculate Perspective transformation matrix
         perspective_mat = cv2.getPerspectiveTransform(src_quad, dst_quad)
 
-        # Apply Perspective transformation
         warped = warp_perspective(
             image,
             perspective_mat,
@@ -2588,11 +2577,9 @@ def distort_image(
             border_value=0,
         )
 
-        # Create mask for the transformed region
-        mask = np.zeros(image.shape[:2], dtype=np.uint8)
+        mask[:] = 0
         cv2.fillConvexPoly(mask, np.int32(dst_quad), 255)
 
-        # Copy only the warped quadrilateral area to the output image
         distorted_image = cv2.copyTo(warped, mask, distorted_image)
 
     return distorted_image
@@ -3152,12 +3139,11 @@ def compute_affine_warp_output_shape(
     out_height = maxr - minr + 1
     out_width = maxc - minc + 1
 
-    if len(input_shape) == NUM_MULTI_CHANNEL_DIMENSIONS:
-        output_shape = np.ceil((out_height, out_width, input_shape[2]))
-    else:
-        output_shape = np.ceil((out_height, out_width))
-
-    output_shape_tuple = tuple(int(v) for v in output_shape.tolist())
+    output_shape_tuple: tuple[int, ...] = (
+        (int(out_height), int(out_width), int(input_shape[2]))
+        if len(input_shape) == NUM_MULTI_CHANNEL_DIMENSIONS
+        else (int(out_height), int(out_width))
+    )
 
     # fit output image in new shape
     translation = np.array([[1, 0, -minc], [0, 1, -minr], [0, 0, 1]])
@@ -3610,38 +3596,25 @@ def create_piecewise_affine_maps(
         np.float32,
     )
 
-    # Create control points with jitter
+    # Create control points with jitter (vectorized)
     control_points = np.zeros((nb_rows * nb_cols, 4), dtype=np.float32)
-    for i in range(nb_rows):
-        for j in range(nb_cols):
-            idx = i * nb_cols + j
-            # Source points
-            control_points[idx, 0] = xx_src[i, j]
-            control_points[idx, 1] = yy_src[i, j]
-            # Destination points with jitter
-            control_points[idx, 2] = np.clip(
-                xx_src[i, j] + jitter[i, j, 1],
-                0,
-                width - 1,
-            )
-            control_points[idx, 3] = np.clip(
-                yy_src[i, j] + jitter[i, j, 0],
-                0,
-                height - 1,
-            )
+    control_points[:, 0] = xx_src.ravel()
+    control_points[:, 1] = yy_src.ravel()
+    np.clip(xx_src.ravel() + jitter[:, :, 1].ravel(), 0, width - 1, out=control_points[:, 2])
+    np.clip(yy_src.ravel() + jitter[:, :, 0].ravel(), 0, height - 1, out=control_points[:, 3])
 
-    # Create full resolution maps
-    for i in range(height):
-        for j in range(width):
-            # Find nearest control points and interpolate
-            dx = j - control_points[:, 0]
-            dy = i - control_points[:, 1]
-            dist = dx * dx + dy * dy
-            weights = 1 / (dist + 1e-8)
-            weights = weights / np.sum(weights)
+    # IDW interpolation: vectorized over all pixels
+    yy, xx = np.mgrid[:height, :width]
+    dx = xx[:, :, np.newaxis].astype(np.float32) - control_points[:, 0]
+    dy = yy[:, :, np.newaxis].astype(np.float32) - control_points[:, 1]
+    dist = dx * dx + dy * dy
 
-            map_x[i, j] = np.sum(weights * control_points[:, 2])
-            map_y[i, j] = np.sum(weights * control_points[:, 3])
+    weights = 1.0 / (dist + 1e-8)
+    weights_sum = weights.sum(axis=2, keepdims=True)
+    weights /= weights_sum
+
+    map_x = np.einsum("ijk,k->ij", weights, control_points[:, 2])
+    map_y = np.einsum("ijk,k->ij", weights, control_points[:, 3])
 
     # Ensure output is within bounds
     map_x = np.clip(map_x, 0, width - 1, out=map_x)
@@ -4246,8 +4219,8 @@ def generate_control_points(num_control_points: int) -> np.ndarray:
         )
 
         # Generate regular grid
-    x = np.linspace(0, 1, num_control_points)
-    y = np.linspace(0, 1, num_control_points)
+    x = np.linspace(0, 1, num_control_points, dtype=np.float32)
+    y = np.linspace(0, 1, num_control_points, dtype=np.float32)
     return np.stack(np.meshgrid(x, y), axis=-1).reshape(-1, 2)
 
 

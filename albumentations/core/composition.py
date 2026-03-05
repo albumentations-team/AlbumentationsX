@@ -1093,7 +1093,7 @@ class Compose(BaseCompose, HubMixin):
     def _ensure_contiguous(self, data: dict[str, Any]) -> None:
         """Ensure all numpy arrays are contiguous."""
         for key, value in data.items():
-            if isinstance(value, np.ndarray):
+            if isinstance(value, np.ndarray) and not value.flags["C_CONTIGUOUS"]:
                 data[key] = np.ascontiguousarray(value)
 
     def _add_grayscale_channels(self, data: dict[str, Any]) -> None:

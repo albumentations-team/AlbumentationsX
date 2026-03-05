@@ -470,7 +470,7 @@ class BboxProcessor(DataProcessor):
                 )
 
             if self.params.clip_bboxes_on_input and converted_data.size > 0:
-                converted_data[:, :4] = np.clip(converted_data[:, :4], 0, 1)
+                np.clip(converted_data[:, :4], 0, 1, out=converted_data[:, :4])
 
             # Then filter invalid boxes if requested
             if self.params.filter_invalid_bboxes:
@@ -1342,8 +1342,6 @@ def mask_to_bboxes(
     """
     num_boxes = masks.shape[-1]
     new_bboxes = []
-
-    num_boxes = masks.shape[-1]
 
     if num_boxes == 0:
         # Return empty array with correct shape

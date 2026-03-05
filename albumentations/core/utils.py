@@ -568,24 +568,6 @@ def ensure_int_output(
     return (int(min_val), int(max_val)) if isinstance(param, int) else (float(min_val), float(max_val))
 
 
-def ensure_contiguous_output(arg: np.ndarray | Sequence[np.ndarray]) -> np.ndarray | list[np.ndarray]:
-    """Ensure that numpy arrays are contiguous in memory.
-
-    Args:
-        arg (np.ndarray | Sequence[np.ndarray]): A numpy array or sequence of numpy arrays.
-
-    Returns:
-        np.ndarray | list[np.ndarray]: Contiguous array(s) with the same data.
-
-    """
-    if isinstance(arg, np.ndarray):
-        if not arg.flags["C_CONTIGUOUS"]:
-            arg = np.ascontiguousarray(arg)
-    elif isinstance(arg, Sequence):
-        arg = list(map(ensure_contiguous_output, arg))
-    return arg
-
-
 @overload
 def to_tuple(
     param: int | tuple[int, int],

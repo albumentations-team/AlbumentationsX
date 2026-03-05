@@ -3,9 +3,8 @@
 import functools
 from typing import Any, cast
 
-import cv2
 import numpy as np
-from albucore import float32_io
+from albucore import float32_io, sz_lut
 
 from albumentations.augmentations.pixel.functional import to_gray_average, to_gray_weighted_average
 from albumentations.core.type_definitions import ImageFloat32, ImageType, ImageUInt8
@@ -311,14 +310,16 @@ def random_dither_uint8(
 
     # Quantize using LUT for maximum performance
     if n_colors == 2:
-        return (noisy >= 128).astype(np.uint8) * 255
+        lut_binary = np.zeros(256, dtype=np.uint8)
+        lut_binary[128:] = 255
+        return sz_lut(noisy, lut_binary, inplace=False)
 
     # Create LUT for quantization directly in uint8 space
     lut = np.round(np.arange(256) * (n_colors - 1) / 255) / (n_colors - 1) * 255
     lut = lut.astype(np.uint8)
 
     # Apply LUT directly - this is the fastest path
-    return cv2.LUT(noisy, lut)
+    return sz_lut(noisy, lut, inplace=False)
 
 
 def random_dither(
@@ -341,7 +342,8 @@ def random_dither(
     """
     # Add random noise
     noise = random_generator.uniform(noise_range[0], noise_range[1], size=img.shape)
-    noisy = np.clip(img + noise, 0, 1)
+    noisy = img + noise
+    np.clip(noisy, 0, 1, out=noisy)
 
     # Quantize using vectorized numpy operations
     if n_colors == 2:
@@ -379,29 +381,21 @@ def ordered_dither_uint8(
     tiled = np.tile(bayer, (tiles_height, tiles_width))[:height, :width]
 
     if n_colors == 2:
-        # Binary dithering - compare with tiled threshold
-        result = np.zeros_like(img)
-        for channel_idx in range(img.shape[2]):
-            result[:, :, channel_idx] = (img[:, :, channel_idx] > tiled) * 255
-        return result.astype(np.uint8)
+        return ((img > tiled[:, :, np.newaxis]) * 255).astype(np.uint8)
     # Multi-level: Create LUT once outside channel loop
     result = np.zeros_like(img)
     levels = np.linspace(0, 255, n_colors).astype(np.uint8)
 
-    # Create LUT once - same for all channels
-    lut = np.zeros(256, dtype=np.uint8)
-    for i in range(256):
-        level_idx = min(i * n_colors // 256, n_colors - 1)
-        lut[i] = levels[level_idx]
+    lut = levels[np.minimum(np.arange(256) * n_colors // 256, n_colors - 1)]
 
     for channel_idx in range(img.shape[2]):
         channel = img[:, :, channel_idx]
         # Add dither pattern and quantize
         dithered = channel.astype(np.int16) + (tiled.astype(np.int16) - 128) // n_colors
-        dithered = np.clip(dithered, 0, 255)
+        np.clip(dithered, 0, 255, out=dithered)
 
         # Reuse the same LUT for all channels
-        result[:, :, channel_idx] = cv2.LUT(dithered.astype(np.uint8), lut)
+        result[:, :, channel_idx] = sz_lut(dithered.astype(np.uint8), lut, inplace=False)
 
     return result
 
@@ -443,7 +437,8 @@ def ordered_dither(
     dither_noise = (tiled - 0.5) / n_colors
 
     # Add dither noise to the image
-    dithered = np.clip(img + dither_noise, 0, 1)
+    dithered = img + dither_noise
+    np.clip(dithered, 0, 1, out=dithered)
 
     # Quantize to n_colors levels using vectorized numpy operations
     # Since @float32_io guarantees float32 input, use direct numpy operations
@@ -516,7 +511,7 @@ def error_diffusion_dither(
                         channel[neighbor_y, neighbor_x] += error * weight
 
         # Clip to valid range
-        channel = np.clip(channel, 0, 1)
+        np.clip(channel, 0, 1, out=channel)
         result[:, :, channel_idx] = channel
 
     return result

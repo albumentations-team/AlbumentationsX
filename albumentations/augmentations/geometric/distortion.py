@@ -491,7 +491,11 @@ class ElasticTransform(BaseDistortion):
         )
 
         # Generate coordinate grids and apply displacement
-        y_coords, x_coords = np.meshgrid(np.arange(scaled_height), np.arange(scaled_width), indexing="ij")
+        y_coords, x_coords = np.meshgrid(
+            np.arange(scaled_height, dtype=np.float32),
+            np.arange(scaled_width, dtype=np.float32),
+            indexing="ij",
+        )
         map_x = (x_coords + dx).astype(np.float32)
         map_y = (y_coords + dy).astype(np.float32)
 
@@ -1004,8 +1008,8 @@ class GridDistortion(BaseDistortion):
         scaled_width = max(1, int(width * map_resolution))
         scaled_shape = (scaled_height, scaled_width)
 
-        steps_x = [1 + self.py_random.uniform(*self.distort_limit) for _ in range(self.num_steps + 1)]
-        steps_y = [1 + self.py_random.uniform(*self.distort_limit) for _ in range(self.num_steps + 1)]
+        steps_x = (1 + self.random_generator.uniform(*self.distort_limit, size=self.num_steps + 1)).tolist()
+        steps_y = (1 + self.random_generator.uniform(*self.distort_limit, size=self.num_steps + 1)).tolist()
 
         if self.normalized:
             normalized_params = fgeometric.normalize_grid_distortion_steps(
@@ -1242,8 +1246,8 @@ class ThinPlateSpline(BaseDistortion):
         weights, affine = fgeometric.compute_tps_weights(src_points, dst_points)
 
         # Create grid of points at scaled resolution
-        x, y = np.meshgrid(np.arange(scaled_width), np.arange(scaled_height))
-        points = np.stack([x.flatten(), y.flatten()], axis=1).astype(np.float32)
+        x, y = np.meshgrid(np.arange(scaled_width, dtype=np.float32), np.arange(scaled_height, dtype=np.float32))
+        points = np.stack([x.ravel(), y.ravel()], axis=1)
 
         # Transform points
         transformed = fgeometric.tps_transform(

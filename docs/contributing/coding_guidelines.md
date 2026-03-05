@@ -645,6 +645,105 @@ Examples:
 - Explain why, not what (the code shows what)
 - Keep comments up to date with code changes
 
+## Performance Optimization Checklist
+
+When writing or reviewing performance-sensitive code (functional layer, apply methods, core pipeline), apply these techniques in priority order:
+
+### 1. Eliminate Python Loops Over Pixels
+
+Python `for y in range(h): for x in range(w):` loops are ~100x slower than vectorized numpy. Replace with:
+
+- `np.mgrid` / `np.meshgrid` + broadcasting for grid computations
+- `np.einsum` for weighted sums over control points
+- Scatter-update via fancy indexing (`arr[ys, xs] = vals`) instead of per-pixel assignment
+
+### 2. Use `cv2.LUT` / `sz_lut` for uint8 Pixel-Wise Transforms
+
+Any function `f(pixel) -> pixel` on uint8 data should build a 256-entry LUT and apply it via `sz_lut(img, lut, inplace=...)`. This is orders of magnitude faster than per-pixel numpy.
+
+### 3. Vectorize LUT and Array Construction
+
+Replace Python list comprehensions with numpy vectorized equivalents:
+
+```python
+# Slow
+lut = np.array([max_val - i if i >= thresh else i for i in range(256)])
+
+# Fast
+indices = np.arange(256, dtype=np.uint8)
+lut = np.where(indices >= thresh, max_val - indices, indices)
+```
+
+### 4. Use `out=` for In-Place Operations
+
+Avoid allocating temporaries on image-sized arrays:
+
+```python
+# Allocates temporary
+result = np.clip(img + noise, 0, 1)
+
+# In-place — zero allocation
+result = img + noise
+np.clip(result, 0, 1, out=result)
+```
+
+Key functions with `out=` support: `np.clip`, `np.multiply`, `np.add`, `np.divide`.
+
+### 5. Avoid Float64 Waste
+
+Numpy defaults to float64. Always specify `dtype=np.float32` for:
+
+- `np.arange`, `np.linspace`, `np.zeros`, `np.ones`, `np.full`
+- `np.meshgrid` inputs (pass float32 arrays)
+
+### 6. Fuse Multi-Step Operations
+
+Replace chains of temporary allocations with single calls:
+
+```python
+# 2 temporaries
+result = img + alpha * (img - blurred)
+
+# Zero temporaries — single fused call
+result = add_weighted(img, 1.0 + alpha, blurred, -alpha)
+```
+
+### 7. Preallocate Outside Loops
+
+Move `np.zeros` / `np.empty` calls outside loops and reset with `arr[:] = 0`:
+
+```python
+# Slow — allocates every iteration
+for item in items:
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.fillPoly(mask, ...)
+
+# Fast — allocate once, reset
+mask = np.zeros((h, w), dtype=np.uint8)
+for item in items:
+    mask[:] = 0
+    cv2.fillPoly(mask, ...)
+```
+
+### 8. Skip Redundant Work in Hot Paths
+
+- Guard `np.ascontiguousarray` with `if not arr.flags["C_CONTIGUOUS"]`
+- Use `first_result[np.newaxis]` instead of `np.array([first_result])` for batch-of-one
+- Precompute loop-invariant expressions (e.g., `inv_sq = 1.0 / (step * step)`)
+- Use `np.where(mask)` instead of `np.argwhere(mask)` — returns tuple of 1D arrays instead of 2D index array
+
+### 9. Vectorize Random Number Generation
+
+Replace per-element Python RNG loops with single numpy calls:
+
+```python
+# Slow
+steps = [1 + self.py_random.uniform(*limit) for _ in range(n)]
+
+# Fast
+steps = (1 + self.random_generator.uniform(*limit, size=n)).tolist()
+```
+
 ### Updating Transform Documentation
 
 When adding a new transform or modifying the targets of an existing one, you must update the transforms documentation in the README:

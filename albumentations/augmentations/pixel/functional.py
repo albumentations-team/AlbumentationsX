@@ -167,10 +167,9 @@ def solarize(img: ImageType, threshold: float) -> ImageType:
     max_val = MAX_VALUES_BY_DTYPE[dtype]
 
     if dtype == np.uint8:
-        lut = np.array(
-            [max_val - i if i >= threshold * max_val else i for i in range(int(max_val) + 1)],
-            dtype=dtype,
-        )
+        indices = np.arange(int(max_val) + 1, dtype=dtype)
+        thresh_val = threshold * max_val
+        lut = np.where(indices >= thresh_val, max_val - indices, indices).astype(dtype)
         prev_shape = img.shape
         img = sz_lut(img, lut, inplace=False)
         return img if len(prev_shape) == img.ndim else np.expand_dims(img, -1)
@@ -233,7 +232,7 @@ def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[
 
 def _equalize_pil(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     histogram = cv2.calcHist([img], [0], mask, [256], (0, 256)).ravel()
-    h = np.array([_f for _f in histogram if _f])
+    h = histogram[histogram > 0]
 
     if len(h) <= 1:
         return img.copy()
@@ -735,11 +734,8 @@ def add_snow_texture(
     img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV).astype(np.float32)
 
     # Increase brightness
-    img_hsv[:, :, 2] = np.clip(
-        img_hsv[:, :, 2] * (1 + brightness_coeff * snow_point),
-        0,
-        max_value,
-    )
+    np.multiply(img_hsv[:, :, 2], 1 + brightness_coeff * snow_point, out=img_hsv[:, :, 2])
+    np.clip(img_hsv[:, :, 2], 0, max_value, out=img_hsv[:, :, 2])
 
     # Generate snow texture
     snow_texture = cv2.GaussianBlur(snow_texture, (0, 0), sigmaX=1, sigmaY=1)
@@ -753,7 +749,7 @@ def add_snow_texture(
     snow_texture *= depth_effect
 
     # Apply snow texture
-    snow_layer = (np.dstack([snow_texture] * 3) * max_value * snow_point).astype(
+    snow_layer = (snow_texture[:, :, np.newaxis] * (max_value * snow_point)).astype(
         np.float32,
     )
 
@@ -1165,23 +1161,16 @@ def add_shadow(
         Automold--Road-Augmentation-Library: https://github.com/UjjwalSaxena/Automold--Road-Augmentation-Library
 
     """
-    num_channels = get_num_channels(img)
     max_value = MAX_VALUES_BY_DTYPE[np.uint8]
 
     img_shadowed = img.copy()
+    poly_mask = np.zeros((img.shape[0], img.shape[1], 1), dtype=np.uint8)
 
-    # Iterate over the vertices and intensity list
     for vertices, shadow_intensity in zip(vertices_list, intensities, strict=True):
-        # Create mask for the current shadow polygon
-        mask = np.zeros((img.shape[0], img.shape[1], 1), dtype=np.uint8)
-        cv2.fillPoly(mask, [vertices], (max_value,))
+        poly_mask[:] = 0
+        cv2.fillPoly(poly_mask, [vertices], (max_value,))
 
-        # Duplicate the mask to have the same number of channels as the image
-        mask = np.repeat(mask, num_channels, axis=2)
-
-        # Apply shadow to the channels directly
-        # It could be tempting to convert to HLS and apply the shadow to the L channel, but it creates artifacts
-        shadowed_indices = mask[:, :, 0] == max_value
+        shadowed_indices = poly_mask[:, :, 0] == max_value
         darkness = 1 - shadow_intensity
         img_shadowed[shadowed_indices] = clip(
             img_shadowed[shadowed_indices] * darkness,
@@ -1513,8 +1502,12 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         any
 
     """
+    if img.dtype == np.uint8:
+        ch_max = np.max(img, axis=-1).astype(np.uint16)
+        ch_min = np.min(img, axis=-1).astype(np.uint16)
+        return ((ch_max + ch_min) >> 1).astype(np.uint8)
     float_image = img.astype(np.float32)
-    return (np.max(float_image, axis=-1) + np.min(float_image, axis=-1)) / 2
+    return (np.max(float_image, axis=-1) + np.min(float_image, axis=-1)) * 0.5
 
 
 def to_gray_average(img: ImageType) -> ImageType:
@@ -2508,47 +2501,48 @@ def slic(
     num_pixels = height * width
 
     # Normalize image to [0, 1] range
-    image_normalized = image.astype(np.float32) / np.max(image + 1e-6)
+    max_val = image.max()
+    image_normalized = image.astype(np.float32) / (max_val + 1e-6)
 
-    # Initialize cluster centers
+    # Initialize cluster centers via meshgrid
     grid_step = int((num_pixels / n_segments) ** 0.5)
     x_range = np.arange(grid_step // 2, width, grid_step)
     y_range = np.arange(grid_step // 2, height, grid_step)
-    centers = np.array(
-        [(x, y) for y in y_range for x in x_range if x < width and y < height],
-    )
+    xx_grid, yy_grid = np.meshgrid(x_range, y_range)
+    centers = np.column_stack([xx_grid.ravel(), yy_grid.ravel()]).astype(np.float64)
 
     # Initialize labels and distances
-    labels = -1 * np.ones((height, width), dtype=np.int32)
-    distances = np.full((height, width), np.inf)
+    labels = np.full((height, width), -1, dtype=np.int32)
+    distances = np.full((height, width), np.inf, dtype=np.float32)
+
+    inv_grid_step_sq = 1.0 / (grid_step * grid_step)
 
     for _ in range(max_iterations):
         for i, center in enumerate(centers):
             y, x = int(center[1]), int(center[0])
 
-            # Define the neighborhood
             y_low, y_high = max(0, y - grid_step), min(height, y + grid_step + 1)
             x_low, x_high = max(0, x - grid_step), min(width, x + grid_step + 1)
 
-            # Compute distances
             crop = image_normalized[y_low:y_high, x_low:x_high]
             color_diff = crop - image_normalized[y, x]
             color_distance = np.sum(color_diff**2, axis=-1)
 
             yy, xx = np.ogrid[y_low:y_high, x_low:x_high]
-            spatial_distance = ((yy - y) ** 2 + (xx - x) ** 2) / (grid_step**2)
+            spatial_distance = ((yy - y) ** 2 + (xx - x) ** 2) * inv_grid_step_sq
 
             distance = color_distance + compactness * spatial_distance
 
-            mask = distance < distances[y_low:y_high, x_low:x_high]
-            distances[y_low:y_high, x_low:x_high][mask] = distance[mask]
+            dist_slice = distances[y_low:y_high, x_low:x_high]
+            mask = distance < dist_slice
+            dist_slice[mask] = distance[mask]
             labels[y_low:y_high, x_low:x_high][mask] = i
 
-        # Update centers
         for i in range(len(centers)):
             mask = labels == i
             if np.any(mask):
-                centers[i] = np.mean(np.argwhere(mask), axis=0)[::-1]
+                ys, xs = np.where(mask)
+                centers[i] = [xs.mean(), ys.mean()]
 
     return labels
 
@@ -3025,9 +3019,7 @@ def sharpen_gaussian(
         sigmaX=sigma,
         sigmaY=sigma,
     )
-    # Unsharp mask formula: original + alpha * (original - blurred)
-    # This is equivalent to: original * (1 + alpha) - alpha * blurred
-    return img + alpha * (img - blurred)
+    return add_weighted(img, 1.0 + alpha, blurred, -alpha)
 
 
 def apply_salt_and_pepper(
@@ -3572,7 +3564,7 @@ def create_contrast_lut(
 
     # "pil" method
     scale = max_value / (max_intensity - min_intensity)
-    indices = np.arange(256, dtype=float)
+    indices = np.arange(256, dtype=np.float32)
     # Changed: Use np.round to get 128 for middle value
     # Test expects [0, 128, 255] for range [0, 2]
     lut = np.clip(np.round((indices - min_intensity) * scale), 0, max_value).astype(np.uint8)

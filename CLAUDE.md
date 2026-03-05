@@ -237,7 +237,7 @@ Examples:
 
 ### Performance Anti-patterns
 
-- Not using cv2.LUT for lookup-based transformations
+- Not using cv2.LUT / `sz_lut` for lookup-based transformations
 - Using numpy when cv2 equivalent exists and is faster
 - Using Python loops instead of vectorized numpy operations
 - Creating unnecessary array copies instead of in-place operations
@@ -246,12 +246,21 @@ Examples:
 - Missing custom `apply_to_images` when expensive setup can be shared across a batch
 - Redundant `ndim == 4` checks on images (they're always 4D in batch context)
 - Reshaping `(N,H,W,1)` to `(H,W,N)` for cv2 — transpose creates non-contiguous memory, cv2 doesn't parallelize channels, net result is slower
+- `np.clip(expr, lo, hi)` without `out=` — allocates a temporary; use `np.clip(arr, lo, hi, out=arr)` when the input can be mutated
+- `np.arange(n)` / `np.linspace(a, b, n)` without `dtype=np.float32` — defaults to float64, wastes memory and FLOPS
+- List comprehensions to build LUTs — use `np.where` / `np.minimum` / vectorized indexing instead
+- `np.argwhere(mask)` in loops — use `np.where(mask)` (returns 1D tuple, avoids 2D allocation)
+- `np.dstack([arr] * n)` — use `arr[:, :, np.newaxis]` + broadcasting for zero-copy
+- `np.array([single_result])` for batch-of-one — use `result[np.newaxis]` (view, no copy)
+- Python RNG loops (`[random.uniform(...) for _ in range(n)]`) — use `np.random.Generator.uniform(..., size=n)`
+- `np.ascontiguousarray` without checking `flags["C_CONTIGUOUS"]` first — skip if already contiguous
 
 ### Memory Issues
 
 - Large temporary arrays that could be avoided
-- Not using in-place operations where safe
+- Not using in-place operations where safe (`np.clip`, `np.multiply`, `np.add` all support `out=`)
 - Unnecessary array copies (check for `.copy()` that can be eliminated)
+- `np.zeros` inside loops that could be preallocated once and reset with `arr[:] = 0`
 
 ### Type Safety
 

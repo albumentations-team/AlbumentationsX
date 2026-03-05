@@ -68,10 +68,43 @@ for size_name, (h, w) in SIZES.items():
 
 ## Workflow
 
-1. **Before**: run benchmark on the current `main` / original code, save output
-2. **After**: run benchmark on the modified code, save output
-3. **Compare**: compute speedup = old_time / new_time
+1. **Before**: run benchmark on the current `main` / original code, save output to a JSON file
+2. **After**: run benchmark on the modified code, save output to a JSON file
+3. **Compare**: load both JSON files, compute speedup = old_time / new_time for each transform/size combo
 4. **Report** results in the PR/commit message body
+
+### JSON Output Format
+
+Save benchmark results as JSON for automated comparison:
+
+```python
+import json
+
+results = {}
+for transform_name, (h, w), ch, elapsed in all_results:
+    key = f"{transform_name}_{h}x{w}x{ch}"
+    results[key] = {"time": elapsed, "iterations": N}
+
+with open("benchmark_results.json", "w") as f:
+    json.dump(results, f, indent=2)
+```
+
+### Comparison Script Pattern
+
+```python
+import json
+
+with open("bench_old.json") as f:
+    old = json.load(f)
+with open("bench_new.json") as f:
+    new = json.load(f)
+
+for key in sorted(old):
+    if key in new:
+        speedup = old[key]["time"] / new[key]["time"]
+        indicator = "FASTER" if speedup > 1.05 else "SLOWER" if speedup < 0.95 else "SAME"
+        print(f"{key}: {old[key]['time']:.4f}s -> {new[key]['time']:.4f}s  {speedup:.2f}x  {indicator}")
+```
 
 ## Reporting Format
 

@@ -386,7 +386,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         # Single element case
         if len(batch) == 1:
-            result = np.array([first_result])
+            result = first_result[np.newaxis]
             return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
         # Pre-allocate for remaining elements based on first result

@@ -95,6 +95,11 @@ class ChannelDropout(ImageOnlyTransform):
     def apply(self, img: ImageType, channels_to_drop: list[int], **params: Any) -> ImageType:
         return channel_dropout(img, channels_to_drop, self.fill)
 
+    def apply_to_images(self, images: ImageType, channels_to_drop: list[int], **params: Any) -> ImageType:
+        result = images.copy()
+        result[:, :, :, channels_to_drop] = self.fill
+        return result
+
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, list[int]]:
         metadata = get_image_data(data)
         num_channels = metadata["num_channels"]

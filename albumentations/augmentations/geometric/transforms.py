@@ -526,6 +526,8 @@ class Affine(DualTransform):
 
     """
 
+    _supports_grayscale_batch_as_multichannel = True
+
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
@@ -725,6 +727,15 @@ class Affine(DualTransform):
             border_value=self.fill_mask,
             dsize=(width, height),
         )
+
+    def apply_to_masks(self, masks: ImageType, *args: Any, **params: Any) -> ImageType:
+        if masks.size == 0:
+            return masks
+        if masks.ndim == 3:
+            multi_ch = masks.transpose(1, 2, 0)
+            result = self.apply_to_mask(multi_ch, **params)
+            return result.transpose(2, 0, 1)
+        return self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, **params))
 
     def apply_to_bboxes(
         self,

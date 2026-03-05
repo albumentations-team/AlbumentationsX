@@ -103,20 +103,8 @@ def glass_blur(
     return cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0))
 
 
-def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
-    """Defocus an image.
-
-    This function defocuses an image.
-
-    Args:
-        img (np.ndarray): Input image.
-        radius (int): Radius.
-        alias_blur (float): Alias blur.
-
-    Returns:
-        np.ndarray: Defocused image.
-
-    """
+def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
+    """Create a defocus (aliased disk) convolution kernel."""
     length = np.arange(-max(8, radius), max(8, radius) + 1)
     ksize = 3 if radius <= EIGHT else 5
 
@@ -124,9 +112,12 @@ def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
     aliased_disk = np.array((x**2 + y**2) <= radius**2, dtype=np.float32)
     aliased_disk /= np.sum(aliased_disk)
 
-    kernel = cv2.GaussianBlur(aliased_disk, (ksize, ksize), sigmaX=alias_blur)
+    return cv2.GaussianBlur(aliased_disk, (ksize, ksize), sigmaX=alias_blur)
 
-    return convolve(img, kernel=kernel)
+
+def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
+    """Defocus an image."""
+    return convolve(img, kernel=create_defocus_kernel(radius, alias_blur))
 
 
 def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:

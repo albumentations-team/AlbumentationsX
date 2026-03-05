@@ -83,6 +83,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
     interpolation: int
     fill: tuple[float, ...] | float
     fill_mask: tuple[float, ...] | float | None
+    _supports_grayscale_batch_as_multichannel: bool = False
+
     # replay mode params
     deterministic: bool = False
     save_key = "replay"
@@ -399,6 +401,17 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
+    def _apply_grayscale_batch_as_multichannel(self, images: ImageType, **params: Any) -> ImageType:
+        """Reshape (N, H, W, 1) grayscale batch to (H, W, N), apply once, reshape back.
+
+        Uses zero-copy views for both reshapes. The apply function handles
+        contiguity internally when needed (e.g. cv2.filter2D copies the input).
+        """
+        num_images, height, width, _ = images.shape
+        multi_ch = images.reshape(num_images, height, width).transpose(1, 2, 0)
+        result = self.apply(multi_ch, **params)
+        return result.transpose(2, 0, 1)[..., np.newaxis]
+
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         """Apply transform on images.
 
@@ -413,7 +426,10 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             ImageType: Transformed images as numpy array in the same format as input
 
         """
-        return self._apply_to_batch(images, lambda img: self.apply(img, **params), ensure_contiguous=True)
+        if self._supports_grayscale_batch_as_multichannel and images.shape[-1] == 1:
+            return self._apply_grayscale_batch_as_multichannel(images, **params)
+
+        return self._apply_to_batch(images, lambda img: self.apply(img, **params))
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform slice by slice to a volume.

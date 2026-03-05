@@ -58,6 +58,14 @@ Priority order to check:
 6. No repeated array allocations in tight loops
 7. Expensive computations cached in `get_params` / `get_params_dependent_on_data`
 
+### Batch Optimization Checks
+
+- [ ] **`_supports_grayscale_batch_as_multichannel = True`** set if transform processes channels identically (convolutions, geometric warps, element-wise ops)
+- [ ] **Custom `apply_to_images`** if expensive setup (kernels, LUTs, gradient maps) can be computed once per batch
+- [ ] **`apply_to_masks` override** for DualTransform with channel-independent geometric ops (Affine, Rotate, Resize)
+- [ ] **No redundant `ndim == 4` checks** on images — they're always 4D in batch context
+- [ ] **No unnecessary `np.ascontiguousarray`** — functional layer handles contiguity
+
 Flag any violations with a concrete speedup suggestion.
 
 ## 7. Documentation (🟡 Important)

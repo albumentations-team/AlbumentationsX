@@ -3276,6 +3276,69 @@ def create_directional_gradient(height: int, width: int, angle: float) -> np.nda
     return x + y
 
 
+def create_illumination_gradient(
+    height: int,
+    width: int,
+    mode: str,
+    params: dict[str, Any],
+) -> np.ndarray:
+    """Create an illumination gradient map of shape (H, W) or (H, W, 1).
+
+    Returns a float32 gradient that can be applied via multiply_by_array.
+    The returned gradient does NOT have a channel dimension.
+    """
+    intensity = params["intensity"]
+    abs_intensity = abs(intensity)
+
+    if mode == "linear":
+        gradient = create_directional_gradient(height, width, params["angle"])
+        if intensity < 0:
+            cv2.subtract(1, gradient, dst=gradient)
+        cv2.multiply(gradient, 2 * abs_intensity, dst=gradient)
+        cv2.add(gradient, 1 - abs_intensity, dst=gradient)
+        return gradient
+
+    if mode == "corner":
+        if intensity == 0:
+            return np.ones((height, width), dtype=np.float32)
+        corner = params["corner"]
+        diagonal_length = math.sqrt(height * height + width * width)
+        mask = np.full((height, width), 255, dtype=np.uint8)
+        corners = [(0, 0), (0, width - 1), (height - 1, width - 1), (height - 1, 0)]
+        mask[corners[corner]] = 0
+        pattern = cv2.distanceTransform(
+            mask,
+            distanceType=cv2.DIST_L2,
+            maskSize=cv2.DIST_MASK_PRECISE,
+            dstType=cv2.CV_32F,
+        )
+        cv2.multiply(pattern, -intensity / diagonal_length, dst=pattern)
+        cv2.add(pattern, 1, dst=pattern)
+        return pattern
+
+    # gaussian
+    if intensity == 0:
+        return np.ones((height, width), dtype=np.float32)
+    center = params["center"]
+    sigma = params["sigma"]
+    center_x = width * center[0]
+    center_y = height * center[1]
+    sigma2 = 2 * (max(height, width) * sigma) ** 2
+    y, x = np.ogrid[:height, :width]
+    x = x.astype(np.float32)
+    y = y.astype(np.float32)
+    x -= center_x
+    y -= center_y
+    cv2.multiply(x, x, dst=x)
+    cv2.multiply(y, y, dst=y)
+    x = x + y
+    cv2.multiply(x, -1 / sigma2, dst=x)
+    cv2.exp(x, dst=x)
+    cv2.multiply(x, intensity, dst=x)
+    cv2.add(x, 1, dst=x)
+    return x
+
+
 @float32_io
 def apply_linear_illumination(img: ImageType, intensity: float, angle: float) -> ImageType:
     """Apply linear illumination to the image.

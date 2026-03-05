@@ -89,6 +89,33 @@ Compose single:
   ...
 ```
 
+## Template: Batch (apply_to_images)
+
+When benchmarking batch optimizations (grayscale reshape trick, kernel pre-computation):
+
+```python
+import timeit
+import numpy as np
+import albumentations as A
+
+BATCH_SIZES = [4, 8, 16]
+SIZES = {"small": (256, 256), "medium": (512, 512)}
+
+transform = A.Compose([A.YourTransform(p=1.0)])
+
+for batch_size in BATCH_SIZES:
+    for size_name, (h, w) in SIZES.items():
+        # Grayscale batch — benefits from reshape trick
+        images = [np.random.randint(0, 256, (h, w, 1), dtype=np.uint8) for _ in range(batch_size)]
+        t = timeit.timeit(lambda: transform(images=images), number=50)
+        print(f"batch={batch_size} {size_name} {h}x{w}x1: {t:.4f}s")
+
+        # RGB batch — baseline
+        images_rgb = [np.random.randint(0, 256, (h, w, 3), dtype=np.uint8) for _ in range(batch_size)]
+        t = timeit.timeit(lambda: transform(images=images_rgb), number=50)
+        print(f"batch={batch_size} {size_name} {h}x{w}x3: {t:.4f}s")
+```
+
 ## Rules
 
 - Run on the **same machine**, back-to-back, same conditions
@@ -96,3 +123,4 @@ Compose single:
 - Test **both uint8 and float32** if the change affects dtype handling
 - A **>5% regression** on any combination requires justification or rework
 - If adding a new transform, benchmark against the equivalent naive numpy implementation
+- For batch optimizations, compare grayscale (1-channel) vs RGB (3-channel) to verify the reshape trick gives speedup

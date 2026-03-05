@@ -107,7 +107,50 @@ class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
 - Prefer **relative parameters** (fractions of image size) over fixed pixel values
 - Use **`ImageType`** for image/mask/volume type hints, `np.ndarray` only for bboxes/keypoints
 
-## 4. Export the transform
+## 4. Add batch optimization (`apply_to_images`)
+
+If the transform's `apply()` processes each channel identically (convolutions, geometric warps, element-wise ops):
+
+```python
+class MyTransform(ImageOnlyTransform):
+    _supports_grayscale_batch_as_multichannel = True
+    # Base class automatically handles grayscale batches (N,H,W,1) → (H,W,N) → apply → reshape back
+```
+
+If the transform pre-computes expensive resources (kernels, LUTs, gradient maps), override `apply_to_images`:
+
+```python
+def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    kernel = create_kernel(params["size"])  # compute once
+    apply_fn = lambda img: convolve(img, kernel)
+
+    if images.shape[-1] == 1:
+        num_images, height, width, _ = images.shape
+        multi_ch = images.reshape(num_images, height, width).transpose(1, 2, 0)
+        result = convolve(multi_ch, kernel)
+        return result.transpose(2, 0, 1)[..., np.newaxis]
+
+    return self._apply_to_batch(images, apply_fn)
+```
+
+For `DualTransform`s with channel-independent geometric ops, also override `apply_to_masks`:
+
+```python
+def apply_to_masks(self, masks: ImageType, *args: Any, **params: Any) -> ImageType:
+    if masks.size == 0:
+        return masks
+    if masks.ndim == 3:
+        result = self.apply_to_mask(masks.transpose(1, 2, 0), **params)
+        return result.transpose(2, 0, 1)
+    return self._apply_to_batch(masks, lambda m: self.apply_to_mask(m, **params))
+```
+
+Key rules:
+- Images are always `(N, H, W, C)` — never check `ndim == 4`
+- `np.ascontiguousarray` is NOT needed — functional layer handles contiguity
+- Check `images.shape[-1] == 1` for the grayscale fast path
+
+## 5. Export the transform
 
 Add to `albumentations/__init__.py`:
 ```python
@@ -116,7 +159,7 @@ from albumentations.augmentations.<module>.transforms import MyTransform
 
 Add to `albumentations/augmentations/<module>/__init__.py` if one exists.
 
-## 5. Write tests
+## 6. Write tests
 
 Add to `tests/test_transforms.py` or `tests/test_<category>.py`:
 
@@ -142,7 +185,7 @@ Also add it to the parametrized lists in `tests/utils.py`:
 
 Check edge cases: uint8, float32, single channel, multichannel.
 
-## 6. Verify checklist
+## 7. Verify checklist
 
 - [ ] No "Random" prefix in class name
 - [ ] `_range` suffix on range params
@@ -152,6 +195,9 @@ Check edge cases: uint8, float32, single channel, multichannel.
 - [ ] All random ops in `get_params` / `get_params_dependent_on_data`
 - [ ] Using `self.py_random` or `self.random_generator` (not `np.random` / `random`)
 - [ ] `ImageType` for image type hints
+- [ ] `_supports_grayscale_batch_as_multichannel = True` if transform is channel-independent
+- [ ] Custom `apply_to_images` if expensive setup can be shared across batch
+- [ ] `apply_to_masks` override for DualTransform with channel-independent geometric ops
 - [ ] Docstring has `Args`, `Targets`, `Image types`, `Examples` sections
 - [ ] Examples section uses plural "Examples" (not "Example")
 - [ ] Exported in `albumentations/__init__.py`

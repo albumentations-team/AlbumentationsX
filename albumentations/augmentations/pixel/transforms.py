@@ -3127,6 +3127,8 @@ class Downscale(ImageOnlyTransform):
 
     """
 
+    _supports_grayscale_batch_as_multichannel = True
+
     class InitSchema(BaseTransformInitSchema):
         interpolation_pair: dict[
             Literal["downscale", "upscale"],
@@ -3537,6 +3539,12 @@ class ColorJitter(ImageOnlyTransform):
                 img = fpixel.adjust_hue_torchvision(img, hue)
         return img
 
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result
+
 
 class Sharpen(ImageOnlyTransform):
     """Sharpen the input image using either kernel-based or Gaussian interpolation method.
@@ -3718,6 +3726,9 @@ class Sharpen(ImageOnlyTransform):
         return fpixel.sharpen_gaussian(img, alpha, self.kernel_size, self.sigma)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        if images.shape[-1] == 1:
+            return self._apply_grayscale_batch_as_multichannel(images, **params)
+
         result = np.empty_like(images)
         for i, image in enumerate(images):
             result[i] = self.apply(image, **params)
@@ -3775,6 +3786,8 @@ class Emboss(ImageOnlyTransform):
         - Application of Emboss Filtering in Image Processing: https://www.researchgate.net/publication/303412455_Application_of_Emboss_Filtering_in_Image_Processing
 
     """
+
+    _supports_grayscale_batch_as_multichannel = True
 
     class InitSchema(BaseTransformInitSchema):
         alpha: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1))]
@@ -4056,6 +4069,8 @@ class RingingOvershoot(ImageOnlyTransform):
         - Digital Image Processing: Rafael C. Gonzalez and Richard E. Woods, 4th Edition
 
     """
+
+    _supports_grayscale_batch_as_multichannel = True
 
     class InitSchema(BlurInitSchema):
         blur_limit: tuple[int, int] | int
@@ -6064,6 +6079,21 @@ class Illumination(ImageOnlyTransform):
             sigma=params["sigma"],
         )
 
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+        height, width = images.shape[1], images.shape[2]
+        gradient = fpixel.create_illumination_gradient(
+            height,
+            width,
+            self.mode,
+            params,
+        )
+        gradient = gradient[..., np.newaxis]
+
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = albucore.multiply_by_array(image, gradient)
+        return result
+
 
 class AutoContrast(ImageOnlyTransform):
     """Automatically adjust image contrast by stretching the intensity range.
@@ -6616,6 +6646,12 @@ class Dithering(ImageOnlyTransform):
             random_generator=self.random_generator,
         )
 
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result
+
 
 class PhotoMetricDistort(ImageOnlyTransform):
     """Randomly distorts an image's photometric properties, as used in SSD object detection training.
@@ -6828,3 +6864,9 @@ class PhotoMetricDistort(ImageOnlyTransform):
         if channel_permutation is not None:
             img = fpixel.channel_shuffle(img, channel_permutation)
         return img
+
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result

@@ -3127,8 +3127,6 @@ class Downscale(ImageOnlyTransform):
 
     """
 
-    _supports_grayscale_batch_as_multichannel = True
-
     class InitSchema(BaseTransformInitSchema):
         interpolation_pair: dict[
             Literal["downscale", "upscale"],
@@ -3726,9 +3724,6 @@ class Sharpen(ImageOnlyTransform):
         return fpixel.sharpen_gaussian(img, alpha, self.kernel_size, self.sigma)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        if images.shape[-1] == 1:
-            return self._apply_grayscale_batch_as_multichannel(images, **params)
-
         result = np.empty_like(images)
         for i, image in enumerate(images):
             result[i] = self.apply(image, **params)
@@ -3786,8 +3781,6 @@ class Emboss(ImageOnlyTransform):
         - Application of Emboss Filtering in Image Processing: https://www.researchgate.net/publication/303412455_Application_of_Emboss_Filtering_in_Image_Processing
 
     """
-
-    _supports_grayscale_batch_as_multichannel = True
 
     class InitSchema(BaseTransformInitSchema):
         alpha: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1))]
@@ -4069,8 +4062,6 @@ class RingingOvershoot(ImageOnlyTransform):
         - Digital Image Processing: Rafael C. Gonzalez and Richard E. Woods, 4th Edition
 
     """
-
-    _supports_grayscale_batch_as_multichannel = True
 
     class InitSchema(BlurInitSchema):
         blur_limit: tuple[int, int] | int

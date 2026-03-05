@@ -88,44 +88,40 @@ def __init__(self, brightness: float | tuple[float, float] = 0.2):
 6. **Remove dead code** - unused code impacts performance and maintainability
 7. Apply decorators `@uint8_io` or `@float32_io` for type consistency
 
-### Batch Optimization (`apply_to_images` / `apply_to_masks`)
+### Batch Optimization (`apply_to_images`)
 
-Images in batch mode are always `(N, H, W, C)` — never 3D. Masks are `(N, H, W)`.
+Images in batch mode are always `(N, H, W, C)` — never check `ndim == 4`, it's always true.
 
-#### Grayscale Batch Reshape Trick
+#### Patterns (in order of impact)
 
-For channel-independent transforms (filters, geometric warps), grayscale batches `(N, H, W, 1)` can be reshaped to `(H, W, N)` — treating N images as one multi-channel image — processed with a single `apply()` call, then reshaped back. This avoids the Python loop entirely.
-
-- Set `_supports_grayscale_batch_as_multichannel = True` on the transform class
-- The base `apply_to_images` in `BasicTransform` handles this automatically
-- For custom `apply_to_images`, check `images.shape[-1] == 1` (no `ndim == 4` — it's always 4)
-- `np.ascontiguousarray` is NOT needed — the functional layer handles contiguity internally
-- Works with: `cv2.filter2D`, `cv2.GaussianBlur`, `albucore.warp_affine`, `albucore.resize`, `albucore.median_blur`, `albucore.warp_perspective`, and any per-channel operation
+1. **Pre-compute expensive setup once** — kernels, LUTs, gradient maps computed per-batch instead of per-image:
 
 ```python
-class MyBlur(ImageOnlyTransform):
-    _supports_grayscale_batch_as_multichannel = True
-    # Base class handles grayscale batches automatically via _apply_grayscale_batch_as_multichannel
+def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    kernel = create_kernel(params["size"])  # computed once for the whole batch
+    return self._apply_to_batch(images, lambda img: convolve(img, kernel))
 ```
 
-For `DualTransform`s, also override `apply_to_masks` with the same trick for `(N, H, W)` → `(H, W, N)`:
+2. **Direct 4D indexing** for simple array operations instead of per-image loops:
 
 ```python
-def apply_to_masks(self, masks: ImageType, *args: Any, **params: Any) -> ImageType:
-    if masks.size == 0:
-        return masks
-    if masks.ndim == 3:
-        multi_ch = masks.transpose(1, 2, 0)
-        result = self.apply_to_mask(multi_ch, **params)
-        return result.transpose(2, 0, 1)
-    return self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, **params))
+def apply_to_images(self, images: ImageType, channels_to_drop: list[int], **params: Any) -> ImageType:
+    result = images.copy()
+    result[:, :, :, channels_to_drop] = self.fill  # vectorized over N
+    return result
 ```
 
-#### Other Batch Patterns
+3. **Pre-allocated loop** — `np.empty_like` + enumerate avoids per-call allocation:
 
-- **Pre-compute expensive resources** (kernels, LUTs, gradient maps) once in `apply_to_images`, then apply per-image
-- **Direct 4D indexing** for simple operations: `result[:, :, :, channels] = fill` instead of per-image loops
-- **Pre-allocated loop** (`np.empty_like` + loop) when no better option exists — still faster than the default `_apply_to_batch` which may copy
+```python
+def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    result = np.empty_like(images)
+    for i, image in enumerate(images):
+        result[i] = self.apply(image, **params)
+    return result
+```
+
+> **DO NOT** reshape `(N,H,W,1)` to `(H,W,N)` to call cv2 once — benchmarks show this is 2–4× **slower** because: (1) the transpose creates non-contiguous memory requiring a copy, and (2) cv2 processes channels sequentially, so N-channel is not N× faster than 1-channel.
 
 ### Random Number Generation
 
@@ -247,9 +243,9 @@ Examples:
 - Creating unnecessary array copies instead of in-place operations
 - Repeated array allocations in tight loops
 - Dead code and unused imports
-- Missing `_supports_grayscale_batch_as_multichannel = True` on channel-independent transforms
 - Missing custom `apply_to_images` when expensive setup can be shared across a batch
 - Redundant `ndim == 4` checks on images (they're always 4D in batch context)
+- Reshaping `(N,H,W,1)` to `(H,W,N)` for cv2 — transpose creates non-contiguous memory, cv2 doesn't parallelize channels, net result is slower
 
 ### Memory Issues
 

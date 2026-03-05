@@ -60,11 +60,9 @@ Priority order to check:
 
 ### Batch Optimization Checks
 
-- [ ] **`_supports_grayscale_batch_as_multichannel = True`** set if transform processes channels identically (convolutions, geometric warps, element-wise ops)
 - [ ] **Custom `apply_to_images`** if expensive setup (kernels, LUTs, gradient maps) can be computed once per batch
-- [ ] **`apply_to_masks` override** for DualTransform with channel-independent geometric ops (Affine, Rotate, Resize)
 - [ ] **No redundant `ndim == 4` checks** on images — they're always 4D in batch context
-- [ ] **No unnecessary `np.ascontiguousarray`** — functional layer handles contiguity
+- [ ] **No reshape trick**: Do NOT reshape `(N,H,W,1)` to `(H,W,N)` for cv2 — 2–4× slower due to non-contiguous copy + sequential channel processing
 
 Flag any violations with a concrete speedup suggestion.
 

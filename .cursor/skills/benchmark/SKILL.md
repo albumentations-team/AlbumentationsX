@@ -91,7 +91,7 @@ Compose single:
 
 ## Template: Batch (apply_to_images)
 
-When benchmarking batch optimizations (grayscale reshape trick, kernel pre-computation):
+When benchmarking batch optimizations (kernel pre-computation, 4D indexing, pre-allocated loops):
 
 ```python
 import timeit
@@ -123,4 +123,4 @@ for batch_size in BATCH_SIZES:
 - Test **both uint8 and float32** if the change affects dtype handling
 - A **>5% regression** on any combination requires justification or rework
 - If adding a new transform, benchmark against the equivalent naive numpy implementation
-- For batch optimizations, compare grayscale (1-channel) vs RGB (3-channel) to verify the reshape trick gives speedup
+- For batch optimizations, compare 1-channel vs 3-channel to verify speedup holds across channel counts

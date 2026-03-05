@@ -148,8 +148,6 @@ class Blur(ImageOnlyTransform):
 
     """
 
-    _supports_grayscale_batch_as_multichannel = True
-
     class InitSchema(BlurInitSchema):
         pass
 
@@ -710,8 +708,6 @@ class GaussianBlur(ImageOnlyTransform):
 
     """
 
-    _supports_grayscale_batch_as_multichannel = True
-
     class InitSchema(BaseTransformInitSchema):
         sigma_limit: Annotated[
             tuple[float, float] | float,
@@ -1148,8 +1144,6 @@ class AdvancedBlur(ImageOnlyTransform):
 
     """
 
-    _supports_grayscale_batch_as_multichannel = True
-
     class InitSchema(BlurInitSchema):
         sigma_x_limit: NonNegativeFloatRangeType
         sigma_y_limit: NonNegativeFloatRangeType
@@ -1376,17 +1370,7 @@ class Defocus(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         kernel = fblur.create_defocus_kernel(params["radius"], params["alias_blur"])
-
-        def apply_fn(img: ImageType) -> ImageType:
-            return fpixel.convolve(img, kernel)
-
-        if images.shape[-1] == 1:
-            num_images, height, width, _ = images.shape
-            multi_ch = images.reshape(num_images, height, width).transpose(1, 2, 0)
-            result = fpixel.convolve(multi_ch, kernel)
-            return result.transpose(2, 0, 1)[..., np.newaxis]
-
-        return self._apply_to_batch(images, apply_fn)
+        return self._apply_to_batch(images, lambda img: fpixel.convolve(img, kernel))
 
     def get_params(self) -> dict[str, Any]:
         return {
@@ -1507,9 +1491,6 @@ class ZoomBlur(ImageOnlyTransform):
         return fblur.zoom_blur(img, zoom_factors)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        if images.shape[-1] == 1:
-            return self._apply_grayscale_batch_as_multichannel(images, **params)
-
         result = np.empty_like(images)
         for i, image in enumerate(images):
             result[i] = self.apply(image, **params)

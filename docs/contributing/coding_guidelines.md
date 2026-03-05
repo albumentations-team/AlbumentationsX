@@ -421,43 +421,36 @@ class UniformParams(NoiseParamsBase):
 
 This rule is enforced by a pre-commit hook that will flag any violations during development.
 
-### Batch Performance (`apply_to_images` / `apply_to_masks`)
+### Batch Performance (`apply_to_images`)
 
-Images in batch mode are always `(N, H, W, C)`. Masks are `(N, H, W)`. Never check `ndim == 4` — it's always true.
+Images in batch mode are always `(N, H, W, C)`. Never check `ndim == 4` — it's always true.
 
-#### Grayscale Batch Reshape Trick
+Override `apply_to_images` when you can do better than the default per-image loop:
 
-For transforms where each channel is processed identically (convolutions, geometric warps), grayscale batches `(N, H, W, 1)` can be reshaped to `(H, W, N)`, processed with a single `apply()` call, then reshaped back:
-
-```python
-class MyFilter(ImageOnlyTransform):
-    _supports_grayscale_batch_as_multichannel = True
-    # BasicTransform.apply_to_images handles this automatically
-```
-
-The base class checks `_supports_grayscale_batch_as_multichannel and images.shape[-1] == 1` and calls `_apply_grayscale_batch_as_multichannel`.
-
-Compatible operations: `cv2.filter2D`, `cv2.GaussianBlur`, `albucore.warp_affine`, `albucore.resize`, `albucore.median_blur`, `albucore.warp_perspective`.
-
-`np.ascontiguousarray` is NOT needed — functional layer handles contiguity internally.
-
-For `DualTransform`s, also override `apply_to_masks`:
+1. **Pre-compute expensive setup once** (kernels, LUTs, gradient maps):
 
 ```python
-def apply_to_masks(self, masks, *args, **params):
-    if masks.size == 0:
-        return masks
-    if masks.ndim == 3:
-        result = self.apply_to_mask(masks.transpose(1, 2, 0), **params)
-        return result.transpose(2, 0, 1)
-    return self._apply_to_batch(masks, lambda m: self.apply_to_mask(m, **params))
+def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    kernel = create_kernel(params["size"])  # once per batch
+    return self._apply_to_batch(images, lambda img: convolve(img, kernel))
 ```
 
-#### Other Batch Patterns
+2. **Direct 4D indexing** for simple array ops:
 
-- **Pre-compute expensive resources** (kernels, LUTs, gradient maps) once in `apply_to_images`, apply per-image
-- **Direct 4D indexing**: `result[:, :, :, channels] = fill` instead of looping
-- **Pre-allocated loop**: `np.empty_like` + enumerate loop as a fallback
+```python
+result = images.copy()
+result[:, :, :, channels] = fill  # vectorized across N
+```
+
+3. **Pre-allocated loop** to avoid repeated allocations:
+
+```python
+result = np.empty_like(images)
+for i, image in enumerate(images):
+    result[i] = self.apply(image, **params)
+```
+
+> **Anti-pattern**: Do NOT reshape `(N,H,W,1)` to `(H,W,N)` to call a cv2 function once — transpose yields non-contiguous memory (requiring a full copy), and cv2 processes channels sequentially so an N-channel call is not faster than N single-channel calls. Benchmarks show 2–4× regression.
 
 ### Coordinate Systems
 

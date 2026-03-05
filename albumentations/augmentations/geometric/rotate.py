@@ -341,7 +341,6 @@ class Rotate(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
-    _supports_grayscale_batch_as_multichannel = True
 
     class InitSchema(RotateInitSchema):
         rotate_method: Literal["largest_box", "ellipse"]
@@ -435,15 +434,6 @@ class Rotate(DualTransform):
         if self.crop_border:
             return fcrops.crop(img_out, x_min, y_min, x_max, y_max)
         return img_out
-
-    def apply_to_masks(self, masks: ImageType, *args: Any, **params: Any) -> ImageType:
-        if masks.size == 0:
-            return masks
-        if masks.ndim == 3:
-            multi_ch = masks.transpose(1, 2, 0)
-            result = self.apply_to_mask(multi_ch, **params)
-            return result.transpose(2, 0, 1)
-        return self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, **params))
 
     def apply_to_bboxes(
         self,

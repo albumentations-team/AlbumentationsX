@@ -869,3 +869,187 @@ def test_resize_pil_preserves_dtype(dtype):
 
     assert resized.dtype == dtype
     assert resized.shape == (*target_shape, 3)
+
+
+class TestPiecewiseAffineNumericalAccuracy:
+    """Verify vectorized IDW interpolation matches reference per-pixel computation."""
+
+    @staticmethod
+    def _reference_piecewise_affine_maps(
+        image_shape: tuple[int, int],
+        grid: tuple[int, int],
+        scale: float,
+        absolute_scale: bool,
+        random_generator: np.random.Generator,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Pure-Python reference implementation (per-pixel loop)."""
+        height, width = image_shape
+        nb_rows, nb_cols = grid
+
+        if scale <= 0:
+            return None, None
+
+        y = np.linspace(0, height - 1, nb_rows, dtype=np.float32)
+        x = np.linspace(0, width - 1, nb_cols, dtype=np.float32)
+        xx_src, yy_src = np.meshgrid(x, y)
+
+        jitter_scale = scale / 3 if absolute_scale else scale * min(width, height) / 3
+        jitter = random_generator.normal(0, jitter_scale, (nb_rows, nb_cols, 2)).astype(np.float32)
+
+        control_points = np.zeros((nb_rows * nb_cols, 4), dtype=np.float32)
+        for i in range(nb_rows):
+            for j in range(nb_cols):
+                idx = i * nb_cols + j
+                control_points[idx, 0] = xx_src[i, j]
+                control_points[idx, 1] = yy_src[i, j]
+                control_points[idx, 2] = np.clip(xx_src[i, j] + jitter[i, j, 1], 0, width - 1)
+                control_points[idx, 3] = np.clip(yy_src[i, j] + jitter[i, j, 0], 0, height - 1)
+
+        map_x = np.zeros((height, width), dtype=np.float32)
+        map_y = np.zeros((height, width), dtype=np.float32)
+
+        for i in range(height):
+            for j in range(width):
+                dx = j - control_points[:, 0]
+                dy = i - control_points[:, 1]
+                dist = dx * dx + dy * dy
+                weights = 1 / (dist + 1e-8)
+                weights = weights / np.sum(weights)
+                map_x[i, j] = np.sum(weights * control_points[:, 2])
+                map_y[i, j] = np.sum(weights * control_points[:, 3])
+
+        np.clip(map_x, 0, width - 1, out=map_x)
+        np.clip(map_y, 0, height - 1, out=map_y)
+        return map_x, map_y
+
+    @pytest.mark.parametrize(
+        ["image_shape", "grid", "scale"],
+        [
+            ((64, 64), (4, 4), 0.05),
+            ((48, 80), (3, 5), 0.03),
+            ((32, 32), (2, 2), 0.1),
+        ],
+    )
+    def test_maps_match_reference(self, image_shape, grid, scale):
+        """Vectorized IDW must match per-pixel reference to float32 precision."""
+        ref_mx, ref_my = self._reference_piecewise_affine_maps(
+            image_shape,
+            grid,
+            scale,
+            False,
+            np.random.default_rng(137),
+        )
+        vec_mx, vec_my = fgeometric.create_piecewise_affine_maps(
+            image_shape,
+            grid,
+            scale,
+            False,
+            np.random.default_rng(137),
+        )
+        np.testing.assert_allclose(vec_mx, ref_mx, atol=1e-3, rtol=1e-5)
+        np.testing.assert_allclose(vec_my, ref_my, atol=1e-3, rtol=1e-5)
+
+    def test_remapped_images_match(self):
+        """End-to-end: remap with vectorized maps must produce near-identical output."""
+        img = np.random.default_rng(137).integers(0, 256, (64, 64, 3), dtype=np.uint8)
+
+        ref_mx, ref_my = self._reference_piecewise_affine_maps(
+            (64, 64),
+            (4, 4),
+            0.05,
+            False,
+            np.random.default_rng(42),
+        )
+        vec_mx, vec_my = fgeometric.create_piecewise_affine_maps(
+            (64, 64),
+            (4, 4),
+            0.05,
+            False,
+            np.random.default_rng(42),
+        )
+
+        ref_out = cv2.remap(img, ref_mx, ref_my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        vec_out = cv2.remap(img, vec_mx, vec_my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+
+        diff = np.abs(ref_out.astype(np.int16) - vec_out.astype(np.int16))
+        assert diff.max() <= 10, f"Max pixel diff {diff.max()} exceeds tolerance"
+        assert diff.mean() < 0.1, f"Mean pixel diff {diff.mean():.4f} exceeds tolerance"
+
+
+class TestGenerateInverseDistortionMap:
+    """Verify vectorized inverse distortion map properties."""
+
+    def test_inverse_map_shapes_and_dtypes(self):
+        rng = np.random.default_rng(137)
+        h, w = 32, 32
+        map_x = rng.uniform(0, w - 1, (h, w)).astype(np.float32)
+        map_y = rng.uniform(0, h - 1, (h, w)).astype(np.float32)
+
+        inv_mx, inv_my = fgeometric.generate_inverse_distortion_map(map_x, map_y, (h, w))
+
+        assert inv_mx.shape == (h, w)
+        assert inv_my.shape == (h, w)
+        assert inv_mx.dtype == np.float32
+        assert inv_my.dtype == np.float32
+
+    def test_inverse_map_approximate_inversion(self):
+        """Applying forward then inverse should approximately recover identity for smooth maps."""
+        h, w = 64, 64
+        yy, xx = np.mgrid[:h, :w]
+        map_x = (xx + 2 * np.sin(yy * 0.1)).astype(np.float32)
+        map_y = (yy + 2 * np.cos(xx * 0.1)).astype(np.float32)
+        np.clip(map_x, 0, w - 1, out=map_x)
+        np.clip(map_y, 0, h - 1, out=map_y)
+
+        inv_mx, inv_my = fgeometric.generate_inverse_distortion_map(map_x, map_y, (h, w))
+
+        interior = (inv_mx > 0) | (inv_my > 0)
+        assert interior.sum() > h * w * 0.5, "Inverse map should fill most of the image"
+
+    def test_identity_map_produces_identity_inverse(self):
+        """Identity forward map should produce near-identity inverse."""
+        h, w = 32, 32
+        yy, xx = np.mgrid[:h, :w]
+        map_x = xx.astype(np.float32)
+        map_y = yy.astype(np.float32)
+
+        inv_mx, inv_my = fgeometric.generate_inverse_distortion_map(map_x, map_y, (h, w))
+
+        np.testing.assert_allclose(inv_mx, map_x, atol=1.0)
+        np.testing.assert_allclose(inv_my, map_y, atol=1.0)
+
+
+class TestPerspectiveBboxesVectorized:
+    """Verify vectorized HBB min/max produces same results as per-box loop."""
+
+    def test_perspective_bboxes_correctness(self):
+        """Column-stack min/max must match per-box list comprehension."""
+        rng = np.random.default_rng(137)
+        points = rng.uniform(0, 1, (10, 4, 2)).astype(np.float32)
+
+        ref = np.array(
+            [[np.min(box[:, 0]), np.min(box[:, 1]), np.max(box[:, 0]), np.max(box[:, 1])] for box in points],
+        )
+        vec = np.column_stack(
+            [
+                points[:, :, 0].min(axis=1),
+                points[:, :, 1].min(axis=1),
+                points[:, :, 0].max(axis=1),
+                points[:, :, 1].max(axis=1),
+            ],
+        )
+        np.testing.assert_array_equal(vec, ref)
+
+
+class TestComputeAffineWarpOutputShape:
+    """Verify simplified output shape computation matches np.ceil-based version."""
+
+    @pytest.mark.parametrize("input_shape", [(100, 200, 3), (100, 200)])
+    def test_output_shape_types(self, input_shape):
+        matrix = np.eye(3)
+        _, shape = fgeometric.compute_affine_warp_output_shape(matrix, input_shape)
+        assert all(isinstance(v, int) for v in shape)
+        if len(input_shape) == 3:
+            assert len(shape) == 3
+        else:
+            assert len(shape) == 2

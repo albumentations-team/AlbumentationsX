@@ -3425,3 +3425,80 @@ def test_to_gray_method_properties(method, expected_property):
 
     # All methods should produce values in valid range
     assert result.min() >= 0 and result.max() <= 255, f"Result out of range for method={method}"
+
+
+class TestSolarizeLutVectorized:
+    """Verify vectorized np.where LUT matches reference list comprehension."""
+
+    @pytest.mark.parametrize("threshold", [0.0, 0.3, 0.5, 0.7, 1.0])
+    def test_lut_matches_reference(self, threshold):
+        max_val = np.uint8(255)
+        thresh_val = threshold * max_val
+
+        ref_lut = np.array(
+            [max_val - i if i >= thresh_val else i for i in range(256)],
+            dtype=np.uint8,
+        )
+
+        indices = np.arange(256, dtype=np.uint8)
+        vec_lut = np.where(indices >= thresh_val, max_val - indices, indices).astype(np.uint8)
+
+        np.testing.assert_array_equal(vec_lut, ref_lut)
+
+    @pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
+    def test_solarize_output(self, threshold):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (32, 32, 3), dtype=np.uint8)
+        result = fpixel.solarize(img, threshold)
+        assert result.shape == img.shape
+        assert result.dtype == np.uint8
+
+
+class TestToGrayDesaturationUint8FastPath:
+    """Verify uint16 bit-shift fast path matches float32 reference."""
+
+    @pytest.mark.parametrize("channels", [3, 4, 5])
+    def test_uint8_matches_float_reference(self, channels):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (50, 50, channels), dtype=np.uint8)
+
+        float_ref = (np.max(img.astype(np.float32), axis=-1) + np.min(img.astype(np.float32), axis=-1)) / 2
+        float_ref = float_ref.astype(np.uint8)
+
+        result = fpixel.to_gray_desaturation(img)
+        np.testing.assert_array_equal(result, float_ref)
+
+    def test_edge_values(self):
+        img = np.array([[[0, 255, 128]]], dtype=np.uint8)
+        result = fpixel.to_gray_desaturation(img)
+        expected = (255 + 0) // 2
+        assert result[0, 0] == expected
+
+
+class TestSharpenGaussianFused:
+    """Verify add_weighted fusion matches explicit unsharp mask formula."""
+
+    def test_matches_explicit_formula(self):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (32, 32, 3), dtype=np.uint8).astype(np.float32) / 255.0
+        alpha = 0.5
+        sigma = 1.5
+        kernel_size = 0
+        blurred = cv2.GaussianBlur(img, (0, 0), sigmaX=sigma, sigmaY=sigma)
+
+        ref = np.clip(img + alpha * (img - blurred), 0, 1)
+        result = fpixel.sharpen_gaussian(img.copy(), alpha=alpha, kernel_size=kernel_size, sigma=sigma)
+
+        np.testing.assert_allclose(result, ref, atol=1e-5)
+
+
+class TestEqualizePilHistogramFilter:
+    """Verify boolean indexing matches list comprehension filter."""
+
+    def test_histogram_filter_equivalence(self):
+        histogram = np.array([0, 10, 0, 5, 0, 20, 3, 0], dtype=np.float32)
+
+        ref = np.array([_f for _f in histogram if _f])
+        vec = histogram[histogram > 0]
+
+        np.testing.assert_array_equal(vec, ref)

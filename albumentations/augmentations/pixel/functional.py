@@ -2509,13 +2509,13 @@ def slic(
     x_range = np.arange(grid_step // 2, width, grid_step)
     y_range = np.arange(grid_step // 2, height, grid_step)
     xx_grid, yy_grid = np.meshgrid(x_range, y_range)
-    centers = np.column_stack([xx_grid.ravel(), yy_grid.ravel()]).astype(np.float64)
+    centers = np.column_stack([xx_grid.ravel(), yy_grid.ravel()]).astype(np.float32)
 
     # Initialize labels and distances
     labels = np.full((height, width), -1, dtype=np.int32)
     distances = np.full((height, width), np.inf, dtype=np.float32)
 
-    inv_grid_step_sq = 1.0 / (grid_step * grid_step)
+    inv_grid_step_sq = np.float32(1.0 / (grid_step * grid_step))
 
     for _ in range(max_iterations):
         for i, center in enumerate(centers):

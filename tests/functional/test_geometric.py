@@ -1040,6 +1040,28 @@ class TestGenerateInverseDistortionMap:
         max_err = max(np.abs(rec_x - src_x).max(), np.abs(rec_y - src_y).max())
         assert max_err < 3.0, f"Round-trip max error too large: {max_err}"
 
+    def test_closest_source_wins_on_collision(self):
+        """When two source pixels map to the same destination cell, the closer one should win."""
+        # Use identity map so every pixel maps to itself,
+        # then override two source pixels to both target destination (5, 5).
+        # Source (4,4) -> dst (5.1, 5.1): floor (5,5), dist=0.1+0.1=0.2  (closer)
+        # Source (4,6) -> dst (5.4, 5.4): floor (5,5), dist=0.4+0.4=0.8
+        h, w = 16, 16
+        yy, xx = np.mgrid[:h, :w]
+        map_x = xx.astype(np.float32)
+        map_y = yy.astype(np.float32)
+
+        map_x[4, 4] = 5.1
+        map_y[4, 4] = 5.1
+        map_x[4, 6] = 5.4
+        map_y[4, 6] = 5.4
+
+        inv_mx, inv_my = fgeometric.generate_inverse_distortion_map(map_x, map_y, (h, w))
+
+        # Destination (row=5, col=5) should map back to source col=4, row=4 (the closer source)
+        assert inv_mx[5, 5] == pytest.approx(4.0, abs=1.0)
+        assert inv_my[5, 5] == pytest.approx(4.0, abs=1.0)
+
     def test_identity_map_produces_identity_inverse(self):
         """Identity forward map should produce near-identity inverse."""
         h, w = 32, 32

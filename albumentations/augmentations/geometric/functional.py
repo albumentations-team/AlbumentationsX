@@ -2099,10 +2099,19 @@ def generate_inverse_distortion_map(
             ny_upd = ny_m[improve]
             nx_upd = nx_m[improve]
             flat_upd = flat_mask[improve]
+            dist_upd = dist[improve]
+
+            # Sort descending by dist so the minimum-dist source is written last and wins
+            # when multiple source pixels compete for the same destination cell.
+            order = np.argsort(dist_upd)[::-1]
+            ny_upd = ny_upd[order]
+            nx_upd = nx_upd[order]
+            flat_upd = flat_upd[order]
+            dist_upd = dist_upd[order]
 
             inv_map_x[ny_upd, nx_upd] = src_x_flat[flat_upd]
             inv_map_y[ny_upd, nx_upd] = src_y_flat[flat_upd]
-            best_dist[ny_upd, nx_upd] = dist[improve]
+            best_dist[ny_upd, nx_upd] = dist_upd
 
     return inv_map_x, inv_map_y
 
@@ -3592,10 +3601,6 @@ def create_piecewise_affine_maps(
     x = np.linspace(0, width - 1, nb_cols, dtype=np.float32)
     xx_src, yy_src = np.meshgrid(x, y)
 
-    # Initialize destination maps at full resolution
-    map_x = np.zeros((height, width), dtype=np.float32)
-    map_y = np.zeros((height, width), dtype=np.float32)
-
     # Generate jitter for control points
     jitter_scale = scale / 3 if absolute_scale else scale * min(width, height) / 3
 
@@ -3610,18 +3615,26 @@ def create_piecewise_affine_maps(
     np.clip(xx_src.ravel() + jitter[:, :, 1].ravel(), 0, width - 1, out=control_points[:, 2])
     np.clip(yy_src.ravel() + jitter[:, :, 0].ravel(), 0, height - 1, out=control_points[:, 3])
 
-    # IDW interpolation: vectorized over all pixels
+    # IDW interpolation: accumulate per control point to keep memory O(H*W)
+    # instead of O(H*W*K) which can exceed 1 GB for large grids.
     yy, xx = np.mgrid[:height, :width]
-    dx = xx[:, :, np.newaxis].astype(np.float32) - control_points[:, 0]
-    dy = yy[:, :, np.newaxis].astype(np.float32) - control_points[:, 1]
-    dist = dx * dx + dy * dy
+    xx_f = xx.astype(np.float32)
+    yy_f = yy.astype(np.float32)
 
-    weights = 1.0 / (dist + 1e-8)
-    weights_sum = weights.sum(axis=2, keepdims=True)
-    weights /= weights_sum
+    numerator_x = np.zeros((height, width), dtype=np.float32)
+    numerator_y = np.zeros((height, width), dtype=np.float32)
+    weight_sum = np.zeros((height, width), dtype=np.float32)
 
-    map_x = np.einsum("ijk,k->ij", weights, control_points[:, 2])
-    map_y = np.einsum("ijk,k->ij", weights, control_points[:, 3])
+    for cp in control_points:
+        dx = xx_f - cp[0]
+        dy = yy_f - cp[1]
+        w = np.float32(1.0) / (dx * dx + dy * dy + np.float32(1e-8))
+        weight_sum += w
+        numerator_x += w * cp[2]
+        numerator_y += w * cp[3]
+
+    map_x = numerator_x / weight_sum
+    map_y = numerator_y / weight_sum
 
     # Ensure output is within bounds
     map_x = np.clip(map_x, 0, width - 1, out=map_x)

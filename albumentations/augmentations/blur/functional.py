@@ -389,14 +389,13 @@ def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
 
     # Guard against sigma=0 (would cause division by zero)
     if sigma == 0:
-        # Return identity (delta) kernel when sigma is zero: no blur is applied
         kernel_1d = np.zeros(size, dtype=np.float32)
         kernel_1d[size // 2] = 1.0
         return kernel_1d
 
-    # Compute 1D kernel using vectorized operations
-    kernel_1d = np.exp(-0.5 * (x / sigma) ** 2)
-    return kernel_1d / kernel_1d.sum()
+    x_f32 = x.astype(np.float32)
+    kernel_1d = np.exp(np.float32(-0.5) * (x_f32 / np.float32(sigma)) ** 2)
+    return (kernel_1d / kernel_1d.sum()).astype(np.float32)
 
 
 def create_gaussian_kernel_input_array(size: int) -> np.ndarray:

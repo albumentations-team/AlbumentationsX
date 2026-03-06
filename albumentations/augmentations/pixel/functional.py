@@ -2501,8 +2501,8 @@ def slic(
     num_pixels = height * width
 
     # Normalize image to [0, 1] range
-    max_val = image.max()
-    image_normalized = image.astype(np.float32) / (max_val + 1e-6)
+    max_val = np.float32(image.max())
+    image_normalized = image.astype(np.float32) / (max_val + np.float32(1e-6))
 
     # Initialize cluster centers via meshgrid
     grid_step = int((num_pixels / n_segments) ** 0.5)

@@ -1020,9 +1020,9 @@ def get_holes_from_mask(
 def mask_to_rects(mask: np.ndarray) -> np.ndarray:
     """Decompose a binary mask's zero-regions into axis-aligned rectangles.
 
-    Scans row-by-row and merges contiguous zero-runs vertically into rectangles.
-    This preserves the rotated grid-line structure when passed to BaseDropout.cutout,
-    rather than collapsing everything into a single bounding box.
+    Finds all horizontal zero-runs across every row at once, sorts them by
+    (x_start, x_end, row), then groups consecutive rows with identical spans
+    into a single rectangle — all without a Python loop.
 
     Args:
         mask: 2D uint8 mask where 0 indicates a dropped region.
@@ -1031,35 +1031,44 @@ def mask_to_rects(mask: np.ndarray) -> np.ndarray:
         Array of shape (N, 4) with [x1, y1, x2, y2] rectangles, or empty (0, 4) array.
 
     """
-    height = mask.shape[0]
-    rects: list[list[int]] = []
-    open_rects: dict[tuple[int, int], list[int]] = {}
+    zero = (mask == 0).astype(np.int8)
 
-    for row_y in range(height):
-        row = mask[row_y] == 0
-        if not np.any(row):
-            rects.extend(open_rects.values())
-            open_rects.clear()
-            continue
+    # Detect left/right edges of every zero-run in every row simultaneously.
+    padded = np.pad(zero, ((0, 0), (1, 1)))
+    hdiff = np.diff(padded, axis=1)
+    row_indices, x_starts = np.where(hdiff == 1)
+    _, x_ends = np.where(hdiff == -1)
 
-        row_int = row.astype(np.int8)
-        diff = np.diff(np.concatenate(([0], row_int, [0])))
-        run_starts = np.where(diff == 1)[0]
-        run_ends = np.where(diff == -1)[0]
-        current_keys = {(int(x1), int(x2)) for x1, x2 in zip(run_starts, run_ends, strict=True)}
+    if len(row_indices) == 0:
+        return np.empty((0, 4), dtype=np.int32)
 
-        closed = [k for k in open_rects if k not in current_keys]
-        rects.extend(open_rects.pop(k) for k in closed)
+    # Sort so that identical (x_start, x_end) spans are adjacent and rows
+    # within each span are in ascending order.
+    order = np.lexsort((row_indices, x_ends, x_starts))
+    row_indices = row_indices[order]
+    x_starts = x_starts[order]
+    x_ends = x_ends[order]
 
-        for x1, x2 in zip(run_starts, run_ends, strict=True):
-            key = (int(x1), int(x2))
-            if key in open_rects:
-                open_rects[key][3] = row_y + 1
-            else:
-                open_rects[key] = [int(x1), row_y, int(x2), row_y + 1]
+    # A new rectangle begins when the span changes OR there is a row gap.
+    span_changed = (x_starts[1:] != x_starts[:-1]) | (x_ends[1:] != x_ends[:-1])
+    row_gap = row_indices[1:] != row_indices[:-1] + 1
+    new_rect = np.concatenate(([True], span_changed | row_gap))
 
-    rects.extend(open_rects.values())
-    return np.array(rects, dtype=np.int32) if rects else np.empty((0, 4), dtype=np.int32)
+    rect_ids = np.cumsum(new_rect) - 1
+    num_rects = int(rect_ids[-1]) + 1
+
+    y1 = np.empty(num_rects, dtype=np.int32)
+    y2 = np.zeros(num_rects, dtype=np.int32)
+    xs = np.empty(num_rects, dtype=np.int32)
+    xe = np.empty(num_rects, dtype=np.int32)
+
+    first = new_rect
+    y1[rect_ids[first]] = row_indices[first]
+    xs[rect_ids[first]] = x_starts[first]
+    xe[rect_ids[first]] = x_ends[first]
+    np.maximum.at(y2, rect_ids, row_indices + 1)
+
+    return np.stack([xs, y1, xe, y2], axis=1).astype(np.int32)
 
 
 def generate_grid_mask_holes(

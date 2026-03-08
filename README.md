@@ -182,11 +182,13 @@ Pixel-level transforms will change just an input image and will leave any additi
 
 - [AdditiveNoise](https://explore.albumentations.ai/transform/AdditiveNoise)
 - [AdvancedBlur](https://explore.albumentations.ai/transform/AdvancedBlur)
+- [AtmosphericFog](https://explore.albumentations.ai/transform/AtmosphericFog)
 - [AutoContrast](https://explore.albumentations.ai/transform/AutoContrast)
 - [Blur](https://explore.albumentations.ai/transform/Blur)
 - [CLAHE](https://explore.albumentations.ai/transform/CLAHE)
 - [ChannelDropout](https://explore.albumentations.ai/transform/ChannelDropout)
 - [ChannelShuffle](https://explore.albumentations.ai/transform/ChannelShuffle)
+- [ChannelSwap](https://explore.albumentations.ai/transform/ChannelSwap)
 - [ChromaticAberration](https://explore.albumentations.ai/transform/ChromaticAberration)
 - [ColorJitter](https://explore.albumentations.ai/transform/ColorJitter)
 - [Defocus](https://explore.albumentations.ai/transform/Defocus)
@@ -196,17 +198,20 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [Equalize](https://explore.albumentations.ai/transform/Equalize)
 - [FDA](https://explore.albumentations.ai/transform/FDA)
 - [FancyPCA](https://explore.albumentations.ai/transform/FancyPCA)
+- [FilmGrain](https://explore.albumentations.ai/transform/FilmGrain)
 - [FromFloat](https://explore.albumentations.ai/transform/FromFloat)
 - [GaussNoise](https://explore.albumentations.ai/transform/GaussNoise)
 - [GaussianBlur](https://explore.albumentations.ai/transform/GaussianBlur)
 - [GlassBlur](https://explore.albumentations.ai/transform/GlassBlur)
 - [HEStain](https://explore.albumentations.ai/transform/HEStain)
+- [Halftone](https://explore.albumentations.ai/transform/Halftone)
 - [HistogramMatching](https://explore.albumentations.ai/transform/HistogramMatching)
 - [HueSaturationValue](https://explore.albumentations.ai/transform/HueSaturationValue)
 - [ISONoise](https://explore.albumentations.ai/transform/ISONoise)
 - [Illumination](https://explore.albumentations.ai/transform/Illumination)
 - [ImageCompression](https://explore.albumentations.ai/transform/ImageCompression)
 - [InvertImg](https://explore.albumentations.ai/transform/InvertImg)
+- [LensFlare](https://explore.albumentations.ai/transform/LensFlare)
 - [MedianBlur](https://explore.albumentations.ai/transform/MedianBlur)
 - [MotionBlur](https://explore.albumentations.ai/transform/MotionBlur)
 - [MultiplicativeNoise](https://explore.albumentations.ai/transform/MultiplicativeNoise)
@@ -240,6 +245,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [ToRGB](https://explore.albumentations.ai/transform/ToRGB)
 - [ToSepia](https://explore.albumentations.ai/transform/ToSepia)
 - [UnsharpMask](https://explore.albumentations.ai/transform/UnsharpMask)
+- [Vignetting](https://explore.albumentations.ai/transform/Vignetting)
 - [ZoomBlur](https://explore.albumentations.ai/transform/ZoomBlur)
 
 ### Spatial-level transforms
@@ -267,6 +273,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [GridDistortion](https://explore.albumentations.ai/transform/GridDistortion)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [GridDropout](https://explore.albumentations.ai/transform/GridDropout)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 | [GridElasticDeform](https://explore.albumentations.ai/transform/GridElasticDeform)               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [GridMask](https://explore.albumentations.ai/transform/GridMask)                                 | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 | [HorizontalFlip](https://explore.albumentations.ai/transform/HorizontalFlip)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [Lambda](https://explore.albumentations.ai/transform/Lambda)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [LongestMaxSize](https://explore.albumentations.ai/transform/LongestMaxSize)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
@@ -301,6 +308,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [TimeReverse](https://explore.albumentations.ai/transform/TimeReverse)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [Transpose](https://explore.albumentations.ai/transform/Transpose)                               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [VerticalFlip](https://explore.albumentations.ai/transform/VerticalFlip)                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [WaterRefraction](https://explore.albumentations.ai/transform/WaterRefraction)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [XYMasking](https://explore.albumentations.ai/transform/XYMasking)                               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 
 ### 3D transforms

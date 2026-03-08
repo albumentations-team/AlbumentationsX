@@ -7,6 +7,7 @@ The interfaces handle parameter validation, random state management, target type
 and serialization capabilities that are inherited by concrete transform implementations.
 """
 
+import inspect
 import random
 from collections.abc import Callable, Sequence
 from copy import deepcopy
@@ -26,7 +27,7 @@ from .serialization import Serializable, SerializableMeta, get_shortest_class_fu
 from .type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
 from .utils import format_args
 
-__all__ = ["BasicTransform", "DualTransform", "ImageOnlyTransform", "NoOp", "Transform3D"]
+__all__ = ["BasicTransform", "CustomTransformsApplyMixin", "DualTransform", "ImageOnlyTransform", "NoOp", "Transform3D"]
 
 
 class Interpolation:
@@ -1109,3 +1110,56 @@ class Transform3D(DualTransform):
             "keypoints": self.apply_to_keypoints,
             "user_data": self.apply_to_user_data,
         }
+
+
+class CustomTransformsApplyMixin:
+    """Mixin class for all base transformations that searches apply_to_<X> methods in subclass
+    and registers them as handlers for data key <X>.
+
+    Placement in inheritance list
+
+    Must come BEFORE the albumentations base class so MRO resolves
+    this _set_keys first:
+
+        class MyTransform(CustomApplyMixin, A.DualTransform): ...
+
+    It searches custom methods named apply_to_<X> that are:
+      -- defined in the child class or anywhere in MRO below the albumentations base class
+      -- not already covered by self.targets (built-ins take priority)
+      -- not apply_to_user_data (handled separately by the base)
+    """
+
+    _APPLY_PREFIX = "apply_to_"
+    _EXCLUDED_KEYS = frozenset({"user_data"})
+    _key2func: dict[str, Any]
+    _available_keys: set[str]
+
+    def _set_keys(self) -> None:
+        # Build _key2func from self.targets using base class
+        super()._set_keys()  # type: ignore[misc]
+
+        # Search apply_to_<X> functions defined within the child class
+        for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
+            if not name.startswith(self._APPLY_PREFIX):
+                continue
+            key = name[len(self._APPLY_PREFIX) :]
+            if key in self._EXCLUDED_KEYS:
+                continue
+            if key in self._key2func:  # built-in already registered
+                continue
+            if not self._is_user_defined(name):
+                continue
+            self._available_keys.add(key)
+            self._key2func[key] = method
+
+    def _is_user_defined(self, method_name: str) -> bool:
+        """Returns True if method_name is overridden somewhere in the MRO
+        below the mixin itself (i.e. defined by the user, not inherited
+        from CustomApplyMixin or the albumentations base classes).
+        """
+        for mro_class in type(self).__mro__:
+            if mro_class is CustomTransformsApplyMixin:
+                break
+            if method_name in mro_class.__dict__:
+                return True
+        return False

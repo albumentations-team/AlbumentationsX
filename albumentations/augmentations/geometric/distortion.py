@@ -39,6 +39,7 @@ from pydantic import (
     field_validator,
 )
 
+import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.utils import check_range
 from albumentations.core.bbox_utils import (
     denormalize_bboxes,
@@ -70,6 +71,7 @@ __all__ = [
     "OpticalDistortion",
     "PiecewiseAffine",
     "ThinPlateSpline",
+    "WaterRefraction",
 ]
 
 
@@ -1270,6 +1272,141 @@ class ThinPlateSpline(BaseDistortion):
                 (height, width),
                 self.interpolation,
             )
+
+        return {
+            "map_x": map_x,
+            "map_y": map_y,
+        }
+
+
+class WaterRefraction(BaseDistortion):
+    """Simulate looking through water or wavy glass.
+
+    Generates displacement maps from overlaid sine waves at random frequencies,
+    phases, and angles to create a refraction distortion effect.
+
+    Args:
+        amplitude_range (tuple[float, float]): Range for maximum displacement as a
+            fraction of image size. Default: (0.01, 0.05).
+        wavelength_range (tuple[float, float]): Range for wave period as a fraction
+            of image size. Default: (0.05, 0.2).
+        num_waves_range (tuple[int, int]): Range for number of overlaid sine waves.
+            More waves = more complex distortion. Default: (3, 7).
+        interpolation (int): OpenCV interpolation flag. Default: cv2.INTER_LINEAR.
+        mask_interpolation (int): OpenCV interpolation for masks. Default: cv2.INTER_NEAREST.
+        border_mode (int): OpenCV border mode. Default: cv2.BORDER_REFLECT_101.
+        fill (float | tuple): Fill value for constant border. Default: 0.
+        fill_mask (float | tuple): Fill value for mask borders. Default: 0.
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, mask, bboxes, keypoints, volume, mask3d
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Supported bboxes:
+        hbb, obb
+
+    Note:
+        This is a geometric (DualTransform) because the displacement warps the
+        image geometry - masks, bboxes, and keypoints are transformed accordingly.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.WaterRefraction(amplitude_range=(0.02, 0.04), p=1.0)
+        >>> result = transform(image=image)["image"]
+
+    """
+
+    class InitSchema(BaseDistortion.InitSchema):
+        amplitude_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        wavelength_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+        num_waves_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1, None)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        amplitude_range: tuple[float, float] = (0.01, 0.05),
+        wavelength_range: tuple[float, float] = (0.05, 0.2),
+        num_waves_range: tuple[int, int] = (3, 7),
+        interpolation: Literal[
+            cv2.INTER_NEAREST,
+            cv2.INTER_LINEAR,
+            cv2.INTER_CUBIC,
+            cv2.INTER_AREA,
+            cv2.INTER_LANCZOS4,
+        ] = cv2.INTER_LINEAR,
+        mask_interpolation: Literal[
+            cv2.INTER_NEAREST,
+            cv2.INTER_LINEAR,
+            cv2.INTER_CUBIC,
+            cv2.INTER_AREA,
+            cv2.INTER_LANCZOS4,
+        ] = cv2.INTER_NEAREST,
+        keypoint_remapping_method: Literal["direct", "mask"] = "mask",
+        border_mode: Literal[
+            cv2.BORDER_CONSTANT,
+            cv2.BORDER_REPLICATE,
+            cv2.BORDER_REFLECT,
+            cv2.BORDER_WRAP,
+            cv2.BORDER_REFLECT_101,
+        ] = cv2.BORDER_REFLECT_101,
+        fill: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        p: float = 0.5,
+    ):
+        super().__init__(
+            interpolation=interpolation,
+            mask_interpolation=mask_interpolation,
+            keypoint_remapping_method=keypoint_remapping_method,
+            border_mode=border_mode,
+            fill=fill,
+            fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
+            p=p,
+        )
+        self.amplitude_range = amplitude_range
+        self.wavelength_range = wavelength_range
+        self.num_waves_range = num_waves_range
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        image_shape = params["shape"][:2]
+        height, width = image_shape
+
+        img_size = min(height, width)
+        amplitude = self.py_random.uniform(*self.amplitude_range) * img_size
+        wavelength = self.py_random.uniform(*self.wavelength_range) * img_size
+        num_waves = self.py_random.randint(*self.num_waves_range)
+
+        map_x, map_y = fpixel.generate_water_displacement_maps(
+            image_shape,
+            amplitude,
+            wavelength,
+            num_waves,
+            self.random_generator,
+        )
 
         return {
             "map_x": map_x,

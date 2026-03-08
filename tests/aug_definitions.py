@@ -532,4 +532,15 @@ AUGMENTATION_CLS_PARAMS = [
     ],
     [A.Dithering, {"method": "error_diffusion", "n_colors": 2}],
     [A.GridShuffle3D, {"grid_zyx": (2, 2, 2)}],
+    [A.Vignetting, {"intensity_range": (0.3, 0.6), "center_range": (0.4, 0.6)}],
+    [A.ChannelSwap, {"channel_order": (1, 2, 0)}],
+    [A.FilmGrain, {"intensity_range": (0.1, 0.3), "grain_size_range": (1, 3)}],
+    [A.Halftone, {"dot_size_range": (4, 8), "blend_range": (0.0, 0.3)}],
+    [A.GridMask, {"num_grid_range": (3, 5), "line_width_range": (0.2, 0.4)}],
+    [A.LensFlare, {"intensity_range": (0.3, 0.6), "num_ghosts_range": (3, 5)}],
+    [
+        A.WaterRefraction,
+        {"amplitude_range": (0.002, 0.005), "wavelength_range": (0.1, 0.15), "keypoint_remapping_method": "direct"},
+    ],
+    [A.AtmosphericFog, {"density_range": (1.0, 2.0), "depth_mode": "linear"}],
 ]

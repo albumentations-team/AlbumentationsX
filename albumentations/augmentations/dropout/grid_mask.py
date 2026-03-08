@@ -8,130 +8,13 @@ Reference: https://arxiv.org/abs/2001.04086
 
 from typing import Annotated, Any, Literal
 
-import cv2
-import numpy as np
-from albucore import warp_affine
 from pydantic import AfterValidator
 
+from albumentations.augmentations.dropout import functional as fdropout
 from albumentations.augmentations.dropout.transforms import BaseDropout
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 
 __all__ = ["GridMask"]
-
-
-def _mask_to_rects(mask: np.ndarray) -> np.ndarray:
-    """Decompose a binary mask's zero-regions into axis-aligned rectangles.
-
-    Scans row-by-row and merges contiguous zero-runs vertically into rectangles.
-    This preserves the rotated grid-line structure when passed to BaseDropout.cutout,
-    rather than collapsing everything into a single bounding box.
-
-    Args:
-        mask: 2D uint8 mask where 0 indicates a dropped region.
-
-    Returns:
-        Array of shape (N, 4) with [x1, y1, x2, y2] rectangles, or empty (0, 4) array.
-
-    """
-    height = mask.shape[0]
-    rects: list[list[int]] = []
-    open_rects: dict[tuple[int, int], list[int]] = {}
-
-    for y in range(height):
-        row = mask[y] == 0
-        if not np.any(row):
-            rects.extend(open_rects.values())
-            open_rects.clear()
-            continue
-
-        row_int = row.astype(np.int8)
-        diff = np.diff(np.concatenate(([0], row_int, [0])))
-        starts = np.where(diff == 1)[0]
-        ends = np.where(diff == -1)[0]
-        current_keys = {(int(x1), int(x2)) for x1, x2 in zip(starts, ends, strict=True)}
-
-        closed = [k for k in open_rects if k not in current_keys]
-        rects.extend(open_rects.pop(k) for k in closed)
-
-        for x1, x2 in zip(starts, ends, strict=True):
-            key = (int(x1), int(x2))
-            if key in open_rects:
-                open_rects[key][3] = y + 1
-            else:
-                open_rects[key] = [int(x1), y, int(x2), y + 1]
-
-    rects.extend(open_rects.values())
-    return np.array(rects, dtype=np.int32) if rects else np.empty((0, 4), dtype=np.int32)
-
-
-def _generate_grid_mask_holes(
-    image_shape: tuple[int, int],
-    num_grid: int,
-    line_width_ratio: float,
-    rotation: float,
-    random_generator: np.random.Generator,
-) -> np.ndarray:
-    """Generate grid-line shaped holes for GridMask.
-
-    Args:
-        image_shape: (height, width) of the image.
-        num_grid: Number of grid divisions along the shorter side.
-        line_width_ratio: Width of masked lines as fraction of grid cell size.
-        rotation: Rotation angle in radians.
-        random_generator: NumPy random generator.
-
-    Returns:
-        Array of holes as (N, 4) with [x1, y1, x2, y2] format.
-
-    """
-    height, width = image_shape
-    shorter = min(height, width)
-    cell_size = max(2, shorter // num_grid)
-    line_width = max(1, int(cell_size * line_width_ratio))
-
-    if abs(rotation) < 1e-6:
-        holes = []
-        offset_x = int(random_generator.integers(0, cell_size))
-        offset_y = int(random_generator.integers(0, cell_size))
-
-        x = offset_x
-        while x < width:
-            x_end = min(x + line_width, width)
-            holes.append([x, 0, x_end, height])
-            x += cell_size
-
-        y = offset_y
-        while y < height:
-            y_end = min(y + line_width, height)
-            holes.append([0, y, width, y_end])
-            y += cell_size
-
-        return np.array(holes, dtype=np.int32) if holes else np.empty((0, 4), dtype=np.int32)
-
-    mask = np.ones((height, width), dtype=np.uint8)
-    diag = int(np.sqrt(height**2 + width**2)) + cell_size * 2
-    grid_mask = np.ones((diag, diag), dtype=np.uint8)
-
-    offset = int(random_generator.integers(0, cell_size))
-    pos = offset
-    while pos < diag:
-        grid_mask[pos : pos + line_width, :] = 0
-        grid_mask[:, pos : pos + line_width] = 0
-        pos += cell_size
-
-    center = (diag // 2, diag // 2)
-    rot_mat = cv2.getRotationMatrix2D(center, np.degrees(rotation), 1.0)
-    grid_3d = grid_mask[:, :, np.newaxis]
-    rotated_3d = warp_affine(grid_3d, rot_mat, (diag, diag), border_value=1)
-    rotated = rotated_3d[:, :, 0]
-
-    start_y = (diag - height) // 2
-    start_x = (diag - width) // 2
-    crop = rotated[start_y : start_y + height, start_x : start_x + width]
-
-    mask *= crop
-
-    return _mask_to_rects(mask)
 
 
 class GridMask(BaseDropout):
@@ -218,7 +101,7 @@ class GridMask(BaseDropout):
         line_width_ratio = self.py_random.uniform(*self.line_width_range)
         rotation = self.py_random.uniform(*self.rotation_range)
 
-        holes = _generate_grid_mask_holes(
+        holes = fdropout.generate_grid_mask_holes(
             image_shape,
             num_grid,
             line_width_ratio,

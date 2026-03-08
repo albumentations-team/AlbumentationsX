@@ -4465,16 +4465,16 @@ def _create_vignette_mask(
         (H, W) float32 array with values in [1-intensity, 1].
 
     """
-    y = np.arange(height, dtype=np.float32)
-    x = np.arange(width, dtype=np.float32)
+    pixel_cols = np.arange(width, dtype=np.float32)
+    pixel_rows = np.arange(height, dtype=np.float32)
 
-    cx = center_x * width
-    cy = center_y * height
+    center_col = center_x * width
+    center_row = center_y * height
 
-    dx = (x - cx) / (width * 0.5)
-    dy = (y - cy) / (height * 0.5)
+    norm_x = (pixel_cols - center_col) / (width * 0.5)
+    norm_y = (pixel_rows - center_row) / (height * 0.5)
 
-    dist_sq = dy[:, np.newaxis] ** 2 + dx[np.newaxis, :] ** 2
+    dist_sq = norm_y[:, np.newaxis] ** 2 + norm_x[np.newaxis, :] ** 2
 
     max_dist_sq = float(np.max(dist_sq))
     if max_dist_sq > 0:
@@ -4505,10 +4505,7 @@ def apply_vignette(
 
     vignette_mask = _create_vignette_mask(height, width, intensity, center_x, center_y)
 
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        vignette_mask = vignette_mask[:, :, np.newaxis]
-
-    return multiply(img, vignette_mask)
+    return multiply(img, vignette_mask[:, :, np.newaxis])
 
 
 def apply_film_grain(
@@ -4529,12 +4526,9 @@ def apply_film_grain(
         Image with film grain applied.
 
     """
-    num_channels = img.shape[-1] if img.ndim >= NUM_MULTI_CHANNEL_DIMENSIONS else 1
+    num_channels = img.shape[-1]
 
-    if num_channels > 1:
-        luminance = img.mean(axis=-1)
-    else:
-        luminance = img[..., 0] if img.ndim >= NUM_MULTI_CHANNEL_DIMENSIONS else img
+    luminance = img.mean(axis=-1) if num_channels > 1 else img[..., 0]
 
     max_val = MAX_VALUES_BY_DTYPE[img.dtype]
 
@@ -4542,10 +4536,7 @@ def apply_film_grain(
 
     modulated = (grain * inv_lum * intensity * max_val).astype(np.float32)
 
-    if img.ndim >= NUM_MULTI_CHANNEL_DIMENSIONS:
-        modulated = modulated[..., np.newaxis]
-
-    return add_array(img, modulated)
+    return add_array(img, modulated[..., np.newaxis])
 
 
 @uint8_io
@@ -4567,12 +4558,12 @@ def apply_halftone(
     """
     img = np.ascontiguousarray(img)
     height, width = img.shape[:2]
-    num_channels = img.shape[-1] if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else 1
+    num_channels = img.shape[-1]
 
     luminance = (
         np.mean(img, axis=-1).astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
         if num_channels > 1
-        else img.squeeze(-1).astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
+        else img[..., 0].astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
     )
 
     use_cell_mask = num_channels > 4
@@ -4750,20 +4741,13 @@ def apply_atmospheric_fog(
         Image with fog applied.
 
     """
-    transmission = np.exp(-density * depth_map).astype(np.float32)
-
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        transmission = transmission[:, :, np.newaxis]
+    num_channels = img.shape[-1]
+    transmission = np.exp(-density * depth_map).astype(np.float32)[:, :, np.newaxis]
 
     fog_array = np.array(fog_color, dtype=np.float32)
-    num_channels = img.shape[-1] if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else 1
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        if len(fog_array) < num_channels:
-            fog_array = np.pad(fog_array, (0, num_channels - len(fog_array)), mode="edge")
-        fog_array = fog_array[:num_channels].reshape(1, 1, -1)
-    else:
-        # 2D grayscale: reduce fog_color to a scalar by averaging if needed
-        fog_array = np.array(float(fog_array.mean()), dtype=np.float32)
+    if len(fog_array) < num_channels:
+        fog_array = np.pad(fog_array, (0, num_channels - len(fog_array)), mode="edge")
+    fog_array = fog_array[:num_channels].reshape(1, 1, -1)
 
     result = img.astype(np.float32) * transmission + fog_array * (1.0 - transmission)
 

@@ -122,7 +122,8 @@ class TestChannelSwap:
     def test_channel_count_mismatch_returns_unchanged(self):
         img = _make_image(shape=(50, 50, 1), seed=4)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
-        result = aug(image=img)["image"]
+        with pytest.warns(UserWarning, match="channel_order has 3 elements but image has 1"):
+            result = aug(image=img)["image"]
         np.testing.assert_array_equal(result, img)
 
     def test_invalid_permutation_raises(self):
@@ -174,7 +175,8 @@ class TestChannelSwap:
     def test_volume_channel_mismatch_unchanged(self):
         volume = _make_image(shape=(4, 50, 50, 1), seed=9)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
-        result = aug(volume=volume)["volume"]
+        with pytest.warns(UserWarning, match="channel_order has 3 elements but .* have 1"):
+            result = aug(volume=volume)["volume"]
         np.testing.assert_array_equal(result, volume)
 
 
@@ -450,6 +452,12 @@ class TestLensFlare:
         aug = A.LensFlare(num_ghosts_range=(0, 0), intensity_range=(0.3, 0.5), p=1.0)
         result = aug(image=img)["image"]
         assert result.shape == img.shape
+
+    def test_non_rgb_raises(self):
+        img = _make_image(shape=(50, 50, 1), seed=44)
+        aug = A.LensFlare(p=1.0)
+        with pytest.raises(ValueError, match="3-channel"):
+            aug(image=img)
 
 
 # ===========================================================================

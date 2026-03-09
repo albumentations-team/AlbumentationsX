@@ -7016,18 +7016,36 @@ class ChannelSwap(ImageOnlyTransform):
     ) -> ImageType:
         num_channels = img.shape[-1]
         if num_channels != len(channel_order):
+            warnings.warn(
+                f"ChannelSwap: channel_order has {len(channel_order)} elements but image has "
+                f"{num_channels} channel(s); returning image unchanged.",
+                UserWarning,
+                stacklevel=2,
+            )
             return img
         return fpixel.channel_shuffle(img, list(channel_order))
 
     def apply_to_images(self, images: ImageType, channel_order: tuple[int, ...], **params: Any) -> ImageType:
         num_channels = images.shape[-1]
         if num_channels != len(channel_order):
+            warnings.warn(
+                f"ChannelSwap: channel_order has {len(channel_order)} elements but images have "
+                f"{num_channels} channel(s); returning images unchanged.",
+                UserWarning,
+                stacklevel=2,
+            )
             return images
         return fpixel.volume_channel_shuffle(images, list(channel_order))
 
     def apply_to_volumes(self, volumes: VolumeType, channel_order: tuple[int, ...], **params: Any) -> VolumeType:
         num_channels = volumes.shape[-1]
         if num_channels != len(channel_order):
+            warnings.warn(
+                f"ChannelSwap: channel_order has {len(channel_order)} elements but volume has "
+                f"{num_channels} channel(s); returning volume unchanged.",
+                UserWarning,
+                stacklevel=2,
+            )
             return volumes
         return fpixel.volumes_channel_shuffle(volumes, list(channel_order))
 
@@ -7334,6 +7352,7 @@ class LensFlare(ImageOnlyTransform):
         bloom_radius: int,
         **params: Any,
     ) -> ImageType:
+        non_rgb_error(img)
         return fpixel.apply_lens_flare(
             img,
             flare_center,

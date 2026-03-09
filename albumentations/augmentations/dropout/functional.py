@@ -16,6 +16,7 @@ from albucore import (
     is_grayscale_image,
     preserve_channel_dim,
     uint8_io,
+    warp_affine,
 )
 
 from albumentations.augmentations.geometric.functional import split_uniform_grid
@@ -29,7 +30,9 @@ __all__ = [
     "filter_bboxes_by_holes",
     "filter_keypoints_in_holes",
     "generate_grid_holes",
+    "generate_grid_mask_holes",
     "generate_random_fill",
+    "mask_to_rects",
 ]
 
 
@@ -1012,3 +1015,127 @@ def get_holes_from_mask(
     # Filter out holes that became too small after clipping
     valid_holes = (holes[:, 2] - holes[:, 0] > 0) & (holes[:, 3] - holes[:, 1] > 0)
     return holes[valid_holes]
+
+
+def mask_to_rects(mask: np.ndarray) -> np.ndarray:
+    """Decompose a binary mask's zero-regions into axis-aligned rectangles.
+
+    Finds all horizontal zero-runs across every row at once, sorts them by
+    (x_start, x_end, row), then groups consecutive rows with identical spans
+    into a single rectangle — all without a Python loop.
+
+    Args:
+        mask: 2D uint8 mask where 0 indicates a dropped region.
+
+    Returns:
+        Array of shape (N, 4) with [x1, y1, x2, y2] rectangles, or empty (0, 4) array.
+
+    """
+    zero = (mask == 0).astype(np.int8)
+
+    # Detect left/right edges of every zero-run in every row simultaneously.
+    padded = np.pad(zero, ((0, 0), (1, 1)))
+    hdiff = np.diff(padded, axis=1)
+    row_indices, x_starts = np.where(hdiff == 1)
+    _, x_ends = np.where(hdiff == -1)
+
+    if len(row_indices) == 0:
+        return np.empty((0, 4), dtype=np.int32)
+
+    # Sort so that identical (x_start, x_end) spans are adjacent and rows
+    # within each span are in ascending order.
+    order = np.lexsort((row_indices, x_ends, x_starts))
+    row_indices = row_indices[order]
+    x_starts = x_starts[order]
+    x_ends = x_ends[order]
+
+    # A new rectangle begins when the span changes OR there is a row gap.
+    span_changed = (x_starts[1:] != x_starts[:-1]) | (x_ends[1:] != x_ends[:-1])
+    row_gap = row_indices[1:] != row_indices[:-1] + 1
+    new_rect = np.concatenate(([True], span_changed | row_gap))
+
+    rect_ids = np.cumsum(new_rect) - 1
+    num_rects = int(rect_ids[-1]) + 1
+
+    y1 = np.empty(num_rects, dtype=np.int32)
+    y2 = np.zeros(num_rects, dtype=np.int32)
+    xs = np.empty(num_rects, dtype=np.int32)
+    xe = np.empty(num_rects, dtype=np.int32)
+
+    first = new_rect
+    y1[rect_ids[first]] = row_indices[first]
+    xs[rect_ids[first]] = x_starts[first]
+    xe[rect_ids[first]] = x_ends[first]
+    np.maximum.at(y2, rect_ids, row_indices + 1)
+
+    return np.stack([xs, y1, xe, y2], axis=1).astype(np.int32)
+
+
+def generate_grid_mask_holes(
+    image_shape: tuple[int, int],
+    num_grid: int,
+    line_width_ratio: float,
+    rotation: float,
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Generate grid-line shaped holes for GridMask.
+
+    Args:
+        image_shape: (height, width) of the image.
+        num_grid: Number of grid divisions along the shorter side.
+        line_width_ratio: Width of masked lines as fraction of grid cell size.
+        rotation: Rotation angle in radians.
+        random_generator: NumPy random generator.
+
+    Returns:
+        Array of holes as (N, 4) with [x1, y1, x2, y2] format.
+
+    """
+    height, width = image_shape
+    shorter = min(height, width)
+    cell_size = max(2, shorter // num_grid)
+    line_width = max(1, int(cell_size * line_width_ratio))
+
+    if abs(rotation) < 1e-6:
+        holes = []
+        offset_x = int(random_generator.integers(0, cell_size))
+        offset_y = int(random_generator.integers(0, cell_size))
+
+        col_x = offset_x
+        while col_x < width:
+            col_x_end = min(col_x + line_width, width)
+            holes.append([col_x, 0, col_x_end, height])
+            col_x += cell_size
+
+        row_y = offset_y
+        while row_y < height:
+            row_y_end = min(row_y + line_width, height)
+            holes.append([0, row_y, width, row_y_end])
+            row_y += cell_size
+
+        return np.array(holes, dtype=np.int32) if holes else np.empty((0, 4), dtype=np.int32)
+
+    mask = np.ones((height, width), dtype=np.uint8)
+    diag = int(np.sqrt(height**2 + width**2)) + cell_size * 2
+    grid_mask = np.ones((diag, diag), dtype=np.uint8)
+
+    offset = int(random_generator.integers(0, cell_size))
+    pos = offset
+    while pos < diag:
+        grid_mask[pos : pos + line_width, :] = 0
+        grid_mask[:, pos : pos + line_width] = 0
+        pos += cell_size
+
+    center = (diag // 2, diag // 2)
+    rot_mat = cv2.getRotationMatrix2D(center, np.degrees(rotation), 1.0)
+    grid_3d = grid_mask[:, :, np.newaxis]
+    rotated_3d = warp_affine(grid_3d, rot_mat, (diag, diag), border_value=1)
+    rotated = rotated_3d[:, :, 0]
+
+    start_y = (diag - height) // 2
+    start_x = (diag - width) // 2
+    crop = rotated[start_y : start_y + height, start_x : start_x + width]
+
+    mask *= crop
+
+    return mask_to_rects(mask)

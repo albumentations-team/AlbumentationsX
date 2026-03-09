@@ -48,6 +48,14 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+.benchmarks/
+
+# Benchmark and profiling artifacts
+bench_*.json
+benchmark_results.json
+profile*.json
+cpu-profile-*
+*.bench
 
 # Translations
 *.mo

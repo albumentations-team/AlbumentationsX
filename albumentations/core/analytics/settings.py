@@ -1,8 +1,4 @@
-"""Settings management for AlbumentationsX.
-
-This module provides centralized configuration management for telemetry,
-version checking, and other library-wide settings.
-"""
+"""Settings management for AlbumentationsX."""
 
 import json
 import os

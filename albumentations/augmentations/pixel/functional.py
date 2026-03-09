@@ -4450,3 +4450,305 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     img = np.array(img, copy=True, order="C")
     cv2.sepFilter2D(img, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=img)
     return img
+
+
+def _create_vignette_mask(
+    height: int,
+    width: int,
+    intensity: float,
+    center_x: float,
+    center_y: float,
+) -> np.ndarray:
+    """Create a 2D vignette falloff mask.
+
+    Returns:
+        (H, W) float32 array with values in [1-intensity, 1].
+
+    """
+    pixel_cols = np.arange(width, dtype=np.float32)
+    pixel_rows = np.arange(height, dtype=np.float32)
+
+    center_col = center_x * width
+    center_row = center_y * height
+
+    norm_x = (pixel_cols - center_col) / (width * 0.5)
+    norm_y = (pixel_rows - center_row) / (height * 0.5)
+
+    dist_sq = norm_y[:, np.newaxis] ** 2 + norm_x[np.newaxis, :] ** 2
+
+    max_dist_sq = float(np.max(dist_sq))
+    if max_dist_sq > 0:
+        dist_sq /= max_dist_sq
+
+    return (1.0 - intensity * dist_sq).astype(np.float32)
+
+
+def apply_vignette(
+    img: ImageType,
+    intensity: float,
+    center_x: float,
+    center_y: float,
+) -> ImageType:
+    """Apply vignetting effect by darkening corners with a radial gradient.
+
+    Args:
+        img: Input image of shape (H, W) or (H, W, C).
+        intensity: Strength of darkening at corners, in [0, 1].
+        center_x: Horizontal center of the vignette as fraction of width, in [0, 1].
+        center_y: Vertical center of the vignette as fraction of height, in [0, 1].
+
+    Returns:
+        Image with vignetting applied.
+
+    """
+    height, width = img.shape[:2]
+
+    vignette_mask = _create_vignette_mask(height, width, intensity, center_x, center_y)
+
+    return multiply(img, vignette_mask[:, :, np.newaxis])
+
+
+def apply_film_grain(
+    img: ImageType,
+    grain: np.ndarray,
+    intensity: float,
+) -> ImageType:
+    """Apply film grain noise to an image (2D or 3D).
+
+    Film grain is luminance-dependent and spatially correlated, unlike simple Gaussian noise.
+
+    Args:
+        img: Input image, shape (H, W, C) or (H, W, 1).
+        grain: Pre-generated grain pattern, shape (H, W), float32.
+        intensity: Grain strength multiplier.
+
+    Returns:
+        Image with film grain applied.
+
+    """
+    num_channels = img.shape[-1]
+
+    luminance = img.mean(axis=-1) if num_channels > 1 else img[..., 0]
+
+    max_val = MAX_VALUES_BY_DTYPE[img.dtype]
+
+    inv_lum = 1.0 - luminance.astype(np.float32) / max_val if img.dtype == np.uint8 else 1.0 - luminance
+
+    modulated = (grain * inv_lum * intensity * max_val).astype(np.float32)
+
+    return add_array(img, modulated[..., np.newaxis])
+
+
+@uint8_io
+def apply_halftone(
+    img: ImageType,
+    dot_size: int,
+    blend: float,
+) -> ImageType:
+    """Convert image to halftone dot pattern.
+
+    Args:
+        img: Input image (H, W, C), uint8 or float32.
+        dot_size: Size of each halftone grid cell in pixels.
+        blend: Blend factor between halftone and original. 0 = pure halftone, 1 = original.
+
+    Returns:
+        Image with halftone effect applied.
+
+    """
+    img = np.ascontiguousarray(img)
+    height, width = img.shape[:2]
+    num_channels = img.shape[-1]
+
+    luminance = (
+        np.mean(img, axis=-1).astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
+        if num_channels > 1
+        else img[..., 0].astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
+    )
+
+    use_cell_mask = num_channels > 4
+
+    if use_cell_mask:
+        canvas = np.zeros_like(img)
+        for y_start in range(0, height, dot_size):
+            for x_start in range(0, width, dot_size):
+                y_end = min(y_start + dot_size, height)
+                x_end = min(x_start + dot_size, width)
+
+                cell_lum = float(np.mean(luminance[y_start:y_end, x_start:x_end]))
+                cell_h = y_end - y_start
+                cell_w = x_end - x_start
+                radius = max(1, int(dot_size * 0.5 * cell_lum))
+
+                cell = img[y_start:y_end, x_start:x_end]
+                avg_color = np.mean(cell.reshape(-1, num_channels), axis=0).astype(img.dtype)
+
+                # Cell-local mask: avoids O(N_cells * H * W) allocation
+                local_cx = cell_w // 2
+                local_cy = cell_h // 2
+                dot_mask = np.zeros((cell_h, cell_w), dtype=np.uint8)
+                cv2.circle(dot_mask, (local_cx, local_cy), radius, 255, -1, lineType=cv2.LINE_AA)
+                mask_bool = dot_mask > 0
+                canvas[y_start:y_end, x_start:x_end][mask_bool] = avg_color
+    else:
+        canvas = np.zeros_like(img)
+        for y_start in range(0, height, dot_size):
+            for x_start in range(0, width, dot_size):
+                y_end = min(y_start + dot_size, height)
+                x_end = min(x_start + dot_size, width)
+
+                cell_lum = float(np.mean(luminance[y_start:y_end, x_start:x_end]))
+                cx = (x_start + x_end) // 2
+                cy = (y_start + y_end) // 2
+                radius = max(1, int(dot_size * 0.5 * cell_lum))
+
+                cell = img[y_start:y_end, x_start:x_end]
+                if num_channels > 1:
+                    color: tuple[int, ...] | int = tuple(
+                        int(v) for v in np.mean(cell.reshape(-1, num_channels), axis=0)
+                    )
+                else:
+                    color = int(np.mean(cell))
+
+                cv2.circle(canvas, (cx, cy), radius, color, -1, lineType=cv2.LINE_AA)
+
+    if blend > 0:
+        return add_weighted(img, blend, canvas, 1.0 - blend)
+
+    return canvas
+
+
+def apply_lens_flare(
+    img: ImageType,
+    flare_center: tuple[int, int],
+    ghosts: list[tuple[int, int, int, float]],
+    starburst_angles: np.ndarray,
+    starburst_intensity: float,
+    bloom_radius: int,
+) -> ImageType:
+    """Apply realistic lens flare with ghosts and starburst.
+
+    Args:
+        img: Input image (H, W, C), must be 3-channel.
+        flare_center: (x, y) position of the flare source.
+        ghosts: List of (x, y, radius, alpha) for each ghost circle.
+        starburst_angles: Array of angles in radians for starburst rays.
+        starburst_intensity: Brightness of starburst rays, 0-1.
+        bloom_radius: Gaussian blur radius for bloom effect.
+
+    Returns:
+        Image with lens flare applied.
+
+    """
+    height, width = img.shape[:2]
+    max_val = MAX_VALUES_BY_DTYPE[img.dtype]
+    result = img.copy()
+
+    flare_layer = np.zeros((height, width), dtype=np.float32)
+
+    fx, fy = flare_center
+    for angle in starburst_angles:
+        dx = np.cos(angle)
+        dy = np.sin(angle)
+        length = max(height, width)
+        x2 = int(fx + dx * length)
+        y2 = int(fy + dy * length)
+        cv2.line(flare_layer, (fx, fy), (x2, y2), float(starburst_intensity), 1, lineType=cv2.LINE_AA)
+
+    if bloom_radius > 0:
+        ksize = bloom_radius * 2 + 1
+        flare_layer = cv2.GaussianBlur(flare_layer, (ksize, ksize), 0)
+
+    for gx, gy, gradius, galpha in ghosts:
+        ghost = np.zeros((height, width), dtype=np.float32)
+        cv2.circle(ghost, (gx, gy), gradius, 1.0, -1, lineType=cv2.LINE_AA)
+        if gradius > 2:
+            gk = max(3, gradius | 1)
+            ghost = cv2.GaussianBlur(ghost, (gk, gk), 0)
+        flare_layer += ghost * galpha
+
+    np.clip(flare_layer, 0, 1, out=flare_layer)
+
+    flare_3d = flare_layer[:, :, np.newaxis] * max_val
+
+    return clip(result.astype(np.float32) + flare_3d, result.dtype)
+
+
+def generate_water_displacement_maps(
+    image_shape: tuple[int, int],
+    amplitude: float,
+    wavelength: float,
+    num_waves: int,
+    random_generator: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Generate displacement maps simulating water refraction.
+
+    Args:
+        image_shape: (height, width).
+        amplitude: Maximum displacement in pixels.
+        wavelength: Base wavelength of waves in pixels.
+        num_waves: Number of overlaid sine waves.
+        random_generator: NumPy random generator.
+
+    Returns:
+        Tuple of (map_x, map_y) float32 arrays for cv2.remap.
+
+    """
+    height, width = image_shape
+    y, x = np.mgrid[:height, :width].astype(np.float32)
+
+    dx = np.zeros((height, width), dtype=np.float32)
+    dy = np.zeros((height, width), dtype=np.float32)
+
+    for _ in range(num_waves):
+        angle = random_generator.uniform(0, 2 * np.pi)
+        phase = random_generator.uniform(0, 2 * np.pi)
+        freq = random_generator.uniform(0.7, 1.3) / wavelength
+        amp = amplitude * random_generator.uniform(0.5, 1.0)
+
+        wave_x = np.cos(angle)
+        wave_y = np.sin(angle)
+
+        projection = x * wave_x + y * wave_y
+        displacement = amp * np.sin(2 * np.pi * freq * projection + phase)
+
+        dx += displacement * (-wave_y)
+        dy += displacement * wave_x
+
+    map_x = x + dx
+    map_y = y + dy
+
+    return map_x.astype(np.float32), map_y.astype(np.float32)
+
+
+def apply_atmospheric_fog(
+    img: ImageType,
+    density: float,
+    fog_color: tuple[float, ...],
+    depth_map: np.ndarray,
+) -> ImageType:
+    """Apply depth-aware atmospheric fog using the standard scattering model.
+
+    Formula: result = img * exp(-density * depth) + fog_color * (1 - exp(-density * depth))
+
+    Args:
+        img: Input image (H, W, C).
+        density: Fog density factor.
+        fog_color: Color of the fog, values in [0, max_val].
+        depth_map: (H, W) float32 array with values in [0, 1], where 1 is farthest.
+
+    Returns:
+        Image with fog applied.
+
+    """
+    num_channels = img.shape[-1]
+    transmission = np.exp(-density * depth_map).astype(np.float32)[:, :, np.newaxis]
+
+    fog_array = np.array(fog_color, dtype=np.float32)
+    if len(fog_array) < num_channels:
+        fog_array = np.pad(fog_array, (0, num_channels - len(fog_array)), mode="edge")
+    fog_array = fog_array[:num_channels].reshape(1, 1, -1)
+
+    result = img.astype(np.float32) * transmission + fog_array * (1.0 - transmission)
+
+    return clip(result, img.dtype)

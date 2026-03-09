@@ -69,8 +69,10 @@ from albumentations.core.utils import to_tuple
 __all__ = [
     "CLAHE",
     "AdditiveNoise",
+    "AtmosphericFog",
     "AutoContrast",
     "ChannelShuffle",
+    "ChannelSwap",
     "ChromaticAberration",
     "ColorJitter",
     "Dithering",
@@ -78,13 +80,16 @@ __all__ = [
     "Emboss",
     "Equalize",
     "FancyPCA",
+    "FilmGrain",
     "GaussNoise",
     "HEStain",
+    "Halftone",
     "HueSaturationValue",
     "ISONoise",
     "Illumination",
     "ImageCompression",
     "InvertImg",
+    "LensFlare",
     "MultiplicativeNoise",
     "Normalize",
     "PhotoMetricDistort",
@@ -113,6 +118,7 @@ __all__ = [
     "ToRGB",
     "ToSepia",
     "UnsharpMask",
+    "Vignetting",
 ]
 
 NUM_BITS_ARRAY_LENGTH = 3
@@ -6861,3 +6867,667 @@ class PhotoMetricDistort(ImageOnlyTransform):
         for i, image in enumerate(images):
             result[i] = self.apply(image, **params)
         return result
+
+
+class Vignetting(ImageOnlyTransform):
+    """Apply vignetting effect by darkening image corners with a radial gradient.
+
+    Simulates the natural light falloff that occurs in camera lenses, where corners
+    and edges of an image appear darker than the center.
+
+    Args:
+        intensity_range (tuple[float, float]): Range for the darkening intensity at corners.
+            0 means no effect, 1 means corners go fully black.
+            Default: (0.2, 0.5).
+        center_range (tuple[float, float]): Range for jittering the vignette center position,
+            expressed as fractions of width/height. (0.5, 0.5) is the image center.
+            Default: (0.3, 0.7).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Note:
+        The vignette is an elliptical gradient centered at a random point within
+        center_range. The darkening follows a quadratic falloff from center to edges.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.Vignetting(intensity_range=(0.2, 0.5), p=1.0)
+        >>> result = transform(image=image)["image"]
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        intensity_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        center_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        intensity_range: tuple[float, float] = (0.2, 0.5),
+        center_range: tuple[float, float] = (0.3, 0.7),
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.intensity_range = intensity_range
+        self.center_range = center_range
+
+    def apply(
+        self,
+        img: ImageType,
+        intensity: float,
+        center_x: float,
+        center_y: float,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.apply_vignette(img, intensity, center_x, center_y)
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result
+
+    def get_params(self) -> dict[str, float]:
+        return {
+            "intensity": self.py_random.uniform(*self.intensity_range),
+            "center_x": self.py_random.uniform(*self.center_range),
+            "center_y": self.py_random.uniform(*self.center_range),
+        }
+
+
+class ChannelSwap(ImageOnlyTransform):
+    """Apply a fixed channel reordering to the image.
+
+    Unlike ChannelShuffle which randomly permutes channels each time, ChannelSwap
+    applies a deterministic, user-specified channel order. Useful for BGR<->RGB conversion,
+    or for training models that should be invariant to a specific channel ordering.
+
+    Args:
+        channel_order (tuple[int, ...]): Target channel order as a tuple of indices.
+            For a 3-channel image, (2, 1, 0) swaps R and B (RGB->BGR).
+            Default: (2, 1, 0).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any (but channel_order length must match the number of channels)
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> # Swap R and B channels (RGB -> BGR)
+        >>> transform = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
+        >>> result = transform(image=image)["image"]
+        >>> np.testing.assert_array_equal(result[:, :, 0], image[:, :, 2])
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        channel_order: tuple[int, ...]
+
+        @field_validator("channel_order")
+        @classmethod
+        def validate_channel_order(cls, v: tuple[int, ...]) -> tuple[int, ...]:
+            """Validate channel_order is a valid permutation."""
+            if len(v) < 2:
+                msg = "channel_order must have at least 2 elements."
+                raise ValueError(msg)
+            if sorted(v) != list(range(len(v))):
+                msg = f"channel_order must be a permutation of range({len(v)}), got {v}"
+                raise ValueError(msg)
+            return v
+
+    def __init__(
+        self,
+        channel_order: tuple[int, ...] = (2, 1, 0),
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.channel_order = channel_order
+
+    def apply(
+        self,
+        img: ImageType,
+        channel_order: tuple[int, ...],
+        **params: Any,
+    ) -> ImageType:
+        num_channels = img.shape[-1]
+        if num_channels != len(channel_order):
+            warnings.warn(
+                f"ChannelSwap: channel_order has {len(channel_order)} elements but image has "
+                f"{num_channels} channel(s); returning image unchanged.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return img
+        return fpixel.channel_shuffle(img, list(channel_order))
+
+    def apply_to_images(self, images: ImageType, channel_order: tuple[int, ...], **params: Any) -> ImageType:
+        num_channels = images.shape[-1]
+        if num_channels != len(channel_order):
+            warnings.warn(
+                f"ChannelSwap: channel_order has {len(channel_order)} elements but images have "
+                f"{num_channels} channel(s); returning images unchanged.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return images
+        return fpixel.volume_channel_shuffle(images, list(channel_order))
+
+    def apply_to_volumes(self, volumes: VolumeType, channel_order: tuple[int, ...], **params: Any) -> VolumeType:
+        num_channels = volumes.shape[-1]
+        if num_channels != len(channel_order):
+            warnings.warn(
+                f"ChannelSwap: channel_order has {len(channel_order)} elements but volume has "
+                f"{num_channels} channel(s); returning volume unchanged.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return volumes
+        return fpixel.volumes_channel_shuffle(volumes, list(channel_order))
+
+    def get_params(self) -> dict[str, tuple[int, ...]]:
+        return {"channel_order": self.channel_order}
+
+
+class FilmGrain(ImageOnlyTransform):
+    """Simulate analog film grain noise.
+
+    Unlike GaussNoise or ShotNoise, film grain is:
+    - Luminance-dependent: darker areas show more visible grain
+    - Spatially correlated: grain is clumped, not i.i.d. per-pixel
+    - Optionally chromatic: separate grain patterns per channel
+
+    Args:
+        intensity_range (tuple[float, float]): Range for grain intensity.
+            Higher values produce more prominent grain. Default: (0.1, 0.3).
+        grain_size_range (tuple[int, int]): Range for the grain generation resolution
+            as a divisor of image size. 1 = full resolution (fine grain),
+            4 = quarter resolution (coarse, clumped grain). Default: (1, 3).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Note:
+        Grain is generated at a lower resolution and upscaled, which creates the
+        natural spatial correlation (clumping) seen in real film. The grain visibility
+        is modulated by inverse luminance — darker regions show more grain, matching
+        how silver halide crystals behave in real film emulsion.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.FilmGrain(intensity_range=(0.1, 0.3), grain_size_range=(1, 3), p=1.0)
+        >>> result = transform(image=image)["image"]
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        intensity_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        grain_size_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1, None)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        intensity_range: tuple[float, float] = (0.1, 0.3),
+        grain_size_range: tuple[int, int] = (1, 3),
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.intensity_range = intensity_range
+        self.grain_size_range = grain_size_range
+
+    def apply(
+        self,
+        img: ImageType,
+        grain: np.ndarray,
+        intensity: float,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.apply_film_grain(img, grain, intensity)
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        image_shape = params["shape"][:2]
+        height, width = image_shape
+
+        intensity = self.py_random.uniform(*self.intensity_range)
+        grain_size = (
+            self.py_random.randint(*self.grain_size_range)
+            if self.grain_size_range[0] != self.grain_size_range[1]
+            else self.grain_size_range[0]
+        )
+
+        grain_h = max(1, height // grain_size)
+        grain_w = max(1, width // grain_size)
+
+        grain = self.random_generator.standard_normal((grain_h, grain_w, 1), dtype=np.float32)
+
+        if grain_h != height or grain_w != width:
+            grain = fgeometric.resize(grain, (height, width), interpolation=cv2.INTER_LINEAR)
+
+        grain = grain[:, :, 0]
+
+        return {
+            "grain": grain,
+            "intensity": intensity,
+        }
+
+
+class Halftone(ImageOnlyTransform):
+    """Convert image to halftone dot pattern.
+
+    Simulates the halftone printing technique where continuous-tone images are
+    reproduced using dots of varying size. Larger dots represent brighter areas,
+    smaller dots represent darker areas.
+
+    Args:
+        dot_size_range (tuple[int, int]): Range for the grid cell size in pixels.
+            Larger values produce coarser halftone patterns. Default: (4, 10).
+        blend_range (tuple[float, float]): Range for blending with the original image.
+            0 = pure halftone, 1 = original image. Default: (0.0, 0.5).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Note:
+        The halftone effect samples mean luminance per grid cell and draws a filled
+        circle whose radius is proportional to that luminance. Cell color is preserved
+        from the original image.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.Halftone(dot_size_range=(4, 8), blend_range=(0.0, 0.3), p=1.0)
+        >>> result = transform(image=image)["image"]
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        dot_size_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(2, None)),
+            AfterValidator(nondecreasing),
+        ]
+        blend_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        dot_size_range: tuple[int, int] = (4, 10),
+        blend_range: tuple[float, float] = (0.0, 0.5),
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.dot_size_range = dot_size_range
+        self.blend_range = blend_range
+
+    def apply(
+        self,
+        img: ImageType,
+        dot_size: int,
+        blend: float,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.apply_halftone(img, dot_size, blend)
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result
+
+    def get_params(self) -> dict[str, Any]:
+        return {
+            "dot_size": self.py_random.randint(*self.dot_size_range),
+            "blend": self.py_random.uniform(*self.blend_range),
+        }
+
+
+class LensFlare(ImageOnlyTransform):
+    """Apply realistic lens flare effect with starburst rays and ghost reflections.
+
+    Simulates optical lens flare artifacts including a central bright spot with
+    radiating starburst pattern and secondary ghost reflections along the axis
+    from source to image center.
+
+    Args:
+        flare_roi (tuple[float, float, float, float]): Region of interest for flare
+            source placement as (x_min, y_min, x_max, y_max) in normalized [0, 1] coords.
+            Default: (0, 0, 1, 0.5).
+        num_ghosts_range (tuple[int, int]): Range for number of ghost reflections.
+            Default: (3, 7).
+        intensity_range (tuple[float, float]): Range for overall flare brightness.
+            Default: (0.3, 0.7).
+        num_rays_range (tuple[int, int]): Range for number of starburst rays.
+            Default: (4, 8).
+        bloom_range (tuple[float, float]): Range for bloom blur radius as fraction
+            of image diagonal. Default: (0.01, 0.05).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        3
+
+    Note:
+        Ghost reflections appear along the line between the flare source and the
+        image center, at mirrored positions. Their size decreases and color shifts
+        slightly as they get farther from the source.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.LensFlare(intensity_range=(0.3, 0.6), p=1.0)
+        >>> result = transform(image=image)["image"]
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        flare_roi: Annotated[
+            tuple[float, float, float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+        ]
+
+        @field_validator("flare_roi")
+        @classmethod
+        def validate_flare_roi(cls, v: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+            """Validate that x_min < x_max and y_min < y_max."""
+            x_min, y_min, x_max, y_max = v
+            if x_min >= x_max:
+                msg = f"flare_roi x_min ({x_min}) must be less than x_max ({x_max})"
+                raise ValueError(msg)
+            if y_min >= y_max:
+                msg = f"flare_roi y_min ({y_min}) must be less than y_max ({y_max})"
+                raise ValueError(msg)
+            return v
+
+        num_ghosts_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        intensity_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        num_rays_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(2, None)),
+            AfterValidator(nondecreasing),
+        ]
+        bloom_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        flare_roi: tuple[float, float, float, float] = (0, 0, 1, 0.5),
+        num_ghosts_range: tuple[int, int] = (3, 7),
+        intensity_range: tuple[float, float] = (0.3, 0.7),
+        num_rays_range: tuple[int, int] = (4, 8),
+        bloom_range: tuple[float, float] = (0.01, 0.05),
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.flare_roi = flare_roi
+        self.num_ghosts_range = num_ghosts_range
+        self.intensity_range = intensity_range
+        self.num_rays_range = num_rays_range
+        self.bloom_range = bloom_range
+
+    def apply(
+        self,
+        img: ImageType,
+        flare_center: tuple[int, int],
+        ghosts: list[tuple[int, int, int, float]],
+        starburst_angles: np.ndarray,
+        starburst_intensity: float,
+        bloom_radius: int,
+        **params: Any,
+    ) -> ImageType:
+        non_rgb_error(img)
+        return fpixel.apply_lens_flare(
+            img,
+            flare_center,
+            ghosts,
+            starburst_angles,
+            starburst_intensity,
+            bloom_radius,
+        )
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        height, width = params["shape"][:2]
+        x_min, y_min, x_max, y_max = self.flare_roi
+
+        fx_lo = min(int(x_min * width), width - 1)
+        fx_hi = min(int(x_max * width), width - 1)
+        fx = self.py_random.randint(fx_lo, max(fx_lo, fx_hi))
+        fy_lo = min(int(y_min * height), height - 1)
+        fy_hi = min(int(y_max * height), height - 1)
+        fy = self.py_random.randint(fy_lo, max(fy_lo, fy_hi))
+
+        intensity = self.py_random.uniform(*self.intensity_range)
+        num_rays = self.py_random.randint(*self.num_rays_range)
+        num_ghosts = self.py_random.randint(*self.num_ghosts_range)
+
+        base_angle = self.py_random.uniform(0, math.pi / num_rays) if num_rays > 0 else 0
+        starburst_angles = np.array(
+            [base_angle + i * math.pi / num_rays for i in range(num_rays * 2)],
+            dtype=np.float32,
+        )
+
+        cx, cy = width // 2, height // 2
+        ghosts = []
+        for i in range(num_ghosts):
+            t = (i + 1) / (num_ghosts + 1)
+            gx = int(fx + (cx - fx) * 2 * t)
+            gy = int(fy + (cy - fy) * 2 * t)
+            gradius = max(2, int(min(height, width) * 0.02 * (1.0 - t * 0.5)))
+            galpha = intensity * (1.0 - t * 0.6)
+            ghosts.append((gx, gy, gradius, galpha))
+
+        diag = math.sqrt(height**2 + width**2)
+        bloom_frac = self.py_random.uniform(*self.bloom_range)
+        bloom_radius = max(1, int(diag * bloom_frac)) | 1
+
+        return {
+            "flare_center": (fx, fy),
+            "ghosts": ghosts,
+            "starburst_angles": starburst_angles,
+            "starburst_intensity": intensity,
+            "bloom_radius": bloom_radius,
+        }
+
+
+class AtmosphericFog(ImageOnlyTransform):
+    """Apply depth-aware atmospheric fog using the standard scattering model.
+
+    Unlike RandomFog which overlays circular fog patches, this transform uses
+    the physically-based atmospheric scattering equation with a synthetic depth map,
+    producing more realistic distance-dependent fog.
+
+    Formula: result = image * exp(-density * depth) + fog_color * (1 - exp(-density * depth))
+
+    Args:
+        density_range (tuple[float, float]): Range for fog density.
+            Higher values = thicker fog. Default: (1.0, 3.0).
+        fog_color (tuple[int, ...]): RGB color of the fog. Default: (200, 200, 200).
+        depth_mode (Literal["linear", "diagonal", "radial"]): How to generate
+            the synthetic depth map:
+            - "linear": top of image is far, bottom is near
+            - "diagonal": top-left corner is far
+            - "radial": center is near, edges are far
+            Default: "linear".
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Note:
+        The depth map is synthetic (generated from image position), not from
+        actual scene geometry. For best results with outdoor scenes, "linear"
+        mode works well since distant objects tend to be near the top of the frame.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.AtmosphericFog(density_range=(1.0, 2.5), depth_mode="linear", p=1.0)
+        >>> result = transform(image=image)["image"]
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        density_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        fog_color: tuple[int, ...]
+        depth_mode: Literal["linear", "diagonal", "radial"]
+
+    def __init__(
+        self,
+        density_range: tuple[float, float] = (1.0, 3.0),
+        fog_color: tuple[int, ...] = (200, 200, 200),
+        depth_mode: Literal["linear", "diagonal", "radial"] = "linear",
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.density_range = density_range
+        self.fog_color = fog_color
+        self.depth_mode = depth_mode
+
+    def apply(
+        self,
+        img: ImageType,
+        density: float,
+        depth_map: np.ndarray,
+        fog_color_scaled: tuple[float, ...],
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.apply_atmospheric_fog(img, density, fog_color_scaled, depth_map)
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        result = np.empty_like(images)
+        for i, image in enumerate(images):
+            result[i] = self.apply(image, **params)
+        return result
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        height, width = params["shape"][:2]
+        density = self.py_random.uniform(*self.density_range)
+
+        if self.depth_mode == "linear":
+            depth_map = np.linspace(1.0, 0.0, height, dtype=np.float32)[:, np.newaxis]
+            depth_map = np.broadcast_to(depth_map, (height, width)).copy()
+        elif self.depth_mode == "diagonal":
+            y = np.linspace(1.0, 0.0, height, dtype=np.float32)
+            x = np.linspace(1.0, 0.0, width, dtype=np.float32)
+            depth_map = (y[:, np.newaxis] + x[np.newaxis, :]) / 2.0
+        else:
+            cy, cx = height / 2.0, width / 2.0
+            y = np.arange(height, dtype=np.float32)
+            x = np.arange(width, dtype=np.float32)
+            dist = np.sqrt((y[:, np.newaxis] - cy) ** 2 + (x[np.newaxis, :] - cx) ** 2)
+            max_dist = np.sqrt(cy**2 + cx**2)
+            depth_map = (dist / max_dist).astype(np.float32)
+
+        max_val = float(albucore.MAX_VALUES_BY_DTYPE[np.uint8])
+        image_data = albucore.get_image_data(data)
+        img_dtype = image_data["dtype"]
+        actual_max = float(albucore.MAX_VALUES_BY_DTYPE[img_dtype])
+        fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)
+
+        return {
+            "density": density,
+            "depth_map": depth_map,
+            "fog_color_scaled": fog_color_scaled,
+        }

@@ -48,6 +48,7 @@ class TransformTestHelper:
         A.ChannelShuffle,
         A.ToRGB,
         A.RandomSunFlare,
+        A.LensFlare,
         A.RandomFog,
         A.RandomSnow,
         A.RandomRain,

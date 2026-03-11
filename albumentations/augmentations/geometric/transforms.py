@@ -709,6 +709,26 @@ class Affine(DualTransform):
             dsize=(width, height),
         )
 
+    def apply_to_images(
+        self,
+        images: ImageType,
+        matrix: np.ndarray,
+        output_shape: tuple[int, int],
+        **params: Any,
+    ) -> ImageType:
+        height, width = output_shape
+        result = np.empty((len(images), height, width, images.shape[3]), dtype=images.dtype)
+        for i, image in enumerate(images):
+            result[i] = warp_affine(
+                image,
+                matrix,
+                flags=self.interpolation,
+                border_mode=self.border_mode,
+                border_value=self.fill,
+                dsize=(width, height),
+            )
+        return result
+
     def apply_to_mask(
         self,
         mask: ImageType,
@@ -725,6 +745,26 @@ class Affine(DualTransform):
             border_value=self.fill_mask,
             dsize=(width, height),
         )
+
+    def apply_to_masks(
+        self,
+        masks: ImageType,
+        matrix: np.ndarray,
+        output_shape: tuple[int, int],
+        **params: Any,
+    ) -> ImageType:
+        height, width = output_shape
+        result = np.empty((len(masks), height, width, masks.shape[3]), dtype=masks.dtype)
+        for i, mask in enumerate(masks):
+            result[i] = warp_affine(
+                mask,
+                matrix,
+                flags=self.mask_interpolation,
+                border_mode=self.border_mode,
+                border_value=self.fill_mask,
+                dsize=(width, height),
+            )
+        return result
 
     def apply_to_bboxes(
         self,

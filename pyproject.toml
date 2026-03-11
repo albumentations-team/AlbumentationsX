@@ -8,7 +8,7 @@ name = "albumentationsx"
 
 version = "2.0.20"
 
-description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volumes, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows."
+description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volumes, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Dual-licensed: AGPL-3.0 (open source) and commercial license available."
 readme = "README.md"
 keywords = [
   "2D augmentation",
@@ -145,6 +145,12 @@ text = ["pillow"]
 
 [project.urls]
 Homepage = "https://albumentations.ai"
+Documentation = "https://albumentations.ai/docs/"
+"Buy Commercial License" = "https://albumentations.ai/pricing"
+Repository = "https://github.com/albumentations-team/AlbumentationsX"
+Changelog = "https://github.com/albumentations-team/AlbumentationsX/releases"
+Discord = "https://discord.gg/AKPrrDYNAt"
+"Bug Tracker" = "https://github.com/albumentations-team/AlbumentationsX/issues"
 
 [tool.setuptools]
 packages = { find = { include = [

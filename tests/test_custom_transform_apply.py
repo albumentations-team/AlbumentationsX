@@ -709,6 +709,34 @@ class TestAvailableKeysAndComposition:
         assert abs(out["label"] - 0.4) < 1e-6
         assert out["metadata"]["flipped"] is True
 
+    def test_multiple_transforms_same_custom_target_chained(self, uint8_image):
+        """Two transforms both with apply_to_label; label flows through both in sequence."""
+
+        # First: label += 1. Second: label *= 2. Input 5 -> 6 -> 12.
+        class AddOne(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+            def get_params(self) -> dict[str, Any]:
+                return {}
+
+            def apply(self, img: np.ndarray, **p) -> np.ndarray:
+                return img
+
+            def apply_to_label(self, label: int, **p) -> int:
+                return label + 1
+
+        class MulTwo(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+            def get_params(self) -> dict[str, Any]:
+                return {}
+
+            def apply(self, img: np.ndarray, **p) -> np.ndarray:
+                return img
+
+            def apply_to_label(self, label: int, **p) -> int:
+                return label * 2
+
+        pipeline = A.Compose([AddOne(p=1.0), MulTwo(p=1.0)])
+        out = pipeline(image=uint8_image, label=5)
+        assert out["label"] == 12  # 5+1=6, 6*2=12
+
     def test_inheritance_adds_custom_apply(self, uint8_image):
         """Subclass can add another apply_to_ method."""
 

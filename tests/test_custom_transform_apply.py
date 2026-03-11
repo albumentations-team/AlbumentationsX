@@ -536,24 +536,25 @@ class TestReplayComposeIntegration:
         replayed = A.ReplayCompose.replay(result["replay"], image=uint8_image, label=0)
         assert replayed["label"] == 1
 
-    def test_replay_compose_p_zero_skips_custom_target(self, uint8_image):
-        """When p=0 on replay, custom target is passed through unchanged."""
+    def test_replay_compose_skips_custom_target_when_not_applied(self, uint8_image):
+        """If transform was not applied when recording, replay also skips custom target."""
 
         class FlipWithLabel(A.CustomTransformsApplyMixin, A.HorizontalFlip):
             def apply_to_label(self, label: int, **params: Any) -> int:
                 return label + 100  # obvious change
 
         transform = A.ReplayCompose([FlipWithLabel(p=0.5)], seed=137)
-        # Run until we get one where it was applied (label=101) and one where not (label=5)
+        # Run until we get one where transform was NOT applied (label unchanged)
         for _ in range(20):
             result = transform(image=uint8_image, label=5)
-            if result["label"] == 105:  # applied
+            if result["label"] == 5:  # not applied
                 saved = result["replay"]
-                replayed = A.ReplayCompose.replay(saved, image=uint8_image, label=5)
-                assert replayed["label"] == 105
                 break
         else:
-            pytest.skip("RNG never applied transform in 20 tries")
+            pytest.skip("RNG always applied transform in 20 tries")
+        # On replay, recorded applied=False means label should still be passed through unchanged
+        replayed = A.ReplayCompose.replay(saved, image=uint8_image, label=5)
+        assert replayed["label"] == 5
 
 
 # ─────────────────────────────────────────────────────────────────────────────

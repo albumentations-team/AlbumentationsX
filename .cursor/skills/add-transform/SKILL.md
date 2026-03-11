@@ -95,6 +95,7 @@ class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
 ```
 
 ### Critical rules:
+- **NO `get_transform_init_args_names()` override** — the base class auto-infers init arg names from `__init__` via MRO introspection. Do not define this method.
 - **NO "Random" prefix** in the class name
 - **Parameter ranges** use `_range` suffix: `brightness_range`, not `brightness_limit`
 - **`fill` not `fill_value`**, **`fill_mask` not `fill_mask_value`**
@@ -177,6 +178,7 @@ Check edge cases: uint8, float32, single channel, multichannel.
 
 ## 7. Verify checklist
 
+- [ ] No `get_transform_init_args_names()` override (auto-inferred from `__init__`)
 - [ ] No "Random" prefix in class name
 - [ ] `_range` suffix on range params
 - [ ] `fill` / `fill_mask` (not `fill_value` / `fill_mask_value`)

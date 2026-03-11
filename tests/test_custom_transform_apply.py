@@ -57,9 +57,6 @@ class BrightnessWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
     def apply_to_label(self, label: float, factor: float = 1.0, **p) -> float:
         return float(min(1.0, max(0.0, label * factor)))
 
-    def get_transform_init_args_names(self) -> tuple[str, ...]:
-        return ()
-
 
 class FlipWithMetadata(A.CustomTransformsApplyMixin, A.DualTransform):
     """DualTransform + one custom target: metadata dict."""
@@ -72,9 +69,6 @@ class FlipWithMetadata(A.CustomTransformsApplyMixin, A.DualTransform):
 
     def apply_to_metadata(self, metadata: dict, **p) -> dict:
         return {**metadata, "flipped": not metadata.get("flipped", False)}
-
-    def get_transform_init_args_names(self) -> tuple[str, ...]:
-        return ()
 
 
 class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
@@ -91,9 +85,6 @@ class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
 
     def apply_to_label(self, label: int, factor: int = 0, **p) -> int:
         return (label + factor) % 4
-
-    def get_transform_init_args_names(self) -> tuple[str, ...]:
-        return ()
 
 
 class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
@@ -113,9 +104,6 @@ class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
 
     def apply_to_weight(self, weight: float, factor: int = 1, **p) -> float:
         return weight / factor
-
-    def get_transform_init_args_names(self) -> tuple[str, ...]:
-        return ()
 
 
 class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
@@ -138,9 +126,6 @@ class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
 
     def apply_to_label(self, label: int, factor: int = 0, **p) -> int:
         return label + factor
-
-    def get_transform_init_args_names(self) -> tuple[str, ...]:
-        return ()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -458,9 +443,6 @@ class TestParamsPassthrough:
                 received["label_factor"] = factor
                 return label
 
-            def get_transform_init_args_names(self):
-                return ()
-
         t = _Capture(p=1.0)
         t(image=uint8_image, label=0)
         assert received["apply_factor"] == 7
@@ -483,9 +465,6 @@ class TestParamsPassthrough:
             def apply_to_score(self, score, alpha=0, beta=0, **p):
                 received["score"] = (alpha, beta)
                 return score
-
-            def get_transform_init_args_names(self):
-                return ()
 
         t = _CaptureMulti(p=1.0)
         t(image=uint8_image, label=0, score=1.0)
@@ -513,9 +492,6 @@ class TestBuiltinPriority:
             def apply_to_label(self, label, **p):
                 return label + 1
 
-            def get_transform_init_args_names(self):
-                return ()
-
         t = _MaskTransform(p=1.0)
         out = t(image=uint8_image, mask=uint8_mask, label=0)
         np.testing.assert_array_equal(out["mask"], np.ones_like(uint8_mask) * 255)
@@ -534,9 +510,225 @@ class TestBuiltinPriority:
             def apply_to_user_data(self, data, **p):
                 return data
 
-            def get_transform_init_args_names(self):
-                return ()
-
         t = _WithUserData(p=1.0)
         # Routing must point to apply_to_user_data.
         assert t._key2func["user_data"] == t.apply_to_user_data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ReplayCompose integration
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestReplayComposeIntegration:
+    """Custom apply targets survive ReplayCompose record and replay."""
+
+    def test_replay_compose_custom_target_record_and_replay(self, uint8_image):
+        class FlipWithLabel(A.CustomTransformsApplyMixin, A.HorizontalFlip):
+            def apply_to_label(self, label: int, **params: Any) -> int:
+                return (label + 1) % 4
+
+        transform = A.ReplayCompose([FlipWithLabel(p=1.0)], seed=137)
+        result = transform(image=uint8_image, label=0)
+        assert "replay" in result
+        assert result["label"] == 1
+
+        replayed = A.ReplayCompose.replay(result["replay"], image=uint8_image, label=0)
+        assert replayed["label"] == 1
+
+    def test_replay_compose_p_zero_skips_custom_target(self, uint8_image):
+        """When p=0 on replay, custom target is passed through unchanged."""
+
+        class FlipWithLabel(A.CustomTransformsApplyMixin, A.HorizontalFlip):
+            def apply_to_label(self, label: int, **params: Any) -> int:
+                return label + 100  # obvious change
+
+        transform = A.ReplayCompose([FlipWithLabel(p=0.5)], seed=137)
+        # Run until we get one where it was applied (label=101) and one where not (label=5)
+        for _ in range(20):
+            result = transform(image=uint8_image, label=5)
+            if result["label"] == 105:  # applied
+                saved = result["replay"]
+                replayed = A.ReplayCompose.replay(saved, image=uint8_image, label=5)
+                assert replayed["label"] == 105
+                break
+        else:
+            pytest.skip("RNG never applied transform in 20 tries")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# get_params_dependent_on_data with custom targets
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestGetParamsDependentOnData:
+    """Custom targets can be used in targets_as_params and get_params_dependent_on_data."""
+
+    def test_custom_target_in_targets_as_params(self, uint8_image):
+        class DataAwareLabelTransform(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+            targets_as_params = ("label",)
+
+            def get_params(self) -> dict[str, Any]:
+                return {"base": 10}
+
+            def get_params_dependent_on_data(self, params: dict, data: dict) -> dict:
+                label = data.get("label", 0)
+                return {"offset": label * 2}
+
+            def apply(self, img: np.ndarray, base: int = 0, offset: int = 0, **p) -> np.ndarray:
+                return img
+
+            def apply_to_label(self, label: int, base: int = 0, offset: int = 0, **p) -> int:
+                return label + base + offset
+
+        t = DataAwareLabelTransform(p=1.0)
+        out = t(image=uint8_image, label=3)
+        # offset = 3*2 = 6, base = 10, label_out = 3 + 10 + 6 = 19
+        assert out["label"] == 19
+
+    def test_missing_custom_target_in_targets_as_params_raises(self, uint8_image):
+        class RequiresLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+            targets_as_params = ("label",)
+
+            def get_params(self) -> dict[str, Any]:
+                return {}
+
+            def apply(self, img: np.ndarray, **p) -> np.ndarray:
+                return img
+
+        t = RequiresLabel(p=1.0)
+        with pytest.raises(ValueError, match=r"requires.*label"):
+            t(image=uint8_image)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# add_targets with custom keys
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestAddTargetsWithCustomKeys:
+    """additional_targets can alias custom apply keys."""
+
+    def test_add_targets_aliases_custom_key(self, uint8_image):
+        class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+            def get_params(self) -> dict[str, Any]:
+                return {}
+
+            def apply(self, img: np.ndarray, **p) -> np.ndarray:
+                return img
+
+            def apply_to_label(self, label: int, **p) -> int:
+                return label + 1
+
+        t = TransformWithLabel(p=1.0)
+        t.add_targets({"rotation_label": "label"})
+        assert "rotation_label" in t._available_keys
+        assert "label" in t._available_keys
+        assert t._key2func["rotation_label"] == t._key2func["label"]
+
+        out = t(image=uint8_image, rotation_label=5)
+        assert out["rotation_label"] == 6
+
+    def test_compose_with_additional_targets_custom_key(self, uint8_image):
+        class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+            def get_params(self) -> dict[str, Any]:
+                return {}
+
+            def apply(self, img: np.ndarray, **p) -> np.ndarray:
+                return img
+
+            def apply_to_label(self, label: int, **p) -> int:
+                return label + 1
+
+        pipeline = A.Compose(
+            [TransformWithLabel(p=1.0)],
+            additional_targets={"rotation_label": "label"},
+        )
+        out = pipeline(image=uint8_image, rotation_label=2)
+        assert out["rotation_label"] == 3
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Serialization (to_dict / from_dict)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSerialization:
+    """Custom apply transforms serialize and deserialize correctly."""
+
+    def test_to_dict_from_dict_preserves_behavior(self, uint8_image):
+        t = BrightnessWithLabel(p=1.0)
+        out_before = t(image=uint8_image, label=0.5)
+
+        serialized = A.to_dict(t)
+        restored = A.from_dict(serialized)
+        out_after = restored(image=uint8_image, label=0.5)
+
+        assert out_before["label"] == out_after["label"]
+        np.testing.assert_array_equal(out_before["image"], out_after["image"])
+
+    def test_compose_with_custom_apply_serializes(self, uint8_image):
+        pipeline = A.Compose([BrightnessWithLabel(p=1.0), FlipWithMetadata(p=0.0)])
+        out = pipeline(image=uint8_image, label=0.6, metadata={"x": 1})
+        serialized = A.to_dict(pipeline)
+        restored = A.from_dict(serialized)
+        out2 = restored(image=uint8_image, label=0.6, metadata={"x": 1})
+        assert out["label"] == out2["label"]
+        assert out["metadata"] == out2["metadata"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# available_keys and multiple transforms
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestAvailableKeysAndComposition:
+    """available_keys includes custom keys; Compose aggregates them."""
+
+    def test_available_keys_includes_custom(self):
+        t = BrightnessWithLabel(p=1.0)
+        assert "label" in t.available_keys
+        assert "image" in t.available_keys
+
+    def test_multiple_transforms_different_custom_targets(self, uint8_image, uint8_mask):
+        """Compose with transforms that have different custom targets."""
+        pipeline = A.Compose(
+            [
+                BrightnessWithLabel(p=1.0),
+                FlipWithMetadata(p=1.0),
+            ],
+        )
+        out = pipeline(
+            image=uint8_image,
+            mask=uint8_mask,
+            label=0.8,
+            metadata={"id": 1},
+        )
+        assert "label" in out
+        assert "metadata" in out
+        assert abs(out["label"] - 0.4) < 1e-6
+        assert out["metadata"]["flipped"] is True
+
+    def test_inheritance_adds_custom_apply(self, uint8_image):
+        """Subclass can add another apply_to_ method."""
+
+        class BaseWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+            def get_params(self) -> dict[str, Any]:
+                return {}
+
+            def apply(self, img: np.ndarray, **p) -> np.ndarray:
+                return img
+
+            def apply_to_label(self, label: int, **p) -> int:
+                return label + 1
+
+        class ExtendedWithScore(BaseWithLabel):
+            def apply_to_score(self, score: float, **p) -> float:
+                return score * 2
+
+        t = ExtendedWithScore(p=1.0)
+        assert "label" in t._key2func
+        assert "score" in t._key2func
+        out = t(image=uint8_image, label=1, score=0.5)
+        assert out["label"] == 2
+        assert out["score"] == 1.0

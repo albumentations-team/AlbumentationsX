@@ -1113,20 +1113,48 @@ class Transform3D(DualTransform):
 
 
 class CustomTransformsApplyMixin:
-    """Mixin class for all base transformations that searches apply_to_<X> methods in subclass
-    and registers them as handlers for data key <X>.
+    """Mixin that auto-registers custom apply_to_<X> methods as handlers for data key <X>.
+
+    Define methods named `apply_to_<key>` in your transform subclass; they are
+    discovered at init time and routed through the standard `apply_with_params`
+    pipeline. Custom targets receive the same params from `get_params`, respect
+    the `p=` probability, and compose correctly with Compose and ReplayCompose.
 
     Placement in inheritance list
+        Must come BEFORE the albumentations base class so MRO resolves
+        `_set_keys` first::
 
-    Must come BEFORE the albumentations base class so MRO resolves
-    this _set_keys first:
+            class MyTransform(CustomTransformsApplyMixin, A.DualTransform):
+                def apply_to_label(self, label, **params):
+                    return (label + params["factor"]) % 4
 
-        class MyTransform(CustomApplyMixin, A.DualTransform): ...
+    Registration rules
+        Methods named `apply_to_<X>` are registered if they are:
+        - Defined in the concrete subclass or any class between it and this mixin in the MRO
+        - Not already covered by `self.targets` (built-ins take priority)
+        - Not `apply_to_user_data` (handled separately by the base)
 
-    It searches custom methods named apply_to_<X> that are:
-      -- defined in the child class or anywhere in MRO below the albumentations base class
-      -- not already covered by self.targets (built-ins take priority)
-      -- not apply_to_user_data (handled separately by the base)
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
+        >>> mask = np.random.randint(0, 2, (64, 64), dtype=np.uint8)
+        >>>
+        >>> class Rotate90WithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
+        ...     def get_params(self):
+        ...         return {"k": 1}
+        ...     def apply(self, img, k=0, **p):
+        ...         return np.rot90(img, k)
+        ...     def apply_to_mask(self, mask, k=0, **p):
+        ...         return np.rot90(mask, k)
+        ...     def apply_to_label(self, label, k=0, **p):
+        ...         return (label + k) % 4
+        >>>
+        >>> transform = A.Compose([Rotate90WithLabel(p=1.0)])
+        >>> out = transform(image=image, mask=mask, label=0)
+        >>> out["label"]
+        1
+
     """
 
     _APPLY_PREFIX = "apply_to_"
@@ -1153,9 +1181,10 @@ class CustomTransformsApplyMixin:
             self._key2func[key] = method
 
     def _is_user_defined(self, method_name: str) -> bool:
-        """Returns True if method_name is overridden somewhere in the MRO
-        below the mixin itself (i.e. defined by the user, not inherited
-        from CustomApplyMixin or the albumentations base classes).
+        """Returns True if method_name is defined in a class that precedes
+        CustomTransformsApplyMixin in the MRO (i.e. in the concrete subclass
+        or its parents before the mixin). Excludes methods inherited from
+        albumentations base classes.
         """
         for mro_class in type(self).__mro__:
             if mro_class is CustomTransformsApplyMixin:

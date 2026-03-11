@@ -421,6 +421,10 @@ class UniformParams(NoiseParamsBase):
 
 This rule is enforced by a pre-commit hook that will flag any violations during development.
 
+#### No `get_transform_init_args_names` Override
+
+**Do not override `get_transform_init_args_names()`.** The base class auto-infers init argument names by introspecting `__init__` signatures across the MRO. Overriding this method is unnecessary and can cause serialization mismatches.
+
 ### Batch Performance (`apply_to_images`)
 
 Images in batch mode are always `(N, H, W, C)`. Never check `ndim == 4` — it's always true.

@@ -1345,8 +1345,66 @@ def iso_noise(
         luminance_noise * intensity * (1.0 - hls[..., 1]),
     )
 
-    noised_hls = cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
-    return np.clip(noised_hls, 0, 1, out=noised_hls)  # Ensure output is in [0, 1] range
+    return cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
+
+
+@float32_io
+@clipped
+def iso_noise_images(
+    images: np.ndarray,
+    color_shift: float,
+    intensity: float,
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Apply ISO noise to a batch of images with vectorized noise generation.
+
+    Noise is generated once and broadcast across all images, matching the behavior
+    of calling apply() per image with the same random seed.
+
+    Args:
+        images: (N, H, W, 3) RGB images.
+        color_shift: Amount of color hue shift.
+        intensity: Noise intensity multiplier.
+        random_generator: Numpy RNG seeded for reproducibility.
+
+    Returns:
+        (N, H, W, 3) noised images.
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        3
+
+    """
+    non_rgb_error(images[0])
+    h, w = images.shape[1:3]
+
+    hls_batch = np.empty_like(images)
+
+    for i, image in enumerate(images):
+        cv2.cvtColor(image, cv2.COLOR_RGB2HLS, dst=hls_batch[i])
+
+    # Use first image's stddev — matches apply() which creates default_rng(same_seed) per image
+    _, stddev = cv2.meanStdDev(hls_batch[0])
+
+    # Generate noise ONCE in same order as iso_noise — mirrors apply() with same seed
+    luminance_noise = random_generator.poisson(float(stddev[1, 0]) * intensity, size=(h, w)).astype(np.float32)
+    color_noise = random_generator.normal(0, color_shift * intensity, size=(h, w)).astype(np.float32)
+
+    hls_batch[:, :, :, 0] += color_noise
+    del color_noise
+
+    # Equivalent to: L += noise * intensity * (1 - L)
+    luminance_noise *= intensity
+    hls_batch[:, :, :, 1] *= 1.0 - luminance_noise
+    hls_batch[:, :, :, 1] += luminance_noise
+    del luminance_noise
+
+    for i in range(len(hls_batch)):
+        cv2.cvtColor(hls_batch[i], cv2.COLOR_HLS2RGB, dst=hls_batch[i])
+
+    return hls_batch
 
 
 def to_gray_weighted_average(img: ImageType) -> ImageType:

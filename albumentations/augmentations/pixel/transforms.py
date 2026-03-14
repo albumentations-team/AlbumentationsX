@@ -2389,6 +2389,21 @@ class ISONoise(ImageOnlyTransform):
             np.random.default_rng(random_seed),
         )
 
+    def apply_to_images(
+        self,
+        images: ImageType,
+        color_shift: float,
+        intensity: float,
+        random_seed: int,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.iso_noise_images(
+            images,
+            color_shift,
+            intensity,
+            np.random.default_rng(random_seed),
+        )
+
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],

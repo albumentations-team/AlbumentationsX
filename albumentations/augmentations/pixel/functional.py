@@ -1381,7 +1381,6 @@ def iso_noise_images(
     h, w = images.shape[1:3]
 
     hls_batch = np.empty_like(images)
-    result = np.empty_like(images)
 
     for i, image in enumerate(images):
         cv2.cvtColor(image, cv2.COLOR_RGB2HLS, dst=hls_batch[i])
@@ -1390,17 +1389,22 @@ def iso_noise_images(
     _, stddev = cv2.meanStdDev(hls_batch[0])
 
     # Generate noise ONCE in same order as iso_noise — mirrors apply() with same seed
-    luminance_noise = random_generator.poisson(float(stddev[1, 0]) * intensity, size=(h, w)).astype(np.float32)
     color_noise = random_generator.normal(0, color_shift * intensity, size=(h, w)).astype(np.float32)
 
-    # (h, w) broadcasts to (n, h, w) — no per-image allocation
     hls_batch[:, :, :, 0] += color_noise
-    hls_batch[:, :, :, 1] += luminance_noise * intensity * (1.0 - hls_batch[:, :, :, 1])
+    del color_noise
 
-    for i, hls in enumerate(hls_batch):
-        cv2.cvtColor(hls, cv2.COLOR_HLS2RGB, dst=result[i])
+    # Equivalent to: L += noise * intensity * (1 - L)
+    luminance_noise = random_generator.poisson(float(stddev[1, 0]) * intensity, size=(h, w)).astype(np.float32)
+    luminance_noise *= intensity
+    hls_batch[:, :, :, 1] *= 1.0 - luminance_noise
+    hls_batch[:, :, :, 1] += luminance_noise
+    del luminance_noise
 
-    return result
+    for i in range(len(hls_batch)):
+        cv2.cvtColor(hls_batch[i], cv2.COLOR_HLS2RGB, dst=hls_batch[i])
+
+    return hls_batch
 
 
 def to_gray_weighted_average(img: ImageType) -> ImageType:

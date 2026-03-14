@@ -1389,13 +1389,13 @@ def iso_noise_images(
     _, stddev = cv2.meanStdDev(hls_batch[0])
 
     # Generate noise ONCE in same order as iso_noise — mirrors apply() with same seed
+    luminance_noise = random_generator.poisson(float(stddev[1, 0]) * intensity, size=(h, w)).astype(np.float32)
     color_noise = random_generator.normal(0, color_shift * intensity, size=(h, w)).astype(np.float32)
 
     hls_batch[:, :, :, 0] += color_noise
     del color_noise
 
     # Equivalent to: L += noise * intensity * (1 - L)
-    luminance_noise = random_generator.poisson(float(stddev[1, 0]) * intensity, size=(h, w)).astype(np.float32)
     luminance_noise *= intensity
     hls_batch[:, :, :, 1] *= 1.0 - luminance_noise
     hls_batch[:, :, :, 1] += luminance_noise

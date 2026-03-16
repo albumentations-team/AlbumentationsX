@@ -1334,8 +1334,8 @@ class Compose(BaseCompose, HubMixin):
 
 
 class OneOf(BaseCompose):
-    """Select one of transforms to apply. Selected transform will be called with `force_apply=True`.
-    Transforms probabilities will be normalized to one 1, so in this case transforms probabilities works as weights.
+    """Apply one of the child transforms at random; probabilities normalized as weights.
+    Selected transform runs with force_apply=True.
 
     Args:
         transforms (list): list of transformations to compose.
@@ -1754,13 +1754,11 @@ class ReplayCompose(Compose):
         transform_dict: dict[str, Any],
         lambda_transforms: dict[str, Any] | None = None,
     ) -> TransformType:
-        """Args:
-        transform_dict (dict[str, Any]): A dictionary that contains transform data.
-        lambda_transforms (dict): A dictionary that contains lambda transforms, that
-            is instances of the Lambda class.
-        This dictionary is required when you are restoring a pipeline that contains lambda transforms.
-        Keys in that dictionary should be named same as `name` arguments in respective lambda transforms
-        from a serialized pipeline.
+        """Restore a transform from a replay dict; pass lambda_transforms when the pipeline contains Lambda transforms.
+
+        Args:
+            transform_dict (dict[str, Any]): A dictionary that contains transform data.
+            lambda_transforms (dict): Optional dict of Lambda instances keyed by transform name.
 
         """
         applied = transform_dict["applied"]

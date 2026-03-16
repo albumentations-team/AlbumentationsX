@@ -384,9 +384,8 @@ class Transpose(DualTransform):
 
 
 class D4(DualTransform):
-    """Applies one of the eight possible D4 dihedral group transformations to a square-shaped input,
-    maintaining the square shape. These transformations correspond to the symmetries of a square,
-    including rotations and reflections.
+    """Apply one of eight D4 square symmetries (rotations and reflections).
+    Keeps square shape. Use group_element for TTA.
 
     The D4 group transformations include:
     - 'e' (identity): No transformation is applied.
@@ -600,8 +599,8 @@ class D4(DualTransform):
 
 
 class SquareSymmetry(D4):
-    """Applies one of the eight possible square symmetry transformations to a square-shaped input.
-    This is an alias for D4 transform with a more intuitive name for those not familiar with group theory.
+    """Alias for D4: one of eight square symmetries (rotations and reflections).
+    Use group_element for deterministic TTA.
 
     The square symmetry transformations include:
     - Identity: No transformation is applied

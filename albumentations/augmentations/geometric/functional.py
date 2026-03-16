@@ -1338,11 +1338,8 @@ def to_distance_maps(
     image_shape: tuple[int, int],
     inverted: bool = False,
 ) -> np.ndarray:
-    """Generate a `(H,W,N)` array of distance maps for `N` keypoints.
-    The `n`-th distance map contains at every location `(y, x)` the
-    euclidean distance to the `n`-th keypoint.
-    This function can be used as a helper when augmenting keypoints with a
-    method that only supports the augmentation of images.
+    """Generate (H,W,N) array of Euclidean distance maps to N keypoints.
+    Helper for image-only augmentations that need keypoint info.
 
     Args:
         keypoints (np.ndarray): A numpy array of shape (N, 2+) where N is the number of keypoints.

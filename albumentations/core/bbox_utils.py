@@ -770,7 +770,8 @@ def denormalize_bboxes(
 
 
 def calculate_bbox_areas_in_pixels(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """Calculate areas for multiple bounding boxes.
+    """Compute pixel areas of bboxes from normalized [x_min, y_min, x_max, y_max] and image shape (height, width).
+
     This function computes the areas of bounding boxes given their normalized coordinates
     and the dimensions of the image they belong to. The bounding boxes are expected to be
     in the format [x_min, y_min, x_max, y_max] with normalized coordinates (0 to 1).
@@ -820,9 +821,7 @@ def convert_bboxes_to_albumentations(
     bbox_type: Literal["hbb", "obb"],
     check_validity: bool = False,
 ) -> np.ndarray:
-    """Convert bounding boxes from a specified format to the format used by albumentations:
-    normalized coordinates of top-left and bottom-right corners of the bounding box in the form of
-    `(x_min, y_min, x_max, y_max)` e.g. `(0.15, 0.27, 0.67, 0.5)`.
+    """Convert bboxes from coco/pascal_voc/yolo/cxcywh to albumentations normalized (x_min, y_min, x_max, y_max).
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -1114,8 +1113,7 @@ def filter_bboxes(
     max_accept_ratio: float | None = None,
     clip_after_transform: bool = True,
 ) -> np.ndarray:
-    """Remove bounding boxes that either lie outside of the visible area by more than min_visibility
-    or whose area in pixels is under the threshold set by `min_area`. Also crops boxes to final image size.
+    """Remove bboxes outside visible area (min_visibility), below min_area, or failing min size; crop to image.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).

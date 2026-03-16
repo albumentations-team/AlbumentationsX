@@ -342,9 +342,8 @@ class Pad(DualTransform):
 
 
 class PadIfNeeded(Pad):
-    """Pads the sides of an image if the image dimensions are less than the specified minimum dimensions.
-    If the `pad_height_divisor` or `pad_width_divisor` is specified, the function additionally ensures
-    that the image dimensions are divisible by these values.
+    """Pad image to meet min height/width and/or divisibility (pad_height_divisor, pad_width_divisor).
+    Position, fill configurable.
 
     Args:
         min_height (int | None): Minimum desired height of the image. Ensures image height is at least this value.

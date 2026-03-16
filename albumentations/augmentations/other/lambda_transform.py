@@ -36,8 +36,8 @@ __all__ = ["Lambda"]
 
 
 class Lambda(NoOp):
-    """A flexible transformation class for using user-defined transformation functions per targets.
-    Function signature must include **kwargs to accept optional arguments like interpolation method, image size, etc:
+    """Transform that applies user-defined callables per target (image, mask, bboxes, keypoints).
+    Callables must accept **kwargs.
 
     Args:
         image (Callable[..., Any] | None): Image transformation function.

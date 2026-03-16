@@ -1366,9 +1366,8 @@ class GridElasticDeform(DualTransform):
 
 
 class RandomGridShuffle(DualTransform):
-    """Randomly shuffles the grid's cells on an image, mask, or keypoints,
-    effectively rearranging patches within the image.
-    This transformation divides the image into a grid and then permutes these grid cells based on a random mapping.
+    """Divide image into a grid and randomly permute the cells (image, mask, keypoints).
+    Grid size via grid (e.g. (3,3)).
 
     Args:
         grid (tuple[int, int]): Size of the grid for splitting the image into cells. Each cell is shuffled randomly.

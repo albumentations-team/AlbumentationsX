@@ -88,9 +88,7 @@ class ValidatedTransformMeta(type):
         return validated_kwargs
 
     def __new__(cls: type[Any], name: str, bases: tuple[type, ...], dct: dict[str, Any]) -> type[Any]:
-        """This is a custom metaclass that validates the parameters of the class during instantiation.
-        It is used to ensure that the parameters of the class are valid and that they are of the correct type.
-        """
+        """Metaclass that validates InitSchema parameters at class instantiation and wraps __init__ with validation."""
         if "InitSchema" in dct and issubclass(dct["InitSchema"], BaseModel):
             original_init: Callable[..., Any] | None = dct.get("__init__")
             if original_init is None:

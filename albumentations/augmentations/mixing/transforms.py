@@ -27,9 +27,8 @@ __all__ = ["Mosaic", "OverlayElements"]
 
 
 class OverlayElements(DualTransform):
-    """Apply overlay elements such as images and masks onto an input image. This transformation can be used to add
-    various objects (e.g., stickers, logos) to images with optional masks and bounding boxes for better placement
-    control.
+    """Apply overlay images/masks onto an input image (e.g. stickers, logos).
+    Optional bboxes and masks for placement.
 
     Args:
         metadata_key (str): Additional target key for metadata. Default `overlay_metadata`.

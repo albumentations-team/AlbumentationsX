@@ -22,9 +22,8 @@ __all__ = ["CoarseDropout", "ConstrainedCoarseDropout", "Erasing"]
 
 
 class CoarseDropout(BaseDropout):
-    """CoarseDropout randomly drops out rectangular regions from the image and optionally,
-    the corresponding regions in an associated mask, to simulate occlusion and
-    varied object sizes found in real-world settings.
+    """Randomly drop rectangular regions from image (and optionally mask) to simulate occlusion.
+    Flexible size, count, fill.
 
     This transformation is an evolution of CutOut and RandomErasing, offering more
     flexibility in the size, number of dropout regions, and fill values.

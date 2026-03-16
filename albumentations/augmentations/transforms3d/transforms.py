@@ -319,9 +319,8 @@ class Pad3D(BasePad3D):
 
 
 class PadIfNeeded3D(BasePad3D):
-    """Pads the sides of a 3D volume if its dimensions are less than specified minimum dimensions.
-    If the pad_divisor_zyx is specified, the function additionally ensures that the volume
-    dimensions are divisible by these values.
+    """Pad 3D volume to meet min dimensions (min_zyx) and/or divisibility (pad_divisor_zyx).
+    Position, fill configurable.
 
     Args:
         min_zyx (tuple[int, int, int] | None): Minimum desired size as (depth, height, width).
@@ -1065,9 +1064,8 @@ class RandomCrop3D(BaseCropAndPad3D):
 
 
 class CoarseDropout3D(Transform3D):
-    """CoarseDropout3D randomly drops out cuboid regions from a 3D volume and optionally,
-    the corresponding regions in an associated 3D mask, to simulate occlusion and
-    varied object sizes found in real-world volumetric data.
+    """Randomly drop cuboid regions from a 3D volume (and optionally mask) to simulate occlusion.
+    Hole size/count configurable.
 
     Args:
         num_holes_range (tuple[int, int]): Range (min, max) for the number of cuboid

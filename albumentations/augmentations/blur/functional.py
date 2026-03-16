@@ -399,8 +399,7 @@ def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
 
 
 def create_gaussian_kernel_input_array(size: int) -> np.ndarray:
-    """Creates a 1-D array which will create an array of x-coordinates which will be input for the
-    gaussian function (values from -size/2 to size/2 with step size of 1)
+    """1-D x-coordinates from -size/2 to size/2 for the Gaussian kernel (input to separable Gaussian blur).
 
     Piecewise function is needed as equivalent python list comprehension is faster than np.linspace
     for values of size < 100

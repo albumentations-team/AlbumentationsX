@@ -494,9 +494,8 @@ class Rotate(DualTransform):
         width: int,
         angle: float,
     ) -> dict[str, int]:
-        """Given a rectangle of size wxh that has been rotated by 'angle' (in
-        degrees), computes the width and height of the largest possible
-        axis-aligned rectangle (maximal area) within the rotated rectangle.
+        """Given rotated rectangle (width, height, angle in degrees), return size of largest
+        axis-aligned rectangle inside it.
 
         References:
             Rotate image and crop out black borders: https://stackoverflow.com/questions/16702966/rotate-image-and-crop-out-black-borders

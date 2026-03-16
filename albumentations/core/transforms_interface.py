@@ -558,10 +558,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return self._available_keys
 
     def add_targets(self, additional_targets: dict[str, str]) -> None:
-        """Add targets to transform them the same way as one of existing targets.
-        ex: {'target_image': 'image'}
-        ex: {'obj1_mask': 'mask', 'obj2_mask': 'mask'}
-        by the way you must have at least one object with key 'image'
+        """Register additional targets transformed like an existing one (e.g. {'image2': 'image'}).
+        Need at least 'image'.
 
         Args:
             additional_targets (dict[str, str]): keys - new target name, values
@@ -653,7 +651,10 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
 
 class DualTransform(BasicTransform):
-    """A base class for transformations that should be applied both to an image and its corresponding properties
+    """Base class for transforms that apply to both image and annotations (masks, bboxes, keypoints),
+    keeping them spatially consistent.
+
+    When a transform is applied to an image, all associated entities (masks, bounding boxes, keypoints) are
     such as masks, bounding boxes, and keypoints. This class ensures that when a transform is applied to an image,
     all associated entities are transformed accordingly to maintain consistency between the image and its annotations.
 
@@ -1181,11 +1182,7 @@ class CustomTransformsApplyMixin:
             self._key2func[key] = method
 
     def _is_user_defined(self, method_name: str) -> bool:
-        """Returns True if method_name is defined in a class that precedes
-        CustomTransformsApplyMixin in the MRO (i.e. in the concrete subclass
-        or its parents before the mixin). Excludes methods inherited from
-        albumentations base classes.
-        """
+        """True if method_name is defined on subclass or parents before the mixin (not from albumentations base)."""
         for mro_class in type(self).__mro__:
             if mro_class is CustomTransformsApplyMixin:
                 break

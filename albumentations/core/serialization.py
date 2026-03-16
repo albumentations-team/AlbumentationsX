@@ -50,8 +50,8 @@ def shorten_class_name(class_fullname: str) -> str:
 
 
 class SerializableMeta(ABCMeta):
-    """A metaclass that is used to register classes in `SERIALIZABLE_REGISTRY` or `NON_SERIALIZABLE_REGISTRY`
-    so they can be found later while deserializing transformation pipeline using classes full names.
+    """Metaclass that registers transform classes for lookup by full name during deserialization.
+    Uses SERIALIZABLE_REGISTRY / NON_SERIALIZABLE_REGISTRY.
     """
 
     def __new__(cls, name: str, bases: tuple[type, ...], *args: Any, **kwargs: Any) -> "SerializableMeta":
@@ -133,8 +133,7 @@ class Serializable(metaclass=SerializableMeta):
         raise NotImplementedError
 
     def to_dict(self, on_not_implemented_error: str = "raise") -> dict[str, Any]:
-        """Take a transform pipeline and convert it to a serializable representation that uses only standard
-        python data types: dictionaries, lists, strings, integers, and floats.
+        """Convert transform to a serializable dict of standard Python types (dict, list, str, int, float).
 
         Args:
             self (Serializable): A transform that should be serialized. If the transform doesn't implement the `to_dict`
@@ -165,8 +164,7 @@ class Serializable(metaclass=SerializableMeta):
 
 
 def to_dict(transform: Serializable, on_not_implemented_error: str = "raise") -> dict[str, Any]:
-    """Take a transform pipeline and convert it to a serializable representation that uses only standard
-    python data types: dictionaries, lists, strings, integers, and floats.
+    """Convert transform to a serializable dict of standard Python types (dict, list, str, int, float).
 
     Args:
         transform (Serializable): A transform that should be serialized. If the transform doesn't implement
@@ -200,12 +198,11 @@ def from_dict(
     transform_dict: dict[str, Any],
     nonserializable: dict[str, Any] | None = None,
 ) -> Serializable | None:
-    """Args:
-    transform_dict: A dictionary with serialized transform pipeline.
-    nonserializable (dict): A dictionary that contains non-serializable transforms.
-        This dictionary is required when you are restoring a pipeline that contains non-serializable transforms.
-        Keys in that dictionary should be named same as `name` arguments in respective transforms from
-        a serialized pipeline.
+    """Restore a transform from a serialized dict; pass nonserializable when the pipeline contains Lambda or similar.
+
+    Args:
+        transform_dict: Serialized transform pipeline.
+        nonserializable: Optional dict of non-serializable transforms keyed by name.
 
     """
     register_additional_transforms()

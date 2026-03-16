@@ -415,6 +415,6 @@ require_param_types = false   # TODO: add param/return types to docstrings; then
 check_references = true
 check_type_consistency = false  # TODO: fix docstring types to match annotations (Union→|, Literal quotes, ImageType, etc.)
 exclude_files = [ "__init__.py" ]
-min_short_description_length = 0   # Disabled for now; set 120–160 when docstrings updated
+min_short_description_length = 0   # Enable 120–160 when first paragraphs expanded (857 docstrings currently too short)
 max_short_description_length = 0
 verbose = false

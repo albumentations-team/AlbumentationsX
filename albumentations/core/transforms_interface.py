@@ -375,7 +375,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             ensure_contiguous: Whether to ensure C-contiguous output
 
         Returns:
-            Transformed batch array
+            np.ndarray: Transformed batch array.
 
         """
         # Handle empty batch
@@ -526,7 +526,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             **params: Transform parameters (same as passed to other apply_* methods).
 
         Returns:
-            The (optionally modified) user data. Must return the same type as the input.
+            Any: The (optionally modified) user data. Must return the same type as the input.
 
         Examples:
             >>> import albumentations as A

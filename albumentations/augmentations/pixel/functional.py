@@ -2111,7 +2111,7 @@ def unsharp_mask_images(
         threshold: The threshold value for the unsharp mask.
 
     Returns:
-        Batch of unsharp masked images with same shape and dtype as input.
+        np.ndarray: Batch of unsharp masked images with same shape and dtype as input.
 
     Note: we intentionally avoid @float32_io/@clipped decorators here.
         Those decorators convert the entire batch at once, which is ~2x slower for uint8
@@ -2181,7 +2181,7 @@ def unsharp_mask(
         threshold: The threshold value for the unsharp mask.
 
     Returns:
-        Unsharp masked image with same shape and dtype as input.
+        np.ndarray: Unsharp masked image with same shape and dtype as input.
 
     """
     return unsharp_mask_images(np.expand_dims(image, axis=0), ksize, sigma, alpha, threshold)[0]
@@ -4462,7 +4462,7 @@ def _create_vignette_mask(
     """Create a 2D vignette falloff mask.
 
     Returns:
-        (H, W) float32 array with values in [1-intensity, 1].
+        np.ndarray: (H, W) float32 array with values in [1-intensity, 1].
 
     """
     pixel_cols = np.arange(width, dtype=np.float32)
@@ -4498,7 +4498,7 @@ def apply_vignette(
         center_y: Vertical center of the vignette as fraction of height, in [0, 1].
 
     Returns:
-        Image with vignetting applied.
+        ImageType: Image with vignetting applied.
 
     """
     height, width = img.shape[:2]
@@ -4523,7 +4523,7 @@ def apply_film_grain(
         intensity: Grain strength multiplier.
 
     Returns:
-        Image with film grain applied.
+        ImageType: Image with film grain applied.
 
     """
     num_channels = img.shape[-1]
@@ -4553,7 +4553,7 @@ def apply_halftone(
         blend: Blend factor between halftone and original. 0 = pure halftone, 1 = original.
 
     Returns:
-        Image with halftone effect applied.
+        ImageType: Image with halftone effect applied.
 
     """
     img = np.ascontiguousarray(img)
@@ -4637,7 +4637,7 @@ def apply_lens_flare(
         bloom_radius: Gaussian blur radius for bloom effect.
 
     Returns:
-        Image with lens flare applied.
+        ImageType: Image with lens flare applied.
 
     """
     height, width = img.shape[:2]
@@ -4691,7 +4691,7 @@ def generate_water_displacement_maps(
         random_generator: NumPy random generator.
 
     Returns:
-        Tuple of (map_x, map_y) float32 arrays for cv2.remap.
+        tuple[np.ndarray, np.ndarray]: Tuple of (map_x, map_y) float32 arrays for cv2.remap.
 
     """
     height, width = image_shape
@@ -4738,7 +4738,7 @@ def apply_atmospheric_fog(
         depth_map: (H, W) float32 array with values in [0, 1], where 1 is farthest.
 
     Returns:
-        Image with fog applied.
+        ImageType: Image with fog applied.
 
     """
     num_channels = img.shape[-1]

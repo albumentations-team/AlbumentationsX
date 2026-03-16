@@ -28,7 +28,7 @@ class MixpanelBackend:
             timestamp: ISO format string or datetime object
 
         Returns:
-            Unix timestamp in seconds or None
+            int | None: Unix timestamp in seconds or None.
 
         """
         if timestamp is None:

@@ -1001,7 +1001,7 @@ class Compose(BaseCompose, HubMixin):
             data: Data dictionary containing various arrays
 
         Returns:
-            Tuple of (2D shapes list, 3D shapes list)
+            tuple[list[tuple[int, ...]], list[tuple[int, ...]]]: Tuple of (2D shapes list, 3D shapes list).
 
         """
         shapes: list[tuple[int, ...]] = []  # For H,W checks

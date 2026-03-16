@@ -15,7 +15,7 @@ def parse_requirement(req: str) -> tuple[str, str]:
         req: Requirement string like 'numpy>=1.24.4' or 'albucore==0.0.35'
 
     Returns:
-        Tuple of (package_name, version_spec)
+        tuple[str, str]: Tuple of (package_name, version_spec).
 
     """
     match = re.match(r"([a-zA-Z0-9_-]+)([>=<~!]+.+)", req)
@@ -42,7 +42,7 @@ def versions_match(version1: str, version2: str) -> bool:
         version2: Second version spec (e.g., '>=1.10.0')
 
     Returns:
-        True if versions match (considering .0 suffixes are equivalent)
+        bool: True if versions match (considering .0 suffixes are equivalent).
 
     """
     # Direct match
@@ -91,7 +91,7 @@ def load_pip_dependencies() -> dict[str, str]:
     """Load core dependencies from pyproject.toml.
 
     Returns:
-        Dictionary mapping normalized package names to version specs
+        dict[str, str]: Dictionary mapping normalized package names to version specs.
 
     """
     pyproject = load_pyproject()
@@ -106,7 +106,7 @@ def load_pip_optional_dependencies() -> dict[str, str]:
     """Load optional dependencies from pyproject.toml (merged from all groups).
 
     Returns:
-        Dictionary mapping normalized package names to version specs
+        dict[str, str]: Dictionary mapping normalized package names to version specs.
 
     """
     pyproject = load_pyproject()
@@ -123,7 +123,7 @@ def load_conda_dependencies() -> dict[str, str]:
     """Load dependencies from conda meta.yaml.
 
     Returns:
-        Dictionary mapping normalized package names to version specs
+        dict[str, str]: Dictionary mapping normalized package names to version specs.
 
     """
     meta_yaml_path = Path("conda.recipe/meta.yaml")
@@ -165,7 +165,7 @@ def find_version_mismatches(
         conda_deps: Dependencies from conda meta.yaml run section
 
     Returns:
-        List of error messages for mismatches
+        list[str]: List of error messages for mismatches.
 
     """
     errors = []

@@ -44,7 +44,7 @@ repos:
     hooks:
     - id: check-docstrings
       name: Check Docstrings for '---' and '``' (double backticks)
-      entry: python tools/check_docstrings.py
+      entry: python tools/check_docstring_format.py
       language: python
       types: [python]
     - id: check-naming-conflicts

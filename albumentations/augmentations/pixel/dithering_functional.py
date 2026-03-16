@@ -198,7 +198,7 @@ def generate_bayer_matrix(size: int) -> np.ndarray:
         size: Size of the matrix (2, 4, 8, or 16).
 
     Returns:
-        Bayer matrix normalized to [0, 1] range.
+        np.ndarray: Bayer matrix normalized to [0, 1] range.
 
     """
     if size == 2:
@@ -247,7 +247,7 @@ def quantize_value(value: float, n_levels: int) -> float:
         n_levels: Number of discrete levels.
 
     Returns:
-        Quantized value in [0, 1] range.
+        float: Quantized value in [0, 1] range.
 
     """
     if n_levels == 2:
@@ -267,7 +267,7 @@ def quantize_array(arr: np.ndarray, n_levels: int) -> np.ndarray:
         n_levels: Number of discrete levels.
 
     Returns:
-        Quantized array in [0, 1] range.
+        np.ndarray: Quantized array in [0, 1] range.
 
     """
     if n_levels == 2:
@@ -295,7 +295,7 @@ def random_dither_uint8(
         random_generator: Random number generator for reproducible results.
 
     Returns:
-        Dithered uint8 image in [0, 255] range.
+        ImageUInt8: Dithered uint8 image in [0, 255] range.
 
     """
     # Add random noise (scale noise_range to uint8 range)
@@ -337,7 +337,7 @@ def random_dither(
         random_generator: Random number generator for reproducible results.
 
     Returns:
-        Dithered float32 image in [0, 1] range.
+        ImageFloat32: Dithered float32 image in [0, 1] range.
 
     """
     # Add random noise
@@ -368,7 +368,7 @@ def ordered_dither_uint8(
         matrix_size: Size of Bayer matrix (2, 4, 8, or 16).
 
     Returns:
-        Dithered uint8 image.
+        ImageUInt8: Dithered uint8 image.
 
     """
     # Generate Bayer matrix scaled to [0, 255]
@@ -413,7 +413,7 @@ def ordered_dither(
         matrix_size: Size of Bayer matrix (2, 4, 8, or 16).
 
     Returns:
-        Dithered image in [0, 1] range.
+        ImageFloat32: Dithered image in [0, 1] range.
 
     """
     # Generate Bayer matrix
@@ -463,7 +463,7 @@ def error_diffusion_dither(
         serpentine: Use serpentine (back-and-forth) scanning.
 
     Returns:
-        Dithered image in [0, 1] range.
+        ImageType: Dithered image in [0, 1] range.
 
     """
     if algorithm not in ERROR_DIFFUSION_KERNELS:
@@ -613,7 +613,7 @@ def apply_dithering(
         **kwargs: Additional parameters for specific methods.
 
     Returns:
-        Dithered image in [0, 1] range with shape (H, W, C).
+        ImageType: Dithered image in [0, 1] range with shape (H, W, C).
 
     """
     if color_mode == "grayscale":

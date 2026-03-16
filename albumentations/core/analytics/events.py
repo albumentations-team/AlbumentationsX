@@ -69,7 +69,7 @@ class ComposeInitEvent:
             transforms: List of transform names
 
         Returns:
-            SHA-256 hash of the pipeline configuration
+            str: SHA-256 hash of the pipeline configuration.
 
         """
         # Do NOT sort transforms - order matters in augmentation pipelines!

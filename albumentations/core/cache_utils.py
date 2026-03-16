@@ -8,7 +8,7 @@ def get_cache_dir() -> Path:
     """Get platform-appropriate cache directory.
 
     Returns:
-        Path to the cache directory for AlbumentationsX.
+        Path: Path to the cache directory for AlbumentationsX.
 
     """
     # Check for environment variable override

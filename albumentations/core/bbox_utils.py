@@ -715,7 +715,7 @@ def polygons_to_obb(
         extra_fields: optional array (N, M) to append after bbox coords + angle.
 
     Returns:
-        Array of OBB bounding boxes in the same coordinate system as input polygons.
+        np.ndarray: Array of OBB bounding boxes in the same coordinate system as input polygons.
         Format: [x_min, y_min, x_max, y_max, angle, *extra_fields].
 
     """

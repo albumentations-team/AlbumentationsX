@@ -128,7 +128,7 @@ def resize_bboxes(
         bbox_type: Type of bboxes - "hbb" or "obb"
 
     Returns:
-        Resized bboxes in normalized coordinates
+        np.ndarray: Resized bboxes in normalized coordinates.
 
     """
     if bbox_type == "hbb":
@@ -687,7 +687,7 @@ def perspective_images(
         interpolation: Interpolation method for resampling (cv2 interpolation flag).
 
     Returns:
-        Batch of perspective-transformed images with the same shape as input
+        np.ndarray: Batch of perspective-transformed images with the same shape as input
         when keep_size is True, or (N, max_height, max_width, C) when False.
 
     """
@@ -2134,7 +2134,7 @@ def upscale_distortion_maps(
         interpolation: OpenCV interpolation method
 
     Returns:
-        Upscaled distortion maps with target_shape
+        tuple[np.ndarray, np.ndarray]: Upscaled distortion maps with target_shape.
 
     """
     h, w = target_shape
@@ -2176,7 +2176,7 @@ def remap_bboxes(
         bbox_type: Type of bounding box - "hbb" for axis-aligned or "obb" for oriented
 
     Returns:
-        Remapped bounding boxes
+        np.ndarray: Remapped bounding boxes.
 
     """
     # Convert bboxes to mask

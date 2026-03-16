@@ -1028,7 +1028,7 @@ def mask_to_rects(mask: np.ndarray) -> np.ndarray:
         mask: 2D uint8 mask where 0 indicates a dropped region.
 
     Returns:
-        Array of shape (N, 4) with [x1, y1, x2, y2] rectangles, or empty (0, 4) array.
+        np.ndarray: Array of shape (N, 4) with [x1, y1, x2, y2] rectangles, or empty (0, 4) array.
 
     """
     zero = (mask == 0).astype(np.int8)
@@ -1088,7 +1088,7 @@ def generate_grid_mask_holes(
         random_generator: NumPy random generator.
 
     Returns:
-        Array of holes as (N, 4) with [x1, y1, x2, y2] format.
+        np.ndarray: Array of holes as (N, 4) with [x1, y1, x2, y2] format.
 
     """
     height, width = image_shape

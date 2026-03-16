@@ -1587,7 +1587,7 @@ class _BaseRandomSizedCrop(DualTransform):
             target_type: Either "image" or "mask" to determine base interpolation
 
         Returns:
-            OpenCV interpolation flag
+            int: OpenCV interpolation flag.
 
         """
         crop_height, crop_width = crop_shape

@@ -18,7 +18,7 @@ def get_environment_info() -> dict[str, Any]:
     """Collect basic environment information without external dependencies.
 
     Returns:
-        Dictionary with OS, CPU, GPU (if available), RAM, and environment type
+        dict[str, Any]: Dictionary with OS, CPU, GPU (if available), RAM, and environment type.
 
     """
     return {
@@ -38,7 +38,7 @@ def detect_environment() -> str:
     Priority order: ci > colab > kaggle > docker > jupyter > local
 
     Returns:
-        Environment name as string
+        str: Environment name.
 
     """
     # Check CI first
@@ -265,7 +265,7 @@ def is_ci_environment() -> bool:
     """Check if running in a CI/CD environment.
 
     Returns:
-        True if any CI environment variable is detected
+        bool: True if any CI environment variable is detected.
 
     """
     ci_env_vars = [
@@ -293,7 +293,7 @@ def is_pytest_running() -> bool:
     """Check if pytest is currently running.
 
     Returns:
-        True if pytest is detected in the environment
+        bool: True if pytest is detected in the environment.
 
     """
     return "PYTEST_CURRENT_TEST" in os.environ
@@ -362,7 +362,7 @@ def collect_pipeline_info(compose: "Compose") -> dict[str, Any]:
         compose: The Compose instance to analyze
 
     Returns:
-        Dictionary with transform names and target usage information
+        dict[str, Any]: Dictionary with transform names and target usage information.
 
     """
     transforms: list[str] = []

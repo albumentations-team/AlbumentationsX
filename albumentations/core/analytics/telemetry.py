@@ -113,7 +113,7 @@ class TelemetryClient:
             event: The event to send
 
         Returns:
-            True if event was sent successfully, False otherwise
+            bool: True if event was sent successfully, False otherwise.
 
         """
         telemetry_sent = True
@@ -149,7 +149,7 @@ def get_telemetry_client() -> TelemetryClient:
     """Get or create the global telemetry client.
 
     Returns:
-        The global TelemetryClient instance
+        TelemetryClient: The global TelemetryClient instance.
 
     """
     global telemetry_client  # noqa: PLW0603

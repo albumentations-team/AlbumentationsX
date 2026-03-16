@@ -58,7 +58,7 @@ class SettingsManager:
             default: Default value if setting not found
 
         Returns:
-            Setting value
+            Any: Setting value.
 
         """
         return self._settings.get(key, default)

@@ -53,7 +53,7 @@ class UserIDManager:
         """Read user ID from file.
 
         Returns:
-            User ID string or None if not found/invalid
+            str | None: User ID string or None if not found/invalid.
 
         """
         if not self.user_id_file.exists():
@@ -77,7 +77,7 @@ class UserIDManager:
             user_id: User ID to write
 
         Returns:
-            True if write was successful, False otherwise
+            bool: True if write was successful, False otherwise.
 
         """
         # Create directory if it doesn't exist
@@ -129,7 +129,7 @@ class UserIDManager:
         when multiple processes try to access the user ID.
 
         Returns:
-            User ID string or None if user has opted out
+            str | None: User ID string or None if user has opted out.
 
         """
         # Return cached value if already loaded
@@ -206,7 +206,7 @@ def get_user_id_manager() -> UserIDManager:
     """Get the global UserIDManager instance.
 
     Returns:
-        The global UserIDManager instance
+        UserIDManager: The global UserIDManager instance.
 
     """
     global _user_id_manager  # noqa: PLW0603

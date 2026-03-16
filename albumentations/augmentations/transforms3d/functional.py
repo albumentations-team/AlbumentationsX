@@ -469,7 +469,7 @@ def shuffle_tiles_within_shape_groups_3d(
         random_generator: Random number generator for shuffling
 
     Returns:
-        List where index i contains the new position for tile i
+        list[int]: List where index i contains the new position for tile i.
 
     """
     num_tiles = sum(len(indices) for indices in shape_groups.values())

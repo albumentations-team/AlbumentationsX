@@ -500,6 +500,7 @@ This small difference is crucial for pixel-perfect accuracy. Always use the appr
 ### Docstrings
 
 - Use Google-style docstrings
+- **First paragraph (120–160 characters):** A **useful short description** — an elevator pitch in about two lines that explains intuitively what the function or transform does (and main parameters). This is the web/search preview. Do not put "Targets: ...", "Same shape", "Used by X", or return type (e.g. "Returns np.ndarray") in the first paragraph; return type belongs in the Returns section of the docstring only. Line limit is 120 characters, so the first paragraph typically spans two lines (wrap at a word boundary). Both length (120–160) and usefulness matter for discoverability.
 - Include type information, parameter descriptions, and examples:
 
   ```python

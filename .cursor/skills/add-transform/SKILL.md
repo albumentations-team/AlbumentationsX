@@ -38,7 +38,8 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
 
 ```python
 class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
-    """One-line summary.
+    """First paragraph (120–160 chars): useful short description — elevator pitch, intuitive, what it does and main params.
+    No "Targets:", "Same shape", "Used by", or return type in preview; return type stays in Returns section. Two lines, wrap at 120.
 
     More detail about what the transform does.
 

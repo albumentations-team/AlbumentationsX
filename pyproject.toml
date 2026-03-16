@@ -406,3 +406,13 @@ require_param_types = true            # Require parameter types in docstrings
 exclude_files = [ "__init__.py" ]     # Files to exclude from checks
 verbose = false                       # Enable verbose output
 check_references = true
+
+[tool.docstring_checker]
+paths = [ "albumentations", "tools" ]
+require_param_types = true
+check_references = true
+check_type_consistency = true
+exclude_files = [ "__init__.py" ]
+min_short_description_length = 0   # Phase 1: disabled; set 120 in Phase 2
+max_short_description_length = 0   # Phase 1: disabled; set 160 in Phase 2
+verbose = false

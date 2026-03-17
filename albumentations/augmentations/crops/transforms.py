@@ -1225,7 +1225,8 @@ class Crop(BaseCropAndPad):
 
 
 class CropNonEmptyMaskIfExists(BaseCrop):
-    """Crop area with mask if mask is non-empty, else make random crop.
+    """Crop a region containing non-empty mask pixels; if mask empty or missing, fall back to
+    random crop. Good for segmentation to focus on labeled regions.
 
     This transform attempts to crop a region containing a mask (non-zero pixels). If the mask is empty or not provided,
     it falls back to a random crop. This is particularly useful for segmentation tasks where you want to focus on

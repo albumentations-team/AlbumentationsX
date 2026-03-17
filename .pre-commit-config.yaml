@@ -148,7 +148,7 @@ repos:
         args:
           [ --config-file=pyproject.toml ]
   - repo: https://github.com/ternaus/google-docstring-parser
-    rev: 0.0.11  # Use the latest version
+    rev: 0.0.11
     hooks:
       - id: check-google-docstrings
         files: ^albumentations/

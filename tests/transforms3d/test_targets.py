@@ -19,11 +19,10 @@ def extract_targets_from_docstring(cls):
     # Search for the pattern in the docstring
     matches = re.search(targets_pattern, docstring)
     if matches:
-        # Extract the targets string and split it by commas or spaces
         targets_str = matches.group(1)
-        targets = re.split(r"[,\s]+", targets_str)  # Split by comma or whitespace
-        return [target.strip() for target in targets if target.strip()]  # Remove any extra whitespace
-    return []  # Return an empty list if the 'Targets:' section isn't found
+        targets = re.split(r"[,\s]+", targets_str)
+        return [t.strip() for t in targets if t.strip()]
+    return []
 
 
 def get_targets_from_methods(cls):
@@ -70,6 +69,7 @@ def get_targets_from_methods(cls):
 TRASNFORM_3D_TARGETS = {}
 
 str2target = {
+    "mask": Targets.MASK3D,  # docstrings say "mask" for 3D mask target
     "mask3d": Targets.MASK3D,
     "volume": Targets.VOLUME,
     "keypoints": Targets.KEYPOINTS,
@@ -94,6 +94,6 @@ def test_transform3d(augmentation_cls, params):
     )
     assert set(aug._targets) <= get_targets_from_methods(augmentation_cls)
 
-    targets_from_docstring = {str2target[target] for target in extract_targets_from_docstring(augmentation_cls)}
+    targets_from_docstring = {str2target[t] for t in extract_targets_from_docstring(augmentation_cls)}
 
     assert set(aug._targets) == targets_from_docstring

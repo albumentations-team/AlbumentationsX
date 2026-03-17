@@ -158,8 +158,10 @@ class BasePad3D(Transform3D):
 
 
 class Pad3D(BasePad3D):
-    """Pad 3D volume by specified voxels. padding: int, (d,h,w), or (d_f,d_b,h_t,h_b,w_l,w_r); fill,
-    fill_mask. Targets: volume, mask, keypoints.
+    """Add voxels around a 3D volume. Padding: int or per-side (depth, height, width); fill,
+    fill_mask. For fixed-size batches or avoiding crop boundaries.
+
+    Targets: volume, mask, keypoints
 
     Args:
         padding (int, tuple[int, int, int] or tuple[int, int, int, int, int, int]): Padding values. Can be:
@@ -717,8 +719,10 @@ class BaseCropAndPad3D(Transform3D):
 
 
 class CenterCrop3D(BaseCropAndPad3D):
-    """Crop the center of a 3D volume. size (depth, height, width); pad_if_needed, fill, fill_mask.
-    Targets: volume, mask, keypoints. For fixed-size center crop.
+    """Take the center sub-volume to fixed (depth, height, width). pad_if_needed fills when smaller;
+    fill, fill_mask. For fixed-size 3D inputs (e.g. CT, MRI).
+
+    Targets: volume, mask, keypoints
 
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
@@ -872,8 +876,10 @@ class CenterCrop3D(BaseCropAndPad3D):
 
 
 class RandomCrop3D(BaseCropAndPad3D):
-    """Crop a random part of a 3D volume. size (depth, height, width); pad_if_needed, fill, fill_mask.
-    Targets: volume, mask, keypoints. For random 3D crop.
+    """Extract a random 3D sub-volume of given (depth, height, width). pad_if_needed when smaller;
+    fill, fill_mask. For spatial augmentation of volumetric data.
+
+    Targets: volume, mask, keypoints
 
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)

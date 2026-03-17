@@ -223,8 +223,8 @@ class RandomScale(DualTransform):
 
 
 class MaxSizeTransform(DualTransform):
-    """Base class for resizing by max size (longest or smallest side). Preserves aspect ratio.
-    Params: max_size or max_size_hw, interpolation.
+    """Resize so longest or smallest side meets a maximum; aspect ratio fixed. Use
+    LongestMaxSize or SmallestMaxSize; max_size or max_size_hw sets the constraint.
 
     This class provides common functionality for derived transforms like LongestMaxSize and
     SmallestMaxSize that resize images based on size constraints while preserving aspect ratio.

@@ -52,8 +52,8 @@ __all__ = [
 
 
 class VerticalFlip(DualTransform):
-    """Flip the input vertically around the x-axis. Preserves shape; supports image, mask, bboxes,
-    keypoints, volume. Self-inverse; use inverse() for TTA.
+    """Flip the image upside down. Same size and layout; self-inverse. Use inverse() for TTA
+    to restore predictions to original orientation.
 
     Args:
         p (float): Probability of applying the transform. Default: 0.5.
@@ -165,8 +165,8 @@ class VerticalFlip(DualTransform):
 
 
 class HorizontalFlip(DualTransform):
-    """Flip the input horizontally around the y-axis. Preserves shape; supports image, mask, bboxes,
-    keypoints, volume. Self-inverse; use inverse() for TTA.
+    """Flip the image left-right (mirror). Same size and layout; self-inverse. Use inverse()
+    for TTA to restore predictions to original orientation.
 
     Args:
         p (float): probability of applying the transform. Default: 0.5.

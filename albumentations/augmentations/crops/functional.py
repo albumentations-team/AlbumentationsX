@@ -170,8 +170,8 @@ def get_center_crop_coords(image_shape: tuple[int, int], crop_shape: tuple[int, 
 
 
 def crop(img: ImageType, x_min: int, y_min: int, x_max: int, y_max: int) -> ImageType:
-    """Crop image to [x_min:x_max, y_min:y_max] in pixels. Validates bounds and
-    x_min < x_max, y_min < y_max; preserves channels.
+    """Extract pixel region [x_min:x_max, y_min:y_max]. Bounds: x_min < x_max, y_min < y_max.
+    Use for crop transforms or ROI. Same channel count.
 
     This function crops an image.
 

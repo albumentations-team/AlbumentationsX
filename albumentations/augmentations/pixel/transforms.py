@@ -4149,7 +4149,7 @@ class RingingOvershoot(ImageOnlyTransform):
 
 class UnsharpMask(ImageOnlyTransform):
     """Sharpen via unsharp masking: blur, subtract, add back. blur_limit, sigma_limit, alpha
-    control strength. Classic sharpening; preserves luminance.
+    control strength. Luminance unchanged; edges enhanced.
 
     Unsharp masking is a technique that enhances edge contrast in an image, creating the illusion of increased
         sharpness.

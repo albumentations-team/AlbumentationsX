@@ -42,8 +42,8 @@ def channel_dropout(
     channels_to_drop: int | tuple[int, ...] | np.ndarray,
     fill: tuple[float, ...] | float = 0,
 ) -> ImageType:
-    """Drop selected channels and replace with fill. channels_to_drop: int, tuple, or array; fill:
-    scalar or per-channel. Multi-channel only; preserves shape.
+    """Replace selected channels with fill; others unchanged. channels_to_drop: index/indices;
+    fill: scalar or per-channel. Multi-channel only.
 
     This function drops channels from an image.
 

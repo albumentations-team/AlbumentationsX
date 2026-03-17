@@ -847,8 +847,8 @@ def convert_bboxes_to_albumentations(
     bbox_type: Literal["hbb", "obb"],
     check_validity: bool = False,
 ) -> np.ndarray:
-    """Convert from coco/pascal_voc/yolo/cxcywh to albumentations normalized format. shape (H, W);
-    bbox_type hbb/obb. Preserves extra columns.
+    """Convert bboxes from coco/pascal_voc/yolo/cxcywh to albumentations normalized format.
+    shape (H,W); bbox_type hbb/obb. Label/extra columns kept.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -926,8 +926,8 @@ def convert_bboxes_from_albumentations(
     bbox_type: Literal["hbb", "obb"],
     check_validity: bool = False,
 ) -> np.ndarray:
-    """Convert from albumentations format to coco/pascal_voc/yolo/cxcywh. shape (H, W);
-    bbox_type hbb/obb. Preserves extra columns.
+    """Convert bboxes from albumentations format to coco/pascal_voc/yolo/cxcywh. shape (H,W);
+    bbox_type hbb/obb. Label/extra columns kept.
 
     Args:
         bboxes (np.ndarray): A numpy array of albumentations bounding boxes with shape (num_bboxes, 4+).
@@ -1020,8 +1020,8 @@ def check_bboxes(bboxes: np.ndarray) -> None:
 
 @handle_empty_array("bboxes")
 def clip_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """Clip normalized bboxes to image bounds. Denormalizes, clips, renormalizes. shape (H, W).
-    Preserves extra columns. See Note for semantics.
+    """Clip normalized bboxes to image bounds. Denormalize, clip, renormalize. shape (H,W).
+    Label/extra columns unchanged. See Note for boundary semantics.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).

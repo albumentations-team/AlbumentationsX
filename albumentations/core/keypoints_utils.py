@@ -548,8 +548,8 @@ def convert_keypoints_to_albumentations(
     check_validity: bool = False,
     angle_in_degrees: bool = True,
 ) -> np.ndarray:
-    """Convert from xy/yx/xya/xys/xyas/xysa/xyz to internal format. shape (H,W) or (D,H,W).
-    Preserves extra columns. Call during pipeline preprocess before transforms.
+    """Convert keypoints from user format (xy, yx, xya, etc.) to internal format. Extra columns
+    kept. Shape (H,W) or (D,H,W). Call in preprocess.
 
     This function takes keypoints in different formats and converts them to the standard
     Albumentations format: [x, y, z, angle, scale]. For 2D formats, z is set to 0.

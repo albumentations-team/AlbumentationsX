@@ -1165,8 +1165,8 @@ def add_shadow(
     vertices_list: list[np.ndarray],
     intensities: np.ndarray,
 ) -> ImageType:
-    """Add polygonal shadows by reducing intensity in vertices_list regions. intensities per
-    polygon. uint8 I/O, preserves channels.
+    """Darken polygonal regions to simulate shadows. vertices_list and intensities per polygon.
+    Use for outdoor or synthetic shadow augmentation. uint8 I/O.
 
     Args:
         img (ImageType): Input image. Multichannel images are supported.
@@ -1229,8 +1229,8 @@ def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
 
 
 def invert(img: ImageType) -> ImageType:
-    """Invert image colors: each pixel becomes max_val - pixel. Works for uint8 and float32.
-    Produces negative image; any channel count; preserves dtype.
+    """Produce the negative image: each pixel becomes max_val - pixel. uint8/float32, any
+    channels. Use for inversion augmentation or visualization.
 
     This function inverts the colors of an image by subtracting each pixel value from the maximum possible value.
     The result is a negative of the original image.
@@ -1426,8 +1426,8 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
 
 @uint8_io
 def to_gray_from_lab(img: ImageType) -> ImageType:
-    """Convert RGB to grayscale via LAB L channel. Preserves perceived luminance better than simple
-    average. Single image or batch. uint8 I/O.
+    """Convert RGB to grayscale using the LAB L channel; perceived brightness matches human vision
+    better than a simple average. Single image or batch. uint8 I/O.
 
     This function converts RGB images to grayscale by first converting to LAB color space
     and then extracting the L (lightness) channel. It uses albucore's reshape utilities
@@ -1613,8 +1613,8 @@ def to_gray_max(img: ImageType) -> ImageType:
 
 @clipped
 def to_gray_pca(img: ImageType) -> ImageType:
-    """Convert to grayscale using PCA; captures max variance in color data. Single or batch; uint8 or
-    float32. Clipped. Preserves channel dimension.
+    """Reduce to one channel via PCA; captures max variance in color. Single or batch; uint8 or
+    float32. Clipped. Use when simple averaging loses info.
 
     This function applies PCA to reduce a multi-channel image to a single channel,
     effectively creating a grayscale representation that captures the maximum variance
@@ -1751,8 +1751,8 @@ def downscale(
     down_interpolation: int,
     up_interpolation: int,
 ) -> ImageType:
-    """Downscale then upscale to simulate resolution loss. scale, down_interpolation, up_interpolation.
-    Preserves channel count, uint8 I/O.
+    """Simulate resolution loss: downscale then upscale. down/up_interpolation control quality.
+    Use for low-res or compression-style augmentation. uint8 I/O.
 
     This function downscales and upscales an image using the specified interpolation methods.
     The downscaling and upscaling are performed using albucore.resize.
@@ -2238,8 +2238,8 @@ def pixel_dropout(
     drop_mask: np.ndarray,
     drop_values: np.ndarray,
 ) -> np.ndarray:
-    """Pixel dropout: replace pixels where drop_mask is True with drop_values. Mask and values from
-    get_drop_mask, prepare_drop_values. Preserves channels.
+    """Replace pixels where drop_mask is True with drop_values. Use get_drop_mask,
+    prepare_drop_values. For coarse dropout or inpainting-style augmentation.
 
     Args:
         image (np.ndarray): Input image
@@ -2257,8 +2257,8 @@ def pixel_dropout(
 @clipped
 @preserve_channel_dim
 def spatter_rain(img: ImageType, rain: np.ndarray) -> ImageType:
-    """Spatter rain: add rain layer to image. rain from get_rain_params. Simulates wet surface. Used
-    by Spatter. float32 I/O, clipped, preserves channel count.
+    """Add rain layer using precomputed pattern from get_rain_params. Simulates wet surfaces.
+    Used by Spatter. float32 I/O, clipped.
 
     This function applies spatter rain to an image by adding the rain to the image.
 
@@ -2606,8 +2606,8 @@ def shot_noise(
     scale: float,
     random_generator: np.random.Generator,
 ) -> ImageType:
-    """Shot (Poisson) noise in linear light space. scale, random_generator. Simulates photon counting.
-    float32 I/O, clipped, preserves channels.
+    """Add shot (Poisson) noise in linear light space; scale controls strength. Simulates
+    sensor noise. Use for camera noise augmentation. float32 I/O, clipped.
 
     Args:
         img (ImageType): Input image
@@ -3063,8 +3063,8 @@ def sharpen_gaussian(
     kernel_size: int,
     sigma: float,
 ) -> ImageType:
-    """Sharpen image using unsharp mask with Gaussian blur. alpha, kernel_size, sigma. Preserves
-    channel count. Alpha blends with blurred; clipped.
+    """Sharpen via unsharp mask: subtract Gaussian blur, add back with alpha. kernel_size, sigma
+    control blur. Use for crisp edges. Clipped.
 
     This function sharpens an image using a Gaussian blur.
 
@@ -3211,9 +3211,8 @@ def apply_plasma_brightness_contrast(
     contrast_factor: float,
     plasma_pattern: np.ndarray,
 ) -> ImageType:
-    """Apply plasma-based brightness and contrast. Multiplies image by plasma pattern. Preserves dtype
-    and channels.
-    gradient; params control strength.
+    """Modulate brightness and contrast with a plasma pattern. brightness_factor,
+    contrast_factor scale effect. Use for spatially varying lighting.
 
     This function applies plasma-based brightness and contrast adjustments to an image.
 
@@ -3261,9 +3260,8 @@ def apply_plasma_shadow(
     intensity: float,
     plasma_pattern: np.ndarray,
 ) -> ImageType:
-    """Apply plasma shadow (darkening) to the image. Uses plasma pattern to mask intensity. Preserves
-    dtype and channels.
-    regions; params control intensity.
+    """Darken image in regions defined by a plasma pattern. intensity controls strength. Use for
+    soft shadows or vignette-like effects. Same dtype and channels.
 
     Args:
         img (ImageType): Input image
@@ -3496,8 +3494,8 @@ def apply_gaussian_illumination(
     center: tuple[float, float],
     sigma: float,
 ) -> ImageType:
-    """Apply Gaussian-shaped illumination (center bright/dark) to the image. intensity, center, sigma.
-    Clipped, preserves channel count.
+    """Add a Gaussian-shaped bright or dark spot; intensity, center, and sigma define the falloff.
+    Use for spotlight or vignette effects. Clipped. Same channel count.
 
     Args:
         img (ImageType): Input image
@@ -4517,8 +4515,8 @@ def apply_he_stain_augmentation(
 @clipped
 @preserve_channel_dim
 def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
-    """Convolve image with 2D kernel via cv2.filter2D. Supports multi-channel; border mode from OpenCV.
-    Clipped, preserves channel count.
+    """Convolve image with 2D kernel via cv2.filter2D. Any channel count. Use for custom blur,
+    sharpen, or edge kernels. Clipped.
 
     This function convolves an image with a kernel.
 
@@ -4538,8 +4536,8 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
 @clipped
 @preserve_channel_dim
 def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
-    """Convolve image with separable (1D) kernel. Two passes (row, col) via cv2.sepFilter2D; faster than
-    full 2D for large kernels. Clipped, preserves channel count.
+    """Convolve with separable 1D kernel in two passes. Faster than full 2D for large kernels.
+    Use for Gaussian-like blur or custom separable filters. Clipped.
 
     This function convolves an image with a separable kernel.
 

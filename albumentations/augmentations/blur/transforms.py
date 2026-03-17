@@ -430,8 +430,8 @@ class MotionBlur(Blur):
 
 
 class MedianBlur(Blur):
-    """Replace each pixel with the median in a square window. Removes salt-and-pepper
-    noise, preserves edges better than box or Gaussian. Kernel size from blur_limit.
+    """Replace each pixel with median in a square window. Removes salt-and-pepper noise; edges
+    sharper than box or Gaussian. Kernel size from blur_limit.
 
     This transform uses a median filter to blur the input image. Median filtering is particularly
     effective at removing salt-and-pepper noise while preserving edges, making it a popular choice

@@ -569,8 +569,8 @@ def process_scalar(param: Number, low: Number | None) -> tuple[Number, Number]:
 
 
 def apply_bias(min_val: Number, max_val: Number, bias: Number) -> tuple[Number, Number]:
-    """Add bias to both ends of a range: (min_val + bias, max_val + bias). Use from to_tuple
-    when building min/max from a single value with bias. Preserves order.
+    """Shift a range by adding bias to both ends. Use with to_tuple for symmetric ranges from
+    a single value. Min stays less than max.
 
     Args:
         min_val (Number): Minimum value.

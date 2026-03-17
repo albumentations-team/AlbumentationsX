@@ -14,7 +14,7 @@ Apply these criteria to **every docstring you write or update** in albumentation
 The **first paragraph** is the useful short description: an elevator pitch that explains intuitively what the function or transform does. It appears as the web/search preview under the link.
 
 - **Length:** **120–160 characters** (under 120 loses value, over 160 gets cut off).
-- **Content:** Intuitive, user-facing summary — a true **elevator pitch**: what the transform/function does, how it works in one sentence, and when it's useful. So someone can decide "do I need to click?" Do **not** list parameter names ("Parameters: x, y, z" or "Params: ...") in the first paragraph — that belongs in Args. Do **not** write "Used by X" or "Used in Y". Do not put: "Targets: ...", "Same shape", **return type**, or **"Supports uint8 and float32"** / Image types — return type in Returns; dtype/target support in Image types / Targets. All transforms support uint8 and float32 unless noted.
+- **Content:** Intuitive, user-facing summary — a true **elevator pitch**: what the transform/function does, how it works in one sentence, and when it's useful. So someone can decide "do I need to click?" Do **not** list parameter names ("Parameters: x, y, z" or "Params: ...") in the first paragraph — that belongs in Args. Do **not** write "Used by X" or "Used in Y". Do **not** use "Preserves X" boilerplate (e.g. "Preserves channel count", "preserves dtype and channels", "preserves shape") — that wastes the short description; describe effect and when to use it instead. Do not put: "Targets: ...", "Same shape", **return type**, or **"Supports uint8 and float32"** / Image types — return type in Returns; dtype/target support in Image types / Targets. All transforms support uint8 and float32 unless noted.
 - **Line wrap:** Line limit 120 chars, so the first paragraph usually spans **two lines** (break at a word boundary).
 - **When shortening:** Do not delete useful information. Move any removed content into the second paragraph, a Note, or the relevant Args/Returns section so it is still documented.
 
@@ -26,7 +26,7 @@ The **first paragraph** is the useful short description: an elevator pitch that 
     More detail...
 ```
 
-**Do not include:** "Used by X" or "Used in Y"; "Parameters: ..." or "Params: ..."; return type or "Supports uint8/float32". Describe what it does and when to use it. Keep return type only in Returns; "Targets"/"Same shape" in a later paragraph if needed.
+**Do not include:** "Used by X" or "Used in Y"; "Parameters: ..." or "Params: ..."; "Preserves channel count" / "preserves dtype" / "preserves shape" (boilerplate); return type or "Supports uint8/float32". Describe what it does and when to use it. Keep return type only in Returns; "Targets"/"Same shape" in a later paragraph if needed.
 
 **Bad example (do not use):** Filling the 120–160 chars with meta boilerplate instead of an elevator pitch:
 

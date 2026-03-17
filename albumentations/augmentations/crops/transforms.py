@@ -2341,8 +2341,8 @@ class BBoxSafeRandomCrop(BaseCrop):
 
 
 class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
-    """Random crop keeping all bboxes inside, then resize to (height, width). Preserves every
-    bbox; fixed output size. erosion_rate limits minimum crop size.
+    """Random crop keeping every bbox inside, then resize to (height, width). erosion_rate sets
+    minimum crop size. Use when no object can be cut off.
 
     This transform first attempts to crop a random portion of the input image while ensuring that all bounding boxes
     remain within the cropped area. It then resizes the crop to the specified size. This is particularly useful for

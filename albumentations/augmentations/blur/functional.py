@@ -30,8 +30,8 @@ __all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "zoom_blur"]
 
 @preserve_channel_dim
 def box_blur(img: ImageType, ksize: int) -> ImageType:
-    """Apply uniform box blur using a rectangular kernel. Single or multi-channel; ksize controls
-    kernel size (uses cv2.blur). Preserves channel count.
+    """Smooth image with uniform rectangular kernel (moving average). ksize sets size. Use for
+    mild noise reduction or downscale prep.
 
     This function applies a blur to an image.
 
@@ -57,8 +57,8 @@ def glass_blur(
     dxy: np.ndarray,
     mode: Literal["fast", "exact"],
 ) -> ImageType:
-    """Apply glass-like blur by random pixel swaps after Gaussian blur. Params: sigma,
-    max_delta, iterations, dxy, mode ('fast' or 'exact'). Preserves channel count.
+    """Glass-like effect: Gaussian blur then random pixel swaps. Sigma, max_delta, iterations, dxy.
+    Use for frosted-glass look.
 
     This function applies a glass blur to an image.
 
@@ -120,15 +120,15 @@ def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
 
 
 def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
-    """Apply defocus blur using an aliased-disk kernel. Params: radius, alias_blur; uses
-    create_defocus_kernel and convolve. Preserves dtype and channels.
+    """Blur with aliased disk kernel to simulate out-of-focus. radius, alias_blur set size and
+    softness. Use for depth-of-field or bokeh-style effects.
     """
     return convolve(img, kernel=create_defocus_kernel(radius, alias_blur))
 
 
 def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:
-    """Zoom from center by integer factor: crop center, scale up, trim. zoom_factor must be
-    positive; preserves channels. Supplies central zoom for zoom-blur pipeline.
+    """Zoom from center by integer factor: crop center, upsample, trim to original size.
+    Used in zoom-blur pipeline; zoom_factor must be positive.
 
     This function zooms an image.
 
@@ -152,8 +152,8 @@ def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:
 @float32_io
 @clipped
 def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> ImageType:
-    """Zoom blur: average image with centrally zoomed copies. zoom_factors: sequence of
-    integers; result normalized. Float32 IO, clipped. Preserves channels.
+    """Radial zoom blur: blend image with center-zoomed copies. zoom_factors; normalized result.
+    Use for motion or out-of-focus style. Float32 I/O, clipped.
 
     This function zooms and blurs an image.
 

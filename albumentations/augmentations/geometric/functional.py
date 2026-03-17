@@ -591,8 +591,8 @@ def keypoints_scale(
     scale_x: float,
     scale_y: float,
 ) -> np.ndarray:
-    """Scale keypoints by scale_x and scale_y. Multiplies x and y coordinates;
-    preserves angle and other extra columns. For resize/crop coordinate mapping.
+    """Scale keypoint x and y by scale_x and scale_y. Use when mapping keypoints after resize or
+    crop. Angle and other extra columns are unchanged.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 2+)
@@ -1639,8 +1639,8 @@ def transpose_volumes(volumes: np.ndarray) -> np.ndarray:
 
 
 def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
-    """Rotate an image 90° counterclockwise. k: number of 90° rotations (1, 2, 3).
-    Same as np.rot90(img, k). Preserves dtype and channel dim.
+    """Rotate image 90° counterclockwise. group_element: e, r90, r180, r270. Same as np.rot90.
+    Use for D4-style augmentation. Same dtype and shape.
 
     Args:
         img (ImageType): The input image to rotate.
@@ -2701,8 +2701,8 @@ def distort_image_keypoints(
     generated_mesh: np.ndarray,
     image_shape: tuple[int, int],
 ) -> np.ndarray:
-    """Distort keypoints based on a generated mesh. Samples new (x,y) from mesh
-    cells; preserves extra columns. For PiecewiseAffine with keypoints.
+    """Map keypoints through a piecewise-affine mesh; new (x,y) from mesh cells. Use with
+    PiecewiseAffine. Angle and extra columns unchanged.
 
     This function applies a perspective transformation to each keypoint based on the provided generated mesh.
     It ensures that the keypoints are clipped to the image boundaries after transformation.
@@ -2918,8 +2918,8 @@ def validate_keypoints(
     keypoints: np.ndarray,
     image_shape: tuple[int, int],
 ) -> np.ndarray:
-    """Validate keypoints and remove those outside image boundaries. image_shape
-    (H, W); checks x, y in [0, W), [0, H). Preserves extra columns for valid.
+    """Drop keypoints outside image bounds. image_shape (H,W). Keeps points with x in [0,W),
+    y in [0,H). Use after transforms that may move points out of frame.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (N, M) where N is the number of keypoints
@@ -2944,8 +2944,8 @@ def validate_keypoints(
 
 
 def shift_keypoints(keypoints: np.ndarray, shift_vector: np.ndarray) -> np.ndarray:
-    """Shift keypoints by a given shift vector (dx, dy, dz). Adds to x, y, z;
-    preserves angle, scale, and extra columns. For crop/shift with keypoints.
+    """Translate keypoints by shift_vector (dx, dy, dz). Use when mapping keypoints after crop or
+    shift. Angle, scale, and other extra columns unchanged.
 
     This function shifts the keypoints by a given shift vector.
     It only shifts the x, y and z coordinates of the keypoints.
@@ -4434,8 +4434,8 @@ def rot90_volumes(volumes: np.ndarray, group_element: Literal["e", "r90", "r180"
 
 @preserve_channel_dim
 def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
-    """Apply one iteration of morphological erosion. img, kernel (structuring element).
-    Preserves channel dim. For bbox/mask morphology helpers.
+    """One iteration of morphological erosion. Shrinks bright regions. Use for mask/bbox
+    morphology. Same shape and channel count.
 
     This function applies erosion to an image using the cv2.erode function.
 
@@ -4452,8 +4452,8 @@ def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
 
 @preserve_channel_dim
 def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
-    """Apply one iteration of morphological dilation. img, kernel (structuring element).
-    Preserves channel dim. For bbox/mask morphology helpers.
+    """One iteration of morphological dilation. Expands bright regions. Use for mask/bbox
+    morphology. Same shape and channel count.
 
     This function applies dilation to an image using the cv2.dilate function.
 

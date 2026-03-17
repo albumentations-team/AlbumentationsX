@@ -5013,7 +5013,8 @@ class ShotNoise(ImageOnlyTransform):
 
 class NoiseParamsBase(BaseModel):
     """Base Pydantic model for AdditiveNoise noise params (uniform, gaussian, laplace, beta).
-    Subclasses define noise_type and distribution-specific fields."""
+    Subclasses define noise_type and distribution-specific fields.
+    """
 
     model_config = ConfigDict(extra="forbid")
     noise_type: str
@@ -6422,7 +6423,8 @@ class HEStain(ImageOnlyTransform):
 
     def _get_stain_matrix(self, img: ImageType) -> np.ndarray:
         """Return stain matrix for HEStain: from preset, random_preset, or vahadane/macenko
-        extraction from img. Used by get_params_dependent_on_data."""
+        extraction from img. Determines per-call stain appearance.
+        """
         if self.method == "preset" and self.preset is not None:
             return fpixel.STAIN_MATRICES[self.preset]
         if self.method == "random_preset":
@@ -6698,7 +6700,7 @@ class Dithering(ImageOnlyTransform):
 
 class PhotoMetricDistort(ImageOnlyTransform):
     """SSD-style photometric distortion: brightness, contrast, saturation, hue, channel shuffle; each
-    with probability distort_p. Contrast order randomized. For detection training.
+    with probability distort_p. For detection training.
 
     Applies brightness, contrast, saturation, and hue adjustments independently with probability
     `distort_p` each. Contrast is applied either before or after the HSV-space adjustments
@@ -7041,7 +7043,8 @@ class ChannelSwap(ImageOnlyTransform):
         @classmethod
         def validate_channel_order(cls, v: tuple[int, ...]) -> tuple[int, ...]:
             """Ensure channel_order is a permutation of channel indices (no duplicates, all in
-            range). Used by ChannelSwap InitSchema validator."""
+            range). Validation fails if the tuple is invalid.
+            """
             if len(v) < 2:
                 msg = "channel_order must have at least 2 elements."
                 raise ValueError(msg)
@@ -7349,7 +7352,8 @@ class LensFlare(ImageOnlyTransform):
         @classmethod
         def validate_flare_roi(cls, v: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
             """Ensure flare ROI (x_min, y_min, x_max, y_max) has valid bounds: x_min < x_max and
-            y_min < y_max. Used by LensFlare InitSchema."""
+            y_min < y_max. Validation fails if bounds are invalid.
+            """
             x_min, y_min, x_max, y_max = v
             if x_min >= x_max:
                 msg = f"flare_roi x_min ({x_min}) must be less than x_max ({x_max})"

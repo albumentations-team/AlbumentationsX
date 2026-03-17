@@ -202,7 +202,8 @@ def _check_data_compatibility(
     data_key: Literal["image", "mask"],
 ) -> tuple[bool, str | None]:  # Returns (is_compatible, error_message)
     """Check if item_data dimensions and channels match primary_data. Returns (ok, error_msg);
-    used to validate mosaic/mixup additional items."""
+    used to validate mosaic/mixup additional items.
+    """
     # 1. Check if item has the required data (image is always required)
     if item_data is None:
         if data_key == "image":
@@ -247,7 +248,8 @@ def filter_valid_metadata(
     data: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Filter metadata dicts to those compatible with primary data (image/mask dimensions and
-    channels). Uses _check_data_compatibility; warns and skips invalid items."""
+    channels). Uses _check_data_compatibility; warns and skips invalid items.
+    """
     if not isinstance(metadata_input, Sequence):
         warn(
             f"Metadata under key '{metadata_key_name}' is not a Sequence (e.g., list or tuple). "
@@ -354,7 +356,8 @@ def _preprocess_item_annotations(
     data_key: Literal["bboxes", "keypoints"],
 ) -> np.ndarray | None:
     """Preprocess bboxes or keypoints for one item with given processor. Returns processed
-    array or original if no processor; validates label fields."""
+    array or original if no processor; validates label fields.
+    """
     original_data = item.get(data_key)
 
     # Check if processor exists and the relevant data key is in the item

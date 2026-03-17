@@ -1,5 +1,4 @@
-"""Module containing PyTorch-specific transforms for Albumentations. of albume
-
+"""Module containing PyTorch-specific transforms for Albumentations.
 This module provides transforms that convert NumPy arrays to PyTorch tensors in
 the appropriate format. It handles both 2D image data and 3D volumetric data,
 ensuring that the tensor dimensions are correctly arranged according to PyTorch's

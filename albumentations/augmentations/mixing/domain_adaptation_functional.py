@@ -110,8 +110,8 @@ class MinMaxScaler(BaseScaler):
         self.data_range: np.ndarray | None = None
 
     def fit(self, x: np.ndarray) -> None:
-        """Fit MinMaxScaler to the data. Computes per-feature min/max for scaling to
-        feature_range for minmax scaling.
+        """Fit MinMaxScaler to the data. Computes per-feature min and max for scaling to
+        feature_range; zero-range features get range 1 to avoid division by zero.
 
         Args:
             x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
@@ -181,7 +181,8 @@ class StandardScaler(BaseScaler):
         super().__init__()
 
     def fit(self, x: np.ndarray) -> None:
-        """Fit StandardScaler: per-feature mean and std for z-score. Zero variance handled.
+        """Fit StandardScaler: compute per-feature mean and std for z-score standardization.
+        Zero-variance features get scale 1 to avoid division by zero.
 
         Args:
             x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
@@ -271,7 +272,8 @@ class TransformerInterface(Protocol):
 
     @abc.abstractmethod
     def transform(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
-        """Transform data using fitted model. Protocol; same shape as input; optional y unused.
+        """Transform data using the fitted model. Same shape as input; optional y is unused.
+        Abstract protocol method; subclasses implement the actual transformation.
 
         Args:
             x (np.ndarray): The data to transform.
@@ -311,8 +313,8 @@ class DomainAdapter:
         return img if self.color_in is None else cv2.cvtColor(img, self.color_in)
 
     def from_colorspace(self, img: ImageType) -> ImageType:
-        """Convert image back from target color space (e.g. after PCA). cv2.cvtColor if color_out
-        set; else returns img.
+        """Convert image back from target color space to original (e.g. after PCA). Uses
+        cv2.cvtColor when color_out is set; otherwise returns img unchanged.
 
         Args:
             img (np.ndarray): The image to convert back.

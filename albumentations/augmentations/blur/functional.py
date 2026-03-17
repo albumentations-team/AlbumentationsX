@@ -30,8 +30,8 @@ __all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "zoom_blur"]
 
 @preserve_channel_dim
 def box_blur(img: ImageType, ksize: int) -> ImageType:
-    """Apply uniform box blur using a rectangular kernel. Single or multi-channel; ksize
-    controls kernel size (uses cv2.blur).
+    """Apply uniform box blur using a rectangular kernel. Single or multi-channel; ksize controls
+    kernel size (uses cv2.blur). Preserves channel count.
 
     This function applies a blur to an image.
 
@@ -121,7 +121,7 @@ def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
 
 def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
     """Apply defocus blur using an aliased-disk kernel. Params: radius, alias_blur; uses
-    create_defocus_kernel and convolve.
+    create_defocus_kernel and convolve. Preserves dtype and channels.
     """
     return convolve(img, kernel=create_defocus_kernel(radius, alias_blur))
 

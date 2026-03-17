@@ -68,7 +68,7 @@ def shift_hsv(
     val_shift: float,
 ) -> ImageType:
     """Shift hue, saturation, and value in HSV space. hue_shift, sat_shift, val_shift control
-    amount. Used by HueSaturationValue and related transforms. uint8 I/O.
+    amount. uint8 I/O.
 
     Args:
         img (np.ndarray): The image to shift.
@@ -150,7 +150,7 @@ def shift_hsv_images(
 @clipped
 def solarize(img: ImageType, threshold: float) -> ImageType:
     """Invert pixel values above a normalized threshold (solarization). threshold in [0, 1];
-    works for uint8 and float32. Used by Solarize transform.
+    works for uint8 and float32.
 
     Args:
         img (np.ndarray): The image to solarize. Can be uint8 or float32.
@@ -182,8 +182,8 @@ def solarize(img: ImageType, threshold: float) -> ImageType:
 @uint8_io
 @clipped
 def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]]) -> ImageType:
-    """Reduce bit depth by keeping only the highest N bits per channel. bits: 1–7 or list per
-    channel. Used by Posterize. uint8 I/O, clipped.
+    """Reduce bit depth by keeping only the highest N bits per channel. bits: 1-7 or list per
+    channel. uint8 I/O, clipped.
 
     Args:
         img (np.ndarray): Input image. Can be single or multi-channel.
@@ -449,7 +449,7 @@ def linear_transformation_rgb(
     transformation_matrix: np.ndarray,
 ) -> ImageType:
     """3x3 linear transformation to RGB. transformation_matrix (or batch) multiplies channel
-    vector. Supports (H,W,3), (B,H,W,3), (B,D,H,W,3). Used by FancyPCA.
+    vector. Supports (H,W,3), (B,H,W,3), (B,D,H,W,3).
 
     This function applies a 3x3 linear transformation matrix (or batch of matrices)
     to the RGB channels of either a single image or a batch of images.
@@ -537,7 +537,7 @@ def image_compression(
     image_type: Literal[".jpg", ".webp"],
 ) -> ImageType:
     """Compress image with JPEG or WebP to simulate artifacts. quality, image_type (.jpg/.webp).
-    Used by ImageCompression. uint8 I/O.
+    uint8 I/O.
 
     Args:
         img (np.ndarray): Input image
@@ -690,7 +690,7 @@ def add_snow_texture(
     sparkle_mask: np.ndarray,
 ) -> ImageType:
     """Add snow effect: texture overlay, sparkle, depth gradient, blue tint. snow_point,
-    brightness_coeff. Used by RandomSnow. uint8 I/O.
+    brightness_coeff. uint8 I/O.
 
     This function simulates snowfall by applying multiple visual effects to the image,
     including brightness adjustment, snow texture overlay, depth simulation, and color tinting.
@@ -802,7 +802,7 @@ def add_rain(
     rain_drops: np.ndarray,
 ) -> ImageType:
     """Add rain streaks. slant, drop_length, drop_width, drop_color, blur_value,
-    brightness_coefficient, rain_drops. Used by RandomRain.
+    brightness_coefficient, rain_drops.
 
     This function adds rain to an image by drawing rain drops on the image.
     The rain drops are drawn using the OpenCV function cv2.polylines.
@@ -892,7 +892,7 @@ def add_fog(
     fog_particle_radiuses: list[int],
 ) -> ImageType:
     """Add fog with circular particles and alpha blending. fog_intensity, alpha_coef, positions,
-    radiuses. Used by RandomFog. uint8 I/O.
+    radiuses. uint8 I/O.
 
     This function adds fog to an image by drawing fog particles on the image.
     The fog particles are drawn using the OpenCV function cv2.circle.
@@ -1044,7 +1044,7 @@ def add_sun_flare_physics_based(
     circles: list[Any],
 ) -> ImageType:
     """Physics-based sun flare: circle, spikes, ghosts, chromatic aberration, screen blend.
-    flare_center, src_radius, src_color, circles. Used by RandomSunFlare.
+    flare_center, src_radius, src_color, circles.
 
     This function creates a complex sun flare effect by simulating various optical phenomena
     that occur in real camera lenses when capturing bright light sources. The result is a
@@ -1166,7 +1166,7 @@ def add_shadow(
     intensities: np.ndarray,
 ) -> ImageType:
     """Add polygonal shadows by reducing intensity in vertices_list regions. intensities per
-    polygon. Used by RandomShadow. uint8 I/O, preserves channels.
+    polygon. uint8 I/O, preserves channels.
 
     Args:
         img (np.ndarray): Input image. Multichannel images are supported.
@@ -1205,7 +1205,7 @@ def add_shadow(
 @preserve_channel_dim
 def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
     """Add gravel: write HLS saturation in rectangular regions from gravels (min_y,max_y,min_x,
-    max_x,sat). Used by RandomGravel. uint8 I/O.
+    max_x,sat). uint8 I/O.
 
     This function adds gravel to an image by drawing gravel particles on the image.
     The gravel particles are drawn using the OpenCV function cv2.circle.
@@ -1229,8 +1229,8 @@ def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
 
 
 def invert(img: ImageType) -> ImageType:
-    """Invert the colors of an image. Each pixel becomes max_val - pixel; supports
-    uint8 and float32.
+    """Invert image colors: each pixel becomes max_val - pixel. Works for uint8 and float32.
+    For color inversion.
 
     This function inverts the colors of an image by subtracting each pixel value from the maximum possible value.
     The result is a negative of the original image.
@@ -1248,7 +1248,7 @@ def invert(img: ImageType) -> ImageType:
 
 
 def channel_shuffle(img: ImageType, channels_shuffled: list[int]) -> ImageType:
-    """Shuffle the channels of an image. Uses cv2.mixChannels; order applied to
+    """Shuffle image channels via cv2.mixChannels. channels_shuffled gives new order; supports
     (H, W, C) or batch (N, H, W, C).
 
     This function shuffles the channels of an image by using the cv2.mixChannels function.
@@ -1272,8 +1272,8 @@ def channel_shuffle(img: ImageType, channels_shuffled: list[int]) -> ImageType:
 
 
 def volume_channel_shuffle(volume: np.ndarray, channels_shuffled: Sequence[int]) -> np.ndarray:
-    """Shuffle channels of a single volume (D, H, W, C) or (D, H, W). Same as
-    channel_shuffle along last axis.
+    """Shuffle channels of volume (D, H, W, C) or (D, H, W). Same as channel_shuffle along last
+    axis. channels_shuffled is new order. Used for 3D volume augmentation.
 
     Args:
         volume (np.ndarray): Input volume.
@@ -1302,8 +1302,8 @@ def volumes_channel_shuffle(volumes: np.ndarray, channels_shuffled: Sequence[int
 
 
 def gamma_transform(img: ImageType, gamma: float) -> ImageType:
-    """Apply gamma transformation to an image. Pixel^gamma; brightens or darkens.
-    Supports uint8 and float32.
+    """Apply gamma transformation: pixel^gamma to brighten or darken. gamma > 1 brightens;
+    gamma < 1 darkens. Supports uint8 and float32.
 
     This function applies gamma transformation to an image by raising each pixel value to the power of gamma.
     The result is a non-linear transformation that can enhance or reduce the contrast of the image.
@@ -1331,8 +1331,8 @@ def iso_noise(
     intensity: float,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Apply Poisson noise to simulate camera sensor noise. Params: sigma_scale,
-    intensity; approximates shot noise.
+    """Apply Poisson noise to simulate camera sensor noise. color_shift, intensity;
+    approximates shot noise. float32 I/O, clipped.
 
     Args:
         image (np.ndarray): Input image. Currently, only RGB images are supported.
@@ -1376,7 +1376,7 @@ def iso_noise(
 
 
 def to_gray_weighted_average(img: ImageType) -> ImageType:
-    """Convert RGB image(s) to grayscale using weighted average. Single image or
+    """Convert RGB to grayscale using weighted average (0.299*R+0.587*G+0.114*B). Single image or
     batch (N, H, W, 3).
 
     This function uses OpenCV's cvtColor function with COLOR_RGB2GRAY conversion,
@@ -1426,8 +1426,8 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
 
 @uint8_io
 def to_gray_from_lab(img: ImageType) -> ImageType:
-    """Convert RGB image or batch to grayscale via LAB L channel. Preserves
-    perceived luminance better than simple average.
+    """Convert RGB to grayscale via LAB L channel. Preserves perceived luminance better than simple
+    average. Single image or batch. uint8 I/O.
 
     This function converts RGB images to grayscale by first converting to LAB color space
     and then extracting the L (lightness) channel. It uses albucore's reshape utilities
@@ -1515,8 +1515,8 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
 
 @clipped
 def to_gray_desaturation(img: ImageType) -> ImageType:
-    """Convert image to grayscale using desaturation (max - min) / 2. Preserves
-    luminance; single image or batch.
+    """Convert to grayscale using desaturation (max + min) / 2 per pixel. Preserves luminance; any
+    channel count.
 
     Args:
         img (np.ndarray): Input image as a numpy array.
@@ -1540,8 +1540,8 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
 
 
 def to_gray_average(img: ImageType) -> ImageType:
-    """Convert image to grayscale using per-pixel mean across channels. Simple
-    average; single image or batch.
+    """Convert to grayscale using per-pixel mean across channels. Simple average; single image or
+    batch. Any channel count.
 
     This function computes the arithmetic mean across all channels for each pixel,
     resulting in a grayscale representation of the image.
@@ -1575,8 +1575,8 @@ def to_gray_average(img: ImageType) -> ImageType:
 
 
 def to_gray_max(img: ImageType) -> ImageType:
-    """Convert image to grayscale using max across channels per pixel. Preserves
-    brightest parts; equivalent to HSV V for RGB.
+    """Convert to grayscale using max across channels per pixel. Equivalent to HSV V for RGB. Any
+    channel count.
 
     This function takes the maximum value across all channels for each pixel,
     resulting in a grayscale image that preserves the brightest parts of the original image.
@@ -1613,8 +1613,8 @@ def to_gray_max(img: ImageType) -> ImageType:
 
 @clipped
 def to_gray_pca(img: ImageType) -> ImageType:
-    """Convert image to grayscale using PCA; captures max variance in color data.
-    Single or batch; uint8 or float32.
+    """Convert to grayscale using PCA; captures max variance in color data. Single or batch; uint8 or
+    float32. Clipped.
 
     This function applies PCA to reduce a multi-channel image to a single channel,
     effectively creating a grayscale representation that captures the maximum variance
@@ -1715,8 +1715,8 @@ def grayscale_to_multichannel(
     grayscale_image: np.ndarray,
     num_output_channels: int = 3,
 ) -> np.ndarray:
-    """Convert grayscale image to multi-channel by repeating across channels. Param
-    num_output_channels (default 3).
+    """Convert grayscale to multi-channel by repeating. num_output_channels (default 3).
+    For blending gray with color in saturation/hue adjustments.
 
     This function takes a 2D grayscale image or a 3D image with a single channel
     and converts it to a multi-channel image by repeating the grayscale data
@@ -1751,8 +1751,8 @@ def downscale(
     down_interpolation: int,
     up_interpolation: int,
 ) -> ImageType:
-    """Downscale then upscale an image to simulate resolution loss. Params: scale,
-    down_interpolation, up_interpolation.
+    """Downscale then upscale to simulate resolution loss. scale, down_interpolation, up_interpolation.
+    Preserves channel count, uint8 I/O.
 
     This function downscales and upscales an image using the specified interpolation methods.
     The downscaling and upscaling are performed using albucore.resize.
@@ -1795,8 +1795,8 @@ def noop(input_obj: Any, **params: Any) -> Any:
 @clipped
 @preserve_channel_dim
 def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
-    """Perform Fancy PCA color augmentation. Alpha scales principal components; any
-    channel count.
+    """Fancy PCA color augmentation: add noise along principal components. alpha_vector; any channel
+    count. float32 I/O, clipped.
 
     Args:
         img (np.ndarray): Input image
@@ -1870,8 +1870,7 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
 
 @preserve_channel_dim
 def adjust_brightness_torchvision(img: ImageType, factor: np.ndarray) -> ImageType:
-    """Adjust brightness by multiplying pixels by a factor. Torchvision-compatible;
-    uint8 and float32.
+    """Adjust brightness by multiplying pixels by factor. Torchvision-compatible; uint8 and float32.
 
     This function adjusts the brightness of an image by multiplying each pixel value by a factor.
     The brightness is adjusted by multiplying the image by the factor.
@@ -1894,7 +1893,7 @@ def adjust_brightness_torchvision(img: ImageType, factor: np.ndarray) -> ImageTy
 
 @preserve_channel_dim
 def adjust_contrast_torchvision(img: ImageType, factor: float) -> ImageType:
-    """Adjust contrast by multiplying pixels by a factor. Torchvision-compatible;
+    """Adjust contrast by multiplying by factor (relative to grayscale mean). Torchvision-compatible;
     uint8 and float32.
 
     This function adjusts the contrast of an image by multiplying each pixel value by a factor.
@@ -1963,8 +1962,7 @@ def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
 
 
 def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
-    """Adjust hue by shifting in HSV. Factor in [-0.5, 0.5]. Torchvision-compatible;
-    RGB only.
+    """Adjust hue by shifting in HSV. factor in [-0.5, 0.5]. Torchvision-compatible; RGB only.
 
     This function adjusts the hue of an image by adding a factor to the hue value.
 
@@ -1993,8 +1991,8 @@ def apply_brightness_contrast_torchvision(
     contrast_factor: float,
     brightness_first: bool,
 ) -> ImageType:
-    """Apply brightness and contrast fused: single LUT (uint8) or two passes (float32).
-    clip(a*x + b); torchvision-compatible.
+    """Fused brightness and contrast: single LUT (uint8) or two passes (float32). clip(a*x + b);
+    torchvision-compatible. Fused when brightness and contrast are adjacent in pipeline.
 
     Both operations are `clip(a*x + b)`. The image grayscale mean is computed once and propagated
     analytically through the pipeline: if brightness comes first, `mean_at_contrast = mean * brightness_factor`
@@ -2063,8 +2061,8 @@ def superpixels(
     max_size: int | None,
     interpolation: int,
 ) -> np.ndarray:
-    """Apply superpixels to an image using SLIC. Params: n_segments, max_size;
-    returns segmented image.
+    """Apply superpixels using SLIC: replace pixels with segment mean. n_segments, replace_samples,
+    max_size, interpolation.
 
     This function applies superpixels to an image using the SLIC algorithm.
     The superpixels are applied by replacing the pixels in the image with the mean intensity of the superpixel.
@@ -2141,8 +2139,8 @@ def unsharp_mask_images(
     alpha: float,
     threshold: int,
 ) -> np.ndarray:
-    """Apply unsharp mask to a batch (N, H, W, C). Sharpen via blur-subtract-add;
-    params: blur_limit, sigma_limit, alpha.
+    """Apply unsharp mask to batch (N, H, W, C). Sharpen via blur-subtract-add. ksize, sigma, alpha,
+    threshold. Pre-allocated output for batch path.
 
     Processes a batch of images (N, H, W, C) by applying the unsharp mask to each image
     and writing directly into a pre-allocated output array.
@@ -2238,8 +2236,8 @@ def pixel_dropout(
     drop_mask: np.ndarray,
     drop_values: np.ndarray,
 ) -> np.ndarray:
-    """Apply pixel dropout: zero random pixels with given drop_prob. Params:
-    drop_prob, per_channel.
+    """Pixel dropout: replace pixels where drop_mask is True with drop_values. Mask and values from
+    get_drop_mask, prepare_drop_values. Preserves channels.
 
     Args:
         image (np.ndarray): Input image
@@ -2257,8 +2255,8 @@ def pixel_dropout(
 @clipped
 @preserve_channel_dim
 def spatter_rain(img: ImageType, rain: np.ndarray) -> ImageType:
-    """Apply spatter rain to an image. Rain drops with configurable intensity;
-    simulates wet surface.
+    """Spatter rain: add rain layer to image. rain from get_rain_params. Simulates wet surface. Used
+    by Spatter. float32 I/O, clipped, preserves channel count.
 
     This function applies spatter rain to an image by adding the rain to the image.
 
@@ -2277,8 +2275,8 @@ def spatter_rain(img: ImageType, rain: np.ndarray) -> ImageType:
 @clipped
 @preserve_channel_dim
 def spatter_mud(img: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageType:
-    """Apply spatter mud to an image. Mud splatter with configurable intensity;
-    simulates dirt on lens/surface.
+    """Spatter mud: blend non_mud and mud layers. non_mud, mud from get_mud_params. Simulates dirt on
+    lens/surface. float32 I/O, clipped.
 
     This function applies spatter mud to an image by adding the mud to the image.
 
@@ -2304,8 +2302,8 @@ def chromatic_aberration(
     secondary_distortion_blue: float,
     interpolation: int,
 ) -> ImageType:
-    """Apply chromatic aberration by shifting R/B channels. Simulates lens dispersion;
-    params control shift and severity.
+    """Chromatic aberration: shift R/B channels. primary/secondary_distortion_red/blue, interpolation.
+    uint8 I/O, clipped.
 
     This function applies chromatic aberration to an image by distorting the red and blue channels.
 
@@ -2536,8 +2534,8 @@ def slic(
     compactness: float = 10.0,
     max_iterations: int = 10,
 ) -> np.ndarray:
-    """SLIC superpixel segmentation. Params: n_segments, compactness, max_iterations.
-    Returns label mask for oversegmentation.
+    """SLIC superpixel segmentation. n_segments, compactness, max_iterations. Returns label mask for
+    oversegmentation.
 
     Args:
         image (np.ndarray): Input image (3D numpy array with shape (H, W, C)).
@@ -2606,8 +2604,8 @@ def shot_noise(
     scale: float,
     random_generator: np.random.Generator,
 ) -> ImageType:
-    """Apply shot (Poisson) noise to the image. Scale controls strength; simulates
-    photon counting.
+    """Shot (Poisson) noise in linear light space. scale, random_generator. Simulates photon counting.
+    float32 I/O, clipped, preserves channels.
 
     Args:
         img (np.ndarray): Input image
@@ -2640,8 +2638,8 @@ def get_safe_brightness_contrast_params(
     beta: float,
     max_value: float,
 ) -> tuple[float, float]:
-    """Get safe brightness and contrast parameters (alpha, beta) clipped to valid
-    range for LUT.
+    """Get (alpha, beta) brightness/contrast params clipped to valid LUT range. alpha, beta, max_value.
+    Returns (alpha, beta).
 
     Args:
         alpha (float): Contrast factor
@@ -2851,7 +2849,8 @@ def generate_per_pixel_noise(
     max_value: float,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate per-pixel noise by sampling from the chosen distribution. Shape
+    """Generate per-pixel noise from chosen distribution (uniform, gaussian, laplace, beta). Shape and
+    spatial_mode from params.
     matches image.
 
     This function generates per-pixel noise by sampling from the noise distribution.
@@ -2877,7 +2876,7 @@ def sample_noise(
     max_value: float,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample from specific noise distribution (uniform, gaussian, laplace, beta).
+    """Sample from noise distribution (uniform, gaussian, laplace, beta). noise_type and params.
     Dispatches to sample_*.
 
     This function samples from a specific noise distribution.
@@ -2910,7 +2909,7 @@ def sample_uniform(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample from uniform distribution for spatial noise. Uses params['ranges'][0];
+    """Sample from uniform distribution for spatial noise. params['ranges'][0] per channel.
     returns array of given size.
 
     Args:
@@ -2932,7 +2931,7 @@ def sample_gaussian(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample from Gaussian distribution. Mean and std from params or uniform range;
+    """Sample from Gaussian distribution. Mean and std from params or uniform range.
     uses cv2.randn.
 
     This function samples from a Gaussian distribution.
@@ -2970,7 +2969,7 @@ def sample_laplace(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample from Laplace distribution. Location and scale from params. Returns
+    """Sample from Laplace distribution. Location and scale from params.
     array of given size.
 
     This function samples from a Laplace distribution.
@@ -2994,7 +2993,7 @@ def sample_beta(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample from Beta distribution. Alpha, beta, scale from params; transform to
+    """Sample from Beta distribution. Alpha, beta, scale from params.
     [-scale, scale].
 
     This function samples from a Beta distribution.
@@ -3062,7 +3061,8 @@ def sharpen_gaussian(
     kernel_size: int,
     sigma: float,
 ) -> ImageType:
-    """Sharpen image using unsharp mask with Gaussian blur. Params: alpha, kernel_size,
+    """Sharpen image using unsharp mask with Gaussian blur. alpha, kernel_size, sigma. Preserves
+    channel count.
     sigma.
 
     This function sharpens an image using a Gaussian blur.
@@ -3210,7 +3210,8 @@ def apply_plasma_brightness_contrast(
     contrast_factor: float,
     plasma_pattern: np.ndarray,
 ) -> ImageType:
-    """Apply plasma-based brightness and contrast. Multiplies image by plasma
+    """Apply plasma-based brightness and contrast. Multiplies image by plasma pattern. Preserves dtype
+    and channels.
     gradient; params control strength.
 
     This function applies plasma-based brightness and contrast adjustments to an image.
@@ -3259,7 +3260,8 @@ def apply_plasma_shadow(
     intensity: float,
     plasma_pattern: np.ndarray,
 ) -> ImageType:
-    """Apply plasma shadow (darkening) to the image. Uses plasma pattern to mask
+    """Apply plasma shadow (darkening) to the image. Uses plasma pattern to mask intensity. Preserves
+    dtype and channels.
     regions; params control intensity.
 
     Args:
@@ -3343,8 +3345,8 @@ def create_illumination_gradient(
     mode: str,
     params: dict[str, Any],
 ) -> np.ndarray:
-    """Create an illumination gradient map (H, W) or (H, W, 1). Float32; apply via
-    multiply_by_array.
+    """Create illumination gradient map (H, W) or (H, W, 1). mode: linear, corner, gaussian. Float32;
+    apply via multiply_by_array.
 
     Returns a float32 gradient that can be applied via multiply_by_array.
     The returned gradient does NOT have a channel dimension.
@@ -3403,8 +3405,8 @@ def create_illumination_gradient(
 
 @float32_io
 def apply_linear_illumination(img: ImageType, intensity: float, angle: float) -> ImageType:
-    """Apply linear illumination gradient to the image. Multiplies by gradient;
-    params control direction and strength.
+    """Apply linear illumination gradient to the image. Multiplies by gradient; intensity and angle
+    control direction and strength. float32 I/O.
 
     Args:
         img (np.ndarray): Input image
@@ -3440,8 +3442,8 @@ def apply_corner_illumination(
     intensity: float,
     corner: Literal[0, 1, 2, 3],
 ) -> ImageType:
-    """Apply corner illumination (darkened corners) to the image. Gradient from
-    center; params control strength.
+    """Apply corner illumination (darkened corners) to the image. Gradient from center; intensity and
+    corner (0-3) control strength and which corner. Clipped.
 
     Args:
         img (np.ndarray): Input image
@@ -3493,8 +3495,8 @@ def apply_gaussian_illumination(
     center: tuple[float, float],
     sigma: float,
 ) -> ImageType:
-    """Apply Gaussian-shaped illumination (center bright/dark) to the image.
-    Params control sigma and strength.
+    """Apply Gaussian-shaped illumination (center bright/dark) to the image. intensity, center, sigma.
+    Clipped, preserves channel count.
 
     Args:
         img (np.ndarray): Input image
@@ -3547,8 +3549,8 @@ def auto_contrast(
     ignore: int | None,
     method: Literal["cdf", "pil"],
 ) -> ImageType:
-    """Apply automatic contrast enhancement. Stretches histogram to full range;
-    params limit clip.
+    """Apply automatic contrast enhancement. Stretches histogram to full range. cutoff, ignore, method
+    (cdf or pil) limit clip. uint8 I/O.
 
     Args:
         img (np.ndarray): Input image
@@ -3713,7 +3715,8 @@ def get_drop_mask(
     dropout_prob: float,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate dropout mask (boolean or per-pixel drop prob).
+    """Generate dropout mask (boolean or per-pixel drop prob). shape, per_channel, dropout_prob,
+    random_generator. Returns bool or float mask.
 
     This function generates a dropout mask.
 
@@ -3754,8 +3757,8 @@ def generate_random_values(
     dtype: np.dtype,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate random values for dropout fill. Shape and dtype match image;
-    for filling dropped regions.
+    """Generate random values for dropout fill. channels, dtype, random_generator. Returns 1D array of
+    fill values per channel when value is None in prepare_drop_values.
 
     Args:
         channels (int): Number of channels
@@ -3784,8 +3787,8 @@ def prepare_drop_values(
     value: float | Sequence[float] | np.ndarray | None,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Prepare values to fill dropped pixels. Combines mask, fill, and random
-    generator; for use before apply.
+    """Prepare values to fill dropped pixels. array (shape/dtype), value (or None for random),
+    random_generator. Returns array of fill values matching array shape. Used before pixel_dropout.
 
     Args:
         array (np.ndarray): Input array to determine shape and dtype
@@ -3843,8 +3846,8 @@ def get_rain_params(
     color: np.ndarray,
     intensity: float,
 ) -> dict[str, Any]:
-    """Generate parameters for rain effect (drops, angles, etc.). Returns dict
-    of params for rain overlay.
+    """Generate parameters for rain effect. liquid_layer, color, intensity. Returns dict with 'drops'
+    for add_rain/spatter_rain.
 
     This function generates parameters for a rain effect.
 
@@ -3926,7 +3929,8 @@ def get_mud_params(
     intensity: float,
     random_generator: np.random.Generator,
 ) -> dict[str, Any]:
-    """Generate parameters for mud effect (splats, intensity). Returns dict of params for add_mud/spatter_mud.
+    """Generate parameters for mud effect. liquid_layer, color, cutout_threshold, sigma, intensity,
+    random_generator. Returns dict for spatter_mud.
 
     This function generates parameters for a mud effect.
 
@@ -4050,7 +4054,8 @@ STAIN_MATRICES = {
 
 
 def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
-    """Convert RGB image to optical density (-log10). Expects uint8 or float32 in [0,1].
+    """Convert RGB image to optical density (-log10). eps avoids log(0). Expects uint8 or float32 in
+    [0,1]. Returns (N*H*W, 3) float64. For stain normalization.
 
     This function converts an RGB image to optical density.
 
@@ -4069,7 +4074,8 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
 
 
 def normalize_vectors(vectors: np.ndarray) -> np.ndarray:
-    """Normalize vectors to unit length (L2). Axis and dtype preserved; supports 1D or 2D arrays.
+    """Normalize vectors to unit length (L2). Axis and dtype preserved; supports 1D or 2D arrays. Used
+    by stain normalization (e.g. Macenko) for stain vector normalization.
 
     This function normalizes vectors.
 
@@ -4109,8 +4115,8 @@ class StainNormalizer:
         self.stain_matrix_target = None
 
     def fit(self, img: ImageType) -> None:
-        """Fit the stain normalizer to a reference image. Learns stain matrix;
-        call transform on target images after.
+        """Fit the stain normalizer to a reference image. Learns stain matrix from img; call transform
+        on target images after. Subclass implements the actual extraction.
 
         This function fits the stain normalizer to an image.
 
@@ -4122,8 +4128,8 @@ class StainNormalizer:
 
 
 class SimpleNMF:
-    """Simple NMF for histology stain separation. Factorizes OD matrix into
-    stain basis and concentrations.
+    """Simple NMF for histology stain separation. Factorizes OD matrix into stain basis and
+    concentrations. Iterative multiplicative updates, non-negativity.
 
     This class implements a simplified version of the Non-negative Matrix Factorization algorithm
     specifically designed for separating Hematoxylin and Eosin (H&E) stains in histopathology images.
@@ -4421,8 +4427,8 @@ class MacenkoNormalizer(StainNormalizer):
 
 
 def get_tissue_mask(img: ImageType, threshold: float = 0.85) -> np.ndarray:
-    """Get tissue mask from image (exclude background). Threshold or simple
-    intensity-based to mask non-tissue. Returns mask.
+    """Get tissue mask from image (exclude background). threshold for intensity-based masking of
+    non-tissue. Returns 1D bool mask.
 
     Args:
         img (np.ndarray): Input image
@@ -4510,8 +4516,8 @@ def apply_he_stain_augmentation(
 @clipped
 @preserve_channel_dim
 def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
-    """Convolve an image with a 2D kernel. Supports multi-channel; border mode
-    configurable.
+    """Convolve image with 2D kernel via cv2.filter2D. Supports multi-channel; border mode from OpenCV.
+    Clipped, preserves channel count.
 
     This function convolves an image with a kernel.
 
@@ -4531,8 +4537,8 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
 @clipped
 @preserve_channel_dim
 def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
-    """Convolve an image with a separable (1D) kernel. Two passes (row, col);
-    faster than full 2D for large kernels.
+    """Convolve image with separable (1D) kernel. Two passes (row, col) via cv2.sepFilter2D; faster than
+    full 2D for large kernels. Clipped, preserves channel count.
 
     This function convolves an image with a separable kernel.
 
@@ -4587,8 +4593,8 @@ def apply_vignette(
     center_x: float,
     center_y: float,
 ) -> ImageType:
-    """Apply vignetting effect by darkening corners with a radial gradient. Params
-    control sigma and strength. Supports batch.
+    """Apply vignetting by darkening corners with radial gradient. intensity, center_x, center_y
+    control strength and center. Supports (H,W) or (H,W,C).
 
     Args:
         img: Input image of shape (H, W) or (H, W, C).
@@ -4783,8 +4789,8 @@ def generate_water_displacement_maps(
     num_waves: int,
     random_generator: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Generate displacement maps simulating water refraction. Returns (map_x, map_y)
-    for remap. Params: amplitude, frequency.
+    """Generate displacement maps simulating water refraction. image_shape, amplitude, wavelength,
+    num_waves, random_generator. Returns (map_x, map_y) for cv2.remap.
 
     Args:
         image_shape: (height, width).

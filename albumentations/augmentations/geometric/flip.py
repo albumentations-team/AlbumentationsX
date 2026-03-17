@@ -159,7 +159,8 @@ class VerticalFlip(DualTransform):
 
     def inverse(self) -> VerticalFlip:
         """Return a new VerticalFlip that undoes the flip (vertical flip is self-inverse). Use after
-        inference in TTA to restore predictions to original orientation."""
+        inference in TTA to restore predictions to original orientation.
+        """
         return VerticalFlip(p=1)
 
 
@@ -266,7 +267,8 @@ class HorizontalFlip(DualTransform):
 
     def inverse(self) -> HorizontalFlip:
         """Return a new HorizontalFlip that undoes the flip (horizontal flip is self-inverse). Use
-        after inference in TTA to restore predictions to original orientation."""
+        after inference in TTA to restore predictions to original orientation.
+        """
         return HorizontalFlip(p=1)
 
 
@@ -384,7 +386,8 @@ class Transpose(DualTransform):
 
     def inverse(self) -> Transpose:
         """Return a new Transpose that undoes the transpose (transpose is self-inverse). Use after
-        inference in TTA to restore predictions to original orientation."""
+        inference in TTA to restore predictions to original orientation.
+        """
         return Transpose(p=1)
 
 

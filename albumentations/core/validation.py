@@ -1,5 +1,4 @@
-"""Module containing validation mechanisms for transform parameters. of albume
-
+"""Module containing validation mechanisms for transform parameters.
 This module provides a metaclass that enables parameter validation for transforms using
 Pydantic models. It intercepts the initialization of transform classes to validate their
 parameters against schema definitions, raising appropriate errors for invalid values and

@@ -160,7 +160,8 @@ class BaseDomainAdaptation(ImageOnlyTransform):
 
     def _get_reference_image(self, data: dict[str, Any]) -> ImageType:
         """Retrieve a reference image from data[metadata_key]. Returns one image from the
-        sequence; raises ValueError or TypeError if missing or invalid type."""
+        sequence; raises ValueError or TypeError if missing or invalid type.
+        """
         metadata_images = data.get(self.metadata_key)
 
         if not metadata_images:

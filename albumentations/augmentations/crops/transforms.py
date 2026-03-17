@@ -430,7 +430,8 @@ class BaseCropAndPad(BaseCrop):
 
     def _get_pad_params(self, image_shape: tuple[int, int], target_shape: tuple[int, int]) -> dict[str, Any] | None:
         """Compute pad amounts (top, right, bottom, left) and position so image reaches
-        target_shape. Returns None if no padding needed or pad_if_needed is False."""
+        target_shape. Returns None if no padding needed or pad_if_needed is False.
+        """
         if not self.pad_if_needed:
             return None
 
@@ -1424,7 +1425,7 @@ class BaseRandomSizedCropInitSchema(BaseTransformInitSchema):
 
 class _BaseRandomSizedCrop(DualTransform):
     """Abstract base for random crop then resize to fixed size. Subclasses pick crop region;
-    output always (height, width).
+    output shape (height, width). Bboxes and keypoints scaled with the crop.
 
     This abstract class provides the foundation for RandomSizedCrop and RandomResizedCrop transforms.
     It handles cropping and resizing for different data types (image, mask, bboxes, keypoints) while

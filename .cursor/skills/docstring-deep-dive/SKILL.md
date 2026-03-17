@@ -14,19 +14,19 @@ Apply these criteria to **every docstring you write or update** in albumentation
 The **first paragraph** is the useful short description: an elevator pitch that explains intuitively what the function or transform does. It appears as the web/search preview under the link.
 
 - **Length:** **120–160 characters** (under 120 loses value, over 160 gets cut off).
-- **Content:** Intuitive, user-facing summary — **what the function/transform does and its main parameters** (elevator pitch), so someone can decide "do I need to click?" Do **not** write "Used by X" or "Used in Y" — that describes call sites, not the API; replace with what the function does or when to use it (e.g. "Call when …", "Useful for …"). Do not put in the first paragraph: "Targets: ...", "Same shape", **return type** (e.g. "Returns np.ndarray"), or **"Supports uint8 and float32"** / Image types — return type belongs in Returns; dtype/target support has a separate section (Image types / Targets) lower in the docstring. All transforms support uint8 and float32 unless noted.
+- **Content:** Intuitive, user-facing summary — a true **elevator pitch**: what the transform/function does, how it works in one sentence, and when it's useful. So someone can decide "do I need to click?" Do **not** list parameter names ("Parameters: x, y, z" or "Params: ...") in the first paragraph — that belongs in Args. Do **not** write "Used by X" or "Used in Y". Do not put: "Targets: ...", "Same shape", **return type**, or **"Supports uint8 and float32"** / Image types — return type in Returns; dtype/target support in Image types / Targets. All transforms support uint8 and float32 unless noted.
 - **Line wrap:** Line limit 120 chars, so the first paragraph usually spans **two lines** (break at a word boundary).
 - **When shortening:** Do not delete useful information. Move any removed content into the second paragraph, a Note, or the relevant Args/Returns section so it is still documented.
 
-**Example (first paragraph, two lines):**
+**Good example (first paragraph, elevator pitch, two lines):**
 ```text
-    """Sharpen via unsharp masking (blur, subtract, add back). Parameters: blur_limit,
-    sigma_limit, alpha.
+    """Sharpen the image via unsharp masking: blur, subtract from original, add back with
+    strength. Use when you need crisp edges without changing overall brightness.
 
     More detail...
 ```
 
-**Do not include:** "Used by X" or "Used in Y" anywhere — that is call-site info, not an elevator pitch. Describe the function (what it does, main params, when to use it). Keep return type only in Returns section; "Targets"/"Same shape" can go in a later paragraph if needed.
+**Do not include:** "Used by X" or "Used in Y"; "Parameters: ..." or "Params: ..."; return type or "Supports uint8/float32". Describe what it does and when to use it. Keep return type only in Returns; "Targets"/"Same shape" in a later paragraph if needed.
 
 **Bad example (do not use):** Filling the 120–160 chars with meta boilerplate instead of an elevator pitch:
 

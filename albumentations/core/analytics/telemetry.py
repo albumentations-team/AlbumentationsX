@@ -52,9 +52,9 @@ class TelemetryClient:
         Mixpanel (default: in a daemon thread).
 
         Args:
-            compose_data: Data collected from the Compose instance
-            telemetry: Whether telemetry is enabled for this specific instance
-            use_thread: If True, send telemetry in background thread (default)
+            compose_data (dict[str, Any]): Data collected from the Compose instance
+            telemetry (bool): Whether telemetry is enabled for this specific instance
+            use_thread (bool): If True, send telemetry in background thread (default)
 
         """
         if not self.enabled or not telemetry:
@@ -104,7 +104,7 @@ class TelemetryClient:
         Non-blocking; fire-and-forget.
 
         Args:
-            event: The event to send
+            event (ComposeInitEvent): The event to send
 
         """
         with contextlib.suppress(Exception):
@@ -116,7 +116,7 @@ class TelemetryClient:
         validation error. Synchronous, no retries.
 
         Args:
-            event: The event to send
+            event (ComposeInitEvent): The event to send
 
         Returns:
             bool: True if event was sent successfully, False otherwise.

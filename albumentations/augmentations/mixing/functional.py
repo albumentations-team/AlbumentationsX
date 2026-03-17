@@ -445,10 +445,10 @@ def get_opposite_crop_coords(
     correspond to the bottom-right region of the cell.
 
     Args:
-        cell_size: The (height, width) of the cell from which to crop.
-        crop_size: The (height, width) of the desired crop.
-        cell_position: The reference position within the cell. The crop will be
-            taken from the opposite position.
+        cell_size (tuple[int, int]): The (height, width) of the cell from which to crop.
+        crop_size (tuple[int, int]): The (height, width) of the desired crop.
+        cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): The reference
+            position within the cell. The crop will be taken from the opposite position.
 
     Returns:
         tuple[int, int, int, int]: (x_min, y_min, x_max, y_max) representing the crop coordinates.
@@ -508,15 +508,15 @@ def process_cell_geometry(
     matches the target cell dimensions exactly, handling both padding and cropping cases.
 
     Args:
-        cell_shape: (tuple[int, int]): Shape of the cell.
-        item: (ProcessedMosaicItem): The preprocessed mosaic item dictionary.
-        target_shape: (tuple[int, int]): Target shape of the cell.
-        fill: (float | tuple[float, ...]): Fill value for image padding.
-        fill_mask: (float | tuple[float, ...]): Fill value for mask padding.
-        fit_mode: (Literal['cover', 'contain']): Fit mode for the mosaic.
-        interpolation: (int): Interpolation method for image.
-        mask_interpolation: (int): Interpolation method for mask.
-        cell_position: (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Position
+        cell_shape (tuple[int, int]): Shape of the cell.
+        item (ProcessedMosaicItem): The preprocessed mosaic item dictionary.
+        target_shape (tuple[int, int]): Target shape of the cell.
+        fill (float | tuple[float, ...]): Fill value for image padding.
+        fill_mask (float | tuple[float, ...]): Fill value for mask padding.
+        fit_mode (Literal['cover', 'contain']): Fit mode for the mosaic.
+        interpolation (int): Interpolation method for image.
+        mask_interpolation (int): Interpolation method for mask.
+        cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Position
             of the cell.
 
     Returns: (ProcessedMosaicItem): Dictionary containing the geometrically processed image,
@@ -607,8 +607,8 @@ def shift_cell_coordinates(
     ProcessedMosaicItem with image, mask, shifted bboxes and keypoints.
 
     Args:
-        processed_item_geom: (ProcessedMosaicItem): The output from process_cell_geometry.
-        placement_coords: (tuple[int, int, int, int]): The (x1, y1, x2, y2) placement on the final canvas.
+        processed_item_geom (ProcessedMosaicItem): The output from process_cell_geometry.
+        placement_coords (tuple[int, int, int, int]): The (x1, y1, x2, y2) placement on the final canvas.
 
     Returns: (ProcessedMosaicItem): A dictionary with keys 'bboxes' and 'keypoints', containing the shifted
         numpy arrays (potentially empty).

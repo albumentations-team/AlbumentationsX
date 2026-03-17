@@ -1593,8 +1593,8 @@ class _BaseRandomSizedCrop(DualTransform):
         downscaling if area_for_downscale set; else image or mask interpolation.
 
         Args:
-            crop_shape: Shape of the crop (height, width)
-            target_type: Either "image" or "mask" to determine base interpolation
+            crop_shape (tuple[int, int]): Shape of the crop (height, width)
+            target_type (str): Either "image" or "mask" to determine base interpolation
 
         Returns:
             int: OpenCV interpolation flag.

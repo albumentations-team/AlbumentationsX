@@ -390,9 +390,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         determine output shape; avoids per-call allocation.
 
         Args:
-            batch: Input batch array of shape (N, ...)
-            apply_fn: Function to apply to each element
-            ensure_contiguous: Whether to ensure C-contiguous output
+            batch (np.ndarray): Input batch array of shape (N, ...)
+            apply_fn (Callable[[np.ndarray], np.ndarray]): Function to apply to each element
+            ensure_contiguous (bool): Whether to ensure C-contiguous output
 
         Returns:
             np.ndarray: Transformed batch array.
@@ -557,8 +557,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         update arbitrary user data in response to geometric or photometric transforms.
 
         Args:
-            data: Arbitrary user-defined data of any type.
-            **params: Transform parameters (same as passed to other apply_* methods).
+            data (Any): Arbitrary user-defined data of any type.
+            **params (Any): Transform parameters (same as passed to other apply_* methods).
 
         Returns:
             Any: The (optionally modified) user data. Must return the same type as the input.
@@ -858,7 +858,7 @@ class DualTransform(BasicTransform):
         we map the group element to the corresponding base transform name.
 
         Args:
-            **params: Transform parameters, may contain group_element for D4 transforms
+            **params (Any): Transform parameters, may contain group_element for D4 transforms
 
         Returns:
             str | None: Transform name to use for label mapping, or None if no mapping should be applied
@@ -898,8 +898,8 @@ class DualTransform(BasicTransform):
         we need to swap entire rows, not just relabel them.
 
         Args:
-            keypoints: Keypoints array with potential label columns attached
-            **params: Transform parameters
+            keypoints (np.ndarray): Keypoints array with potential label columns attached
+            **params (Any): Transform parameters
 
         Returns:
             np.ndarray: Keypoints array with rows reordered based on label mapping
@@ -935,9 +935,9 @@ class DualTransform(BasicTransform):
         similar; swaps entire rows so coords and labels stay consistent.
 
         Args:
-            keypoints: Keypoints array with label columns
-            label_fields: List of label field names
-            field_mappings: Mapping of field names to label swaps
+            keypoints (np.ndarray): Keypoints array with label columns
+            label_fields (Sequence[str]): List of label field names
+            field_mappings (dict[str, dict[int, int]]): Mapping of field names to label swaps
 
         Returns:
             np.ndarray: Keypoints array with rows swapped
@@ -969,9 +969,9 @@ class DualTransform(BasicTransform):
         unpaired; used internally by _swap_keypoint_rows_by_labels.
 
         Args:
-            keypoints: Keypoints array
-            col_idx: Column index of the label field
-            mapping: Label swap mapping
+            keypoints (np.ndarray): Keypoints array
+            col_idx (int): Column index of the label field
+            mapping (dict[int, int]): Label swap mapping
 
         Returns:
             np.ndarray: Keypoints array with rows swapped

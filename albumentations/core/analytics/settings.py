@@ -18,7 +18,7 @@ class SettingsManager:
         Loads from file and applies env overrides immediately.
 
         Args:
-            settings_file: Path to settings file. If None, uses default location.
+            settings_file (Path | None): Path to settings file. If None, uses default location.
 
         """
         self.settings_file = settings_file or (get_cache_dir() / "settings.json")
@@ -56,8 +56,8 @@ class SettingsManager:
         Does not mutate settings. File path is platform-specific.
 
         Args:
-            key: Setting name
-            default: Default value if setting not found
+            key (str): Setting name
+            default (Any): Default value if setting not found
 
         Returns:
             Any: Setting value.
@@ -70,7 +70,7 @@ class SettingsManager:
         Overwrites file. Persists immediately.
 
         Args:
-            **kwargs: Settings to update
+            **kwargs (Any): Settings to update
 
         """
         self._settings.update(kwargs)

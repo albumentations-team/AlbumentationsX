@@ -366,7 +366,7 @@ class BboxProcessor(DataProcessor):
         DualTransform lacks OBB support. Called at Compose init.
 
         Args:
-            transforms: Sequence of transforms to validate.
+            transforms (Sequence[object]): Sequence of transforms to validate.
 
         Raises:
             ValueError: If any DualTransform doesn't support OBB when bbox_type='obb'.
@@ -734,8 +734,8 @@ def polygons_to_obb(
     coordinate system.
 
     Args:
-        polygons: array of shape (N, 4, 2) with corners in any coordinate system.
-        extra_fields: optional array (N, M) to append after bbox coords + angle.
+        polygons (np.ndarray): array of shape (N, 4, 2) with corners in any coordinate system.
+        extra_fields (np.ndarray | None): optional array (N, M) to append after bbox coords + angle.
 
     Returns:
         np.ndarray: Array of OBB bounding boxes in the same coordinate system as input polygons.

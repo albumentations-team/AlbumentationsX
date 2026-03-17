@@ -1064,7 +1064,7 @@ def mask_to_rects(mask: np.ndarray) -> np.ndarray:
     into a single rectangle — all without a Python loop.
 
     Args:
-        mask: 2D uint8 mask where 0 indicates a dropped region.
+        mask (np.ndarray): 2D uint8 mask where 0 indicates a dropped region.
 
     Returns:
         np.ndarray: Array of shape (N, 4) with [x1, y1, x2, y2] rectangles, or empty (0, 4) array.
@@ -1121,11 +1121,11 @@ def generate_grid_mask_holes(
     Returns (n_holes, 4) [x1,y1,x2,y2]. Horizontal and vertical grid lines.
 
     Args:
-        image_shape: (height, width) of the image.
-        num_grid: Number of grid divisions along the shorter side.
-        line_width_ratio: Width of masked lines as fraction of grid cell size.
-        rotation: Rotation angle in radians.
-        random_generator: NumPy random generator.
+        image_shape (tuple[int, int]): (height, width) of the image.
+        num_grid (int): Number of grid divisions along the shorter side.
+        line_width_ratio (float): Width of masked lines as fraction of grid cell size.
+        rotation (float): Rotation angle in radians.
+        random_generator (np.random.Generator): NumPy random generator.
 
     Returns:
         np.ndarray: Array of holes as (N, 4) with [x1, y1, x2, y2] format.

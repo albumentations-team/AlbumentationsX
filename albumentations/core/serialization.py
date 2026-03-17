@@ -208,8 +208,8 @@ def from_dict(
     for Lambda/custom transforms keyed by name.
 
     Args:
-        transform_dict: Serialized transform pipeline.
-        nonserializable: Optional dict of non-serializable transforms keyed by name.
+        transform_dict (dict[str, Any]): Serialized transform pipeline.
+        nonserializable (dict[str, Any] | None): Optional dict of non-serializable transforms keyed by name.
 
     """
     register_additional_transforms()
@@ -382,7 +382,7 @@ def get_shortest_class_fullname(cls: type[Any]) -> str:
     Used for serialization registry lookup.
 
     Args:
-        cls: Class (e.g. a transform or Compose subclass).
+        cls (type[Any]): Class (e.g. a transform or Compose subclass).
 
     Returns:
         str: Shortened full class name.

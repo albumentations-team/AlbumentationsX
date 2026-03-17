@@ -27,7 +27,7 @@ class MixpanelBackend:
         normalized to UTC. None if invalid.
 
         Args:
-            timestamp: ISO format string or datetime object
+            timestamp (str | datetime | None): ISO format string or datetime object
 
         Returns:
             int | None: Unix timestamp in seconds or None.
@@ -52,7 +52,7 @@ class MixpanelBackend:
         time, transforms, etc.). Blocks on request.
 
         Args:
-            event: The ComposeInitEvent to send
+            event (ComposeInitEvent): The ComposeInitEvent to send
 
         """
         try:

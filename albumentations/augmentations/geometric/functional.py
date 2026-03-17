@@ -123,10 +123,10 @@ def resize_bboxes(
     output_shape, bbox_type (hbb/obb). Normalized coords; OBB supports non-uniform scale.
 
     Args:
-        bboxes: Array of bboxes in normalized coords [x_min, y_min, x_max, y_max, (angle), ...]
-        image_shape: Original image shape (height, width)
-        output_shape: Target image shape (height, width)
-        bbox_type: Type of bboxes - "hbb" or "obb"
+        bboxes (np.ndarray): Array of bboxes in normalized coords [x_min, y_min, x_max, y_max, (angle), ...]
+        image_shape (tuple[int, int]): Original image shape (height, width)
+        output_shape (tuple[int, int]): Target image shape (height, width)
+        bbox_type (Literal['hbb', 'obb']): Type of bboxes - "hbb" or "obb"
 
     Returns:
         np.ndarray: Resized bboxes in normalized coordinates.
@@ -688,14 +688,14 @@ def perspective_images(
     keep_size, border_val, interpolation. Single warp when grayscale and small.
 
     Args:
-        images: Batch of images of shape (N, H, W, C).
-        matrix: 3x3 perspective transformation matrix.
-        max_width: Maximum width of the output image if keep_size is False.
-        max_height: Maximum height of the output image if keep_size is False.
-        border_val: Border value(s) to fill areas outside the transformed image.
-        border_mode: OpenCV border mode (e.g., cv2.BORDER_CONSTANT).
-        keep_size: If True, maintain the original image dimensions.
-        interpolation: Interpolation method for resampling (cv2 interpolation flag).
+        images (np.ndarray): Batch of images of shape (N, H, W, C).
+        matrix (np.ndarray): 3x3 perspective transformation matrix.
+        max_width (int): Maximum width of the output image if keep_size is False.
+        max_height (int): Maximum height of the output image if keep_size is False.
+        border_val (float | list[float] | np.ndarray): Border value(s) to fill areas outside the transformed image.
+        border_mode (int): OpenCV border mode (e.g., cv2.BORDER_CONSTANT).
+        keep_size (bool): If True, maintain the original image dimensions.
+        interpolation (int): Interpolation method for resampling (cv2 interpolation flag).
 
     Returns:
         np.ndarray: Batch of perspective-transformed images with the same shape as input
@@ -2176,10 +2176,10 @@ def upscale_distortion_maps(
     then upscaled to the original image size.
 
     Args:
-        map_x: X-coordinate distortion map (generated at lower resolution)
-        map_y: Y-coordinate distortion map (generated at lower resolution)
-        target_shape: Target shape (height, width) to upscale to
-        interpolation: OpenCV interpolation method
+        map_x (np.ndarray): X-coordinate distortion map (generated at lower resolution)
+        map_y (np.ndarray): Y-coordinate distortion map (generated at lower resolution)
+        target_shape (tuple[int, int]): Target shape (height, width) to upscale to
+        interpolation (int): OpenCV interpolation method
 
     Returns:
         tuple[np.ndarray, np.ndarray]: Upscaled distortion maps with target_shape.
@@ -2218,11 +2218,11 @@ def remap_bboxes(
     Converts bboxes to mask, remaps, converts back. For distortion transforms.
 
     Args:
-        bboxes: Bounding boxes array
-        map_x: X displacement map
-        map_y: Y displacement map
-        image_shape: Image shape (height, width)
-        bbox_type: Type of bounding box - "hbb" for axis-aligned or "obb" for oriented
+        bboxes (np.ndarray): Bounding boxes array
+        map_x (np.ndarray): X displacement map
+        map_y (np.ndarray): Y displacement map
+        image_shape (tuple[int, int]): Image shape (height, width)
+        bbox_type (Literal['hbb', 'obb']): Type of bounding box - "hbb" for axis-aligned or "obb" for oriented
 
     Returns:
         np.ndarray: Remapped bounding boxes.

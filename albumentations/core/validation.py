@@ -109,9 +109,9 @@ class ValidatedTransformMeta(type):
                 strict mode setting.
 
                 Args:
-                    self: The instance being initialized.
-                    *args: Positional arguments passed to __init__.
-                    **kwargs: Keyword arguments passed to __init__, including optional
+                    self (Any): The instance being initialized.
+                    *args (Any): Positional arguments passed to __init__.
+                    **kwargs (Any): Keyword arguments passed to __init__, including optional
                         'strict' parameter for validation mode.
 
                 Raises:

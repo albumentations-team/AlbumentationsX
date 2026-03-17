@@ -476,8 +476,9 @@ def shuffle_tiles_within_shape_groups_3d(
     index points to the index of the tile it should be mapped to.
 
     Args:
-        shape_groups: Dictionary mapping shapes to list of tile indices with that shape
-        random_generator: Random number generator for shuffling
+        shape_groups (dict[tuple[int, int, int], list[int]]): Dictionary mapping shapes to list of
+            tile indices with that shape.
+        random_generator (np.random.Generator): Random number generator for shuffling
 
     Returns:
         list[int]: List where index i contains the new position for tile i.

@@ -388,7 +388,7 @@ def collect_pipeline_info(compose: "Compose") -> dict[str, Any]:
     Ready for event payloads; read-only.
 
     Args:
-        compose: The Compose instance to analyze
+        compose (Compose): The Compose instance to analyze
 
     Returns:
         dict[str, Any]: Dictionary with transform names and target usage information.

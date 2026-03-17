@@ -1441,7 +1441,7 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
         This enables processing all images in a single OpenCV call
 
     Args:
-        img: Input RGB image(s) as a numpy array. Must have 3 channels in the last dimension.
+        img (ImageType): Input RGB image(s) as a numpy array. Must have 3 channels in the last dimension.
             Supported shapes:
             - Single image: (H, W, 3)
             - Batch of images: (N, H, W, 3)
@@ -2004,10 +2004,10 @@ def apply_brightness_contrast_torchvision(
     256-entry LUT applied in one `cv2.LUT` call. For float32, two sequential clipped passes are used.
 
     Args:
-        img: Input image (uint8 or float32).
-        brightness_factor: Brightness multiplicative factor.
-        contrast_factor: Contrast multiplicative factor.
-        brightness_first: Whether brightness is applied before contrast.
+        img (ImageType): Input image (uint8 or float32).
+        brightness_factor (float): Brightness multiplicative factor.
+        contrast_factor (float): Contrast multiplicative factor.
+        brightness_first (bool): Whether brightness is applied before contrast.
 
     Returns:
         ImageType: Adjusted image with the same dtype as input.
@@ -2148,11 +2148,11 @@ def unsharp_mask_images(
     and writing directly into a pre-allocated output array.
 
     Args:
-        images: Batch of images with shape (N, H, W, C) or (N, H, W).
-        ksize: The kernel size for Gaussian blur.
-        sigma: The sigma value for Gaussian blur.
-        alpha: The alpha value for the unsharp mask.
-        threshold: The threshold value for the unsharp mask.
+        images (np.ndarray): Batch of images with shape (N, H, W, C) or (N, H, W).
+        ksize (int): The kernel size for Gaussian blur.
+        sigma (float): The sigma value for Gaussian blur.
+        alpha (float): The alpha value for the unsharp mask.
+        threshold (int): The threshold value for the unsharp mask.
 
     Returns:
         np.ndarray: Batch of unsharp masked images with same shape and dtype as input.
@@ -2219,11 +2219,11 @@ def unsharp_mask(
     Backward-compatible wrapper around unsharp_mask_images for a single image.
 
     Args:
-        image: Single image, shape (H, W, C) or (H, W).
-        ksize: The kernel size for Gaussian blur.
-        sigma: The sigma value for Gaussian blur.
-        alpha: The alpha value for the unsharp mask.
-        threshold: The threshold value for the unsharp mask.
+        image (np.ndarray): Single image, shape (H, W, C) or (H, W).
+        ksize (int): The kernel size for Gaussian blur.
+        sigma (float): The sigma value for Gaussian blur.
+        alpha (float): The alpha value for the unsharp mask.
+        threshold (int): The threshold value for the unsharp mask.
 
     Returns:
         np.ndarray: Unsharp masked image with same shape and dtype as input.
@@ -4598,10 +4598,10 @@ def apply_vignette(
     control strength and center. Supports (H,W) or (H,W,C).
 
     Args:
-        img: Input image of shape (H, W) or (H, W, C).
-        intensity: Strength of darkening at corners, in [0, 1].
-        center_x: Horizontal center of the vignette as fraction of width, in [0, 1].
-        center_y: Vertical center of the vignette as fraction of height, in [0, 1].
+        img (ImageType): Input image of shape (H, W) or (H, W, C).
+        intensity (float): Strength of darkening at corners, in [0, 1].
+        center_x (float): Horizontal center of the vignette as fraction of width, in [0, 1].
+        center_y (float): Vertical center of the vignette as fraction of height, in [0, 1].
 
     Returns:
         ImageType: Image with vignetting applied.
@@ -4625,9 +4625,9 @@ def apply_film_grain(
     Film grain is luminance-dependent and spatially correlated, unlike simple Gaussian noise.
 
     Args:
-        img: Input image, shape (H, W, C) or (H, W, 1).
-        grain: Pre-generated grain pattern, shape (H, W), float32.
-        intensity: Grain strength multiplier.
+        img (ImageType): Input image, shape (H, W, C) or (H, W, 1).
+        grain (np.ndarray): Pre-generated grain pattern, shape (H, W), float32.
+        intensity (float): Grain strength multiplier.
 
     Returns:
         ImageType: Image with film grain applied.
@@ -4656,9 +4656,9 @@ def apply_halftone(
     varies by intensity. Params: scale, dot_shape.
 
     Args:
-        img: Input image (H, W, C), uint8 or float32.
-        dot_size: Size of each halftone grid cell in pixels.
-        blend: Blend factor between halftone and original. 0 = pure halftone, 1 = original.
+        img (ImageType): Input image (H, W, C), uint8 or float32.
+        dot_size (int): Size of each halftone grid cell in pixels.
+        blend (float): Blend factor between halftone and original. 0 = pure halftone, 1 = original.
 
     Returns:
         ImageType: Image with halftone effect applied.
@@ -4738,12 +4738,12 @@ def apply_lens_flare(
     intensity, and number of ghosts. RGB input.
 
     Args:
-        img: Input image (H, W, C), must be 3-channel.
-        flare_center: (x, y) position of the flare source.
-        ghosts: List of (x, y, radius, alpha) for each ghost circle.
-        starburst_angles: Array of angles in radians for starburst rays.
-        starburst_intensity: Brightness of starburst rays, 0-1.
-        bloom_radius: Gaussian blur radius for bloom effect.
+        img (ImageType): Input image (H, W, C), must be 3-channel.
+        flare_center (tuple[int, int]): (x, y) position of the flare source.
+        ghosts (list[tuple[int, int, int, float]]): List of (x, y, radius, alpha) for each ghost circle.
+        starburst_angles (np.ndarray): Array of angles in radians for starburst rays.
+        starburst_intensity (float): Brightness of starburst rays, 0-1.
+        bloom_radius (int): Gaussian blur radius for bloom effect.
 
     Returns:
         ImageType: Image with lens flare applied.
@@ -4794,11 +4794,11 @@ def generate_water_displacement_maps(
     num_waves, random_generator. Returns (map_x, map_y) for cv2.remap.
 
     Args:
-        image_shape: (height, width).
-        amplitude: Maximum displacement in pixels.
-        wavelength: Base wavelength of waves in pixels.
-        num_waves: Number of overlaid sine waves.
-        random_generator: NumPy random generator.
+        image_shape (tuple[int, int]): (height, width).
+        amplitude (float): Maximum displacement in pixels.
+        wavelength (float): Base wavelength of waves in pixels.
+        num_waves (int): Number of overlaid sine waves.
+        random_generator (np.random.Generator): NumPy random generator.
 
     Returns:
         tuple[np.ndarray, np.ndarray]: Tuple of (map_x, map_y) float32 arrays for cv2.remap.
@@ -4843,10 +4843,10 @@ def apply_atmospheric_fog(
     Formula: result = img * exp(-density * depth) + fog_color * (1 - exp(-density * depth))
 
     Args:
-        img: Input image (H, W, C).
-        density: Fog density factor.
-        fog_color: Color of the fog, values in [0, max_val].
-        depth_map: (H, W) float32 array with values in [0, 1], where 1 is farthest.
+        img (ImageType): Input image (H, W, C).
+        density (float): Fog density factor.
+        fog_color (tuple[float, ...]): Color of the fog, values in [0, max_val].
+        depth_map (np.ndarray): (H, W) float32 array with values in [0, 1], where 1 is farthest.
 
     Returns:
         ImageType: Image with fog applied.

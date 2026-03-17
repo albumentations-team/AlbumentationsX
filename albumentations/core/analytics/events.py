@@ -67,7 +67,7 @@ class ComposeInitEvent:
         different order gives different hash.
 
         Args:
-            transforms: List of transform names
+            transforms (list[str]): List of transform names
 
         Returns:
             str: SHA-256 hash of the pipeline configuration.

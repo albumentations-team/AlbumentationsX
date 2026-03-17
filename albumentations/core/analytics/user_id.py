@@ -41,7 +41,7 @@ class UserIDManager:
         Default app_name: albumentationsx.
 
         Args:
-            app_name: Application name for config directory
+            app_name (str): Application name for config directory
 
         """
         self.app_name = app_name
@@ -75,7 +75,7 @@ class UserIDManager:
         Returns True on success.
 
         Args:
-            user_id: User ID to write
+            user_id (str): User ID to write
 
         Returns:
             bool: True if write was successful, False otherwise.

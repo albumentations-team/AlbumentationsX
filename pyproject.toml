@@ -404,7 +404,7 @@ filterwarnings = [
 # Legacy/alternate config key for google-docstring-parser (same package).
 [tool.google_docstring_parser]
 paths = [ "albumentations" ]
-require_param_types = false
+require_param_types = true
 exclude_files = [ "__init__.py" ]
 verbose = false
 check_references = true
@@ -412,7 +412,7 @@ check_references = true
 # Pre-commit hook check-google-docstrings reads this section (see package README).
 [tool.docstring_checker]
 paths = [ "albumentations" ]
-require_param_types = false   # TODO: add param/return types to docstrings; then set true
+require_param_types = true
 check_references = true
 check_type_consistency = true
 exclude_files = [ "__init__.py" ]

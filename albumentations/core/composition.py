@@ -444,7 +444,7 @@ class BaseCompose(Serializable):
         element is not. Used before __add__/__radd__ and in __init__.
 
         Args:
-            transforms: List of objects to validate
+            transforms (list[Any]): List of objects to validate
 
         Raises:
             TypeError: If any element is not a BasicTransform instance
@@ -461,8 +461,8 @@ class BaseCompose(Serializable):
         instance via _create_new_instance. Validates with _validate_transforms.
 
         Args:
-            other: Transform or sequence of transforms to combine
-            prepend: If True, prepend other to the beginning; if False, append to the end
+            other (TransformType | TransformsSeqType): Transform or sequence of transforms to combine
+            prepend (bool): If True, prepend other to the beginning; if False, append to the end
 
         Returns:
             BaseCompose: New compose instance with combined transforms
@@ -487,7 +487,7 @@ class BaseCompose(Serializable):
         (e.g. compose + A.HorizontalFlip() or compose + [A.Blur(), A.Rotate()]).
 
         Args:
-            other: Transform or sequence of transforms to append
+            other (TransformType | TransformsSeqType): Transform or sequence of transforms to append
 
         Returns:
             BaseCompose: New compose instance with transforms appended
@@ -507,7 +507,7 @@ class BaseCompose(Serializable):
         with transform on left (e.g. A.RandomCrop(256,256) + compose).
 
         Args:
-            other: Transform or sequence of transforms to prepend
+            other (TransformType | TransformsSeqType): Transform or sequence of transforms to prepend
 
         Returns:
             BaseCompose: New compose instance with transforms prepended
@@ -529,7 +529,7 @@ class BaseCompose(Serializable):
         Removes the first transform in the compose that matches the provided transform class.
 
         Args:
-            other: Transform class to remove (e.g., A.HorizontalFlip)
+            other (type[BasicTransform]): Transform class to remove (e.g., A.HorizontalFlip)
 
         Returns:
             BaseCompose | type[NotImplemented]: New compose instance with transform removed, or NotImplemented.
@@ -571,7 +571,7 @@ class BaseCompose(Serializable):
         and random state from self. Called by __add__, __radd__, __sub__.
 
         Args:
-            new_transforms: List of transforms for the new instance
+            new_transforms (TransformsSeqType): List of transforms for the new instance
 
         Returns:
             BaseCompose: New instance of the same class
@@ -1035,7 +1035,7 @@ class Compose(BaseCompose, HubMixin):
         image, mask, images, volume. For preprocess shape check.
 
         Args:
-            data: Data dictionary containing various arrays
+            data (dict[str, Any]): Data dictionary containing various arrays
 
         Returns:
             tuple[list[tuple[int, ...]], list[tuple[int, ...]]]: Tuple of (2D shapes list, 3D shapes list).

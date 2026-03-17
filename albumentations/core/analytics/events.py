@@ -10,10 +10,7 @@ from typing import Any
 
 @dataclass
 class ComposeInitEvent:
-    """Event data for Compose initialization tracking.
-
-    Contains minimal information about pipeline configuration and environment.
-    Structured to fit within GA4's 25 parameter limit.
+    """Payload for one Compose init: pipeline hash, transform list, targets, and environment (OS, CPU, GPU, RAM). to_dict() gives full nested dict.
     """
 
     # Core event data
@@ -39,8 +36,7 @@ class ComposeInitEvent:
     targets: str = "None"  # None/bboxes/keypoints/bboxes_keypoints
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert event to dictionary for other uses (not GA4).
-        Parameters and behavior: see Args, Returns, Examples.
+        """Serialize event to a dict with top-level keys plus nested 'environment' and 'pipeline' dicts. For backends that need full payload.
         """
         return {
             "event_type": self.event_type,
@@ -65,7 +61,7 @@ class ComposeInitEvent:
 
     @staticmethod
     def generate_pipeline_hash(transforms: list[str]) -> str:
-        """Generate a hash for pipeline deduplication.
+        """Compute SHA-256 hash of the transform list for deduplication. Transform order is preserved (not sorted); different order gives different hash.
 
         Args:
             transforms: List of transform names

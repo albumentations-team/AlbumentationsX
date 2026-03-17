@@ -15,7 +15,8 @@ DO_NOT_TRACK_VALUE = "do-not-track"
 
 
 def get_user_config_dir() -> Path:
-    """Get platform-appropriate user config directory."""
+    """Return the base config directory: XDG_CONFIG_HOME on Unix, APPDATA on Windows. Overridable with ALBUMENTATIONS_CONFIG_DIR.
+    """
     # Check for environment variable override
     if config_dir := os.environ.get("ALBUMENTATIONS_CONFIG_DIR"):
         return Path(config_dir)
@@ -30,14 +31,11 @@ def get_user_config_dir() -> Path:
 
 
 class UserIDManager:
-    """Manages persistent anonymous user ID for telemetry.
-
-    The user ID is stored in a JSON file in the user's config directory.
-    Uses atomic file operations to minimize race conditions.
+    """Stores and retrieves a persistent anonymous ID in a JSON file under the user config dir. Atomic writes (temp file + rename) to avoid races.
     """
 
     def __init__(self, app_name: str = "albumentationsx"):
-        """Initialize the UserIDManager.
+        """Create manager for a given app name; config is stored in <config_dir>/<app_name>/user_id.json. Default app_name: albumentationsx.
 
         Args:
             app_name: Application name for config directory
@@ -50,7 +48,7 @@ class UserIDManager:
         self._cache_loaded = False
 
     def _read_user_id(self) -> str | None:
-        """Read user ID from file.
+        """Load user ID from the JSON file. Returns None if file missing, invalid, or set to do-not-track. Does not create a new ID.
 
         Returns:
             str | None: User ID string or None if not found/invalid.
@@ -69,9 +67,7 @@ class UserIDManager:
             return None
 
     def _write_user_id_atomic(self, user_id: str) -> bool:
-        """Write user ID to file atomically.
-
-        Uses a temporary file and atomic rename to minimize race conditions.
+        """Write user ID to disk via a temp file and atomic rename so concurrent processes do not corrupt the file. Returns True on success.
 
         Args:
             user_id: User ID to write
@@ -123,10 +119,7 @@ class UserIDManager:
             return False
 
     def get_or_create_user_id(self) -> str | None:
-        """Get existing user ID or create a new one.
-
-        This method uses atomic file operations to minimize race conditions
-        when multiple processes try to access the user ID.
+        """Return the stored user ID, or create and persist a new UUID if none exists. Respects do-not-track; result cached for process.
 
         Returns:
             str | None: User ID string or None if user has opted out.
@@ -180,14 +173,14 @@ class UserIDManager:
         return user_id
 
     def opt_out(self) -> None:
-        """Opt out of telemetry by setting user ID to 'do-not-track'."""
+        """Persist 'do-not-track' as the user ID and clear cache. Future get_or_create_user_id() will return None until user resets preference in config."""
         if self._write_user_id_atomic(DO_NOT_TRACK_VALUE):
             # Clear the cache
             self._cached_user_id = None
             self._cache_loaded = False
 
     def reset(self) -> None:
-        """Reset user ID by deleting the file and clearing cache."""
+        """Delete the persisted user ID file and clear the in-memory cache. Next get_or_create_user_id() will create a new ID. Idempotent."""
         # Always clear the cache first
         self._cached_user_id = None
         self._cache_loaded = False
@@ -203,7 +196,7 @@ _user_id_manager: UserIDManager | None = None
 
 
 def get_user_id_manager() -> UserIDManager:
-    """Get the global UserIDManager instance.
+    """Return the global UserIDManager singleton. First call creates it with default app name; later calls return the same instance.
 
     Returns:
         UserIDManager: The global UserIDManager instance.

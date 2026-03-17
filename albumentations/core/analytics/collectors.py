@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 
 
 def get_environment_info() -> dict[str, Any]:
-    """Collect basic environment information without external dependencies.
+    """Collect OS, CPU, GPU, RAM, and runtime type (ci/jupyter/local etc.) without extra deps.
+    Single dict suitable for tagging pipeline init events.
 
     Returns:
         dict[str, Any]: Dictionary with OS, CPU, GPU (if available), RAM, and environment type.
@@ -33,9 +34,8 @@ def get_environment_info() -> dict[str, Any]:
 
 
 def detect_environment() -> str:
-    """Detect the runtime environment.
-
-    Priority order: ci > colab > kaggle > docker > jupyter > local
+    """Detect where the code runs: ci, colab, kaggle, docker, jupyter, or local.
+    Checks env vars, optional imports, and paths in a fixed priority order.
 
     Returns:
         str: Environment name.
@@ -71,7 +71,7 @@ def detect_environment() -> str:
 
 
 def _check_module(module_name: str) -> bool:
-    """Check if a module is available."""
+    """Return True if the given module can be imported (e.g. google.colab). Uses importlib.find_spec; does not actually import."""
     try:
         import importlib.util
 
@@ -83,7 +83,7 @@ def _check_module(module_name: str) -> bool:
 
 
 def _check_jupyter() -> bool:
-    """Check if running in Jupyter notebook."""
+    """Return True if the interpreter is a Jupyter kernel (ZMQ or terminal IPython). Checks get_ipython() shell class name. Distinguishes notebook from CLI."""
     try:
         from IPython import get_ipython
 
@@ -98,7 +98,7 @@ def _check_jupyter() -> bool:
 
 @functools.lru_cache(maxsize=1)
 def _get_linux_os_info() -> str:
-    """Get Linux OS information."""
+    """Return a human-readable Linux distro string from freedesktop os-release or /etc/os-release. Cached. Fallback: 'Linux'. Reads PRETTY_NAME."""
     # Try to get distribution info
     try:
         if hasattr(platform, "freedesktop_os_release"):
@@ -125,7 +125,7 @@ def _get_linux_os_info() -> str:
 
 @functools.lru_cache(maxsize=1)
 def get_os_info() -> str:
-    """Get OS information in a simple format."""
+    """Return a short OS string (e.g. macOS 14.2, Windows 11, Ubuntu 22.04). One value per platform. Cached. Dispatches to platform-specific helpers."""
     system = platform.system()
 
     if system == "Darwin":  # macOS
@@ -147,7 +147,7 @@ def get_os_info() -> str:
 
 @functools.lru_cache(maxsize=1)
 def get_cpu_model() -> str:
-    """Get CPU model name in a simplified way."""
+    """Return CPU model or brand string (e.g. Apple M1, Intel i7). Uses platform or sysctl on macOS. Fallback: architecture. Cached."""
     # First try platform.processor() - often gives good info
     processor = platform.processor()
     if processor and processor not in ["", "unknown", "arm", "arm64", "x86_64", "i386", "AMD64", "aarch64"]:
@@ -187,7 +187,7 @@ def get_cpu_model() -> str:
 
 @functools.lru_cache(maxsize=1)
 def get_gpu_name() -> str | None:
-    """Get GPU name if torch is available and CUDA is accessible."""
+    """Return the first CUDA GPU name if torch is installed and CUDA is available; otherwise None. Cached. Requires torch and CUDA."""
     try:
         import torch
 
@@ -199,7 +199,7 @@ def get_gpu_name() -> str | None:
 
 
 def _get_ram_linux() -> float | None:
-    """Get RAM size on Linux."""
+    """Return total RAM in GB from /proc/meminfo MemTotal on Linux. Parses MemTotal in kB, converts to GB. None if unreadable or missing."""
     meminfo_path = Path("/proc/meminfo")
     if meminfo_path.exists():
         with meminfo_path.open() as f:
@@ -211,7 +211,7 @@ def _get_ram_linux() -> float | None:
 
 
 def _get_ram_macos() -> float | None:
-    """Get RAM size on macOS."""
+    """Return total RAM in GB via sysctl hw.memsize on macOS. Converts bytes to GB. None if unreadable or subprocess times out. Darwin only."""
     result = subprocess.run(
         ["sysctl", "-n", "hw.memsize"],  # noqa: S607
         check=False,
@@ -226,7 +226,7 @@ def _get_ram_macos() -> float | None:
 
 
 def _get_ram_windows() -> float | None:
-    """Get RAM size on Windows."""
+    """Return total RAM in GB via wmic computersystem get TotalPhysicalMemory on Windows. Converts bytes to GB. None on error or timeout."""
     result = subprocess.run(
         ["wmic", "computersystem", "get", "TotalPhysicalMemory"],  # noqa: S607
         check=False,
@@ -244,7 +244,7 @@ def _get_ram_windows() -> float | None:
 
 @functools.lru_cache(maxsize=1)
 def get_ram_size() -> float | None:
-    """Get RAM size in GB without external dependencies."""
+    """Return total system RAM in GB. Uses /proc (Linux), sysctl (macOS), or wmic (Windows). None on error. Result cached for process lifetime."""
     try:
         system = platform.system()
 
@@ -262,7 +262,7 @@ def get_ram_size() -> float | None:
 
 
 def is_ci_environment() -> bool:
-    """Check if running in a CI/CD environment.
+    """Return True if any known CI env var is set (GITHUB_ACTIONS, GITLAB_CI, JENKINS, etc.). Enables skipping telemetry in CI.
 
     Returns:
         bool: True if any CI environment variable is detected.
@@ -290,7 +290,7 @@ def is_ci_environment() -> bool:
 
 
 def is_pytest_running() -> bool:
-    """Check if pytest is currently running.
+    """Return True if PYTEST_CURRENT_TEST is in os.environ. Enables skipping telemetry during test runs so tests stay local and deterministic.
 
     Returns:
         bool: True if pytest is detected in the environment.
@@ -300,7 +300,7 @@ def is_pytest_running() -> bool:
 
 
 def _extract_transforms_from_compose(transform: Any, transforms: list[str]) -> None:
-    """Recursively extract transform names from a compose structure."""
+    """Append transform class names from a compose-like (Compose, OneOf, SomeOf) to the list. Recursive; flattens nested pipelines. Mutates list."""
     if hasattr(transform, "transforms") and transform.transforms:
         for t in transform.transforms:
             _extract_transform_names(t, transforms)
@@ -315,7 +315,7 @@ def _extract_transforms_from_compose(transform: Any, transforms: list[str]) -> N
 
 
 def _extract_transform_names(transform: Any, transforms: list[str]) -> None:
-    """Extract transform names from a single transform."""
+    """Append one transform's class name to the list; recurse into nested compose. Skips Lambda and ReplayCompose. Mutates list."""
     # Get the class name
     class_name = transform.__class__.__name__
 
@@ -342,7 +342,7 @@ def _extract_transform_names(transform: Any, transforms: list[str]) -> None:
 
 
 def _get_target_usage(compose: "Compose") -> str:
-    """Determine target usage from compose processors."""
+    """Infer which targets the compose uses from its processors: bboxes, keypoints, bboxes_keypoints, or None. Reads compose.processors."""
     uses_keypoints = "keypoints" in compose.processors
     uses_bboxes = "bboxes" in compose.processors
 
@@ -356,7 +356,7 @@ def _get_target_usage(compose: "Compose") -> str:
 
 
 def collect_pipeline_info(compose: "Compose") -> dict[str, Any]:
-    """Collect information about the pipeline structure.
+    """Build a dict of transform names, target usage, and pipeline hash from a Compose instance. Ready for event payloads; read-only.
 
     Args:
         compose: The Compose instance to analyze

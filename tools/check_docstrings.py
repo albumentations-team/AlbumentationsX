@@ -14,7 +14,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-if __name__ == "__main__" and len(sys.argv) <= 1:
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        sys.stderr.write(
+            "check_docstrings.py does not accept positional arguments; "
+            "invoke the package-level docstring checker directly instead.\n",
+        )
+        sys.exit(1)
     repo_root = Path.cwd().resolve()
     # Paths that are not repo root (so package's tools is found first)
     rest_path = [Path(p).resolve() for p in sys.path if p and Path(p).resolve() != repo_root]

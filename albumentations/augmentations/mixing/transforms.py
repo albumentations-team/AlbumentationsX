@@ -1,4 +1,4 @@
-"""Transforms that combine multiple images and their associated annotations. o
+"""Transforms that combine multiple images and their associated annotations.
 
 This module contains transformations that take multiple input sources (e.g., a primary image
 and additional images provided via metadata) and combine them into a single output.

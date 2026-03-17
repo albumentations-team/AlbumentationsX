@@ -94,7 +94,7 @@ class GridDropout(BaseDropout):
         ...     p=1.0
         ... )
         >>> transformed = aug_random(image=image, mask=mask)
-        >>> transformed_image, transformed_mask = transformed["image'], transformed["mask"]
+        >>> transformed_image, transformed_mask = transformed["image"], transformed["mask"]
 
     Reference:
         - Paper: https://arxiv.org/abs/2001.04086

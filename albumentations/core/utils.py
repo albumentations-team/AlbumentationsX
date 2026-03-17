@@ -1,7 +1,5 @@
 """Module containing utility functions and classes for the core Albumentations framework.
 
-    r output, and Examples for
-
 This module provides a collection of helper functions and base classes used throughout
 the Albumentations library. It includes utilities for shape handling, parameter processing,
 data conversion, and serialization. The module defines abstract base classes for data

@@ -1,4 +1,4 @@
-"""Transforms for type conversion between float and other data types. of album
+"""Transforms for type conversion between float and other data types.
 
 This module provides transform classes for converting image data types, primarily
 for converting between floating point and integer representations. These transforms

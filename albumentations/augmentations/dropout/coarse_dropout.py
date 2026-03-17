@@ -90,7 +90,7 @@ class CoarseDropout(BaseDropout):
         ...     p=1.0
         ... )
         >>> transformed = aug_random(image=image, mask=mask)
-        >>> transformed_image, transformed_mask = transformed["image'], transformed["mask"]
+        >>> transformed_image, transformed_mask = transformed["image"], transformed["mask"]
 
     References:
         - CutOut: https://arxiv.org/abs/1708.04552

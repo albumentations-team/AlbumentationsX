@@ -161,7 +161,7 @@ class Pad3D(BasePad3D):
     """Add voxels around a 3D volume. Padding: int or per-side (depth, height, width); fill,
     fill_mask. For fixed-size batches or avoiding crop boundaries.
 
-    Targets: volume, mask, keypoints
+    Targets: volume, mask3d, keypoints
 
     Args:
         padding (int, tuple[int, int, int] or tuple[int, int, int, int, int, int]): Padding values. Can be:
@@ -722,7 +722,7 @@ class CenterCrop3D(BaseCropAndPad3D):
     """Take the center sub-volume to fixed (depth, height, width). pad_if_needed fills when smaller;
     fill, fill_mask. For fixed-size 3D inputs (e.g. CT, MRI).
 
-    Targets: volume, mask, keypoints
+    Targets: volume, mask3d, keypoints
 
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
@@ -879,7 +879,7 @@ class RandomCrop3D(BaseCropAndPad3D):
     """Extract a random 3D sub-volume of given (depth, height, width). pad_if_needed when smaller;
     fill, fill_mask. For spatial augmentation of volumetric data.
 
-    Targets: volume, mask, keypoints
+    Targets: volume, mask3d, keypoints
 
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
@@ -1060,7 +1060,7 @@ class CoarseDropout3D(Transform3D):
         ...     p=1.0
         ... )
         >>> transformed = aug(volume=volume, mask3d=mask3d)
-        >>> transformed_volume, transformed_mask3d = transformed["volume'], transformed["mask3d"]
+        >>> transformed_volume, transformed_mask3d = transformed["volume"], transformed["mask3d"]
 
     """
 

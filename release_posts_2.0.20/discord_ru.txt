@@ -1,0 +1,12 @@
+Albumentations 2.0.20 вышел 🚀
+
+Производительность:
+• Perspective — до 2.7× быстрее на видео-батчах (особенно grayscale — depth maps, медицинские срезы)
+• HueSaturationValue — до 1.2× быстрее на больших батчах
+
+Новая фича — target user_data:
+Можно прокидывать любые свои данные через пайплайн вместе с картинками: camera intrinsics, подписи, point clouds, таймстемпы. По умолчанию проходят без изменений; переопределяешь apply_to_user_data — и обновляешь их при трансформах.
+
+Кейсы: роботы/автономки (обновление матрицы K при crop), vision-language (синхронизация caption с flip), LiDAR/BEV, multi-sensor fusion.
+
+pip install albumentationsx==2.0.20

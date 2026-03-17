@@ -1,0 +1,1 @@
+Albumentations 2.0.20 🚀 Perspective up to 2.7× faster on video batches, HueSaturationValue 1.2× faster. New user_data target: pass camera intrinsics, captions, LiDAR through your pipeline. pip install albumentationsx==2.0.20

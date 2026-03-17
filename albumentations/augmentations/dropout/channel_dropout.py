@@ -23,7 +23,8 @@ MIN_DROPOUT_CHANNEL_LIST_LENGTH = 2
 
 
 class ChannelDropout(ImageOnlyTransform):
-    """Randomly drop channels in the input image.
+    """Randomly drop channels. channel_drop_range, fill. Replaces selected channels with fill;
+    improves robustness to missing channels. Image-only.
 
     This transform randomly selects a number of channels to drop from the input image
     and replaces them with a specified fill value. This can improve model robustness

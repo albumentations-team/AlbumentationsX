@@ -20,7 +20,8 @@ def adjust_padding_by_position3d(
     position: Literal["center", "random"],
     py_random: random.Random,
 ) -> tuple[int, int, int, int, int, int]:
-    """Adjust padding values based on desired position for 3D data.
+    """Adjust 3D padding by position. paddings [(d),(h),(w)]; position center or random. Returns
+    (d_front, d_back, h_top, h_bottom, w_left, w_right).
 
     Args:
         paddings (list[tuple[int, int]]): List of tuples containing padding pairs
@@ -62,7 +63,8 @@ def pad_3d_with_params(
     padding: tuple[int, int, int, int, int, int],
     value: tuple[float, ...] | float,
 ) -> ImageType:
-    """Pad 3D volume with given parameters.
+    """Pad 3D volume. padding (d_front, d_back, h_top, h_bottom, w_left, w_right); value: fill.
+    (D,H,W) or (D,H,W,C). Used by Pad3D and PadIfNeeded3D.
 
     Args:
         volume (np.ndarray): Input volume with shape (depth, height, width) or (depth, height, width, channels)
@@ -112,7 +114,8 @@ def crop3d(
     volume: ImageType,
     crop_coords: tuple[int, int, int, int, int, int],
 ) -> ImageType:
-    """Crop 3D volume using coordinates.
+    """Crop 3D volume using coordinates. crop_coords: (z_min, z_max, y_min, y_max, x_min, x_max).
+    Volume (D,H,W) or (D,H,W,C). Used by CenterCrop3D and RandomCrop3D.
 
     Args:
         volume (np.ndarray): Input volume with shape (z, y, x) or (z, y, x, channels)
@@ -129,7 +132,8 @@ def crop3d(
 
 
 def cutout3d(volume: ImageType, holes: np.ndarray, fill: tuple[float, ...] | float) -> ImageType:
-    """Cut out holes in 3D volume and fill them with a given value.
+    """Cut out holes in 3D volume and fill. holes (n, 6) [z1,y1,x1,z2,y2,x2]; fill scalar or per-channel.
+    Used by CoarseDropout3D. Returns volume.
 
     Args:
         volume (np.ndarray): Input volume with shape (depth, height, width) or (depth, height, width, channels)
@@ -148,7 +152,8 @@ def cutout3d(volume: ImageType, holes: np.ndarray, fill: tuple[float, ...] | flo
 
 
 def transform_cube(cube: np.ndarray, index: int) -> np.ndarray:
-    """Transform cube by index (0-47)
+    """Transform cube by index (0-47). One of 48 cubic symmetries; no interpolation. For
+    CubicSymmetry; inverse via inverse index.
 
     Args:
         cube (np.ndarray): Input array with shape (D, H, W) or (D, H, W, C)
@@ -222,7 +227,8 @@ def transform_cube(cube: np.ndarray, index: int) -> np.ndarray:
 
 @handle_empty_array("keypoints")
 def filter_keypoints_in_holes3d(keypoints: np.ndarray, holes: np.ndarray) -> np.ndarray:
-    """Filter out keypoints that are inside any of the 3D holes.
+    """Filter keypoints inside any 3D hole. keypoints (N,3+); holes (K,6). Returns keypoints not in holes.
+    For CoarseDropout3D.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 3+).
@@ -278,7 +284,8 @@ def keypoints_rot90(
     axes: tuple[int, int],
     volume_shape: tuple[int, int, int],
 ) -> np.ndarray:
-    """Rotate keypoints 90 degrees k times around the specified axes.
+    """Rotate keypoints 90° k times around axes. k in [0,3]; volume_shape for bounds. Used by
+    transform_cube_keypoints. Counterclockwise.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 3+).
@@ -326,7 +333,8 @@ def transform_cube_keypoints(
     index: int,
     volume_shape: tuple[int, int, int],
 ) -> np.ndarray:
-    """Transform keypoints according to the cube transformation specified by index.
+    """Transform keypoints by cube index (0-47). volume_shape for bounds. Matches transform_cube geometry.
+    For CubicSymmetry keypoints.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 3+).
@@ -396,7 +404,8 @@ def split_uniform_grid_3d(
     grid: tuple[int, int, int],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Splits a 3D volume shape into a uniform grid specified by the grid dimensions.
+    """Split 3D volume shape into uniform grid. grid (depth, rows, cols); random_generator. Returns
+    tiles (n, 6). For tile swap.
 
     Args:
         volume_shape (tuple[int, int, int]): The shape of the volume as (depth, height, width).
@@ -447,7 +456,9 @@ def split_uniform_grid_3d(
 
 
 def create_shape_groups_3d(tiles: np.ndarray) -> dict[tuple[int, int, int], list[int]]:
-    """Groups 3D tiles by their shape and stores the indices for each shape."""
+    """Group 3D tiles by shape (depth, height, width); return dict shape -> list of indices. For
+    shuffle_tiles_within_shape_groups_3d and swap_tiles_on_volume.
+    """
     from collections import defaultdict
 
     shape_groups = defaultdict(list)
@@ -489,7 +500,8 @@ def swap_tiles_on_volume(
     tiles: np.ndarray,
     mapping: list[int],
 ) -> ImageType:
-    """Swap tiles on the 3D volume according to the mapping.
+    """Swap tiles on 3D volume by mapping. tiles (n, 6); mapping[i] = source for position i. Variable
+    tile sizes; loop-based. For CubicSymmetry-style shuffle.
 
     Args:
         volume (np.ndarray): Input volume with shape (D, H, W) or (D, H, W, C).
@@ -540,7 +552,8 @@ def swap_tiles_on_keypoints_3d(
     tiles: np.ndarray,
     mapping: np.ndarray,
 ) -> np.ndarray:
-    """Swap the positions of 3D keypoints based on a tile mapping.
+    """Swap 3D keypoint positions by tile mapping. keypoints (N,3+); tiles (M,6); mapping (M,). Each
+    keypoint moves with its tile. For CubicSymmetry.
 
     Args:
         keypoints (np.ndarray): A 2D numpy array of shape (N, 3+) where N is the number of keypoints.

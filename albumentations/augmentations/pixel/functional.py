@@ -68,7 +68,7 @@ def shift_hsv(
     val_shift: float,
 ) -> ImageType:
     """Shift hue, saturation, and value in HSV space. hue_shift, sat_shift, val_shift control
-    amount. uint8 I/O.
+    amount; grayscale gets value only. uint8 I/O.
 
     Args:
         img (np.ndarray): The image to shift.
@@ -150,7 +150,7 @@ def shift_hsv_images(
 @clipped
 def solarize(img: ImageType, threshold: float) -> ImageType:
     """Invert pixel values above a normalized threshold (solarization). threshold in [0, 1];
-    works for uint8 and float32.
+    works for uint8 and float32; pixels below threshold unchanged.
 
     Args:
         img (np.ndarray): The image to solarize. Can be uint8 or float32.
@@ -183,7 +183,7 @@ def solarize(img: ImageType, threshold: float) -> ImageType:
 @clipped
 def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]]) -> ImageType:
     """Reduce bit depth by keeping only the highest N bits per channel. bits: 1-7 or list per
-    channel. uint8 I/O, clipped.
+    channel; LUT-based. uint8 I/O, clipped.
 
     Args:
         img (np.ndarray): Input image. Can be single or multi-channel.
@@ -537,7 +537,7 @@ def image_compression(
     image_type: Literal[".jpg", ".webp"],
 ) -> ImageType:
     """Compress image with JPEG or WebP to simulate artifacts. quality, image_type (.jpg/.webp).
-    uint8 I/O.
+    Lower quality increases blockiness. uint8 I/O.
 
     Args:
         img (np.ndarray): Input image
@@ -690,7 +690,7 @@ def add_snow_texture(
     sparkle_mask: np.ndarray,
 ) -> ImageType:
     """Add snow effect: texture overlay, sparkle, depth gradient, blue tint. snow_point,
-    brightness_coeff. uint8 I/O.
+    brightness_coeff; takes precomputed snow_texture and sparkle_mask. uint8 I/O.
 
     This function simulates snowfall by applying multiple visual effects to the image,
     including brightness adjustment, snow texture overlay, depth simulation, and color tinting.
@@ -802,7 +802,7 @@ def add_rain(
     rain_drops: np.ndarray,
 ) -> ImageType:
     """Add rain streaks. slant, drop_length, drop_width, drop_color, blur_value,
-    brightness_coefficient, rain_drops.
+    brightness_coefficient, rain_drops. Polylines; optional blur. uint8 I/O.
 
     This function adds rain to an image by drawing rain drops on the image.
     The rain drops are drawn using the OpenCV function cv2.polylines.
@@ -892,7 +892,7 @@ def add_fog(
     fog_particle_radiuses: list[int],
 ) -> ImageType:
     """Add fog with circular particles and alpha blending. fog_intensity, alpha_coef, positions,
-    radiuses. uint8 I/O.
+    radiuses (lists from get_fog_particle_radiuses). uint8 I/O, clipped.
 
     This function adds fog to an image by drawing fog particles on the image.
     The fog particles are drawn using the OpenCV function cv2.circle.
@@ -1204,8 +1204,8 @@ def add_shadow(
 @clipped
 @preserve_channel_dim
 def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
-    """Add gravel: write HLS saturation in rectangular regions from gravels (min_y,max_y,min_x,
-    max_x,sat). uint8 I/O.
+    """Add gravel: write HLS saturation in rectangular regions. gravels: list of
+    (min_y, max_y, min_x, max_x, sat). RGB only; uint8 I/O.
 
     This function adds gravel to an image by drawing gravel particles on the image.
     The gravel particles are drawn using the OpenCV function cv2.circle.
@@ -1230,7 +1230,7 @@ def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
 
 def invert(img: ImageType) -> ImageType:
     """Invert image colors: each pixel becomes max_val - pixel. Works for uint8 and float32.
-    For color inversion.
+    Produces negative image; any channel count; preserves dtype.
 
     This function inverts the colors of an image by subtracting each pixel value from the maximum possible value.
     The result is a negative of the original image.
@@ -1376,8 +1376,8 @@ def iso_noise(
 
 
 def to_gray_weighted_average(img: ImageType) -> ImageType:
-    """Convert RGB to grayscale using weighted average (0.299*R+0.587*G+0.114*B). Single image or
-    batch (N, H, W, 3).
+    """Convert RGB to grayscale with weighted average (0.299*R+0.587*G+0.114*B). Single or batch.
+    BT.601. Matches OpenCV perceptual luminance.
 
     This function uses OpenCV's cvtColor function with COLOR_RGB2GRAY conversion,
     which applies the following formula:
@@ -1515,8 +1515,8 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
 
 @clipped
 def to_gray_desaturation(img: ImageType) -> ImageType:
-    """Convert to grayscale using desaturation (max + min) / 2 per pixel. Preserves luminance; any
-    channel count.
+    """Convert to grayscale with desaturation (max + min) / 2 per pixel. Any channels; single or batch.
+    uint8 and float32. uint8 and float32.
 
     Args:
         img (np.ndarray): Input image as a numpy array.
@@ -1541,7 +1541,7 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
 
 def to_gray_average(img: ImageType) -> ImageType:
     """Convert to grayscale using per-pixel mean across channels. Simple average; single image or
-    batch. Any channel count.
+    batch. Any channel count. uint8 and float32.
 
     This function computes the arithmetic mean across all channels for each pixel,
     resulting in a grayscale representation of the image.
@@ -1576,7 +1576,7 @@ def to_gray_average(img: ImageType) -> ImageType:
 
 def to_gray_max(img: ImageType) -> ImageType:
     """Convert to grayscale using max across channels per pixel. Equivalent to HSV V for RGB. Any
-    channel count.
+    channel count. Single or batch. uint8 and float32.
 
     This function takes the maximum value across all channels for each pixel,
     resulting in a grayscale image that preserves the brightest parts of the original image.
@@ -1614,7 +1614,7 @@ def to_gray_max(img: ImageType) -> ImageType:
 @clipped
 def to_gray_pca(img: ImageType) -> ImageType:
     """Convert to grayscale using PCA; captures max variance in color data. Single or batch; uint8 or
-    float32. Clipped.
+    float32. Clipped. Preserves channel dimension.
 
     This function applies PCA to reduce a multi-channel image to a single channel,
     effectively creating a grayscale representation that captures the maximum variance
@@ -1871,6 +1871,7 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
 @preserve_channel_dim
 def adjust_brightness_torchvision(img: ImageType, factor: np.ndarray) -> ImageType:
     """Adjust brightness by multiplying pixels by factor. Torchvision-compatible; uint8 and float32.
+    factor scalar or per-channel array.
 
     This function adjusts the brightness of an image by multiplying each pixel value by a factor.
     The brightness is adjusted by multiplying the image by the factor.
@@ -1894,7 +1895,7 @@ def adjust_brightness_torchvision(img: ImageType, factor: np.ndarray) -> ImageTy
 @preserve_channel_dim
 def adjust_contrast_torchvision(img: ImageType, factor: float) -> ImageType:
     """Adjust contrast by multiplying by factor (relative to grayscale mean). Torchvision-compatible;
-    uint8 and float32.
+    uint8 and float32. factor 0 yields flat gray.
 
     This function adjusts the contrast of an image by multiplying each pixel value by a factor.
     The contrast is adjusted by multiplying the image by the factor.
@@ -1963,6 +1964,7 @@ def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
 
 def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     """Adjust hue by shifting in HSV. factor in [-0.5, 0.5]. Torchvision-compatible; RGB only.
+    LUT for uint8; in-place mod for float32.
 
     This function adjusts the hue of an image by adding a factor to the hue value.
 
@@ -1991,8 +1993,8 @@ def apply_brightness_contrast_torchvision(
     contrast_factor: float,
     brightness_first: bool,
 ) -> ImageType:
-    """Fused brightness and contrast: single LUT (uint8) or two passes (float32). clip(a*x + b);
-    torchvision-compatible. Fused when brightness and contrast are adjacent in pipeline.
+    """Fused brightness and contrast: single LUT (uint8) or two passes (float32). clip(a*x+b);
+    torchvision-compatible; order via brightness_first.
 
     Both operations are `clip(a*x + b)`. The image grayscale mean is computed once and propagated
     analytically through the pipeline: if brightness comes first, `mean_at_contrast = mean * brightness_factor`
@@ -2062,7 +2064,7 @@ def superpixels(
     interpolation: int,
 ) -> np.ndarray:
     """Apply superpixels using SLIC: replace pixels with segment mean. n_segments, replace_samples,
-    max_size, interpolation.
+    max_size, interpolation. uint8 I/O.
 
     This function applies superpixels to an image using the SLIC algorithm.
     The superpixels are applied by replacing the pixels in the image with the mean intensity of the superpixel.
@@ -2303,7 +2305,7 @@ def chromatic_aberration(
     interpolation: int,
 ) -> ImageType:
     """Chromatic aberration: shift R/B channels. primary/secondary_distortion_red/blue, interpolation.
-    uint8 I/O, clipped.
+    Simulates lens R/B shift. uint8 I/O, clipped.
 
     This function applies chromatic aberration to an image by distorting the red and blue channels.
 
@@ -2535,7 +2537,7 @@ def slic(
     max_iterations: int = 10,
 ) -> np.ndarray:
     """SLIC superpixel segmentation. n_segments, compactness, max_iterations. Returns label mask for
-    oversegmentation.
+    oversegmentation; used by superpixels() or standalone.
 
     Args:
         image (np.ndarray): Input image (3D numpy array with shape (H, W, C)).
@@ -2639,7 +2641,7 @@ def get_safe_brightness_contrast_params(
     max_value: float,
 ) -> tuple[float, float]:
     """Get (alpha, beta) brightness/contrast params clipped to valid LUT range. alpha, beta, max_value.
-    Returns (alpha, beta).
+    Returns (alpha, beta). For LUT-based brightness/contrast.
 
     Args:
         alpha (float): Contrast factor
@@ -2877,7 +2879,7 @@ def sample_noise(
     random_generator: np.random.Generator,
 ) -> np.ndarray:
     """Sample from noise distribution (uniform, gaussian, laplace, beta). noise_type and params.
-    Dispatches to sample_*.
+    Dispatches to sample_*; returns array of given size.
 
     This function samples from a specific noise distribution.
 
@@ -2910,7 +2912,7 @@ def sample_uniform(
     random_generator: np.random.Generator,
 ) -> np.ndarray:
     """Sample from uniform distribution for spatial noise. params['ranges'][0] per channel.
-    returns array of given size.
+    Returns array of given size. Used by noise augmentation.
 
     Args:
         size (tuple[int, ...]): Size of the output array
@@ -2932,7 +2934,7 @@ def sample_gaussian(
     random_generator: np.random.Generator,
 ) -> np.ndarray:
     """Sample from Gaussian distribution. Mean and std from params or uniform range.
-    uses cv2.randn.
+    Uses cv2.randn; returns float32 array of given size.
 
     This function samples from a Gaussian distribution.
 
@@ -2970,7 +2972,7 @@ def sample_laplace(
     random_generator: np.random.Generator,
 ) -> np.ndarray:
     """Sample from Laplace distribution. Location and scale from params.
-    array of given size.
+    Returns array of given size. Heavier tails than Gaussian.
 
     This function samples from a Laplace distribution.
 
@@ -2993,8 +2995,8 @@ def sample_beta(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample from Beta distribution. Alpha, beta, scale from params.
-    [-scale, scale].
+    """Sample from Beta distribution. Alpha, beta, scale from params. Returns values in
+    [-scale, scale]. For structured noise augmentation.
 
     This function samples from a Beta distribution.
 
@@ -3062,8 +3064,7 @@ def sharpen_gaussian(
     sigma: float,
 ) -> ImageType:
     """Sharpen image using unsharp mask with Gaussian blur. alpha, kernel_size, sigma. Preserves
-    channel count.
-    sigma.
+    channel count. Alpha blends with blurred; clipped.
 
     This function sharpens an image using a Gaussian blur.
 
@@ -3757,8 +3758,8 @@ def generate_random_values(
     dtype: np.dtype,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate random values for dropout fill. channels, dtype, random_generator. Returns 1D array of
-    fill values per channel when value is None in prepare_drop_values.
+    """Generate random values for dropout fill. channels, dtype, random_generator. Returns 1D array
+    per channel when value is None in prepare_drop_values.
 
     Args:
         channels (int): Number of channels
@@ -3787,8 +3788,8 @@ def prepare_drop_values(
     value: float | Sequence[float] | np.ndarray | None,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Prepare values to fill dropped pixels. array (shape/dtype), value (or None for random),
-    random_generator. Returns array of fill values matching array shape. Used before pixel_dropout.
+    """Prepare values to fill dropped pixels. array shape/dtype, value (or None for random),
+    random_generator. Returns fill array matching shape.
 
     Args:
         array (np.ndarray): Input array to determine shape and dtype
@@ -4074,8 +4075,8 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
 
 
 def normalize_vectors(vectors: np.ndarray) -> np.ndarray:
-    """Normalize vectors to unit length (L2). Axis and dtype preserved; supports 1D or 2D arrays. Used
-    by stain normalization (e.g. Macenko) for stain vector normalization.
+    """Normalize vectors to unit length (L2). Axis and dtype preserved; 1D or 2D. For stain
+    normalization (e.g. Macenko) stain vector normalization.
 
     This function normalizes vectors.
 

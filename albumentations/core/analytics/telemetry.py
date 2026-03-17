@@ -15,7 +15,8 @@ from albumentations.core.analytics.user_id import get_user_id_manager
 
 
 class TelemetryClient:
-    """Sends Compose init events to Mixpanel with rate limiting (e.g. 30s) and pipeline-hash deduplication. Disabled in CI and pytest.
+    """Sends Compose init events to Mixpanel with rate limiting (e.g. 30s) and pipeline-hash
+    deduplication. Disabled in CI and pytest.
 
     Using Mixpanel backend for better library telemetry support:
     - No parameter limits
@@ -28,7 +29,9 @@ class TelemetryClient:
     _initialized = False
 
     def __new__(cls) -> Self:
-        """Return the single TelemetryClient instance for this process; create it on first access. Overrides __new__ to enforce one instance per process."""
+        """Return the single TelemetryClient instance; create on first access.
+        Overrides __new__ to enforce one instance per process.
+        """
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -45,7 +48,8 @@ class TelemetryClient:
             self._initialized = True
 
     def track_compose_init(self, compose_data: dict[str, Any], telemetry: bool = True, use_thread: bool = True) -> None:
-        """Record a Compose init: check rate limit and dedup by pipeline hash, then send event to Mixpanel (default: in a daemon thread).
+        """Record a Compose init: check rate limit and dedup by pipeline hash, then send to
+        Mixpanel (default: in a daemon thread).
 
         Args:
             compose_data: Data collected from the Compose instance
@@ -96,7 +100,8 @@ class TelemetryClient:
         self.last_send_time = current_time
 
     def _send_event_thread(self, event: ComposeInitEvent) -> None:
-        """Run _send_event in a daemon thread; any exception is suppressed so the main process is never affected. Non-blocking; fire-and-forget.
+        """Run _send_event in a daemon thread; any exception suppressed so the main process is never affected.
+        Non-blocking; fire-and-forget.
 
         Args:
             event: The event to send
@@ -107,7 +112,8 @@ class TelemetryClient:
             self._send_event(event)
 
     def _send_event(self, event: ComposeInitEvent) -> bool:
-        """POST the event to Mixpanel track API. Returns True on success, False on network or validation error. Synchronous, no retries.
+        """POST the event to Mixpanel track API. Returns True on success, False on network or
+        validation error. Synchronous, no retries.
 
         Args:
             event: The event to send
@@ -128,15 +134,21 @@ class TelemetryClient:
         return telemetry_sent
 
     def disable(self) -> None:
-        """Stop sending events; track_compose_init will no-op until enable() is called again. Idempotent. Call from CLI or config to turn off analytics."""
+        """Stop sending events; track_compose_init no-ops until enable(). Idempotent.
+        Call from CLI or config to turn off analytics.
+        """
         self.enabled = False
 
     def enable(self) -> None:
-        """Resume sending events; rate limit and global settings still apply. Idempotent. Call after disable() to turn analytics back on."""
+        """Resume sending events; rate limit and global settings still apply. Idempotent.
+        Call after disable() to turn analytics back on.
+        """
         self.enabled = True
 
     def reset(self) -> None:
-        """Clear the set of sent pipeline hashes and last-send time so the same pipeline can be sent again. For tests; idempotent. In-memory only."""
+        """Clear sent pipeline hashes and last-send time so the same pipeline can be sent again.
+        For tests; idempotent. In-memory only.
+        """
         self.sent_pipelines.clear()
         self.last_send_time = 0
 
@@ -146,7 +158,8 @@ telemetry_client = None
 
 
 def get_telemetry_client() -> TelemetryClient:
-    """Return the global TelemetryClient; create it on first call so Compose can send init events without holding a reference. One instance per process.
+    """Return the global TelemetryClient; create on first call so Compose can send init events
+    without holding a reference. One instance per process.
 
     Returns:
         TelemetryClient: The global TelemetryClient instance.

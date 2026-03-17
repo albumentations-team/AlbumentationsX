@@ -18,7 +18,8 @@ __all__ = ["GridDropout"]
 
 
 class GridDropout(BaseDropout):
-    """Apply GridDropout augmentation to images, masks, bounding boxes, and keypoints.
+    """Drop rectangular regions in a grid. ratio, unit_size_range or holes_number_xy, random_offset,
+    shift_xy, fill. Applies to images, masks, bboxes, keypoints.
 
     GridDropout drops out rectangular regions of an image and the corresponding mask in a grid fashion.
     This technique can help improve model robustness by forcing the network to rely on a broader context

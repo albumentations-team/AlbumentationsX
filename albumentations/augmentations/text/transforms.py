@@ -21,7 +21,8 @@ __all__ = ["TextImage"]
 
 
 class TextImage(ImageOnlyTransform):
-    """Apply text rendering transformations on images.
+    """Render text onto images from metadata. font_path, stopwords, augmentations, fraction_range,
+    font_size_fraction_range, font_color, metadata_key, clear_bg.
 
     This class supports rendering text directly onto images using a variety of configurations,
     such as custom fonts, font sizes, colors, and augmentation methods. The text can be placed
@@ -122,7 +123,8 @@ class TextImage(ImageOnlyTransform):
         fraction: float,
         choice: Literal["insertion", "swap", "deletion"],
     ) -> str:
-        """Apply a random text augmentation to the input text.
+        """Apply random text augmentation (insertion, swap, or deletion). fraction and choice; returns
+        augmented string or empty if unchanged.
 
         Args:
             text (str): Original text to augment
@@ -159,7 +161,8 @@ class TextImage(ImageOnlyTransform):
         text: str,
         bbox_index: int,
     ) -> dict[str, Any]:
-        """Preprocess text metadata for a single bounding box.
+        """Preprocess text metadata for one bbox. Denormalizes bbox, font size, optional random_aug.
+        Returns dict with bbox_coords, text, font, font_color.
 
         Args:
             image (np.ndarray): Input image
@@ -245,7 +248,8 @@ class TextImage(ImageOnlyTransform):
         return ftext.render_text(img, overlay_data, clear_bg=self.clear_bg)
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Apply the transform and include overlay data in the result.
+        """Apply transform and include overlay data in result. Returns dict with transformed data and
+        overlay info. Used by Compose when metadata_key present.
 
         Args:
             params (dict[str, Any]): Parameters for the transform

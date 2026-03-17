@@ -10,7 +10,8 @@ from typing import Any
 
 @dataclass
 class ComposeInitEvent:
-    """Payload for one Compose init: pipeline hash, transform list, targets, and environment (OS, CPU, GPU, RAM). to_dict() gives full nested dict.
+    """Payload for one Compose init: pipeline hash, transform list, targets, environment (OS, CPU, GPU, RAM).
+    to_dict() gives full nested dict.
     """
 
     # Core event data
@@ -36,7 +37,8 @@ class ComposeInitEvent:
     targets: str = "None"  # None/bboxes/keypoints/bboxes_keypoints
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize event to a dict with top-level keys plus nested 'environment' and 'pipeline' dicts. For backends that need full payload.
+        """Serialize event to dict with top-level keys plus nested 'environment' and 'pipeline'.
+        For backends that need full payload.
         """
         return {
             "event_type": self.event_type,
@@ -61,7 +63,8 @@ class ComposeInitEvent:
 
     @staticmethod
     def generate_pipeline_hash(transforms: list[str]) -> str:
-        """Compute SHA-256 hash of the transform list for deduplication. Transform order is preserved (not sorted); different order gives different hash.
+        """Compute SHA-256 hash of the transform list for deduplication. Order preserved (not sorted);
+        different order gives different hash.
 
         Args:
             transforms: List of transform names

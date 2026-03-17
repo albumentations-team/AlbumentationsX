@@ -112,7 +112,9 @@ class XYMasking(BaseDropout):
         dimension_size: int,
         dimension_name: str,
     ) -> None:
-        """Validate the mask length against the corresponding image dimension size. of"""
+        """Validate mask length for XYMasking. Raises if mismatch with image dimension. Used when
+        applying horizontal/vertical masks.
+        """
         if mask_length is not None:
             if isinstance(mask_length, (tuple, list)):
                 if mask_length[0] < 0 or mask_length[1] > dimension_size:

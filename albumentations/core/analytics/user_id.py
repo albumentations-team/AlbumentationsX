@@ -15,7 +15,8 @@ DO_NOT_TRACK_VALUE = "do-not-track"
 
 
 def get_user_config_dir() -> Path:
-    """Return the base config directory: XDG_CONFIG_HOME on Unix, APPDATA on Windows. Overridable with ALBUMENTATIONS_CONFIG_DIR.
+    """Return the base config directory: XDG_CONFIG_HOME on Unix, APPDATA on Windows.
+    Overridable with ALBUMENTATIONS_CONFIG_DIR.
     """
     # Check for environment variable override
     if config_dir := os.environ.get("ALBUMENTATIONS_CONFIG_DIR"):
@@ -31,11 +32,13 @@ def get_user_config_dir() -> Path:
 
 
 class UserIDManager:
-    """Stores and retrieves a persistent anonymous ID in a JSON file under the user config dir. Atomic writes (temp file + rename) to avoid races.
+    """Stores and retrieves a persistent anonymous ID in a JSON file under the user config dir.
+    Atomic writes (temp file + rename) to avoid races.
     """
 
     def __init__(self, app_name: str = "albumentationsx"):
-        """Create manager for a given app name; config is stored in <config_dir>/<app_name>/user_id.json. Default app_name: albumentationsx.
+        """Create manager for a given app name; config stored in <config_dir>/<app_name>/user_id.json.
+        Default app_name: albumentationsx.
 
         Args:
             app_name: Application name for config directory
@@ -48,7 +51,8 @@ class UserIDManager:
         self._cache_loaded = False
 
     def _read_user_id(self) -> str | None:
-        """Load user ID from the JSON file. Returns None if file missing, invalid, or set to do-not-track. Does not create a new ID.
+        """Load user ID from the JSON file. Returns None if file missing, invalid, or set to do-not-track.
+        Does not create a new ID.
 
         Returns:
             str | None: User ID string or None if not found/invalid.
@@ -67,7 +71,8 @@ class UserIDManager:
             return None
 
     def _write_user_id_atomic(self, user_id: str) -> bool:
-        """Write user ID to disk via a temp file and atomic rename so concurrent processes do not corrupt the file. Returns True on success.
+        """Write user ID to disk via temp file and atomic rename so concurrent processes do not corrupt file.
+        Returns True on success.
 
         Args:
             user_id: User ID to write
@@ -119,7 +124,8 @@ class UserIDManager:
             return False
 
     def get_or_create_user_id(self) -> str | None:
-        """Return the stored user ID, or create and persist a new UUID if none exists. Respects do-not-track; result cached for process.
+        """Return stored user ID, or create and persist a new UUID if none exists.
+        Respects do-not-track; result cached for process.
 
         Returns:
             str | None: User ID string or None if user has opted out.
@@ -173,14 +179,18 @@ class UserIDManager:
         return user_id
 
     def opt_out(self) -> None:
-        """Persist 'do-not-track' as the user ID and clear cache. Future get_or_create_user_id() will return None until user resets preference in config."""
+        """Persist 'do-not-track' and clear cache. Future get_or_create_user_id() returns None
+        until user resets preference in config.
+        """
         if self._write_user_id_atomic(DO_NOT_TRACK_VALUE):
             # Clear the cache
             self._cached_user_id = None
             self._cache_loaded = False
 
     def reset(self) -> None:
-        """Delete the persisted user ID file and clear the in-memory cache. Next get_or_create_user_id() will create a new ID. Idempotent."""
+        """Delete the persisted user ID file and clear the in-memory cache. Next get_or_create_user_id()
+        creates a new ID. Idempotent.
+        """
         # Always clear the cache first
         self._cached_user_id = None
         self._cache_loaded = False
@@ -196,7 +206,8 @@ _user_id_manager: UserIDManager | None = None
 
 
 def get_user_id_manager() -> UserIDManager:
-    """Return the global UserIDManager singleton. First call creates it with default app name; later calls return the same instance.
+    """Return the global UserIDManager singleton. First call creates it with default app name;
+    later calls return the same instance.
 
     Returns:
         UserIDManager: The global UserIDManager instance.

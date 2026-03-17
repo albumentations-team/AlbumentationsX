@@ -30,7 +30,8 @@ __all__ = ["PixelDropout"]
 
 
 class BaseDropout(DualTransform):
-    """Base class for dropout-style transformations.
+    """Base class for dropout-style transforms. Shared cutout, fill, fill_mask; subclasses implement
+    get_params_dependent_on_data and hole generation.
 
     This class provides common functionality for various dropout techniques,
     including applying cutouts to images and masks.
@@ -218,7 +219,8 @@ class BaseDropout(DualTransform):
 
 
 class PixelDropout(DualTransform):
-    """Drops random pixels from the image.
+    """Drop random pixels. dropout_prob, per_channel, drop_value; applies to image and mask. Fill:
+    constant, random, or inpainting.
 
     This transform randomly sets pixels in the image to a specified value, effectively "dropping out" those pixels.
     It can be applied to both the image and its corresponding mask.

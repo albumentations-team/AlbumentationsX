@@ -22,8 +22,8 @@ __all__ = ["CoarseDropout", "ConstrainedCoarseDropout", "Erasing"]
 
 
 class CoarseDropout(BaseDropout):
-    """Randomly drop rectangular regions from image (and optionally mask) to simulate occlusion.
-    Flexible size, count, fill.
+    """Randomly drop rectangular regions from image (and optionally mask). num_holes_range,
+    hole_size_range, fill. For robustness and regularization.
 
     This transformation is an evolution of CutOut and RandomErasing, offering more
     flexibility in the size, number of dropout regions, and fill values.
@@ -139,7 +139,9 @@ class CoarseDropout(BaseDropout):
         width_range: tuple[float, float] | tuple[int, int],
         size: int,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Calculate random hole dimensions based on the provided ranges."""
+        """Calculate random hole dimensions from hole_size_range and image shape. Returns (h, w)
+        for each hole. Used by CoarseDropout get_params_dependent_on_data.
+        """
         height, width = image_shape[:2]
 
         if height_range[1] >= 1:
@@ -183,7 +185,8 @@ class CoarseDropout(BaseDropout):
 
 
 class Erasing(BaseDropout):
-    """Randomly erases rectangular regions in an image, following the Random Erasing Data Augmentation technique.
+    """Randomly erase rectangular regions (Random Erasing). area_ratio_range, aspect_ratio_range, fill.
+    Improves robustness; common in image classification.
 
     This augmentation helps improve model robustness by randomly masking out rectangular regions in the image,
     simulating occlusions and encouraging the model to learn from partial information. It's particularly
@@ -274,7 +277,8 @@ class Erasing(BaseDropout):
         self.ratio = ratio
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Calculate erasing parameters using direct mathematical derivation.
+        """Calculate erasing parameters (box position and size) from image shape and ratio ranges.
+        Direct derivation; used by Erasing get_params_dependent_on_data.
 
         Given:
         - Image dimensions (H, W)
@@ -342,7 +346,8 @@ class Erasing(BaseDropout):
 
 
 class ConstrainedCoarseDropout(BaseDropout):
-    """Applies coarse dropout to regions containing specific objects in the image.
+    """Apply coarse dropout only in regions containing specified objects (mask or bbox labels).
+    mask_indices or bbox_labels; num_holes_range, hole size ranges.
 
     This augmentation creates holes (dropout regions) for each target object in the image.
     Objects can be specified either by their class indices in a segmentation mask or
@@ -494,7 +499,8 @@ class ConstrainedCoarseDropout(BaseDropout):
         self.bbox_labels = bbox_labels
 
     def get_boxes_from_bboxes(self, bboxes: np.ndarray) -> np.ndarray | None:
-        """Get bounding boxes that match specified labels.
+        """Get bounding boxes that match specified labels. Filters by bbox_labels; returns subset for
+        ConstrainedCoarseDropout hole sampling.
 
         Uses BboxProcessor's label encoder if bbox_labels contain strings.
         """
@@ -528,7 +534,9 @@ class ConstrainedCoarseDropout(BaseDropout):
         return filtered_boxes if len(filtered_boxes) > 0 else None
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Get hole parameters based on either mask indices or bbox labels."""
+        """Get hole parameters from mask indices or bbox labels. Dispatches to get_holes_from_mask or
+        get_holes_from_boxes. Returns holes (n, 4) and num_holes.
+        """
         num_holes_per_obj = self.py_random.randint(*self.num_holes_range)
 
         if self.mask_indices is not None and "mask" in data:

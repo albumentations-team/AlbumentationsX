@@ -21,7 +21,7 @@ from .type_definitions import PAIR, Number
 
 
 def get_shape(data: dict[str, Any]) -> tuple[int, int]:
-    """Extract (height, width) from data dict. Keys: image, images, volume, volumes. Raises if no image/volume present.
+    """Extract (height, width) from data dict. Keys: image, images, volume, volumes. Raises if no image/volume present. Used by pipeline for spatial checks.
 
     After grayscale preprocessing, all data has channel dimension at the end.
 
@@ -86,12 +86,12 @@ def get_volume_shape(data: dict[str, Any]) -> tuple[int, int, int] | None:
 
 
 def _is_torch_tensor(obj: Any) -> bool:
-    """Return True if obj is a PyTorch tensor (by __module__). Private helper for get_shape and get_volume_shape."""
+    """Return True if obj is a PyTorch tensor (by __module__). Private helper for get_shape and get_volume_shape when resolving layout."""
     return hasattr(obj, "__module__") and "torch" in obj.__module__
 
 
 def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
-    """Extract (height, width) from a single image. Handles numpy HWC or PyTorch CHW. Private helper for get_shape."""
+    """Extract (height, width) from a single image. Handles numpy HWC or PyTorch CHW. Private helper for get_shape when data has 'image' key."""
     # Check if it's a torch tensor that has been transposed to CHW format
     if _is_torch_tensor(img):
         # PyTorch tensor in CHW format
@@ -104,7 +104,7 @@ def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
 
 
 def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
-    """Extract (height, width) from batch of images. Uses first image. NHWC or NCHW. Private helper for get_shape."""
+    """Extract (height, width) from batch of images. Uses first image. NHWC or NCHW. Private helper for get_shape when data has 'images' key."""
     # Check if it's a torch tensor batch
     if _is_torch_tensor(imgs):
         # PyTorch tensor batch in NCHW format
@@ -117,7 +117,7 @@ def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
 
 
 def _get_shape_from_volume(vol: np.ndarray) -> tuple[int, int]:
-    """Extract (height, width) from a single volume (D,H,W or D,H,W,C). Private helper for get_shape."""
+    """Extract (height, width) from a single volume (D,H,W or D,H,W,C). Private helper for get_shape when data has 'volume' key."""
     # Check if it's a torch tensor
     if _is_torch_tensor(vol):
         # PyTorch 3D tensor in CDHW format
@@ -130,7 +130,7 @@ def _get_shape_from_volume(vol: np.ndarray) -> tuple[int, int]:
 
 
 def _get_shape_from_volumes(vols: np.ndarray) -> tuple[int, int]:
-    """Extract (height, width) from batch of volumes. Uses first volume. Private helper for get_shape."""
+    """Extract (height, width) from batch of volumes. Uses first volume. Private helper for get_shape when data has 'volumes' key."""
     # Check if it's a torch tensor batch
     if _is_torch_tensor(vols):
         # PyTorch 3D tensor batch in NCDHW format

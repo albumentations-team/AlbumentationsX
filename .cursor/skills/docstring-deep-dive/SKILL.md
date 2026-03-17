@@ -7,6 +7,8 @@ description: Quality bar for docstrings in albumentations. Use when writing or u
 
 Apply these criteria to **every docstring you write or update** in albumentations (transforms, public functions, and any API that appears on the docs site).
 
+**Transform apply methods:** Do **not** add docstrings to `apply`, `apply_to_image`, `apply_to_mask`, `apply_to_images`, or other `apply_to_*` methods in transform classes. The transform class docstring and the base interface in `transforms_interface` are sufficient; apply methods are implementation detail.
+
 ## 1. First paragraph: 120–160 chars, useful short description (elevator pitch, two lines)
 
 The **first paragraph** is the useful short description: an elevator pitch that explains intuitively what the function or transform does. It appears as the web/search preview under the link.

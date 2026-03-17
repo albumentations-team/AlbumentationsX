@@ -1204,7 +1204,7 @@ def add_shadow(
 @preserve_channel_dim
 def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
     """Add gravel to an image. Draws gravel particles; simulates road or terrain.
-   .
+    .
 
     This function adds gravel to an image by drawing gravel particles on the image.
     The gravel particles are drawn using the OpenCV function cv2.circle.
@@ -3830,7 +3830,8 @@ def prepare_drop_values(
 
 def get_mask_array(data: dict[str, Any]) -> np.ndarray | None:
     """Get mask array from input data if it exists. Returns data['mask'] or None;
-    helper for transforms that accept optional mask."""
+    helper for transforms that accept optional mask.
+    """
     if "mask" in data:
         return data["mask"]
     return data["masks"][0] if "masks" in data else None
@@ -4100,7 +4101,8 @@ def get_normalizer(method: Literal["vahadane", "macenko"]) -> "StainNormalizer":
 
 class StainNormalizer:
     """Base class for stain normalizers. Subclass and implement fit/transform for
-    histology stain normalization (e.g. Vahadane, Macenko)."""
+    histology stain normalization (e.g. Vahadane, Macenko).
+    """
 
     def __init__(self) -> None:
         self.stain_matrix_target = None
@@ -4318,7 +4320,8 @@ class VahadaneNormalizer(StainNormalizer):
 
 class MacenkoNormalizer(StainNormalizer):
     """Macenko stain normalizer with optimized computations. SVD-based stain
-    separation; fit on reference, then transform. Used for H&E normalization."""
+    separation; fit on reference, then transform. Used for H&E normalization.
+    """
 
     def __init__(self, angular_percentile: float = 99):
         super().__init__()

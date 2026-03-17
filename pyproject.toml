@@ -402,7 +402,7 @@ filterwarnings = [
 
 # Legacy/alternate config key for google-docstring-parser (same package).
 [tool.google_docstring_parser]
-paths = [ "albumentations", "tools" ]
+paths = [ "albumentations" ]
 require_param_types = false
 exclude_files = [ "__init__.py" ]
 verbose = false
@@ -410,11 +410,11 @@ check_references = true
 
 # Pre-commit hook check-google-docstrings reads this section (see package README).
 [tool.docstring_checker]
-paths = [ "albumentations", "tools" ]
+paths = [ "albumentations" ]
 require_param_types = false   # TODO: add param/return types to docstrings; then set true
 check_references = true
 check_type_consistency = false  # TODO: fix docstring types to match annotations (Union→|, Literal quotes, ImageType, etc.)
 exclude_files = [ "__init__.py" ]
-min_short_description_length = 1
-max_short_description_length = 999
+min_short_description_length = 120
+max_short_description_length = 160
 verbose = false

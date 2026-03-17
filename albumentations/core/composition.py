@@ -386,7 +386,8 @@ class BaseCompose(Serializable):
 
     def _set_keys(self) -> None:
         """Set _available_keys from additional_targets and child transforms and targets_as_params.
-        Updates processor data_fields; warns if processor has no transform."""
+        Updates processor data_fields; warns if processor has no transform.
+        """
         self._available_keys.update(self._additional_targets.keys())
         for t in self.transforms:
             self._available_keys.update(t.available_keys)
@@ -849,7 +850,8 @@ class Compose(BaseCompose, HubMixin):
 
     def _validate_strict(self) -> None:
         """Validate no transforms have invalid arguments when strict is enabled. Recursively
-        checks invalid_args; raises ValueError if any non-empty."""
+        checks invalid_args; raises ValueError if any non-empty.
+        """
 
         def check_transform(transform: TransformType) -> None:
             if hasattr(transform, "invalid_args") and transform.invalid_args:
@@ -884,7 +886,8 @@ class Compose(BaseCompose, HubMixin):
 
     def disable_check_args_private(self) -> None:
         """Disable argument checking. Sets is_check_args=False, strict=False, main_compose=False.
-        Called for nested Compose so only top-level validates."""
+        Called for nested Compose so only top-level validates.
+        """
         self.is_check_args = False
         self.strict = False
         self.main_compose = False
@@ -931,7 +934,8 @@ class Compose(BaseCompose, HubMixin):
 
     def _check_worker_seed(self) -> None:
         """Check and update random seed in worker context. Recalculates effective seed and
-        propagates to all transforms for reproducibility."""
+        propagates to all transforms for reproducibility.
+        """
         if not hasattr(self, "_base_seed") or self._base_seed is None:
             return
 
@@ -1610,7 +1614,8 @@ class RandomOrder(SomeOf):
 
 class OneOrOther(BaseCompose):
     """Select one or the other transform. Selected runs with force_apply=True. Exactly two
-    transforms; p chooses first vs second. Like OneOf n=2 but binary choice."""
+    transforms; p chooses first vs second. Like OneOf n=2 but binary choice.
+    """
 
     def __init__(
         self,

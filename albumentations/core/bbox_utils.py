@@ -655,7 +655,8 @@ def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
 
 def _norm_angle_90(a: float) -> float:
     """Normalize angle in degrees to [-90, 90). Used by _corners_to_obb_params and OBB canonical form.
-    Private helper; modulo 360 then fold into half-open [-90, 90)."""
+    Private helper; modulo 360 then fold into half-open [-90, 90).
+    """
     a = a % 360.0
     if a >= 180.0:
         a -= 360.0

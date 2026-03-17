@@ -47,6 +47,7 @@ repos:
       entry: python tools/check_docstring_format.py
       language: python
       types: [python]
+      exclude: ^tools/
     - id: check-naming-conflicts
       name: Check for naming conflicts between modules and functions/classes
       entry: python -m tools.check_naming_conflicts

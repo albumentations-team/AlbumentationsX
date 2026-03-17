@@ -16,7 +16,7 @@ from pydantic import BaseModel, ValidationError
 
 
 class ValidatedTransformMeta(type):
-    """Metaclass that validates transform parameters during instantiation.
+    """Metaclass that validates transform parameters during instantiation using Pydantic. Wraps __init__ to enforce InitSchema before object creation.
 
     This metaclass enables automatic validation of transform parameters using Pydantic models,
     ensuring proper typing and constraints are enforced before object creation.
@@ -88,7 +88,7 @@ class ValidatedTransformMeta(type):
         return validated_kwargs
 
     def __new__(cls: type[Any], name: str, bases: tuple[type, ...], dct: dict[str, Any]) -> type[Any]:
-        """Metaclass that validates InitSchema parameters at class instantiation and wraps __init__ with validation."""
+        """Build new class; validate InitSchema parameters at class instantiation and wrap __init__ with validation. Used by transform base classes."""
         if "InitSchema" in dct and issubclass(dct["InitSchema"], BaseModel):
             original_init: Callable[..., Any] | None = dct.get("__init__")
             if original_init is None:
@@ -98,7 +98,7 @@ class ValidatedTransformMeta(type):
             original_sig = signature(original_init)
 
             def custom_init(self: Any, *args: Any, **kwargs: Any) -> None:
-                """Custom initialization method that validates parameters.
+                """Wrapped __init__ that validates parameters against InitSchema (Pydantic); then calls original __init__. strict controls ValidationError handling.
 
                 This method wraps the original __init__ to add parameter validation
                 using the InitSchema Pydantic model. It processes arguments, validates

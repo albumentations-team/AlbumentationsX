@@ -254,8 +254,7 @@ def check_data_format(data_format: Literal["json", "yaml"]) -> None:
 
 
 def serialize_enum(obj: Any) -> Any:
-    """Recursively replace Enum instances with their value; traverse Mappings and Sequences. Used before saving pipeline to JSON/YAML.
-    """
+    """Recursively replace Enum instances with their value; traverse Mappings and Sequences. Used before saving pipeline to JSON/YAML."""
     if isinstance(obj, Mapping):
         return {k: serialize_enum(v) for k, v in obj.items()}
     if isinstance(obj, Sequence) and not isinstance(obj, str):  # exclude strings since they're also sequences
@@ -381,6 +380,7 @@ def get_shortest_class_fullname(cls: type[Any]) -> str:
 
     Returns:
         str: Shortened full class name.
+
     """
     class_fullname = f"{cls.__module__}.{cls.__name__}"
     return shorten_class_name(class_fullname)

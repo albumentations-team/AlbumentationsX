@@ -1095,7 +1095,8 @@ def calculate_affine_transform_padding(
     image_shape: tuple[int, int],
 ) -> tuple[int, int, int, int]:
     """Calculate padding for affine transformation to avoid empty/cropped regions.
-    Returns (pad_top, pad_bottom, pad_left, pad_right) from inverse affine corners."""
+    Returns (pad_top, pad_bottom, pad_left, pad_right) from inverse affine corners.
+    """
     height, width = image_shape[:2]
 
     # Check for identity transform
@@ -1409,7 +1410,8 @@ def validate_if_not_found_coords(
     if_not_found_coords: Sequence[int] | dict[str, Any] | None,
 ) -> tuple[bool, float, float]:
     """Validate and process if_not_found_coords parameter for keypoint transforms.
-    Returns (fill_value, replace_mask). Raises on invalid input."""
+    Returns (fill_value, replace_mask). Raises on invalid input.
+    """
     if if_not_found_coords is None:
         return True, -1, -1
     if isinstance(if_not_found_coords, (tuple, list)):
@@ -2011,7 +2013,8 @@ def remap_keypoints_via_mask(
     image_shape: tuple[int, int],
 ) -> np.ndarray:
     """Remap keypoints using mask and cv2.remap. image_shape, mask (displacement);
-    samples new (x,y) from map. For distortion transforms with keypoints."""
+    samples new (x,y) from map. For distortion transforms with keypoints.
+    """
     height, width = image_shape[:2]
 
     # Handle empty keypoints array
@@ -2103,7 +2106,8 @@ def generate_inverse_distortion_map(
     shape: tuple[int, int],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Generate inverse mapping for strong distortions. From forward map_x, map_y;
-    returns inverse map for sampling. For PiecewiseAffine and similar."""
+    returns inverse map for sampling. For PiecewiseAffine and similar.
+    """
     h, w = shape
 
     src_y, src_x = np.mgrid[:h, :w]
@@ -3840,7 +3844,8 @@ def adjust_padding_by_position(
     py_random: np.random.RandomState,
 ) -> tuple[int, int, int, int]:
     """Adjust padding (h_top, h_bottom, w_left, w_right) by position: center,
-    top_left, top_right, bottom_*, or random. py_random for random. For PadIfNeeded."""
+    top_left, top_right, bottom_*, or random. py_random for random. For PadIfNeeded.
+    """
     if position == "center":
         return h_top, h_bottom, w_left, w_right
 
@@ -3986,7 +3991,8 @@ def is_valid_component(
     min_visibility: float | None,
 ) -> bool:
     """Return True if component meets min_area and min_visibility. component_area,
-    original_area; None thresholds pass. For GridShuffle bbox filtering."""
+    original_area; None thresholds pass. For GridShuffle bbox filtering.
+    """
     visibility = component_area / original_area
     return (min_area is None or component_area >= min_area) and (min_visibility is None or visibility >= min_visibility)
 
@@ -4071,7 +4077,8 @@ def bboxes_grid_shuffle(
 
 def create_shape_groups(tiles: np.ndarray) -> dict[tuple[int, int], list[int]]:
     """Group tiles by (height, width) and return dict mapping shape -> list of tile indices.
-    For GridShuffle so shuffling happens only within same-shaped tiles."""
+    For GridShuffle so shuffling happens only within same-shaped tiles.
+    """
     shape_groups = defaultdict(list)
     for index, (start_y, start_x, end_y, end_x) in enumerate(tiles):
         shape = (end_y - start_y, end_x - start_x)
@@ -4200,7 +4207,8 @@ def tps_transform(
     affine_weights: np.ndarray,
 ) -> np.ndarray:
     """Apply TPS transformation to target_points given control_points and
-    nonlinear_weights, affine_weights. All float32. For ThinPlateSpline remap."""
+    nonlinear_weights, affine_weights. All float32. For ThinPlateSpline remap.
+    """
     # Ensure float32 type for all inputs
     target_points = np.ascontiguousarray(target_points, dtype=np.float32)
     control_points = np.ascontiguousarray(control_points, dtype=np.float32)

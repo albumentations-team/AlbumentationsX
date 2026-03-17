@@ -291,7 +291,7 @@ class KeypointsProcessor(DataProcessor):
             self.encoded_label_mappings[transform_name] = encoded_mappings
 
     def _convert_single_mapping(self, mapping: dict[Any, Any], metadata: LabelMetadata) -> dict[int, int]:
-        """Convert one label field mapping to encoded ints (private). Uses metadata.encoder; warns if labels not in encoder."""
+        """Convert one label field mapping to encoded ints (private). Uses metadata.encoder; warns if labels not in encoder. Called by convert_label_mappings_to_encoded."""
         encoded_mapping = {}
 
         if metadata.encoder is not None:

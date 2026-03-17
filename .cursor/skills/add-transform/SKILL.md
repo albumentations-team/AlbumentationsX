@@ -36,6 +36,8 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
 
 ## 3. Write the transform class
 
+- Do not add docstrings to `apply` or `apply_to_*` methods; the transform class docstring and `transforms_interface` are sufficient.
+
 ```python
 class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
     """First paragraph (120–160 chars): useful short description — elevator pitch, intuitive, what it does and main params.

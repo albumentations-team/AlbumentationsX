@@ -21,7 +21,7 @@ from .type_definitions import PAIR, Number
 
 
 def get_shape(data: dict[str, Any]) -> tuple[int, int]:
-    """Extract height and width dimensions from input data dictionary.
+    """Extract (height, width) from data dict. Keys: image, images, volume, volumes. Raises if no image/volume present.
 
     After grayscale preprocessing, all data has channel dimension at the end.
 
@@ -50,7 +50,8 @@ def get_shape(data: dict[str, Any]) -> tuple[int, int]:
 
 
 def get_volume_shape(data: dict[str, Any]) -> tuple[int, int, int] | None:
-    """Extract depth, height, and width dimensions from volume data.
+    """Extract (depth, height, width) from data containing 'volume' or 'volumes'.
+    Returns None if no volume data. Handles PyTorch tensor layouts (CDHW, NCDHW).
 
     Args:
         data (dict[str, Any]): Dictionary containing volume data
@@ -85,12 +86,12 @@ def get_volume_shape(data: dict[str, Any]) -> tuple[int, int, int] | None:
 
 
 def _is_torch_tensor(obj: Any) -> bool:
-    """Check if an object is a PyTorch tensor."""
+    """Return True if obj is a PyTorch tensor (by __module__). Private helper for get_shape and get_volume_shape."""
     return hasattr(obj, "__module__") and "torch" in obj.__module__
 
 
 def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
-    """Extract shape from a single image."""
+    """Extract (height, width) from a single image. Handles numpy HWC or PyTorch CHW. Private helper for get_shape."""
     # Check if it's a torch tensor that has been transposed to CHW format
     if _is_torch_tensor(img):
         # PyTorch tensor in CHW format
@@ -103,7 +104,7 @@ def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
 
 
 def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
-    """Extract shape from a batch of images."""
+    """Extract (height, width) from batch of images. Uses first image. NHWC or NCHW. Private helper for get_shape."""
     # Check if it's a torch tensor batch
     if _is_torch_tensor(imgs):
         # PyTorch tensor batch in NCHW format
@@ -116,7 +117,7 @@ def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
 
 
 def _get_shape_from_volume(vol: np.ndarray) -> tuple[int, int]:
-    """Extract shape from a single volume."""
+    """Extract (height, width) from a single volume (D,H,W or D,H,W,C). Private helper for get_shape."""
     # Check if it's a torch tensor
     if _is_torch_tensor(vol):
         # PyTorch 3D tensor in CDHW format
@@ -129,7 +130,7 @@ def _get_shape_from_volume(vol: np.ndarray) -> tuple[int, int]:
 
 
 def _get_shape_from_volumes(vols: np.ndarray) -> tuple[int, int]:
-    """Extract shape from a batch of volumes."""
+    """Extract (height, width) from batch of volumes. Uses first volume. Private helper for get_shape."""
     # Check if it's a torch tensor batch
     if _is_torch_tensor(vols):
         # PyTorch 3D tensor batch in NCDHW format
@@ -142,7 +143,8 @@ def _get_shape_from_volumes(vols: np.ndarray) -> tuple[int, int]:
 
 
 def format_args(args_dict: dict[str, Any]) -> str:
-    """Format a dictionary of arguments into a string representation.
+    """Format a dict of argument names and values as "key1='val1', key2=val2" for repr.
+    Strings are quoted; other values passed through str(). For transform __repr__.
 
     Args:
         args_dict (dict[str, Any]): Dictionary of argument names and values.
@@ -159,7 +161,8 @@ def format_args(args_dict: dict[str, Any]) -> str:
 
 
 class Params(Serializable, ABC):
-    """Base class for parameter handling in transforms.
+    """Base class for transform data params: coord_format and label_fields. Used by
+    BboxParams, KeypointParams. Serializable; subclasses define default_data_name.
 
     Args:
         coord_format (Any): The coordinate format of the data this parameter object will process.
@@ -172,7 +175,8 @@ class Params(Serializable, ABC):
         self.label_fields = label_fields
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Return a dictionary containing the private parameters of this object.
+        """Return dict of private params (coord_format, label_fields) for serialization.
+        Used by BboxParams/KeypointParams. Not part of public API.
 
         Returns:
             dict[str, Any]: Dictionary with coord_format and label_fields parameters.
@@ -182,7 +186,7 @@ class Params(Serializable, ABC):
 
 
 class DataProcessor(ABC):
-    """Abstract base class for data processors.
+    """Abstract base for data processors: convert, validate, filter. Subclasses: BboxProcessor, KeypointsProcessor. Uses Params.
 
     Data processors handle the conversion, validation, and filtering of data
     during transformations.
@@ -204,7 +208,8 @@ class DataProcessor(ABC):
     @property
     @abstractmethod
     def default_data_name(self) -> str:
-        """Return the default name of the data field.
+        """Return the default key for this processor's data (e.g. 'bboxes', 'keypoints').
+        Used to resolve additional_targets and data_fields. Abstract.
 
         Returns:
             str: Default data field name.
@@ -213,13 +218,14 @@ class DataProcessor(ABC):
         raise NotImplementedError
 
     def add_targets(self, additional_targets: dict[str, str]) -> None:
-        """Add targets to transform them the same way as one of existing targets."""
+        """Register additional target keys processed like default_data_name. Map name -> type; type must match default_data_name."""
         for k, v in additional_targets.items():
             if v == self.default_data_name and k not in self.data_fields:
                 self.data_fields.append(k)
 
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
-        """Validate input data before processing.
+        """Validate that input data dict has required keys and structure before processing.
+        Override in subclasses. Called at pipeline apply time.
 
         Args:
             data (dict[str, Any]): Input data dictionary to validate.
@@ -227,7 +233,8 @@ class DataProcessor(ABC):
         """
 
     def ensure_transforms_valid(self, transforms: Sequence[object]) -> None:
-        """Validate transforms before applying them.
+        """Validate that the transform list is compatible with this processor (e.g. bbox_type).
+        Override in BboxProcessor. Called at Compose init.
 
         Args:
             transforms (Sequence[object]): Sequence of transforms to validate.
@@ -235,7 +242,8 @@ class DataProcessor(ABC):
         """
 
     def postprocess(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Process data after transformation.
+        """Convert data from Albumentations format back to user format and remove label fields.
+        Uses shape from get_shape(data). Called after all transforms applied.
 
         Args:
             data (dict[str, Any]): Data dictionary after transformation.
@@ -281,7 +289,8 @@ class DataProcessor(ABC):
         return np.array([], dtype=np.float32).reshape(0, len(self.params.coord_format))
 
     def preprocess(self, data: dict[str, Any]) -> None:
-        """Process data before transformation.
+        """Convert data to Albumentations format and add label fields. Mutates data in place.
+        Uses get_shape(data). Called before transforms applied.
 
         Args:
             data (dict[str, Any]): Data dictionary to preprocess.
@@ -308,7 +317,7 @@ class DataProcessor(ABC):
         shape: tuple[int, int] | tuple[int, int, int],
         direction: Literal["to", "from"] = "to",
     ) -> np.ndarray:
-        """Check and convert data between Albumentations and external formats.
+        """Validate and convert data to/from Albumentations format. direction 'to' for input, 'from' for output. Uses coord_format.
 
         Args:
             data (np.ndarray): Input data array.
@@ -330,7 +339,8 @@ class DataProcessor(ABC):
         return process_func(data, shape)
 
     def _create_empty_array(self) -> np.ndarray:
-        """Create an empty array with the appropriate shape for this data type.
+        """Create an empty array with shape (0, num_coords+) for this processor. Used when
+        user passes empty list for bboxes/keypoints. Default: (0,) float32.
 
         Returns:
             np.ndarray: Empty array with correct shape.
@@ -341,7 +351,8 @@ class DataProcessor(ABC):
 
     @abstractmethod
     def filter(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
-        """Filter data based on shapes.
+        """Remove rows outside image/volume bounds. shape is (H, W) or (D, H, W). Abstract;
+        BboxProcessor/KeypointsProcessor implement. Used in postprocess.
 
         Args:
             data (np.ndarray): Data to filter.
@@ -354,7 +365,8 @@ class DataProcessor(ABC):
 
     @abstractmethod
     def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
-        """Validate data structure against shape requirements.
+        """Validate data array shape and value ranges for given image/volume shape. Raises on
+        invalid. Abstract; used in check_and_convert. Subclasses define format rules.
 
         Args:
             data (np.ndarray): Data to validate.
@@ -368,7 +380,7 @@ class DataProcessor(ABC):
         data: np.ndarray,
         shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
-        """Convert data from external format to Albumentations internal format.
+        """Convert from user coord format to internal normalized format. shape (H, W) or (D, H, W). Abstract. Used in preprocess.
 
         Args:
             data (np.ndarray): Data in external format.
@@ -385,7 +397,7 @@ class DataProcessor(ABC):
         data: np.ndarray,
         shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
-        """Convert data from Albumentations internal format to external format.
+        """Convert from internal format back to user coord format. shape (H, W) or (D, H, W). Abstract. Used in postprocess.
 
         Args:
             data (np.ndarray): Data in Albumentations format.
@@ -397,7 +409,7 @@ class DataProcessor(ABC):
         """
 
     def add_label_fields_to_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Add label fields to data arrays.
+        """Append encoded label columns to bbox/keypoint arrays and remove separate label keys. Uses params.label_fields. Preprocess.
 
         This method processes label fields and joins them with the corresponding data arrays.
 
@@ -439,7 +451,8 @@ class DataProcessor(ABC):
             )
 
     def remove_label_fields_from_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Remove label fields from data arrays and restore them as separate entries.
+        """Split encoded label columns off data arrays and restore as separate dict keys.
+        Inverse of add_label_fields_to_data. Used in postprocess. Mutates data.
 
         Args:
             data (dict[str, Any]): Input data dictionary with combined label fields.
@@ -483,7 +496,7 @@ def validate_args(
     low: float | Sequence[int] | Sequence[float] | None,
     bias: float | None,
 ) -> None:
-    """Validate that 'low' and 'bias' parameters are not used together.
+    """Raise if both low and bias are set. Used by to_tuple and transform param helpers. Range/symmetric range params.
 
     Args:
         low (float | Sequence[int] | Sequence[float] | None): Lower bound value.
@@ -498,7 +511,8 @@ def validate_args(
 
 
 def process_sequence(param: Sequence[Number]) -> tuple[Number, Number]:
-    """Process a sequence and return it as a (min, max) tuple.
+    """Convert a two-element sequence to (min, max) tuple. Raises if len != 2.
+    Used by to_tuple and transform param parsing. Returns (min(param), max(param)).
 
     Args:
         param (Sequence[Number]): Sequence of numeric values.
@@ -516,7 +530,7 @@ def process_sequence(param: Sequence[Number]) -> tuple[Number, Number]:
 
 
 def process_scalar(param: Number, low: Number | None) -> tuple[Number, Number]:
-    """Process a scalar value and optional low bound into a (min, max) tuple.
+    """Convert scalar + optional low to (min, max). If low given: (low, param) or (param, low); else (-param, param).
 
     Args:
         param (Number): Scalar numeric value.
@@ -534,7 +548,8 @@ def process_scalar(param: Number, low: Number | None) -> tuple[Number, Number]:
 
 
 def apply_bias(min_val: Number, max_val: Number, bias: Number) -> tuple[Number, Number]:
-    """Apply a bias to both values in a range.
+    """Add bias to both ends of a range: (min_val + bias, max_val + bias). Used by to_tuple
+    when building min/max from a single value with bias. Preserves order.
 
     Args:
         min_val (Number): Minimum value.
@@ -553,7 +568,8 @@ def ensure_int_output(
     max_val: Number,
     param: Number,
 ) -> tuple[int, int] | tuple[float, float]:
-    """Ensure output is of the same type (int or float) as the input parameter.
+    """Return (min_val, max_val) as ints if param is int, else floats. For to_tuple and
+    transform params so pixel ranges stay int and float ranges stay float.
 
     Args:
         min_val (Number): Minimum value.
@@ -589,7 +605,8 @@ def to_tuple(
     low: float | tuple[float, float] | tuple[int, int] | None = None,
     bias: float | None = None,
 ) -> tuple[float, float] | tuple[int, int]:
-    """Convert input argument to a min-max tuple.
+    """Convert param (scalar or (min, max)) to a min-max tuple. Optional low or bias.
+    Handles int/float; use with validate_args (low and bias mutually exclusive).
 
     This function processes various input types and returns a tuple representing a range.
     It handles single values, sequences, and can apply optional low bounds or biases.

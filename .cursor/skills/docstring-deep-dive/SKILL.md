@@ -12,8 +12,9 @@ Apply these criteria to **every docstring you write or update** in albumentation
 The **first paragraph** is the useful short description: an elevator pitch that explains intuitively what the function or transform does. It appears as the web/search preview under the link.
 
 - **Length:** **120–160 characters** (under 120 loses value, over 160 gets cut off).
-- **Content:** Intuitive, user-facing summary — what it does and main parameters, so someone can decide "do I need to click?" Not part of the preview: "Targets: ...", "Same shape", "Used by X", or **return type** (e.g. "Returns np.ndarray"). Return type belongs only in the Returns section of the docstring.
+- **Content:** Intuitive, user-facing summary — what it does and main parameters, so someone can decide "do I need to click?" Do **not** include "Used by X" (redundant). Do not put in the first paragraph: "Targets: ...", "Same shape", or **return type** (e.g. "Returns np.ndarray"). Return type belongs only in the Returns section.
 - **Line wrap:** Line limit 120 chars, so the first paragraph usually spans **two lines** (break at a word boundary).
+- **When shortening:** Do not delete useful information. Move any removed content into the second paragraph, a Note, or the relevant Args/Returns section so it is still documented.
 
 **Example (first paragraph, two lines):**
 ```text
@@ -23,7 +24,7 @@ The **first paragraph** is the useful short description: an elevator pitch that 
     More detail...
 ```
 
-**NOT in the preview (keep in docstring body/Returns only):** "Targets: image, volume", "Same shape", "Used by X", and return type (e.g. "Returns np.ndarray"). Return type belongs in the Returns section; the rest can go in a second paragraph or body if needed.
+**Do not include:** "Used by X" anywhere (redundant). Keep return type only in Returns section; "Targets"/"Same shape" can go in a later paragraph if needed.
 
 ## 2. Well written
 

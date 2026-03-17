@@ -37,7 +37,7 @@ BBOX_OBB_MIN_COLUMNS = 5
 
 
 class BboxParams(Params):
-    """Parameters for bounding box transforms.
+    """Params for bbox handling in Compose: coord_format, bbox_type, label_fields, min_area, min_visibility. coord_format: coco, pascal_voc, yolo, cxcywh.
 
     Args:
         coord_format (Literal["coco", "pascal_voc", "albumentations", "yolo", "cxcywh"]):
@@ -219,7 +219,7 @@ class BboxParams(Params):
         self.clip_after_transform = validated.clip_after_transform
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Get the private dictionary representation of bounding box parameters.
+        """Return private dict of BboxParams for serialization (used by Compose save/load). Contains bbox_type, min_area, etc. Not public API.
 
         Returns:
             dict[str, Any]: Dictionary containing the bounding box parameters.
@@ -243,7 +243,8 @@ class BboxParams(Params):
 
     @classmethod
     def is_serializable(cls) -> bool:
-        """Check if the bounding box parameters are serializable.
+        """Return True; BboxParams can be serialized (to_dict_private, from_dict). Used by
+        Compose and serialization helpers to decide whether to persist params.
 
         Returns:
             bool: Always returns True as BboxParams is serializable.
@@ -253,7 +254,8 @@ class BboxParams(Params):
 
     @classmethod
     def get_class_fullname(cls) -> str:
-        """Get the full name of the class.
+        """Return the full class name 'BboxParams' for serialization/deserialization. Used when
+        saving Compose to reconstruct BboxParams from dict.
 
         Returns:
             str: The string "BboxParams".
@@ -272,7 +274,7 @@ class BboxParams(Params):
 
 
 class BboxProcessor(DataProcessor):
-    """Processor for bounding box transformations.
+    """DataProcessor for bboxes: conversion, validation, clipping, filtering. Uses BboxParams and supports additional_targets. Used by Compose.
 
     This class handles the preprocessing and postprocessing of bounding boxes during augmentation pipeline,
     including format conversion, validation, clipping, and filtering.
@@ -319,7 +321,8 @@ class BboxProcessor(DataProcessor):
 
     @property
     def default_data_name(self) -> str:
-        """Returns the default key for bounding box data in transformations.
+        """Return the default key for bbox data in the pipeline: 'bboxes'. Used by add_targets
+        and data_fields. Required by DataProcessor base.
 
         Returns:
             str: The string 'bboxes'.
@@ -328,12 +331,12 @@ class BboxProcessor(DataProcessor):
         return "bboxes"
 
     def _create_empty_array(self) -> np.ndarray:
-        """Create an empty bbox array with shape based on bbox type."""
+        """Create an empty bbox array (0 rows, 4 or 5 cols for hbb/obb). Used when the user passes an empty list for bboxes. Used by BboxProcessor."""
         cols = NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS if self.params.bbox_type == "hbb" else BBOX_OBB_MIN_COLUMNS
         return np.array([], dtype=np.float32).reshape(0, cols)
 
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
-        """Validates the input bounding box data.
+        """Validate that data contains all params.label_fields; raises ValueError if any are missing. Called at apply time by Compose.
 
         Checks that:
         - Bounding boxes have labels (either in the bbox array or in label_fields)
@@ -351,7 +354,7 @@ class BboxProcessor(DataProcessor):
             raise ValueError(msg)
 
     def ensure_transforms_valid(self, transforms: Sequence[object]) -> None:
-        """Validate that all transforms support the configured bbox_type.
+        """Validate that all transforms support configured bbox_type (e.g. OBB). Raises if any DualTransform lacks OBB support. Called at Compose init.
 
         Args:
             transforms: Sequence of transforms to validate.
@@ -397,7 +400,7 @@ class BboxProcessor(DataProcessor):
             raise ValueError(msg)
 
     def filter(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
-        """Filter bounding boxes based on size and visibility criteria.
+        """Remove bboxes that fail min_area, min_visibility, min_width, min_height. Optionally clip. Uses params. Called in postprocess.
 
         Args:
             data (np.ndarray): Array of bounding boxes in Albumentations format.
@@ -428,7 +431,7 @@ class BboxProcessor(DataProcessor):
         shape: tuple[int, int] | tuple[int, int, int],
         direction: Literal["to", "from"] = "to",
     ) -> np.ndarray:
-        """Converts bounding boxes between formats and applies preprocessing/postprocessing.
+        """Convert bboxes to/from albumentations format; optionally clip and filter invalid. direction 'to' = preprocess, 'from' = postprocess.
 
         Args:
             data (np.ndarray): Array of bounding boxes to process.
@@ -499,7 +502,7 @@ class BboxProcessor(DataProcessor):
         )
 
     def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
-        """Check if bounding boxes are valid.
+        """Validate normalized bboxes (coords in [0,1], x_max > x_min, y_max > y_min). Skips if clip_after_transform False. Used in check_and_convert.
 
         Args:
             data (np.ndarray): Array of bounding boxes to validate.
@@ -515,7 +518,7 @@ class BboxProcessor(DataProcessor):
         data: np.ndarray,
         shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
-        """Convert bounding boxes from internal Albumentations format to the specified format.
+        """Convert from internal albumentations format to params.coord_format. shape (H,W) or (D,H,W). Used in postprocess step by BboxProcessor.
 
         Args:
             data (np.ndarray): Bounding boxes in Albumentations format.
@@ -539,7 +542,7 @@ class BboxProcessor(DataProcessor):
         )
 
     def convert_to_albumentations(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
-        """Convert bounding boxes from the specified format to internal Albumentations format.
+        """Convert from params.coord_format to internal albumentations format. shape (H,W) or (D,H,W). Used in preprocess step by BboxProcessor.
 
         Args:
             data (np.ndarray): Bounding boxes in source format.
@@ -584,7 +587,7 @@ class BboxProcessor(DataProcessor):
 
 @handle_empty_array("bboxes")
 def normalize_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """Normalize denormalized bounding boxes.
+    """Convert pixel coords to [0,1] by dividing x by width, y by height. shape (H, W). Format [x_min, y_min, x_max, y_max, ...].
 
     Args:
         bboxes (np.ndarray): Denormalized bounding boxes `[(x_min, y_min, x_max, y_max, ...)]`.
@@ -604,7 +607,7 @@ def normalize_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
 
 @handle_empty_array("bboxes")
 def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
-    """Convert oriented bounding boxes to corner polygons (vectorized).
+    """Convert OBBs to corner polygons (N, 4, 2). Vectorized. Same convention as cv2.boxPoints; consistent with polygons_to_obb.
 
     Same convention as cv2.minAreaRect/cv2.boxPoints for consistency with
     polygons_to_obb. Base rect corners [-w/2,-h/2], [w/2,-h/2], [w/2,h/2], [-w/2,h/2]
@@ -651,7 +654,8 @@ def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
 
 
 def _norm_angle_90(a: float) -> float:
-    """Normalize angle to [-90, 90) degrees."""
+    """Normalize angle in degrees to [-90, 90). Used by _corners_to_obb_params and OBB canonical form.
+    Private helper; modulo 360 then fold into half-open [-90, 90)."""
     a = a % 360.0
     if a >= 180.0:
         a -= 360.0
@@ -663,7 +667,8 @@ def _norm_angle_90(a: float) -> float:
 
 
 def _corners_to_obb_params(corners: np.ndarray) -> tuple[float, float, float, float, float]:
-    """Derive (cx, cy, width, height, angle) from 4 corners.
+    """Derive (cx, cy, width, height, angle) from 4 corner points. Order-invariant. width = edge
+    more horizontal; angle in [-90, 90). Used by polygons_to_obb. Private.
 
     Ignores cv2.minAreaRect (w,h,angle) conventions. Uses corners directly:
     - width = length of edge more parallel to horizontal
@@ -699,7 +704,7 @@ def polygons_to_obb(
     polygons: np.ndarray,
     extra_fields: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Fit oriented bbox from corner polygons.
+    """Fit OBB from (N, 4, 2) corner polygons. Uses cv2.minAreaRect + boxPoints then _corners_to_obb_params. Optional extra_fields.
 
     Uses cv2.minAreaRect only to get the 4 corners (via boxPoints). From those
     corners we derive (w, h, angle) with our convention: width = edge more
@@ -753,7 +758,7 @@ def denormalize_bboxes(
     bboxes: np.ndarray,
     shape: tuple[int, int],
 ) -> np.ndarray:
-    """Denormalize array of bounding boxes.
+    """Convert [0,1] normalized bboxes to pixel coordinates. shape (H, W). Inverse of normalize_bboxes; extra columns unchanged.
 
     Args:
         bboxes (np.ndarray): Normalized bounding boxes `[(x_min, y_min, x_max, y_max, ...)]`.
@@ -770,7 +775,7 @@ def denormalize_bboxes(
 
 
 def calculate_bbox_areas_in_pixels(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """Compute pixel areas of bboxes from normalized [x_min, y_min, x_max, y_max] and image shape (height, width).
+    """Compute area in pixels for each bbox from normalized coords and shape (H, W). Returns 1D array. Used by filter_bboxes. HBB only.
 
     This function computes the areas of bounding boxes given their normalized coordinates
     and the dimensions of the image they belong to. The bounding boxes are expected to be
@@ -821,7 +826,7 @@ def convert_bboxes_to_albumentations(
     bbox_type: Literal["hbb", "obb"],
     check_validity: bool = False,
 ) -> np.ndarray:
-    """Convert bboxes from coco/pascal_voc/yolo/cxcywh to albumentations normalized (x_min, y_min, x_max, y_max).
+    """Convert from coco/pascal_voc/yolo/cxcywh to albumentations normalized format. shape (H, W); bbox_type hbb/obb. Preserves extra columns.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -899,7 +904,7 @@ def convert_bboxes_from_albumentations(
     bbox_type: Literal["hbb", "obb"],
     check_validity: bool = False,
 ) -> np.ndarray:
-    """Convert bounding boxes from the format used by albumentations to a specified format.
+    """Convert from albumentations format to coco/pascal_voc/yolo/cxcywh. shape (H, W); bbox_type hbb/obb. Preserves extra columns.
 
     Args:
         bboxes (np.ndarray): A numpy array of albumentations bounding boxes with shape (num_bboxes, 4+).
@@ -953,7 +958,7 @@ def convert_bboxes_from_albumentations(
 
 @handle_empty_array("bboxes")
 def check_bboxes(bboxes: np.ndarray) -> None:
-    """Check if bounding boxes are valid.
+    """Validate normalized bboxes: coords in [0,1], x_max > x_min, y_max > y_min. Raises ValueError on first invalid. Used by BboxProcessor.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -991,7 +996,7 @@ def check_bboxes(bboxes: np.ndarray) -> None:
 
 @handle_empty_array("bboxes")
 def clip_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """Clip bounding boxes to the image shape.
+    """Clip normalized bboxes to image bounds. Denormalizes, clips, renormalizes. shape (H, W). Preserves extra columns. See Note for semantics.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -1032,7 +1037,7 @@ def clip_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
 
 @handle_empty_array("bboxes")
 def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: Literal["hbb", "obb"]) -> np.ndarray:
-    """Clip bounding boxes based on actual geometry.
+    """Clip bboxes to image bounds: HBB by coords, OBB by clipping corners and returning axis-aligned wrap (angle=0). shape (H, W).
 
     This function provides geometry-aware clipping that works correctly for both HBB and OBB:
     - For HBB: clips (x_min, y_min, x_max, y_max) coordinates to [0, 1] (fast path)
@@ -1113,7 +1118,7 @@ def filter_bboxes(
     max_accept_ratio: float | None = None,
     clip_after_transform: bool = True,
 ) -> np.ndarray:
-    """Remove bboxes outside visible area (min_visibility), below min_area, or failing min size; crop to image.
+    """Remove bboxes that fail min_area, min_visibility, min_width, min_height, or max_accept_ratio. Optional clip to image. shape (H, W); bbox_type hbb/obb.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -1190,7 +1195,7 @@ def filter_bboxes(
 
 
 def union_of_bboxes(bboxes: np.ndarray, erosion_rate: float) -> np.ndarray | None:
-    """Calculate union of bounding boxes. Boxes could be in albumentations or Pascal Voc format.
+    """Compute axis-aligned union of bboxes with optional erosion. erosion_rate in [0,1]; 0 = no shrink. Returns (x_min, y_min, x_max, y_max) or None.
 
     Args:
         bboxes (np.ndarray): List of bounding boxes
@@ -1234,7 +1239,7 @@ def union_of_bboxes(bboxes: np.ndarray, erosion_rate: float) -> np.ndarray | Non
 
 
 def bboxes_from_masks(masks: np.ndarray) -> np.ndarray:
-    """Create bounding boxes from binary masks (fast version)
+    """Create (N, 4) bboxes from binary masks (H, W) or (N, H, W). Pixel coords. Empty mask yields [-1,-1,-1,-1]. For PiecewiseAffine, BboxMorphology.
 
     Args:
         masks (np.ndarray): Binary masks of shape (H, W) or (N, H, W) where N is the number of masks,
@@ -1266,7 +1271,7 @@ def bboxes_from_masks(masks: np.ndarray) -> np.ndarray:
 
 
 def masks_from_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """Convert bounding boxes to masks.
+    """Convert bboxes to binary masks (N, H, W). shape (H, W). Each row fills one mask. For PiecewiseAffine, BboxMorphology. HBB only.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -1291,7 +1296,7 @@ def bboxes_to_mask(
     bboxes: np.ndarray,
     image_shape: tuple[int, int],
 ) -> np.ndarray:
-    """Convert bounding boxes to a single mask.
+    """Merge bboxes into one (H, W) mask with 1 where any bbox covers. image_shape (H, W). Returns uint8. Different from masks_from_bboxes (per-bbox).
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -1324,7 +1329,7 @@ def mask_to_bboxes(
     original_bboxes: np.ndarray,
     bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
-    """Convert masks back to bounding boxes.
+    """Convert (N, H, W) masks back to bboxes. OBB uses polygons_to_obb; HBB uses bboxes_from_masks. original_bboxes provide extra columns. Used after remap.
 
     Args:
         masks (np.ndarray): A numpy array of masks with shape (num_masks, height, width).

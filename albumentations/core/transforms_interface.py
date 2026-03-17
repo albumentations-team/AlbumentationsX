@@ -228,8 +228,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         self.processors = processors
 
     def get_processor(self, key: str) -> BboxProcessor | KeypointsProcessor | None:
-        """Get the processor for a specific key (e.g. bboxes, keypoints). Returns None if the key
-        has no processor. Used by apply_with_params.
+        """Get the processor for a specific key (e.g. bboxes, keypoints). Returns None
+        if the key has no processor. Used when applying transforms with params.
 
         Args:
             key (str): The processor key to retrieve.
@@ -646,8 +646,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return True
 
     def get_base_init_args(self) -> dict[str, Any]:
-        """Returns base init args (e.g. p) for serialization. Used by to_dict_private; subclasses
-        add transform-specific args via get_transform_init_args.
+        """Returns base init args (e.g. p) for serialization. Subclasses may override
+        to add more; merged into to_dict_private output.
         """
         return {"p": self.p}
 
@@ -678,8 +678,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return args
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Returns a dictionary representation of the transform for serialization, excluding
-        internal parameters. Used by to_dict and replay.
+        """Returns a dictionary representation of the transform for serialization.
+        Excludes internal parameters; includes __class_fullname__ and init args.
         """
         state = {"__class_fullname__": self.get_class_fullname()}
         state.update(self.get_base_init_args())
@@ -1155,8 +1155,8 @@ class Transform3D(DualTransform):
         return self.apply_to_volume(volumes, *args, **params)
 
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to single 3D mask. Delegates to apply_to_volume; input (D, H, W) or
-        (D, H, W, C). Same shape.
+        """Apply transform to a single 3D mask. Delegates to apply_to_volume. Input shape (D, H, W) or
+        (D, H, W, C). Output shape unchanged. For VolumeTransform.
         """
         return self.apply_to_volume(mask3d, *args, **params)
 

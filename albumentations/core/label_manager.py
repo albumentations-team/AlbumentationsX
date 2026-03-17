@@ -345,8 +345,8 @@ class LabelManager:
         return decoded_data.tolist()
 
     def handle_empty_data(self) -> list[Any]:
-        """Handle the case when label data is empty or missing by returning an empty list.
-        Gives callers a consistent return type. Used by process_field.
+        """Handle the case when label data is empty or missing by returning an empty
+        list. Gives callers a consistent return type. For process_field.
         """
         return []
 

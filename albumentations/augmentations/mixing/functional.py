@@ -513,10 +513,10 @@ def process_cell_geometry(
         target_shape: (tuple[int, int]): Target shape of the cell.
         fill: (float | tuple[float, ...]): Fill value for image padding.
         fill_mask: (float | tuple[float, ...]): Fill value for mask padding.
-        fit_mode: (Literal["cover", "contain"]): Fit mode for the mosaic.
+        fit_mode: (Literal['cover', 'contain']): Fit mode for the mosaic.
         interpolation: (int): Interpolation method for image.
         mask_interpolation: (int): Interpolation method for mask.
-        cell_position: (Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"]): Position
+        cell_position: (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Position
             of the cell.
 
     Returns: (ProcessedMosaicItem): Dictionary containing the geometrically processed image,
@@ -659,7 +659,7 @@ def assemble_mosaic_from_processed_cells(
             placement coords to processed cell data.
         target_shape (tuple[int, ...]): The target shape of the output canvas (e.g., (H, W) or (H, W, C)).
         dtype (np.dtype): NumPy dtype for the canvas.
-        data_key (Literal["image", "mask"]): Specifies whether to assemble 'image' or 'mask'.
+        data_key (Literal['image', 'mask']): Specifies whether to assemble 'image' or 'mask'.
         fill (float | tuple[float, ...] | None): Value used to initialize the canvas (image fill or mask fill).
               Should be a float/int or a tuple matching the number of channels.
               If None, defaults to 0.
@@ -737,9 +737,9 @@ def process_all_mosaic_geometries(
         final_items_for_grid (list[ProcessedMosaicItem]): List of all preprocessed items available.
         fill (float | tuple[float, ...]): Fill value for image padding.
         fill_mask (float | tuple[float, ...]): Fill value for mask padding.
-        fit_mode (Literal["cover", "contain"]): Fit mode for the mosaic.
-        interpolation (int): Interpolation method for image.
-        mask_interpolation (int): Interpolation method for mask.
+        fit_mode (Literal['cover', 'contain']): Fit mode for the mosaic.
+        interpolation (Literal[cv2.INTER_NEAREST, cv2.INTER_NEAREST_EXACT, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4, cv2.INTER_LINEAR_EXACT]): Interpolation for image.
+        mask_interpolation (Literal[cv2.INTER_NEAREST, cv2.INTER_NEAREST_EXACT, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4, cv2.INTER_LINEAR_EXACT]): Interpolation for mask.
 
     Returns:
         dict[tuple[int, int, int, int], ProcessedMosaicItem]: Dictionary mapping final placement
@@ -789,7 +789,7 @@ def get_cell_relative_position(
         target_shape (tuple[int, int]): The (height, width) of the overall target canvas.
 
     Returns:
-        Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"]:
+        Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']:
             The position of the cell relative to the center of the target canvas.
 
     """
@@ -819,7 +819,7 @@ def get_cell_relative_position(
         h_pos = "center"
 
     # Map positions to the final string
-    position_map = {
+    position_map: dict[tuple[str, str], str] = {
         ("top", "left"): "top_left",
         ("top", "right"): "top_right",
         ("bottom", "left"): "bottom_left",

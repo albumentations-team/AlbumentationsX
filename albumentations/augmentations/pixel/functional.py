@@ -71,13 +71,13 @@ def shift_hsv(
     amount; grayscale gets value only. uint8 I/O.
 
     Args:
-        img (np.ndarray): The image to shift.
+        img (ImageType): The image to shift.
         hue_shift (float): The amount to shift the hue.
         sat_shift (float): The amount to shift the saturation.
         val_shift (float): The amount to shift the value.
 
     Returns:
-        np.ndarray: The shifted image.
+        ImageType: The shifted image.
 
     """
     if hue_shift == 0 and sat_shift == 0 and val_shift == 0:
@@ -153,13 +153,13 @@ def solarize(img: ImageType, threshold: float) -> ImageType:
     works for uint8 and float32; pixels below threshold unchanged.
 
     Args:
-        img (np.ndarray): The image to solarize. Can be uint8 or float32.
+        img (ImageType): The image to solarize. Can be uint8 or float32.
         threshold (float): Normalized threshold value in range [0, 1].
             For uint8 images: pixels above threshold * 255 are inverted
             For float32 images: pixels above threshold are inverted
 
     Returns:
-        np.ndarray: Solarized image.
+        ImageType: Solarized image.
 
     Note:
         The threshold is normalized to [0, 1] range for both uint8 and float32 images.
@@ -186,7 +186,7 @@ def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[
     channel; LUT-based. uint8 I/O, clipped.
 
     Args:
-        img (np.ndarray): Input image. Can be single or multi-channel.
+        img (ImageType): Input image. Can be single or multi-channel.
         bits (Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]]): Number of high bits to keep..
             Can be either:
             - A single value to apply the same bit reduction to all channels
@@ -194,7 +194,7 @@ def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[
               Length of list must match number of channels in image.
 
     Returns:
-        np.ndarray: Image with reduced bit depth. Has same shape and dtype as input.
+        ImageType: Image with reduced bit depth. Has same shape and dtype as input.
 
     Note:
         - The transform keeps the N highest bits and sets all other bits to 0
@@ -324,17 +324,17 @@ def equalize(
     or on the luminance channel of the image.
 
     Args:
-        img (np.ndarray): Input image. Can be grayscale (2D array) or RGB (3D array).
+        img (ImageType): Input image. Can be grayscale (2D array) or RGB (3D array).
         mask (np.ndarray | None): Optional mask to apply the equalization selectively.
             If provided, must have the same shape as the input image. Default: None.
-        mode (ImageMode): The backend to use for equalization. Can be either "cv" for
+        mode (Literal['cv', 'pil']): The backend to use for equalization. Can be either "cv" for
             OpenCV or "pil" for Pillow-style equalization. Default: "cv".
         by_channels (bool): If True, applies equalization to each channel independently.
             If False, converts the image to YCrCb color space and equalizes only the
             luminance channel. Only applicable to color images. Default: True.
 
     Returns:
-        np.ndarray: Equalized image. The output has the same dtype as the input.
+        ImageType: Equalized image. The output has the same dtype as the input.
 
     Raises:
         ValueError: If the input image or mask have invalid shapes or types.
@@ -412,7 +412,7 @@ def move_tone_curve(
     for per-channel curves. uint8 I/O.
 
     Args:
-        img (np.ndarray): Any number of channels
+        img (ImageType): Any number of channels
         low_y (float | np.ndarray): per-channel or single y-position of a Bezier control point used
             to adjust the tone curve, must be in range [0, 1]
         high_y (float | np.ndarray): per-channel or single y-position of a Bezier control point used
@@ -420,7 +420,7 @@ def move_tone_curve(
         num_channels (int): The number of channels in the input image.
 
     Returns:
-        np.ndarray: Image with adjusted tone curve
+        ImageType: Image with adjusted tone curve
 
     """
     if np.isscalar(low_y) and np.isscalar(high_y):
@@ -455,12 +455,12 @@ def linear_transformation_rgb(
     to the RGB channels of either a single image or a batch of images.
 
     Args:
-        img (np.ndarray): A single RGB image of shape (H, W, 3), or a batch of images (B, H, W, 3),
+        img (ImageType): A single RGB image of shape (H, W, 3), or a batch of images (B, H, W, 3),
             or a batch of volumes (B, D, H, W, 3).
         transformation_matrix (np.ndarray): A 3x3 matrix
 
     Returns:
-        np.ndarray: Transformed image or batch of images, matching the input shape and dtype.
+        ImageType: Transformed image or batch of images, matching the input shape and dtype.
 
     Raises:
         ValueError: If input shapes do not conform to the supported configurations.
@@ -494,13 +494,13 @@ def clahe(
     converts the image back to RGB.
 
     Args:
-        img (np.ndarray): Input image. Can be grayscale (2D array) or RGB (3D array).
+        img (ImageType): Input image. Can be grayscale (2D array) or RGB (3D array).
         clip_limit (float): Threshold for contrast limiting. Higher values give more contrast.
         tile_grid_size (tuple[int, int]): Size of grid for histogram equalization.
             Width and height of the grid.
 
     Returns:
-        np.ndarray: Image with CLAHE applied. The output has the same dtype as the input.
+        ImageType: Image with CLAHE applied. The output has the same dtype as the input.
 
     Note:
         - If the input image is float32, it's temporarily converted to uint8 for processing
@@ -540,12 +540,12 @@ def image_compression(
     Lower quality increases blockiness. uint8 I/O.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         quality (int): Quality of compression in range [1, 100]
-        image_type (Literal[".jpg", ".webp"]): Type of compression to use
+        image_type (Literal['.jpg', '.webp']): Type of compression to use
 
     Returns:
-        np.ndarray: Compressed image
+        ImageType: Compressed image
 
     """
     # Determine the quality flag for compression
@@ -593,7 +593,7 @@ def add_snow_bleach(
     to modify the lightness channel.
 
     Args:
-        img (np.ndarray): Input image. Can be either RGB uint8 or float32.
+        img (ImageType): Input image. Can be either RGB uint8 or float32.
         snow_point (float): A float in the range [0, 1], scaled and adjusted to determine
             the threshold for pixel modification. Higher values result in less snow effect.
         brightness_coeff (float): Coefficient applied to increase the brightness of pixels
@@ -601,7 +601,7 @@ def add_snow_bleach(
             Should be greater than 1.0 for a visible effect.
 
     Returns:
-        np.ndarray: Image with simulated snow effect. The output has the same dtype as the input.
+        ImageType: Image with simulated snow effect. The output has the same dtype as the input.
 
     Note:
         - This function converts the image to the HLS color space to modify the lightness channel.
@@ -697,7 +697,7 @@ def add_snow_texture(
     The result is a more natural-looking snow effect compared to simple pixel bleaching methods.
 
     Args:
-        img (np.ndarray): Input image in RGB format.
+        img (ImageType): Input image in RGB format.
         snow_point (float): Coefficient that controls the amount and intensity of snow.
             Should be in the range [0, 1], where 0 means no snow and 1 means maximum snow effect.
         brightness_coeff (float): Coefficient for brightness adjustment to simulate the
@@ -707,7 +707,7 @@ def add_snow_texture(
         sparkle_mask (np.ndarray): Sparkle mask.
 
     Returns:
-        np.ndarray: Image with added snow effect. The output has the same dtype as the input.
+        ImageType: Image with added snow effect. The output has the same dtype as the input.
 
     Note:
         - The function first converts the image to HSV color space for better control over
@@ -808,7 +808,7 @@ def add_rain(
     The rain drops are drawn using the OpenCV function cv2.polylines.
 
     Args:
-        img (np.ndarray): The image to add rain to.
+        img (ImageType): The image to add rain to.
         slant (float): The slant of the rain drops.
         drop_length (int): The length of the rain drops.
         drop_width (int): The width of the rain drops.
@@ -818,7 +818,7 @@ def add_rain(
         rain_drops (np.ndarray): The rain drops to draw on the image.
 
     Returns:
-        np.ndarray: The image with rain added.
+        ImageType: The image with rain added.
 
     """
     if not rain_drops.size:
@@ -898,14 +898,14 @@ def add_fog(
     The fog particles are drawn using the OpenCV function cv2.circle.
 
     Args:
-        img (np.ndarray): The image to add fog to.
+        img (ImageType): The image to add fog to.
         fog_intensity (float): The intensity of the fog effect, between 0 and 1.
         alpha_coef (float): The coefficient for the alpha blending.
         fog_particle_positions (list[tuple[int, int]]): The positions of the fog particles.
         fog_particle_radiuses (list[int]): The radiuses of the fog particles.
 
     Returns:
-        np.ndarray: The image with fog added.
+        ImageType: The image with fog added.
 
     """
     result = img.copy()
@@ -953,7 +953,7 @@ def add_sun_flare_overlay(
     a simple lens flare caused by bright light sources.
 
     Args:
-        img (np.ndarray): The input image.
+        img (ImageType): The input image.
         flare_center (tuple[float, float]): (x, y) coordinates of the flare center
             in pixel coordinates.
         src_radius (int): The radius of the main sun circle in pixels.
@@ -966,7 +966,7 @@ def add_sun_flare_overlay(
             - color (tuple[int, int, int]): RGB color of the circle.
 
     Returns:
-        np.ndarray: The output image with the sun flare effect added.
+        ImageType: The output image with the sun flare effect added.
 
     Note:
         - This function uses a simple alpha blending technique to overlay flare elements.
@@ -1051,7 +1051,7 @@ def add_sun_flare_physics_based(
     more realistic and physically plausible lens flare effect.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         flare_center (tuple[int, int]): (x, y) coordinates of the sun's center in pixels.
         src_radius (int): Radius of the main sun circle in pixels.
         src_color (tuple[int, int, int]): Color of the sun in RGB format.
@@ -1063,7 +1063,7 @@ def add_sun_flare_physics_based(
             - color (tuple[int, int, int]): RGB color of the circle.
 
     Returns:
-        np.ndarray: Image with added sun flare effect.
+        ImageType: Image with added sun flare effect.
 
     Note:
         This function implements several techniques to create a more realistic flare:
@@ -1169,12 +1169,12 @@ def add_shadow(
     polygon. uint8 I/O, preserves channels.
 
     Args:
-        img (np.ndarray): Input image. Multichannel images are supported.
+        img (ImageType): Input image. Multichannel images are supported.
         vertices_list (list[np.ndarray]): List of vertices for shadow polygons.
         intensities (np.ndarray): Array of shadow intensities. Range is [0, 1].
 
     Returns:
-        np.ndarray: Image with shadows added.
+        ImageType: Image with shadows added.
 
     References:
         Automold--Road-Augmentation-Library: https://github.com/UjjwalSaxena/Automold--Road-Augmentation-Library
@@ -1211,11 +1211,11 @@ def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
     The gravel particles are drawn using the OpenCV function cv2.circle.
 
     Args:
-        img (np.ndarray): The image to add gravel to.
+        img (ImageType): The image to add gravel to.
         gravels (list[Any]): The gravel particles to draw on the image.
 
     Returns:
-        np.ndarray: The image with gravel added.
+        ImageType: The image with gravel added.
 
     """
     non_rgb_error(img)
@@ -1236,10 +1236,10 @@ def invert(img: ImageType) -> ImageType:
     The result is a negative of the original image.
 
     Args:
-        img (np.ndarray): The image to invert.
+        img (ImageType): The image to invert.
 
     Returns:
-        np.ndarray: The inverted image.
+        ImageType: The inverted image.
 
     """
     # Supports all the valid dtypes
@@ -1255,11 +1255,11 @@ def channel_shuffle(img: ImageType, channels_shuffled: list[int]) -> ImageType:
     The channels are shuffled according to the channels_shuffled array.
 
     Args:
-        img (np.ndarray): The image to shuffle.
-        channels_shuffled (np.ndarray): The array of channels to shuffle.
+        img (ImageType): The image to shuffle.
+        channels_shuffled (list[int]): The array of channels to shuffle.
 
     Returns:
-        np.ndarray: The shuffled image.
+        ImageType: The shuffled image.
 
     """
     img = np.ascontiguousarray(img)
@@ -1309,11 +1309,11 @@ def gamma_transform(img: ImageType, gamma: float) -> ImageType:
     The result is a non-linear transformation that can enhance or reduce the contrast of the image.
 
     Args:
-        img (np.ndarray): The image to apply gamma transformation to.
+        img (ImageType): The image to apply gamma transformation to.
         gamma (float): The gamma value to apply.
 
     Returns:
-        np.ndarray: The gamma transformed image.
+        ImageType: The gamma transformed image.
 
     """
     if img.dtype == np.uint8:
@@ -1387,14 +1387,14 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
     a tall 2D image for processing, then restoring the original shape structure.
 
     Args:
-        img (np.ndarray): Input RGB image(s) as a numpy array. Supported shapes:
+        img (ImageType): Input RGB image(s) as a numpy array. Supported shapes:
             - Single image: (H, W, 3)
             - Batch of images: (N, H, W, 3)
             - Volume: (D, H, W, 3)
             - Batch of volumes: (N, D, H, W, 3)
 
     Returns:
-        np.ndarray: Grayscale image as a 2D numpy array.
+        ImageType: Grayscale image as a 2D numpy array.
 
     Image types:
         uint8, float32
@@ -1453,7 +1453,7 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
             - np.float32: Values in range [0, 1]
 
     Returns:
-        Grayscale image(s) with the same spatial dimensions as input but without channel dimension:
+        ImageType:
             - Single image: (H, W)
             - Batch of images: (N, H, W)
             - Volume: (D, H, W)
@@ -1519,10 +1519,10 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
     uint8 and float32. uint8 and float32.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
 
     Returns:
-        np.ndarray: Grayscale image as a 2D numpy array.
+        ImageType: Grayscale image as a 2D numpy array.
 
     Image types:
         uint8, float32
@@ -1558,10 +1558,10 @@ def to_gray_average(img: ImageType) -> ImageType:
     non-color data in additional channels.
 
     Args:
-        img (np.ndarray): Input image as a numpy array. Can be any number of channels.
+        img (ImageType): Input image as a numpy array. Can be any number of channels.
 
     Returns:
-        np.ndarray: Grayscale image as a 2D numpy array. The output data type
+        ImageType: Grayscale image as a 2D numpy array. The output data type
                     matches the input data type.
 
     Image types:
@@ -1595,10 +1595,10 @@ def to_gray_max(img: ImageType) -> ImageType:
       account for human color perception.
 
     Args:
-        img (np.ndarray): Input image as a numpy array. Can be any number of channels.
+        img (ImageType): Input image as a numpy array. Can be any number of channels.
 
     Returns:
-        np.ndarray: Grayscale image as a 2D numpy array. The output data type
+        ImageType: Grayscale image as a 2D numpy array. The output data type
                     matches the input data type.
 
     Image types:
@@ -1621,14 +1621,14 @@ def to_gray_pca(img: ImageType) -> ImageType:
     in the color data.
 
     Args:
-        img (np.ndarray): Input image as a numpy array. Can be:
+        img (ImageType): Input image as a numpy array. Can be:
             - Single multi-channel image: (H, W, C)
             - Batch of multi-channel images: (N, H, W, C)
             - Single multi-channel volume: (D, H, W, C)
             - Batch of multi-channel volumes: (N, D, H, W, C)
 
     Returns:
-        np.ndarray: Grayscale image with the same spatial dimensions as input.
+        ImageType: Grayscale image with the same spatial dimensions as input.
                     If input is uint8, output is uint8 in range [0, 255].
                     If input is float32, output is float32 in range [0, 1].
 
@@ -1684,13 +1684,13 @@ def to_gray(
     - "pca": Use the Principal Component Analysis method.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         num_output_channels (int): The number of channels in the output image.
-        method (Literal["weighted_average", "from_lab", "desaturation", "average", "max", "pca"]):
+        method (Literal['weighted_average', 'from_lab', 'desaturation', 'average', 'max', 'pca']):
             The method to use for grayscale conversion.
 
     Returns:
-        np.ndarray: Grayscale image as a 2D numpy array.
+        ImageType: Grayscale image as a 2D numpy array.
 
     """
     if method == "weighted_average":
@@ -1758,13 +1758,13 @@ def downscale(
     The downscaling and upscaling are performed using albucore.resize.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         scale (float): The scale factor for the downscaling and upscaling.
         down_interpolation (int): The interpolation method for the downscaling.
         up_interpolation (int): The interpolation method for the upscaling.
 
     Returns:
-        np.ndarray: The downscaled and upscaled image.
+        ImageType: The downscaled and upscaled image.
 
     """
     height, width = img.shape[:2]
@@ -1799,12 +1799,12 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     count. float32 I/O, clipped.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         alpha_vector (np.ndarray): Vector of scale factors for each principal component.
                                    Should have the same length as the number of channels in the image.
 
     Returns:
-        np.ndarray: Augmented image of the same shape, type, and range as the input.
+        ImageType: Augmented image of the same shape, type, and range as the input.
 
     Image types:
         uint8, float32
@@ -1877,11 +1877,11 @@ def adjust_brightness_torchvision(img: ImageType, factor: np.ndarray) -> ImageTy
     The brightness is adjusted by multiplying the image by the factor.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         factor (np.ndarray): The factor to adjust the brightness by.
 
     Returns:
-        np.ndarray: The adjusted image.
+        ImageType: The adjusted image.
 
     """
     if factor == 0:
@@ -1901,11 +1901,11 @@ def adjust_contrast_torchvision(img: ImageType, factor: float) -> ImageType:
     The contrast is adjusted by multiplying the image by the factor.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         factor (float): The factor to adjust the contrast by.
 
     Returns:
-        np.ndarray: The adjusted image.
+        ImageType: The adjusted image.
 
     """
     if factor == 1:
@@ -1935,12 +1935,12 @@ def adjust_saturation_torchvision(
     arbitrary channels. Works on batches (4D) and volumes (5D).
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         factor (float): The factor to adjust the saturation by.
         gamma (float): Unused, kept for API compatibility.
 
     Returns:
-        np.ndarray: The adjusted image.
+        ImageType: The adjusted image.
 
     """
     if factor == 1 or is_grayscale_image(img):
@@ -1969,11 +1969,11 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     This function adjusts the hue of an image by adding a factor to the hue value.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         factor (float): The factor to adjust the hue by.
 
     Returns:
-        np.ndarray: The adjusted image.
+        ImageType: The adjusted image.
 
     """
     if is_grayscale_image(img) or factor == 0:
@@ -2263,11 +2263,11 @@ def spatter_rain(img: ImageType, rain: np.ndarray) -> ImageType:
     This function applies spatter rain to an image by adding the rain to the image.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         rain (np.ndarray): Rain image as a numpy array.
 
     Returns:
-        np.ndarray: The spatter rain applied to the image.
+        ImageType: The spatter rain applied to the image.
 
     """
     return add(img, rain, inplace=False)
@@ -2283,12 +2283,12 @@ def spatter_mud(img: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageTy
     This function applies spatter mud to an image by adding the mud to the image.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         non_mud (np.ndarray): Non-mud image as a numpy array.
         mud (np.ndarray): Mud image as a numpy array.
 
     Returns:
-        np.ndarray: The spatter mud applied to the image.
+        ImageType: The spatter mud applied to the image.
 
     """
     return add(img * non_mud, mud, inplace=False)
@@ -2310,7 +2310,7 @@ def chromatic_aberration(
     This function applies chromatic aberration to an image by distorting the red and blue channels.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         primary_distortion_red (float): The primary distortion of the red channel.
         secondary_distortion_red (float): The secondary distortion of the red channel.
         primary_distortion_blue (float): The primary distortion of the blue channel.
@@ -2318,7 +2318,7 @@ def chromatic_aberration(
         interpolation (int): The interpolation method to use.
 
     Returns:
-        np.ndarray: The chromatic aberration applied to the image.
+        ImageType: The chromatic aberration applied to the image.
 
     """
     height, width = img.shape[:2]
@@ -2455,12 +2455,12 @@ def planckian_jitter(
     between the two closest temperatures in the PLANCKIAN_COEFFS dictionary.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         temperature (int): The temperature to apply.
-        mode (Literal["blackbody", "cied"]): The mode to use.
+        mode (Literal['blackbody', 'cied']): The mode to use.
 
     Returns:
-        np.ndarray: The Planckian jitter applied to the image.
+        ImageType: The Planckian jitter applied to the image.
 
     """
     img = img.copy()
@@ -2514,11 +2514,11 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
     This function adds noise to an image by adding the noise to the image.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         noise (np.ndarray): Noise as a numpy array.
 
     Returns:
-        np.ndarray: The noise added to the image.
+        ImageType: The noise added to the image.
 
     """
     if img.ndim == 3 and noise.ndim == 1:
@@ -2610,12 +2610,12 @@ def shot_noise(
     float32 I/O, clipped, preserves channels.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         scale (float): Scale factor for the noise
         random_generator (np.random.Generator): Random number generator
 
     Returns:
-        np.ndarray: Image with shot noise
+        ImageType: Image with shot noise
 
     """
     # Apply inverse gamma correction to work in linear space
@@ -2682,7 +2682,7 @@ def generate_constant_noise_with_py_random(
     more efficient for generating a small number of values (one per channel).
 
     Args:
-        noise_type (Literal["uniform", "gaussian", "laplace", "beta"]): The type of noise to generate.
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): The type of noise to generate.
         shape (tuple[int, ...]): The shape of the noise to generate.
         params (dict[str, Any] | None): The parameters of the noise to generate.
         max_value (float): The maximum value of the noise to generate.
@@ -2781,8 +2781,8 @@ def generate_spatial_noise(
     This function generates spatial noise with optional approximation for speed.
 
     Args:
-        noise_type (Literal["uniform", "gaussian", "laplace", "beta"]): The type of noise to generate.
-        spatial_mode (Literal["per_pixel", "shared"]): The spatial mode to use.
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): The type of noise to generate.
+        spatial_mode (Literal['per_pixel', 'shared']): The spatial mode to use.
         shape (tuple[int, ...]): The shape of the noise to generate.
         params (dict[str, Any] | None): The parameters of the noise to generate.
         max_value (float): The maximum value of the noise to generate.
@@ -2858,7 +2858,7 @@ def generate_per_pixel_noise(
     This function generates per-pixel noise by sampling from the noise distribution.
 
     Args:
-        noise_type (Literal["uniform", "gaussian", "laplace", "beta"]): The type of noise to generate.
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): The type of noise to generate.
         shape (tuple[int, ...]): The shape of the noise to generate.
         params (dict[str, Any]): The parameters of the noise to generate.
         max_value (float): The maximum value of the noise to generate.
@@ -2884,7 +2884,7 @@ def sample_noise(
     This function samples from a specific noise distribution.
 
     Args:
-        noise_type (Literal["uniform", "gaussian", "laplace", "beta"]): The type of noise to generate.
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): The type of noise to generate.
         size (tuple[int, ...]): The size of the noise to generate.
         params (dict[str, Any]): The parameters of the noise to generate.
         max_value (float): The maximum value of the noise to generate.
@@ -3029,7 +3029,7 @@ def generate_shared_noise(
     by MultiplicativeNoise and generate_spatial_noise when spatial_mode is shared.
 
     Args:
-        noise_type (Literal["uniform", "gaussian", "laplace", "beta"]): Type of noise to generate
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): Type of noise to generate
         shape (tuple[int, ...]): Shape of the output array
         params (dict[str, Any]): Distribution parameters
         max_value (float): Maximum value for the noise
@@ -3069,13 +3069,13 @@ def sharpen_gaussian(
     This function sharpens an image using a Gaussian blur.
 
     Args:
-        img (np.ndarray): The image to sharpen.
+        img (ImageType): The image to sharpen.
         alpha (float): The alpha value to use for the sharpening.
         kernel_size (int): The kernel size to use for the Gaussian blur.
         sigma (float): The sigma value to use for the Gaussian blur.
 
     Returns:
-        np.ndarray: The sharpened image.
+        ImageType: The sharpened image.
 
     """
     blurred = cv2.GaussianBlur(
@@ -3099,7 +3099,7 @@ def apply_salt_and_pepper(
     Salt pixels are set to maximum value, pepper pixels are set to 0.
 
     Args:
-        img (np.ndarray): Input image of any dtype and dimensions:
+        img (ImageType): Input image of any dtype and dimensions:
             - 2D: (H, W) - grayscale
             - 3D: (H, W, C) - RGB/multi-channel
             - 4D: (D, H, W, C) - volume with depth
@@ -3107,7 +3107,7 @@ def apply_salt_and_pepper(
         pepper_mask (np.ndarray): Boolean mask indicating pepper pixels (H, W)
 
     Returns:
-        np.ndarray: The image with salt and pepper noise applied.
+        ImageType: The image with salt and pepper noise applied.
 
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
@@ -3218,13 +3218,13 @@ def apply_plasma_brightness_contrast(
     This function applies plasma-based brightness and contrast adjustments to an image.
 
     Args:
-        img (np.ndarray): The image to apply the brightness and contrast adjustments to.
+        img (ImageType): The image to apply the brightness and contrast adjustments to.
         brightness_factor (float): The brightness factor to apply.
         contrast_factor (float): The contrast factor to apply.
         plasma_pattern (np.ndarray): The plasma pattern to use for the brightness and contrast adjustments.
 
     Returns:
-        np.ndarray: The image with the brightness and contrast adjustments applied.
+        ImageType: The image with the brightness and contrast adjustments applied.
 
     """
     # Early return if no adjustments needed
@@ -3266,12 +3266,12 @@ def apply_plasma_shadow(
     regions; params control intensity.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         intensity (float): Shadow intensity
         plasma_pattern (np.ndarray): Plasma pattern to use
 
     Returns:
-        np.ndarray: Image with plasma shadow
+        ImageType: Image with plasma shadow
 
     """
     # Scale plasma pattern by intensity first (scalar operation)
@@ -3410,12 +3410,12 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
     control direction and strength. float32 I/O.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         intensity (float): Illumination intensity
         angle (float): Illumination angle in radians
 
     Returns:
-        np.ndarray: Image with linear illumination
+        ImageType: Image with linear illumination
 
     """
     height, width = img.shape[:2]
@@ -3447,12 +3447,12 @@ def apply_corner_illumination(
     corner (0-3) control strength and which corner. Clipped.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         intensity (float): Illumination intensity
         corner (Literal[0, 1, 2, 3]): The corner to apply the illumination to.
 
     Returns:
-        np.ndarray: Image with corner illumination applied.
+        ImageType: Image with corner illumination applied.
 
     """
     if intensity == 0:
@@ -3500,7 +3500,7 @@ def apply_gaussian_illumination(
     Clipped, preserves channel count.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         intensity (float): Illumination intensity
         center (tuple[float, float]): The center of the illumination.
         sigma (float): The sigma of the illumination.
@@ -3554,13 +3554,13 @@ def auto_contrast(
     (cdf or pil) limit clip. uint8 I/O.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         cutoff (float): Cutoff percentage for histogram
         ignore (int | None): Value to ignore in histogram
-        method (Literal["cdf", "pil"]): Method to use for contrast enhancement
+        method (Literal['cdf', 'pil']): Method to use for contrast enhancement
 
     Returns:
-        np.ndarray: Image with enhanced contrast
+        ImageType: Image with enhanced contrast
 
     """
     result = img.copy()
@@ -3615,7 +3615,7 @@ def create_contrast_lut(
         min_intensity (int): Minimum intensity of the histogram.
         max_intensity (int): Maximum intensity of the histogram.
         max_value (int): Maximum value of the lookup table.
-        method (Literal["cdf", "pil"]): Method to use for contrast enhancement.
+        method (Literal['cdf', 'pil']): Method to use for contrast enhancement.
 
     Returns:
         np.ndarray: Lookup table for contrast adjustment.
@@ -4061,7 +4061,7 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
     This function converts an RGB image to optical density.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         eps (float): Epsilon value.
 
     Returns:
@@ -4098,7 +4098,7 @@ def get_normalizer(method: Literal["vahadane", "macenko"]) -> "StainNormalizer":
     This function gets a stain normalizer based on a method.
 
     Args:
-        method (Literal["vahadane", "macenko"]): Method to use for stain normalization.
+        method (Literal['vahadane', 'macenko']): Method to use for stain normalization.
 
     Returns:
         StainNormalizer: Stain normalizer.
@@ -4122,7 +4122,7 @@ class StainNormalizer:
         This function fits the stain normalizer to an image.
 
         Args:
-            img (np.ndarray): Input image.
+            img (ImageType): Input image.
 
         """
         raise NotImplementedError
@@ -4307,7 +4307,7 @@ class VahadaneNormalizer(StainNormalizer):
         This function fits the Vahadane stain normalizer to an image.
 
         Args:
-            img (np.ndarray): Input image.
+            img (ImageType): Input image.
 
         """
         optical_density = rgb_to_optical_density(img)
@@ -4342,7 +4342,7 @@ class MacenkoNormalizer(StainNormalizer):
         This function fits the Macenko stain normalizer to an image.
 
         Args:
-            img (np.ndarray): Input image.
+            img (ImageType): Input image.
             angular_percentile (float): Angular percentile.
 
         """
@@ -4432,7 +4432,7 @@ def get_tissue_mask(img: ImageType, threshold: float = 0.85) -> np.ndarray:
     non-tissue. Returns 1D bool mask.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         threshold (float): Threshold for tissue detection. Default: 0.85
 
     Returns:
@@ -4463,14 +4463,14 @@ def apply_he_stain_augmentation(
     This function applies HE stain augmentation to an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         stain_matrix (np.ndarray): Stain matrix.
         scale_factors (np.ndarray): Scale factors.
         shift_values (np.ndarray): Shift values.
         augment_background (bool): Whether to augment the background.
 
     Returns:
-        np.ndarray: Augmented image.
+        ImageType: Augmented image.
 
     """
     # Step 1: Convert RGB to optical density space
@@ -4523,11 +4523,11 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     This function convolves an image with a kernel.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         kernel (np.ndarray): Kernel.
 
     Returns:
-        np.ndarray: Convolved image.
+        ImageType: Convolved image.
 
     """
     img = np.array(img, copy=True, order="C")
@@ -4544,11 +4544,11 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     This function convolves an image with a separable kernel.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         kernel (np.ndarray): Kernel.
 
     Returns:
-        np.ndarray: Convolved image.
+        ImageType: Convolved image.
 
     """
     img = np.array(img, copy=True, order="C")

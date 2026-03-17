@@ -355,7 +355,7 @@ class PadIfNeeded(Pad):
             If not specified, min_height must be provided.
         pad_width_divisor (int | None): If set, pads the image width to make it divisible by this value.
             If not specified, min_width must be provided.
-        position (Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]):
+        position (Literal['center', 'top_left', 'top_right', 'bottom_left', 'bottom_right', 'random']):
             Position where the image is to be placed after padding. Default is 'center'.
         border_mode (int): Specifies the border mode to use if padding is required.
             The default is `cv2.BORDER_CONSTANT`.

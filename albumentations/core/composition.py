@@ -532,8 +532,7 @@ class BaseCompose(Serializable):
             other: Transform class to remove (e.g., A.HorizontalFlip)
 
         Returns:
-            BaseCompose: New compose instance with transform removed
-            NotImplemented: If other is not a BasicTransform class
+            BaseCompose | type[NotImplemented]: New compose instance with transform removed, or NotImplemented.
 
         Raises:
             ValueError: If no transform of that type is found in the compose
@@ -1834,7 +1833,7 @@ class ReplayCompose(Compose):
 
         Args:
             transform_dict (dict[str, Any]): A dictionary that contains transform data.
-            lambda_transforms (dict): Optional dict of Lambda instances keyed by transform name.
+            lambda_transforms (dict[str, Any] | None): Optional dict of Lambda instances keyed by transform name.
 
         """
         applied = transform_dict["applied"]

@@ -282,15 +282,11 @@ def save(
 
     Args:
         transform (Serializable): The transform pipeline to serialize.
-        filepath_or_buffer (Union[str, Path, TextIO]): The file path or file-like object to write the serialized
-            data to.
-            If a string is provided, it is interpreted as a path to a file. If a file-like object is provided,
-            the serialized data will be written to it directly.
-        data_format (str): The format to serialize the data in. Valid options are 'json' and 'yaml'.
-            Defaults to 'json'.
-        on_not_implemented_error (str): Determines the behavior if a transform does not implement the `to_dict` method.
-            If set to 'raise', a `NotImplementedError` is raised. If set to 'warn', the exception is ignored, and
-            no transform arguments are saved. Defaults to 'raise'.
+        filepath_or_buffer (str | Path | TextIO): The file path or file-like object to write the serialized
+            data to. String is interpreted as a path; file-like object is written to directly.
+        data_format (Literal['json', 'yaml']): The format to serialize the data in. Defaults to 'json'.
+        on_not_implemented_error (Literal['raise', 'warn']): If a transform does not implement to_dict:
+            'raise' raises NotImplementedError; 'warn' ignores and omits transform arguments. Defaults to 'raise'.
 
     Raises:
         ValueError: If `data_format` is 'yaml' but PyYAML is not installed.
@@ -328,13 +324,11 @@ def load(
     Pass nonserializable for Lambda/custom.
 
     Args:
-        filepath_or_buffer (Union[str, Path, TextIO]): The file path or file-like object to read the serialized
-            data from.
-            If a string is provided, it is interpreted as a path to a file. If a file-like object is provided,
-            the serialized data will be read from it directly.
-        data_format (Literal["json", "yaml"]): The format of the serialized data.
+        filepath_or_buffer (str | Path | TextIO): The file path or file-like object to read the serialized
+            data from. String is interpreted as a path; file-like object is read from directly.
+        data_format (Literal['json', 'yaml']): The format of the serialized data.
             Defaults to 'json'.
-        nonserializable (Optional[dict[str, Any]]): A dictionary that contains non-serializable transforms.
+        nonserializable (dict[str, Any] | None): A dictionary that contains non-serializable transforms.
             This dictionary is required when restoring a pipeline that contains non-serializable transforms.
             Keys in the dictionary should be named the same as the `name` arguments in respective transforms
             from the serialized pipeline. Defaults to None.

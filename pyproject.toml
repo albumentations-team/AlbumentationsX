@@ -256,6 +256,7 @@ lint.ignore = [
   "TRY003",
 ]
 
+lint.per-file-ignores."albumentations/augmentations/mixing/functional.py" = ["E501"]
 lint.per-file-ignores."tools/*" = [
   "ANN201",
   "D100",
@@ -413,7 +414,7 @@ check_references = true
 paths = [ "albumentations" ]
 require_param_types = false   # TODO: add param/return types to docstrings; then set true
 check_references = true
-check_type_consistency = false  # TODO: fix docstring types to match annotations (Union→|, Literal quotes, ImageType, etc.)
+check_type_consistency = true
 exclude_files = [ "__init__.py" ]
 # First paragraph: 120-160 chars (elevator pitch). See .cursor/skills/docstring-deep-dive.
 min_short_description_length = 120

@@ -224,7 +224,7 @@ def render_text(image: ImageType, metadata_list: list[dict[str, Any]], clear_bg:
     The function handles different image types (grayscale, RGB, multi-channel).
 
     Args:
-        image (np.ndarray): Image to draw text on.
+        image (ImageType): Image to draw text on.
         metadata_list (list[dict[str, Any]]): List of metadata dictionaries containing:
             - bbox_coords: Bounding box coordinates (x_min, y_min, x_max, y_max)
             - text: Text string to render
@@ -233,7 +233,7 @@ def render_text(image: ImageType, metadata_list: list[dict[str, Any]], clear_bg:
         clear_bg (bool): Whether to clear (inpaint) the background under the text.
 
     Returns:
-        np.ndarray: Image with text rendered on it.
+        ImageType: Image with text rendered on it.
 
     """
     # First clean background under boxes using seamless clone if clear_bg is True

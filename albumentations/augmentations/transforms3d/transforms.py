@@ -298,7 +298,7 @@ class PadIfNeeded3D(BasePad3D):
         pad_divisor_zyx (tuple[int, int, int] | None): If set, pads each dimension to make it
             divisible by corresponding value in format (depth_div, height_div, width_div).
             If not specified, min_zyx must be provided.
-        position (Literal["center", "random"]): Position where the volume is to be placed after padding.
+        position (Literal['center', 'random']): Position where the volume is to be placed after padding.
             Default is 'center'.
         fill (tuple[float, ...] | float): Value to fill the border voxels for volume. Default: 0
         fill_mask (tuple[float, ...] | float): Value to fill the border voxels for masks. Default: 0
@@ -437,7 +437,7 @@ class BaseCropAndPad3D(Transform3D):
         pad_if_needed (bool): Whether to pad if the volume is smaller than target dimensions
         fill (tuple[float, ...] | float): Value to fill the padded voxels for volume
         fill_mask (tuple[float, ...] | float): Value to fill the padded voxels for mask
-        pad_position (Literal["center", "random"]): How to distribute padding when needed
+        pad_position (Literal['center', 'random']): How to distribute padding when needed
             "center" - equal amount on both sides, "random" - random distribution
         p (float): Probability of applying the transform. Default: 1.0
 
@@ -1054,7 +1054,7 @@ class CoarseDropout3D(Transform3D):
         ...     p=1.0
         ... )
         >>> transformed = aug(volume=volume, mask3d=mask3d)
-        >>> transformed_volume, transformed_mask3d = transformed["volume"], transformed["mask3d"]
+        >>> transformed_volume, transformed_mask3d = transformed["volume'], transformed["mask3d"]
 
     """
 

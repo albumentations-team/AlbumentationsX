@@ -26,7 +26,7 @@ def adjust_padding_by_position3d(
     Args:
         paddings (list[tuple[int, int]]): List of tuples containing padding pairs
             for each dimension [(d_pad), (h_pad), (w_pad)]
-        position (Literal["center", "random"]): Position of the image after padding.
+        position (Literal['center', 'random']): Position of the image after padding.
         py_random (random.Random): Random number generator
 
     Returns:
@@ -67,7 +67,7 @@ def pad_3d_with_params(
     (D,H,W) or (D,H,W,C). Used by Pad3D and PadIfNeeded3D.
 
     Args:
-        volume (np.ndarray): Input volume with shape (depth, height, width) or (depth, height, width, channels)
+        volume (ImageType): Input volume with shape (depth, height, width) or (depth, height, width, channels)
         padding (tuple[int, int, int, int, int, int]): Padding values in format:
             (depth_front, depth_back, height_top, height_bottom, width_left, width_right)
             where:
@@ -77,7 +77,7 @@ def pad_3d_with_params(
         value (tuple[float, ...] | float): Value to fill the padding
 
     Returns:
-        np.ndarray: Padded volume with same number of dimensions as input
+        ImageType: Padded volume with same number of dimensions as input
 
     Note:
         The padding order matches the volume dimensions (depth, height, width).
@@ -118,12 +118,12 @@ def crop3d(
     Volume (D,H,W) or (D,H,W,C). Used by CenterCrop3D and RandomCrop3D.
 
     Args:
-        volume (np.ndarray): Input volume with shape (z, y, x) or (z, y, x, channels)
+        volume (ImageType): Input volume with shape (z, y, x) or (z, y, x, channels)
         crop_coords (tuple[int, int, int, int, int, int]):
             (z_min, z_max, y_min, y_max, x_min, x_max) coordinates for cropping
 
     Returns:
-        np.ndarray: Cropped volume with same number of dimensions as input
+        ImageType: Cropped volume with same number of dimensions as input
 
     """
     z_min, z_max, y_min, y_max, x_min, x_max = crop_coords
@@ -136,13 +136,13 @@ def cutout3d(volume: ImageType, holes: np.ndarray, fill: tuple[float, ...] | flo
     Used by CoarseDropout3D. Returns volume.
 
     Args:
-        volume (np.ndarray): Input volume with shape (depth, height, width) or (depth, height, width, channels)
+        volume (ImageType): Input volume with shape (depth, height, width) or (depth, height, width, channels)
         holes (np.ndarray): Array of holes with shape (num_holes, 6).
             Each hole is represented as [z1, y1, x1, z2, y2, x2]
         fill (tuple[float, ...] | float): Value to fill the holes
 
     Returns:
-        np.ndarray: Volume with holes filled with the given value
+        ImageType: Volume with holes filled with the given value
 
     """
     volume = volume.copy()
@@ -504,12 +504,12 @@ def swap_tiles_on_volume(
     tile sizes; loop-based. For CubicSymmetry-style shuffle.
 
     Args:
-        volume (np.ndarray): Input volume with shape (D, H, W) or (D, H, W, C).
+        volume (ImageType): Input volume with shape (D, H, W) or (D, H, W, C).
         tiles (np.ndarray): Array of tiles with each tile as [z_start, y_start, x_start, z_end, y_end, x_end].
         mapping (list[int]): List of new tile indices. Must have the same length as tiles.
 
     Returns:
-        np.ndarray: Output volume with tiles swapped according to the random shuffle.
+        ImageType: Output volume with tiles swapped according to the random shuffle.
 
     Note:
         This implementation uses a loop rather than vectorized operations because tiles may have

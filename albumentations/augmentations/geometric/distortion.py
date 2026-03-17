@@ -88,7 +88,7 @@ class BaseDistortion(DualTransform):
             cv2.INTER_CUBIC).
         mask_interpolation (int): Flag that is used to specify the interpolation algorithm for mask.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -362,11 +362,11 @@ class ElasticTransform(BaseDistortion):
         mask_interpolation (int): Flag that is used to specify the interpolation algorithm for mask.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_NEAREST.
-        noise_distribution (Literal["gaussian", "uniform"]): Distribution used to generate the displacement fields.
+        noise_distribution (Literal['gaussian', 'uniform']): Distribution used to generate the displacement fields.
             "gaussian" generates fields using normal distribution (more natural deformations).
             "uniform" generates fields using uniform distribution (more mechanical deformations).
             Default: "gaussian".
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -549,7 +549,7 @@ class PiecewiseAffine(BaseDistortion):
         absolute_scale (bool): If set to True, the value of the scale parameter will be treated as an absolute
             pixel value. If set to False, it will be treated as a fraction of the image height and width.
             Default: False.
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -732,7 +732,7 @@ class OpticalDistortion(BaseDistortion):
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_NEAREST.
 
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -892,7 +892,7 @@ class GridDistortion(BaseDistortion):
         mask_interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm for mask.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_NEAREST.
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -1089,7 +1089,7 @@ class ThinPlateSpline(BaseDistortion):
             See also: cv2.INTER_*
             Default: cv2.INTER_NEAREST
 
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.

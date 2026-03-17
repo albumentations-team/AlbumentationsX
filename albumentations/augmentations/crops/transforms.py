@@ -279,7 +279,7 @@ class BaseCropAndPad(BaseCrop):
         fill (tuple[float, ...] | float): Value to fill the padded area if border_mode is BORDER_CONSTANT.
             For multi-channel images, this can be a tuple with a value for each channel.
         fill_mask (tuple[float, ...] | float): Value to fill the padded area in masks.
-        pad_position (Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]):
+        pad_position (Literal['center', 'top_left', 'top_right', 'bottom_left', 'bottom_right', 'random']):
             Position of padding when pad_if_needed is True.
         p (float): Probability of applying the transform. Default: 1.0.
 

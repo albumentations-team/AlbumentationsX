@@ -130,7 +130,7 @@ def crop_keypoints_by_coords(
 
     Args:
         keypoints (np.ndarray): An array of keypoints with shape (N, 4+) where each row is (x, y, angle, scale, ...).
-        crop_coords (tuple): Crop box coords (x1, y1, x2, y2).
+        crop_coords (tuple[int, int, int, int]): Crop box coords (x1, y1, x2, y2).
 
     Returns:
         np.ndarray: An array of cropped keypoints with the same shape as the input.
@@ -176,14 +176,14 @@ def crop(img: ImageType, x_min: int, y_min: int, x_max: int, y_max: int) -> Imag
     This function crops an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         x_min (int): Minimum x coordinate.
         y_min (int): Minimum y coordinate.
         x_max (int): Maximum x coordinate.
         y_max (int): Maximum y coordinate.
 
     Returns:
-        np.ndarray: Cropped image.
+        ImageType: Cropped image.
 
     """
     height, width = img.shape[:2]
@@ -220,7 +220,7 @@ def crop_and_pad(
     This function crops and pads an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         crop_params (tuple[int, int, int, int] | None): Crop parameters.
         pad_params (tuple[int, int, int, int] | None): Pad parameters.
         pad_value (tuple[float, ...] | float | None): Pad value.
@@ -230,7 +230,7 @@ def crop_and_pad(
         keep_size (bool): Whether to keep the original size.
 
     Returns:
-        np.ndarray: Cropped and padded image.
+        ImageType: Cropped and padded image.
 
     """
     if crop_params is not None and any(i != 0 for i in crop_params):
@@ -314,10 +314,10 @@ def crop_and_pad_keypoints(
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (N, 4+) where each row is (x, y, angle, scale, ...).
-        crop_params (Sequence[int], optional): Crop parameters [crop_x1, crop_y1, ...].
-        pad_params (Sequence[int], optional): Pad parameters [top, bottom, left, right].
-        image_shape (Tuple[int, int]): Original image shape (rows, cols).
-        result_shape (Tuple[int, int]): Result image shape (rows, cols).
+        crop_params (tuple[int, int, int, int] | None): Crop parameters [crop_x1, crop_y1, ...].
+        pad_params (tuple[int, int, int, int] | None): Pad parameters [top, bottom, left, right].
+        image_shape (tuple[int, int]): Original image shape (rows, cols).
+        result_shape (tuple[int, int]): Result image shape (rows, cols).
         keep_size (bool): Whether to keep the original size.
 
     Returns:
@@ -358,14 +358,14 @@ def volume_crop_yx(
     returns volume[:, y_min:y_max, x_min:x_max].
 
     Args:
-        volume (np.ndarray): Input volume with shape (D, H, W) or (D, H, W, C).
+        volume (ImageType): Input volume with shape (D, H, W) or (D, H, W, C).
         x_min (int): Minimum width coordinate.
         y_min (int): Minimum height coordinate.
         x_max (int): Maximum width coordinate.
         y_max (int): Maximum height coordinate.
 
     Returns:
-        np.ndarray: Cropped volume (D, H_new, W_new, [C]).
+        ImageType: Cropped volume (D, H_new, W_new, [C]).
 
     Raises:
         ValueError: If crop coordinates are invalid.

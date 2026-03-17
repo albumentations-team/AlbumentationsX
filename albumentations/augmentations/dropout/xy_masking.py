@@ -40,7 +40,7 @@ class XYMasking(BaseDropout):
             while a tuple (min, max) allows for variable-height masks, chosen randomly
             within the specified range for each mask. This flexibility facilitates creating masks of various
             sizes in the vertical direction.
-        fill (tuple[float, float] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
             - tuple: tuple of values for each channel

@@ -141,7 +141,7 @@ class Normalize(ImageOnlyTransform):
             For "standard" normalization, the default values are ImageNet standard deviation :(0.229, 0.224, 0.225).
         max_pixel_value (float | None): Maximum possible pixel value, used for scaling in standard normalization.
             Defaults to 255.0.
-        normalization (Literal["standard", "image", "image_per_channel", "min_max", "min_max_per_channel"]):
+        normalization (Literal['standard', 'image', 'image_per_channel', 'min_max', 'min_max_per_channel']):
             Specifies the normalization technique to apply. Defaults to "standard".
             - "standard": Applies the formula `(img - mean * max_pixel_value) / (std * max_pixel_value)`.
                 The default mean and std are based on ImageNet. You can use mean and std values of (0.5, 0.5, 0.5)
@@ -274,7 +274,7 @@ class ImageCompression(ImageOnlyTransform):
             - 100 is the highest quality (minimum compression)
             Default: (99, 100)
 
-        compression_type (Literal["jpeg", "webp"]): Type of compression to apply.
+        compression_type (Literal['jpeg', 'webp']): Type of compression to apply.
             - "jpeg": JPEG compression
             - "webp": WebP compression
             Default: "jpeg"
@@ -365,7 +365,7 @@ class RandomSnow(ImageOnlyTransform):
         brightness_coeff (float): Coefficient applied to increase the brightness of pixels
             below the snow_point threshold. Larger values lead to more pronounced snow effects.
             Should be > 0. Default: 2.5.
-        method (Literal["bleach", "texture"]): The snow simulation method to use. Options are:
+        method (Literal['bleach', 'texture']): The snow simulation method to use. Options are:
             - "bleach": Uses a simple pixel value thresholding technique.
             - "texture": Applies a more realistic snow texture overlay.
             Default: "texture".
@@ -605,7 +605,7 @@ class RandomGravel(ImageOnlyTransform):
                 particles will be generated, specified as (x_min, y_min, x_max, y_max) in pixel coordinates.
 
         Returns:
-            np.ndarray: An array of gravel particles with shape (count, 2), where count is the number of particles.
+            ImageType: An array of gravel particles with shape (count, 2), where count is the number of particles.
             Each row contains the (x, y) coordinates of a gravel particle.
 
         """
@@ -693,7 +693,7 @@ class RandomRain(ImageOnlyTransform):
         blur_value (int): Blur value for simulating rain effect. Rainy views are typically blurry. Default: 7.
         brightness_coefficient (float): Coefficient to adjust the brightness of the image.
             Rainy scenes are usually darker. Should be in the range (0, 1]. Default: 0.7.
-        rain_type (Literal["drizzle", "heavy", "torrential", "default"]): Type of rain to simulate.
+        rain_type (Literal['drizzle', 'heavy', 'torrential', 'default']): Type of rain to simulate.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -1036,7 +1036,7 @@ class RandomSunFlare(ImageOnlyTransform):
             Default: (6, 10).
         src_radius (int): Radius of the sun circle in pixels. Default: 400.
         src_color (tuple[int, int, int]): Color of the sun in RGB format. Default: (255, 255, 255).
-        method (Literal["overlay", "physics_based"]): Method to use for generating the sun flare.
+        method (Literal['overlay', 'physics_based']): Method to use for generating the sun flare.
             "overlay" uses a simple alpha blending technique, while "physics_based" simulates
             more realistic optical phenomena. Default: "overlay".
 
@@ -1054,7 +1054,7 @@ class RandomSunFlare(ImageOnlyTransform):
     Note:
         The transform offers two methods for generating sun flares:
 
-        1. Overlay Method ("overlay"):
+        1. Overlay Method ("overlay']:
            - Creates a simple sun flare effect using basic alpha blending.
            - Steps:
              a. Generate the main sun circle with a radial gradient.
@@ -1065,7 +1065,7 @@ class RandomSunFlare(ImageOnlyTransform):
              * Less realistic appearance
              * Suitable for basic augmentation or when performance is a priority
 
-        2. Physics-based Method ("physics_based"):
+        2. Physics-based Method ("physics_based']:
            - Simulates more realistic optical phenomena observed in actual lens flares.
            - Steps:
              a. Create a separate flare layer for complex manipulations.
@@ -2729,7 +2729,7 @@ class ToGray(ImageOnlyTransform):
     Args:
         num_output_channels (int): The number of channels in the output image. If greater than 1,
             the grayscale channel will be replicated. Default: 3.
-        method (Literal["weighted_average", "from_lab", "desaturation", "average", "max", "pca"]):
+        method (Literal['weighted_average', 'from_lab', 'desaturation', 'average', 'max', 'pca']):
             The method used for grayscale conversion:
             - "weighted_average": Uses a weighted sum of RGB channels (0.299R + 0.587G + 0.114B).
               Works only with 3-channel images. Provides realistic results based on human perception.
@@ -3117,7 +3117,7 @@ class Downscale(ImageOnlyTransform):
             Lower values result in more aggressive downscaling.
             Default: (0.25, 0.25)
 
-        interpolation_pair (dict[Literal["downscale", "upscale"], int]): A dictionary specifying
+        interpolation_pair (dict[Literal['downscale', 'upscale'], int]): A dictionary specifying
             the interpolation methods to use for downscaling and upscaling.
             Should contain two keys:
             - 'downscale': Interpolation method for downscaling
@@ -4319,7 +4319,7 @@ class Spatter(ImageOnlyTransform):
             If tuple of float intensity will be sampled from range `(intensity[0], intensity[1])`.
             If you want constant value use `(intensity, intensity)`.
             Default: (0.6, 0.6).
-        mode (Literal["rain", "mud"]): Type of corruption. Default: "rain".
+        mode (Literal['rain', 'mud']): Type of corruption. Default: "rain".
         color (tuple[int, ...] | None): Corruption elements color.
             If list uses provided list as color for the effect.
             If None uses default colors based on mode (rain: (238, 238, 175), mud: (20, 42, 63)).
@@ -4537,7 +4537,7 @@ class ChromaticAberration(ImageOnlyTransform):
             - Negative values enhance barrel distortion
             Default: (-0.05, 0.05).
 
-        mode (Literal["green_purple", "red_blue", "random"]): Type of color fringing to apply. Options are:
+        mode (Literal['green_purple', 'red_blue', 'random']): Type of color fringing to apply. Options are:
             - 'green_purple': Distorts red and blue channels in opposite directions, creating green-purple fringing.
             - 'red_blue': Distorts red and blue channels in the same direction, creating red-blue fringing.
             - 'random': Randomly chooses between 'green_purple' and 'red_blue' modes for each application.
@@ -4752,7 +4752,7 @@ class PlanckianJitter(ImageOnlyTransform):
     This progression mimics the natural variation of sunlight throughout the day and in different weather conditions.
 
     Args:
-        mode (Literal["blackbody", "cied"]): The mode of the transformation.
+        mode (Literal['blackbody', 'cied']): The mode of the transformation.
             - "blackbody": Simulates blackbody radiation color changes.
             - "cied": Uses the CIE D illuminant series for color temperature simulation.
             Default: "blackbody"
@@ -4763,7 +4763,7 @@ class PlanckianJitter(ImageOnlyTransform):
             If None, the default ranges will be used based on the selected mode.
             Higher temperatures produce cooler (bluish) images, lower temperatures produce warmer (reddish) images.
 
-        sampling_method (Literal["uniform", "gaussian"]): Method to sample the temperature.
+        sampling_method (Literal['uniform', 'gaussian']): Method to sample the temperature.
             - "uniform": Samples uniformly across the specified range.
             - "gaussian": Samples from a Gaussian distribution centered at 6500K (approximate daylight).
             Default: "uniform"
@@ -5093,13 +5093,13 @@ class AdditiveNoise(ImageOnlyTransform):
     multiple noise distributions, each with configurable parameters.
 
     Args:
-        noise_type(Literal["uniform", "gaussian", "laplace", "beta"]): Type of noise distribution to use. Options:
+        noise_type(Literal['uniform', 'gaussian', 'laplace', 'beta']): Type of noise distribution to use. Options:
             - "uniform": Uniform distribution, good for simple random perturbations
             - "gaussian": Normal distribution, models natural random processes
             - "laplace": Similar to Gaussian but with heavier tails, good for outliers
             - "beta": Flexible bounded distribution, can be symmetric or skewed
 
-        spatial_mode(Literal["constant", "per_pixel", "shared"]): How to generate and apply the noise. Options:
+        spatial_mode(Literal['constant', 'per_pixel', 'shared']): How to generate and apply the noise. Options:
             - "constant": One noise value per channel, fastest
             - "per_pixel": Independent noise value for each pixel and channel, slowest
             - "shared": One noise map shared across all channels, medium speed
@@ -5911,7 +5911,7 @@ class Illumination(ImageOnlyTransform):
     - Augment training data with different lighting conditions
 
     Args:
-        mode (Literal["linear", "corner", "gaussian"]): Type of illumination pattern:
+        mode (Literal['linear', 'corner', 'gaussian']): Type of illumination pattern:
             - 'linear': Creates a smooth gradient across the image,
                        simulating directional lighting like sunlight
                        through a window
@@ -6155,7 +6155,7 @@ class AutoContrast(ImageOnlyTransform):
             Range: [0, 255]. Default: None
             - If specified, this intensity value will not be modified
             - Useful for images with alpha channel or special marker values
-        method (Literal["cdf", "pil"]): Algorithm to use for contrast enhancement.
+        method (Literal['cdf', 'pil']): Algorithm to use for contrast enhancement.
             Default: "cdf"
             - "cdf": Uses cumulative distribution for smoother adjustment
             - "pil": Uses linear scaling like PIL.ImageOps.autocontrast
@@ -6229,7 +6229,7 @@ class HEStain(ImageOnlyTransform):
     4. Custom stain matrices
 
     Args:
-        method(Literal["preset", "random_preset", "vahadane", "macenko"]): Method to use for stain augmentation:
+        method(Literal['preset', 'random_preset', 'vahadane', 'macenko']): Method to use for stain augmentation:
             - "preset": Use predefined stain matrices
             - "random_preset": Randomly select a preset matrix each time
             - "vahadane": Extract using Vahadane method
@@ -7488,7 +7488,7 @@ class AtmosphericFog(ImageOnlyTransform):
         density_range (tuple[float, float]): Range for fog density.
             Higher values = thicker fog. Default: (1.0, 3.0).
         fog_color (tuple[int, ...]): RGB color of the fog. Default: (200, 200, 200).
-        depth_mode (Literal["linear", "diagonal", "radial"]): How to generate
+        depth_mode (Literal['linear', 'diagonal', 'radial']): How to generate
             the synthetic depth map:
             - "linear": top of image is far, bottom is near
             - "diagonal": top-left corner is far

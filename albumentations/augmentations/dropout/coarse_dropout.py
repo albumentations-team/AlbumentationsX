@@ -37,7 +37,7 @@ class CoarseDropout(BaseDropout):
         hole_width_range (tuple[int, int] | tuple[float, float]): Range (min, max) for the width
             of dropout regions. If int, specifies absolute pixel values. If float,
             interpreted as a fraction of the image width. Default: (0.1, 0.2)
-        fill (tuple[float, float] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
             - tuple: tuple of values for each channel
@@ -90,7 +90,7 @@ class CoarseDropout(BaseDropout):
         ...     p=1.0
         ... )
         >>> transformed = aug_random(image=image, mask=mask)
-        >>> transformed_image, transformed_mask = transformed["image"], transformed["mask"]
+        >>> transformed_image, transformed_mask = transformed["image'], transformed["mask"]
 
     References:
         - CutOut: https://arxiv.org/abs/1708.04552
@@ -199,7 +199,7 @@ class Erasing(BaseDropout):
         ratio (tuple[float, float]): Range for the aspect ratio (width/height) of the erased region.
             The actual ratio will be randomly sampled from (ratio[0], ratio[1]).
             Default: (0.3, 3.3)
-        fill (tuple[float, float] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value used to fill the erased regions. Can be:
             - int or float: fills all channels with this value
             - tuple: fills each channel with corresponding value
@@ -381,7 +381,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             - For boxes: 20-40% of box height
             - For masks: 20-40% of sqrt(component area)
         hole_width_range (tuple[float, float]): Range for hole width, similar to height
-        fill (tuple[float, float] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value used to fill the erased regions. Can be:
             - int or float: fills all channels with this value
             - tuple: fills each channel with corresponding value

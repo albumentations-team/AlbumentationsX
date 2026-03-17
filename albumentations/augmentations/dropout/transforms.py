@@ -37,7 +37,7 @@ class BaseDropout(DualTransform):
     including applying cutouts to images and masks.
 
     Args:
-        fill (tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value to fill dropped regions.
         fill_mask (tuple[float, ...] | float | None): Value to fill
             dropped regions in the mask. If None, the mask is not modified.

@@ -43,11 +43,11 @@ def angle_2pi_range(
     range [0, 2π) after the wrapped function executes.
 
     Args:
-        func (Callable): Function that processes keypoints and returns a numpy array.
-            The function should take a keypoints array as its first parameter.
+        func (Callable[Concatenate[np.ndarray, P], np.ndarray]): Function that processes keypoints and returns
+            a numpy array; keypoints array must be the first parameter.
 
     Returns:
-        Callable: Wrapped function that normalizes angles after processing keypoints.
+        Callable[Concatenate[np.ndarray, P], np.ndarray]: Wrapped function that normalizes angles after processing.
 
     """
 

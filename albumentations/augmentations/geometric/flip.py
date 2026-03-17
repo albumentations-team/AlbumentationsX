@@ -414,7 +414,7 @@ class D4(DualTransform):
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0.
-        group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None): If set,
+        group_element (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't'] | None): If set,
             always apply this specific D4 group element instead of sampling randomly. Use for TTA.
             Default: None (random choice).
 
@@ -627,7 +627,7 @@ class SquareSymmetry(D4):
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0.
-        group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None): If set,
+        group_element (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't'] | None): If set,
             always apply this specific D4 group element instead of sampling randomly. Use for TTA.
             Default: None (random choice).
 

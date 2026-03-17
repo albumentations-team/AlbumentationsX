@@ -41,7 +41,7 @@ class BboxParams(Params):
     min_visibility. coord_format: coco, pascal_voc, yolo, cxcywh.
 
     Args:
-        coord_format (Literal["coco", "pascal_voc", "albumentations", "yolo", "cxcywh"]):
+        coord_format (Literal['coco', 'pascal_voc', 'albumentations', 'yolo', 'cxcywh']):
             Coordinate format of bounding boxes.
             Should be one of:
             - 'coco': [x_min, y_min, width, height], e.g. [97, 12, 150, 200].
@@ -50,7 +50,7 @@ class BboxParams(Params):
             - 'yolo': [x_center, y_center, width, height] normalized in [0, 1] range, e.g. [0.1, 0.2, 0.3, 0.4].
             - 'cxcywh': [x_center, y_center, width, height] in pixel coordinates, e.g. [50, 50, 40, 60].
 
-        bbox_type (Literal["hbb", "obb"]): Bounding box type.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type.
             - 'hbb': axis-aligned boxes with 4 coords (default).
             - 'obb': oriented boxes with angle as the 5th coord.
 
@@ -447,7 +447,7 @@ class BboxProcessor(DataProcessor):
         Args:
             data (np.ndarray): Array of bounding boxes to process.
             shape (tuple[int, int] | tuple[int, int, int]): Image shape as (height, width) or (depth, height, width).
-            direction (Literal["to", "from"]): Direction of conversion:
+            direction (Literal['to', 'from']): Direction of conversion:
                 - "to": Convert from original format to albumentations format
                 - "from": Convert from albumentations format to original format
                 Default: "to".
@@ -852,9 +852,9 @@ def convert_bboxes_to_albumentations(
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
-        source_format (Literal["coco", "pascal_voc", "yolo", "cxcywh"]): Format of the input bounding boxes.
+        source_format (Literal['coco', 'pascal_voc', 'yolo', 'cxcywh']): Format of the input bounding boxes.
         shape (tuple[int, int]): Image shape (height, width).
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; required for cxcywh OBB conversion.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; required for cxcywh OBB conversion.
         check_validity (bool): Check if all boxes are valid boxes.
 
     Returns:
@@ -932,10 +932,10 @@ def convert_bboxes_from_albumentations(
     Args:
         bboxes (np.ndarray): A numpy array of albumentations bounding boxes with shape (num_bboxes, 4+).
                 The first 4 columns are [x_min, y_min, x_max, y_max].
-        target_format (Literal["coco", "pascal_voc", "yolo", "cxcywh"]): Required format of the output bounding boxes.
+        target_format (Literal['coco', 'pascal_voc', 'yolo', 'cxcywh']): Required format of the output bounding boxes.
         shape (tuple[int, int]): Image shape (height, width).
         check_validity (bool): Check if all boxes are valid boxes.
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; required for cxcywh OBB conversion.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; required for cxcywh OBB conversion.
 
     Returns:
         np.ndarray: An array of bounding boxes in the target format with shape (num_bboxes, 4+).
@@ -1073,7 +1073,7 @@ def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: 
         bboxes (np.ndarray): Array of bounding boxes in albumentations format (normalized).
                             Shape: (N, 4+) for HBB or (N, 5+) for OBB.
         shape (tuple[int, int]): Image shape (height, width).
-        bbox_type (Literal["hbb", "obb"]): Either "hbb" or "obb".
+        bbox_type (Literal['hbb', 'obb']): Either "hbb" or "obb".
 
     Returns:
         np.ndarray: Clipped bounding boxes. For OBB, returns (N, 5+) with angle set to 0.
@@ -1150,7 +1150,7 @@ def filter_bboxes(
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
         shape (tuple[int, int]): The shape of the image (height, width).
-        bbox_type (Literal["hbb", "obb"]): Type of bounding boxes. Used for geometry-aware clipping.
+        bbox_type (Literal['hbb', 'obb']): Type of bounding boxes. Used for geometry-aware clipping.
             Required parameter, no default.
         min_area (float): Minimum area of a bounding box in pixels. Default: 0.0.
         min_visibility (float): Minimum fraction of area for a bounding box to remain. Default: 0.0.
@@ -1367,7 +1367,7 @@ def mask_to_bboxes(
         masks (np.ndarray): A numpy array of masks with shape (num_masks, height, width).
         original_bboxes (np.ndarray): Original bounding boxes with shape (num_bboxes, 4+) for HBB
             or (num_bboxes, 5+) for OBB.
-        bbox_type (Literal["hbb", "obb"]): Type of bounding box - "hbb" for axis-aligned or "obb" for oriented.
+        bbox_type (Literal['hbb', 'obb']): Type of bounding box - "hbb" for axis-aligned or "obb" for oriented.
             Default: "hbb".
 
     Returns:

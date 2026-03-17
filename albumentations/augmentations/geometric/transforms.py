@@ -430,7 +430,7 @@ class Affine(DualTransform):
             after applying rotations. Default: False
         keep_ratio (bool): When True, the original aspect ratio will be kept when the random scale is applied.
             Default: True.
-        rotate_method (Literal["largest_box", "ellipse"]): rotation method used for the bounding boxes.
+        rotate_method (Literal['largest_box', 'ellipse']): rotation method used for the bounding boxes.
             Should be one of "largest_box" or "ellipse"[1]. Default: "largest_box"
         balanced_scale (bool): When True, scaling factors are chosen to be either entirely below or above 1,
             ensuring balanced scaling. Default: False.
@@ -1569,7 +1569,7 @@ class Morphological(DualTransform):
             - If an integer is provided, a square kernel of that size will be used.
             - If a tuple or list is provided, it should contain two integers representing the minimum
                 and maximum sizes for the dilation kernel.
-        operation (Literal["erosion", "dilation"]): The morphological operation to apply.
+        operation (Literal['erosion', 'dilation']): The morphological operation to apply.
             Default is 'dilation'.
         p (float, optional): The probability of applying this transformation. Default is 0.5.
 

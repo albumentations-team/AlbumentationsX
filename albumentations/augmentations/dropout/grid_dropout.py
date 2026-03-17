@@ -36,7 +36,7 @@ class GridDropout(BaseDropout):
             Default: None. If provided, overrides unit_size_range.
         random_offset (bool): Whether to offset the grid randomly between 0 and (grid unit size - hole size).
             If True, entered shift_xy is ignored and set randomly. Default: True.
-        fill (tuple[float, float] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
             - tuple: tuple of values for each channel
@@ -94,7 +94,7 @@ class GridDropout(BaseDropout):
         ...     p=1.0
         ... )
         >>> transformed = aug_random(image=image, mask=mask)
-        >>> transformed_image, transformed_mask = transformed["image"], transformed["mask"]
+        >>> transformed_image, transformed_mask = transformed["image'], transformed["mask"]
 
     Reference:
         - Paper: https://arxiv.org/abs/2001.04086

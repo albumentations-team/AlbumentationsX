@@ -36,11 +36,11 @@ def box_blur(img: ImageType, ksize: int) -> ImageType:
     This function applies a blur to an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         ksize (int): Kernel size.
 
     Returns:
-        np.ndarray: Blurred image.
+        ImageType: Blurred image.
 
     """
     img = np.array(img, copy=True, order="C")
@@ -63,15 +63,15 @@ def glass_blur(
     This function applies a glass blur to an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         sigma (float): Sigma.
         max_delta (int): Maximum delta.
         iterations (int): Number of iterations.
         dxy (np.ndarray): Dxy.
-        mode (Literal["fast", "exact"]): Mode.
+        mode (Literal['fast', 'exact']): Mode.
 
     Returns:
-        np.ndarray: Glass blurred image.
+        ImageType: Glass blurred image.
 
     """
     x = cv2.GaussianBlur(np.array(img), sigmaX=sigma, ksize=(0, 0))
@@ -133,11 +133,11 @@ def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:
     This function zooms an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         zoom_factor (int): Zoom factor.
 
     Returns:
-        np.ndarray: Zoomed image.
+        ImageType: Zoomed image.
 
     """
     height, width = img.shape[:2]
@@ -158,11 +158,11 @@ def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> Image
     This function zooms and blurs an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         zoom_factors (np.ndarray | Sequence[int]): Zoom factors.
 
     Returns:
-        np.ndarray: Zoomed and blurred image.
+        ImageType: Zoomed and blurred image.
 
     """
     out = np.zeros_like(img, dtype=np.float32)

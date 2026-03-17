@@ -187,9 +187,9 @@ def check_range_bounds(
     (inclusive or exclusive). Use in Pydantic model field validators.
 
     Args:
-        min_val (int | float):
+        min_val (Number):
             Minimum allowed value.
-        max_val (int | float | None):
+        max_val (Number | None):
             Maximum allowed value. If None, only lower bound is checked.
         min_inclusive (bool):
             If True, min_val is inclusive (>=). If False, exclusive (>).

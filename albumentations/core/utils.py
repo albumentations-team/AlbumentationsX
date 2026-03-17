@@ -339,7 +339,7 @@ class DataProcessor(ABC):
         Args:
             data (np.ndarray): Input data array.
             shape (tuple[int, int] | tuple[int, int, int]): Shape information containing dimensions.
-            direction (Literal["to", "from"], optional): Conversion direction.
+            direction (Literal['to', 'from']): Conversion direction.
                 "to" converts to Albumentations format, "from" converts from it.
                 Defaults to "to".
 
@@ -633,19 +633,16 @@ def to_tuple(
     It handles single values, sequences, and can apply optional low bounds or biases.
 
     Args:
-        param (tuple[float, float] | float | tuple[int, int] | int): The primary input value. Can be:
-            - A single int or float: Converted to a symmetric range around zero.
-            - A tuple of two ints or two floats: Used directly as min and max values.
+        param (float | tuple[float, float] | tuple[int, int]): The primary input value. Can be:
+            a single float (symmetric range around zero) or a tuple of two floats or two ints as min and max.
 
-        low (tuple[float, float] | float | None, optional): A lower bound value. Used when param is a single value.
-            If provided, the result will be (low, param) or (param, low), depending on which is smaller.
-            Cannot be used together with 'bias'. Defaults to None.
+        low (float | tuple[float, float] | tuple[int, int] | None): Lower bound when param is a single value.
+            Result will be (low, param) or (param, low). Cannot be used together with bias.
 
-        bias (float | int | None, optional): A value to be added to both elements of the resulting tuple.
-            Cannot be used together with 'low'. Defaults to None.
+        bias (float | None): Value added to both elements of the resulting tuple. Cannot be used with low.
 
     Returns:
-        tuple[int, int] | tuple[float, float]: A tuple representing the processed range.
+        tuple[float, float] | tuple[int, int]: Processed range; int-based input yields tuple[int, int].
             - If input is int-based, returns tuple[int, int]
             - If input is float-based, returns tuple[float, float]
 

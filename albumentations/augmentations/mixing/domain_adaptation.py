@@ -522,7 +522,7 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
             the adapted image with the original. A value of 0 means the original image is returned,
             1 means the fully adapted image is returned. A random value within this range [min, max]
             is sampled for each application. Default: (0.25, 1.0).
-        transform_type (Literal["pca", "standard", "minmax"]): Specifies the type of statistical
+        transform_type (Literal['pca', 'standard', 'minmax']): Specifies the type of statistical
             transformation to apply:
             - "pca": Principal Component Analysis.
             - "standard": StandardScaler (zero mean, unit variance).

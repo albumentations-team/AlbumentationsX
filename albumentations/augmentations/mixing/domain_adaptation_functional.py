@@ -304,10 +304,10 @@ class DomainAdapter:
         color_in set; otherwise returns img unchanged.
 
         Args:
-            img (np.ndarray): The input image to convert.
+            img (ImageType): The input image to convert.
 
         Returns:
-            np.ndarray: The image in the target color space, or the original image if no conversion is specified.
+            ImageType: The image in the target color space, or the original image if no conversion is specified.
 
         """
         return img if self.color_in is None else cv2.cvtColor(img, self.color_in)
@@ -317,10 +317,10 @@ class DomainAdapter:
         cv2.cvtColor when color_out is set; otherwise returns img unchanged.
 
         Args:
-            img (np.ndarray): The image to convert back.
+            img (ImageType): The image to convert back.
 
         Returns:
-            np.ndarray: The image converted back to the original color space, or the original image
+            ImageType: The image converted back to the original color space, or the original image
                 if no conversion is specified.
 
         """
@@ -333,7 +333,7 @@ class DomainAdapter:
         pixel-domain adaptation (PCA, standard, minmax).
 
         Args:
-            img (np.ndarray): The input image to flatten.
+            img (ImageType): The input image to flatten.
 
         Returns:
             np.ndarray: The flattened image with shape (n_pixels, n_channels).
@@ -398,13 +398,13 @@ def adapt_pixel_distribution(
     using a specified transformation type and weight.
 
     Args:
-        img (np.ndarray): The input image to be adapted.
+        img (ImageType): The input image to be adapted.
         ref (np.ndarray): The reference image.
-        transform_type (Literal["pca", "standard", "minmax"]): The type of transformation to use.
+        transform_type (Literal['pca', 'standard', 'minmax']): The type of transformation to use.
         weight (float): The weight of the transformation.
 
     Returns:
-        np.ndarray: The adapted image.
+        ImageType: The adapted image.
 
     Raises:
         ValueError: If the input image and reference image have different dtypes or numbers of channels.
@@ -467,14 +467,14 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
     its style to match the target image.
 
     Args:
-        img (np.ndarray): The source image to be adapted. Can be grayscale or RGB.
-        target_img (np.ndarray): The target image used as a reference for adaptation.
+        img (ImageType): The source image to be adapted. Can be grayscale or RGB.
+        target_img (ImageType): The target image used as a reference for adaptation.
             Should have the same dimensions as the source image.
         beta (float): The adaptation strength, typically in the range [0, 1].
             Higher values result in stronger adaptation towards the target image's style.
 
     Returns:
-        np.ndarray: The adapted image with the same shape and type as the input image.
+        ImageType: The adapted image with the same shape and type as the input image.
 
     Raises:
         ValueError: If the source and target images have different shapes.
@@ -561,16 +561,16 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
     then blends the result with the original input image based on the specified blend ratio.
 
     Args:
-        img (np.ndarray): The input image to be transformed. Can be either grayscale or RGB.
+        img (ImageType): The input image to be transformed. Can be either grayscale or RGB.
             Supported dtypes: uint8, float32 (values should be in [0, 1] range).
-        reference_image (np.ndarray): The reference image used for histogram matching.
+        reference_image (ImageType): The reference image used for histogram matching.
             Should have the same number of channels as the input image.
             Supported dtypes: uint8, float32 (values should be in [0, 1] range).
         blend_ratio (float): The ratio for blending the matched image with the original image.
             Should be in the range [0, 1], where 0 means no change and 1 means full histogram matching.
 
     Returns:
-        np.ndarray: The transformed image after histogram matching and blending.
+        ImageType: The transformed image after histogram matching and blending.
             The output will have the same shape and dtype as the input image.
 
     Supported image types:
@@ -607,13 +607,13 @@ def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
     The adjustment is applied separately for each channel.
 
     Args:
-        image (np.ndarray): Input image. Can be gray-scale or in color.
-        reference (np.ndarray): Image to match histogram of. Must have the same number of channels as image.
+        image (ImageType): Input image. Can be gray-scale or in color.
+        reference (ImageType): Image to match histogram of. Must have the same number of channels as image.
         channel_axis (int | None): If None, the image is assumed to be a grayscale (single channel) image.
             Otherwise, this indicates which axis of the array corresponds to channels.
 
     Returns:
-        np.ndarray: Transformed input image.
+        ImageType: Transformed input image.
 
     Raises:
         ValueError: Thrown when the number of channels in the input image and the reference differ.

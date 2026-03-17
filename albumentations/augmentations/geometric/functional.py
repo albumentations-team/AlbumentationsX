@@ -175,8 +175,8 @@ def bboxes_rot90(
 
     Args:
         bboxes (np.ndarray): Array of bounding boxes with shape (num_boxes, 4+)
-        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB uses center/size/angle update.
+        group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB uses center/size/angle update.
 
     Returns:
         np.ndarray: Rotated bounding boxes
@@ -239,12 +239,12 @@ def bboxes_d4(
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
         Each row represents a bounding box (x_min, y_min, x_max, y_max, ...).
-        group_member (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): A string identifier for the
+        group_member (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't']): A string identifier for the
             `D_4` group transformation to apply.
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB uses center/size/angle update.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB uses center/size/angle update.
 
     Returns:
-        BoxInternalType: The transformed bounding box.
+        np.ndarray: The transformed bounding box.
 
     Raises:
         ValueError: If an invalid group member is specified.
@@ -283,7 +283,7 @@ def keypoints_rot90(
 
     Args:
         keypoints (np.ndarray): An array of keypoints with shape (N, 4+) in the format (x, y, angle, scale, ...).
-        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
+        group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
         image_shape (tuple[int, int]): The shape of the image (height, width).
 
     Returns:
@@ -331,14 +331,14 @@ def keypoints_d4(
 
     Args:
         keypoints (np.ndarray): An array of keypoints with shape (N, 4+) in the format (x, y, angle, scale, ...).
-        group_member (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): A string identifier for
+        group_member (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't']): A string identifier for
             the `D_4` group transformation to apply.
             Valid values are 'e', 'r90', 'r180', 'r270', 'v', 'hv', 'h', 't'.
         image_shape (tuple[int, int]): The shape of the image.
         params (Any): Not used.
 
     Returns:
-        KeypointInternalType: The transformed keypoint.
+        np.ndarray: The transformed keypoint.
 
     Raises:
         ValueError: If an invalid group member is specified, indicating that the specified transformation
@@ -386,7 +386,7 @@ def resize(
     If the image is already the target size, it is returned unchanged.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         target_shape (tuple[int, int]): Target (height, width) dimensions.
         interpolation (int): Interpolation method.
 
@@ -426,7 +426,7 @@ def resize_pyvips(
     This function resizes an input image to the target shape using the specified interpolation method.
 
     Args:
-        img (np.ndarray): The input image as a NumPy array.
+        img (ImageType): The input image as a NumPy array.
         target_shape (tuple[int, int]): The desired output shape (height, width).
         interpolation (int): The interpolation method to use.
             0: Nearest-neighbor
@@ -477,7 +477,7 @@ def resize_pil(
     This function resizes an input image to the target shape using the specified interpolation method.
 
     Args:
-        img (np.ndarray): The input image as a NumPy array.
+        img (ImageType): The input image as a NumPy array.
         target_shape (tuple[int, int]): The desired output shape (height, width).
         interpolation (int): The cv2 interpolation flag that will be mapped to PIL interpolation.
             Maps cv2 constants to PIL.Image.Resampling constants.
@@ -572,12 +572,12 @@ def scale(img: ImageType, scale: float, interpolation: int) -> ImageType:
     This function scales both height and width dimensions of the image by the same factor.
 
     Args:
-        img (np.ndarray): Input image to scale.
+        img (ImageType): Input image to scale.
         scale (float): Scale factor. Values > 1 will enlarge the image, values < 1 will shrink it.
         interpolation (int): Interpolation method to use (cv2 interpolation flag).
 
     Returns:
-        np.ndarray: Scaled image.
+        ImageType: Scaled image.
 
     """
     height, width = img.shape[:2]
@@ -649,7 +649,7 @@ def perspective(
     It can either maintain the original dimensions or use the specified max dimensions.
 
     Args:
-        img (np.ndarray): Input image to transform.
+        img (ImageType): Input image to transform.
         matrix (np.ndarray): 3x3 perspective transformation matrix.
         max_width (int): Maximum width of the output image if keep_size is False.
         max_height (int): Maximum height of the output image if keep_size is False.
@@ -783,7 +783,7 @@ def perspective_bboxes(
         max_width (int): The maximum width of the output image.
         max_height (int): The maximum height of the output image.
         keep_size (bool): If True, maintains the original image size after transformation.
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB path uses polygons.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB path uses polygons.
 
     Returns:
         np.ndarray: An array of transformed bounding boxes with the same shape as input.
@@ -1157,7 +1157,7 @@ def bboxes_affine_largest_box(
                              bounding boxes. Each row should contain [x_min, y_min, x_max, y_max]
                              followed by any additional attributes (e.g., class labels).
         matrix (np.ndarray): The 3x3 affine transformation matrix to apply.
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB path uses polygon transform.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB path uses polygon transform.
 
     Returns:
         np.ndarray: An array of transformed bounding boxes with the same shape as the input.
@@ -1224,7 +1224,7 @@ def bboxes_affine_ellipse(
                              bounding boxes. Each row should contain [x_min, y_min, x_max, y_max]
                              followed by any additional attributes (e.g., class labels).
         matrix (np.ndarray): The 3x3 affine transformation matrix to apply.
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB path uses polygon transform.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB path uses polygon transform.
 
     Returns:
         np.ndarray: An array of transformed bounding boxes with the same shape as the input.
@@ -1299,12 +1299,13 @@ def bboxes_affine(
     Args:
         bboxes (np.ndarray): Input bounding boxes
         matrix (np.ndarray): Affine transformation matrix
-        rotate_method (str): Method for rotating bounding boxes ('largest_box' or 'ellipse').
+        rotate_method (Literal['largest_box', 'ellipse']): Method for rotating bounding boxes
+            ('largest_box' or 'ellipse').
             Only applies to HBB (axis-aligned) bounding boxes. Ignored for OBB.
-        image_shape (Sequence[int]): Shape of the input image
+        image_shape (tuple[int, int]): Shape of the input image
         border_mode (int): OpenCV border mode
-        output_shape (Sequence[int]): Shape of the output image
-        bbox_type (Literal["hbb", "obb"]): Bounding box type. OBB uses polygon transformation
+        output_shape (tuple[int, int]): Shape of the output image
+        bbox_type (Literal['hbb', 'obb']): Bounding box type. OBB uses polygon transformation
             regardless of rotate_method.
 
     Returns:
@@ -1536,8 +1537,8 @@ def d4(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", "v", "h
     Each transformation is identified by a unique group member code.
 
     Args:
-        img (np.ndarray): The input image array to transform.
-        group_member (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): A string identifier indicating
+        img (ImageType): The input image array to transform.
+        group_member (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't']): A string identifier indicating
             the specific transformation to apply. Valid codes include:
             - 'e': Identity (no transformation).
             - 'r90': Rotate 90 degrees counterclockwise.
@@ -1549,7 +1550,7 @@ def d4(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", "v", "h
             - 't': Transpose (reflect over the main diagonal).
 
     Returns:
-        np.ndarray: The transformed image array.
+        ImageType: The transformed image array.
 
     """
     # Execute the appropriate transformation
@@ -1561,10 +1562,10 @@ def transpose(img: ImageType) -> ImageType:
     Retains the order of any additional dimensions. For image transpose.
 
     Args:
-        img (np.ndarray): Input array.
+        img (ImageType): Input array.
 
     Returns:
-        np.ndarray: Transposed array.
+        ImageType: Transposed array.
 
     """
     # Generate the new axes order
@@ -1592,13 +1593,13 @@ def transpose_images(images: ImageType) -> ImageType:
     Same as transpose on each image along axes 0, 1. Returns same shape.
 
     Args:
-        images (np.ndarray): Batch of images to transpose with shape:
+        images (ImageType): Batch of images to transpose with shape:
             - (N, H, W) for grayscale images
             - (N, H, W, C) for multi-channel images
             where N is the batch size, H is height, W is width, C is channels
 
     Returns:
-        np.ndarray: Transposed batch of images with shape:
+        ImageType: Transposed batch of images with shape:
             - (N, W, H) for grayscale images
             - (N, W, H, C) for multi-channel images
 
@@ -1642,11 +1643,11 @@ def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) ->
     Same as np.rot90(img, k). Preserves dtype and channel dim.
 
     Args:
-        img (np.ndarray): The input image to rotate.
-        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
+        img (ImageType): The input image to rotate.
+        group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
 
     Returns:
-        np.ndarray: The rotated image.
+        ImageType: The rotated image.
 
     """
     rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
@@ -1658,14 +1659,14 @@ def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "
     on each image. Shape (N, H, W, C) preserved. Returns same dtype.
 
     Args:
-        images (np.ndarray): Batch of images to rotate with shape:
+        images (ImageType): Batch of images to rotate with shape:
             - (N, H, W) for grayscale images
             - (N, H, W, C) for multi-channel images
             where N is the batch size, H is height, W is width, C is channels
-        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
+        group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
 
     Returns:
-        np.ndarray: Rotated batch of images with shape:
+        ImageType: Rotated batch of images with shape:
             - (N, W, H) for grayscale images when group_element is r90 or r270
             - (N, H, W) for grayscale images when group_element is e or r180
             - (N, W, H, C) for multi-channel images when group_element is r90 or r270
@@ -1683,7 +1684,7 @@ def bboxes_vflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.nda
 
     Args:
         bboxes (np.ndarray): Array of bounding boxes with shape (num_boxes, 4+)
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB uses center/size/angle update.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB uses center/size/angle update.
 
     Returns:
         np.ndarray: Vertically flipped bounding boxes
@@ -1708,7 +1709,7 @@ def bboxes_hflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.nda
 
     Args:
         bboxes (np.ndarray): Array of bounding boxes with shape (num_boxes, 4+)
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB uses center/size/angle update.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB uses center/size/angle update.
 
     Returns:
         np.ndarray: Horizontally flipped bounding boxes
@@ -1733,7 +1734,7 @@ def bboxes_transpose(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np
 
     Args:
         bboxes (np.ndarray): Array of bounding boxes with shape (num_boxes, 4+)
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB uses center/size/angle update.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB uses center/size/angle update.
 
     Returns:
         np.ndarray: Transposed bounding boxes
@@ -1845,7 +1846,7 @@ def pad(
     the specified minimum dimensions. Padding is added evenly on all sides.
 
     Args:
-        img (np.ndarray): Input image to pad.
+        img (ImageType): Input image to pad.
         min_height (int): Minimum height of the output image.
         min_width (int): Minimum width of the output image.
         border_mode (int): OpenCV border mode for padding.
@@ -1905,7 +1906,7 @@ def pad_with_params(
     This function adds specified amounts of padding to each side of the image.
 
     Args:
-        img (np.ndarray): Input image to pad.
+        img (ImageType): Input image to pad.
         h_pad_top (int): Number of pixels to add at the top.
         h_pad_bottom (int): Number of pixels to add at the bottom.
         w_pad_left (int): Number of pixels to add on the left.
@@ -1965,7 +1966,7 @@ def pad_images_with_params(
     image in the batch.
 
     Args:
-        images (np.ndarray): Input batch of images to pad.
+        images (ImageType): Input batch of images to pad.
         h_pad_top (int): Number of pixels to add at the top.
         h_pad_bottom (int): Number of pixels to add at the bottom.
         w_pad_left (int): Number of pixels to add on the left.
@@ -2269,7 +2270,7 @@ def generate_displacement_fields(
         same_dxdy (bool): Whether to use the same displacement field for both x and y directions.
         kernel_size (tuple[int, int]): The size of the kernel for the elastic transform.
         random_generator (np.random.Generator): The random number generator to use.
-        noise_distribution (Literal["gaussian", "uniform"]): The distribution of the noise.
+        noise_distribution (Literal['gaussian', 'uniform']): The distribution of the noise.
 
     Returns:
         tuple[np.ndarray, np.ndarray]: A tuple containing:
@@ -2388,7 +2389,7 @@ def validate_bboxes(bboxes: np.ndarray, image_shape: Sequence[int]) -> np.ndarra
 
     Args:
         bboxes (np.ndarray): Array of bounding boxes with shape (n, 4) where each row is [x_min, y_min, x_max, y_max].
-        image_shape (tuple[int, int]): Shape of the image as (height, width).
+        image_shape (Sequence[int]): Shape of the image as (height, width).
 
     Returns:
         np.ndarray: Array of valid bounding boxes, potentially with fewer boxes than the input.
@@ -3104,7 +3105,7 @@ def create_affine_transformation_matrix(
     Order: shift topleft, scale, rotate, shear, translate, shift center.
 
     Args:
-        translate (dict[str, float]): Translation in x and y directions.
+        translate (Mapping[str, float]): Translation in x and y directions.
         shear (dict[str, float]): Shear in x and y directions (in degrees).
         scale (dict[str, float]): Scale factors for x and y directions.
         rotate (float): Rotation angle in degrees.
@@ -3166,7 +3167,7 @@ def compute_transformed_image_bounds(
 
     Args:
         matrix (np.ndarray): The 3x3 affine transformation matrix.
-        image_shape (Tuple[int, int]): The shape of the image as (height, width).
+        image_shape (tuple[int, int]): The shape of the image as (height, width).
 
     Returns:
         tuple[np.ndarray, np.ndarray]: A tuple containing:
@@ -3428,7 +3429,7 @@ def generate_shuffled_splits(
     Args:
         size (int): Total size of the dimension (height or width).
         divisions (int): Number of divisions (rows or columns).
-        random_generator (np.random.Generator | None): The random generator to use for shuffling the splits.
+        random_generator (np.random.Generator): The random generator to use for shuffling the splits.
             If None, the splits are not shuffled.
 
     Returns:
@@ -4016,7 +4017,7 @@ def bboxes_grid_shuffle(
         image_shape (tuple[int, int]): Shape of the image (height, width)
         min_area (float): Minimum area of a bounding box to keep
         min_visibility (float): Minimum visibility ratio of a bounding box to keep
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB is not supported here.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB is not supported here.
 
     Returns:
         np.ndarray: Shuffled bounding boxes
@@ -4421,7 +4422,7 @@ def rot90_volumes(volumes: np.ndarray, group_element: Literal["e", "r90", "r180"
 
     Args:
         volumes (np.ndarray): Input batch of volumes.
-        group_element (Literal["e", "r90", "r180", "r270"]): C4 group element to apply.
+        group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
 
     Returns:
         np.ndarray: Rotated batch of volumes.
@@ -4439,11 +4440,11 @@ def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
     This function applies erosion to an image using the cv2.erode function.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         kernel (np.ndarray): Kernel as a numpy array.
 
     Returns:
-        np.ndarray: The eroded image.
+        ImageType: The eroded image.
 
     """
     return cv2.erode(img, kernel, iterations=1)
@@ -4457,11 +4458,11 @@ def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
     This function applies dilation to an image using the cv2.dilate function.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         kernel (np.ndarray): Kernel as a numpy array.
 
     Returns:
-        np.ndarray: The dilated image.
+        ImageType: The dilated image.
 
     """
     return cv2.dilate(img, kernel, iterations=1)
@@ -4478,9 +4479,9 @@ def morphology(
     This function applies morphology to an image using the cv2.morphologyEx function.
 
     Args:
-        img (np.ndarray): Input image as a numpy array.
+        img (ImageType): Input image as a numpy array.
         kernel (np.ndarray): Kernel as a numpy array.
-        operation (Literal["dilation", "erosion"]): The operation to apply.
+        operation (Literal['dilation', 'erosion']): The operation to apply.
 
     Returns:
         np.ndarray: The morphology applied to the image.
@@ -4511,9 +4512,9 @@ def bboxes_morphology(
     Args:
         bboxes (np.ndarray): Bounding boxes as a numpy array.
         kernel (np.ndarray): Kernel as a numpy array.
-        operation (Literal["dilation", "erosion"]): The operation to apply.
+        operation (Literal['dilation', 'erosion']): The operation to apply.
         image_shape (tuple[int, int]): The shape of the image.
-        bbox_type (Literal["hbb", "obb"]): Bounding box type; OBB is not supported here.
+        bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB is not supported here.
 
     Returns:
         np.ndarray: The morphology applied to the bounding boxes.
@@ -4547,11 +4548,11 @@ def d4_images(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", 
     Each transformation is identified by a unique group member code.
 
     Args:
-        img (np.ndarray): The input batch of images to transform with shape:
+        img (ImageType): The input batch of images to transform with shape:
             - (N, H, W) for grayscale images
             - (N, H, W, C) for multi-channel images
             where N is the batch size, H is height, W is width, C is channels
-        group_member (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]): A string identifier indicating
+        group_member (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't']): A string identifier indicating
             the specific transformation to apply. Valid codes include:
             - 'e': Identity (no transformation).
             - 'r90': Rotate 90 degrees counterclockwise.

@@ -766,7 +766,7 @@ class GlassBlur(ImageOnlyTransform):
             Must be a positive integer.
             Default: 2
 
-        mode (Literal["fast", "exact"]): Mode of computation. Options are:
+        mode (Literal['fast', 'exact']): Mode of computation. Options are:
             - "fast": Uses a faster but potentially less accurate method.
             - "exact": Uses a slower but more precise method.
             Default: "fast"

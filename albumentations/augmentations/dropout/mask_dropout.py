@@ -32,7 +32,7 @@ class MaskDropout(DualTransform):
     Args:
         max_objects (int | tuple[int, int]): Maximum number of objects to dropout. If a single int is provided,
             it's treated as the upper bound. If a tuple of two ints is provided, it's treated as a range [min, max].
-        fill (float | Literal["inpaint_telea", "inpaint_ns"]): Value to fill dropped out regions in the image.
+        fill (float | Literal['inpaint_telea', 'inpaint_ns']): Value to fill dropped out regions in the image.
             Can be one of:
             - float: Constant value to fill the regions (e.g., 0 for black, 255 for white)
             - "inpaint_telea": Use Telea inpainting algorithm (for 3-channel images only)

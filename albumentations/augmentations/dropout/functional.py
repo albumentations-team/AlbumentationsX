@@ -48,12 +48,12 @@ def channel_dropout(
     This function drops channels from an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         channels_to_drop (int | tuple[int, ...] | np.ndarray): Channels to drop.
         fill (tuple[float, ...] | float): Value to fill the dropped channels with.
 
     Returns:
-        np.ndarray: Image with channels dropped.
+        ImageType: Image with channels dropped.
 
     """
     if is_grayscale_image(img):
@@ -112,12 +112,12 @@ def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint
     uint8; grayscale or 3-channel.
 
     Args:
-        img (np.ndarray): Input image (grayscale or BGR)
+        img (ImageType): Input image (grayscale or BGR)
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        method (Literal["inpaint_telea", "inpaint_ns"]): Inpainting method to use
+        method (Literal['inpaint_telea', 'inpaint_ns']): Inpainting method to use
 
     Returns:
-        np.ndarray: Inpainted image
+        ImageType: Inpainted image
 
     Raises:
         NotImplementedError: If image has more than 3 channels
@@ -147,7 +147,7 @@ def fill_holes_with_value(img: ImageType, holes: np.ndarray, fill: np.ndarray) -
     Used by cutout for numeric fill.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
         fill (np.ndarray): Value to fill the holes with
 
@@ -162,7 +162,7 @@ def fill_volume_holes_with_value(volume: ImageType, holes: np.ndarray, fill: np.
     broadcast. Used by cutout_on_volume for numeric fill.
 
     Args:
-        volume (np.ndarray): Input volume
+        volume (ImageType): Input volume
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
         fill (np.ndarray): Value to fill the holes with
 
@@ -197,7 +197,7 @@ def fill_holes_with_random(
     Used by cutout fill='random'.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
         random_generator (np.random.Generator): Random number generator
         uniform (bool): If True, use same random value for entire hole
@@ -223,7 +223,7 @@ def fill_volume_holes_with_random(
     one per hole or per pixel. Used by cutout_on_volume fill='random'.
 
     Args:
-        volume (np.ndarray): Input volume of shape (D, H, W, C) or (D, H, W)
+        volume (ImageType): Input volume of shape (D, H, W, C) or (D, H, W)
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
         random_generator (np.random.Generator): Random number generator
         uniform (bool): If True, use same random value for entire hole in each image.
@@ -280,9 +280,9 @@ def cutout(
     'random_uniform', or inpaint_telea/inpaint_ns.
 
     Args:
-        img (np.ndarray): The image to augment
+        img (ImageType): The image to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
@@ -335,9 +335,9 @@ def cutout_on_volume(
     or inpaint. holes: [x1,y1,x2,y2].
 
     Args:
-        volume (np.ndarray): The volume to augment
+        volume (ImageType): The volume to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
@@ -399,7 +399,7 @@ def cutout_on_volumes(
     Args:
         volumes (np.ndarray): The image to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels

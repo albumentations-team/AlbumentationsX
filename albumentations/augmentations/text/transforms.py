@@ -129,7 +129,7 @@ class TextImage(ImageOnlyTransform):
         Args:
             text (str): Original text to augment
             fraction (float): Fraction of words to modify
-            choice (Literal["insertion", "swap", "deletion"]): Type of augmentation to apply
+            choice (Literal['insertion', 'swap', 'deletion']): Type of augmentation to apply
 
         Returns:
             str: Augmented text or empty string if no change was made
@@ -151,7 +151,7 @@ class TextImage(ImageOnlyTransform):
         else:
             raise ValueError("Invalid choice. Choose from 'insertion', 'swap', or 'deletion'.")
 
-        result_sentence = re.sub(" +", " ", result_sentence).strip()
+        result_sentence = re.sub(r" +", " ", result_sentence).strip()
         return result_sentence if result_sentence != text else ""
 
     def preprocess_metadata(
@@ -165,7 +165,7 @@ class TextImage(ImageOnlyTransform):
         Returns dict with bbox_coords, text, font, font_color.
 
         Args:
-            image (np.ndarray): Input image
+            image (ImageType): Input image
             bbox (tuple[float, float, float, float]): Normalized bounding box coordinates
             text (str): Text to render in the bounding box
             bbox_index (int): Index of the bounding box in the original metadata

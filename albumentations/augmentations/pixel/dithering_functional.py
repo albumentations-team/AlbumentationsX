@@ -622,7 +622,7 @@ def apply_dithering(
         img: Input image in [0, 1] range with shape (H, W, C).
         method: Dithering method to use.
         n_colors: Number of colors per channel.
-        color_mode: How to handle colors ("grayscale", "per_channel", "rgb").
+        color_mode: How to handle colors ("grayscale', 'per_channel', 'rgb").
         **kwargs: Additional parameters for specific methods.
 
     Returns:

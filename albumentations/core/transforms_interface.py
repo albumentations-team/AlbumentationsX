@@ -250,7 +250,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             **kwargs (Any): Input data to transform as named arguments.
 
         Returns:
-            dict[str, Any]: Transformed data.
+            Any: Transformed data (dict of transformed inputs).
 
         Raises:
             KeyError: If positional arguments are provided.
@@ -1194,7 +1194,7 @@ class CustomTransformsApplyMixin:
 
             class MyTransform(CustomTransformsApplyMixin, A.DualTransform):
                 def apply_to_label(self, label, **params):
-                    return (label + params["factor"]) % 4
+                    return (label + params["factor']) % 4
 
     Registration rules
         Methods named `apply_to_<X>` are registered if they are:

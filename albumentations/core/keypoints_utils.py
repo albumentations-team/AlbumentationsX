@@ -54,7 +54,7 @@ class KeypointParams(Params):
     angle_in_degrees, check_each_transform, label_mapping.
 
     Args:
-        coord_format (Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"]): Coordinate format of keypoints.
+        coord_format (Literal['xy', 'yx', 'xya', 'xys', 'xyas', 'xysa', 'xyz']): Coordinate format of keypoints.
             Should be one of: 'xy', 'yx', 'xya', 'xys', 'xyas', 'xysa', 'xyz'.
 
             x - X coordinate,
@@ -558,7 +558,7 @@ def convert_keypoints_to_albumentations(
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (N, 2+), where N is the number of keypoints.
                                 The number of columns depends on the source_format.
-        source_format (Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"]): The format of the input keypoints.
+        source_format (Literal['xy', 'yx', 'xya', 'xys', 'xyas', 'xysa', 'xyz']): The format of the input keypoints.
             - "xy": [x, y]
             - "yx": [y, x]
             - "xya": [x, y, angle]
@@ -640,7 +640,7 @@ def convert_keypoints_from_albumentations(
         keypoints (np.ndarray): Array of keypoints in Albumentations format with shape (N, 5+),
                                 where N is the number of keypoints. Each row represents a keypoint
                                 [x, y, z, angle, scale, ...].
-        target_format (Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"]): The desired output format.
+        target_format (Literal['xy', 'yx', 'xya', 'xys', 'xyas', 'xysa', 'xyz']): The desired output format.
             - "xy": [x, y]
             - "yx": [y, x]
             - "xya": [x, y, angle]

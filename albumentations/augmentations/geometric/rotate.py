@@ -84,7 +84,7 @@ class RandomRotate90(DualTransform):
         p (float): probability of applying the transform. Default: 1.0.
             Note that even with p=1.0, there's still a 0.25 probability
             of getting a 0-degree rotation (identity transform).
-        group_element (Literal["e", "r90", "r180", "r270"] | None): If set, always apply this
+        group_element (Literal['e', 'r90', 'r180', 'r270'] | None): If set, always apply this
             C4 group element: "e"=identity, "r90"=90°, "r180"=180°, "r270"=270° counterclockwise.
             Use for TTA. Default: None (random choice).
 
@@ -270,7 +270,7 @@ class Rotate(DualTransform):
             Default: cv2.BORDER_CONSTANT
         fill (tuple[float, ...] | float): Padding value if border_mode is cv2.BORDER_CONSTANT.
         fill_mask (tuple[float, ...] | float): Padding value if border_mode is cv2.BORDER_CONSTANT applied for masks.
-        rotate_method (Literal["largest_box", "ellipse"]): Method to rotate bounding boxes.
+        rotate_method (Literal['largest_box', 'ellipse']): Method to rotate bounding boxes.
             Should be 'largest_box' or 'ellipse'. Default: 'largest_box'
         crop_border (bool): Whether to crop border after rotation. If True, the output image size might differ
             from the input. Default: False
@@ -592,7 +592,7 @@ class SafeRotate(Affine):
         fill (tuple[float, float] | float): Padding value if border_mode is cv2.BORDER_CONSTANT.
         fill_mask (tuple[float, float] | float): Padding value if border_mode is cv2.BORDER_CONSTANT applied
             for masks.
-        rotate_method (Literal["largest_box", "ellipse"]): Method to rotate bounding boxes.
+        rotate_method (Literal['largest_box', 'ellipse']): Method to rotate bounding boxes.
             Should be 'largest_box' or 'ellipse'. Default: 'largest_box'
         mask_interpolation (OpenCV flag): flag that is used to specify the interpolation algorithm for mask.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.

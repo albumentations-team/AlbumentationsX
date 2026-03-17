@@ -35,7 +35,7 @@ class OverlayElements(DualTransform):
         p (float): Probability of applying the transformation. Default: 0.5.
 
     Possible Metadata Fields:
-        - image (np.ndarray): The overlay image to be applied. This is a required field.
+        - image (ImageType): The overlay image to be applied. This is a required field.
         - bbox (list[int]): The bounding box specifying the region where the overlay should be applied. It should
                             contain four floats: [y_min, x_min, y_max, x_max]. If `label_id` is provided, it should
                             be appended as the fifth element in the bbox. BBox should be in Albumentations format,
@@ -284,7 +284,7 @@ class Mosaic(DualTransform):
         target_size (tuple[int, int]): The desired output (height, width) for the final mosaic image.
             after cropping the mosaic grid.
         cell_shape (tuple[int, int]): cell shape of each cell in the mosaic grid.
-        fit_mode (Literal["cover", "contain"]): How to fit images into mosaic cells.
+        fit_mode (Literal['cover', 'contain']): How to fit images into mosaic cells.
             - "cover": Scale image to fill the entire cell, potentially cropping parts.
             - "contain": Scale image to fit entirely within the cell, potentially adding padding.
             Default: "cover".

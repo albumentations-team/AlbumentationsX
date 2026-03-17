@@ -42,8 +42,8 @@ def copy_and_paste_blend(
     overlay_mask: np.ndarray,
     offset: tuple[int, int],
 ) -> np.ndarray:
-    """Copy overlay pixels onto the base image where mask > 0, at the given offset. Same shape
-    as base_image.
+    """Copy overlay pixels onto the base image where mask > 0, at the given (y, x) offset.
+    Same shape as base_image; overlay and mask must match.
 
     This function copies pixels from the overlay image to the base image only where
     the mask has non-zero values. The overlay is placed at the specified offset
@@ -303,7 +303,8 @@ def assign_items_to_grid_cells(
     cell_placements: list[tuple[int, int, int, int]],
     py_random: random.Random,
 ) -> dict[tuple[int, int, int, int], int]:
-    """Assigns item indices to placement coordinate tuples.
+    """Assign primary (index 0) to largest-area placement; remaining items randomly to others.
+    Returns mapping from (x1,y1,x2,y2) to item index.
 
     Assigns the primary item (index 0) to the placement with the largest area,
     and assigns the remaining items (indices 1 to num_items-1) randomly to the
@@ -352,7 +353,8 @@ def _preprocess_item_annotations(
     processor: BboxProcessor | KeypointsProcessor | None,
     data_key: Literal["bboxes", "keypoints"],
 ) -> np.ndarray | None:
-    """Helper to preprocess annotations (bboxes or keypoints) for a single item."""
+    """Preprocess bboxes or keypoints for one item with given processor. Returns processed
+    array or original if no processor; validates label fields."""
     original_data = item.get(data_key)
 
     # Check if processor exists and the relevant data key is in the item
@@ -396,7 +398,8 @@ def preprocess_selected_mosaic_items(
     bbox_processor: BboxProcessor | None,  # Allow None
     keypoint_processor: KeypointsProcessor | None,  # Allow None
 ) -> list[ProcessedMosaicItem]:
-    """Preprocesses bboxes/keypoints for selected raw additional items.
+    """Preprocess bboxes and keypoints per item via processors; update encoders. Returns list
+    of ProcessedMosaicItem (image, mask, preprocessed bboxes/keypoints).
 
     Iterates through items, preprocesses annotations individually using processors
     (updating label encoders), and returns a list of dicts with original image/mask
@@ -428,7 +431,8 @@ def get_opposite_crop_coords(
     crop_size: tuple[int, int],
     cell_position: Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"],
 ) -> tuple[int, int, int, int]:
-    """Calculates crop coordinates positioned opposite to the specified cell_position.
+    """Compute (x_min, y_min, x_max, y_max) for crop of crop_size in cell_size, opposite
+    cell_position (e.g. top_left → bottom-right). Raises if crop larger than cell.
 
     Given a cell of `cell_size`, this function determines the top-left (x_min, y_min)
     and bottom-right (x_max, y_max) coordinates for a crop of `crop_size`, such
@@ -494,7 +498,8 @@ def process_cell_geometry(
     mask_interpolation: int,
     cell_position: Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"],
 ) -> ProcessedMosaicItem:
-    """Applies geometric transformations (padding and/or cropping) to a single mosaic item.
+    """Pad and/or crop one item to target_shape. PadIfNeeded and Crop with fit_mode and
+    cell_position; returns ProcessedMosaicItem (image, mask, bboxes, keypoints).
 
     Uses a Compose pipeline with PadIfNeeded and Crop to ensure the output
     matches the target cell dimensions exactly, handling both padding and cropping cases.
@@ -595,7 +600,8 @@ def shift_cell_coordinates(
     processed_item_geom: ProcessedMosaicItem,
     placement_coords: tuple[int, int, int, int],
 ) -> ProcessedMosaicItem:
-    """Shifts the coordinates of geometrically processed bboxes and keypoints.
+    """Shift bbox and keypoint coords by placement offset onto final canvas. Returns
+    ProcessedMosaicItem with image, mask, shifted bboxes and keypoints.
 
     Args:
         processed_item_geom: (ProcessedMosaicItem): The output from process_cell_geometry.
@@ -637,7 +643,8 @@ def assemble_mosaic_from_processed_cells(
     data_key: Literal["image", "mask"],
     fill: float | tuple[float, ...] | None,  # Value for image fill or mask fill
 ) -> np.ndarray:
-    """Assembles the final mosaic image or mask from processed cell data onto a canvas.
+    """Build mosaic: fill canvas with fill, paste each cell segment at its placement.
+    data_key 'image' or 'mask'; handles multi-channel masks. Returns canvas array.
 
     Initializes the canvas with the fill value and overwrites with processed segments.
     Handles potentially multi-channel masks.
@@ -712,7 +719,8 @@ def process_all_mosaic_geometries(
         cv2.INTER_LINEAR_EXACT,
     ],
 ) -> dict[tuple[int, int, int, int], ProcessedMosaicItem]:
-    """Processes the geometry (cropping/padding) for all assigned mosaic cells.
+    """Crop/pad every assigned cell via process_cell_geometry. Returns placement ->
+    ProcessedMosaicItem (bbox/keypoint coords not yet shifted).
 
     Iterates through assigned placements, applies geometric transforms via process_cell_geometry,
     and returns a dictionary mapping final placement coordinates to the processed item data.
@@ -766,7 +774,8 @@ def get_cell_relative_position(
     placement_coords: tuple[int, int, int, int],
     target_shape: tuple[int, int],
 ) -> Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"]:
-    """Determines the position of a cell relative to the center of the target canvas.
+    """Return cell quadrant relative to canvas center: top_left, top_right, bottom_left,
+    bottom_right, or center. For mosaic crop positioning.
 
     Compares the cell center to the canvas center and returns its quadrant
     or "center" if it lies on or very close to a central axis.
@@ -826,7 +835,8 @@ def shift_all_coordinates(
     processed_cells_geom: dict[tuple[int, int, int, int], ProcessedMosaicItem],
     canvas_shape: tuple[int, int],
 ) -> dict[tuple[int, int, int, int], ProcessedMosaicItem]:  # Return type matches input, but values are updated
-    """Shifts coordinates for all geometrically processed cells.
+    """Shift bbox and keypoint coordinates in each cell to final canvas positions. Same keys as
+    input; values are ProcessedMosaicItem with shifted bboxes/keypoints.
 
     Iterates through the processed cells (keyed by placement coords), applies coordinate
     shifting to bboxes/keypoints, and returns a new dictionary with the same keys

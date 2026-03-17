@@ -260,7 +260,8 @@ class Normalize(ImageOnlyTransform):
 
 
 class ImageCompression(ImageOnlyTransform):
-    """Decrease image quality by applying JPEG or WebP compression.
+    """Reduce image quality via JPEG or WebP compression. quality_range and compression_type
+    control strength and format. Simulates real-world compression artifacts.
 
     This transform simulates the effect of saving an image with lower quality settings,
     which can introduce compression artifacts. It's useful for data augmentation and
@@ -352,7 +353,8 @@ class ImageCompression(ImageOnlyTransform):
 
 
 class RandomSnow(ImageOnlyTransform):
-    """Applies a random snow effect to the input image.
+    """Add random snow overlay: brightness and snowflake density controlled by parameters.
+    Good for robustness to winter or snowy conditions in outdoor imagery.
 
     This transform simulates snowfall by either bleaching out some pixel values or
     adding a snow texture to the image, depending on the chosen method.
@@ -497,7 +499,8 @@ class RandomSnow(ImageOnlyTransform):
 
 
 class RandomGravel(ImageOnlyTransform):
-    """Adds gravel-like artifacts to the input image.
+    """Add gravel-like particle artifacts on the image. Number and size of particles and
+    ROI are configurable. Simulates dirt or debris on a lens or surface.
 
     This transform simulates the appearance of gravel or small stones scattered across
     specific regions of an image. It's particularly useful for augmenting datasets of
@@ -670,7 +673,8 @@ class RandomGravel(ImageOnlyTransform):
 
 
 class RandomRain(ImageOnlyTransform):
-    """Adds rain effects to an image.
+    """Add rain streak effects: slant, drop length, brightness. Rain_drops controls density.
+    Simulates rainy conditions for outdoor or driving datasets.
 
     This transform simulates rainfall by overlaying semi-transparent streaks onto the image,
     creating a realistic rain effect. It can be used to augment datasets for computer vision
@@ -839,7 +843,8 @@ class RandomRain(ImageOnlyTransform):
 
 
 class RandomFog(ImageOnlyTransform):
-    """Simulates fog for the image by adding random fog-like artifacts.
+    """Simulate fog by blending with fog color; alpha_range and fog_coef control density.
+    Good for driving or outdoor robustness to weather.
 
     This transform creates a fog effect by generating semi-transparent overlays
     that mimic the visual characteristics of fog. The fog intensity and distribution
@@ -1012,7 +1017,8 @@ class RandomFog(ImageOnlyTransform):
 
 
 class RandomSunFlare(ImageOnlyTransform):
-    """Simulates a sun flare effect on the image by adding circles of light.
+    """Simulate lens flare: circles of light and rays. src_radius, num_flare_circles, angle
+    control the effect. Good for outdoor robustness.
 
     This transform creates a sun flare effect by overlaying multiple semi-transparent
     circles of varying sizes and intensities along a line originating from a "sun" point.
@@ -1270,7 +1276,8 @@ class RandomSunFlare(ImageOnlyTransform):
 
 
 class RandomShadow(ImageOnlyTransform):
-    """Simulates shadows for the image by reducing the brightness of the image in shadow regions.
+    """Simulate cast shadows by darkening random regions. shadow_roi, num_shadows, shadow_dimension
+    control placement and softness. Improves lighting robustness.
 
     This transform adds realistic shadow effects to images, which can be useful for augmenting
     datasets for outdoor scene analysis, autonomous driving, or any computer vision task where
@@ -1438,7 +1445,8 @@ class RandomShadow(ImageOnlyTransform):
 
 
 class RandomToneCurve(ImageOnlyTransform):
-    """Randomly change the relationship between bright and dark areas of the image by manipulating its tone curve.
+    """Randomly warp the tone curve to change contrast and tonal distribution. scale and
+    scale_upper control strength. Good for exposure variation.
 
     This transform applies a random S-curve to the image's tone curve, adjusting the brightness and contrast
     in a non-linear manner. It can be applied to the entire image or to each channel separately.
@@ -1584,7 +1592,8 @@ class RandomToneCurve(ImageOnlyTransform):
 
 
 class HueSaturationValue(ImageOnlyTransform):
-    """Randomly change hue, saturation and value of the input image.
+    """Randomly shift hue, saturation, and value (HSV). Separate ranges per channel. Common
+    for color augmentation in classification.
 
     This transform adjusts the HSV (Hue, Saturation, Value) channels of an input RGB image.
     It allows for independent control over each channel, providing a wide range of color
@@ -1689,7 +1698,8 @@ class HueSaturationValue(ImageOnlyTransform):
 
 
 class Solarize(ImageOnlyTransform):
-    """Invert all pixel values above a threshold.
+    """Invert pixel values above a threshold. threshold_range controls cutoff. Strong
+    highlight inversion; useful for data augmentation.
 
     This transform applies a solarization effect to the input image. Solarization is a phenomenon in
     photography in which the image recorded on a negative or on a photographic print is wholly or
@@ -1787,7 +1797,8 @@ class Solarize(ImageOnlyTransform):
 
 
 class Posterize(ImageOnlyTransform):
-    """Reduces the number of bits for each color channel in the image.
+    """Reduce bits per color channel (e.g. 8→4). num_bits_range controls strength; lower
+    gives stronger posterization. Simulates low-bit-depth or compression.
 
     This transform applies color posterization, a technique that reduces the number of distinct
     colors used in an image. It works by lowering the number of bits used to represent each
@@ -1901,7 +1912,8 @@ class Posterize(ImageOnlyTransform):
 
 
 class Equalize(ImageOnlyTransform):
-    """Equalize the image histogram.
+    """Equalize histogram to spread intensities. mode: global or adaptive; mask optional.
+    Improves contrast normalization across datasets.
 
     This transform applies histogram equalization to the input image. Histogram equalization
     is a method in image processing of contrast adjustment using the image's histogram.
@@ -2036,7 +2048,8 @@ class Equalize(ImageOnlyTransform):
 
 
 class RandomBrightnessContrast(ImageOnlyTransform):
-    """Randomly changes the brightness and contrast of the input image.
+    """Randomly adjust brightness and contrast with separate ranges. Simple and fast; good
+    baseline color augmentation.
 
     This transform adjusts the brightness and contrast of an image simultaneously, allowing for
     a wide range of lighting and contrast variations. It's particularly useful for data augmentation
@@ -2190,7 +2203,8 @@ class RandomBrightnessContrast(ImageOnlyTransform):
 
 
 class GaussNoise(ImageOnlyTransform):
-    """Apply Gaussian noise to the input image.
+    """Add Gaussian (normal) noise to the image. var_limit controls variance; per_channel
+    and mean optional. Common for robustness to sensor or transmission noise.
 
     Args:
         std_range (tuple[float, float]): Range for noise standard deviation as a fraction
@@ -2303,7 +2317,8 @@ class GaussNoise(ImageOnlyTransform):
 
 
 class ISONoise(ImageOnlyTransform):
-    """Applies camera sensor noise to the input image, simulating high ISO settings.
+    """Add camera-sensor-like noise scaling with intensity (high ISO). color_shift and
+    intensity range control strength. Good for low-light or camera noise simulation.
 
     This transform adds random noise to an image, mimicking the effect of using high ISO settings
     in digital photography. It simulates two main components of ISO noise:
@@ -2403,7 +2418,8 @@ class ISONoise(ImageOnlyTransform):
 
 
 class CLAHE(ImageOnlyTransform):
-    """Apply Contrast Limited Adaptive Histogram Equalization (CLAHE) to the input image.
+    """Contrast Limited Adaptive Histogram Equalization: local contrast with clip_limit and
+    tile_grid_size. Good for non-uniform lighting; preserves detail.
 
     CLAHE is an advanced method of improving the contrast in an image. Unlike regular histogram
     equalization, which operates on the entire image, CLAHE operates on small regions (tiles)
@@ -2481,7 +2497,8 @@ class CLAHE(ImageOnlyTransform):
 
 
 class ChannelShuffle(ImageOnlyTransform):
-    """Randomly rearrange channels of the image.
+    """Randomly permute channel order (e.g. RGB → BGR). p controls probability. Makes model
+    invariant to channel order; useful for multi-channel data.
 
     Args:
         p (float): Probability of applying the transform. Default: 0.5.
@@ -2603,7 +2620,8 @@ class InvertImg(ImageOnlyTransform):
 
 
 class RandomGamma(ImageOnlyTransform):
-    """Applies random gamma correction to the input image.
+    """Apply random gamma correction (power-law on intensity). gamma_limit controls range.
+    Common for exposure and display variation.
 
     Gamma correction, or simply gamma, is a nonlinear operation used to encode and decode luminance
     or tristimulus values in imaging systems. This transform can adjust the brightness of an image
@@ -2701,7 +2719,8 @@ class RandomGamma(ImageOnlyTransform):
 
 
 class ToGray(ImageOnlyTransform):
-    """Convert an image to grayscale and optionally replicate the grayscale channel.
+    """Convert to grayscale (weighted by channel weights). Optionally replicate to keep
+    shape. Useful for grayscale training or channel reduction.
 
     This transform first converts a color image to a single-channel grayscale image using various methods,
     then replicates the grayscale channel if num_output_channels is greater than 1.
@@ -2896,7 +2915,8 @@ class ToGray(ImageOnlyTransform):
 
 
 class ToRGB(ImageOnlyTransform):
-    """Convert an input image from grayscale to RGB format.
+    """Convert grayscale image to RGB by replicating the single channel to three. No color
+    information added; use when a model expects 3-channel input.
 
     Args:
         num_output_channels (int): The number of channels in the output image. Default: 3.
@@ -2964,7 +2984,8 @@ class ToRGB(ImageOnlyTransform):
 
 
 class ToSepia(ImageOnlyTransform):
-    """Apply a sepia filter to the input image.
+    """Apply sepia (brownish vintage) filter via fixed color matrix. Optional alpha for
+    blending with original. Good for style or temporal variation in datasets.
 
     This transform converts a color image to a sepia tone, giving it a warm, brownish tint
     that is reminiscent of old photographs. The sepia effect is achieved by applying a
@@ -3080,7 +3101,8 @@ class InterpolationPydantic(BaseModel):
 
 
 class Downscale(ImageOnlyTransform):
-    """Decrease image quality by downscaling and upscaling back.
+    """Reduce quality by downscale then upscale. scale_min and scale_max control factor.
+    Simulates resolution or compression loss.
 
     This transform simulates the effect of a low-resolution image by first downscaling
     the image to a lower resolution and then upscaling it back to its original size.
@@ -3186,7 +3208,8 @@ class Downscale(ImageOnlyTransform):
 
 
 class MultiplicativeNoise(ImageOnlyTransform):
-    """Apply multiplicative noise to the input image.
+    """Multiply image by random per-pixel or per-channel factor. multiplier_range controls
+    strength. Simulates illumination or gain variation; preserves zeros.
 
     This transform multiplies each pixel in the image by a random value or array of values,
     effectively creating a noise pattern that scales with the image intensity.
@@ -3305,7 +3328,8 @@ class MultiplicativeNoise(ImageOnlyTransform):
 
 
 class FancyPCA(ImageOnlyTransform):
-    """Apply Fancy PCA augmentation to the input image.
+    """Add color variation via PCA on RGB: perturb components by alpha_std. Simulates natural
+    lighting variation (ImageNet-style). Good for object recognition.
 
     This augmentation technique applies PCA (Principal Component Analysis) to the image's color channels,
     then adds multiples of the principal components to the image, with magnitudes proportional to the
@@ -3381,7 +3405,8 @@ class FancyPCA(ImageOnlyTransform):
 
 
 class ColorJitter(ImageOnlyTransform):
-    """Randomly changes the brightness, contrast, saturation, and hue of an image.
+    """Randomly apply brightness, contrast, saturation, hue in random order each call. Separate
+    ranges per effect. Strong color augmentation for classification and detection.
 
     This transform is similar to torchvision's ColorJitter but with some differences due to the use of OpenCV
     instead of Pillow. The main differences are:
@@ -3551,7 +3576,8 @@ class ColorJitter(ImageOnlyTransform):
 
 
 class Sharpen(ImageOnlyTransform):
-    """Sharpen the input image using either kernel-based or Gaussian interpolation method.
+    """Sharpen the image via kernel or Gaussian unsharp method. alpha and lightness control
+    strength. Enhances edges; useful for document or detail-sensitive tasks.
 
     Implements two different approaches to image sharpening:
     1. Traditional kernel-based method using Laplacian operator
@@ -3737,7 +3763,8 @@ class Sharpen(ImageOnlyTransform):
 
 
 class Emboss(ImageOnlyTransform):
-    """Apply embossing effect to the input image.
+    """Apply emboss effect (directional highlight and shadow). strength_range controls
+    intensity. Pseudo-3D look; for texture or style augmentation.
 
     This transform creates an emboss effect by highlighting edges and creating a 3D-like texture
     in the image. It works by applying a specific convolution kernel to the image that emphasizes
@@ -3837,7 +3864,8 @@ class Emboss(ImageOnlyTransform):
 
 
 class Superpixels(ImageOnlyTransform):
-    """Transform images partially/completely to their superpixel representation.
+    """Replace image with superpixel segmentation (SLIC). p_replace, n_segments, max_size
+    control fraction and segment count. Reduces fine texture.
 
     Args:
         p_replace (tuple[float, float] | float): Defines for any segment the probability that the pixels within that
@@ -3987,7 +4015,8 @@ class Superpixels(ImageOnlyTransform):
 
 
 class RingingOvershoot(ImageOnlyTransform):
-    """Create ringing or overshoot artifacts by convolving the image with a 2D sinc filter.
+    """Create ringing or overshoot artifacts via 2D sinc convolution. blur_limit and
+    cutoff control strength. Simulates sharpening or compression artifacts.
 
     This transform simulates the ringing artifacts that can occur in digital image processing,
     particularly after sharpening or edge enhancement operations. It creates oscillations
@@ -4118,7 +4147,8 @@ class RingingOvershoot(ImageOnlyTransform):
 
 
 class UnsharpMask(ImageOnlyTransform):
-    """Sharpen the input image using Unsharp Masking processing and overlays the result with the original image.
+    """Sharpen via unsharp masking: blur, subtract, add back. blur_limit, sigma_limit, alpha
+    control strength. Classic sharpening; preserves luminance.
 
     Unsharp masking is a technique that enhances edge contrast in an image, creating the illusion of increased
         sharpness.
@@ -4258,7 +4288,8 @@ class UnsharpMask(ImageOnlyTransform):
 
 
 class Spatter(ImageOnlyTransform):
-    """Apply spatter transform. It simulates corruption which can occlude a lens in the form of rain or mud.
+    """Simulate lens occlusion from rain or mud: splatter patterns and optional blur. fill
+    and spread control appearance. Good for dirty or wet lens robustness.
 
     Args:
         mean (tuple[float, float] | float): Mean value of normal distribution for generating liquid layer.
@@ -4481,7 +4512,8 @@ class Spatter(ImageOnlyTransform):
 
 
 class ChromaticAberration(ImageOnlyTransform):
-    """Add lateral chromatic aberration by distorting the red and blue channels of the input image.
+    """Add lateral chromatic aberration: shift red and blue relative to green. distortion_limit
+    and shift_limit control strength. Simulates lens color fringing.
 
     Chromatic aberration is an optical effect that occurs when a lens fails to focus all colors to the same point.
     This transform simulates this effect by applying different radial distortions to the red and blue channels
@@ -4686,7 +4718,8 @@ PLANKIAN_JITTER_CONST = {
 
 
 class PlanckianJitter(ImageOnlyTransform):
-    """Applies Planckian Jitter to the input image, simulating color temperature variations in illumination.
+    """Simulate illumination color temperature variation via Planckian locus jitter. mode and
+    magnitude control the shift. Good for robustness to different light sources (indoor/outdoor).
 
     This transform adjusts the color of an image to mimic the effect of different color temperatures
     of light sources, based on Planck's law of black body radiation. It can simulate the appearance

@@ -45,7 +45,8 @@ NUM_PADS_ALL_SIDES = 4
 
 
 class Pad(DualTransform):
-    """Pad the sides of an image by specified number of pixels.
+    """Pad image sides by a number of pixels (all sides, x/y, or per-side). Params: padding, fill,
+    fill_mask, border_mode. Supports image, mask, bboxes, keypoints.
 
     Args:
         padding (int, tuple[int, int] or tuple[int, int, int, int]): Padding values. Can be:
@@ -342,9 +343,8 @@ class Pad(DualTransform):
 
 
 class PadIfNeeded(Pad):
-    """Pads the sides of an image if the image dimensions are less than the specified minimum dimensions.
-    If the `pad_height_divisor` or `pad_width_divisor` is specified, the function additionally ensures
-    that the image dimensions are divisible by these values.
+    """Pad image to meet min height/width and/or divisibility (pad_height_divisor, pad_width_divisor).
+    Position, fill configurable.
 
     Args:
         min_height (int | None): Minimum desired height of the image. Ensures image height is at least this value.
@@ -355,7 +355,7 @@ class PadIfNeeded(Pad):
             If not specified, min_height must be provided.
         pad_width_divisor (int | None): If set, pads the image width to make it divisible by this value.
             If not specified, min_width must be provided.
-        position (Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]):
+        position (Literal['center', 'top_left', 'top_right', 'bottom_left', 'bottom_right', 'random']):
             Position where the image is to be placed after padding. Default is 'center'.
         border_mode (int): Specifies the border mode to use if padding is required.
             The default is `cv2.BORDER_CONSTANT`.

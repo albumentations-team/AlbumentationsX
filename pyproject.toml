@@ -256,6 +256,7 @@ lint.ignore = [
   "TRY003",
 ]
 
+lint.per-file-ignores."albumentations/augmentations/mixing/functional.py" = ["E501"]
 lint.per-file-ignores."tools/*" = [
   "ANN201",
   "D100",
@@ -400,9 +401,22 @@ filterwarnings = [
     "ignore::pytest_benchmark.logger.PytestBenchmarkWarning",
 ]
 
+# Legacy/alternate config key for google-docstring-parser (same package).
 [tool.google_docstring_parser]
-paths = [ "albumentations", "tools" ] # Directories or files to scan
-require_param_types = true            # Require parameter types in docstrings
-exclude_files = [ "__init__.py" ]     # Files to exclude from checks
-verbose = false                       # Enable verbose output
+paths = [ "albumentations" ]
+require_param_types = true
+exclude_files = [ "__init__.py" ]
+verbose = false
 check_references = true
+
+# Pre-commit hook check-google-docstrings reads this section (see package README).
+[tool.docstring_checker]
+paths = [ "albumentations" ]
+require_param_types = true
+check_references = true
+check_type_consistency = true
+exclude_files = [ "__init__.py" ]
+# First paragraph: 120-160 chars (elevator pitch). See .cursor/skills/docstring-deep-dive.
+min_short_description_length = 120
+max_short_description_length = 160
+verbose = false

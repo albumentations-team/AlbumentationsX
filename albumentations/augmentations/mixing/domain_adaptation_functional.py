@@ -43,7 +43,8 @@ class BaseScaler:
         self.scale: np.ndarray | None = None
 
     def fit(self, x: np.ndarray) -> None:
-        """Fit the scaler to the data.
+        """Fit the scaler to the data (n_samples, n_features). Subclasses compute statistics;
+        raises NotImplementedError if called on this abstract base.
 
         Args:
             x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
@@ -55,7 +56,8 @@ class BaseScaler:
         raise NotImplementedError
 
     def transform(self, x: np.ndarray) -> np.ndarray:
-        """Transform the data using the fitted scaler.
+        """Transform the data using the fitted scaler. Same shape as input; subclasses apply
+        their scaling; raises NotImplementedError on this abstract base.
 
         Args:
             x (np.ndarray): The data to transform. Expected shape is (n_samples, n_features).
@@ -70,9 +72,8 @@ class BaseScaler:
         raise NotImplementedError
 
     def fit_transform(self, x: np.ndarray) -> np.ndarray:
-        """Fit the scaler to the data and then transform it.
-
-        This is a convenience method that combines fit and transform operations.
+        """Fit the scaler to the data and then transform it in one step. Convenience method
+        equivalent to fit(x) followed by transform(x); same shape as input.
 
         Args:
             x (np.ndarray): The data to fit and transform. Expected shape is (n_samples, n_features).
@@ -85,9 +86,8 @@ class BaseScaler:
         return self.transform(x)
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
-        """Apply the inverse transformation to the data.
-
-        This method reverses the transformation applied by transform().
+        """Inverse of transform: reverse scaling; subclasses implement. Raises NotImplementedError
+        on this abstract base; same shape as input.
 
         Args:
             x (np.ndarray): The transformed data to inverse transform. Expected shape is (n_samples, n_features).
@@ -110,9 +110,8 @@ class MinMaxScaler(BaseScaler):
         self.data_range: np.ndarray | None = None
 
     def fit(self, x: np.ndarray) -> None:
-        """Fit the MinMaxScaler to the data.
-
-        Computes the minimum and maximum values for each feature to be used for scaling.
+        """Fit MinMaxScaler to the data. Computes per-feature min and max for scaling to
+        feature_range; zero-range features get range 1 to avoid division by zero.
 
         Args:
             x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
@@ -128,9 +127,8 @@ class MinMaxScaler(BaseScaler):
         self.data_range[self.data_range == 0] = 1
 
     def transform(self, x: np.ndarray) -> np.ndarray:
-        """Transform features by scaling to the specified range.
-
-        The transformation is: X_scaled = (X - data_min) / data_range * (max - min) + min
+        """Scale features to feature_range using fitted data_min/data_max. Formula:
+        X_scaled = (X - data_min) / data_range * (max - min) + min; same shape as input.
 
         Args:
             x (np.ndarray): The data to transform. Expected shape is (n_samples, n_features).
@@ -156,7 +154,8 @@ class MinMaxScaler(BaseScaler):
         return x_std
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
-        """Reverse the scaling operation.
+        """Reverse min-max scaling: map from feature_range back to original scale using fitted
+        data_min, data_range. Raises ValueError if not fitted; same shape as input.
 
         Args:
             x (np.ndarray): The scaled data to inverse transform. Expected shape is (n_samples, n_features).
@@ -182,9 +181,8 @@ class StandardScaler(BaseScaler):
         super().__init__()
 
     def fit(self, x: np.ndarray) -> None:
-        """Fit the StandardScaler to the data.
-
-        Computes the mean and standard deviation for each feature to be used for standardization.
+        """Fit StandardScaler: compute per-feature mean and std for z-score standardization.
+        Zero-variance features get scale 1 to avoid division by zero.
 
         Args:
             x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
@@ -200,9 +198,8 @@ class StandardScaler(BaseScaler):
         self.scale[self.scale == 0] = 1
 
     def transform(self, x: np.ndarray) -> np.ndarray:
-        """Standardize features by removing the mean and scaling to unit variance.
-
-        The transformation is: z = (x - mean) / std
+        """Standardize to zero mean, unit variance using fitted mean/scale. z = (x-mean)/std; raises
+        ValueError if not fitted; same shape as input.
 
         Args:
             x (np.ndarray): The data to transform. Expected shape is (n_samples, n_features).
@@ -222,9 +219,8 @@ class StandardScaler(BaseScaler):
         return (x - self.mean) / self.scale
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
-        """Reverse the standardization operation.
-
-        The inverse transformation is: x = z * std + mean
+        """Reverse standardization: x = z * std + mean using fitted mean and scale. Raises
+        ValueError if not fitted; same shape as input.
 
         Args:
             x (np.ndarray): The standardized data to inverse transform. Expected shape is (n_samples, n_features).
@@ -247,7 +243,8 @@ class StandardScaler(BaseScaler):
 class TransformerInterface(Protocol):
     @abc.abstractmethod
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
-        """Apply the inverse transformation.
+        """Apply the inverse of the fitted transformation to the data. Protocol method;
+        implementation returns data in original scale; same shape as input.
 
         Args:
             x (np.ndarray): The transformed data to inverse transform.
@@ -260,7 +257,8 @@ class TransformerInterface(Protocol):
 
     @abc.abstractmethod
     def fit(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
-        """Fit the transformer to the data.
+        """Fit the transformer to the data (e.g. pixel samples). Optional y unused; returns self.
+        Subclasses implement; call before transform.
 
         Args:
             x (np.ndarray): The data to fit to.
@@ -274,7 +272,8 @@ class TransformerInterface(Protocol):
 
     @abc.abstractmethod
     def transform(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
-        """Transform the data.
+        """Transform data using the fitted model. Same shape as input; optional y is unused.
+        Abstract protocol method; subclasses implement the actual transformation.
 
         Args:
             x (np.ndarray): The data to transform.
@@ -301,25 +300,27 @@ class DomainAdapter:
         self.target_transformer.fit(self.flatten(ref_img))
 
     def to_colorspace(self, img: ImageType) -> ImageType:
-        """Convert the image to the target color space.
+        """Convert the image to the target color space (e.g. for PCA). Uses cv2.cvtColor if
+        color_in set; otherwise returns img unchanged.
 
         Args:
-            img (np.ndarray): The input image to convert.
+            img (ImageType): The input image to convert.
 
         Returns:
-            np.ndarray: The image in the target color space, or the original image if no conversion is specified.
+            ImageType: The image in the target color space, or the original image if no conversion is specified.
 
         """
         return img if self.color_in is None else cv2.cvtColor(img, self.color_in)
 
     def from_colorspace(self, img: ImageType) -> ImageType:
-        """Convert the image back from the target color space.
+        """Convert image back from target color space to original (e.g. after PCA). Uses
+        cv2.cvtColor when color_out is set; otherwise returns img unchanged.
 
         Args:
-            img (np.ndarray): The image to convert back.
+            img (ImageType): The image to convert back.
 
         Returns:
-            np.ndarray: The image converted back to the original color space, or the original image
+            ImageType: The image converted back to the original color space, or the original image
                 if no conversion is specified.
 
         """
@@ -328,13 +329,11 @@ class DomainAdapter:
         return cv2.cvtColor(clip(img, np.uint8, inplace=True), self.color_out)
 
     def flatten(self, img: ImageType) -> np.ndarray:
-        """Flatten the image into a 2D array of pixels.
-
-        Converts the image to the target color space, normalizes to float values,
-        and reshapes to (n_pixels, n_channels).
+        """Flatten image to (n_pixels, n_channels): target colorspace, to float, reshape. For
+        pixel-domain adaptation (PCA, standard, minmax).
 
         Args:
-            img (np.ndarray): The input image to flatten.
+            img (ImageType): The input image to flatten.
 
         Returns:
             np.ndarray: The flattened image with shape (n_pixels, n_channels).
@@ -345,9 +344,8 @@ class DomainAdapter:
         return img.reshape(-1, self.num_channels)
 
     def reconstruct(self, pixels: np.ndarray, height: int, width: int) -> np.ndarray:
-        """Reconstruct an image from flattened pixels.
-
-        Reshapes the pixels back to image format and converts back to the original color space.
+        """Reconstruct image from flattened pixels: reshape, convert back from target colorspace.
+        For reconstructing after pixel-domain transform.
 
         Args:
             pixels (np.ndarray): The flattened pixels with shape (n_pixels, n_channels).
@@ -393,19 +391,20 @@ def adapt_pixel_distribution(
     transform_type: Literal["pca", "standard", "minmax"],
     weight: float,
 ) -> ImageType:
-    """Adapt the pixel distribution of an image to match a reference image.
+    """Adapt input pixel distribution to match a reference using PCA, standard, or minmax.
+    weight controls blend with original; same shape and dtype as input.
 
     This function adapts the pixel distribution of an image to match a reference image
     using a specified transformation type and weight.
 
     Args:
-        img (np.ndarray): The input image to be adapted.
+        img (ImageType): The input image to be adapted.
         ref (np.ndarray): The reference image.
-        transform_type (Literal["pca", "standard", "minmax"]): The type of transformation to use.
+        transform_type (Literal['pca', 'standard', 'minmax']): The type of transformation to use.
         weight (float): The weight of the transformation.
 
     Returns:
-        np.ndarray: The adapted image.
+        ImageType: The adapted image.
 
     Raises:
         ValueError: If the input image and reference image have different dtypes or numbers of channels.
@@ -459,7 +458,8 @@ def low_freq_mutate(amp_src: np.ndarray, amp_trg: np.ndarray, beta: float) -> np
 @clipped
 @preserve_channel_dim
 def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float) -> ImageType:
-    """Apply Fourier Domain Adaptation to the input image using a target image.
+    """Fourier Domain Adaptation: swap low-frequency amplitude with target, keep phase. beta
+    controls strength. Same shape as input.
 
     This function performs domain adaptation in the frequency domain by modifying the amplitude
     spectrum of the source image based on the target image's amplitude spectrum. It preserves
@@ -467,14 +467,14 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
     its style to match the target image.
 
     Args:
-        img (np.ndarray): The source image to be adapted. Can be grayscale or RGB.
-        target_img (np.ndarray): The target image used as a reference for adaptation.
+        img (ImageType): The source image to be adapted. Can be grayscale or RGB.
+        target_img (ImageType): The target image used as a reference for adaptation.
             Should have the same dimensions as the source image.
         beta (float): The adaptation strength, typically in the range [0, 1].
             Higher values result in stronger adaptation towards the target image's style.
 
     Returns:
-        np.ndarray: The adapted image with the same shape and type as the input image.
+        ImageType: The adapted image with the same shape and type as the input image.
 
     Raises:
         ValueError: If the source and target images have different shapes.
@@ -554,22 +554,23 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
 @clipped
 @preserve_channel_dim
 def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: float) -> ImageType:
-    """Apply histogram matching to an input image using a reference image and blend the result.
+    """Match input histogram to a reference, then blend with original. blend_ratio in [0,1]
+    controls strength. Same shape and dtype as input.
 
     This function performs histogram matching between the input image and a reference image,
     then blends the result with the original input image based on the specified blend ratio.
 
     Args:
-        img (np.ndarray): The input image to be transformed. Can be either grayscale or RGB.
+        img (ImageType): The input image to be transformed. Can be either grayscale or RGB.
             Supported dtypes: uint8, float32 (values should be in [0, 1] range).
-        reference_image (np.ndarray): The reference image used for histogram matching.
+        reference_image (ImageType): The reference image used for histogram matching.
             Should have the same number of channels as the input image.
             Supported dtypes: uint8, float32 (values should be in [0, 1] range).
         blend_ratio (float): The ratio for blending the matched image with the original image.
             Should be in the range [0, 1], where 0 means no change and 1 means full histogram matching.
 
     Returns:
-        np.ndarray: The transformed image after histogram matching and blending.
+        ImageType: The transformed image after histogram matching and blending.
             The output will have the same shape and dtype as the input image.
 
     Supported image types:
@@ -600,18 +601,19 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
 
 @uint8_io
 def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
-    """Adjust an image so that its cumulative histogram matches that of another.
+    """Adjust image so its CDF matches the reference, per channel. uint8 I/O; reference resized
+    if needed. Per-channel CDF matching.
 
     The adjustment is applied separately for each channel.
 
     Args:
-        image (np.ndarray): Input image. Can be gray-scale or in color.
-        reference (np.ndarray): Image to match histogram of. Must have the same number of channels as image.
+        image (ImageType): Input image. Can be gray-scale or in color.
+        reference (ImageType): Image to match histogram of. Must have the same number of channels as image.
         channel_axis (int | None): If None, the image is assumed to be a grayscale (single channel) image.
             Otherwise, this indicates which axis of the array corresponds to channels.
 
     Returns:
-        np.ndarray: Transformed input image.
+        ImageType: Transformed input image.
 
     Raises:
         ValueError: Thrown when the number of channels in the input image and the reference differ.

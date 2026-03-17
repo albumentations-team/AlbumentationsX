@@ -37,7 +37,8 @@ SMALL_NUMBER = 1e-10
 
 
 class RandomRotate90(DualTransform):
-    """Randomly rotate the input by 90 degrees zero or more times.
+    """Randomly rotate by 90° (0, 90, 180, or 270). Supports image, mask, bboxes, keypoints, volume.
+    Set group_element for TTA; use inverse() to restore predictions.
 
     Even with p=1.0, the transform has a 1/4 probability of being identity:
     - With probability p * 1/4: no rotation (0 degrees)
@@ -83,7 +84,7 @@ class RandomRotate90(DualTransform):
         p (float): probability of applying the transform. Default: 1.0.
             Note that even with p=1.0, there's still a 0.25 probability
             of getting a 0-degree rotation (identity transform).
-        group_element (Literal["e", "r90", "r180", "r270"] | None): If set, always apply this
+        group_element (Literal['e', 'r90', 'r180', 'r270'] | None): If set, always apply this
             C4 group element: "e"=identity, "r90"=90°, "r180"=180°, "r270"=270° counterclockwise.
             Use for TTA. Default: None (random choice).
 
@@ -215,7 +216,8 @@ class RandomRotate90(DualTransform):
         return self.apply_to_volumes(masks3d, group_element, **params)
 
     def inverse(self) -> RandomRotate90:
-        """Return a new RandomRotate90 configured with the inverse group element.
+        """Return a new RandomRotate90 with the inverse group element to undo this transform. Use
+        after inference in TTA to restore predictions to original orientation.
 
         Raises:
             ValueError: If `group_element` is `None` (random mode cannot be inverted).
@@ -254,7 +256,8 @@ class RotateInitSchema(BaseTransformInitSchema):
 
 
 class Rotate(DualTransform):
-    """Rotate the input by an angle selected randomly from the uniform distribution.
+    """Rotate by a random angle from limit (degrees). Optional crop_border removes black
+    corners. Same rotation for image, mask, bboxes, keypoints.
 
     Args:
         limit (float | tuple[float, float]): Range from which a random angle is picked. If limit is a single float,
@@ -267,7 +270,7 @@ class Rotate(DualTransform):
             Default: cv2.BORDER_CONSTANT
         fill (tuple[float, ...] | float): Padding value if border_mode is cv2.BORDER_CONSTANT.
         fill_mask (tuple[float, ...] | float): Padding value if border_mode is cv2.BORDER_CONSTANT applied for masks.
-        rotate_method (Literal["largest_box", "ellipse"]): Method to rotate bounding boxes.
+        rotate_method (Literal['largest_box', 'ellipse']): Method to rotate bounding boxes.
             Should be 'largest_box' or 'ellipse'. Default: 'largest_box'
         crop_border (bool): Whether to crop border after rotation. If True, the output image size might differ
             from the input. Default: False
@@ -494,9 +497,8 @@ class Rotate(DualTransform):
         width: int,
         angle: float,
     ) -> dict[str, int]:
-        """Given a rectangle of size wxh that has been rotated by 'angle' (in
-        degrees), computes the width and height of the largest possible
-        axis-aligned rectangle (maximal area) within the rotated rectangle.
+        """Largest axis-aligned rectangle inside a rotated rectangle (width, height, angle deg).
+        Returns crop bounds. Used for crop_border in Rotate.
 
         References:
             Rotate image and crop out black borders: https://stackoverflow.com/questions/16702966/rotate-image-and-crop-out-black-borders
@@ -571,7 +573,8 @@ class Rotate(DualTransform):
 
 
 class SafeRotate(Affine):
-    """Rotate the input inside the input's frame by an angle selected randomly from the uniform distribution.
+    """Rotate by a random angle (limit) but scale to fit in the original frame. No black
+    corners; output size equals input. Good when fixed dimensions are required.
 
     This transformation ensures that the entire rotated image fits within the original frame by scaling it
     down if necessary. The resulting image maintains its original dimensions but may contain artifacts due to the
@@ -589,7 +592,7 @@ class SafeRotate(Affine):
         fill (tuple[float, float] | float): Padding value if border_mode is cv2.BORDER_CONSTANT.
         fill_mask (tuple[float, float] | float): Padding value if border_mode is cv2.BORDER_CONSTANT applied
             for masks.
-        rotate_method (Literal["largest_box", "ellipse"]): Method to rotate bounding boxes.
+        rotate_method (Literal['largest_box', 'ellipse']): Method to rotate bounding boxes.
             Should be 'largest_box' or 'ellipse'. Default: 'largest_box'
         mask_interpolation (OpenCV flag): flag that is used to specify the interpolation algorithm for mask.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.

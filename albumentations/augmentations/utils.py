@@ -1,5 +1,4 @@
 """Module containing utility functions for augmentation operations.
-
 This module provides a collection of helper functions and utilities used throughout
 the augmentation pipeline. It includes functions for image loading, type checking,
 error handling, mathematical operations, and decorators that add functionality to
@@ -36,18 +35,19 @@ F = TypeVar("F", bound=Callable[..., Any])
 def angle_2pi_range(
     func: Callable[Concatenate[np.ndarray, P], np.ndarray],
 ) -> Callable[Concatenate[np.ndarray, P], np.ndarray]:
-    """Decorator to normalize angle values to the range [0, 2π).
+    """Decorator that normalizes keypoint angle values (4th column) to [0, 2π) after the wrapped
+    function. Used for keypoint transforms that modify angles.
 
     This decorator wraps a function that processes keypoints, ensuring that
     angle values (stored in the 4th column, index 3) are normalized to the
     range [0, 2π) after the wrapped function executes.
 
     Args:
-        func (Callable): Function that processes keypoints and returns a numpy array.
-            The function should take a keypoints array as its first parameter.
+        func (Callable[Concatenate[np.ndarray, P], np.ndarray]): Function that processes keypoints and returns
+            a numpy array; keypoints array must be the first parameter.
 
     Returns:
-        Callable: Wrapped function that normalizes angles after processing keypoints.
+        Callable[Concatenate[np.ndarray, P], np.ndarray]: Wrapped function that normalizes angles after processing.
 
     """
 
@@ -62,7 +62,8 @@ def angle_2pi_range(
 
 
 def non_rgb_error(image: np.ndarray) -> None:
-    """Check if the input image is RGB and raise a ValueError if it's not.
+    """Raise ValueError if image is not RGB (exactly 3 channels). Call from RGB-only
+    transforms; hints for grayscale and multi-spectral.
 
     This function is used to ensure that certain transformations are only applied to
     RGB images. It provides helpful error messages for grayscale and multi-spectral images.
@@ -104,7 +105,8 @@ def non_rgb_error(image: np.ndarray) -> None:
 
 
 def check_range(value: tuple[float, float], lower_bound: float, upper_bound: float, name: str | None) -> None:
-    """Checks if the given value is within the specified bounds
+    """Raise ValueError if value is outside [lower_bound, upper_bound] or if tuple is not (min,
+    max). Use when validating transform range parameters.
 
     Args:
         value (tuple[float, float]): The value to check and convert. Can be a single float or a tuple of floats.
@@ -123,7 +125,8 @@ def check_range(value: tuple[float, float], lower_bound: float, upper_bound: flo
 
 
 class PCA:
-    """Principal Component Analysis (PCA) transformer.
+    """PCA transformer (OpenCV). Fit, transform, inverse_transform, explained variance. Use from
+    color/domain transforms for dimensionality reduction.
 
     This class provides a wrapper around OpenCV's PCA implementation for
     dimensionality reduction. It can be used to project data onto a lower
@@ -166,7 +169,8 @@ class PCA:
         self.explained_variance_: np.ndarray | None = None
 
     def fit(self, x: np.ndarray) -> None:
-        """Fit the PCA model to the input data.
+        """Fit the PCA model to the input data (mean, components, explained variance). Call
+        before transform or inverse_transform. Uses OpenCV PCACompute2.
 
         Computes the mean, principal components, and explained variance
         from the input data. The principal components are sorted by
@@ -202,7 +206,8 @@ class PCA:
         self.explained_variance_ = eigenvalues.flatten()
 
     def transform(self, x: np.ndarray) -> np.ndarray:
-        """Transform data using the fitted PCA model.
+        """Project data onto the principal components (fit must be called first). Centers data
+        with fitted mean, returns (n_samples, n_components). Raises if not fitted.
 
         Projects the input data onto the principal components learned during fitting.
         The data is first centered using the mean computed during fitting.
@@ -241,7 +246,8 @@ class PCA:
         return cv2.PCAProject(x, self.mean, self.components_)
 
     def fit_transform(self, x: np.ndarray) -> np.ndarray:
-        """Fit the PCA model and transform the data in one step.
+        """Fit the PCA model and transform the data in one step. Equivalent to fit(x) then
+        transform(x). Returns projected data (n_samples, n_components).
 
         This is equivalent to calling fit(x) followed by transform(x),
         but more convenient. Useful when you want to both learn the
@@ -269,7 +275,8 @@ class PCA:
         return self.transform(x)
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
-        """Transform data back to the original space.
+        """Reconstruct data from PC space to original space. Uses fitted mean and components;
+        lossy if n_components < n_features. Raises if not fitted.
 
         Reconstructs the original data from the principal component representation.
         Note that if n_components < n_features, this will be a lossy reconstruction.
@@ -311,7 +318,8 @@ class PCA:
         return cv2.PCABackProject(x, self.mean, self.components_)
 
     def explained_variance_ratio(self) -> np.ndarray:
-        """Calculate the proportion of variance explained by each principal component.
+        """Return fraction of total variance explained by each component (shape (n_components,),
+        sums to <= 1). Raises if not fitted. Useful for choosing n_components.
 
         The explained variance ratio indicates how much of the total variance
         in the data is captured by each principal component. Higher values
@@ -350,7 +358,8 @@ class PCA:
         return self.explained_variance_ / total_variance
 
     def cumulative_explained_variance_ratio(self) -> np.ndarray:
-        """Calculate the cumulative proportion of variance explained.
+        """Return cumulative fraction of variance explained (monotonic 0 to <= 1). Useful for
+        choosing n_components to retain e.g. 95% variance. Raises if not fitted.
 
         Returns the cumulative sum of explained variance ratios. This is useful
         for determining how many components are needed to explain a desired
@@ -385,7 +394,8 @@ class PCA:
 
 
 def handle_empty_array(param_name: str) -> Callable[[F], F]:
-    """Decorator to handle empty array inputs gracefully.
+    """Decorator: return empty array when the named array param is empty; else call
+    wrapped function. Apply to bbox/keypoint functions that assume non-empty input.
 
     This decorator wraps a function to check if the specified array parameter
     is empty. If the array is empty, it returns the empty array immediately

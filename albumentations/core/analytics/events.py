@@ -10,10 +10,8 @@ from typing import Any
 
 @dataclass
 class ComposeInitEvent:
-    """Event data for Compose initialization tracking.
-
-    Contains minimal information about pipeline configuration and environment.
-    Structured to fit within GA4's 25 parameter limit.
+    """Payload for one Compose init: pipeline hash, transform list, targets, environment (OS, CPU, GPU, RAM).
+    to_dict() gives full nested dict.
     """
 
     # Core event data
@@ -39,7 +37,9 @@ class ComposeInitEvent:
     targets: str = "None"  # None/bboxes/keypoints/bboxes_keypoints
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert event to dictionary for other uses (not GA4)."""
+        """Serialize event to dict with top-level keys plus nested 'environment' and 'pipeline'.
+        For backends that need full payload.
+        """
         return {
             "event_type": self.event_type,
             "timestamp": self.timestamp,
@@ -51,9 +51,9 @@ class ComposeInitEvent:
                 "python_version": self.python_version,
                 "os": self.os,
                 "cpu": self.cpu,
+                "environment": self.environment,
                 "gpu": self.gpu,
                 "ram_gb": self.ram_gb,
-                "environment": self.environment,
             },
             "pipeline": {
                 "transforms": self.transforms,
@@ -63,13 +63,14 @@ class ComposeInitEvent:
 
     @staticmethod
     def generate_pipeline_hash(transforms: list[str]) -> str:
-        """Generate a hash for pipeline deduplication.
+        """Compute SHA-256 hash of the transform list for deduplication. Order preserved (not sorted);
+        different order gives different hash.
 
         Args:
-            transforms: List of transform names
+            transforms (list[str]): List of transform names
 
         Returns:
-            SHA-256 hash of the pipeline configuration
+            str: SHA-256 hash of the pipeline configuration.
 
         """
         # Do NOT sort transforms - order matters in augmentation pipelines!

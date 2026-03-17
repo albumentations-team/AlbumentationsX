@@ -31,7 +31,8 @@ except ImportError:
 
 
 def delete_random_words(words: list[str], num_words: int, py_random: random.Random) -> str:
-    """Delete a specified number of random words from a list.
+    """Delete num_words random words from list. py_random for reproducibility. Returns joined string.
+    Used by TextImage (deletion). Empty if num_words >= len(words).
 
     This function randomly removes words from the input list and joins the remaining
     words with spaces to form a new string.
@@ -55,7 +56,8 @@ def delete_random_words(words: list[str], num_words: int, py_random: random.Rand
 
 
 def swap_random_words(words: list[str], num_words: int, py_random: random.Random) -> str:
-    """Swap random pairs of words in a list of words.
+    """Swap random pairs of words. num_words swaps; py_random. Used by TextImage (swap). Returns
+    original if num_words 0 or list has fewer than 2 words.
 
     This function randomly selects pairs of words and swaps their positions
     a specified number of times.
@@ -87,7 +89,8 @@ def insert_random_stopwords(
     stopwords: tuple[str, ...] | None,
     py_random: random.Random,
 ) -> str:
-    """Insert random stopwords into a list of words.
+    """Insert random stopwords into word list. num_insertions, stopwords, py_random. Used by TextImage
+    (insertion). Returns string with stopwords at random positions.
 
     This function randomly inserts stopwords at random positions in the
     list of words a specified number of times.
@@ -113,7 +116,9 @@ def insert_random_stopwords(
 
 
 def convert_image_to_pil(image: ImageType) -> "Image":
-    """Convert a NumPy array image to a PIL image."""
+    """Convert a NumPy array image (H,W,C) to a PIL Image. Grayscale (C=1) or RGB (C=3). Used by
+    render_text for text drawing. Requires Pillow.
+    """
     try:
         from PIL import Image
     except ImportError:
@@ -129,7 +134,9 @@ def convert_image_to_pil(image: ImageType) -> "Image":
 
 
 def draw_text_on_pil_image(pil_image: "Image", metadata_list: list[dict[str, Any]]) -> "Image":
-    """Draw text on a PIL image."""
+    """Draw text on PIL image from metadata_list (bbox_coords, text, font, font_color). Mutates image.
+    Used by render_text for grayscale and RGB. Requires Pillow.
+    """
     try:
         from PIL import ImageDraw
     except ImportError:
@@ -161,7 +168,9 @@ def draw_text_on_pil_image(pil_image: "Image", metadata_list: list[dict[str, Any
 
 
 def draw_text_on_multi_channel_image(image: ImageType, metadata_list: list[dict[str, Any]]) -> ImageType:
-    """Draw text on a multi-channel image with more than three channels."""
+    """Draw text on multi-channel image (C>3). Per-channel font_color; returns numpy array. Used by
+    render_text when C>3. Requires Pillow.
+    """
     try:
         from PIL import Image, ImageDraw
     except ImportError:
@@ -207,14 +216,15 @@ def draw_text_on_multi_channel_image(image: ImageType, metadata_list: list[dict[
 @uint8_io
 @preserve_channel_dim
 def render_text(image: ImageType, metadata_list: list[dict[str, Any]], clear_bg: bool) -> ImageType:
-    """Render text onto an image based on provided metadata.
+    """Render text onto image from metadata_list (bbox_coords, text, font, font_color). clear_bg: inpaint
+    first. Grayscale, RGB, multi-channel. uint8 I/O.
 
     This function draws text on an image using metadata that specifies text content,
     position, font, and color. It can optionally clear the background before rendering.
     The function handles different image types (grayscale, RGB, multi-channel).
 
     Args:
-        image (np.ndarray): Image to draw text on.
+        image (ImageType): Image to draw text on.
         metadata_list (list[dict[str, Any]]): List of metadata dictionaries containing:
             - bbox_coords: Bounding box coordinates (x_min, y_min, x_max, y_max)
             - text: Text string to render
@@ -223,7 +233,7 @@ def render_text(image: ImageType, metadata_list: list[dict[str, Any]], clear_bg:
         clear_bg (bool): Whether to clear (inpaint) the background under the text.
 
     Returns:
-        np.ndarray: Image with text rendered on it.
+        ImageType: Image with text rendered on it.
 
     """
     # First clean background under boxes using seamless clone if clear_bg is True
@@ -244,7 +254,8 @@ def inpaint_text_background(
     metadata_list: list[dict[str, Any]],
     method: int = cv2.INPAINT_TELEA,
 ) -> np.ndarray:
-    """Inpaint (clear) regions in an image where text will be rendered.
+    """Inpaint (clear) regions where text will be rendered. metadata_list bbox regions; method
+    INPAINT_TELEA or INPAINT_NS. Before render_text when clear_bg True.
 
     This function creates a clean background for text by inpainting rectangular
     regions specified in the metadata. It removes any existing content in those

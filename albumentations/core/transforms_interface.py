@@ -1,4 +1,4 @@
-"""Module containing base interfaces for all transform implementations.
+"""Module containing base interfaces for all transform implementations. of alb
 
 This module defines the fundamental transform interfaces that form the base hierarchy for
 all transformation classes in Albumentations. It provides abstract classes and mixins that
@@ -47,7 +47,8 @@ class CombinedMeta(SerializableMeta, ValidatedTransformMeta):
 
 
 class BasicTransform(Serializable, metaclass=CombinedMeta):
-    """Base class for all transforms in Albumentations.
+    """Base class for all transforms in Albumentations. Provides core functionality for application,
+    serialization, and params.
 
     This class provides core functionality for transform application, serialization,
     and parameter handling. It defines the interface that all transforms must follow
@@ -107,7 +108,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     @property
     def strict(self) -> bool:
-        """Get the current strict mode setting.
+        """Get the current strict mode setting. Returns True if strict validation of init arguments
+        is enabled, False otherwise. Read-only.
 
         Returns:
             bool: True if strict mode is enabled, False otherwise.
@@ -117,7 +119,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     @strict.setter
     def strict(self, value: bool) -> None:
-        """Set strict mode and validate for invalid arguments if enabled."""
+        """Set strict mode and validate for invalid arguments if enabled. When True, invalid
+        __init__ args raise ValueError. Use at init or before apply.
+        """
         if value == self._strict:
             return  # No change needed
 
@@ -146,7 +150,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         random_generator: np.random.Generator,
         py_random: random.Random,
     ) -> None:
-        """Set random state directly from generators.
+        """Set random state directly from numpy and Python random generators. Used for
+        reproducibility and replay. Called by Compose.
 
         Args:
             random_generator (np.random.Generator): numpy random generator to use
@@ -157,7 +162,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         self.py_random = py_random
 
     def set_random_seed(self, seed: int | None) -> None:
-        """Set random state from seed.
+        """Set random state from a single integer seed. Initializes both numpy and Python random
+        generators for reproducibility. Called from __init__.
 
         Args:
             seed (int | None): Random seed to use
@@ -168,7 +174,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         self.py_random = random.Random(seed)
 
     def get_dict_with_id(self) -> dict[str, Any]:
-        """Return a dictionary representation of the transform with its ID.
+        """Return a dictionary representation of the transform with its ID. Used for replay and
+        debugging; includes id(self). Same as to_dict plus id.
 
         Returns:
             dict[str, Any]: Dictionary containing transform parameters and ID.
@@ -180,6 +187,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     def get_transform_init_args_names(self) -> tuple[str, ...]:
         """Returns names of arguments that are used in __init__ method of the transform.
+        Introspects MRO; excludes self and strict.
 
         This method introspects the entire Method Resolution Order (MRO) to gather the names
         of parameters accepted by the __init__ methods of all parent classes,
@@ -210,6 +218,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     def set_processors(self, processors: dict[str, BboxProcessor | KeypointsProcessor]) -> None:
         """Set the processors dictionary used for processing bbox and keypoint transformations.
+        Called by Compose when building pipeline.
 
         Args:
             processors (dict[str, BboxProcessor | KeypointsProcessor]): Dictionary mapping processor
@@ -219,7 +228,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         self.processors = processors
 
     def get_processor(self, key: str) -> BboxProcessor | KeypointsProcessor | None:
-        """Get the processor for a specific key.
+        """Get the processor for a specific key (e.g. bboxes, keypoints). Returns None
+        if the key has no processor. Used when applying transforms with params.
 
         Args:
             key (str): The processor key to retrieve.
@@ -231,7 +241,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return self.processors.get(key)
 
     def __call__(self, *args: Any, force_apply: bool = False, **kwargs: Any) -> Any:
-        """Apply the transform to the input data.
+        """Apply the transform to the input data. Accepts named kwargs (image, mask, bboxes, etc.);
+        returns dict of transformed data.
 
         Args:
             *args (Any): Positional arguments are not supported and will raise an error.
@@ -239,7 +250,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             **kwargs (Any): Input data to transform as named arguments.
 
         Returns:
-            dict[str, Any]: Transformed data.
+            Any: Transformed data (dict of transformed inputs).
 
         Raises:
             KeyError: If positional arguments are provided.
@@ -279,13 +290,14 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return kwargs
 
     def get_applied_params(self) -> dict[str, Any]:
-        """Returns the parameters that were used in the last transform application.
-        Returns empty dict if transform was not applied.
+        """Returns the parameters that were used in the last transform application; returns empty
+        dict if transform was not applied.
         """
         return self.params
 
     def inverse(self) -> "BasicTransform":
-        """Return a new transform that is the mathematical inverse of this one.
+        """Return a new transform that is the mathematical inverse of this one. Useful for TTA to
+        revert deterministic transforms. Override in subclasses.
 
         Useful for TTA (Test-Time Augmentation): apply a deterministic transform to an image
         before inference, then apply its inverse to the predicted mask to bring it back to
@@ -305,7 +317,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         )
 
     def should_apply(self, force_apply: bool = False) -> bool:
-        """Determine whether to apply the transform based on probability and force flag.
+        """Determine whether to apply the transform based on probability (p) and force_apply flag.
+        Used internally before apply_with_params.
 
         Args:
             force_apply (bool, optional): If True, always apply the transform regardless of probability.
@@ -321,7 +334,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return self.py_random.random() < self.p
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Apply transforms with parameters."""
+        """Apply transforms with parameters. Dispatches each target (image, mask, bboxes, etc.) to
+        the corresponding apply_* method.
+        """
         res = {}
         for key, arg in kwargs.items():
             if key in self._key2func and arg is not None:
@@ -336,7 +351,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return res
 
     def set_deterministic(self, flag: bool, save_key: str = "replay") -> "BasicTransform":
-        """Set transform to be deterministic."""
+        """Set transform to be deterministic. When True, params are saved under save_key for
+        replay (e.g. TTA). Returns self for chaining.
+        """
         if save_key == "params":
             msg = "params save_key is reserved"
             raise KeyError(msg)
@@ -357,7 +374,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return f"{self.__class__.__name__}({format_args(state)})"
 
     def apply(self, img: ImageType, *args: Any, **params: Any) -> ImageType:
-        """Apply transform on image."""
+        """Apply transform on image. Override in subclasses; receives params from get_params and
+        get_params_dependent_on_data. Single image only.
+        """
         raise NotImplementedError
 
     @staticmethod
@@ -367,15 +386,16 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         *,
         ensure_contiguous: bool = False,
     ) -> np.ndarray:
-        """Apply a function to each element in a batch with pre-allocation.
+        """Apply a function to each element in a batch with pre-allocation. Uses first element to
+        determine output shape; avoids per-call allocation.
 
         Args:
-            batch: Input batch array of shape (N, ...)
-            apply_fn: Function to apply to each element
-            ensure_contiguous: Whether to ensure C-contiguous output
+            batch (np.ndarray): Input batch array of shape (N, ...)
+            apply_fn (Callable[[np.ndarray], np.ndarray]): Function to apply to each element
+            ensure_contiguous (bool): Whether to ensure C-contiguous output
 
         Returns:
-            Transformed batch array
+            np.ndarray: Transformed batch array.
 
         """
         # Handle empty batch
@@ -401,7 +421,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        """Apply transform on images.
+        """Apply transform on images. Input shape (N, H, W, C); uses _apply_to_batch with per-image
+        apply. Returns same format. Batch API.
 
         Args:
             images (ImageType): Input images as numpy array of shape:
@@ -417,7 +438,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return self._apply_to_batch(images, lambda img: self.apply(img, **params))
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform slice by slice to a volume.
+        """Apply transform slice by slice to a volume. Delegates to apply_to_images so each slice
+        is transformed consistently. Single volume.
 
         Args:
             volume (VolumeType): Input volume of shape (depth, height, width) or (depth, height, width, channels)
@@ -431,15 +453,20 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return self.apply_to_images(volume, *args, **params)
 
     def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to multiple volumes."""
+        """Apply transform to multiple volumes. Uses _apply_to_batch; each volume is processed via
+        apply_to_volume. Returns same format.
+        """
         return self._apply_to_batch(volumes, lambda vol: self.apply_to_volume(vol, *args, **params))
 
     def get_params(self) -> dict[str, Any]:
-        """Returns parameters independent of input."""
+        """Returns parameters independent of input data. Override in subclasses to add random
+        params (e.g. angle, crop size). Default returns {}.
+        """
         return {}
 
     def update_transform_params(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Updates parameters with input shape and transform-specific params.
+        """Updates parameters with input shape and transform-specific params (interpolation, fill,
+        fill_mask, bbox_type). Merges get_params output.
 
         Args:
             params (dict[str, Any]): Parameters to be updated
@@ -464,7 +491,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return params
 
     def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
-        """Extract shape information from various data types."""
+        """Extract shape information from various data types (image, images, volume, mask, etc.).
+        Used for params that need H, W. Returns tuple or None.
+        """
         # Check images/volumes first (most common)
         if "image" in data:
             return data["image"].shape
@@ -489,7 +518,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return None
 
     def _add_transform_specific_params(self, params: dict[str, Any]) -> None:
-        """Add transform-specific parameters to params dict."""
+        """Add transform-specific parameters to params dict (interpolation, fill, fill_mask).
+        Called from update_transform_params. Mutates params in place.
+        """
         if hasattr(self, "interpolation"):
             params["interpolation"] = self.interpolation
         if hasattr(self, "fill"):
@@ -498,12 +529,15 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             params["fill_mask"] = self.fill_mask
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Returns parameters dependent on input."""
+        """Returns parameters dependent on input data (e.g. crop coordinates from image shape).
+        Override in subclasses; default returns params unchanged.
+        """
         return params
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
-        """Get mapping of target keys to their corresponding processing functions.
+        """Get mapping of target keys to their corresponding processing functions (e.g. image ->
+        apply, mask -> apply_to_mask). Subclasses override.
 
         Returns:
             dict[str, Callable[..., Any]]: Dictionary mapping target keys to their processing functions.
@@ -516,17 +550,18 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         raise NotImplementedError
 
     def apply_to_user_data(self, data: Any, **params: Any) -> Any:
-        """Apply transform to user-defined data.
+        """Apply transform to user-defined data. By default returns data unchanged (passthrough).
+        Override to update custom keys (e.g. captions) from params.
 
         By default, returns the data unchanged (passthrough). Override in a subclass to
         update arbitrary user data in response to geometric or photometric transforms.
 
         Args:
-            data: Arbitrary user-defined data of any type.
-            **params: Transform parameters (same as passed to other apply_* methods).
+            data (Any): Arbitrary user-defined data of any type.
+            **params (Any): Transform parameters (same as passed to other apply_* methods).
 
         Returns:
-            The (optionally modified) user data. Must return the same type as the input.
+            Any: The (optionally modified) user data. Must return the same type as the input.
 
         Examples:
             >>> import albumentations as A
@@ -538,7 +573,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return data
 
     def _set_keys(self) -> None:
-        """Set _available_keys."""
+        """Set _available_keys and _key2func from _targets and targets. Adds user_data as
+        passthrough. Called from __init__. Override targets in subclass.
+        """
         if not hasattr(self, "_targets"):
             self._available_keys = set()
         else:
@@ -554,14 +591,14 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     @property
     def available_keys(self) -> set[str]:
-        """Returns set of available keys."""
+        """Returns set of available keys (target names this transform can process). Includes
+        built-in targets and add_targets additions.
+        """
         return self._available_keys
 
     def add_targets(self, additional_targets: dict[str, str]) -> None:
-        """Add targets to transform them the same way as one of existing targets.
-        ex: {'target_image': 'image'}
-        ex: {'obj1_mask': 'mask', 'obj2_mask': 'mask'}
-        by the way you must have at least one object with key 'image'
+        """Register additional targets transformed like an existing one (e.g. {'image2': 'image'}).
+        Need at least 'image' in pipeline.
 
         Args:
             additional_targets (dict[str, str]): keys - new target name, values
@@ -581,14 +618,15 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     @property
     def targets_as_params(self) -> list[str]:
-        """Targets used to get params dependent on targets.
-        This is used to check input has all required targets.
+        """Targets used to get params dependent on targets. Used to check input has all required
+        targets before apply. Override to list keys (e.g. ['image']).
         """
         return []
 
     @classmethod
     def get_class_fullname(cls) -> str:
-        """Get the full qualified name of the class.
+        """Get the full qualified name of the class. Returns shortest fullname for serialization
+        (e.g. albumentations.HorizontalFlip).
 
         Returns:
             str: The shortest class fullname.
@@ -598,7 +636,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     @classmethod
     def is_serializable(cls) -> bool:
-        """Check if the transform class is serializable.
+        """Check if the transform class is serializable. True for all registered transforms; used
+        by serialization to skip non-serializable classes.
 
         Returns:
             bool: True if the class is serializable, False otherwise.
@@ -607,11 +646,14 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return True
 
     def get_base_init_args(self) -> dict[str, Any]:
-        """Returns base init args - p"""
+        """Returns base init args (e.g. p) for serialization. Subclasses may override
+        to add more; merged into to_dict_private output.
+        """
         return {"p": self.p}
 
     def get_transform_init_args(self) -> dict[str, Any]:
-        """Get transform initialization arguments for serialization.
+        """Get transform initialization arguments for serialization. Returns dict of init param
+        names and values, excluding empty containers and seed.
 
         Returns a dictionary of parameter names and their values, excluding parameters
         that are not actually set on the instance or that shouldn't be serialized.
@@ -636,7 +678,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return args
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Returns a dictionary representation of the transform, excluding internal parameters."""
+        """Returns a dictionary representation of the transform for serialization.
+        Excludes internal parameters; includes __class_fullname__ and init args.
+        """
         state = {"__class_fullname__": self.get_class_fullname()}
         state.update(self.get_base_init_args())
 
@@ -653,7 +697,10 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
 
 class DualTransform(BasicTransform):
-    """A base class for transformations that should be applied both to an image and its corresponding properties
+    """Base class for transforms that apply to both image and annotations (masks, bboxes, keypoints),
+    keeping them spatially consistent.
+
+    When a transform is applied to an image, all associated entities (masks, bounding boxes, keypoints) are
     such as masks, bounding boxes, and keypoints. This class ensures that when a transform is applied to an image,
     all associated entities are transformed accordingly to maintain consistency between the image and its annotations.
 
@@ -757,7 +804,8 @@ class DualTransform(BasicTransform):
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
-        """Get mapping of target keys to their corresponding processing functions for DualTransform.
+        """Get mapping of target keys to their corresponding processing functions for DualTransform
+        (image, mask, bboxes, keypoints, etc.).
 
         Returns:
             dict[str, Callable[..., Any]]: Dictionary mapping target keys to their processing functions.
@@ -803,13 +851,14 @@ class DualTransform(BasicTransform):
         return self._apply_to_batch(masks3d, lambda mask3d: self.apply_to_mask3d(mask3d, **params))
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
-        """Get the transform name to use for label mapping.
+        """Get the transform name to use for label mapping. For most transforms returns class
+        name; for D4/SquareSymmetry maps group_element to base name.
 
         For most transforms, this is just the class name. For D4/SquareSymmetry,
         we map the group element to the corresponding base transform name.
 
         Args:
-            **params: Transform parameters, may contain group_element for D4 transforms
+            **params (Any): Transform parameters, may contain group_element for D4 transforms
 
         Returns:
             str | None: Transform name to use for label mapping, or None if no mapping should be applied
@@ -841,15 +890,16 @@ class DualTransform(BasicTransform):
         return class_name if class_name in parity_changing_transforms else None
 
     def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply label mapping by reordering entire keypoint rows.
+        """Apply label mapping by reordering entire keypoint rows. For keypoint regression, row
+        index encodes semantics; flip/transpose swap rows via mapping.
 
         For keypoint regression tasks, the row index encodes semantic meaning
         (e.g., row 0 = left eye heatmap). On transforms like HorizontalFlip,
         we need to swap entire rows, not just relabel them.
 
         Args:
-            keypoints: Keypoints array with potential label columns attached
-            **params: Transform parameters
+            keypoints (np.ndarray): Keypoints array with potential label columns attached
+            **params (Any): Transform parameters
 
         Returns:
             np.ndarray: Keypoints array with rows reordered based on label mapping
@@ -881,12 +931,13 @@ class DualTransform(BasicTransform):
         label_fields: Sequence[str],
         field_mappings: dict[str, dict[int, int]],
     ) -> np.ndarray:
-        """Swap keypoint rows based on label mappings.
+        """Swap keypoint rows based on label mappings. Used when transform changes left/right or
+        similar; swaps entire rows so coords and labels stay consistent.
 
         Args:
-            keypoints: Keypoints array with label columns
-            label_fields: List of label field names
-            field_mappings: Mapping of field names to label swaps
+            keypoints (np.ndarray): Keypoints array with label columns
+            label_fields (Sequence[str]): List of label field names
+            field_mappings (dict[str, dict[int, int]]): Mapping of field names to label swaps
 
         Returns:
             np.ndarray: Keypoints array with rows swapped
@@ -914,12 +965,13 @@ class DualTransform(BasicTransform):
         col_idx: int,
         mapping: dict[int, int],
     ) -> np.ndarray:
-        """Apply label mapping to a single label column.
+        """Apply label mapping to a single label column. Swaps rows for paired labels or updates
+        unpaired; used internally by _swap_keypoint_rows_by_labels.
 
         Args:
-            keypoints: Keypoints array
-            col_idx: Column index of the label field
-            mapping: Label swap mapping
+            keypoints (np.ndarray): Keypoints array
+            col_idx (int): Column index of the label field
+            mapping (dict[int, int]): Label swap mapping
 
         Returns:
             np.ndarray: Keypoints array with rows swapped
@@ -951,7 +1003,9 @@ class DualTransform(BasicTransform):
         return keypoints
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Apply transforms with parameters, including automatic keypoint label swapping."""
+        """Apply transforms with parameters, including automatic keypoint label swapping. After
+        super().apply_with_params, applies _apply_label_mapping_to_keypoints.
+        """
         res = super().apply_with_params(params, *args, **kwargs)
 
         # Apply label mapping to keypoints if they were transformed
@@ -962,13 +1016,16 @@ class DualTransform(BasicTransform):
 
 
 class ImageOnlyTransform(BasicTransform):
-    """Transform applied to image only."""
+    """Transform applied to image (and volume) only. Does not transform masks, bboxes, or
+    keypoints; use DualTransform for those.
+    """
 
     _targets = (Targets.IMAGE, Targets.VOLUME)
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
-        """Get mapping of target keys to their corresponding processing functions for ImageOnlyTransform.
+        """Get mapping of target keys to their corresponding processing functions for
+        ImageOnlyTransform (image, images, volume, volumes, user_data).
 
         Returns:
             dict[str, Callable[..., Any]]: Dictionary mapping target keys to their processing functions.
@@ -984,7 +1041,8 @@ class ImageOnlyTransform(BasicTransform):
 
 
 class NoOp(DualTransform):
-    """Identity transform (does nothing).
+    """Identity transform (does nothing). Passes all targets through unchanged. Use as placeholder
+    or in conditional pipelines.
 
     Targets:
         image, mask, bboxes, keypoints, volume, mask3d
@@ -1041,7 +1099,7 @@ class NoOp(DualTransform):
     """
 
     _targets = ALL_TARGETS
-    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types through unchanged
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return keypoints
@@ -1069,7 +1127,8 @@ class NoOp(DualTransform):
 
 
 class Transform3D(DualTransform):
-    """Base class for all 3D transforms.
+    """Base class for all 3D transforms. Inherits from DualTransform; applies to volumes,
+    masks3d, keypoints. Override apply_to_volume and apply_to_mask3d.
 
     Transform3D inherits from DualTransform because 3D transforms can be applied to both
     volumes and masks, similar to how 2D DualTransforms work with images and masks.
@@ -1083,21 +1142,29 @@ class Transform3D(DualTransform):
     """
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to single 3D volume."""
+        """Apply transform to single 3D volume. Override in subclasses; input shape (D, H, W, C)
+        or (D, H, W). Returns same shape and dtype.
+        """
         raise NotImplementedError
 
     @batch_transform("spatial", keep_depth_dim=True)
     def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to batch of 3D volumes."""
+        """Apply transform to batch of 3D volumes. Uses batch_transform with keep_depth_dim;
+        each volume passed to apply_to_volume.
+        """
         return self.apply_to_volume(volumes, *args, **params)
 
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to single 3D mask."""
+        """Apply transform to a single 3D mask. Delegates to apply_to_volume. Input shape (D, H, W) or
+        (D, H, W, C). Output shape unchanged. For VolumeTransform.
+        """
         return self.apply_to_volume(mask3d, *args, **params)
 
     @batch_transform("spatial", keep_depth_dim=True)
     def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to batch of 3D masks."""
+        """Apply transform to batch of 3D masks. Uses batch_transform with keep_depth_dim;
+        each mask passed to apply_to_mask3d. Same shape.
+        """
         return self.apply_to_mask3d(masks3d, *args, **params)
 
     @property
@@ -1114,6 +1181,7 @@ class Transform3D(DualTransform):
 
 class CustomTransformsApplyMixin:
     """Mixin that auto-registers custom apply_to_<X> methods as handlers for data key <X>.
+    Place before base in MRO so _set_keys discovers them.
 
     Define methods named `apply_to_<key>` in your transform subclass; they are
     discovered at init time and routed through the standard `apply_with_params`
@@ -1126,7 +1194,7 @@ class CustomTransformsApplyMixin:
 
             class MyTransform(CustomTransformsApplyMixin, A.DualTransform):
                 def apply_to_label(self, label, **params):
-                    return (label + params["factor"]) % 4
+                    return (label + params["factor']) % 4
 
     Registration rules
         Methods named `apply_to_<X>` are registered if they are:
@@ -1181,10 +1249,8 @@ class CustomTransformsApplyMixin:
             self._key2func[key] = method
 
     def _is_user_defined(self, method_name: str) -> bool:
-        """Returns True if method_name is defined in a class that precedes
-        CustomTransformsApplyMixin in the MRO (i.e. in the concrete subclass
-        or its parents before the mixin). Excludes methods inherited from
-        albumentations base classes.
+        """True if method_name is defined on subclass or parents before mixin in MRO (not from albumentations base).
+        Used to register only user-defined apply_to_<X>.
         """
         for mro_class in type(self).__mro__:
             if mro_class is CustomTransformsApplyMixin:

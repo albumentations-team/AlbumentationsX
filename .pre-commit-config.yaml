@@ -44,9 +44,10 @@ repos:
     hooks:
     - id: check-docstrings
       name: Check Docstrings for '---' and '``' (double backticks)
-      entry: python tools/check_docstrings.py
+      entry: python tools/check_docstring_format.py
       language: python
       types: [python]
+      exclude: ^tools/
     - id: check-naming-conflicts
       name: Check for naming conflicts between modules and functions/classes
       entry: python -m tools.check_naming_conflicts
@@ -114,7 +115,7 @@ repos:
         language: system
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.4
+    rev: v0.15.6
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -134,7 +135,7 @@ repos:
       - id: python-use-type-annotations
       - id: text-unicode-replacement-char
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.2
     hooks:
       - id: codespell
         additional_dependencies: ["tomli"]
@@ -147,7 +148,7 @@ repos:
         args:
           [ --config-file=pyproject.toml ]
   - repo: https://github.com/ternaus/google-docstring-parser
-    rev: 0.0.9  # Use the latest version
+    rev: 0.0.11
     hooks:
       - id: check-google-docstrings
         files: ^albumentations/

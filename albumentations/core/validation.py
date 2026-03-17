@@ -1,5 +1,4 @@
 """Module containing validation mechanisms for transform parameters.
-
 This module provides a metaclass that enables parameter validation for transforms using
 Pydantic models. It intercepts the initialization of transform classes to validate their
 parameters against schema definitions, raising appropriate errors for invalid values and
@@ -16,7 +15,8 @@ from pydantic import BaseModel, ValidationError
 
 
 class ValidatedTransformMeta(type):
-    """Metaclass that validates transform parameters during instantiation.
+    """Metaclass that validates transform parameters during instantiation using Pydantic.
+    Wraps __init__ to enforce InitSchema before object creation.
 
     This metaclass enables automatic validation of transform parameters using Pydantic models,
     ensuring proper typing and constraints are enforced before object creation.
@@ -88,8 +88,8 @@ class ValidatedTransformMeta(type):
         return validated_kwargs
 
     def __new__(cls: type[Any], name: str, bases: tuple[type, ...], dct: dict[str, Any]) -> type[Any]:
-        """This is a custom metaclass that validates the parameters of the class during instantiation.
-        It is used to ensure that the parameters of the class are valid and that they are of the correct type.
+        """Build new class; validate InitSchema parameters at class instantiation and wrap
+        __init__ with validation. Transform base classes use this metaclass.
         """
         if "InitSchema" in dct and issubclass(dct["InitSchema"], BaseModel):
             original_init: Callable[..., Any] | None = dct.get("__init__")
@@ -100,7 +100,8 @@ class ValidatedTransformMeta(type):
             original_sig = signature(original_init)
 
             def custom_init(self: Any, *args: Any, **kwargs: Any) -> None:
-                """Custom initialization method that validates parameters.
+                """Wrapped __init__ that validates parameters against InitSchema (Pydantic);
+                then calls original __init__. strict controls ValidationError handling.
 
                 This method wraps the original __init__ to add parameter validation
                 using the InitSchema Pydantic model. It processes arguments, validates
@@ -108,9 +109,9 @@ class ValidatedTransformMeta(type):
                 strict mode setting.
 
                 Args:
-                    self: The instance being initialized.
-                    *args: Positional arguments passed to __init__.
-                    **kwargs: Keyword arguments passed to __init__, including optional
+                    self (Any): The instance being initialized.
+                    *args (Any): Positional arguments passed to __init__.
+                    **kwargs (Any): Keyword arguments passed to __init__, including optional
                         'strict' parameter for validation mode.
 
                 Raises:

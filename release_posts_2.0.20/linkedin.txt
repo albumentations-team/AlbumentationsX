@@ -1,0 +1,17 @@
+Albumentations 2.0.20 is out! 🚀
+
+Two major updates for computer vision pipelines:
+
+⚡ Performance
+• Perspective transform — up to 2.7× faster on video batches (grayscale depth maps, medical slices)
+• HueSaturationValue — up to 1.2× faster on large image batches
+Biggest gains for grayscale video where we now warp the whole batch in a single C++ call instead of frame-by-frame.
+
+🆕 user_data target
+Pass arbitrary custom data through your augmentation pipeline — camera intrinsics, captions, point clouds, timestamps. By default it passes through unchanged; override apply_to_user_data to update it when transforms change the image.
+
+Use cases: robot/autonomous driving (update K matrix on crop), vision-language models (keep captions in sync with flips), LiDAR/BEV, multi-sensor fusion.
+
+pip install albumentationsx==2.0.20
+
+#ComputerVision #MachineLearning #DeepLearning #DataAugmentation #Albumentations

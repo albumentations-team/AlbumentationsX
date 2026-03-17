@@ -59,7 +59,8 @@ D4_INVERSE: dict[D4GroupElement, D4GroupElement] = {
 
 
 class ReferenceImage(TypedDict):
-    """Dictionary-like container for reference image data.
+    """TypedDict for reference image data: image (required), optional mask, bbox, keypoints.
+    Use for reference-based transforms (e.g. style transfer, exemplar).
 
     A typed dictionary defining the structure of reference image data used within
     Albumentations, including optional components like masks, bounding boxes,
@@ -80,7 +81,8 @@ class ReferenceImage(TypedDict):
 
 
 class Targets(Enum):
-    """Enumeration of supported target types in Albumentations.
+    """Enum of supported target types: image, mask, bboxes, keypoints, volume, mask3d, user_data.
+    Compose and transform targets use this to dispatch apply_* methods.
 
     This enum defines the different types of data that can be augmented
     by Albumentations transforms, including both 2D and 3D targets.

@@ -9,17 +9,16 @@ from albumentations.core.cache_utils import get_cache_dir
 
 
 class SettingsManager:
-    """Simple settings manager for AlbumentationsX configuration.
-
-    This class manages user settings with environment variable overrides.
-    Settings are stored in a JSON file in the user's cache directory.
+    """Stores settings (e.g. telemetry on/off) in a JSON file under the cache dir.
+    Env vars ALBUMENTATIONS_NO_TELEMETRY and OFFLINE override file.
     """
 
     def __init__(self, settings_file: Path | None = None):
-        """Initialize the settings manager.
+        """Create manager; if no path given, use get_cache_dir()/settings.json.
+        Loads from file and applies env overrides immediately.
 
         Args:
-            settings_file: Path to settings file. If None, uses default location.
+            settings_file (Path | None): Path to settings file. If None, uses default location.
 
         """
         self.settings_file = settings_file or (get_cache_dir() / "settings.json")
@@ -29,7 +28,9 @@ class SettingsManager:
         self._settings = self._load_settings()
 
     def _load_settings(self) -> dict[str, Any]:
-        """Load settings from file with defaults and env var overrides."""
+        """Merge defaults, file contents (if present), and env vars (ALBUMENTATIONS_NO_TELEMETRY, OFFLINE).
+        Returns the merged dict.
+        """
         settings = self.defaults.copy()
 
         # Load from file if exists
@@ -51,30 +52,34 @@ class SettingsManager:
         return settings
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Get a setting value.
+        """Return value for key, or default if missing. Typical key: 'telemetry' (bool).
+        Does not mutate settings. File path is platform-specific.
 
         Args:
-            key: Setting name
-            default: Default value if setting not found
+            key (str): Setting name
+            default (Any): Default value if setting not found
 
         Returns:
-            Setting value
+            Any: Setting value.
 
         """
         return self._settings.get(key, default)
 
     def update(self, **kwargs: Any) -> None:
-        """Update settings and save to file.
+        """Merge kwargs into current settings and write the result to the JSON file in the cache directory.
+        Overwrites file. Persists immediately.
 
         Args:
-            **kwargs: Settings to update
+            **kwargs (Any): Settings to update
 
         """
         self._settings.update(kwargs)
         self._save_settings()
 
     def _save_settings(self) -> None:
-        """Save current settings to file."""
+        """Write self._settings to JSON file (indent=2). Creates parent dirs if needed.
+        Ignores OSError on write failure. Called after update().
+        """
         try:
             self.settings_file.parent.mkdir(parents=True, exist_ok=True)
             with self.settings_file.open("w") as f:
@@ -84,7 +89,9 @@ class SettingsManager:
 
     @property
     def telemetry_enabled(self) -> bool:
-        """Check if telemetry is enabled."""
+        """True if telemetry is enabled (from settings file or env). Default True unless
+        ALBUMENTATIONS_NO_TELEMETRY or OFFLINE is set.
+        """
         return self.get("telemetry", True)
 
 

@@ -500,6 +500,8 @@ This small difference is crucial for pixel-perfect accuracy. Always use the appr
 ### Docstrings
 
 - Use Google-style docstrings
+- **Transform apply methods:** Do not add docstrings to `apply`, `apply_to_image`, `apply_to_mask`, or other `apply_to_*` methods in transform classes. The transform class docstring and the base interface in `transforms_interface` are sufficient.
+- **First paragraph (120–160 characters):** A **useful short description** — an elevator pitch in about two lines: what the function or transform does, how it works in one sentence, and when to use it. This is the web/search preview. Do **not** list parameter names ("Parameters: x, y, z" or "Params: ...") in the first paragraph — that belongs in Args. Do **not** use "Preserves X" boilerplate (e.g. "Preserves channel count", "preserves dtype and channels") in the first paragraph — describe effect and when to use it instead. Do not put "Targets: ...", "Same shape", "Used by X", return type (e.g. "Returns np.ndarray"), or "Supports uint8/float32" (or Image types) in the first paragraph — return type belongs in Returns; dtype/target support has a separate Image types section, and all transforms support uint8 and float32 unless noted. Line limit is 120 characters, so the first paragraph typically spans two lines (wrap at a word boundary). Both length (120–160) and usefulness matter for discoverability.
 - Include type information, parameter descriptions, and examples:
 
   ```python

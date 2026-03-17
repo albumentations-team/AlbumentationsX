@@ -50,8 +50,8 @@ def shorten_class_name(class_fullname: str) -> str:
 
 
 class SerializableMeta(ABCMeta):
-    """A metaclass that is used to register classes in `SERIALIZABLE_REGISTRY` or `NON_SERIALIZABLE_REGISTRY`
-    so they can be found later while deserializing transformation pipeline using classes full names.
+    """Metaclass that registers transform classes for lookup by full name during deserialization.
+    Uses SERIALIZABLE_REGISTRY / NON_SERIALIZABLE_REGISTRY.
     """
 
     def __new__(cls, name: str, bases: tuple[type, ...], *args: Any, **kwargs: Any) -> "SerializableMeta":
@@ -65,7 +65,8 @@ class SerializableMeta(ABCMeta):
 
     @classmethod
     def is_serializable(cls) -> bool:
-        """Check if the class should be registered as serializable.
+        """Return whether the class is registered for serialization. Subclasses override to True;
+        default is False. Check this when saving or loading pipelines.
 
         Returns:
             bool: False by default. Subclasses override this to return True if they
@@ -76,7 +77,8 @@ class SerializableMeta(ABCMeta):
 
     @classmethod
     def get_class_fullname(cls) -> str:
-        """Get the full class name for serialization registry.
+        """Return shortest full class name used in serialization registry (e.g.
+        module.ClassName or alias). Uniquely identifies the class.
 
         Returns:
             str: The shortened class name that uniquely identifies this class
@@ -94,7 +96,8 @@ class Serializable(metaclass=SerializableMeta):
     @classmethod
     @abstractmethod
     def is_serializable(cls) -> bool:
-        """Check if this class is serializable.
+        """Return True if the class supports serialization (used for registry). Subclasses must
+        implement this method. Check when saving or loading pipelines.
 
         Subclasses must implement this method to indicate whether they support
         serialization. Classes that return True will be registered in SERIALIZABLE_REGISTRY.
@@ -112,7 +115,8 @@ class Serializable(metaclass=SerializableMeta):
     @classmethod
     @abstractmethod
     def get_class_fullname(cls) -> str:
-        """Get the full class name used for serialization.
+        """Return unique class name for serialization (e.g. module.ClassName). Required when
+        saving or loading pipelines. Subclasses must implement.
 
         This method returns a unique identifier for the class that is used when
         serializing and deserializing. The name must be unique across all
@@ -133,8 +137,8 @@ class Serializable(metaclass=SerializableMeta):
         raise NotImplementedError
 
     def to_dict(self, on_not_implemented_error: str = "raise") -> dict[str, Any]:
-        """Take a transform pipeline and convert it to a serializable representation that uses only standard
-        python data types: dictionaries, lists, strings, integers, and floats.
+        """Convert this transform to a serializable dict (dict, list, str, int, float).
+        Use on_not_implemented_error to raise or warn.
 
         Args:
             self (Serializable): A transform that should be serialized. If the transform doesn't implement the `to_dict`
@@ -165,8 +169,8 @@ class Serializable(metaclass=SerializableMeta):
 
 
 def to_dict(transform: Serializable, on_not_implemented_error: str = "raise") -> dict[str, Any]:
-    """Take a transform pipeline and convert it to a serializable representation that uses only standard
-    python data types: dictionaries, lists, strings, integers, and floats.
+    """Convert a transform to a serializable dict of standard Python types.
+    Delegates to transform.to_dict; on_not_implemented_error: raise or warn.
 
     Args:
         transform (Serializable): A transform that should be serialized. If the transform doesn't implement
@@ -200,12 +204,12 @@ def from_dict(
     transform_dict: dict[str, Any],
     nonserializable: dict[str, Any] | None = None,
 ) -> Serializable | None:
-    """Args:
-    transform_dict: A dictionary with serialized transform pipeline.
-    nonserializable (dict): A dictionary that contains non-serializable transforms.
-        This dictionary is required when you are restoring a pipeline that contains non-serializable transforms.
-        Keys in that dictionary should be named same as `name` arguments in respective transforms from
-        a serialized pipeline.
+    """Restore a transform (or pipeline) from a serialized dict. Pass nonserializable
+    for Lambda/custom transforms keyed by name.
+
+    Args:
+        transform_dict (dict[str, Any]): Serialized transform pipeline.
+        nonserializable (dict[str, Any] | None): Optional dict of non-serializable transforms keyed by name.
 
     """
     register_additional_transforms()
@@ -257,8 +261,8 @@ def check_data_format(data_format: Literal["json", "yaml"]) -> None:
 
 
 def serialize_enum(obj: Any) -> Any:
-    """Recursively search for Enum objects and convert them to their value.
-    Also handle any Mapping or Sequence types.
+    """Recursively replace Enum instances with their value; traverse Mappings and
+    Sequences. Call before saving pipeline to JSON/YAML.
     """
     if isinstance(obj, Mapping):
         return {k: serialize_enum(v) for k, v in obj.items()}
@@ -273,20 +277,16 @@ def save(
     data_format: Literal["json", "yaml"] = "json",
     on_not_implemented_error: Literal["raise", "warn"] = "raise",
 ) -> None:
-    """Serialize a transform pipeline and save it to either a file specified by a path or a file-like object
-    in either JSON or YAML format.
+    """Serialize a transform pipeline to a file or file-like object in JSON or YAML.
+    Use on_not_implemented_error to raise or warn if a transform lacks to_dict.
 
     Args:
         transform (Serializable): The transform pipeline to serialize.
-        filepath_or_buffer (Union[str, Path, TextIO]): The file path or file-like object to write the serialized
-            data to.
-            If a string is provided, it is interpreted as a path to a file. If a file-like object is provided,
-            the serialized data will be written to it directly.
-        data_format (str): The format to serialize the data in. Valid options are 'json' and 'yaml'.
-            Defaults to 'json'.
-        on_not_implemented_error (str): Determines the behavior if a transform does not implement the `to_dict` method.
-            If set to 'raise', a `NotImplementedError` is raised. If set to 'warn', the exception is ignored, and
-            no transform arguments are saved. Defaults to 'raise'.
+        filepath_or_buffer (str | Path | TextIO): The file path or file-like object to write the serialized
+            data to. String is interpreted as a path; file-like object is written to directly.
+        data_format (Literal['json', 'yaml']): The format to serialize the data in. Defaults to 'json'.
+        on_not_implemented_error (Literal['raise', 'warn']): If a transform does not implement to_dict:
+            'raise' raises NotImplementedError; 'warn' ignores and omits transform arguments. Defaults to 'raise'.
 
     Raises:
         ValueError: If `data_format` is 'yaml' but PyYAML is not installed.
@@ -320,16 +320,15 @@ def load(
     data_format: Literal["json", "yaml"] = "json",
     nonserializable: dict[str, Any] | None = None,
 ) -> object:
-    """Load a serialized pipeline from a file or file-like object and construct a transform pipeline.
+    """Load a serialized transform pipeline from file or file-like object (JSON or YAML).
+    Pass nonserializable for Lambda/custom.
 
     Args:
-        filepath_or_buffer (Union[str, Path, TextIO]): The file path or file-like object to read the serialized
-            data from.
-            If a string is provided, it is interpreted as a path to a file. If a file-like object is provided,
-            the serialized data will be read from it directly.
-        data_format (Literal["json", "yaml"]): The format of the serialized data.
+        filepath_or_buffer (str | Path | TextIO): The file path or file-like object to read the serialized
+            data from. String is interpreted as a path; file-like object is read from directly.
+        data_format (Literal['json', 'yaml']): The format of the serialized data.
             Defaults to 'json'.
-        nonserializable (Optional[dict[str, Any]]): A dictionary that contains non-serializable transforms.
+        nonserializable (dict[str, Any] | None): A dictionary that contains non-serializable transforms.
             This dictionary is required when restoring a pipeline that contains non-serializable transforms.
             Keys in the dictionary should be named the same as the `name` arguments in respective transforms
             from the serialized pipeline. Defaults to None.
@@ -379,13 +378,15 @@ def register_additional_transforms() -> None:
 
 
 def get_shortest_class_fullname(cls: type[Any]) -> str:
-    """The function `get_shortest_class_fullname` takes a class object as input and returns its shortened
-    full name.
+    """Return the shortest full class name for a class (e.g. module.ClassName or alias).
+    Used for serialization registry lookup.
 
-    :param cls: The parameter `cls` is of type `Type[BasicCompose]`, which means it expects a class that
-    is a subclass of `BasicCompose`
-    :type cls: Type[BasicCompose]
-    :return: a string, which is the shortened version of the full class name.
+    Args:
+        cls (type[Any]): Class (e.g. a transform or Compose subclass).
+
+    Returns:
+        str: Shortened full class name.
+
     """
     class_fullname = f"{cls.__module__}.{cls.__name__}"
     return shorten_class_name(class_fullname)

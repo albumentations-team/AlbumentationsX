@@ -30,16 +30,17 @@ __all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "zoom_blur"]
 
 @preserve_channel_dim
 def box_blur(img: ImageType, ksize: int) -> ImageType:
-    """Blur an image.
+    """Smooth image with uniform rectangular kernel (moving average). ksize sets size. Use for
+    mild noise reduction or downscale prep.
 
     This function applies a blur to an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         ksize (int): Kernel size.
 
     Returns:
-        np.ndarray: Blurred image.
+        ImageType: Blurred image.
 
     """
     img = np.array(img, copy=True, order="C")
@@ -56,20 +57,21 @@ def glass_blur(
     dxy: np.ndarray,
     mode: Literal["fast", "exact"],
 ) -> ImageType:
-    """Glass blur an image.
+    """Glass-like effect: Gaussian blur then random pixel swaps. Sigma, max_delta, iterations, dxy.
+    Use for frosted-glass look.
 
     This function applies a glass blur to an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         sigma (float): Sigma.
         max_delta (int): Maximum delta.
         iterations (int): Number of iterations.
         dxy (np.ndarray): Dxy.
-        mode (Literal["fast", "exact"]): Mode.
+        mode (Literal['fast', 'exact']): Mode.
 
     Returns:
-        np.ndarray: Glass blurred image.
+        ImageType: Glass blurred image.
 
     """
     x = cv2.GaussianBlur(np.array(img), sigmaX=sigma, ksize=(0, 0))
@@ -104,7 +106,9 @@ def glass_blur(
 
 
 def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
-    """Create a defocus (aliased disk) convolution kernel."""
+    """Create defocus (aliased disk) convolution kernel. radius, alias_blur control disk
+    shape and smoothing. Returns kernel for convolve.
+    """
     length = np.arange(-max(8, radius), max(8, radius) + 1)
     ksize = 3 if radius <= EIGHT else 5
 
@@ -116,21 +120,24 @@ def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
 
 
 def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
-    """Defocus an image."""
+    """Blur with aliased disk kernel to simulate out-of-focus. radius, alias_blur set size and
+    softness. Use for depth-of-field or bokeh-style effects.
+    """
     return convolve(img, kernel=create_defocus_kernel(radius, alias_blur))
 
 
 def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:
-    """Central zoom an image.
+    """Zoom from center by integer factor: crop center, upsample, trim to original size.
+    Used in zoom-blur pipeline; zoom_factor must be positive.
 
     This function zooms an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         zoom_factor (int): Zoom factor.
 
     Returns:
-        np.ndarray: Zoomed image.
+        ImageType: Zoomed image.
 
     """
     height, width = img.shape[:2]
@@ -145,16 +152,17 @@ def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:
 @float32_io
 @clipped
 def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> ImageType:
-    """Zoom blur an image.
+    """Radial zoom blur: blend image with center-zoomed copies. zoom_factors; normalized result.
+    Use for motion or out-of-focus style. Float32 I/O, clipped.
 
     This function zooms and blurs an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         zoom_factors (np.ndarray | Sequence[int]): Zoom factors.
 
     Returns:
-        np.ndarray: Zoomed and blurred image.
+        ImageType: Zoomed and blurred image.
 
     """
     out = np.zeros_like(img, dtype=np.float32)
@@ -194,7 +202,9 @@ def _ensure_odd_values(result: tuple[int, int], field_name: str | None = None) -
 
 
 def process_blur_limit(value: int | tuple[int, int], info: ValidationInfo, min_value: int = 0) -> tuple[int, int]:
-    """Process blur limit to ensure valid kernel sizes."""
+    """Process blur limit to valid kernel sizes (min, odd). Converts int or tuple to
+    (min, max); enforces constraints. For blur InitSchema validators.
+    """
     # Convert value to tuple[int, int]
     if isinstance(value, Sequence):
         if len(value) != 2:
@@ -225,7 +235,8 @@ def create_motion_kernel(
     allow_shifted: bool,
     random_state: random.Random,
 ) -> np.ndarray:
-    """Create a motion blur kernel.
+    """Create motion blur kernel (2D float32). kernel_size (odd), angle, direction (-1 to 1),
+    allow_shifted, random_state. Returns normalized kernel.
 
     Args:
         kernel_size (int): Size of the kernel (must be odd)
@@ -302,7 +313,8 @@ def create_motion_kernel(
 
 
 def sample_odd_from_range(random_state: random.Random, low: int, high: int) -> int:
-    """Sample an odd number from the range [low, high] (inclusive).
+    """Sample odd number from [low, high] (inclusive). Low/high normalized to odd (min 3).
+    For blur transforms when sampling kernel size from a range.
 
     Args:
         random_state (random.Random): instance of random.Random
@@ -338,7 +350,8 @@ def sample_odd_from_range(random_state: random.Random, low: int, high: int) -> i
 
 
 def create_gaussian_kernel(sigma: float, ksize: int = 0) -> np.ndarray:
-    """Create a Gaussian kernel following PIL's approach.
+    """Create 2D Gaussian kernel (PIL-style). Sigma and ksize (0 = auto). Returns normalized
+    float32 kernel for separable or 2D convolution.
 
     Args:
         sigma (float): Standard deviation for Gaussian kernel.
@@ -367,7 +380,8 @@ def create_gaussian_kernel(sigma: float, ksize: int = 0) -> np.ndarray:
 
 
 def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
-    """Create a 1D Gaussian kernel following PIL's approach.
+    """Create 1D Gaussian kernel (PIL-style). Sigma and ksize (0 = auto). For separable
+    Gaussian blur; returns normalized float32 1D array.
 
     Args:
         sigma (float): Standard deviation for Gaussian kernel.
@@ -399,8 +413,8 @@ def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
 
 
 def create_gaussian_kernel_input_array(size: int) -> np.ndarray:
-    """Creates a 1-D array which will create an array of x-coordinates which will be input for the
-    gaussian function (values from -size/2 to size/2 with step size of 1)
+    """1-D x-coordinates -size/2 to size/2 for Gaussian kernel. Piecewise for size < 100
+    (faster than np.linspace). Returns float array.
 
     Piecewise function is needed as equivalent python list comprehension is faster than np.linspace
     for values of size < 100

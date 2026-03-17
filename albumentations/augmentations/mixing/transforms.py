@@ -27,16 +27,15 @@ __all__ = ["Mosaic", "OverlayElements"]
 
 
 class OverlayElements(DualTransform):
-    """Apply overlay elements such as images and masks onto an input image. This transformation can be used to add
-    various objects (e.g., stickers, logos) to images with optional masks and bounding boxes for better placement
-    control.
+    """Apply overlay images/masks onto an input image (e.g. stickers, logos). Optional bboxes
+    and masks for placement. Uses metadata_key.
 
     Args:
         metadata_key (str): Additional target key for metadata. Default `overlay_metadata`.
         p (float): Probability of applying the transformation. Default: 0.5.
 
     Possible Metadata Fields:
-        - image (np.ndarray): The overlay image to be applied. This is a required field.
+        - image (ImageType): The overlay image to be applied. This is a required field.
         - bbox (list[int]): The bounding box specifying the region where the overlay should be applied. It should
                             contain four floats: [y_min, x_min, y_max, x_max]. If `label_id` is provided, it should
                             be appended as the fifth element in the bbox. BBox should be in Albumentations format,
@@ -264,7 +263,8 @@ class OverlayElements(DualTransform):
 
 
 class Mosaic(DualTransform):
-    """Combine multiple images and their annotations into a single image using a mosaic grid layout.
+    """Combine multiple images and annotations into one image via a mosaic grid. Uses metadata
+    for additional images; common in object detection training.
 
     Mosaic creates a grid of images by placing the primary image and additional images from metadata
     into cells of a larger canvas, then crops a region to produce the final output. This is commonly
@@ -284,7 +284,7 @@ class Mosaic(DualTransform):
         target_size (tuple[int, int]): The desired output (height, width) for the final mosaic image.
             after cropping the mosaic grid.
         cell_shape (tuple[int, int]): cell shape of each cell in the mosaic grid.
-        fit_mode (Literal["cover", "contain"]): How to fit images into mosaic cells.
+        fit_mode (Literal['cover', 'contain']): How to fit images into mosaic cells.
             - "cover": Scale image to fill the entire cell, potentially cropping parts.
             - "contain": Scale image to fit entirely within the cell, potentially adding padding.
             Default: "cover".
@@ -555,7 +555,8 @@ class Mosaic(DualTransform):
 
     @property
     def targets_as_params(self) -> list[str]:
-        """Get list of targets that should be passed as parameters to transforms.
+        """Return list of target keys passed as params (e.g. to get_params_dependent_on_data).
+        For Mosaic/FMix: metadata key for preprocessed mosaic/mix.
 
         Returns:
             list[str]: List containing the metadata key name
@@ -648,7 +649,8 @@ class Mosaic(DualTransform):
 
     @staticmethod
     def get_primary_data(data: dict[str, Any]) -> fmixing.ProcessedMosaicItem:
-        """Get a copy of the primary data (data passed in `data` parameter) to avoid modifying the original data.
+        """Return a copy of the primary item from data so the original is not mutated. Call from
+        Mosaic/FMix to build composed image from primary plus patches.
 
         Args:
             data (dict[str, Any]): Dictionary containing the primary data.

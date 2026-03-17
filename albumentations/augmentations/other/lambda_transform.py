@@ -36,8 +36,8 @@ __all__ = ["Lambda"]
 
 
 class Lambda(NoOp):
-    """A flexible transformation class for using user-defined transformation functions per targets.
-    Function signature must include **kwargs to accept optional arguments like interpolation method, image size, etc:
+    """Transform that applies user-defined callables per target (image, mask, bboxes, keypoints).
+    Callables must accept **kwargs.
 
     Args:
         image (Callable[..., Any] | None): Image transformation function.
@@ -107,7 +107,8 @@ class Lambda(NoOp):
 
     @classmethod
     def is_serializable(cls) -> bool:
-        """Check if the Lambda transform is serializable.
+        """Return True only if the Lambda was constructed with a name; unnamed Lambdas
+        cannot be serialized (e.g. for saving pipelines). Check before to_dict/save.
 
         Returns:
             bool: True if the transform is serializable, False otherwise.
@@ -125,7 +126,8 @@ class Lambda(NoOp):
         return {"__class_fullname__": self.get_class_fullname(), "__name__": self.name}
 
     def __repr__(self) -> str:
-        """Return the string representation of the Lambda transform.
+        """Return repr string with transform name and custom apply functions. Useful for
+        debugging and logging; does not include full function bodies.
 
         Returns:
             str: The string representation of the Lambda transform.

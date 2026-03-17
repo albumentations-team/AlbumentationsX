@@ -32,11 +32,8 @@ __all__ = [
 
 
 class ToFloat(ImageOnlyTransform):
-    """Convert the input image to a floating-point representation.
-
-    This transform divides pixel values by `max_value` to get a float32 output array
-    where all values lie in the range [0, 1.0]. It's useful for normalizing image data
-    before feeding it into neural networks or other algorithms that expect float input.
+    """Convert the input image to float32 in [0, 1] by dividing by max_value. Useful for
+    normalizing before neural networks or algorithms that expect float input.
 
     Args:
         max_value (float | None): The maximum possible input value. If None, the transform
@@ -103,7 +100,8 @@ class ToFloat(ImageOnlyTransform):
 
 
 class FromFloat(ImageOnlyTransform):
-    """Convert an image from floating point representation to the specified data type.
+    """Convert image from float [0, 1] to discrete type (e.g. uint8 [0, 255]). Inverse of
+    ToFloat. max_value and dtype control scaling and output type.
 
     This transform is designed to convert images from a normalized floating-point representation
     (typically with values in the range [0, 1]) to other data types, scaling the values appropriately.

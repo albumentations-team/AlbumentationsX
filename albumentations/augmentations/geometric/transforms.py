@@ -1,5 +1,4 @@
 """Geometric transformation classes for image augmentation.
-
 This module provides a collection of transforms that modify the geometric properties
 of images and associated data (masks, bounding boxes, keypoints). Includes implementations
 for flipping, transposing, affine transformations, distortions, padding, and more complex
@@ -57,7 +56,8 @@ NUM_PADS_ALL_SIDES = 4
 
 
 class Perspective(DualTransform):
-    """Apply random four point perspective transformation to the input.
+    """Apply random four-point perspective transformation. Params: scale, keep_size, border_mode,
+    fill, interpolation. Supports image, mask, bboxes, keypoints.
 
     Args:
         scale (float or tuple of float): Standard deviation of the normal distributions. These are used to sample
@@ -348,7 +348,8 @@ class Perspective(DualTransform):
 
 
 class Affine(DualTransform):
-    """Augmentation to apply affine transformations to images.
+    """Apply affine transformations: translation, rotation, scale, shear. Params: scale, translate,
+    rotate, shear, interpolation, fill.
 
     Affine transformations involve:
 
@@ -429,7 +430,7 @@ class Affine(DualTransform):
             after applying rotations. Default: False
         keep_ratio (bool): When True, the original aspect ratio will be kept when the random scale is applied.
             Default: True.
-        rotate_method (Literal["largest_box", "ellipse"]): rotation method used for the bounding boxes.
+        rotate_method (Literal['largest_box', 'ellipse']): rotation method used for the bounding boxes.
             Should be one of "largest_box" or "ellipse"[1]. Default: "largest_box"
         balanced_scale (bool): When True, scaling factors are chosen to be either entirely below or above 1,
             ensuring balanced scaling. Default: False.
@@ -609,7 +610,9 @@ class Affine(DualTransform):
 
         @model_validator(mode="after")
         def _validate_keep_ratio_scale_compatibility(self) -> Self:
-            """Validate that when keep_ratio is True, x and y scale ranges are identical."""
+            """Validate that when keep_ratio is True, x and y scale ranges are identical. Prevents
+            inconsistent Affine scale config; raises ValueError if scale x and y differ.
+            """
             if self.keep_ratio and isinstance(self.scale, dict) and self.scale["x"] != self.scale["y"]:
                 raise ValueError(
                     f"When keep_ratio is True, the x and y scale range should be identical. got {self.scale}",
@@ -918,7 +921,8 @@ class Affine(DualTransform):
 
 
 class ShiftScaleRotate(Affine):
-    """Randomly apply affine transforms: translate, scale and rotate the input.
+    """One-step affine: random shift, scale, and rotation. Limits sampled per call; good
+    for pose or scale augmentation without separate transforms.
 
     Args:
         shift_limit ((float, float) or float): shift factor range for both height and width. If shift_limit
@@ -1151,7 +1155,8 @@ class ShiftScaleRotate(Affine):
 
 
 class GridElasticDeform(DualTransform):
-    """Apply elastic deformations to images, masks, bounding boxes, and keypoints using a grid-based approach.
+    """Elastic deformations via a grid: displace control points and interpolate. num_grid_xy
+    and magnitude control density and strength. Good for local stretching.
 
     This transformation overlays a grid on the input and applies random displacements to the grid points,
     resulting in local elastic distortions. The granularity and intensity of the distortions can be
@@ -1366,9 +1371,8 @@ class GridElasticDeform(DualTransform):
 
 
 class RandomGridShuffle(DualTransform):
-    """Randomly shuffles the grid's cells on an image, mask, or keypoints,
-    effectively rearranging patches within the image.
-    This transformation divides the image into a grid and then permutes these grid cells based on a random mapping.
+    """Split image into a grid and randomly permute cells; same shuffle for all targets.
+    Grid size from grid (e.g. (3, 3)). Breaks global layout, keeps local content.
 
     Args:
         grid (tuple[int, int]): Size of the grid for splitting the image into cells. Each cell is shuffled randomly.
@@ -1549,8 +1553,8 @@ class RandomGridShuffle(DualTransform):
 
 
 class Morphological(DualTransform):
-    """Apply a morphological operation (dilation or erosion) to an image,
-    with particular value for enhancing document scans.
+    """Dilation or erosion with a structuring element (scale). For document scans: dilation
+    fills gaps in text; erosion removes noise. Operation and scale per call.
 
     Morphological operations modify the structure of the image.
     Dilation expands the white (foreground) regions in a binary or grayscale image, while erosion shrinks them.
@@ -1565,7 +1569,7 @@ class Morphological(DualTransform):
             - If an integer is provided, a square kernel of that size will be used.
             - If a tuple or list is provided, it should contain two integers representing the minimum
                 and maximum sizes for the dilation kernel.
-        operation (Literal["erosion", "dilation"]): The morphological operation to apply.
+        operation (Literal['erosion', 'dilation']): The morphological operation to apply.
             Default is 'dilation'.
         p (float, optional): The probability of applying this transformation. Default is 0.5.
 

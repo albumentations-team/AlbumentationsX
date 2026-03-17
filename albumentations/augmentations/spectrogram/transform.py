@@ -22,7 +22,8 @@ __all__ = [
 
 
 class TimeReverse(HorizontalFlip):
-    """Reverse the time axis of a spectrogram image, also known as time inversion.
+    """Reverse time axis of a spectrogram (time inversion). Alias for HorizontalFlip; for audio.
+    Used in AudioCLIP; p controls probability.
 
     Time inversion of a spectrogram is analogous to the random flip of an image,
     an augmentation technique widely used in the visual domain. This can be relevant
@@ -78,7 +79,8 @@ class TimeReverse(HorizontalFlip):
 
 
 class TimeMasking(XYMasking):
-    """Apply masking to a spectrogram in the time domain.
+    """Mask spectrogram in time domain. time_mask_param sets max mask length; SpecAugment-style.
+    Single horizontal mask; use XYMasking for more flexibility.
 
     This transform masks random segments along the time axis of a spectrogram,
     implementing the time masking technique proposed in the SpecAugment paper.
@@ -153,7 +155,8 @@ class TimeMasking(XYMasking):
 
 
 class FrequencyMasking(XYMasking):
-    """Apply masking to a spectrogram in the frequency domain.
+    """Mask spectrogram in frequency domain. freq_mask_param sets max mask length; SpecAugment-style.
+    Single vertical mask; use XYMasking for more flexibility.
 
     This transform masks random segments along the frequency axis of a spectrogram,
     implementing the frequency masking technique proposed in the SpecAugment paper.

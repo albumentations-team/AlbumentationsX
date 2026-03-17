@@ -1,5 +1,4 @@
 """Implementation of XY masking for time-frequency domain transformations.
-
 This module provides the XYMasking transform, which applies masking strips along the X and Y axes
 of an image. This is particularly useful for audio spectrograms, time-series data visualizations,
 and other grid-like data representations where masking in specific directions (time or frequency)
@@ -20,12 +19,12 @@ __all__ = ["XYMasking"]
 
 
 class XYMasking(BaseDropout):
-    """Applies masking strips to an image, either horizontally (X axis) or vertically (Y axis),
-    simulating occlusions. This transform is useful for training models to recognize images
-    with varied visibility conditions. It's particularly effective for spectrogram images,
-    allowing spectral and frequency masking to improve model robustness.
+    """Apply horizontal or vertical masking strips to simulate occlusion.
+    Useful for spectrograms (spectral/frequency masking).
 
-    At least one of `max_x_length` or `max_y_length` must be specified, dictating the mask's
+    Useful for training with varied visibility conditions; spectral and frequency
+    masking can improve model robustness (e.g. SpecAugment-style). At least one of
+    `max_x_length` or `max_y_length` must be specified, dictating the mask's
     maximum size along each axis.
 
     Args:
@@ -41,7 +40,7 @@ class XYMasking(BaseDropout):
             while a tuple (min, max) allows for variable-height masks, chosen randomly
             within the specified range for each mask. This flexibility facilitates creating masks of various
             sizes in the vertical direction.
-        fill (tuple[float, float] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
             - tuple: tuple of values for each channel
@@ -113,7 +112,9 @@ class XYMasking(BaseDropout):
         dimension_size: int,
         dimension_name: str,
     ) -> None:
-        """Validate the mask length against the corresponding image dimension size."""
+        """Validate mask length for XYMasking. Raises if mismatch with image dimension. Used when
+        applying horizontal/vertical masks.
+        """
         if mask_length is not None:
             if isinstance(mask_length, (tuple, list)):
                 if mask_length[0] < 0 or mask_length[1] > dimension_size:

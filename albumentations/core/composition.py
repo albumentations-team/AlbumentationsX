@@ -1,5 +1,4 @@
 """Module for composing multiple transforms into augmentation pipelines.
-
 This module provides classes for combining multiple transformations into cohesive
 augmentation pipelines. It includes various composition strategies such as sequential
 application, random selection, and conditional application of transforms. These
@@ -82,7 +81,8 @@ VOLUME_KEYS = {"volume", "volumes"}
 
 
 class BaseCompose(Serializable):
-    """Base class for composing multiple transforms together.
+    """Base class for composing multiple transforms. Supports +, __radd__, - for pipeline
+    modification; serialization; add_targets, set_deterministic.
 
     This class serves as a foundation for creating compositions of transforms
     in the Albumentations library. It provides basic functionality for
@@ -171,7 +171,9 @@ class BaseCompose(Serializable):
         self.save_applied_params = save_applied_params
 
     def _track_transform_params(self, transform: TransformType, data: dict[str, Any]) -> None:
-        """Track transform parameters if tracking is enabled."""
+        """Track transform parameters if tracking is enabled. Appends (transform_name, params)
+        to data['applied_transforms'] when save_applied_params is True.
+        """
         if "applied_transforms" in data and hasattr(transform, "params") and transform.params:
             data["applied_transforms"].append((transform.__class__.__name__, transform.params.copy()))
 
@@ -180,7 +182,8 @@ class BaseCompose(Serializable):
         random_generator: np.random.Generator,
         py_random: random.Random,
     ) -> None:
-        """Set random state directly from generators.
+        """Set random state directly from numpy and Python random generators. Propagates to all
+        child transforms. Used for reproducibility.
 
         Args:
             random_generator (np.random.Generator): numpy random generator to use
@@ -196,7 +199,8 @@ class BaseCompose(Serializable):
                 transform.set_random_state(random_generator, py_random)
 
     def set_random_seed(self, seed: int | None) -> None:
-        """Set random state from seed.
+        """Set random state from a single integer seed. Propagates to all child transforms.
+        Used for reproducibility; stored as self.seed.
 
         Args:
             seed (int | None): Random seed to use
@@ -215,7 +219,8 @@ class BaseCompose(Serializable):
                 transform.set_random_seed(seed)
 
     def set_mask_interpolation(self, mask_interpolation: int | None) -> None:
-        """Set interpolation mode for mask resizing operations.
+        """Set interpolation mode for mask resizing operations. Propagates recursively to all
+        transforms; overrides mask_interpolation on each. Use OpenCV flags.
 
         Args:
             mask_interpolation (int | None): OpenCV interpolation flag to use for mask transforms.
@@ -240,7 +245,8 @@ class BaseCompose(Serializable):
         return len(self.transforms)
 
     def __call__(self, *args: Any, **data: Any) -> dict[str, Any]:
-        """Apply transforms.
+        """Apply transforms. Abstract; subclasses (Compose, OneOf, etc.) implement the actual
+        application logic. Accepts named data (image, mask, bboxes, etc.).
 
         Args:
             *args (Any): Positional arguments are not supported.
@@ -263,7 +269,8 @@ class BaseCompose(Serializable):
 
     @property
     def additional_targets(self) -> dict[str, str]:
-        """Get additional targets dictionary.
+        """Get additional targets dictionary. Maps custom target names to built-in types
+        (e.g. {'image2': 'image'}). Used when adding targets via add_targets.
 
         Returns:
             dict[str, str]: Dictionary containing additional targets mapping.
@@ -273,7 +280,8 @@ class BaseCompose(Serializable):
 
     @property
     def available_keys(self) -> set[str]:
-        """Get set of available keys.
+        """Get set of available keys. Union of all transform keys plus additional_targets and
+        processor data_fields. Used to validate input data keys.
 
         Returns:
             set[str]: Set of string keys available for transforms.
@@ -282,7 +290,8 @@ class BaseCompose(Serializable):
         return self._available_keys
 
     def indented_repr(self, indent: int = REPR_INDENT_STEP) -> str:
-        """Get an indented string representation of the composition.
+        """Get an indented string representation of the composition. Includes
+        to_dict_private args; each transform shown with indent. For __repr__.
 
         Args:
             indent (int): Indentation level. Default: REPR_INDENT_STEP.
@@ -302,7 +311,8 @@ class BaseCompose(Serializable):
 
     @classmethod
     def get_class_fullname(cls) -> str:
-        """Get the full qualified name of the class.
+        """Get the full qualified name of the class. Returns shortest fullname for
+        serialization (e.g. albumentations.Compose). For to_dict and replay.
 
         Returns:
             str: The shortest class fullname.
@@ -312,7 +322,8 @@ class BaseCompose(Serializable):
 
     @classmethod
     def is_serializable(cls) -> bool:
-        """Check if the class is serializable.
+        """Check if the class is serializable. True for all compose classes; for
+        serialization to skip non-serializable types. Always True here.
 
         Returns:
             bool: True if the class is serializable, False otherwise.
@@ -321,7 +332,8 @@ class BaseCompose(Serializable):
         return True
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Convert the composition to a dictionary for serialization.
+        """Convert the composition to a dictionary for serialization. Contains
+        __class_fullname__, p, and list of transform dicts. For save/replay.
 
         Returns:
             dict[str, Any]: Dictionary representation of the composition.
@@ -334,7 +346,8 @@ class BaseCompose(Serializable):
         }
 
     def get_dict_with_id(self) -> dict[str, Any]:
-        """Get a dictionary representation with object IDs for replay mode.
+        """Get a dictionary representation with object IDs for replay mode. Includes
+        id(self) and per-transform get_dict_with_id. For ReplayCompose.
 
         Returns:
             dict[str, Any]: Dictionary with composition data and object IDs.
@@ -348,7 +361,8 @@ class BaseCompose(Serializable):
         }
 
     def add_targets(self, additional_targets: dict[str, str] | None) -> None:
-        """Add additional targets to all transforms.
+        """Add additional targets to all transforms. Updates _additional_targets and
+        propagates to every child transform and processor. Call _set_keys after.
 
         Args:
             additional_targets (dict[str, str] | None): Dict of name -> type mapping for additional targets.
@@ -370,7 +384,9 @@ class BaseCompose(Serializable):
         self._set_keys()
 
     def _set_keys(self) -> None:
-        """Set _available_keys"""
+        """Set _available_keys from additional_targets and child transforms and targets_as_params.
+        Updates processor data_fields; warns if processor has no transform.
+        """
         self._available_keys.update(self._additional_targets.keys())
         for t in self.transforms:
             self._available_keys.update(t.available_keys)
@@ -389,7 +405,8 @@ class BaseCompose(Serializable):
                     self._available_keys.update(proc.params.label_fields)
 
     def set_deterministic(self, flag: bool, save_key: str = "replay") -> None:
-        """Set deterministic mode for all transforms.
+        """Set deterministic mode for all transforms. Propagates to every child; when True,
+        params are saved under save_key for replay (e.g. TTA).
 
         Args:
             flag (bool): Whether to enable deterministic mode.
@@ -400,7 +417,8 @@ class BaseCompose(Serializable):
             t.set_deterministic(flag, save_key)
 
     def check_data_post_transform(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Check and filter data after transformation.
+        """Check and filter data after transformation. Runs each check_each_transform
+        processor (e.g. bbox filter) on matching data keys. Returns filtered data dict.
 
         Args:
             data (dict[str, Any]): Dictionary containing transformed data
@@ -422,10 +440,11 @@ class BaseCompose(Serializable):
         return data
 
     def _validate_transforms(self, transforms: list[Any]) -> None:
-        """Validate that all elements are BasicTransform instances.
+        """Validate that all elements are BasicTransform instances. Raises TypeError if any
+        element is not. Used before __add__/__radd__ and in __init__.
 
         Args:
-            transforms: List of objects to validate
+            transforms (list[Any]): List of objects to validate
 
         Raises:
             TypeError: If any element is not a BasicTransform instance
@@ -438,11 +457,12 @@ class BaseCompose(Serializable):
                 )
 
     def _combine_transforms(self, other: TransformType | TransformsSeqType, *, prepend: bool = False) -> "BaseCompose":
-        """Combine transforms with the current compose.
+        """Combine transforms with the current compose. Prepends or appends other; returns new
+        instance via _create_new_instance. Validates with _validate_transforms.
 
         Args:
-            other: Transform or sequence of transforms to combine
-            prepend: If True, prepend other to the beginning; if False, append to the end
+            other (TransformType | TransformsSeqType): Transform or sequence of transforms to combine
+            prepend (bool): If True, prepend other to the beginning; if False, append to the end
 
         Returns:
             BaseCompose: New compose instance with combined transforms
@@ -463,10 +483,11 @@ class BaseCompose(Serializable):
         return self._create_new_instance(new_transforms)
 
     def __add__(self, other: TransformType | TransformsSeqType) -> "BaseCompose":
-        """Add transform(s) to the end of this compose.
+        """Add transform(s) to the end of this compose. Returns new instance. Use +
+        (e.g. compose + A.HorizontalFlip() or compose + [A.Blur(), A.Rotate()]).
 
         Args:
-            other: Transform or sequence of transforms to append
+            other (TransformType | TransformsSeqType): Transform or sequence of transforms to append
 
         Returns:
             BaseCompose: New compose instance with transforms appended
@@ -482,10 +503,11 @@ class BaseCompose(Serializable):
         return self._combine_transforms(other, prepend=False)
 
     def __radd__(self, other: TransformType | TransformsSeqType) -> "BaseCompose":
-        """Add transform(s) to the beginning of this compose.
+        """Add transform(s) to the beginning of this compose. Returns new instance. Use +
+        with transform on left (e.g. A.RandomCrop(256,256) + compose).
 
         Args:
-            other: Transform or sequence of transforms to prepend
+            other (TransformType | TransformsSeqType): Transform or sequence of transforms to prepend
 
         Returns:
             BaseCompose: New compose instance with transforms prepended
@@ -501,16 +523,16 @@ class BaseCompose(Serializable):
         return self._combine_transforms(other, prepend=True)
 
     def __sub__(self, other: type[BasicTransform]) -> "BaseCompose | type[NotImplemented]":
-        """Remove transform from this compose by class type.
+        """Remove transform by class type. Removes first matching; returns new instance.
+        Use - (e.g. compose - A.HorizontalFlip). Returns NotImplemented for other types.
 
         Removes the first transform in the compose that matches the provided transform class.
 
         Args:
-            other: Transform class to remove (e.g., A.HorizontalFlip)
+            other (type[BasicTransform]): Transform class to remove (e.g., A.HorizontalFlip)
 
         Returns:
-            BaseCompose: New compose instance with transform removed
-            NotImplemented: If other is not a BasicTransform class
+            BaseCompose | type[NotImplemented]: New compose instance with transform removed, or NotImplemented.
 
         Raises:
             ValueError: If no transform of that type is found in the compose
@@ -545,10 +567,11 @@ class BaseCompose(Serializable):
         raise ValueError(f"No transform of type {class_name} found in the compose pipeline")
 
     def _create_new_instance(self, new_transforms: TransformsSeqType) -> "BaseCompose":
-        """Create a new instance of the same class with new transforms.
+        """Create new instance of same class with new transforms. Copies init params
+        and random state from self. Called by __add__, __radd__, __sub__.
 
         Args:
-            new_transforms: List of transforms for the new instance
+            new_transforms (TransformsSeqType): List of transforms for the new instance
 
         Returns:
             BaseCompose: New instance of the same class
@@ -568,7 +591,8 @@ class BaseCompose(Serializable):
         return new_instance
 
     def _get_init_params(self) -> dict[str, Any]:
-        """Get parameters needed to recreate this instance.
+        """Get parameters needed to recreate this instance. Subclasses add their params.
+        For _create_new_instance and serialization; no defaults in InitSchema.
 
         Note:
             Subclasses that add new initialization parameters (other than 'transforms',
@@ -584,7 +608,8 @@ class BaseCompose(Serializable):
         }
 
     def _get_effective_seed(self, base_seed: int | None) -> int | None:
-        """Get effective seed considering worker context.
+        """Get effective seed considering worker context. In PyTorch DataLoader workers,
+        combines base_seed with torch.initial_seed() for per-worker reproducibility.
 
         Args:
             base_seed (int | None): Base seed value
@@ -614,7 +639,8 @@ class BaseCompose(Serializable):
 
 
 class Compose(BaseCompose, HubMixin):
-    """Compose multiple transforms together and apply them sequentially to input data.
+    """Compose multiple transforms sequentially. Supports bbox_params, keypoint_params,
+    additional_targets, strict, seed; supports +, -, __radd__.
 
     This class allows you to chain multiple image augmentation transforms and apply them
     in a specified order. It also handles bounding box and keypoint transformations if
@@ -803,7 +829,8 @@ class Compose(BaseCompose, HubMixin):
 
     @property
     def strict(self) -> bool:
-        """Get the current strict mode setting.
+        """Get the current strict mode setting. When True, validates input keys and transform
+        arguments; raises ValueError on invalid args. Read-only.
 
         Returns:
             bool: True if strict mode is enabled, False otherwise.
@@ -820,7 +847,9 @@ class Compose(BaseCompose, HubMixin):
         self._strict = value
 
     def _validate_strict(self) -> None:
-        """Validate that no transforms have invalid arguments when strict mode is enabled."""
+        """Validate no transforms have invalid arguments when strict is enabled. Recursively
+        checks invalid_args; raises ValueError if any non-empty.
+        """
 
         def check_transform(transform: TransformType) -> None:
             if hasattr(transform, "invalid_args") and transform.invalid_args:
@@ -854,16 +883,16 @@ class Compose(BaseCompose, HubMixin):
                 transform.disable_check_args_private()
 
     def disable_check_args_private(self) -> None:
-        """Disable argument checking for transforms.
-
-        This method disables strict mode and argument checking for all transforms in the composition.
+        """Disable argument checking. Sets is_check_args=False, strict=False, main_compose=False.
+        Called for nested Compose so only top-level validates.
         """
         self.is_check_args = False
         self.strict = False
         self.main_compose = False
 
     def __call__(self, *args: Any, force_apply: bool = False, **data: Any) -> dict[str, Any]:
-        """Apply transformations to data with automatic worker seed synchronization.
+        """Apply transformations with worker seed sync. Runs preprocess, each transform in
+        order, check_data_post_transform, postprocess.
 
         Args:
             *args (Any): Positional arguments are not supported.
@@ -902,7 +931,9 @@ class Compose(BaseCompose, HubMixin):
         return self.postprocess(data)
 
     def _check_worker_seed(self) -> None:
-        """Check and update random seed if in worker context."""
+        """Check and update random seed in worker context. Recalculates effective seed and
+        propagates to all transforms for reproducibility.
+        """
         if not hasattr(self, "_base_seed") or self._base_seed is None:
             return
 
@@ -939,7 +970,9 @@ class Compose(BaseCompose, HubMixin):
             pass
 
     def __setstate__(self, state: dict[str, Any]) -> None:
-        """Set state from unpickling and handle worker seed."""
+        """Set state from unpickling and handle worker seed. Resets _last_torch_seed and
+        recalculates effective seed so worker sync runs again after unpickling.
+        """
         self.__dict__.update(state)
         # If we have a base seed, recalculate effective seed in worker context
         if hasattr(self, "_base_seed") and self._base_seed is not None:
@@ -954,7 +987,8 @@ class Compose(BaseCompose, HubMixin):
             self.set_random_seed(self.seed)
 
     def set_random_seed(self, seed: int | None) -> None:
-        """Override to use worker-aware seed functionality.
+        """Override for worker-aware seed. Stores _base_seed, computes effective seed via
+        _get_effective_seed and propagates to all transforms.
 
         Args:
             seed (int | None): Random seed to use
@@ -980,7 +1014,9 @@ class Compose(BaseCompose, HubMixin):
                 transform.set_random_seed(effective_seed)
 
     def preprocess(self, data: Any) -> None:
-        """Preprocess input data before applying transforms."""
+        """Preprocess input data before applying transforms. Validates shapes (if
+        is_check_shapes), validates data keys (if strict), ensures contiguous, adds channels.
+        """
         # Always validate shapes if is_check_shapes is True, regardless of strict mode
         if self.is_check_shapes:
             shapes, volume_shapes = self._gather_shapes_from_data(data)
@@ -995,13 +1031,14 @@ class Compose(BaseCompose, HubMixin):
         self._preprocess_processors(data)
 
     def _gather_shapes_from_data(self, data: dict[str, Any]) -> tuple[list[tuple[int, ...]], list[tuple[int, ...]]]:
-        """Gather shapes from various data types for validation.
+        """Gather shapes from data for validation. Collects (H,W) or (D,H,W) from
+        image, mask, images, volume. For preprocess shape check.
 
         Args:
-            data: Data dictionary containing various arrays
+            data (dict[str, Any]): Data dictionary containing various arrays
 
         Returns:
-            Tuple of (2D shapes list, 3D shapes list)
+            tuple[list[tuple[int, ...]], list[tuple[int, ...]]]: Tuple of (2D shapes list, 3D shapes list).
 
         """
         shapes: list[tuple[int, ...]] = []  # For H,W checks
@@ -1034,7 +1071,9 @@ class Compose(BaseCompose, HubMixin):
         shapes: list[tuple[int, ...]],
         volume_shapes: list[tuple[int, ...]],
     ) -> None:
-        """Process shape of a single data item."""
+        """Process shape of a single data item. Appends (H,W) or (D,H,W) to shapes or
+        volume_shapes depending on data_name (image, mask, images, volume, etc.).
+        """
         # Handle 2D single data
         if data_name in {"image", "mask"}:
             shapes.append(data_value.shape[:2])  # H,W
@@ -1060,7 +1099,9 @@ class Compose(BaseCompose, HubMixin):
             volume_shapes.append(data_value.shape[1:4])  # D,H,W from (N,D,H,W)
 
     def _validate_data(self, data: dict[str, Any]) -> None:
-        """Validate input data keys and arguments."""
+        """Validate input data keys and arguments. When strict, checks every key is in
+        _available_keys and runs _check_args. Raises ValueError on invalid key.
+        """
         if not self.strict:
             return
 
@@ -1072,11 +1113,15 @@ class Compose(BaseCompose, HubMixin):
             self._check_args(**data)
 
     def _is_valid_key(self, key: str) -> bool:
-        """Check if the key is valid for processing."""
+        """Check if the key is valid for processing. True if key is in _available_keys,
+        MASK_KEYS, IMAGE_KEYS, or 'applied_transforms'.
+        """
         return key in self._available_keys or key in MASK_KEYS or key in IMAGE_KEYS or key == "applied_transforms"
 
     def _preprocess_processors(self, data: dict[str, Any]) -> None:
-        """Run preprocessors if this is the main compose."""
+        """Run preprocessors if this is the main compose. Calls ensure_data_valid and
+        preprocess on each processor (bboxes, keypoints). No-op when main_compose is False.
+        """
         if not self.main_compose:
             return
 
@@ -1086,18 +1131,24 @@ class Compose(BaseCompose, HubMixin):
             processor.preprocess(data)
 
     def _preprocess_arrays(self, data: dict[str, Any]) -> None:
-        """Ensure all arrays are contiguous and add channel dimensions to grayscale data."""
+        """Ensure arrays are contiguous and add channel dims to grayscale data.
+        Calls _ensure_contiguous then _add_grayscale_channels. Call during preprocess.
+        """
         self._ensure_contiguous(data)
         self._add_grayscale_channels(data)
 
     def _ensure_contiguous(self, data: dict[str, Any]) -> None:
-        """Ensure all numpy arrays are contiguous."""
+        """Ensure all numpy arrays are contiguous. Replaces non-C-contiguous arrays in data
+        with np.ascontiguousarray copies. Called by _preprocess_arrays.
+        """
         for key, value in data.items():
             if isinstance(value, np.ndarray) and not value.flags["C_CONTIGUOUS"]:
                 data[key] = np.ascontiguousarray(value)
 
     def _add_grayscale_channels(self, data: dict[str, Any]) -> None:
-        """Add channel dimension to grayscale data if missing."""
+        """Add channel dimension to grayscale data if missing. (H,W) -> (H,W,1) etc. for
+        image, mask, images, volume, etc. Tracks in _added_channel_dim for postprocess.
+        """
         # Track which data had channel dimensions added
         self._added_channel_dim = {}
 
@@ -1122,7 +1173,8 @@ class Compose(BaseCompose, HubMixin):
                     self._added_channel_dim[key] = False
 
     def postprocess(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Apply post-processing to data after all transforms have been applied.
+        """Apply post-processing after all transforms. Runs processor postprocess and
+        _remove_grayscale_channels when main_compose. Returns data dict.
 
         Args:
             data (dict[str, Any]): Data after transformation.
@@ -1141,7 +1193,9 @@ class Compose(BaseCompose, HubMixin):
         return data
 
     def _remove_grayscale_channels(self, data: dict[str, Any]) -> None:
-        """Remove channel dimensions that were added during preprocessing."""
+        """Remove channel dimensions that were added during preprocessing. Uses
+        _added_channel_dim to squeeze only where we added; supports numpy and torch.
+        """
         if not hasattr(self, "_added_channel_dim"):
             return
 
@@ -1185,7 +1239,8 @@ class Compose(BaseCompose, HubMixin):
         return dictionary
 
     def get_dict_with_id(self) -> dict[str, Any]:
-        """Get a dictionary representation with object IDs for replay mode.
+        """Get dict with object IDs for replay. Extends super with bbox_params,
+        keypoint_params, additional_targets, params, is_check_shapes.
 
         Returns:
             dict[str, Any]: Dictionary with composition data and object IDs.
@@ -1213,7 +1268,8 @@ class Compose(BaseCompose, HubMixin):
 
     @staticmethod
     def _check_multi_data(data_name: str, data: Any) -> tuple[int, int]:
-        """Check multi-item data format and return shape.
+        """Check multi-item data format and return shape. Validates (N,H,W) or (N,H,W,C);
+        returns (H,W) of first item. Raises TypeError if not ndarray or wrong ndim.
 
         Args:
             data_name (str): Name of the data field being checked
@@ -1271,7 +1327,9 @@ class Compose(BaseCompose, HubMixin):
         shapes: list[tuple[int, ...]],
         volume_shapes: list[tuple[int, ...]],
     ) -> None:
-        """Check and process a single argument from _check_args."""
+        """Check and process a single argument from _check_args. Validates type and shape
+        for image, mask, images, volume, etc.; appends to shapes/volume_shapes.
+        """
         # For single items (image, mask), we must validate even if None
         if internal_name in {"image", "mask"}:
             if not isinstance(data, np.ndarray):
@@ -1298,7 +1356,9 @@ class Compose(BaseCompose, HubMixin):
         self._process_data_shape(data_name, data, shapes, volume_shapes)
 
     def _check_shape_consistency(self, shapes: list[tuple[int, ...]], volume_shapes: list[tuple[int, ...]]) -> None:
-        """Check consistency of shapes."""
+        """Check consistency of shapes. When is_check_shapes, ensures all 2D shapes match
+        and all 3D shapes match. Raises ValueError if inconsistent.
+        """
         # Check H,W consistency
         self._check_shapes(shapes, self.is_check_shapes)
 
@@ -1310,7 +1370,8 @@ class Compose(BaseCompose, HubMixin):
             )
 
     def _get_init_params(self) -> dict[str, Any]:
-        """Get parameters needed to recreate this Compose instance.
+        """Get parameters needed to recreate this Compose instance. Includes bbox_params,
+        keypoint_params, additional_targets, p, is_check_shapes, strict, seed, etc.
 
         Returns:
             dict[str, Any]: Dictionary of initialization parameters
@@ -1334,8 +1395,8 @@ class Compose(BaseCompose, HubMixin):
 
 
 class OneOf(BaseCompose):
-    """Select one of transforms to apply. Selected transform will be called with `force_apply=True`.
-    Transforms probabilities will be normalized to one 1, so in this case transforms probabilities works as weights.
+    """Apply one of the child transforms at random; probabilities normalized as weights.
+    Selected transform runs with force_apply=True.
 
     Args:
         transforms (list): list of transformations to compose.
@@ -1350,7 +1411,8 @@ class OneOf(BaseCompose):
         self.transforms_ps = [t / s for t in transforms_ps]
 
     def __call__(self, *args: Any, force_apply: bool = False, **data: Any) -> dict[str, Any]:
-        """Apply the OneOf composition to the input data.
+        """Apply the OneOf composition to the input data. Selects one transform by weight,
+        runs it with force_apply=True. In replay mode runs all in order.
 
         Args:
             *args (Any): Positional arguments are not supported.
@@ -1378,7 +1440,8 @@ class OneOf(BaseCompose):
 
 
 class SomeOf(BaseCompose):
-    """Selects exactly `n` transforms from the given list and applies them.
+    """Select exactly n transforms from the list and apply them. Selection uniform; each
+    runs with its own p. Use replace=True for sampling with replacement.
 
     The selection of which `n` transforms to apply is done **uniformly at random**
     from the provided list. Each transform in the list has an equal chance of being selected.
@@ -1446,7 +1509,8 @@ class SomeOf(BaseCompose):
         self.replace = replace
 
     def __call__(self, *arg: Any, force_apply: bool = False, **data: Any) -> dict[str, Any]:
-        """Apply n randomly selected transforms from the list of transforms.
+        """Apply n randomly selected transforms from the list of transforms. Selection
+        uniform; order fixed (sorted indices). Each transform applied with its own p.
 
         Args:
             *arg (Any): Positional arguments are not supported.
@@ -1501,7 +1565,8 @@ class SomeOf(BaseCompose):
 
 
 class RandomOrder(SomeOf):
-    """Apply a random subset of transforms from the given list in a random order.
+    """Apply a random subset of transforms in random order. Subclass of SomeOf; selection
+    uniform, order random. Use n, replace, p.
 
     Selects exactly `n` transforms uniformly at random from the list, and then applies
     the selected transforms in a random order. Each selected transform is applied
@@ -1546,7 +1611,9 @@ class RandomOrder(SomeOf):
 
 
 class OneOrOther(BaseCompose):
-    """Select one or another transform to apply. Selected transform will be called with `force_apply=True`."""
+    """Select one or the other transform. Selected runs with force_apply=True. Exactly two
+    transforms; p chooses first vs second. Like OneOf n=2 but binary choice.
+    """
 
     def __init__(
         self,
@@ -1565,7 +1632,8 @@ class OneOrOther(BaseCompose):
             warnings.warn("Length of transforms is not equal to 2.", stacklevel=2)
 
     def __call__(self, *args: Any, force_apply: bool = False, **data: Any) -> dict[str, Any]:
-        """Apply one or another transform to the input data.
+        """Apply one or another transform to the input data. With probability p applies
+        first transform, else second; both called with force_apply=True.
 
         Args:
             *args (Any): Positional arguments are not supported.
@@ -1589,7 +1657,8 @@ class OneOrOther(BaseCompose):
 
 
 class SelectiveChannelTransform(BaseCompose):
-    """A transformation class to apply specified transforms to selected channels of an image.
+    """Apply transforms to selected image channels. Extracts channels, runs compose,
+    writes back. Use channels=(0,1,2) for RGB. Supports +, -, __radd__.
 
     This class extends BaseCompose to allow selective application of transformations to
     specified image channels. It extracts the selected channels, applies the transformations,
@@ -1622,7 +1691,8 @@ class SelectiveChannelTransform(BaseCompose):
         self.channels = channels
 
     def __call__(self, *args: Any, force_apply: bool = False, **data: Any) -> dict[str, Any]:
-        """Apply transforms to specific channels of the image.
+        """Apply transforms to specific channels of the image. Extracts self.channels,
+        runs child transforms on sub-image, merges back. Other keys in data pass through.
 
         Args:
             *args (Any): Positional arguments are not supported.
@@ -1656,6 +1726,7 @@ class SelectiveChannelTransform(BaseCompose):
 
     def _get_init_params(self) -> dict[str, Any]:
         """Get parameters needed to recreate this SelectiveChannelTransform instance.
+        Extends base with channels. For _create_new_instance and serialization.
 
         Returns:
             dict[str, Any]: Dictionary of initialization parameters
@@ -1671,7 +1742,8 @@ class SelectiveChannelTransform(BaseCompose):
 
 
 class ReplayCompose(Compose):
-    """Composition class that enables transform replay functionality.
+    """Compose with replay: records params per call in save_key; use replay() to reapply
+    same augmentations. Set save_key, deterministic=True.
 
     This class extends the Compose class with the ability to record and replay
     transformations. This is useful for applying the same sequence of random
@@ -1715,7 +1787,8 @@ class ReplayCompose(Compose):
         self._available_keys.add(save_key)
 
     def __call__(self, *args: Any, force_apply: bool = False, **kwargs: Any) -> dict[str, Any]:
-        """Apply transforms and record parameters for future replay.
+        """Apply transforms and record params for replay. Stores in save_key; fill_with_params
+        and fill_applied complete serialized form for replay().
 
         Args:
             *args (Any): Positional arguments are not supported.
@@ -1736,7 +1809,8 @@ class ReplayCompose(Compose):
 
     @staticmethod
     def replay(saved_augmentations: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-        """Replay previously saved augmentations.
+        """Replay saved augmentations. Restores pipeline from saved_augmentations via
+        _restore_for_replay; runs with force_apply=True. Use for TTA or reproducibility.
 
         Args:
             saved_augmentations (dict[str, Any]): Previously saved augmentation parameters.
@@ -1754,13 +1828,12 @@ class ReplayCompose(Compose):
         transform_dict: dict[str, Any],
         lambda_transforms: dict[str, Any] | None = None,
     ) -> TransformType:
-        """Args:
-        transform_dict (dict[str, Any]): A dictionary that contains transform data.
-        lambda_transforms (dict): A dictionary that contains lambda transforms, that
-            is instances of the Lambda class.
-        This dictionary is required when you are restoring a pipeline that contains lambda transforms.
-        Keys in that dictionary should be named same as `name` arguments in respective lambda transforms
-        from a serialized pipeline.
+        """Restore transform from replay dict; pass lambda_transforms for Lambda in pipeline.
+        Recursively restores nested composes; sets replay_mode, params.
+
+        Args:
+            transform_dict (dict[str, Any]): A dictionary that contains transform data.
+            lambda_transforms (dict[str, Any] | None): Optional dict of Lambda instances keyed by transform name.
 
         """
         applied = transform_dict["applied"]
@@ -1787,7 +1860,8 @@ class ReplayCompose(Compose):
         return transform
 
     def fill_with_params(self, serialized: dict[str, Any], all_params: Any) -> None:
-        """Fill serialized transform data with parameters for replay.
+        """Fill serialized transform data with params for replay. Copies from all_params by
+        id into serialized['params']; recurses into transforms. Mutates serialized.
 
         Args:
             serialized (dict[str, Any]): Serialized transform data.
@@ -1801,7 +1875,8 @@ class ReplayCompose(Compose):
             self.fill_with_params(transform, all_params)
 
     def fill_applied(self, serialized: dict[str, Any]) -> bool:
-        """Set 'applied' flag for transforms based on parameters.
+        """Set 'applied' flag for transforms based on parameters. Recurses; leaf applied =
+        params is not None. Returns True if any transform was applied.
 
         Args:
             serialized (dict[str, Any]): Serialized transform data.
@@ -1833,7 +1908,8 @@ class ReplayCompose(Compose):
 
 
 class Sequential(BaseCompose):
-    """Sequentially applies all transforms to targets.
+    """Apply all transforms to targets in order. Use inside Compose with OneOf (e.g.
+    OneOf([Sequential([A,B]), Sequential([C,D])])). Each runs with its own p.
 
     Note:
         This transform is not intended to be a replacement for `Compose`. Instead, it should be used inside `Compose`
@@ -1862,7 +1938,8 @@ class Sequential(BaseCompose):
         super().__init__(transforms=transforms, p=p)
 
     def __call__(self, *args: Any, force_apply: bool = False, **data: Any) -> dict[str, Any]:
-        """Apply all transforms in sequential order.
+        """Apply every transform in order to the data. No random choice between branches;
+        all transforms in the list run one after another with their own p.
 
         Args:
             *args (Any): Positional arguments are not supported.

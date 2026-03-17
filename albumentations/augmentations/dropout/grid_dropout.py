@@ -18,7 +18,8 @@ __all__ = ["GridDropout"]
 
 
 class GridDropout(BaseDropout):
-    """Apply GridDropout augmentation to images, masks, bounding boxes, and keypoints.
+    """Drop rectangular regions in a grid. ratio, unit_size_range or holes_number_xy, random_offset,
+    shift_xy, fill. Applies to images, masks, bboxes, keypoints.
 
     GridDropout drops out rectangular regions of an image and the corresponding mask in a grid fashion.
     This technique can help improve model robustness by forcing the network to rely on a broader context
@@ -35,7 +36,7 @@ class GridDropout(BaseDropout):
             Default: None. If provided, overrides unit_size_range.
         random_offset (bool): Whether to offset the grid randomly between 0 and (grid unit size - hole size).
             If True, entered shift_xy is ignored and set randomly. Default: True.
-        fill (tuple[float, float] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
             - tuple: tuple of values for each channel

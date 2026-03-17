@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 def require_huggingface_hub(func: Callable[..., Any]) -> Callable[..., Any]:
-    """Decorator to require huggingface_hub.
+    """Decorator that raises ImportError if huggingface_hub is not installed. Use it on Hub
+    methods that require the package. Required for push_to_hub.
 
     This decorator ensures that the `huggingface_hub` package is installed before
     executing the decorated function. If the package is not installed, it raises
@@ -50,7 +51,8 @@ def require_huggingface_hub(func: Callable[..., Any]) -> Callable[..., Any]:
 
 
 class HubMixin:
-    """Mixin class for Hugging Face Hub integration.
+    """Mixin for saving and loading transforms to/from the Hugging Face Hub. Provides
+    save_pretrained, from_pretrained, push_to_hub.
 
     This class provides functionality for saving and loading transforms to/from
     the Hugging Face Hub. It enables serialization, deserialization, and sharing
@@ -66,10 +68,11 @@ class HubMixin:
     _CONFIG_FILE_NAME_TEMPLATE = "albumentations_config_{}.json"
 
     def _save_pretrained(self, save_directory: str | Path, filename: str) -> Path:
-        """Save the transform to a specified directory.
+        """Save the transform to a specified directory as a JSON config file. Creates directory
+        if needed; returns Path to the saved file.
 
         Args:
-            save_directory (Union[str, Path]):
+            save_directory (str | Path):
                 Directory where the transform will be saved.
             filename (str):
                 Name of the file to save the transform.
@@ -90,16 +93,17 @@ class HubMixin:
 
     @classmethod
     def _from_pretrained(cls, save_directory: str | Path, filename: str) -> object:
-        """Load a transform from a specified directory.
+        """Load a transform from a local directory (save_directory/filename). Returns
+        deserialized Compose or transform instance. For local loading only.
 
         Args:
-            save_directory (Union[str, Path]):
+            save_directory (str | Path):
                 Directory from where the transform will be loaded.
             filename (str):
                 Name of the file to load the transform from.
 
         Returns:
-            A.Compose: Loaded transform.
+            object: Loaded transform (Compose or single transform instance).
 
         """
         save_path = Path(save_directory) / filename
@@ -115,25 +119,26 @@ class HubMixin:
         push_to_hub: bool = False,
         **push_to_hub_kwargs: Any,
     ) -> str | None:
-        """Save the transform and optionally push it to the Huggingface Hub.
+        """Save the transform to a directory and optionally push to the Huggingface Hub. Uses
+        key (train/eval) for config filename.
 
         Args:
-            save_directory (`str` or `Path`):
+            save_directory (str | Path):
                 Path to directory in which the transform configuration will be saved.
-            key (`str`, *optional*):
+            key (str):
                 Key to identify the configuration type, one of ["train", "eval"]. Defaults to "eval".
-            allow_custom_keys (`bool`, *optional*):
+            allow_custom_keys (bool):
                 Allow custom keys for the configuration. Defaults to False.
-            push_to_hub (`bool`, *optional*, defaults to `False`):
+            push_to_hub (bool):
                 Whether or not to push your transform to the Huggingface Hub after saving it.
-            repo_id (`str`, *optional*):
-                ID of your repository on the Hub. Used only if `push_to_hub=True`. Will default to the folder name if
+            repo_id (str | None):
+                ID of your repository on the Hub. Used only if push_to_hub=True. Will default to the folder name if
                 not provided.
-            push_to_hub_kwargs (`dict`, *optional*):
-                Additional key word arguments passed along to the [`push_to_hub`] method.
+            push_to_hub_kwargs (Any):
+                Additional key word arguments passed along to the push_to_hub method.
 
         Returns:
-            `str` or `None`: url of the commit on the Hub if `push_to_hub=True`, `None` otherwise.
+            str | None: URL of the commit on the Hub if push_to_hub=True, None otherwise.
 
         """
         if not allow_custom_keys and key not in self._CONFIG_KEYS:
@@ -167,31 +172,29 @@ class HubMixin:
         local_files_only: bool = False,
         revision: str | None = None,
     ) -> object:
-        """Load a transform from the Huggingface Hub or a local directory.
+        """Load a transform from the Huggingface Hub or a local directory. Use key (train/eval)
+        to pick which config file to load. Returns Compose or transform.
 
         Args:
-            directory_or_repo_id (`str`, `Path`):
-                - Either the `repo_id` (string) of a repo with hosted transform on the Hub, e.g. `qubvel-hf/albu`.
-                - Or a path to a `directory` containing transform config saved using
-                    [`~albumentations.Compose.save_pretrained`], e.g., `../path/to/my_directory/`.
-            key (`str`, *optional*):
+            directory_or_repo_id (str | Path):
+                Either the repo_id (string) of a repo with hosted transform on the Hub, e.g. qubvel-hf/albu,
+                or a path to a directory containing transform config saved using save_pretrained.
+            key (str):
                 Key to identify the configuration type, one of ["train", "eval"]. Defaults to "eval".
-            revision (`str`, *optional*):
+            revision (str | None):
                 Revision of the repo on the Hub. Can be a branch name, a git tag or any commit id.
-                Defaults to the latest commit on `main` branch.
-            force_download (`bool`, *optional*, defaults to `False`):
+                Defaults to the latest commit on main branch.
+            force_download (bool):
                 Whether to force (re-)downloading the transform configuration files from the Hub, overriding
                 the existing cache.
-            proxies (`dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on every request.
-            token (`str` or `bool`, *optional*):
-                The token to use as HTTP bearer authorization for remote files. By default, it will use the token
-                cached when running `huggingface-cli login`.
-            cache_dir (`str`, `Path`, *optional*):
+            proxies (dict[str, str] | None):
+                A dictionary of proxy servers to use by protocol or endpoint.
+            token (str | bool | None):
+                The token to use as HTTP bearer authorization for remote files.
+            cache_dir (str | Path | None):
                 Path to the folder where cached files are stored.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                If `True`, avoid downloading the file and return the path to the local cached file if it exists.
+            local_files_only (bool):
+                If True, avoid downloading the file and return the path to the local cached file if it exists.
 
         """
         filename = cls._CONFIG_FILE_NAME_TEMPLATE.format(key)
@@ -245,33 +248,34 @@ class HubMixin:
         branch: str | None = None,
         create_pr: bool | None = None,
     ) -> str:
-        """Push the transform to the Huggingface Hub.
+        """Push the saved transform to the Huggingface Hub. Requires repo_id; optional branch,
+        token, commit_message. Returns commit URL.
 
-        Use `allow_patterns` and `ignore_patterns` to precisely filter which files should be pushed to the hub. Use
-        `delete_patterns` to delete existing remote files in the same commit. See [`upload_folder`] reference for more
+        Use `allow_patterns` and `ignore_patterns` to precisely filter which files should be
+        pushed to the hub. Use `delete_patterns` to delete existing remote files in the same
+        commit. See [`upload_folder`] reference for more
         details.
 
         Args:
-            repo_id (`str`):
-                ID of the repository to push to (example: `"username/my-model"`).
-            key (`str`, *optional*):
+            repo_id (str):
+                ID of the repository to push to (e.g. username/my-model).
+            key (str):
                 Key to identify the configuration type, one of ["train", "eval"]. Defaults to "eval".
-            allow_custom_keys (`bool`, *optional*):
+            allow_custom_keys (bool):
                 Allow custom keys for the configuration. Defaults to False.
-            commit_message (`str`, *optional*):
+            commit_message (str):
                 Message to commit while pushing.
-            private (`bool`, *optional*, defaults to `False`):
+            private (bool):
                 Whether the repository created should be private.
-            token (`str`, *optional*):
-                The token to use as HTTP bearer authorization for remote files. By default, it will use the token
-                cached when running `huggingface-cli login`.
-            branch (`str`, *optional*):
-                The git branch on which to push the transform. This defaults to `"main"`.
-            create_pr (`boolean`, *optional*):
-                Whether or not to create a Pull Request from `branch` with that commit. Defaults to `False`.
+            token (str | None):
+                The token to use as HTTP bearer authorization for remote files.
+            branch (str | None):
+                The git branch on which to push the transform. Defaults to "main".
+            create_pr (bool | None):
+                Whether to create a Pull Request from branch with that commit. Defaults to False.
 
         Returns:
-            str: The url of the commit of your transform in the given repository.
+            str: The URL of the commit of your transform in the given repository.
 
         """
         if not allow_custom_keys and key not in self._CONFIG_KEYS:

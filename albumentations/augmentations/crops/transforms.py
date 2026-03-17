@@ -57,7 +57,8 @@ class CropSizeError(Exception):
 
 
 class BaseCrop(DualTransform):
-    """Base class for transforms that only perform cropping.
+    """Abstract base for crop-only transforms. Subclasses return crop_coords from
+    get_params_dependent_on_data. All targets cropped consistently.
 
     This abstract class provides the foundation for all cropping transformations.
     It handles cropping of different data types including images, masks, bounding boxes,
@@ -260,7 +261,8 @@ class BaseCrop(DualTransform):
 
 
 class BaseCropAndPad(BaseCrop):
-    """Base class for transforms that need both cropping and padding.
+    """Abstract base for crop+pad transforms (e.g. fixed size). Adds pad_if_needed,
+    border_mode, fill, pad_position to BaseCrop. Subclasses define crop and pad logic.
 
     This abstract class extends BaseCrop by adding padding capabilities. It's the foundation
     for transforms that may need to both crop parts of the input and add padding, such as when
@@ -277,7 +279,7 @@ class BaseCropAndPad(BaseCrop):
         fill (tuple[float, ...] | float): Value to fill the padded area if border_mode is BORDER_CONSTANT.
             For multi-channel images, this can be a tuple with a value for each channel.
         fill_mask (tuple[float, ...] | float): Value to fill the padded area in masks.
-        pad_position (Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]):
+        pad_position (Literal['center', 'top_left', 'top_right', 'bottom_left', 'bottom_right', 'random']):
             Position of padding when pad_if_needed is True.
         p (float): Probability of applying the transform. Default: 1.0.
 
@@ -427,7 +429,9 @@ class BaseCropAndPad(BaseCrop):
         self.pad_position = pad_position
 
     def _get_pad_params(self, image_shape: tuple[int, int], target_shape: tuple[int, int]) -> dict[str, Any] | None:
-        """Calculate padding parameters if needed."""
+        """Compute pad amounts (top, right, bottom, left) and position so image reaches
+        target_shape. Returns None if no padding needed or pad_if_needed is False.
+        """
         if not self.pad_if_needed:
             return None
 
@@ -625,7 +629,8 @@ class BaseCropAndPad(BaseCrop):
 
 
 class RandomCrop(BaseCropAndPad):
-    """Crop a random part of the input.
+    """Crop a random region of fixed height and width. Optional pad when crop exceeds
+    image. All targets cropped together. Common for fixed-resolution training.
 
     Args:
         height (int): height of the crop.
@@ -808,7 +813,8 @@ class RandomCrop(BaseCropAndPad):
 
 
 class CenterCrop(BaseCropAndPad):
-    """Crop the central part of the input.
+    """Crop the center region of fixed height and width. Optional pad when crop exceeds
+    image. All targets share the same center window. Good for center-focused data.
 
     This transform crops the center of the input image, mask, bounding boxes, and keypoints to the specified dimensions.
     It's useful when you want to focus on the central region of the input, discarding peripheral information.
@@ -991,7 +997,8 @@ class CenterCrop(BaseCropAndPad):
 
 
 class Crop(BaseCropAndPad):
-    """Crop a specific region from the input image.
+    """Crop a fixed region by (x_min, y_min, x_max, y_max). Deterministic; optional pad when
+    region exceeds image. Use for fixed ROI or sliding-window pipelines.
 
     This transform crops a rectangular region from the input image, mask, bounding boxes, and keypoints
     based on specified coordinates. It's useful when you want to extract a specific area of interest
@@ -1220,7 +1227,8 @@ class Crop(BaseCropAndPad):
 
 
 class CropNonEmptyMaskIfExists(BaseCrop):
-    """Crop area with mask if mask is non-empty, else make random crop.
+    """Crop a region containing non-empty mask pixels; if mask empty or missing, fall back to
+    random crop. Good for segmentation to focus on labeled regions.
 
     This transform attempts to crop a region containing a mask (non-zero pixels). If the mask is empty or not provided,
     it falls back to a random crop. This is particularly useful for segmentation tasks where you want to focus on
@@ -1416,7 +1424,8 @@ class BaseRandomSizedCropInitSchema(BaseTransformInitSchema):
 
 
 class _BaseRandomSizedCrop(DualTransform):
-    """Base class for transforms that crop an image randomly and resize it to a specific size.
+    """Abstract base for random crop then resize to fixed size. Subclasses pick crop region;
+    output shape (height, width). Bboxes and keypoints scaled with the crop.
 
     This abstract class provides the foundation for RandomSizedCrop and RandomResizedCrop transforms.
     It handles cropping and resizing for different data types (image, mask, bboxes, keypoints) while
@@ -1580,14 +1589,15 @@ class _BaseRandomSizedCrop(DualTransform):
         self.area_for_downscale = area_for_downscale
 
     def _get_interpolation_for_resize(self, crop_shape: tuple[int, int], target_type: str) -> int:
-        """Get the appropriate interpolation method for resizing.
+        """Choose OpenCV interpolation for resizing crop to self.size. INTER_AREA when
+        downscaling if area_for_downscale set; else image or mask interpolation.
 
         Args:
-            crop_shape: Shape of the crop (height, width)
-            target_type: Either "image" or "mask" to determine base interpolation
+            crop_shape (tuple[int, int]): Shape of the crop (height, width)
+            target_type (str): Either "image" or "mask" to determine base interpolation
 
         Returns:
-            OpenCV interpolation flag
+            int: OpenCV interpolation flag.
 
         """
         crop_height, crop_width = crop_shape
@@ -1680,7 +1690,8 @@ class _BaseRandomSizedCrop(DualTransform):
 
 
 class RandomSizedCrop(_BaseRandomSizedCrop):
-    """Crop a random part of the input and rescale it to a specific size.
+    """Random crop with height in min_max_height and aspect ratio (w2h_ratio), then resize to
+    size. Scale and aspect variation with fixed output size.
 
     This transform first crops a random portion of the input and then resizes it to a specified size.
     The size of the random crop is controlled by the 'min_max_height' parameter.
@@ -1865,7 +1876,8 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
 
 
 class RandomResizedCrop(_BaseRandomSizedCrop):
-    """Crop a random part of the input and rescale it to a specified size.
+    """Random crop with scale and ratio ranges (torchvision-style), then resize to size.
+    Standard for training on varying resolutions; scale and ratio control crop.
 
     This transform first crops a random portion of the input image (or mask, bounding boxes, keypoints)
     and then resizes the crop to a specified size. It's particularly useful for training neural networks
@@ -2084,7 +2096,8 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
 
 
 class RandomCropNearBBox(BaseCrop):
-    """Crop bbox from image with random shift by x,y coordinates
+    """Crop around a reference bbox (cropping_bbox_key) with random shift (max_part_shift).
+    Use when you have a region of interest to augment.
 
     Args:
         max_part_shift (float, (float, float)): Max shift in `height` and `width` dimensions relative
@@ -2160,7 +2173,8 @@ class RandomCropNearBBox(BaseCrop):
 
 
 class BBoxSafeRandomCrop(BaseCrop):
-    """Crop an area from image while ensuring all bounding boxes are preserved in the crop.
+    """Random crop that keeps all bboxes inside (erosion_rate). Use when losing any object
+    is unacceptable. For at least one bbox use AtLeastOneBBoxRandomCrop.
 
     Similar to AtLeastOneBboxRandomCrop, but with a key difference:
     - BBoxSafeRandomCrop ensures ALL bounding boxes are preserved in the crop when erosion_rate=0.0
@@ -2327,7 +2341,8 @@ class BBoxSafeRandomCrop(BaseCrop):
 
 
 class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
-    """Crop a random part of the input and rescale it to a specific size without loss of bounding boxes.
+    """Random crop keeping every bbox inside, then resize to (height, width). erosion_rate sets
+    minimum crop size. Use when no object can be cut off.
 
     This transform first attempts to crop a random portion of the input image while ensuring that all bounding boxes
     remain within the cropped area. It then resizes the crop to the specified size. This is particularly useful for
@@ -2557,7 +2572,8 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
 
 
 class CropAndPad(DualTransform):
-    """Crop and pad images by pixel amounts or fractions of image sizes.
+    """Crop or pad each side by pixels (px) or fractions (percent). Positive pad, negative crop.
+    Per-side control via tuples. Good for letterboxing or trimming.
 
     This transform allows for simultaneous cropping and padding of images. Cropping removes pixels from the sides
     (i.e., extracts a subimage), while padding adds pixels to the sides (e.g., black pixels). The amount of
@@ -3018,7 +3034,8 @@ class CropAndPad(DualTransform):
 
 
 class RandomCropFromBorders(BaseCrop):
-    """Randomly crops the input from its borders without resizing.
+    """Randomly remove a strip from each border (crop_left/right/top/bottom). No resize;
+    output smaller. Good for trimming variable borders or slight zoom.
 
     This transform randomly crops parts of the input (image, mask, bounding boxes, or keypoints)
     from each of its borders. The amount of cropping is specified as a fraction of the input's
@@ -3166,7 +3183,8 @@ class RandomCropFromBorders(BaseCrop):
 
 
 class AtLeastOneBBoxRandomCrop(BaseCrop):
-    """Crop an area from image while ensuring at least one bounding box is present in the crop.
+    """Random crop of fixed size that contains at least one bbox. erosion_factor controls
+    overlap with reference box. Use when some object loss is acceptable.
 
     Similar to BBoxSafeRandomCrop, but with a key difference:
     - BBoxSafeRandomCrop ensures ALL bounding boxes are preserved in the crop

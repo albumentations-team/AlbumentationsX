@@ -21,7 +21,8 @@ __all__ = ["TextImage"]
 
 
 class TextImage(ImageOnlyTransform):
-    """Apply text rendering transformations on images.
+    """Render text onto images from metadata. font_path, stopwords, augmentations, fraction_range,
+    font_size_fraction_range, font_color, metadata_key, clear_bg.
 
     This class supports rendering text directly onto images using a variety of configurations,
     such as custom fonts, font sizes, colors, and augmentation methods. The text can be placed
@@ -122,12 +123,13 @@ class TextImage(ImageOnlyTransform):
         fraction: float,
         choice: Literal["insertion", "swap", "deletion"],
     ) -> str:
-        """Apply a random text augmentation to the input text.
+        """Apply random text augmentation (insertion, swap, or deletion). fraction and choice; returns
+        augmented string or empty if unchanged.
 
         Args:
             text (str): Original text to augment
             fraction (float): Fraction of words to modify
-            choice (Literal["insertion", "swap", "deletion"]): Type of augmentation to apply
+            choice (Literal['insertion', 'swap', 'deletion']): Type of augmentation to apply
 
         Returns:
             str: Augmented text or empty string if no change was made
@@ -149,7 +151,7 @@ class TextImage(ImageOnlyTransform):
         else:
             raise ValueError("Invalid choice. Choose from 'insertion', 'swap', or 'deletion'.")
 
-        result_sentence = re.sub(" +", " ", result_sentence).strip()
+        result_sentence = re.sub(r" +", " ", result_sentence).strip()
         return result_sentence if result_sentence != text else ""
 
     def preprocess_metadata(
@@ -159,10 +161,11 @@ class TextImage(ImageOnlyTransform):
         text: str,
         bbox_index: int,
     ) -> dict[str, Any]:
-        """Preprocess text metadata for a single bounding box.
+        """Preprocess text metadata for one bbox. Denormalizes bbox, font size, optional random_aug.
+        Returns dict with bbox_coords, text, font, font_color.
 
         Args:
-            image (np.ndarray): Input image
+            image (ImageType): Input image
             bbox (tuple[float, float, float, float]): Normalized bounding box coordinates
             text (str): Text to render in the bounding box
             bbox_index (int): Index of the bounding box in the original metadata
@@ -245,7 +248,8 @@ class TextImage(ImageOnlyTransform):
         return ftext.render_text(img, overlay_data, clear_bg=self.clear_bg)
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Apply the transform and include overlay data in the result.
+        """Apply transform and include overlay data in result. Returns dict with transformed data and
+        overlay info. Used by Compose when metadata_key present.
 
         Args:
             params (dict[str, Any]): Parameters for the transform

@@ -10,9 +10,10 @@ from albumentations.core.analytics.events import ComposeInitEvent
 
 
 class MixpanelBackend:
-    """Mixpanel backend for sending telemetry data.
+    """Sends events to Mixpanel track API. No parameter limit; full transform list and custom
+    properties supported (unlike GA4).
 
-    Mixpanel is much simpler than GA4 for library telemetry:
+    Simpler than GA4 for library telemetry:
     - No web stream complications
     - No parameter limits
     - Better suited for custom events
@@ -22,13 +23,14 @@ class MixpanelBackend:
     PROJECT_TOKEN = "9674977e5658e19ce4710845fdd68712"  # noqa: S105 - This is a public token, not a secret
 
     def _parse_timestamp(self, timestamp: str | datetime | None) -> int | None:
-        """Parse timestamp to Unix epoch seconds.
+        """Convert ISO timestamp or datetime to Unix seconds. Mixpanel expects seconds; 'Z' suffix
+        normalized to UTC. None if invalid.
 
         Args:
-            timestamp: ISO format string or datetime object
+            timestamp (str | datetime | None): ISO format string or datetime object
 
         Returns:
-            Unix timestamp in seconds or None
+            int | None: Unix timestamp in seconds or None.
 
         """
         if timestamp is None:
@@ -46,10 +48,11 @@ class MixpanelBackend:
             return None
 
     def send_event(self, event: ComposeInitEvent) -> None:
-        """Send a compose initialization event to Mixpanel.
+        """POST a Compose Init event to Mixpanel: map event fields to properties (distinct_id,
+        time, transforms, etc.). Blocks on request.
 
         Args:
-            event: The ComposeInitEvent to send
+            event (ComposeInitEvent): The ComposeInitEvent to send
 
         """
         try:

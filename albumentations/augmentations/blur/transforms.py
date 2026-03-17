@@ -1,9 +1,5 @@
-"""Transform classes for applying various blur operations to images.
-
-This module contains transform classes that implement different blur effects including
-standard blur, motion blur, median blur, Gaussian blur, glass blur, advanced blur, defocus,
-and zoom blur. These transforms are designed to work within the albumentations pipeline
-and support parameters for controlling the intensity and properties of the blur effects.
+"""Transform classes for blur operations (box, motion, median, Gaussian, glass, advanced,
+defocus, zoom). Each transform documents its parameters and behavior in Args and Examples.
 """
 
 from typing import Annotated, Any, Literal, cast
@@ -65,7 +61,8 @@ class BlurInitSchema(BaseTransformInitSchema):
 
 
 class Blur(ImageOnlyTransform):
-    """Apply uniform box blur to the input image using a randomly sized square kernel.
+    """Average pixels over a random square kernel (box filter). Fast, soft blur; kernel size
+    from blur_limit. Good for mild smoothing or augmentation variety.
 
     This transform uses OpenCV's cv2.blur function, which performs a simple box filter blur.
     The size of the blur kernel is randomly selected for each application, allowing for
@@ -172,7 +169,8 @@ class Blur(ImageOnlyTransform):
 
 
 class MotionBlur(Blur):
-    """Apply motion blur to the input image using a directional kernel.
+    """Simulate motion blur along a random direction (camera shake or moving subject).
+    Kernel size and angle sampled per call; optional shift for off-center streaks.
 
     This transform simulates motion blur effects that occur during image capture,
     such as camera shake or object movement. It creates a directional blur using
@@ -432,7 +430,8 @@ class MotionBlur(Blur):
 
 
 class MedianBlur(Blur):
-    """Apply median blur to the input image.
+    """Replace each pixel with median in a square window. Removes salt-and-pepper noise; edges
+    sharper than box or Gaussian. Kernel size from blur_limit.
 
     This transform uses a median filter to blur the input image. Median filtering is particularly
     effective at removing salt-and-pepper noise while preserving edges, making it a popular choice
@@ -569,7 +568,8 @@ class MedianBlur(Blur):
 
 
 class GaussianBlur(ImageOnlyTransform):
-    """Apply Gaussian blur to the input image using a randomly sized kernel.
+    """Smooth the image with a Gaussian kernel (weighted average; reduces noise and fine
+    detail). Kernel size and sigma are sampled randomly per call.
 
     This transform blurs the input image using a Gaussian filter with a random kernel size
     and sigma value. Gaussian blur is a widely used image processing technique that reduces
@@ -745,7 +745,8 @@ class GaussianBlur(ImageOnlyTransform):
 
 
 class GlassBlur(ImageOnlyTransform):
-    """Apply a glass blur effect to the input image.
+    """Simulate frosted glass: Gaussian blur then local random pixel shuffles. Controlled
+    by sigma (blur), max_delta (shuffle distance), and iterations.
 
     This transform simulates the effect of looking through textured glass by locally
     shuffling pixels in the image. It creates a distorted, frosted glass-like appearance.
@@ -765,7 +766,7 @@ class GlassBlur(ImageOnlyTransform):
             Must be a positive integer.
             Default: 2
 
-        mode (Literal["fast", "exact"]): Mode of computation. Options are:
+        mode (Literal['fast', 'exact']): Mode of computation. Options are:
             - "fast": Uses a faster but potentially less accurate method.
             - "exact": Uses a slower but more precise method.
             Default: "fast"
@@ -937,7 +938,8 @@ class GlassBlur(ImageOnlyTransform):
 
 
 class AdvancedBlur(ImageOnlyTransform):
-    """Applies a Generalized Gaussian blur to the input image with randomized parameters for advanced data augmentation.
+    """Blur with a generalized Gaussian kernel (shape from beta), optional anisotropy and
+    rotation, plus kernel noise. Broader effect range than GaussianBlur.
 
     This transform creates a custom blur kernel based on the Generalized Gaussian distribution,
     which allows for a wide range of blur effects beyond standard Gaussian blur. It then applies
@@ -1243,7 +1245,8 @@ class AdvancedBlur(ImageOnlyTransform):
 
 
 class Defocus(ImageOnlyTransform):
-    """Apply defocus blur to the input image.
+    """Simulate out-of-focus lens: disc-shaped kernel (aperture) plus optional Gaussian
+    alias blur. Radius and alias_blur control strength and edge softness.
 
     This transform simulates the effect of an out-of-focus camera by applying a defocus blur
     to the image. It uses a combination of disc kernels and Gaussian blur to create a realistic
@@ -1380,7 +1383,8 @@ class Defocus(ImageOnlyTransform):
 
 
 class ZoomBlur(ImageOnlyTransform):
-    """Apply zoom blur transform.
+    """Radial blur from zoom-during-exposure: average the image with copies zoomed from the
+    center at random factors. Creates motion-like streaks away from the center.
 
     This transform simulates the effect of zooming during exposure, creating a dynamic radial blur.
     It works by averaging multiple versions of the image at different zoom levels, creating

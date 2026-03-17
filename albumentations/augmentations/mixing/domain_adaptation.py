@@ -38,7 +38,8 @@ class BaseDomainAdaptationInitSchema(BaseTransformInitSchema):
 
 
 class BaseDomainAdaptation(ImageOnlyTransform):
-    """Base class for domain adaptation transforms.
+    """Base for domain adaptation: modify source to match target via reference data in
+    metadata_key. Subclasses implement apply and get_params_dependent_on_data.
 
     Domain adaptation transforms modify source images to match the characteristics of a target domain.
     These transforms typically require an additional reference image or dataset from the target domain
@@ -158,7 +159,9 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         return [self.metadata_key]
 
     def _get_reference_image(self, data: dict[str, Any]) -> ImageType:
-        """Retrieves the reference image from metadata."""
+        """Retrieve a reference image from data[metadata_key]. Returns one image from the
+        sequence; raises ValueError or TypeError if missing or invalid type.
+        """
         metadata_images = data.get(self.metadata_key)
 
         if not metadata_images:
@@ -181,7 +184,8 @@ class BaseDomainAdaptation(ImageOnlyTransform):
 
 
 class HistogramMatching(BaseDomainAdaptation):
-    """Adjust the pixel value distribution of an input image to match a reference image.
+    """Match input histogram to a reference image (metadata_key). Aligns intensity and
+    contrast; blend_ratio controls strength. Good for cross-domain style alignment.
 
     This transform modifies the pixel intensities of the input image so that its histogram
     matches the histogram of a provided reference image. This process is applied independently
@@ -309,7 +313,8 @@ class HistogramMatching(BaseDomainAdaptation):
 
 
 class FDA(BaseDomainAdaptation):
-    """Fourier Domain Adaptation (FDA).
+    """Fourier Domain Adaptation: swap low-frequency spectrum with reference (metadata_key).
+    beta_limit controls extent. Good for unsupervised domain adaptation (UDA).
 
     Adapts the style of the input image to match the style of a reference image
     by manipulating their frequency components in the Fourier domain. This is
@@ -517,7 +522,7 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
             the adapted image with the original. A value of 0 means the original image is returned,
             1 means the fully adapted image is returned. A random value within this range [min, max]
             is sampled for each application. Default: (0.25, 1.0).
-        transform_type (Literal["pca", "standard", "minmax"]): Specifies the type of statistical
+        transform_type (Literal['pca', 'standard', 'minmax']): Specifies the type of statistical
             transformation to apply:
             - "pca": Principal Component Analysis.
             - "standard": StandardScaler (zero mean, unit variance).

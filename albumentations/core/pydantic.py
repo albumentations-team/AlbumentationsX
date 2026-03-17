@@ -1,5 +1,4 @@
 """Module containing Pydantic validation utilities for Albumentations.
-
 This module provides a collection of validators and utility functions used for validating
 parameters in the Pydantic models throughout the Albumentations library. It includes
 functions for ensuring numeric ranges are valid, handling type conversions, and creating
@@ -16,7 +15,8 @@ from albumentations.core.utils import to_tuple
 
 
 def nondecreasing(value: tuple[Number, Number]) -> tuple[Number, Number]:
-    """Ensure a tuple of two numbers is in non-decreasing order.
+    """Ensure a tuple of two numbers is in non-decreasing order (value[0] <= value[1]). Raises
+    ValueError otherwise. Use as a Pydantic validator for range params.
 
     Args:
         value (tuple[Number, Number]): Tuple of two numeric values to validate.
@@ -34,7 +34,8 @@ def nondecreasing(value: tuple[Number, Number]) -> tuple[Number, Number]:
 
 
 def process_non_negative_range(value: tuple[float, float] | float | None) -> tuple[float, float]:
-    """Process and validate a non-negative range.
+    """Process and validate a non-negative range from a tuple, single float, or None (treated as 0).
+    Raises if negative. For Pydantic.
 
     Args:
         value (tuple[float, float] | float | None): Value to process. Can be:
@@ -57,7 +58,8 @@ def process_non_negative_range(value: tuple[float, float] | float | None) -> tup
 
 
 def float2int(value: tuple[float, float]) -> tuple[int, int]:
-    """Convert a tuple of floats to a tuple of integers.
+    """Convert a tuple of two floats to a tuple of two integers (truncation). Used for Pydantic
+    int range types in InitSchema fields.
 
     Args:
         value (tuple[float, float]): Tuple of two float values.
@@ -92,7 +94,8 @@ def create_symmetric_range(value: tuple[float, float] | float) -> tuple[float, f
 
 
 def create_symmetric_range(value: tuple[float, float] | float) -> tuple[float, float]:
-    """Create a symmetric range around zero or use provided range.
+    """Create a symmetric range around zero: scalar x becomes (-x, x); tuple used as-is. Used for
+    symmetric params in Pydantic.
 
     Args:
         value (tuple[float, float] | float): Input value, either:
@@ -110,7 +113,8 @@ SymmetricRangeType = Annotated[tuple[float, float] | float, AfterValidator(creat
 
 
 def convert_to_1plus_range(value: tuple[float, float] | float) -> tuple[float, float]:
-    """Convert value to a range with lower bound of 1.
+    """Convert value to a range with lower bound of 1 (via to_tuple with low=1). Scalar or tuple
+    input. For Pydantic range fields.
 
     Args:
         value (tuple[float, float] | float): Input value.
@@ -123,7 +127,8 @@ def convert_to_1plus_range(value: tuple[float, float] | float) -> tuple[float, f
 
 
 def convert_to_0plus_range(value: tuple[float, float] | float) -> tuple[float, float]:
-    """Convert value to a range with lower bound of 0.
+    """Convert value to a range with lower bound of 0 (via to_tuple with low=0). Scalar or tuple
+    input. For Pydantic range fields.
 
     Args:
         value (tuple[float, float] | float): Input value.
@@ -136,7 +141,8 @@ def convert_to_0plus_range(value: tuple[float, float] | float) -> tuple[float, f
 
 
 def convert_to_1centered_range(value: tuple[float, float] | float) -> tuple[float, float]:
-    """Convert value to a range centered at 1: (max(0, 1-x), 1+x) for scalar x.
+    """Convert value to a range centered at 1: scalar x gives (max(0, 1-x), 1+x). Used for
+    brightness/contrast factors. For Pydantic.
 
     Args:
         value (tuple[float, float] | float): Input value. Scalar x becomes (max(0, 1-x), 1+x).
@@ -155,7 +161,8 @@ def convert_to_1centered_range(value: tuple[float, float] | float) -> tuple[floa
 
 
 def repeat_if_scalar(value: tuple[float, float] | float) -> tuple[float, float]:
-    """Convert a scalar value to a tuple by repeating it, or return the tuple as is.
+    """Convert a scalar to (value, value) or return the tuple unchanged. Used to normalize range
+    params to (min, max). For Pydantic.
 
     Args:
         value (tuple[float, float] | float): Input value, either a scalar or tuple.
@@ -176,12 +183,13 @@ def check_range_bounds(
     min_inclusive: bool = True,
     max_inclusive: bool = True,
 ) -> Callable[[tuple[T, ...] | None], tuple[T, ...] | None]:
-    """Validates that all values in a tuple are within specified bounds.
+    """Return a validator that ensures all values in a tuple are within min/max bounds
+    (inclusive or exclusive). Use in Pydantic model field validators.
 
     Args:
-        min_val (int | float):
+        min_val (Number):
             Minimum allowed value.
-        max_val (int | float | None):
+        max_val (Number | None):
             Maximum allowed value. If None, only lower bound is checked.
         min_inclusive (bool):
             If True, min_val is inclusive (>=). If False, exclusive (>).

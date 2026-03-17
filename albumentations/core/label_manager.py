@@ -17,7 +17,8 @@ import numpy as np
 
 
 def custom_sort(item: Any) -> tuple[int, Real | str]:
-    """Sort items by type then value for consistent label ordering.
+    """Return a sort key (priority, value) so labels sort consistently: numbers first (priority 0),
+    then strings (priority 1). Used for ordering.
 
     This function is used to sort labels in a consistent order, prioritizing numerical
     values before string values. All numerical values are given priority 0, while
@@ -44,7 +45,8 @@ def _categorize_labels(labels: set[Any]) -> tuple[list[Real], list[str]]:
 
 
 class LabelEncoder:
-    """Encodes labels into integer indices.
+    """Encode original label values (numeric or categorical) to integer indices and back. Keeps
+    classes_ and inverse_classes_ mapping.
 
     This class handles the conversion between original label values and their
     numerical representations. It supports both numerical and categorical labels.
@@ -64,7 +66,8 @@ class LabelEncoder:
         self.is_numerical: bool = True
 
     def fit(self, y: Sequence[Any] | np.ndarray) -> "LabelEncoder":
-        """Fit the encoder to the input labels.
+        """Fit the encoder to the input labels (sequence or array). Builds the label-to-index
+        mapping and returns self for chaining.
 
         Args:
             y (Sequence[Any] | np.ndarray): Input labels to fit the encoder.
@@ -95,7 +98,8 @@ class LabelEncoder:
         return self
 
     def transform(self, y: Sequence[Any] | np.ndarray) -> np.ndarray:
-        """Transform labels to encoded integer indices.
+        """Transform labels to encoded integer indices using the fitted encoder. Input: sequence
+        or array; returns 1D ndarray of indices.
 
         Args:
             y (Sequence[Any] | np.ndarray): Input labels to transform.
@@ -113,7 +117,8 @@ class LabelEncoder:
         return np.array([self.classes_[label] for label in y])
 
     def fit_transform(self, y: Sequence[Any] | np.ndarray) -> np.ndarray:
-        """Fit the encoder and transform the input labels in one step.
+        """Fit the encoder to the input labels and return their encoded integer indices in one
+        step. Convenience method for fit+transform.
 
         Args:
             y (Sequence[Any] | np.ndarray): Input labels to fit and transform.
@@ -126,7 +131,8 @@ class LabelEncoder:
         return self.transform(y)
 
     def inverse_transform(self, y: Sequence[Any] | np.ndarray) -> np.ndarray:
-        """Transform encoded indices back to original labels.
+        """Transform encoded integer indices back to original label values. Input: sequence or
+        array of indices; returns ndarray of labels.
 
         Args:
             y (Sequence[Any] | np.ndarray): Encoded integer indices.
@@ -144,7 +150,8 @@ class LabelEncoder:
         return np.array([self.inverse_classes_[label] for label in y])
 
     def update(self, y: Sequence[Any] | np.ndarray) -> "LabelEncoder":
-        """Update the encoder with new labels encountered after initial fitting.
+        """Update the encoder with new labels not seen during fit. Adds new mappings only; does
+        not change existing encodings. Idempotent for existing labels.
 
         This method identifies labels in the input sequence that are not already
         known to the encoder and adds them to the internal mapping. It does not
@@ -196,7 +203,9 @@ class LabelEncoder:
 
 @dataclass
 class LabelMetadata:
-    """Stores metadata about a label field."""
+    """Stores metadata for a label field: input_type, is_numerical, dtype, and optional
+    LabelEncoder for encoding and decoding.
+    """
 
     input_type: type
     is_numerical: bool
@@ -205,7 +214,8 @@ class LabelMetadata:
 
 
 class LabelManager:
-    """Manages label encoding and decoding across multiple data fields.
+    """Manages encoding, decoding, and type handling for label fields across data types.
+    Maintains per-field metadata and encoders.
 
     This class handles the encoding, decoding, and type management for label fields.
     It maintains metadata about each field to ensure proper conversion between
@@ -221,7 +231,8 @@ class LabelManager:
         self.metadata: dict[str, dict[str, LabelMetadata]] = defaultdict(dict)
 
     def process_field(self, data_name: str, label_field: str, field_data: Any) -> np.ndarray:
-        """Process a label field, store metadata, and encode.
+        """Process a label field: analyze or update metadata, fit or update encoder, return
+        encoded data as ndarray. Used internally by Compose.
 
         If the field has been processed before (metadata exists), this will update
         the existing LabelEncoder with any new labels found in `field_data` before encoding.
@@ -250,13 +261,17 @@ class LabelManager:
         return self._encode_data(field_data, metadata)
 
     def restore_field(self, data_name: str, label_field: str, encoded_data: np.ndarray) -> Any:
-        """Restore a label field to its original format."""
+        """Restore a label field from encoded array to its original format and type using stored
+        metadata and encoder. Inverse of process_field.
+        """
         metadata = self.metadata[data_name][label_field]
         decoded_data = self._decode_data(encoded_data, metadata)
         return self._restore_type(decoded_data, metadata)
 
     def _analyze_input(self, field_data: Any) -> LabelMetadata:
-        """Analyze input data and create metadata."""
+        """Analyze input label data and create LabelMetadata (input_type, is_numerical, dtype,
+        optional LabelEncoder). Used when processing a field.
+        """
         input_type = type(field_data)
         dtype = field_data.dtype if isinstance(field_data, np.ndarray) else None
 
@@ -283,7 +298,9 @@ class LabelManager:
         return metadata
 
     def _encode_data(self, field_data: Any, metadata: LabelMetadata) -> np.ndarray:
-        """Encode field data for processing."""
+        """Encode field data for processing: numeric to float32, categorical via LabelEncoder.
+        Returns ndarray. Used before applying transforms.
+        """
         if metadata.is_numerical:
             # For numerical values, convert to float32 for processing
             if isinstance(field_data, np.ndarray):
@@ -296,7 +313,9 @@ class LabelManager:
         return metadata.encoder.fit_transform(field_data).reshape(-1, 1)
 
     def _decode_data(self, encoded_data: np.ndarray, metadata: LabelMetadata) -> np.ndarray:
-        """Decode processed data."""
+        """Decode encoded array back to labels using metadata (dtype or encoder inverse_transform).
+        Returns ndarray. Used when restoring fields.
+        """
         if metadata.is_numerical:
             if metadata.dtype is not None:
                 return encoded_data.astype(metadata.dtype)
@@ -309,7 +328,9 @@ class LabelManager:
         return decoded.reshape(-1)  # Ensure 1D array
 
     def _restore_type(self, decoded_data: np.ndarray, metadata: LabelMetadata) -> Any:
-        """Restore data to its original type."""
+        """Restore decoded array to original type (list, ndarray with dtype, or list by default).
+        Used after decode when restoring fields.
+        """
         # If original input was a list or sequence, convert back to list
         if isinstance(metadata.input_type, type) and issubclass(metadata.input_type, (list, Sequence)):
             return decoded_data.tolist()
@@ -324,11 +345,15 @@ class LabelManager:
         return decoded_data.tolist()
 
     def handle_empty_data(self) -> list[Any]:
-        """Handle empty data case."""
+        """Handle the case when label data is empty or missing by returning an empty
+        list. Gives callers a consistent return type. For process_field.
+        """
         return []
 
     def get_encoder(self, data_name: str, label_field: str) -> LabelEncoder | None:
-        """Retrieves the fitted LabelEncoder for a specific data and label field."""
+        """Return the fitted LabelEncoder for the given data name and label field, or None if not
+        processed yet. Use to inspect encodings.
+        """
         if data_name in self.metadata and label_field in self.metadata[data_name]:
             encoder = self.metadata[data_name][label_field].encoder
             # Ensure encoder is LabelEncoder or None, handle potential type issues

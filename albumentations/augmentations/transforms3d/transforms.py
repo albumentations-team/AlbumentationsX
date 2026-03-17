@@ -34,7 +34,8 @@ NUM_DIMENSIONS = 3
 
 
 class BasePad3D(Transform3D):
-    """Base class for 3D padding transforms.
+    """Base class for 3D padding transforms. Common logic for volumes, masks, keypoints; fill, fill_mask.
+    Subclasses implement get_params_dependent_on_data.
 
     This class serves as a foundation for all 3D transforms that perform padding operations
     on volumetric data. It provides common functionality for padding 3D volumes, masks,
@@ -128,18 +129,6 @@ class BasePad3D(Transform3D):
         padding: tuple[int, int, int, int, int, int],
         **params: Any,
     ) -> VolumeType:
-        """Apply padding to a 3D volume.
-
-        Args:
-            volume (np.ndarray): Input volume with shape (depth, height, width) or (depth, height, width, channels)
-            padding (tuple[int, int, int, int, int, int]): Padding values in format:
-                (depth_front, depth_back, height_top, height_bottom, width_left, width_right)
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Padded volume with same number of dimensions as input
-
-        """
         if padding == (0, 0, 0, 0, 0, 0):
             return volume
         return f3d.pad_3d_with_params(
@@ -154,18 +143,6 @@ class BasePad3D(Transform3D):
         padding: tuple[int, int, int, int, int, int],
         **params: Any,
     ) -> VolumeType:
-        """Apply padding to a 3D mask.
-
-        Args:
-            mask3d (np.ndarray): Input mask with shape (depth, height, width) or (depth, height, width, channels)
-            padding (tuple[int, int, int, int, int, int]): Padding values in format:
-                (depth_front, depth_back, height_top, height_bottom, width_left, width_right)
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Padded mask with same number of dimensions as input
-
-        """
         if padding == (0, 0, 0, 0, 0, 0):
             return mask3d
         return f3d.pad_3d_with_params(
@@ -175,24 +152,16 @@ class BasePad3D(Transform3D):
         )
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Apply padding to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 3+).
-                                   The first three columns are x, y, z coordinates.
-            **params (Any): Additional parameters containing padding values
-
-        Returns:
-            np.ndarray: Shifted keypoints with same shape as input
-
-        """
         padding = params["padding"]
         shift_vector = np.array([padding[4], padding[2], padding[0]])
         return fgeometric.shift_keypoints(keypoints, shift_vector)
 
 
 class Pad3D(BasePad3D):
-    """Pad the sides of a 3D volume by specified number of voxels.
+    """Add voxels around a 3D volume. Padding: int or per-side (depth, height, width); fill,
+    fill_mask. For fixed-size batches or avoiding crop boundaries.
+
+    Targets: volume, mask3d, keypoints
 
     Args:
         padding (int, tuple[int, int, int] or tuple[int, int, int, int, int, int]): Padding values. Can be:
@@ -261,7 +230,8 @@ class Pad3D(BasePad3D):
             cls,
             v: int | tuple[int, int, int] | tuple[int, int, int, int, int, int],
         ) -> int | tuple[int, int, int] | tuple[int, int, int, int, int, int]:
-            """Validate the padding parameter.
+            """Validate padding: int or tuple of 3 or 6 non-negative ints. Raises if invalid or wrong length.
+            For Pad3D InitSchema field validator.
 
             Args:
                 cls (type): The class object
@@ -295,7 +265,8 @@ class Pad3D(BasePad3D):
         self.fill_mask = fill_mask
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Get parameters dependent on input data.
+        """Get padding parameters from input data (volume shape). Returns dict with padding tuple
+        (d_front, d_back, h_top, h_bottom, w_left, w_right). For Pad3D.
 
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
@@ -319,9 +290,8 @@ class Pad3D(BasePad3D):
 
 
 class PadIfNeeded3D(BasePad3D):
-    """Pads the sides of a 3D volume if its dimensions are less than specified minimum dimensions.
-    If the pad_divisor_zyx is specified, the function additionally ensures that the volume
-    dimensions are divisible by these values.
+    """Pad 3D volume to min dimensions (min_zyx) and/or divisibility (pad_divisor_zyx). position,
+    fill, fill_mask. At least one of min_zyx or pad_divisor_zyx required.
 
     Args:
         min_zyx (tuple[int, int, int] | None): Minimum desired size as (depth, height, width).
@@ -330,7 +300,7 @@ class PadIfNeeded3D(BasePad3D):
         pad_divisor_zyx (tuple[int, int, int] | None): If set, pads each dimension to make it
             divisible by corresponding value in format (depth_div, height_div, width_div).
             If not specified, min_zyx must be provided.
-        position (Literal["center", "random"]): Position where the volume is to be placed after padding.
+        position (Literal['center', 'random']): Position where the volume is to be placed after padding.
             Default is 'center'.
         fill (tuple[float, ...] | float): Value to fill the border voxels for volume. Default: 0
         fill_mask (tuple[float, ...] | float): Value to fill the border voxels for masks. Default: 0
@@ -391,7 +361,8 @@ class PadIfNeeded3D(BasePad3D):
 
         @model_validator(mode="after")
         def validate_params(self) -> Self:
-            """Validate that either min_zyx or pad_divisor_zyx is provided.
+            """Validate that exactly one of min_zyx or pad_divisor_zyx is provided. Raises ValueError
+            if both None or both set. For PadIfNeeded3D InitSchema.
 
             Returns:
                 Self: Self reference for method chaining
@@ -424,7 +395,8 @@ class PadIfNeeded3D(BasePad3D):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Calculate padding parameters based on input data dimensions.
+        """Calculate padding parameters from volume shape to meet min_zyx or pad_divisor_zyx.
+        Returns dict with padding tuple. For PadIfNeeded3D.
 
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
@@ -456,7 +428,8 @@ class PadIfNeeded3D(BasePad3D):
 
 
 class BaseCropAndPad3D(Transform3D):
-    """Base class for 3D transforms that need both cropping and padding.
+    """Base class for 3D transforms that crop and optionally pad. pad_if_needed, fill, fill_mask,
+    pad_position. Subclasses implement get_params_dependent_on_data.
 
     This class serves as a foundation for transforms that combine cropping and padding operations
     on 3D volumetric data. It provides functionality for calculating padding parameters,
@@ -466,7 +439,7 @@ class BaseCropAndPad3D(Transform3D):
         pad_if_needed (bool): Whether to pad if the volume is smaller than target dimensions
         fill (tuple[float, ...] | float): Value to fill the padded voxels for volume
         fill_mask (tuple[float, ...] | float): Value to fill the padded voxels for mask
-        pad_position (Literal["center", "random"]): How to distribute padding when needed
+        pad_position (Literal['center', 'random']): How to distribute padding when needed
             "center" - equal amount on both sides, "random" - random distribution
         p (float): Probability of applying the transform. Default: 1.0
 
@@ -574,7 +547,8 @@ class BaseCropAndPad3D(Transform3D):
         self.pad_position = pad_position
 
     def _random_pad(self, pad: int) -> tuple[int, int]:
-        """Generate random padding values.
+        """Generate random (front, back) padding that sum to pad. Used when pad_position is random.
+        Returns tuple (front, back) for one dimension.
 
         Args:
             pad (int): Total padding value to distribute
@@ -591,7 +565,8 @@ class BaseCropAndPad3D(Transform3D):
         return pad_start, pad_end
 
     def _center_pad(self, pad: int) -> tuple[int, int]:
-        """Generate centered padding values.
+        """Generate centered (front, back) padding that sum to pad. Used when pad_position is center.
+        Returns tuple (front, back) for one dimension. For BaseCropAndPad3D.
 
         Args:
             pad (int): Total padding value to distribute
@@ -609,7 +584,8 @@ class BaseCropAndPad3D(Transform3D):
         image_shape: tuple[int, int, int],
         target_shape: tuple[int, int, int],
     ) -> dict[str, int] | None:
-        """Calculate padding parameters to reach target shape.
+        """Calculate padding to reach target shape from image_shape. Returns dict or None. For
+        BaseCropAndPad3D when pad_if_needed True.
 
         Args:
             image_shape (tuple[int, int, int]): Current shape (depth, height, width)
@@ -660,18 +636,6 @@ class BaseCropAndPad3D(Transform3D):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> VolumeType:
-        """Apply cropping and padding to a 3D volume.
-
-        Args:
-            volume (np.ndarray): Input volume with shape (depth, height, width) or (depth, height, width, channels)
-            crop_coords (tuple[int, int, int, int, int, int]): Crop coordinates (z1, z2, y1, y2, x1, x2)
-            pad_params (dict[str, int] | None): Padding parameters or None if no padding needed
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Cropped and padded volume with same number of dimensions as input
-
-        """
         # First crop
         cropped = f3d.crop3d(volume, crop_coords)
 
@@ -700,18 +664,6 @@ class BaseCropAndPad3D(Transform3D):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> VolumeType:
-        """Apply cropping and padding to a 3D mask.
-
-        Args:
-            mask3d (np.ndarray): Input mask with shape (depth, height, width) or (depth, height, width, channels)
-            crop_coords (tuple[int, int, int, int, int, int]): Crop coordinates (z1, z2, y1, y2, x1, x2)
-            pad_params (dict[str, int] | None): Padding parameters or None if no padding needed
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Cropped and padded mask with same number of dimensions as input
-
-        """
         # First crop
         cropped = f3d.crop3d(mask3d, crop_coords)
 
@@ -740,19 +692,6 @@ class BaseCropAndPad3D(Transform3D):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> np.ndarray:
-        """Apply cropping and padding to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 3+).
-                                   The first three columns are x, y, z coordinates.
-            crop_coords (tuple[int, int, int, int, int, int]): Crop coordinates (z1, z2, y1, y2, x1, x2)
-            pad_params (dict[str, int] | None): Padding parameters or None if no padding needed
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Shifted keypoints with same shape as input
-
-        """
         # Extract crop start coordinates (z1,y1,x1)
         crop_z1, _, crop_y1, _, crop_x1, _ = crop_coords
 
@@ -780,7 +719,10 @@ class BaseCropAndPad3D(Transform3D):
 
 
 class CenterCrop3D(BaseCropAndPad3D):
-    """Crop the center of 3D volume.
+    """Take the center sub-volume to fixed (depth, height, width). pad_if_needed fills when smaller;
+    fill, fill_mask. For fixed-size 3D inputs (e.g. CT, MRI).
+
+    Targets: volume, mask3d, keypoints
 
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
@@ -878,7 +820,8 @@ class CenterCrop3D(BaseCropAndPad3D):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Calculate crop coordinates for center cropping.
+        """Calculate center crop coordinates from volume shape and self.size. Returns dict with
+        crop_coords (z_min, z_max, y_min, y_max, x_min, x_max). For CenterCrop3D.
 
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
@@ -933,7 +876,10 @@ class CenterCrop3D(BaseCropAndPad3D):
 
 
 class RandomCrop3D(BaseCropAndPad3D):
-    """Crop random part of 3D volume.
+    """Extract a random 3D sub-volume of given (depth, height, width). pad_if_needed when smaller;
+    fill, fill_mask. For spatial augmentation of volumetric data.
+
+    Targets: volume, mask3d, keypoints
 
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
@@ -1018,7 +964,8 @@ class RandomCrop3D(BaseCropAndPad3D):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Calculate random crop coordinates.
+        """Calculate random crop coordinates from volume shape and self.size. Returns dict with
+        crop_coords (z_min, z_max, y_min, y_max, x_min, x_max). For RandomCrop3D.
 
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
@@ -1065,9 +1012,8 @@ class RandomCrop3D(BaseCropAndPad3D):
 
 
 class CoarseDropout3D(Transform3D):
-    """CoarseDropout3D randomly drops out cuboid regions from a 3D volume and optionally,
-    the corresponding regions in an associated 3D mask, to simulate occlusion and
-    varied object sizes found in real-world volumetric data.
+    """Randomly drop cuboid regions from a 3D volume (and optionally mask) to simulate occlusion.
+    Hole size/count configurable.
 
     Args:
         num_holes_range (tuple[int, int]): Range (min, max) for the number of cuboid
@@ -1146,7 +1092,8 @@ class CoarseDropout3D(Transform3D):
 
         @staticmethod
         def validate_range(range_value: tuple[float, float], range_name: str) -> None:
-            """Validate that range values are between 0 and 1 and in non-decreasing order.
+            """Validate that range values are in [0, 1] and non-decreasing. Raises ValueError if not.
+            For CoarseDropout3D InitSchema depth/height/width range fields.
 
             Args:
                 range_value (tuple[float, float]): Tuple of (min, max) values to check
@@ -1195,7 +1142,8 @@ class CoarseDropout3D(Transform3D):
         width_range: tuple[float, float],
         size: int,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Calculate dimensions for dropout holes.
+        """Calculate 3D dropout hole dimensions from volume shape and fraction ranges. Returns
+        (depths, heights, widths) arrays. For CoarseDropout3D.
 
         Args:
             volume_shape (tuple[int, int, int]): Shape of the volume (depth, height, width)
@@ -1219,7 +1167,8 @@ class CoarseDropout3D(Transform3D):
         return hole_depths, hole_heights, hole_widths
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Generate parameters for coarse dropout based on input data.
+        """Generate hole parameters for CoarseDropout3D from volume shape. Returns dict with holes
+        (n, 6) and params. Uses depth/height/width ranges, num_holes.
 
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
@@ -1255,36 +1204,12 @@ class CoarseDropout3D(Transform3D):
         return {"holes": holes}
 
     def apply_to_volume(self, volume: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
-        """Apply dropout to a 3D volume.
-
-        Args:
-            volume (np.ndarray): Input volume with shape (depth, height, width) or (depth, height, width, channels)
-            holes (np.ndarray): Array of holes with shape (num_holes, 6).
-                Each hole is represented as [z1, y1, x1, z2, y2, x2]
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Volume with holes filled with the given value
-
-        """
         if holes.size == 0:
             return volume
 
         return f3d.cutout3d(volume, holes, self.fill)
 
     def apply_to_mask(self, mask: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
-        """Apply dropout to a 3D mask.
-
-        Args:
-            mask (VolumeType): Input mask with shape (depth, height, width) or (depth, height, width, channels)
-            holes (np.ndarray): Array of holes with shape (num_holes, 6).
-                Each hole is represented as [z1, y1, x1, z2, y2, x2]
-            **params (Any): Additional parameters
-
-        Returns:
-            VolumeType: Mask with holes filled with the given value
-
-        """
         if self.fill_mask is None or holes.size == 0:
             return mask
 
@@ -1296,19 +1221,6 @@ class CoarseDropout3D(Transform3D):
         holes: np.ndarray,
         **params: Any,
     ) -> np.ndarray:
-        """Apply dropout to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 3+).
-                                   The first three columns are x, y, z coordinates.
-            holes (np.ndarray): Array of holes with shape (num_holes, 6).
-                Each hole is represented as [z1, y1, x1, z2, y2, x2]
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Filtered keypoints with same shape as input
-
-        """
         if holes.size == 0:
             return keypoints
         processor = cast("KeypointsProcessor", self.get_processor("keypoints"))
@@ -1319,7 +1231,8 @@ class CoarseDropout3D(Transform3D):
 
 
 class CubicSymmetry(Transform3D):
-    """Applies a random cubic symmetry transformation to a 3D volume.
+    """Apply random cubic symmetry (one of 48) to a 3D volume. No interpolation; remaps voxels.
+    3D extension of D4. For TTA or augmentation; inverse() supported.
 
     This transform is a 3D extension of D4. While D4 handles the 8 symmetries
     of a square (4 rotations x 2 reflections), CubicSymmetry handles all 48 symmetries of a cube.
@@ -1384,7 +1297,8 @@ class CubicSymmetry(Transform3D):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Generate parameters for cubic symmetry transformation.
+        """Generate cubic symmetry params: random index 0-47. Returns dict with index for
+        transform_cube and transform_cube_keypoints. For CubicSymmetry.
 
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
@@ -1399,32 +1313,9 @@ class CubicSymmetry(Transform3D):
         return {"index": self.py_random.randint(0, 47), "volume_shape": volume_shape}
 
     def apply_to_volume(self, volume: VolumeType, index: int, **params: Any) -> VolumeType:
-        """Apply cubic symmetry transformation to a 3D volume.
-
-        Args:
-            volume (VolumeType): Input volume with shape (depth, height, width) or (depth, height, width, channels)
-            index (int): Index of the transformation to apply (0-47)
-            **params (Any): Additional parameters
-
-        Returns:
-            VolumeType: Transformed volume with same shape as input
-
-        """
         return f3d.transform_cube(volume, index)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, index: int, **params: Any) -> np.ndarray:
-        """Apply cubic symmetry transformation to keypoints.
-
-        Args:
-            keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 3+).
-                                   The first three columns are x, y, z coordinates.
-            index (int): Index of the transformation to apply (0-47)
-            **params (Any): Additional parameters
-
-        Returns:
-            np.ndarray: Transformed keypoints with same shape as input
-
-        """
         return f3d.transform_cube_keypoints(keypoints, index, volume_shape=params["volume_shape"])
 
 

@@ -5,10 +5,11 @@ from pathlib import Path
 
 
 def get_cache_dir() -> Path:
-    """Get platform-appropriate cache directory.
+    """Return platform-appropriate cache directory for AlbumentationsX. Respects
+    ALBUMENTATIONS_CACHE_DIR; else XDG on Unix, LOCALAPPDATA on Windows.
 
     Returns:
-        Path to the cache directory for AlbumentationsX.
+        Path: Path to the cache directory for AlbumentationsX.
 
     """
     # Check for environment variable override

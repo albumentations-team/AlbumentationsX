@@ -1,5 +1,4 @@
 """Geometric distortion transforms for image augmentation.
-
 This module provides various geometric distortion transformations that modify the spatial arrangement
 of pixels in images while preserving their intensity values. These transforms can create
 non-rigid deformations that are useful for data augmentation, especially when training models
@@ -76,7 +75,8 @@ __all__ = [
 
 
 class BaseDistortion(DualTransform):
-    """Base class for distortion-based transformations.
+    """Base class for distortion-based transforms (optical, grid, elastic). Handles remap,
+    interpolation, keypoint remapping. Subclass to implement get_map_x_y.
 
     This class provides a foundation for implementing various types of image distortions,
     such as optical distortions, grid distortions, and elastic transformations. It handles
@@ -88,7 +88,7 @@ class BaseDistortion(DualTransform):
             cv2.INTER_CUBIC).
         mask_interpolation (int): Flag that is used to specify the interpolation algorithm for mask.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -327,7 +327,8 @@ class BaseDistortion(DualTransform):
 
 
 class ElasticTransform(BaseDistortion):
-    """Apply elastic deformation to images, masks, bounding boxes, and keypoints.
+    """Apply elastic deformation to images, masks, bboxes, keypoints. Params: alpha, sigma,
+    interpolation. Uses Gaussian-smoothed random displacement fields.
 
     This transformation introduces random elastic distortions to the input data. It's particularly
     useful for data augmentation in training deep learning models, especially for tasks like
@@ -361,11 +362,11 @@ class ElasticTransform(BaseDistortion):
         mask_interpolation (int): Flag that is used to specify the interpolation algorithm for mask.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_NEAREST.
-        noise_distribution (Literal["gaussian", "uniform"]): Distribution used to generate the displacement fields.
+        noise_distribution (Literal['gaussian', 'uniform']): Distribution used to generate the displacement fields.
             "gaussian" generates fields using normal distribution (more natural deformations).
             "uniform" generates fields using uniform distribution (more mechanical deformations).
             Default: "gaussian".
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -517,7 +518,8 @@ class ElasticTransform(BaseDistortion):
 
 
 class PiecewiseAffine(BaseDistortion):
-    """Apply piecewise affine transformations to the input image.
+    """Apply piecewise affine transformations via a regular grid of control points. Params: scale,
+    nb_rows, nb_cols, interpolation.
 
     This augmentation places a regular grid of points on an image and randomly moves the neighborhood of these points
     around via affine transformations. This leads to local distortions in the image.
@@ -547,7 +549,7 @@ class PiecewiseAffine(BaseDistortion):
         absolute_scale (bool): If set to True, the value of the scale parameter will be treated as an absolute
             pixel value. If set to False, it will be treated as a fraction of the image height and width.
             Default: False.
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -701,7 +703,8 @@ class PiecewiseAffine(BaseDistortion):
 
 
 class OpticalDistortion(BaseDistortion):
-    """Apply optical distortion to images, masks, bounding boxes, and keypoints.
+    """Apply optical distortion (lens/camera or fisheye model) to images, masks, bboxes, keypoints.
+    Params: distort_limit, mode (camera/fisheye), interpolation.
 
     Supports two distortion models:
     1. Camera matrix model (original):
@@ -729,7 +732,7 @@ class OpticalDistortion(BaseDistortion):
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_NEAREST.
 
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -866,7 +869,8 @@ class OpticalDistortion(BaseDistortion):
 
 
 class GridDistortion(BaseDistortion):
-    """Apply grid distortion to images, masks, bounding boxes, and keypoints.
+    """Apply grid distortion by dividing the image into cells and warping each. Params: num_steps,
+    distort_limit, interpolation, normalized.
 
     This transformation divides the image into a grid and randomly distorts each cell,
     creating localized warping effects. It's particularly useful for data augmentation
@@ -888,7 +892,7 @@ class GridDistortion(BaseDistortion):
         mask_interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm for mask.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_NEAREST.
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -1045,7 +1049,8 @@ class GridDistortion(BaseDistortion):
 
 
 class ThinPlateSpline(BaseDistortion):
-    r"""Apply Thin Plate Spline (TPS) transformation to create smooth, non-rigid deformations.
+    r"""Apply Thin Plate Spline (TPS) for smooth, non-rigid deformations. Control points
+    warp the image like pins on a thin plate; smooth interpolation between points.
 
     Imagine the image printed on a thin metal plate that can be bent and warped smoothly:
     - Control points act like pins pushing or pulling the plate
@@ -1084,7 +1089,7 @@ class ThinPlateSpline(BaseDistortion):
             See also: cv2.INTER_*
             Default: cv2.INTER_NEAREST
 
-        keypoint_remapping_method (Literal["direct", "mask"]): Method to use for keypoint remapping.
+        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
             - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
@@ -1280,7 +1285,8 @@ class ThinPlateSpline(BaseDistortion):
 
 
 class WaterRefraction(BaseDistortion):
-    """Simulate looking through water or wavy glass.
+    """Simulate looking through water or wavy glass via sine-wave displacement maps. Params:
+    amplitude_range, wavelength_range, num_waves_range, interpolation.
 
     Generates displacement maps from overlaid sine waves at random frequencies,
     phases, and angles to create a refraction distortion effect.

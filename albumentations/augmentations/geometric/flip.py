@@ -1,5 +1,4 @@
 """Geometric transformations for flip and symmetry operations.
-
 This module contains transforms that apply various flip and symmetry operations
 to images and other target types. These transforms modify the geometric arrangement
 of the input data while preserving the pixel values themselves.
@@ -53,7 +52,8 @@ __all__ = [
 
 
 class VerticalFlip(DualTransform):
-    """Flip the input vertically around the x-axis.
+    """Flip the image upside down. Same size and layout; self-inverse. Use inverse() for TTA
+    to restore predictions to original orientation.
 
     Args:
         p (float): Probability of applying the transform. Default: 0.5.
@@ -158,12 +158,15 @@ class VerticalFlip(DualTransform):
         return self.apply_to_volumes(masks3d, **params)
 
     def inverse(self) -> VerticalFlip:
-        """Return a new VerticalFlip (vertical flip is self-inverse)."""
+        """Return a new VerticalFlip that undoes the flip (vertical flip is self-inverse). Use after
+        inference in TTA to restore predictions to original orientation.
+        """
         return VerticalFlip(p=1)
 
 
 class HorizontalFlip(DualTransform):
-    """Flip the input horizontally around the y-axis.
+    """Flip the image left-right (mirror). Same size and layout; self-inverse. Use inverse()
+    for TTA to restore predictions to original orientation.
 
     Args:
         p (float): probability of applying the transform. Default: 0.5.
@@ -263,12 +266,15 @@ class HorizontalFlip(DualTransform):
         return self.apply_to_volumes(masks3d, **params)
 
     def inverse(self) -> HorizontalFlip:
-        """Return a new HorizontalFlip (horizontal flip is self-inverse)."""
+        """Return a new HorizontalFlip that undoes the flip (horizontal flip is self-inverse). Use
+        after inference in TTA to restore predictions to original orientation.
+        """
         return HorizontalFlip(p=1)
 
 
 class Transpose(DualTransform):
-    """Transpose the input by swapping its rows and columns.
+    """Transpose by swapping rows and columns (width/height swap). Supports image, mask, bboxes,
+    keypoints, volume. Self-inverse; use inverse() for TTA.
 
     This transform flips the image over its main diagonal, effectively switching its width and height.
     It's equivalent to a 90-degree rotation followed by a horizontal flip.
@@ -379,14 +385,15 @@ class Transpose(DualTransform):
         return self.apply_to_volumes(masks3d, **params)
 
     def inverse(self) -> Transpose:
-        """Return a new Transpose (transpose is self-inverse)."""
+        """Return a new Transpose that undoes the transpose (transpose is self-inverse). Use after
+        inference in TTA to restore predictions to original orientation.
+        """
         return Transpose(p=1)
 
 
 class D4(DualTransform):
-    """Applies one of the eight possible D4 dihedral group transformations to a square-shaped input,
-    maintaining the square shape. These transformations correspond to the symmetries of a square,
-    including rotations and reflections.
+    """Apply one of eight D4 square symmetries (rotations and reflections). Keeps square shape.
+    Use group_element for deterministic TTA (e.g. run all 8 then inverse).
 
     The D4 group transformations include:
     - 'e' (identity): No transformation is applied.
@@ -407,7 +414,7 @@ class D4(DualTransform):
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0.
-        group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None): If set,
+        group_element (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't'] | None): If set,
             always apply this specific D4 group element instead of sampling randomly. Use for TTA.
             Default: None (random choice).
 
@@ -586,7 +593,8 @@ class D4(DualTransform):
         }
 
     def inverse(self) -> D4:
-        """Return a new D4 configured with the inverse group element.
+        """Return a new D4 with the inverse group element to undo this transform. Use after inference
+        in TTA to restore predictions to original orientation.
 
         Raises:
             ValueError: If `group_element` is `None` (random mode cannot be inverted).
@@ -600,8 +608,8 @@ class D4(DualTransform):
 
 
 class SquareSymmetry(D4):
-    """Applies one of the eight possible square symmetry transformations to a square-shaped input.
-    This is an alias for D4 transform with a more intuitive name for those not familiar with group theory.
+    """Alias for D4: one of eight square symmetries (rotations and reflections). Use
+    group_element for deterministic TTA (e.g. run all 8 then inverse).
 
     The square symmetry transformations include:
     - Identity: No transformation is applied
@@ -619,7 +627,7 @@ class SquareSymmetry(D4):
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0.
-        group_element (Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None): If set,
+        group_element (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't'] | None): If set,
             always apply this specific D4 group element instead of sampling randomly. Use for TTA.
             Default: None (random choice).
 
@@ -666,7 +674,8 @@ class SquareSymmetry(D4):
     """
 
     def inverse(self) -> SquareSymmetry:
-        """Return a new SquareSymmetry configured with the inverse group element.
+        """Return a new SquareSymmetry with the inverse group element to undo this transform. Use
+        after inference in TTA to restore predictions to original orientation.
 
         Raises:
             ValueError: If `group_element` is `None` (random mode cannot be inverted).

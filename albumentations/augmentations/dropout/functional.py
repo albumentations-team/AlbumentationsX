@@ -42,17 +42,18 @@ def channel_dropout(
     channels_to_drop: int | tuple[int, ...] | np.ndarray,
     fill: tuple[float, ...] | float = 0,
 ) -> ImageType:
-    """Drop channels from an image.
+    """Replace selected channels with fill; others unchanged. channels_to_drop: index/indices;
+    fill: scalar or per-channel. Multi-channel only.
 
     This function drops channels from an image.
 
     Args:
-        img (np.ndarray): Input image.
+        img (ImageType): Input image.
         channels_to_drop (int | tuple[int, ...] | np.ndarray): Channels to drop.
         fill (tuple[float, ...] | float): Value to fill the dropped channels with.
 
     Returns:
-        np.ndarray: Image with channels dropped.
+        ImageType: Image with channels dropped.
 
     """
     if is_grayscale_image(img):
@@ -69,7 +70,8 @@ def generate_random_fill(
     shape: tuple[int, ...],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate a random fill array based on the given dtype and target shape.
+    """Generate random fill array for dropout holes. dtype and shape; int or float range. Used by
+    fill_holes_with_random and similar.
 
     This function creates a numpy array filled with random values. The range and type of these values
     depend on the input dtype. For integer dtypes, it generates random integers. For floating-point
@@ -106,15 +108,16 @@ def generate_random_fill(
 
 @uint8_io
 def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint_telea", "inpaint_ns"]) -> ImageType:
-    """Apply OpenCV inpainting to fill the holes in the image.
+    """Apply OpenCV inpainting to fill holes. holes: [x1,y1,x2,y2]; method inpaint_telea or inpaint_ns.
+    uint8; grayscale or 3-channel.
 
     Args:
-        img (np.ndarray): Input image (grayscale or BGR)
+        img (ImageType): Input image (grayscale or BGR)
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        method (Literal["inpaint_telea", "inpaint_ns"]): Inpainting method to use
+        method (Literal['inpaint_telea', 'inpaint_ns']): Inpainting method to use
 
     Returns:
-        np.ndarray: Inpainted image
+        ImageType: Inpainted image
 
     Raises:
         NotImplementedError: If image has more than 3 channels
@@ -140,10 +143,11 @@ def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint
 
 
 def fill_holes_with_value(img: ImageType, holes: np.ndarray, fill: np.ndarray) -> ImageType:
-    """Fill holes with a constant value.
+    """Fill rectangular holes with constant value. holes: [x1,y1,x2,y2]; fill broadcast. Mutates img.
+    Used by cutout for numeric fill.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
         fill (np.ndarray): Value to fill the holes with
 
@@ -154,10 +158,11 @@ def fill_holes_with_value(img: ImageType, holes: np.ndarray, fill: np.ndarray) -
 
 
 def fill_volume_holes_with_value(volume: ImageType, holes: np.ndarray, fill: np.ndarray) -> ImageType:
-    """Fill holes in a volume with a constant value.
+    """Fill rectangular holes in a volume (D,H,W,C) with constant value. holes: [x1,y1,x2,y2]; fill
+    broadcast. Used by cutout_on_volume for numeric fill.
 
     Args:
-        volume (np.ndarray): Input volume
+        volume (ImageType): Input volume
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
         fill (np.ndarray): Value to fill the holes with
 
@@ -168,7 +173,8 @@ def fill_volume_holes_with_value(volume: ImageType, holes: np.ndarray, fill: np.
 
 
 def fill_volumes_holes_with_value(volumes: np.ndarray, holes: np.ndarray, fill: np.ndarray) -> np.ndarray:
-    """Fill holes in a batch of volumes with a constant value.
+    """Fill rectangular holes in batch of volumes (N,D,H,W,C) with constant value. holes: [x1,y1,x2,y2];
+    fill broadcast. Used by cutout_on_volumes for numeric fill.
 
     Args:
         volumes (np.ndarray): Input batch of volumes
@@ -187,10 +193,11 @@ def fill_holes_with_random(
     random_generator: np.random.Generator,
     uniform: bool,
 ) -> ImageType:
-    """Fill holes with random values.
+    """Fill rectangular holes with random values. holes: [x1,y1,x2,y2]; uniform: one per hole or per pixel.
+    Used by cutout fill='random'.
 
     Args:
-        img (np.ndarray): Input image
+        img (ImageType): Input image
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
         random_generator (np.random.Generator): Random number generator
         uniform (bool): If True, use same random value for entire hole
@@ -212,10 +219,11 @@ def fill_volume_holes_with_random(
     random_generator: np.random.Generator,
     uniform: bool,
 ) -> ImageType:
-    """Fill holes in a volume with random values.
+    """Fill rectangular holes in volume (D,H,W,C) with random values. holes: [x1,y1,x2,y2]; uniform:
+    one per hole or per pixel. Used by cutout_on_volume fill='random'.
 
     Args:
-        volume (np.ndarray): Input volume of shape (D, H, W, C) or (D, H, W)
+        volume (ImageType): Input volume of shape (D, H, W, C) or (D, H, W)
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
         random_generator (np.random.Generator): Random number generator
         uniform (bool): If True, use same random value for entire hole in each image.
@@ -237,7 +245,8 @@ def fill_volumes_holes_with_random(
     random_generator: np.random.Generator,
     uniform: bool,
 ) -> np.ndarray:
-    """Fill holes in a batch of volumes with random values.
+    """Fill rectangular holes in batch of volumes (N,D,H,W,C) with random values. holes: [x1,y1,x2,y2];
+    uniform: one per hole or per pixel. Used by cutout_on_volumes.
 
     Args:
         volumes (np.ndarray): Input volume of shape (N, D, H, W, C) or (N, D, H, W)
@@ -267,12 +276,13 @@ def cutout(
     fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
     random_generator: np.random.Generator,
 ) -> ImageType:
-    """Apply cutout augmentation to the image by cutting out holes and filling them.
+    """Apply cutout: cut rectangular holes and fill. holes: [x1,y1,x2,y2]; fill: constant, 'random',
+    'random_uniform', or inpaint_telea/inpaint_ns.
 
     Args:
-        img (np.ndarray): The image to augment
+        img (ImageType): The image to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
@@ -321,12 +331,13 @@ def cutout_on_volume(
     fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
     random_generator: np.random.Generator,
 ) -> ImageType:
-    """Apply cutout augmentation to a volume of shape (D, H, W) or (D, H, W, C) by cutting out holes and filling them.
+    """Apply cutout to volume (D,H,W,C): cut holes and fill. fill: constant, 'random', 'random_uniform',
+    or inpaint. holes: [x1,y1,x2,y2].
 
     Args:
-        volume (np.ndarray): The volume to augment
+        volume (ImageType): The volume to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
@@ -382,12 +393,13 @@ def cutout_on_volumes(
     fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Apply cutout augmentation to a batch of volumes of shape (N, D, H, W) or (N, D, H, W, C)
+    """Apply cutout to batch of volumes (N,D,H,W,C): cut holes and fill. fill: constant, 'random',
+    'random_uniform', or inpaint. holes: [x1,y1,x2,y2].
 
     Args:
         volumes (np.ndarray): The image to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]):
+        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
@@ -441,7 +453,8 @@ def cutout_on_volumes(
 
 @handle_empty_array("keypoints")
 def filter_keypoints_in_holes(keypoints: np.ndarray, holes: np.ndarray) -> np.ndarray:
-    """Filter out keypoints that are inside any of the holes.
+    """Filter keypoints inside any rectangular hole. keypoints (N,2+); holes (K,4) [x1,y1,x2,y2].
+    Returns keypoints not inside any hole.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 2+).
@@ -476,7 +489,9 @@ def resize_boxes_to_visible_area(
     boxes: np.ndarray,
     hole_mask: np.ndarray,
 ) -> np.ndarray:
-    """Resize boxes to their largest visible rectangular regions."""
+    """Resize boxes to largest visible rectangular region inside hole_mask. boxes (N,4);
+    hole_mask: binary. Returns resized boxes for dropout bbox handling.
+    """
     # Extract box coordinates
     x1 = boxes[:, 0].astype(int)
     y1 = boxes[:, 1].astype(int)
@@ -521,7 +536,8 @@ def filter_bboxes_by_holes(
     min_area: float,
     min_visibility: float,
 ) -> np.ndarray:
-    """Filter bounding boxes by holes.
+    """Filter bboxes overlapping holes by area and visibility. min_area, min_visibility; resizes to
+    visible region. Returns filtered bboxes.
 
     This function filters bounding boxes by holes.
 
@@ -573,7 +589,8 @@ def calculate_grid_dimensions(
     holes_number_xy: tuple[int, int] | None,
     random_generator: np.random.Generator,
 ) -> tuple[int, int]:
-    """Calculate the dimensions of grid units for GridDropout.
+    """Calculate grid unit dimensions (height, width) for GridDropout. unit_size_range or
+    holes_number_xy; random_generator. Returns (unit_h, unit_w).
 
     This function determines the size of grid units based on the input parameters.
     It supports three modes of operation:
@@ -641,7 +658,8 @@ def generate_grid_holes(
     shift_xy: tuple[int, int],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate a list of holes for GridDropout using a uniform grid.
+    """Generate rectangular holes for GridDropout from uniform grid. grid (rows,cols), ratio,
+    random_offset, shift_xy. Returns (n_holes, 4) [x1,y1,x2,y2].
 
     This function creates a grid of holes for use in the GridDropout augmentation technique.
     It allows for customization of the grid size, hole size ratio, and positioning of holes.
@@ -726,7 +744,8 @@ def mask_dropout_bboxes(
     min_area: float,
     min_visibility: float,
 ) -> np.ndarray:
-    """Filter and resize bounding boxes based on dropout mask.
+    """Filter bboxes by visible area under dropout_mask. min_area, min_visibility; removes boxes
+    fully inside dropped region. For MaskDropout.
 
     Args:
         bboxes (np.ndarray): Array of bounding boxes with shape (num_boxes, 4+)
@@ -779,7 +798,8 @@ def mask_dropout_keypoints(
     keypoints: np.ndarray,
     dropout_mask: np.ndarray,
 ) -> np.ndarray:
-    """Filter keypoints based on dropout mask.
+    """Filter keypoints on dropped pixels. dropout_mask (H,W); keypoints (N,2+). Returns keypoints
+    on non-dropped pixels. For MaskDropout.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 2+)
@@ -818,7 +838,8 @@ def mask_dropout_keypoints(
 
 
 def label(mask: np.ndarray, return_num: bool = False, connectivity: int = 2) -> np.ndarray | tuple[np.ndarray, int]:
-    """Label connected regions of an integer array.
+    """Label connected regions of an integer array. OpenCV connectedComponents; connectivity 1 or 2.
+    return_num: also return label count. For mask-based hole sampling.
 
     This function uses OpenCV's connectedComponents under the hood but mimics
     the behavior of scikit-image's label function.
@@ -868,7 +889,9 @@ def get_holes_from_boxes(
     hole_width_range: tuple[float, float],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate holes based on bounding boxes."""
+    """Generate rectangular holes inside bounding boxes. num_holes_per_box, height/width ranges
+    (relative). Returns (n, 4) [x1,y1,x2,y2]. For CoarseDropout.
+    """
     num_boxes = len(target_boxes)
 
     # Get box dimensions (N, )
@@ -916,7 +939,8 @@ def sample_points_from_components(
     num_points: int,
     random_generator: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray] | None:
-    """Sample points from connected components in a mask.
+    """Sample random points from connected components in a labeled mask. num_points per component.
+    Returns (centers, obj_sizes) for mask-based dropout hole sampling.
 
     Args:
         mask (np.ndarray): Binary mask
@@ -961,7 +985,21 @@ def get_holes_from_mask(
     hole_width_range: tuple[float, float],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate holes based on segmentation mask."""
+    """Generate rectangular holes from a segmentation mask. mask_indices select objects;
+    num_holes_per_obj, hole height/width ranges (relative). Returns (n, 4).
+
+    Args:
+        mask (np.ndarray): Segmentation mask.
+        num_holes_per_obj (int): Holes to sample per object.
+        mask_indices (list[int]): Object indices to use.
+        hole_height_range (tuple[float, float]): Relative height range.
+        hole_width_range (tuple[float, float]): Relative width range.
+        random_generator (np.random.Generator): RNG.
+
+    Returns:
+        np.ndarray: Holes (n, 4) [x1,y1,x2,y2].
+
+    """
     # Create binary mask for target indices
     binary_mask = np.isin(mask[:, :, 0], np.array(mask_indices))
     if not np.any(binary_mask):  # If no target objects found
@@ -1018,17 +1056,18 @@ def get_holes_from_mask(
 
 
 def mask_to_rects(mask: np.ndarray) -> np.ndarray:
-    """Decompose a binary mask's zero-regions into axis-aligned rectangles.
+    """Decompose binary mask zero-regions into axis-aligned rectangles. Returns list of [x1,y1,x2,y2].
+    For hole extraction in mask-based dropout.
 
     Finds all horizontal zero-runs across every row at once, sorts them by
     (x_start, x_end, row), then groups consecutive rows with identical spans
     into a single rectangle — all without a Python loop.
 
     Args:
-        mask: 2D uint8 mask where 0 indicates a dropped region.
+        mask (np.ndarray): 2D uint8 mask where 0 indicates a dropped region.
 
     Returns:
-        Array of shape (N, 4) with [x1, y1, x2, y2] rectangles, or empty (0, 4) array.
+        np.ndarray: Array of shape (N, 4) with [x1, y1, x2, y2] rectangles, or empty (0, 4) array.
 
     """
     zero = (mask == 0).astype(np.int8)
@@ -1078,17 +1117,18 @@ def generate_grid_mask_holes(
     rotation: float,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate grid-line shaped holes for GridMask.
+    """Generate grid-line shaped holes for GridMask. num_grid, line_width_ratio, rotation.
+    Returns (n_holes, 4) [x1,y1,x2,y2]. Horizontal and vertical grid lines.
 
     Args:
-        image_shape: (height, width) of the image.
-        num_grid: Number of grid divisions along the shorter side.
-        line_width_ratio: Width of masked lines as fraction of grid cell size.
-        rotation: Rotation angle in radians.
-        random_generator: NumPy random generator.
+        image_shape (tuple[int, int]): (height, width) of the image.
+        num_grid (int): Number of grid divisions along the shorter side.
+        line_width_ratio (float): Width of masked lines as fraction of grid cell size.
+        rotation (float): Rotation angle in radians.
+        random_generator (np.random.Generator): NumPy random generator.
 
     Returns:
-        Array of holes as (N, 4) with [x1, y1, x2, y2] format.
+        np.ndarray: Array of holes as (N, 4) with [x1, y1, x2, y2] format.
 
     """
     height, width = image_shape

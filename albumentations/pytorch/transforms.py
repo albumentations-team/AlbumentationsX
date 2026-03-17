@@ -1,5 +1,4 @@
 """Module containing PyTorch-specific transforms for Albumentations.
-
 This module provides transforms that convert NumPy arrays to PyTorch tensors in
 the appropriate format. It handles both 2D image data and 3D volumetric data,
 ensuring that the tensor dimensions are correctly arranged according to PyTorch's
@@ -45,7 +44,8 @@ class ToTensorV2(BasicTransform):
 
     @property
     def targets(self) -> dict[str, Any]:
-        """Define mapping of target name to target function.
+        """Mapping of target name to function (image, images, mask, masks). Compose uses this
+        to dispatch apply vs apply_to_images/apply_to_mask/apply_to_masks.
 
         Returns:
             dict[str, Any]: Dictionary mapping target names to corresponding transform functions.
@@ -59,22 +59,6 @@ class ToTensorV2(BasicTransform):
         }
 
     def apply(self, img: ImageType, **params: Any) -> torch.Tensor:
-        """Convert a 2D image array to a PyTorch tensor.
-
-        Converts image from HWC or HW format to CHW format, handling both
-        single-channel and multi-channel images.
-
-        Args:
-            img (np.ndarray): Image as a numpy array of shape (H,W,C)
-            **params (Any): Additional parameters
-
-        Returns:
-            torch.Tensor: PyTorch tensor in CHW format
-
-        Raises:
-            ValueError: If image dimensions are neither HW nor HWC
-
-        """
         if img.ndim not in {MONO_CHANNEL_DIMENSIONS, NUM_MULTI_CHANNEL_DIMENSIONS}:
             msg = "Albumentations only supports images in HW or HWC format"
             raise ValueError(msg)
@@ -85,47 +69,22 @@ class ToTensorV2(BasicTransform):
         return torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1)))
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> torch.Tensor:
-        """Convert a mask array to a PyTorch tensor.
-
-        If transpose_mask is True and mask has 3 dimensions (H,W,C),
-        converts mask to channels-first format (C,H,W).
-
-        Args:
-            mask (ImageType): Mask as a numpy array
-            **params (Any): Additional parameters
-
-        Returns:
-            torch.Tensor: PyTorch tensor of mask
-
-        """
         if self.transpose_mask and mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
             mask = mask.transpose(2, 0, 1)
         return torch.from_numpy(np.ascontiguousarray(mask))
 
     def apply_to_masks(self, masks: ImageType, **params: Any) -> torch.Tensor:
-        """Convert numpy array or list of numpy array masks to torch tensor(s).
-
-        Args:
-            masks (np.ndarray): Numpy array of shape (N, H, W) or (N, H, W, C),
-            params (Any): Additional parameters.
-
-        Returns:
-            torch.Tensor: If transpose_mask is True and input is (N, H, W, C),
-                returns tensor of shape (N, C, H, W). If transpose_mask is True and input is (H, W, C),
-                returns a tensor with shape (C, H, W). Otherwise, returns tensors with the same shape as input.
-
-        """
         if self.transpose_mask and masks.ndim == NUM_VOLUME_DIMENSIONS:  # (N, H, W, C)
             masks = np.transpose(masks, (0, 3, 1, 2))  # -> (N, C, H, W)
         return torch.from_numpy(np.ascontiguousarray(masks))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> torch.Tensor:
-        """Convert batch of images from (N, H, W, C) to (N, C, H, W)."""
         return torch.from_numpy(np.ascontiguousarray(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
 
 
 class ToTensor3D(BasicTransform):
-    """Convert 3D volumes and masks to PyTorch tensors.
+    """Convert 3D volumes and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
+    For 3D medical imaging; p=1.0 by default. Targets: volume, mask3d.
 
     This transform is designed for 3D medical imaging data. It converts numpy arrays
     to PyTorch tensors and ensures consistent channel positioning.
@@ -152,7 +111,8 @@ class ToTensor3D(BasicTransform):
 
     @property
     def targets(self) -> dict[str, Any]:
-        """Define mapping of target name to target function.
+        """Return mapping of target name to target function (volume, mask3d). Compose uses
+        this to dispatch apply_to_volume vs apply_to_mask3d.
 
         Returns:
             dict[str, Any]: Dictionary mapping target names to corresponding transform functions
@@ -164,7 +124,6 @@ class ToTensor3D(BasicTransform):
         }
 
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> torch.Tensor:
-        """Convert 3D volume to channels-first tensor."""
         if volume.ndim == NUM_VOLUME_DIMENSIONS:  # D,H,W,C
             return torch.from_numpy(np.ascontiguousarray(volume.transpose(3, 0, 1, 2)))
         if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:  # D,H,W
@@ -172,5 +131,4 @@ class ToTensor3D(BasicTransform):
         raise ValueError(f"Expected 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
-        """Convert 3D mask to channels-first tensor."""
         return self.apply_to_volume(mask3d, **params)

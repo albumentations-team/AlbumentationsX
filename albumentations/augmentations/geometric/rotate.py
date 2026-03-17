@@ -256,7 +256,8 @@ class RotateInitSchema(BaseTransformInitSchema):
 
 
 class Rotate(DualTransform):
-    """Rotate the input by an angle selected randomly from the uniform distribution.  See Args for parameters and types, Returns for output, and Examples for usage. Pa
+    """Rotate by a random angle from limit (degrees). Optional crop_border removes black
+    corners. Same rotation for image, mask, bboxes, keypoints.
 
     Args:
         limit (float | tuple[float, float]): Range from which a random angle is picked. If limit is a single float,
@@ -496,7 +497,8 @@ class Rotate(DualTransform):
         width: int,
         angle: float,
     ) -> dict[str, int]:
-        """Given rotated rectangle (width, height, angle in degrees), return size of largest axis-aligned rectangle inside it.  See Args for parameters and types, Returns
+        """Largest axis-aligned rectangle inside a rotated rectangle (width, height, angle deg).
+        Returns crop bounds. Used for crop_border in Rotate.
 
         References:
             Rotate image and crop out black borders: https://stackoverflow.com/questions/16702966/rotate-image-and-crop-out-black-borders
@@ -571,7 +573,8 @@ class Rotate(DualTransform):
 
 
 class SafeRotate(Affine):
-    """Rotate the input inside the input's frame by an angle selected randomly from the uniform distribution.  See Args for parameters and types, Returns for output, a
+    """Rotate by a random angle (limit) but scale to fit in the original frame. No black
+    corners; output size equals input. Good when fixed dimensions are required.
 
     This transformation ensures that the entire rotated image fits within the original frame by scaling it
     down if necessary. The resulting image maintains its original dimensions but may contain artifacts due to the

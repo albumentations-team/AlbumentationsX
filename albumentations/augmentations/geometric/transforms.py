@@ -611,7 +611,8 @@ class Affine(DualTransform):
         @model_validator(mode="after")
         def _validate_keep_ratio_scale_compatibility(self) -> Self:
             """Validate that when keep_ratio is True, x and y scale ranges are identical. Prevents
-            inconsistent Affine scale config; raises ValueError if scale x and y differ."""
+            inconsistent Affine scale config; raises ValueError if scale x and y differ.
+            """
             if self.keep_ratio and isinstance(self.scale, dict) and self.scale["x"] != self.scale["y"]:
                 raise ValueError(
                     f"When keep_ratio is True, the x and y scale range should be identical. got {self.scale}",
@@ -920,8 +921,8 @@ class Affine(DualTransform):
 
 
 class ShiftScaleRotate(Affine):
-    """Randomly apply translate, scale, and rotate. Params: shift_limit, scale_limit, rotate_limit,
-    interpolation, border_mode, fill. Supports image, mask, bboxes, keypoints.
+    """One-step affine: random shift, scale, and rotation. Limits sampled per call; good
+    for pose or scale augmentation without separate transforms.
 
     Args:
         shift_limit ((float, float) or float): shift factor range for both height and width. If shift_limit
@@ -1154,7 +1155,8 @@ class ShiftScaleRotate(Affine):
 
 
 class GridElasticDeform(DualTransform):
-    """Apply elastic deformations to images, masks, bounding boxes, and keypoints using a grid-based approach.  See Args for parameters and types, Returns for output,
+    """Elastic deformations via a grid: displace control points and interpolate. num_grid_xy
+    and magnitude control density and strength. Good for local stretching.
 
     This transformation overlays a grid on the input and applies random displacements to the grid points,
     resulting in local elastic distortions. The granularity and intensity of the distortions can be
@@ -1369,7 +1371,8 @@ class GridElasticDeform(DualTransform):
 
 
 class RandomGridShuffle(DualTransform):
-    """Divide image into a grid and randomly permute the cells (image, mask, keypoints). Grid size via grid (e.g. (3,3)).  See Args for parameters and types, Returns f
+    """Split image into a grid and randomly permute cells; same shuffle for all targets.
+    Grid size from grid (e.g. (3, 3)). Breaks global layout, keeps local content.
 
     Args:
         grid (tuple[int, int]): Size of the grid for splitting the image into cells. Each cell is shuffled randomly.
@@ -1550,7 +1553,8 @@ class RandomGridShuffle(DualTransform):
 
 
 class Morphological(DualTransform):
-    """Apply a morphological operation (dilation or erosion) to an image, with particular value for enhancing document scans.  See Args for parameters and types, Retur
+    """Dilation or erosion with a structuring element (scale). For document scans: dilation
+    fills gaps in text; erosion removes noise. Operation and scale per call.
 
     Morphological operations modify the structure of the image.
     Dilation expands the white (foreground) regions in a binary or grayscale image, while erosion shrinks them.

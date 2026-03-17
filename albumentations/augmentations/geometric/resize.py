@@ -22,7 +22,8 @@ __all__ = ["LongestMaxSize", "RandomScale", "Resize", "SmallestMaxSize"]
 
 
 class RandomScale(DualTransform):
-    """Randomly resize the input. Output image size is different from the input image size.  See Args for parameters and types, Returns for output, and Examples for us
+    """Resize by a random scale factor (scale_limit). Output size differs from input; all
+    targets scaled together. Useful for scale augmentation without cropping.
 
     Args:
         scale_limit (float or tuple[float, float]): scaling factor range. If scale_limit is a single float value, the

@@ -107,7 +107,8 @@ def glass_blur(
 
 def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
     """Create defocus (aliased disk) convolution kernel. radius, alias_blur control disk
-    shape and smoothing. Returns kernel for convolve."""
+    shape and smoothing. Returns kernel for convolve.
+    """
     length = np.arange(-max(8, radius), max(8, radius) + 1)
     ksize = 3 if radius <= EIGHT else 5
 
@@ -120,7 +121,8 @@ def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
 
 def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
     """Apply defocus blur using an aliased-disk kernel. Params: radius, alias_blur; uses
-    create_defocus_kernel and convolve. Supports uint8 and float32."""
+    create_defocus_kernel and convolve. Supports uint8 and float32.
+    """
     return convolve(img, kernel=create_defocus_kernel(radius, alias_blur))
 
 
@@ -201,7 +203,8 @@ def _ensure_odd_values(result: tuple[int, int], field_name: str | None = None) -
 
 def process_blur_limit(value: int | tuple[int, int], info: ValidationInfo, min_value: int = 0) -> tuple[int, int]:
     """Process blur limit to valid kernel sizes (min, odd). Converts int or tuple to
-    (min, max); enforces constraints. For blur InitSchema validators."""
+    (min, max); enforces constraints. For blur InitSchema validators.
+    """
     # Convert value to tuple[int, int]
     if isinstance(value, Sequence):
         if len(value) != 2:

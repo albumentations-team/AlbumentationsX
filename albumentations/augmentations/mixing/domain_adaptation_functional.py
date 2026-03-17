@@ -111,7 +111,7 @@ class MinMaxScaler(BaseScaler):
 
     def fit(self, x: np.ndarray) -> None:
         """Fit MinMaxScaler to the data. Computes per-feature min/max for scaling to
-        feature_range; used by adapt_pixel_distribution for minmax transform type.
+        feature_range for minmax scaling.
 
         Args:
             x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
@@ -181,8 +181,7 @@ class StandardScaler(BaseScaler):
         super().__init__()
 
     def fit(self, x: np.ndarray) -> None:
-        """Fit StandardScaler: per-feature mean and std for z-score. Used by adapt_pixel_distribution
-        (standard type); zero variance handled.
+        """Fit StandardScaler: per-feature mean and std for z-score. Zero variance handled.
 
         Args:
             x (np.ndarray): The data to fit the scaler to. Expected shape is (n_samples, n_features).
@@ -258,7 +257,7 @@ class TransformerInterface(Protocol):
     @abc.abstractmethod
     def fit(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
         """Fit the transformer to the data (e.g. pixel samples). Optional y unused; returns self.
-        Protocol for DomainAdapter and adapt_pixel_distribution.
+        Subclasses implement; call before transform.
 
         Args:
             x (np.ndarray): The data to fit to.
@@ -272,8 +271,7 @@ class TransformerInterface(Protocol):
 
     @abc.abstractmethod
     def transform(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
-        """Transform data using fitted model. Protocol; same shape as input; y unused. Used by
-        DomainAdapter and adapt_pixel_distribution.
+        """Transform data using fitted model. Protocol; same shape as input; optional y unused.
 
         Args:
             x (np.ndarray): The data to transform.
@@ -301,7 +299,7 @@ class DomainAdapter:
 
     def to_colorspace(self, img: ImageType) -> ImageType:
         """Convert the image to the target color space (e.g. for PCA). Uses cv2.cvtColor if
-        color_in set; otherwise returns img unchanged. Used by DomainAdapter.flatten.
+        color_in set; otherwise returns img unchanged.
 
         Args:
             img (np.ndarray): The input image to convert.
@@ -314,7 +312,7 @@ class DomainAdapter:
 
     def from_colorspace(self, img: ImageType) -> ImageType:
         """Convert image back from target color space (e.g. after PCA). cv2.cvtColor if color_out
-        set; else returns img. Used by DomainAdapter.reconstruct.
+        set; else returns img.
 
         Args:
             img (np.ndarray): The image to convert back.
@@ -329,8 +327,8 @@ class DomainAdapter:
         return cv2.cvtColor(clip(img, np.uint8, inplace=True), self.color_out)
 
     def flatten(self, img: ImageType) -> np.ndarray:
-        """Flatten image to (n_pixels, n_channels): target colorspace, to float, reshape. Used by
-        DomainAdapter for pixel-domain adaptation (PCA, standard, minmax).
+        """Flatten image to (n_pixels, n_channels): target colorspace, to float, reshape. For
+        pixel-domain adaptation (PCA, standard, minmax).
 
         Args:
             img (np.ndarray): The input image to flatten.
@@ -345,7 +343,7 @@ class DomainAdapter:
 
     def reconstruct(self, pixels: np.ndarray, height: int, width: int) -> np.ndarray:
         """Reconstruct image from flattened pixels: reshape, convert back from target colorspace.
-        Used by DomainAdapter after pixel-domain transform.
+        For reconstructing after pixel-domain transform.
 
         Args:
             pixels (np.ndarray): The flattened pixels with shape (n_pixels, n_channels).
@@ -459,7 +457,7 @@ def low_freq_mutate(amp_src: np.ndarray, amp_trg: np.ndarray, beta: float) -> np
 @preserve_channel_dim
 def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float) -> ImageType:
     """Fourier Domain Adaptation: swap low-frequency amplitude with target, keep phase. beta
-    controls strength. Same shape as input; used by FDA transform.
+    controls strength. Same shape as input.
 
     This function performs domain adaptation in the frequency domain by modifying the amplitude
     spectrum of the source image based on the target image's amplitude spectrum. It preserves
@@ -555,7 +553,7 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
 @preserve_channel_dim
 def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: float) -> ImageType:
     """Match input histogram to a reference, then blend with original. blend_ratio in [0,1]
-    controls strength. Used by HistogramMatching; same shape and dtype.
+    controls strength. Same shape and dtype as input.
 
     This function performs histogram matching between the input image and a reference image,
     then blends the result with the original input image based on the specified blend ratio.
@@ -602,7 +600,7 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
 @uint8_io
 def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
     """Adjust image so its CDF matches the reference, per channel. uint8 I/O; reference resized
-    if needed. Used by apply_histogram and HistogramMatching.
+    if needed. Per-channel CDF matching.
 
     The adjustment is applied separately for each channel.
 

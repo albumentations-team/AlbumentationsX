@@ -26,9 +26,8 @@ from albumentations.core.type_definitions import (
 
 # Type definition for a processed mosaic item
 class ProcessedMosaicItem(TypedDict):
-    """Represents a single data item (primary or additional) after preprocessing.
-
-    Includes the original image/mask and the *preprocessed* annotations.
+    """Single mosaic item (primary or additional) after preprocessing: image, optional mask,
+    bboxes, keypoints with preprocessed annotations.
     """
 
     image: np.ndarray  # Image is mandatory
@@ -43,7 +42,8 @@ def copy_and_paste_blend(
     overlay_mask: np.ndarray,
     offset: tuple[int, int],
 ) -> np.ndarray:
-    """Blend images by copying pixels from an overlay image to a base image using a mask.
+    """Copy overlay pixels onto the base image where mask > 0, at the given offset. Same shape
+    as base_image.
 
     This function copies pixels from the overlay image to the base image only where
     the mask has non-zero values. The overlay is placed at the specified offset
@@ -79,7 +79,8 @@ def calculate_mosaic_center_point(
     center_range: tuple[float, float],
     py_random: random.Random,
 ) -> tuple[int, int]:
-    """Calculates the center point for the mosaic crop using proportional sampling within the valid zone.
+    """Compute mosaic crop center by sampling in the valid zone so target_size crop overlaps
+    all grid cells. center_range and py_random control proportional sampling.
 
     Ensures the center point allows a crop of target_size to overlap
     all grid cells, applying randomness based on center_range proportionally
@@ -139,7 +140,8 @@ def calculate_cell_placements(
     target_size: tuple[int, int],
     center_xy: tuple[int, int],
 ) -> list[tuple[int, int, int, int]]:
-    """Calculates placements by clipping arange-defined grid lines to the crop window.
+    """Compute cell placements by clipping grid lines to the crop window. Returns list of
+    (x_min, y_min, x_max, y_max) per cell on the output canvas.
 
     Args:
         grid_yx (tuple[int, int]): The (rows, cols) of the mosaic grid.
@@ -199,7 +201,8 @@ def _check_data_compatibility(
     item_data: np.ndarray | None,
     data_key: Literal["image", "mask"],
 ) -> tuple[bool, str | None]:  # Returns (is_compatible, error_message)
-    """Checks if the dimensions and channels of item_data match primary_data."""
+    """Check if item_data dimensions and channels match primary_data. Returns (ok, error_msg);
+    used to validate mosaic/mixup additional items."""
     # 1. Check if item has the required data (image is always required)
     if item_data is None:
         if data_key == "image":
@@ -243,7 +246,8 @@ def filter_valid_metadata(
     metadata_key_name: str,
     data: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Filters a list of metadata dicts, keeping only valid ones based on data compatibility."""
+    """Filter metadata dicts to those compatible with primary data (image/mask dimensions and
+    channels). Uses _check_data_compatibility; warns and skips invalid items."""
     if not isinstance(metadata_input, Sequence):
         warn(
             f"Metadata under key '{metadata_key_name}' is not a Sequence (e.g., list or tuple). "

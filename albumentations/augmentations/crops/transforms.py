@@ -1424,7 +1424,7 @@ class BaseRandomSizedCropInitSchema(BaseTransformInitSchema):
 
 class _BaseRandomSizedCrop(DualTransform):
     """Abstract base for random crop then resize to fixed size. Subclasses pick crop region;
-    output always (height, width). Used by RandomSizedCrop, RandomResizedCrop.
+    output always (height, width).
 
     This abstract class provides the foundation for RandomSizedCrop and RandomResizedCrop transforms.
     It handles cropping and resizing for different data types (image, mask, bboxes, keypoints) while

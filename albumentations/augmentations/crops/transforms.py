@@ -57,7 +57,8 @@ class CropSizeError(Exception):
 
 
 class BaseCrop(DualTransform):
-    """Base class for transforms that only perform cropping.
+    """Abstract base for crop-only transforms. Subclasses return crop_coords from
+    get_params_dependent_on_data. All targets cropped consistently.
 
     This abstract class provides the foundation for all cropping transformations.
     It handles cropping of different data types including images, masks, bounding boxes,
@@ -260,7 +261,8 @@ class BaseCrop(DualTransform):
 
 
 class BaseCropAndPad(BaseCrop):
-    """Base class for transforms that need both cropping and padding.
+    """Abstract base for crop+pad transforms (e.g. fixed size). Adds pad_if_needed,
+    border_mode, fill, pad_position to BaseCrop. Subclasses define crop and pad logic.
 
     This abstract class extends BaseCrop by adding padding capabilities. It's the foundation
     for transforms that may need to both crop parts of the input and add padding, such as when
@@ -625,7 +627,8 @@ class BaseCropAndPad(BaseCrop):
 
 
 class RandomCrop(BaseCropAndPad):
-    """Crop a random part of the input.
+    """Crop a random region of fixed height and width. Optional pad when crop exceeds
+    image. All targets cropped together. Common for fixed-resolution training.
 
     Args:
         height (int): height of the crop.
@@ -808,7 +811,8 @@ class RandomCrop(BaseCropAndPad):
 
 
 class CenterCrop(BaseCropAndPad):
-    """Crop the central part of the input.
+    """Crop the center region of fixed height and width. Optional pad when crop exceeds
+    image. All targets share the same center window. Good for center-focused data.
 
     This transform crops the center of the input image, mask, bounding boxes, and keypoints to the specified dimensions.
     It's useful when you want to focus on the central region of the input, discarding peripheral information.
@@ -991,7 +995,8 @@ class CenterCrop(BaseCropAndPad):
 
 
 class Crop(BaseCropAndPad):
-    """Crop a specific region from the input image.
+    """Crop a fixed region by (x_min, y_min, x_max, y_max). Deterministic; optional pad when
+    region exceeds image. Use for fixed ROI or sliding-window pipelines.
 
     This transform crops a rectangular region from the input image, mask, bounding boxes, and keypoints
     based on specified coordinates. It's useful when you want to extract a specific area of interest

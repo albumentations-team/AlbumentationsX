@@ -597,7 +597,8 @@ class RandomGravel(ImageOnlyTransform):
         self,
         rectangular_roi: tuple[int, int, int, int],
     ) -> ImageType:
-        """Generate gravel particles within a specified rectangular region.
+        """Generate gravel (x,y) coordinates inside rectangular_roi (x_min,y_min,x_max,y_max).
+        Returns (N, 2) array for RandomGravel overlay.
 
         Args:
             rectangular_roi (tuple[int, int, int, int]): The rectangular region where gravel
@@ -2048,8 +2049,8 @@ class Equalize(ImageOnlyTransform):
 
 
 class RandomBrightnessContrast(ImageOnlyTransform):
-    """Randomly adjust brightness and contrast with separate ranges. Simple and fast; good
-    baseline color augmentation.
+    """Randomly adjust brightness and contrast with separate ranges. Simple and fast;
+    good baseline color augmentation for classification and detection.
 
     This transform adjusts the brightness and contrast of an image simultaneously, allowing for
     a wide range of lighting and contrast variations. It's particularly useful for data augmentation
@@ -3405,8 +3406,8 @@ class FancyPCA(ImageOnlyTransform):
 
 
 class ColorJitter(ImageOnlyTransform):
-    """Randomly apply brightness, contrast, saturation, hue in random order each call. Separate
-    ranges per effect. Strong color augmentation for classification and detection.
+    """Randomly apply brightness, contrast, saturation, hue in random order. Separate ranges per
+    effect. Strong color augmentation for classification and detection.
 
     This transform is similar to torchvision's ColorJitter but with some differences due to the use of OpenCV
     instead of Pillow. The main differences are:
@@ -4718,8 +4719,8 @@ PLANKIAN_JITTER_CONST = {
 
 
 class PlanckianJitter(ImageOnlyTransform):
-    """Simulate illumination color temperature variation via Planckian locus jitter. mode and
-    magnitude control the shift. Good for robustness to different light sources (indoor/outdoor).
+    """Simulate color temperature variation via Planckian locus jitter. mode and magnitude
+    control the shift. Good for robustness to different light sources.
 
     This transform adjusts the color of an image to mimic the effect of different color temperatures
     of light sources, based on Planck's law of black body radiation. It can simulate the appearance
@@ -4923,7 +4924,8 @@ class PlanckianJitter(ImageOnlyTransform):
 
 
 class ShotNoise(ImageOnlyTransform):
-    """Apply shot noise to the image by modeling photon counting as a Poisson process.
+    """Shot noise via Poisson process in linear light space. scale_range, approximation. Good for
+    sensor-realistic noise in low-light.
 
     Shot noise (also known as Poisson noise) occurs in imaging due to the quantum nature of light.
     When photons hit an imaging sensor, they arrive at random times following Poisson statistics.
@@ -5010,7 +5012,8 @@ class ShotNoise(ImageOnlyTransform):
 
 
 class NoiseParamsBase(BaseModel):
-    """Base class for all noise parameter models."""
+    """Base Pydantic model for AdditiveNoise noise params (uniform, gaussian, laplace, beta).
+    Subclasses define noise_type and distribution-specific fields."""
 
     model_config = ConfigDict(extra="forbid")
     noise_type: str
@@ -5081,7 +5084,8 @@ NoiseParams = Annotated[
 
 
 class AdditiveNoise(ImageOnlyTransform):
-    """Apply random noise to image channels using various noise distributions.
+    """Random noise to channels: uniform, gaussian, laplace, or beta. spatial_mode: constant,
+    per_pixel, or shared. Params depend on noise_type.
 
     This transform generates noise using different probability distributions and applies it
     to image channels. The noise can be generated in three spatial modes and supports
@@ -5278,7 +5282,8 @@ class AdditiveNoise(ImageOnlyTransform):
 
 
 class RGBShift(AdditiveNoise):
-    """Randomly shift values for each channel of the input RGB image.
+    """Shift R, G, B with separate ranges. Specialized AdditiveNoise with constant uniform shifts.
+    Params: r_shift_limit, g_shift_limit, b_shift_limit.
 
     A specialized version of AdditiveNoise that applies constant uniform shifts to RGB channels.
     Each channel (R,G,B) can have its own shift range specified.
@@ -5402,7 +5407,8 @@ class RGBShift(AdditiveNoise):
 
 
 class SaltAndPepper(ImageOnlyTransform):
-    """Apply salt and pepper noise to the input image.
+    """Apply salt-and-pepper (impulse) noise: randomly set pixels to min or max. amount and
+    salt_vs_pepper control density and ratio. Same mask for all channels.
 
     Salt and pepper noise is a form of impulse noise that randomly sets pixels to either maximum value (salt)
     or minimum value (pepper). The amount and proportion of salt vs pepper can be controlled.
@@ -5549,7 +5555,8 @@ class SaltAndPepper(ImageOnlyTransform):
 
 
 class PlasmaBrightnessContrast(ImageOnlyTransform):
-    """Apply plasma fractal pattern to modify image brightness and contrast.
+    """Plasma fractal (Diamond-Square) pattern varies brightness and contrast spatially.
+    brightness_range, contrast_range. Organic, non-uniform look.
 
     Uses Diamond-Square algorithm to generate organic-looking fractal patterns
     that create spatially-varying brightness and contrast adjustments.
@@ -5733,7 +5740,8 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
 
 
 class PlasmaShadow(ImageOnlyTransform):
-    """Apply plasma-based shadow effect to the image using Diamond-Square algorithm.
+    """Plasma fractal (Diamond-Square) shadow: organic darkening. shadow_intensity_range, roughness.
+    Good for natural shading and lighting variation.
 
     Creates organic-looking shadows using plasma fractal noise pattern.
     The shadow intensity varies smoothly across the image, creating natural-looking
@@ -5886,7 +5894,8 @@ class PlasmaShadow(ImageOnlyTransform):
 
 
 class Illumination(ImageOnlyTransform):
-    """Apply various illumination effects to the image.
+    """Illumination patterns: directional (linear), corner shadows/highlights, or gaussian.
+    mode and params control shape and strength. Simulates lighting variation.
 
     This transform simulates different lighting conditions by applying controlled
     illumination patterns. It can create effects like:
@@ -6126,7 +6135,8 @@ class Illumination(ImageOnlyTransform):
 
 
 class AutoContrast(ImageOnlyTransform):
-    """Automatically adjust image contrast by stretching the intensity range.
+    """Stretch intensity to full range (autocontrast). method: CDF or PIL-style. cutoff, ignore trim
+    extremes. Use for normalizing brightness/contrast across images.
 
     This transform provides two methods for contrast enhancement:
     1. CDF method (default): Uses cumulative distribution function for more gradual adjustment
@@ -6208,7 +6218,8 @@ class AutoContrast(ImageOnlyTransform):
 
 
 class HEStain(ImageOnlyTransform):
-    """Applies H&E (Hematoxylin and Eosin) stain augmentation to histopathology images.
+    """H&E stain augmentation for histopathology. method: preset, random_preset, vahadane, macenko.
+    Simulates staining variation for robust pathology models.
 
     This transform simulates different H&E staining conditions using either:
     1. Predefined stain matrices (8 standard references)
@@ -6410,7 +6421,8 @@ class HEStain(ImageOnlyTransform):
         ]
 
     def _get_stain_matrix(self, img: ImageType) -> np.ndarray:
-        """Get stain matrix based on selected method."""
+        """Return stain matrix for HEStain: from preset, random_preset, or vahadane/macenko
+        extraction from img. Used by get_params_dependent_on_data."""
         if self.method == "preset" and self.preset is not None:
             return fpixel.STAIN_MATRICES[self.preset]
         if self.method == "random_preset":
@@ -6480,7 +6492,8 @@ class HEStain(ImageOnlyTransform):
 
 
 class Dithering(ImageOnlyTransform):
-    """Reduce the number of colors in an image using dithering techniques.
+    """Reduce colors via dithering: ordered Bayer, error diffusion, or random. num_levels, method.
+    Good for retro look or limited-color output.
 
     Dithering is like creating a newspaper photo - it uses patterns of dots to create the illusion
     of more colors than are actually present. When you have a limited color palette (like only
@@ -6684,7 +6697,8 @@ class Dithering(ImageOnlyTransform):
 
 
 class PhotoMetricDistort(ImageOnlyTransform):
-    """Randomly distorts an image's photometric properties, as used in SSD object detection training.
+    """SSD-style photometric distortion: brightness, contrast, saturation, hue, channel shuffle; each
+    with probability distort_p. Contrast order randomized. For detection training.
 
     Applies brightness, contrast, saturation, and hue adjustments independently with probability
     `distort_p` each. Contrast is applied either before or after the HSV-space adjustments
@@ -6903,7 +6917,8 @@ class PhotoMetricDistort(ImageOnlyTransform):
 
 
 class Vignetting(ImageOnlyTransform):
-    """Apply vignetting effect by darkening image corners with a radial gradient.
+    """Darken corners with radial gradient (lens vignetting). intensity_range, center_range control
+    strength and center. Simulates natural light falloff.
 
     Simulates the natural light falloff that occurs in camera lenses, where corners
     and edges of an image appear darker than the center.
@@ -6986,7 +7001,8 @@ class Vignetting(ImageOnlyTransform):
 
 
 class ChannelSwap(ImageOnlyTransform):
-    """Apply a fixed channel reordering to the image.
+    """Fixed channel reordering (e.g. RGB->BGR). channel_order is permutation of indices;
+    deterministic unlike ChannelShuffle. Use for color-space conversion.
 
     Unlike ChannelShuffle which randomly permutes channels each time, ChannelSwap
     applies a deterministic, user-specified channel order. Useful for BGR<->RGB conversion,
@@ -7024,7 +7040,8 @@ class ChannelSwap(ImageOnlyTransform):
         @field_validator("channel_order")
         @classmethod
         def validate_channel_order(cls, v: tuple[int, ...]) -> tuple[int, ...]:
-            """Validate channel_order is a valid permutation."""
+            """Ensure channel_order is a permutation of channel indices (no duplicates, all in
+            range). Used by ChannelSwap InitSchema validator."""
             if len(v) < 2:
                 msg = "channel_order must have at least 2 elements."
                 raise ValueError(msg)
@@ -7087,7 +7104,8 @@ class ChannelSwap(ImageOnlyTransform):
 
 
 class FilmGrain(ImageOnlyTransform):
-    """Simulate analog film grain noise.
+    """Analog film grain: luminance-dependent, spatially correlated noise. intensity_range,
+    grain_size_range, chromatic. Distinct from i.i.d. GaussNoise or ShotNoise.
 
     Unlike GaussNoise or ShotNoise, film grain is:
     - Luminance-dependent: darker areas show more visible grain
@@ -7195,7 +7213,8 @@ class FilmGrain(ImageOnlyTransform):
 
 
 class Halftone(ImageOnlyTransform):
-    """Convert image to halftone dot pattern.
+    """Halftone dot pattern (printing-style). dot_size_range, blend_range control cell size and mix.
+    Continuous tones become dots of varying size.
 
     Simulates the halftone printing technique where continuous-tone images are
     reproduced using dots of varying size. Larger dots represent brighter areas,
@@ -7276,7 +7295,8 @@ class Halftone(ImageOnlyTransform):
 
 
 class LensFlare(ImageOnlyTransform):
-    """Apply realistic lens flare effect with starburst rays and ghost reflections.
+    """Lens flare: starburst rays and ghost reflections. flare_roi, num_ghosts, intensity control
+    placement and strength. Simulates optical artifacts.
 
     Simulates optical lens flare artifacts including a central bright spot with
     radiating starburst pattern and secondary ghost reflections along the axis
@@ -7328,7 +7348,8 @@ class LensFlare(ImageOnlyTransform):
         @field_validator("flare_roi")
         @classmethod
         def validate_flare_roi(cls, v: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
-            """Validate that x_min < x_max and y_min < y_max."""
+            """Ensure flare ROI (x_min, y_min, x_max, y_max) has valid bounds: x_min < x_max and
+            y_min < y_max. Used by LensFlare InitSchema."""
             x_min, y_min, x_max, y_max = v
             if x_min >= x_max:
                 msg = f"flare_roi x_min ({x_min}) must be less than x_max ({x_max})"
@@ -7450,7 +7471,8 @@ class LensFlare(ImageOnlyTransform):
 
 
 class AtmosphericFog(ImageOnlyTransform):
-    """Apply depth-aware atmospheric fog using the standard scattering model.
+    """Depth-aware fog via scattering: image*exp(-density*depth) + fog_color*(1 - ...). Requires
+    depth map. density_range, fog_color. More realistic than RandomFog.
 
     Unlike RandomFog which overlays circular fog patches, this transform uses
     the physically-based atmospheric scattering equation with a synthetic depth map,

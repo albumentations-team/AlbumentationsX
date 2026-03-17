@@ -67,8 +67,8 @@ def shift_hsv(
     sat_shift: float,
     val_shift: float,
 ) -> ImageType:
-    """Shift hue, saturation, and value of an image in HSV space. Parameters: hue_shift,
-    sat_shift, val_shift.
+    """Shift hue, saturation, and value in HSV space. hue_shift, sat_shift, val_shift control
+    amount. Used by HueSaturationValue and related transforms. uint8 I/O.
 
     Args:
         img (np.ndarray): The image to shift.
@@ -149,8 +149,8 @@ def shift_hsv_images(
 
 @clipped
 def solarize(img: ImageType, threshold: float) -> ImageType:
-    """Invert all pixel values above a threshold. Single normalized threshold; works for
-    uint8 and float32.
+    """Invert pixel values above a normalized threshold (solarization). threshold in [0, 1];
+    works for uint8 and float32. Used by Solarize transform.
 
     Args:
         img (np.ndarray): The image to solarize. Can be uint8 or float32.
@@ -182,8 +182,8 @@ def solarize(img: ImageType, threshold: float) -> ImageType:
 @uint8_io
 @clipped
 def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]]) -> ImageType:
-    """Reduce bit depth per channel by keeping only the highest N bits. Param bits (1–7)
-    or per-channel list.
+    """Reduce bit depth by keeping only the highest N bits per channel. bits: 1–7 or list per
+    channel. Used by Posterize. uint8 I/O, clipped.
 
     Args:
         img (np.ndarray): Input image. Can be single or multi-channel.
@@ -408,8 +408,8 @@ def move_tone_curve(
     high_y: float | np.ndarray,
     num_channels: int,
 ) -> ImageType:
-    """Rescale bright/dark relationship via tone curve. Control points low_y, high_y;
-    supports uint8 and float32.
+    """Rescale bright/dark via Bezier tone curve. low_y, high_y (per-channel or scalar), num_channels
+    for per-channel curves. uint8 I/O.
 
     Args:
         img (np.ndarray): Any number of channels
@@ -448,8 +448,8 @@ def linear_transformation_rgb(
     img: ImageType,
     transformation_matrix: np.ndarray,
 ) -> ImageType:
-    """Apply a 3x3 linear transformation to RGB channels. Single image or batch;
-    matrix (or batch) multiplies channel vector.
+    """3x3 linear transformation to RGB. transformation_matrix (or batch) multiplies channel
+    vector. Supports (H,W,3), (B,H,W,3), (B,D,H,W,3). Used by FancyPCA.
 
     This function applies a 3x3 linear transformation matrix (or batch of matrices)
     to the RGB channels of either a single image or a batch of images.
@@ -486,8 +486,8 @@ def clahe(
     clip_limit: float,
     tile_grid_size: tuple[int, int],
 ) -> ImageType:
-    """Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) per tile. Params:
-    clip_limit, tile_grid_size.
+    """CLAHE (Contrast Limited Adaptive Histogram Equalization) per tile. clip_limit, tile_grid_size.
+    For color, applied in LAB to L channel. uint8 I/O.
 
     This function enhances the contrast of the input image using CLAHE. For color images,
     it converts the image to the LAB color space, applies CLAHE to the L channel, and then
@@ -536,8 +536,8 @@ def image_compression(
     quality: int,
     image_type: Literal[".jpg", ".webp"],
 ) -> ImageType:
-    """Compress the image using JPEG or WebP. Params: quality, compression_type.
-    Simulates real-world compression artifacts.
+    """Compress image with JPEG or WebP to simulate artifacts. quality, image_type (.jpg/.webp).
+    Used by ImageCompression. uint8 I/O.
 
     Args:
         img (np.ndarray): Input image
@@ -689,8 +689,8 @@ def add_snow_texture(
     snow_texture: np.ndarray,
     sparkle_mask: np.ndarray,
 ) -> ImageType:
-    """Add a realistic snow effect to the input image. Uses texture and sparkle;
-    params control density and brightness.
+    """Add snow effect: texture overlay, sparkle, depth gradient, blue tint. snow_point,
+    brightness_coeff. Used by RandomSnow. uint8 I/O.
 
     This function simulates snowfall by applying multiple visual effects to the image,
     including brightness adjustment, snow texture overlay, depth simulation, and color tinting.
@@ -801,8 +801,8 @@ def add_rain(
     brightness_coefficient: float,
     rain_drops: np.ndarray,
 ) -> ImageType:
-    """Add rain to an image. Draws rain drops with configurable density and angle;
-    simulates weather degradation.
+    """Add rain streaks. slant, drop_length, drop_width, drop_color, blur_value,
+    brightness_coefficient, rain_drops. Used by RandomRain.
 
     This function adds rain to an image by drawing rain drops on the image.
     The rain drops are drawn using the OpenCV function cv2.polylines.
@@ -861,7 +861,8 @@ def get_fog_particle_radiuses(
     fog_intensity: float,
     random_generator: np.random.Generator,
 ) -> list[int]:
-    """Generate radiuses for fog particles.
+    """Generate per-particle radius list for add_fog. num_particles, fog_intensity, image size;
+    random_generator samples. Returns list[int].
 
     Args:
         img_shape (tuple[int, int]): Image shape.
@@ -890,8 +891,8 @@ def add_fog(
     fog_particle_positions: list[tuple[int, int]],
     fog_particle_radiuses: list[int],
 ) -> ImageType:
-    """Add fog to an image. Draws fog particles with configurable density; simulates
-    atmospheric haze.
+    """Add fog with circular particles and alpha blending. fog_intensity, alpha_coef, positions,
+    radiuses. Used by RandomFog. uint8 I/O.
 
     This function adds fog to an image by drawing fog particles on the image.
     The fog particles are drawn using the OpenCV function cv2.circle.
@@ -1042,8 +1043,8 @@ def add_sun_flare_physics_based(
     src_color: tuple[int, int, int],
     circles: list[Any],
 ) -> ImageType:
-    """Add a more realistic sun flare effect. Simulates optical phenomena; params
-    control lens flare position and intensity.
+    """Physics-based sun flare: circle, spikes, ghosts, chromatic aberration, screen blend.
+    flare_center, src_radius, src_color, circles. Used by RandomSunFlare.
 
     This function creates a complex sun flare effect by simulating various optical phenomena
     that occur in real camera lenses when capturing bright light sources. The result is a
@@ -1164,8 +1165,8 @@ def add_shadow(
     vertices_list: list[np.ndarray],
     intensities: np.ndarray,
 ) -> ImageType:
-    """Add shadows by reducing intensity in specified regions. Params: shadow_roi,
-    num_shadows; simulates occlusion.
+    """Add polygonal shadows by reducing intensity in vertices_list regions. intensities per
+    polygon. Used by RandomShadow. uint8 I/O, preserves channels.
 
     Args:
         img (np.ndarray): Input image. Multichannel images are supported.
@@ -1203,8 +1204,8 @@ def add_shadow(
 @clipped
 @preserve_channel_dim
 def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
-    """Add gravel to an image. Draws gravel particles; simulates road or terrain.
-    .
+    """Add gravel: write HLS saturation in rectangular regions from gravels (min_y,max_y,min_x,
+    max_x,sat). Used by RandomGravel. uint8 I/O.
 
     This function adds gravel to an image by drawing gravel particles on the image.
     The gravel particles are drawn using the OpenCV function cv2.circle.

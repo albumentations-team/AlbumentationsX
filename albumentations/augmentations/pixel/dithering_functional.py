@@ -192,7 +192,8 @@ ERROR_DIFFUSION_KERNELS = {
 
 @functools.lru_cache(maxsize=16)
 def generate_bayer_matrix(size: int) -> np.ndarray:
-    """Generate Bayer threshold matrix of given size (cached).
+    """Generate Bayer threshold matrix for ordered dithering (cached). size in {2,4,8,16}.
+    Returns matrix in [0, 1]. Used by ordered_dither and ordered_dither_uint8.
 
     Args:
         size: Size of the matrix (2, 4, 8, or 16).
@@ -240,7 +241,8 @@ def generate_bayer_matrix(size: int) -> np.ndarray:
 
 
 def quantize_value(value: float, n_levels: int) -> float:
-    """Quantize a single value to n discrete levels.
+    """Quantize a single value in [0, 1] to n_levels discrete levels. Used by error diffusion
+    and other dithering paths. Returns value in [0, 1].
 
     Args:
         value: Input value in [0, 1] range.
@@ -260,7 +262,8 @@ def quantize_value(value: float, n_levels: int) -> float:
 
 
 def quantize_array(arr: np.ndarray, n_levels: int) -> np.ndarray:
-    """Quantize an array to n discrete levels efficiently using vectorized operations.
+    """Quantize array in [0, 1] to n_levels levels (vectorized). Returns float32. Used when
+    full-image quantization is needed without error diffusion.
 
     Args:
         arr: Input array in [0, 1] range.
@@ -286,7 +289,8 @@ def random_dither_uint8(
     noise_range: tuple[float, float],
     random_generator: np.random.Generator,
 ) -> ImageUInt8:
-    """Apply random dithering optimized for uint8 images.
+    """Random dithering for uint8: add noise then quantize with LUT. n_colors, noise_range,
+    random_generator. Fast path for Dithering transform when input is uint8.
 
     Args:
         img: Input uint8 image with shape (H, W, C) in [0, 255] range.
@@ -328,7 +332,8 @@ def random_dither(
     noise_range: tuple[float, float],
     random_generator: np.random.Generator,
 ) -> ImageFloat32:
-    """Apply random dithering for float32 images.
+    """Random dithering for float32: add noise then quantize to n_colors. noise_range,
+    random_generator. Used by Dithering when input is float32.
 
     Args:
         img: Input float32 image with shape (H, W, C) in [0, 1] range.
@@ -360,7 +365,8 @@ def ordered_dither_uint8(
     n_colors: int,
     matrix_size: int = 4,
 ) -> ImageUInt8:
-    """Apply ordered dithering optimized for uint8 images.
+    """Ordered (Bayer) dithering for uint8: threshold vs tiled Bayer. n_colors, matrix_size
+    (2,4,8,16). Fast path for Dithering transform.
 
     Args:
         img: Input uint8 image with shape (H, W, C).
@@ -405,7 +411,8 @@ def ordered_dither(
     n_colors: int,
     matrix_size: int = 4,
 ) -> ImageFloat32:
-    """Apply ordered dithering using Bayer matrix.
+    """Ordered (Bayer) dithering for float32: add Bayer threshold pattern then quantize.
+    matrix_size in {2,4,8,16}. Used by Dithering transform for float32 images.
 
     Args:
         img: Input image in [0, 1] range with shape (H, W, C).
@@ -454,7 +461,8 @@ def error_diffusion_dither(
     algorithm: str = "floyd_steinberg",
     serpentine: bool = False,
 ) -> ImageType:
-    """Apply error diffusion dithering.
+    """Error diffusion dithering (e.g. Floyd-Steinberg): quantize and diffuse error. algorithm,
+    serpentine. Per-channel processing.
 
     Args:
         img: Input image in [0, 1] range with shape (H, W, C).
@@ -523,7 +531,8 @@ def _apply_dithering_to_grayscale(
     n_colors: int,
     **kwargs: Any,
 ) -> ImageType:
-    """Apply dithering to grayscale image."""
+    """Convert image to grayscale, apply dithering method, then broadcast result to original
+    channel count. Used by apply_dithering when color_mode is grayscale."""
     # Store original number of channels
     original_channels = img.shape[2]
 
@@ -554,7 +563,8 @@ def _apply_single_dithering_method(
     n_colors: int,
     **kwargs: Any,
 ) -> ImageType:
-    """Apply a single dithering method to an image."""
+    """Dispatch to ordered_dither, random_dither, or error_diffusion_dither by method. Uses uint8
+    paths when img is uint8."""
     # Choose optimized uint8 versions when possible
     if img.dtype == np.uint8 and method == "ordered":
         return ordered_dither_uint8(img, n_colors, kwargs.get("matrix_size", 4))
@@ -603,7 +613,8 @@ def apply_dithering(
     color_mode: str = "per_channel",
     **kwargs: Any,
 ) -> ImageType:
-    """Apply dithering to an image.
+    """Apply dithering (ordered, random, or error_diffusion) to image. method, n_colors,
+    color_mode, **kwargs. Entry point for Dithering transform.
 
     Args:
         img: Input image in [0, 1] range with shape (H, W, C).

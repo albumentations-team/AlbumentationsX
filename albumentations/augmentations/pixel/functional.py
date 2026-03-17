@@ -1382,19 +1382,20 @@ def iso_noise_images(
     intensity: float,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Apply ISO noise to a batch of images with vectorized noise generation.
+    """Apply ISO noise to an image batch with vectorized noise. One noise field broadcast to all
+    images; matches apply() with same seed. Use for batch augmentation.
 
     Noise is generated once and broadcast across all images, matching the behavior
     of calling apply() per image with the same random seed.
 
     Args:
-        images: (N, H, W, 3) RGB images.
-        color_shift: Amount of color hue shift.
-        intensity: Noise intensity multiplier.
-        random_generator: Numpy RNG seeded for reproducibility.
+        images (np.ndarray): (N, H, W, 3) RGB images.
+        color_shift (float): Amount of color hue shift.
+        intensity (float): Noise intensity multiplier.
+        random_generator (np.random.Generator): Numpy RNG seeded for reproducibility.
 
     Returns:
-        (N, H, W, 3) noised images.
+        np.ndarray: (N, H, W, 3) noised images.
 
     Image types:
         uint8, float32

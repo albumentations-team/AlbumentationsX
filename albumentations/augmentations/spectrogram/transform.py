@@ -154,7 +154,6 @@ class TimeMasking(XYMasking):
 
 class FrequencyMasking(XYMasking):
     """Apply masking to a spectrogram in the frequency domain.
-
     This transform masks random segments along the frequency axis of a spectrogram,
     implementing the frequency masking technique proposed in the SpecAugment paper.
     Frequency masking helps in training models to be robust against frequency variations

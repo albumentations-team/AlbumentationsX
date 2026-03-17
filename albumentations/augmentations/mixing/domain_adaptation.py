@@ -181,7 +181,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
 
 
 class HistogramMatching(BaseDomainAdaptation):
-    """Adjust the pixel value distribution of an input image to match a reference image.
+    """Adjust the pixel value distribution of an input image to match a reference image.  See Args for parameters and types, Returns for output, and Examples for usage
 
     This transform modifies the pixel intensities of the input image so that its histogram
     matches the histogram of a provided reference image. This process is applied independently

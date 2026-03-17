@@ -152,7 +152,7 @@ repos:
     hooks:
       - id: check-google-docstrings
         files: ^albumentations/
-        exclude: ^build/
+        exclude: ^(build/|albumentations/core/analytics/)
         additional_dependencies: ["tomli>=2.0.0"]
   - repo: https://github.com/frnmst/md-toc
     rev: 9.0.0  # or latest version

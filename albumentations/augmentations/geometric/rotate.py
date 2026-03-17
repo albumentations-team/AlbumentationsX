@@ -37,7 +37,8 @@ SMALL_NUMBER = 1e-10
 
 
 class RandomRotate90(DualTransform):
-    """Randomly rotate the input by 90 degrees zero or more times.
+    """Randomly rotate by 90° (0, 90, 180, or 270). Supports image, mask, bboxes, keypoints, volume.
+    Set group_element for TTA; use inverse() to restore predictions.
 
     Even with p=1.0, the transform has a 1/4 probability of being identity:
     - With probability p * 1/4: no rotation (0 degrees)
@@ -215,7 +216,8 @@ class RandomRotate90(DualTransform):
         return self.apply_to_volumes(masks3d, group_element, **params)
 
     def inverse(self) -> RandomRotate90:
-        """Return a new RandomRotate90 configured with the inverse group element.
+        """Return a new RandomRotate90 with the inverse group element to undo this transform. Use
+        after inference in TTA to restore predictions to original orientation.
 
         Raises:
             ValueError: If `group_element` is `None` (random mode cannot be inverted).
@@ -254,7 +256,7 @@ class RotateInitSchema(BaseTransformInitSchema):
 
 
 class Rotate(DualTransform):
-    """Rotate the input by an angle selected randomly from the uniform distribution.
+    """Rotate the input by an angle selected randomly from the uniform distribution.  See Args for parameters and types, Returns for output, and Examples for usage. Pa
 
     Args:
         limit (float | tuple[float, float]): Range from which a random angle is picked. If limit is a single float,
@@ -494,8 +496,7 @@ class Rotate(DualTransform):
         width: int,
         angle: float,
     ) -> dict[str, int]:
-        """Given rotated rectangle (width, height, angle in degrees), return size of largest
-        axis-aligned rectangle inside it.
+        """Given rotated rectangle (width, height, angle in degrees), return size of largest axis-aligned rectangle inside it.  See Args for parameters and types, Returns
 
         References:
             Rotate image and crop out black borders: https://stackoverflow.com/questions/16702966/rotate-image-and-crop-out-black-borders
@@ -570,7 +571,7 @@ class Rotate(DualTransform):
 
 
 class SafeRotate(Affine):
-    """Rotate the input inside the input's frame by an angle selected randomly from the uniform distribution.
+    """Rotate the input inside the input's frame by an angle selected randomly from the uniform distribution.  See Args for parameters and types, Returns for output, a
 
     This transformation ensures that the entire rotated image fits within the original frame by scaling it
     down if necessary. The resulting image maintains its original dimensions but may contain artifacts due to the

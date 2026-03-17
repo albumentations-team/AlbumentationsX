@@ -1,4 +1,4 @@
-"""Module containing PyTorch-specific transforms for Albumentations.
+"""Module containing PyTorch-specific transforms for Albumentations. of albume
 
 This module provides transforms that convert NumPy arrays to PyTorch tensors in
 the appropriate format. It handles both 2D image data and 3D volumetric data,
@@ -45,7 +45,8 @@ class ToTensorV2(BasicTransform):
 
     @property
     def targets(self) -> dict[str, Any]:
-        """Mapping of target name to function (image, images, mask, masks). Used by Compose to dispatch apply vs apply_to_images/apply_to_mask/apply_to_masks.
+        """Mapping of target name to function (image, images, mask, masks). Compose uses this
+        to dispatch apply vs apply_to_images/apply_to_mask/apply_to_masks.
 
         Returns:
             dict[str, Any]: Dictionary mapping target names to corresponding transform functions.
@@ -83,7 +84,8 @@ class ToTensorV2(BasicTransform):
 
 
 class ToTensor3D(BasicTransform):
-    """Convert 3D volumes and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W). For 3D medical imaging; p=1.0 by default. Targets: volume, mask3d.
+    """Convert 3D volumes and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
+    For 3D medical imaging; p=1.0 by default. Targets: volume, mask3d.
 
     This transform is designed for 3D medical imaging data. It converts numpy arrays
     to PyTorch tensors and ensures consistent channel positioning.
@@ -110,7 +112,8 @@ class ToTensor3D(BasicTransform):
 
     @property
     def targets(self) -> dict[str, Any]:
-        """Return mapping of target name to target function (volume, mask3d). Used by Compose to dispatch apply_to_volume vs apply_to_mask3d.
+        """Return mapping of target name to target function (volume, mask3d). Compose uses
+        this to dispatch apply_to_volume vs apply_to_mask3d.
 
         Returns:
             dict[str, Any]: Dictionary mapping target names to corresponding transform functions

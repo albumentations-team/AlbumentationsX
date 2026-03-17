@@ -1,4 +1,4 @@
-"""Module containing base interfaces for all transform implementations.
+"""Module containing base interfaces for all transform implementations. of alb
 
 This module defines the fundamental transform interfaces that form the base hierarchy for
 all transformation classes in Albumentations. It provides abstract classes and mixins that

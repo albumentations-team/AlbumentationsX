@@ -1,4 +1,4 @@
-"""Transforms that combine multiple images and their associated annotations.
+"""Transforms that combine multiple images and their associated annotations. o
 
 This module contains transformations that take multiple input sources (e.g., a primary image
 and additional images provided via metadata) and combine them into a single output.
@@ -27,7 +27,8 @@ __all__ = ["Mosaic", "OverlayElements"]
 
 
 class OverlayElements(DualTransform):
-    """Apply overlay images/masks onto an input image (e.g. stickers, logos). Optional bboxes and masks for placement. Uses metadata_key.
+    """Apply overlay images/masks onto an input image (e.g. stickers, logos). Optional bboxes
+    and masks for placement. Uses metadata_key.
 
     Args:
         metadata_key (str): Additional target key for metadata. Default `overlay_metadata`.
@@ -262,7 +263,8 @@ class OverlayElements(DualTransform):
 
 
 class Mosaic(DualTransform):
-    """Combine multiple images and annotations into a single image using a mosaic grid layout. Uses metadata for additional images; common in object detection training.
+    """Combine multiple images and annotations into one image via a mosaic grid. Uses metadata
+    for additional images; common in object detection training.
 
     Mosaic creates a grid of images by placing the primary image and additional images from metadata
     into cells of a larger canvas, then crops a region to produce the final output. This is commonly
@@ -553,7 +555,8 @@ class Mosaic(DualTransform):
 
     @property
     def targets_as_params(self) -> list[str]:
-        """Return list of target keys passed as params (e.g. to get_params_dependent_on_data). For Mosaic/FMix: metadata key for preprocessed mosaic/mix.
+        """Return list of target keys passed as params (e.g. to get_params_dependent_on_data).
+        For Mosaic/FMix: metadata key for preprocessed mosaic/mix.
 
         Returns:
             list[str]: List containing the metadata key name
@@ -646,7 +649,8 @@ class Mosaic(DualTransform):
 
     @staticmethod
     def get_primary_data(data: dict[str, Any]) -> fmixing.ProcessedMosaicItem:
-        """Return a copy of the primary item from data so the original is not mutated. Used by Mosaic/FMix to build composed image from primary plus patches.
+        """Return a copy of the primary item from data so the original is not mutated. Call from
+        Mosaic/FMix to build composed image from primary plus patches.
 
         Args:
             data (dict[str, Any]): Dictionary containing the primary data.

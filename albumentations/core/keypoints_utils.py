@@ -1,5 +1,4 @@
 """Module for handling keypoint operations during augmentation.
-
 This module provides utilities for working with keypoints in various formats during
 the augmentation process. It includes functions for converting between coordinate systems,
 filtering keypoints based on visibility, validating keypoint data, and applying
@@ -34,7 +33,8 @@ keypoint_formats = {"xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"}
 
 
 def angle_to_2pi_range(angles: np.ndarray) -> np.ndarray:
-    """Normalize angles in radians to [0, 2π). Same shape in/out. Used when converting keypoint angles to or from user coord format.
+    """Normalize angles in radians to [0, 2π). Same shape in/out. Call when converting
+    keypoint angles to or from user coord format.
 
     This function takes an array of angles and ensures they are all within
     the range of 0 to 2π (exclusive) by applying modulo 2π.
@@ -50,7 +50,8 @@ def angle_to_2pi_range(angles: np.ndarray) -> np.ndarray:
 
 
 class KeypointParams(Params):
-    """Params for keypoints in Compose: coord_format, label_fields, remove_invisible, angle_in_degrees, check_each_transform, label_mapping.
+    """Params for keypoints in Compose: coord_format, label_fields, remove_invisible,
+    angle_in_degrees, check_each_transform, label_mapping.
 
     Args:
         coord_format (Literal["xy", "yx", "xya", "xys", "xyas", "xysa", "xyz"]): Coordinate format of keypoints.
@@ -101,7 +102,9 @@ class KeypointParams(Params):
 
         @model_validator(mode="after")
         def _validate_label_configuration(self) -> Self:
-            """Warn when label_fields set but label_mapping None. Suggest adding label_mapping for swap or removing label_fields. Private."""
+            """Warn when label_fields set but label_mapping None. Suggest adding
+            label_mapping for swap or removing label_fields. Private.
+            """
             if self.label_fields and self.label_mapping is None:
                 import warnings
 
@@ -141,7 +144,8 @@ class KeypointParams(Params):
         self.label_mapping = validated.label_mapping if validated.label_mapping is not None else {}
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Return private dict of KeypointParams for serialization (coord_format, label_fields, etc.). Used by Compose save/load. Not public API.
+        """Return private dict of KeypointParams for serialization (coord_format, label_fields, etc.).
+        Required for Compose save/load. Not public API.
 
         Returns:
             dict[str, Any]: Dictionary containing the keypoint parameters.
@@ -160,7 +164,8 @@ class KeypointParams(Params):
 
     @classmethod
     def is_serializable(cls) -> bool:
-        """Return True; KeypointParams is serializable. Used by Compose and serialization helpers when saving or loading pipelines.
+        """Return True; KeypointParams is serializable. Required for pipeline save/load;
+        check when saving or loading Compose to persist keypoint params.
 
         Returns:
             bool: Always returns True as KeypointParams is serializable.
@@ -170,7 +175,8 @@ class KeypointParams(Params):
 
     @classmethod
     def get_class_fullname(cls) -> str:
-        """Return full class name 'KeypointParams' for serialization. Used when saving or loading Compose to reconstruct processor params.
+        """Return full class name 'KeypointParams' for serialization. Call when saving or loading
+        Compose to reconstruct processor params.
 
         Returns:
             str: The string "KeypointParams" representing the class name.
@@ -187,11 +193,13 @@ class KeypointParams(Params):
 
 
 class KeypointsProcessor(DataProcessor):
-    """DataProcessor for keypoints: conversion, validation, filtering. Uses KeypointParams; label_mapping for transform swap. Used by Compose.
+    """DataProcessor for keypoints: conversion, validation, filtering. Uses KeypointParams
+    and label_mapping. Compose uses this when keypoint_params is set.
 
     This class handles the conversion, validation, and filtering of keypoints
-    during transformations. It ensures keypoints are correctly formatted and
-    processed according to the specified keypoint parameters.
+    during transformations. label_mapping is used for transform swap (e.g.
+    left/right keypoint labels on HorizontalFlip). It ensures keypoints are
+    correctly formatted and processed according to the specified keypoint parameters.
 
     Args:
         params (KeypointParams): Parameters for keypoint processing.
@@ -209,7 +217,8 @@ class KeypointsProcessor(DataProcessor):
         return "keypoints"
 
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
-        """Validate that data has all params.label_fields; raises ValueError if any are missing. Called at pipeline apply time by Compose.
+        """Validate that data has all params.label_fields; raises ValueError if any are
+        missing. Call at pipeline apply time before running transforms.
 
         Args:
             data (dict[str, Any]): The data dictionary to validate.
@@ -227,7 +236,8 @@ class KeypointsProcessor(DataProcessor):
         data: np.ndarray,
         shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
-        """Remove keypoints outside bounds. shape (H,W) or (D,H,W); uses params.remove_invisible. Used in postprocess step by Compose.
+        """Remove keypoints outside bounds. shape (H,W) or (D,H,W); uses params.remove_invisible.
+        Call during pipeline postprocess.
 
         Args:
             data (np.ndarray): Keypoints in [x, y, z, angle, scale] format
@@ -242,7 +252,8 @@ class KeypointsProcessor(DataProcessor):
         return filter_keypoints(data, shape, remove_invisible=self.params.remove_invisible)
 
     def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
-        """Validate keypoints are inside shape; raises on invalid. shape (H,W) or (D,H,W). Used in check_and_convert by KeypointsProcessor.
+        """Validate keypoints are inside shape; raises on invalid. shape (H,W) or (D,H,W).
+        Call during check_and_convert before applying transforms.
 
         Args:
             data (np.ndarray): Keypoints to validate.
@@ -252,7 +263,8 @@ class KeypointsProcessor(DataProcessor):
         check_keypoints(data, shape)
 
     def convert_label_mappings_to_encoded(self) -> None:
-        """Convert label_mapping to encoded ints per transform. Call after preprocessing. Fills encoded_label_mappings for label swap.
+        """Convert label_mapping to encoded ints per transform. Call after preprocessing.
+        Fills encoded_label_mappings for label swap.
 
         This should be called after labels are encoded during preprocessing.
         """
@@ -268,7 +280,9 @@ class KeypointsProcessor(DataProcessor):
         self._convert_mappings_to_encoded()
 
     def _update_encoders_with_mapping_labels(self) -> None:
-        """Update encoders with all labels from label_mapping so encoding succeeds. Private. Called before _convert_mappings_to_encoded."""
+        """Update encoders with all labels from label_mapping so encoding succeeds.
+        Private. Called before _convert_mappings_to_encoded.
+        """
         for field_mappings in self.params.label_mapping.values():
             for label_field, mapping in field_mappings.items():
                 metadata = self.label_manager.metadata.get("keypoints", {}).get(label_field)
@@ -279,7 +293,9 @@ class KeypointsProcessor(DataProcessor):
                     metadata.encoder.update(list(all_mapping_labels))
 
     def _convert_mappings_to_encoded(self) -> None:
-        """Build encoded_label_mappings (transform_name -> {field -> {from_encoded: to_encoded}}). Private. Called after _update_encoders."""
+        """Build encoded_label_mappings (transform_name -> {field -> {from_encoded:
+        to_encoded}}). Private. Called after _update_encoders.
+        """
         for transform_name, field_mappings in self.params.label_mapping.items():
             encoded_mappings = {}
 
@@ -291,7 +307,9 @@ class KeypointsProcessor(DataProcessor):
             self.encoded_label_mappings[transform_name] = encoded_mappings
 
     def _convert_single_mapping(self, mapping: dict[Any, Any], metadata: LabelMetadata) -> dict[int, int]:
-        """Convert one label field mapping to encoded ints (private). Uses metadata.encoder; warns if labels not in encoder. Called by convert_label_mappings_to_encoded."""
+        """Convert one label field mapping to encoded ints (private). Uses metadata.encoder;
+        warns if labels not in encoder. Call from convert_label_mappings_to_encoded.
+        """
         encoded_mapping = {}
 
         if metadata.encoder is not None:
@@ -339,7 +357,9 @@ class KeypointsProcessor(DataProcessor):
         return encoded_mapping
 
     def add_label_fields_to_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Add encoded label columns to keypoint arrays then convert label_mapping to encoded form. Called in preprocess by KeypointsProcessor."""
+        """Add encoded label columns to keypoint arrays then convert label_mapping to
+        encoded form. Call during preprocess before applying transforms.
+        """
         result = super().add_label_fields_to_data(data)
         # After labels are encoded, convert the mappings to work with encoded integers
         self.convert_label_mappings_to_encoded()
@@ -350,7 +370,8 @@ class KeypointsProcessor(DataProcessor):
         data: np.ndarray,
         shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
-        """Convert from internal format to params.coord_format. shape (H,W) or (D,H,W). Uses remove_invisible, angle_in_degrees. Postprocess.
+        """Convert from internal format to params.coord_format. shape (H,W) or (D,H,W).
+        Uses remove_invisible, angle_in_degrees. Call during postprocess.
 
         Args:
             data (np.ndarray): Keypoints in Albumentations format.
@@ -377,7 +398,8 @@ class KeypointsProcessor(DataProcessor):
         data: np.ndarray,
         shape: tuple[int, int] | tuple[int, int, int],
     ) -> np.ndarray:
-        """Convert from params.coord_format to internal format. shape (H,W) or (D,H,W). Uses remove_invisible, angle_in_degrees. Preprocess.
+        """Convert from params.coord_format to internal format. shape (H,W) or (D,H,W).
+        Uses remove_invisible, angle_in_degrees. Call during preprocess.
 
         Args:
             data (np.ndarray): Keypoints in source format.
@@ -400,7 +422,8 @@ class KeypointsProcessor(DataProcessor):
 
 
 def check_keypoints(keypoints: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:
-    """Validate keypoints in bounds and angles in [0, 2π). Raises ValueError with details. Used by KeypointsProcessor when clip_after_transform is True.
+    """Validate keypoints in bounds and angles in [0, 2π). Raises ValueError with details.
+    Call when clip_after_transform is True after converting keypoints.
 
     This function validates that:
     1. All x-coordinates are within [0, width)
@@ -479,7 +502,8 @@ def filter_keypoints(
     shape: tuple[int, int] | tuple[int, int, int],
     remove_invisible: bool,
 ) -> np.ndarray:
-    """Return keypoints inside shape; drop others if remove_invisible. shape (H,W) or (D,H,W). Used in postprocess by KeypointsProcessor.
+    """Return keypoints inside shape; drop others if remove_invisible. shape (H,W) or (D,H,W).
+    Call during pipeline postprocess to filter by visibility.
 
     Args:
         keypoints (np.ndarray): A numpy array of shape (N, 3+) where N is the number of keypoints.
@@ -524,7 +548,8 @@ def convert_keypoints_to_albumentations(
     check_validity: bool = False,
     angle_in_degrees: bool = True,
 ) -> np.ndarray:
-    """Convert from xy/yx/xya/xys/xyas/xysa/xyz to internal format. shape (H,W) or (D,H,W). Preserves extra columns. Used in preprocess.
+    """Convert from xy/yx/xya/xys/xyas/xysa/xyz to internal format. shape (H,W) or (D,H,W).
+    Preserves extra columns. Call during pipeline preprocess before transforms.
 
     This function takes keypoints in different formats and converts them to the standard
     Albumentations format: [x, y, z, angle, scale]. For 2D formats, z is set to 0.
@@ -605,7 +630,8 @@ def convert_keypoints_from_albumentations(
     check_validity: bool = False,
     angle_in_degrees: bool = True,
 ) -> np.ndarray:
-    """Convert from internal format to target (xy, yx, xya, etc.). shape (H,W) or (D,H,W). Inverse of convert_keypoints_to_albumentations.
+    """Convert from internal format to target (xy, yx, xya, etc.). shape (H,W) or
+    (D,H,W). Inverse of convert_keypoints_to_albumentations.
 
     This function takes keypoints in the standard Albumentations format [x, y, z, angle, scale]
     and converts them to the specified target format.

@@ -1,5 +1,4 @@
 """Implementation of XY masking for time-frequency domain transformations.
-
 This module provides the XYMasking transform, which applies masking strips along the X and Y axes
 of an image. This is particularly useful for audio spectrograms, time-series data visualizations,
 and other grid-like data representations where masking in specific directions (time or frequency)
@@ -23,7 +22,9 @@ class XYMasking(BaseDropout):
     """Apply horizontal or vertical masking strips to simulate occlusion.
     Useful for spectrograms (spectral/frequency masking).
 
-    At least one of `max_x_length` or `max_y_length` must be specified, dictating the mask's
+    Useful for training with varied visibility conditions; spectral and frequency
+    masking can improve model robustness (e.g. SpecAugment-style). At least one of
+    `max_x_length` or `max_y_length` must be specified, dictating the mask's
     maximum size along each axis.
 
     Args:
@@ -111,7 +112,7 @@ class XYMasking(BaseDropout):
         dimension_size: int,
         dimension_name: str,
     ) -> None:
-        """Validate the mask length against the corresponding image dimension size."""
+        """Validate the mask length against the corresponding image dimension size. of"""
         if mask_length is not None:
             if isinstance(mask_length, (tuple, list)):
                 if mask_length[0] < 0 or mask_length[1] > dimension_size:

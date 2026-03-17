@@ -1,4 +1,4 @@
-"""Implementation of the Channel Dropout transform for multi-channel images.
+"""Implementation of the Channel Dropout transform for multi-channel images. o
 
 This module provides the ChannelDropout transform, which randomly drops (sets to a fill value)
 one or more channels in multi-channel images. This augmentation can help models become more

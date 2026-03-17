@@ -1,4 +1,4 @@
-"""Module for managing and transforming label data during augmentation.
+"""Module for managing and transforming label data during augmentation. of alb
 
 This module provides utilities for encoding, decoding, and tracking metadata for labels
 during the augmentation process. It includes classes for managing label transformations,

@@ -14,7 +14,7 @@ Apply these criteria to **every docstring you write or update** in albumentation
 The **first paragraph** is the useful short description: an elevator pitch that explains intuitively what the function or transform does. It appears as the web/search preview under the link.
 
 - **Length:** **120–160 characters** (under 120 loses value, over 160 gets cut off).
-- **Content:** Intuitive, user-facing summary — what it does and main parameters, so someone can decide "do I need to click?" Do **not** include "Used by X" (redundant). Do not put in the first paragraph: "Targets: ...", "Same shape", or **return type** (e.g. "Returns np.ndarray"). Return type belongs only in the Returns section.
+- **Content:** Intuitive, user-facing summary — **what the function/transform does and its main parameters** (elevator pitch), so someone can decide "do I need to click?" Do **not** write "Used by X" or "Used in Y" — that describes call sites, not the API; replace with what the function does or when to use it (e.g. "Call when …", "Useful for …"). Do not put in the first paragraph: "Targets: ...", "Same shape", or **return type** (e.g. "Returns np.ndarray"). Return type belongs only in the Returns section.
 - **Line wrap:** Line limit 120 chars, so the first paragraph usually spans **two lines** (break at a word boundary).
 - **When shortening:** Do not delete useful information. Move any removed content into the second paragraph, a Note, or the relevant Args/Returns section so it is still documented.
 
@@ -26,7 +26,7 @@ The **first paragraph** is the useful short description: an elevator pitch that 
     More detail...
 ```
 
-**Do not include:** "Used by X" anywhere (redundant). Keep return type only in Returns section; "Targets"/"Same shape" can go in a later paragraph if needed.
+**Do not include:** "Used by X" or "Used in Y" anywhere — that is call-site info, not an elevator pitch. Describe the function (what it does, main params, when to use it). Keep return type only in Returns section; "Targets"/"Same shape" can go in a later paragraph if needed.
 
 ## 2. Well written
 

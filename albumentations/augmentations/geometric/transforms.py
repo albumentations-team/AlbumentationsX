@@ -1,5 +1,4 @@
 """Geometric transformation classes for image augmentation.
-
 This module provides a collection of transforms that modify the geometric properties
 of images and associated data (masks, bounding boxes, keypoints). Includes implementations
 for flipping, transposing, affine transformations, distortions, padding, and more complex
@@ -57,7 +56,8 @@ NUM_PADS_ALL_SIDES = 4
 
 
 class Perspective(DualTransform):
-    """Apply random four point perspective transformation to the input.
+    """Apply random four-point perspective transformation. Params: scale, keep_size, border_mode,
+    fill, interpolation. Supports image, mask, bboxes, keypoints.
 
     Args:
         scale (float or tuple of float): Standard deviation of the normal distributions. These are used to sample
@@ -348,7 +348,8 @@ class Perspective(DualTransform):
 
 
 class Affine(DualTransform):
-    """Augmentation to apply affine transformations to images.
+    """Apply affine transformations: translation, rotation, scale, shear. Params: scale, translate,
+    rotate, shear, interpolation, fill.
 
     Affine transformations involve:
 
@@ -609,7 +610,8 @@ class Affine(DualTransform):
 
         @model_validator(mode="after")
         def _validate_keep_ratio_scale_compatibility(self) -> Self:
-            """Validate that when keep_ratio is True, x and y scale ranges are identical."""
+            """Validate that when keep_ratio is True, x and y scale ranges are identical. Prevents
+            inconsistent Affine scale config; raises ValueError if scale x and y differ."""
             if self.keep_ratio and isinstance(self.scale, dict) and self.scale["x"] != self.scale["y"]:
                 raise ValueError(
                     f"When keep_ratio is True, the x and y scale range should be identical. got {self.scale}",
@@ -918,7 +920,8 @@ class Affine(DualTransform):
 
 
 class ShiftScaleRotate(Affine):
-    """Randomly apply affine transforms: translate, scale and rotate the input.
+    """Randomly apply translate, scale, and rotate. Params: shift_limit, scale_limit, rotate_limit,
+    interpolation, border_mode, fill. Supports image, mask, bboxes, keypoints.
 
     Args:
         shift_limit ((float, float) or float): shift factor range for both height and width. If shift_limit
@@ -1151,7 +1154,7 @@ class ShiftScaleRotate(Affine):
 
 
 class GridElasticDeform(DualTransform):
-    """Apply elastic deformations to images, masks, bounding boxes, and keypoints using a grid-based approach.
+    """Apply elastic deformations to images, masks, bounding boxes, and keypoints using a grid-based approach.  See Args for parameters and types, Returns for output,
 
     This transformation overlays a grid on the input and applies random displacements to the grid points,
     resulting in local elastic distortions. The granularity and intensity of the distortions can be
@@ -1366,8 +1369,7 @@ class GridElasticDeform(DualTransform):
 
 
 class RandomGridShuffle(DualTransform):
-    """Divide image into a grid and randomly permute the cells (image, mask, keypoints).
-    Grid size via grid (e.g. (3,3)).
+    """Divide image into a grid and randomly permute the cells (image, mask, keypoints). Grid size via grid (e.g. (3,3)).  See Args for parameters and types, Returns f
 
     Args:
         grid (tuple[int, int]): Size of the grid for splitting the image into cells. Each cell is shuffled randomly.
@@ -1548,8 +1550,7 @@ class RandomGridShuffle(DualTransform):
 
 
 class Morphological(DualTransform):
-    """Apply a morphological operation (dilation or erosion) to an image,
-    with particular value for enhancing document scans.
+    """Apply a morphological operation (dilation or erosion) to an image, with particular value for enhancing document scans.  See Args for parameters and types, Retur
 
     Morphological operations modify the structure of the image.
     Dilation expands the white (foreground) regions in a binary or grayscale image, while erosion shrinks them.

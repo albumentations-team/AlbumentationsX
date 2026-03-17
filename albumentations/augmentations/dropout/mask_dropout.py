@@ -22,7 +22,7 @@ __all__ = ["MaskDropout"]
 
 
 class MaskDropout(DualTransform):
-    """Apply dropout to random objects in a mask, zeroing out the corresponding regions in both the image and mask.
+    """Apply dropout to random objects in a mask, zeroing out the corresponding regions in both the image and mask.  See Args for parameters and types, Returns for out
 
     This transform identifies objects in the mask (where each unique non-zero value represents a distinct object),
     randomly selects a number of these objects, and sets their corresponding regions to zero in both the image and mask.

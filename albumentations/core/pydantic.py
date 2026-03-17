@@ -1,5 +1,4 @@
 """Module containing Pydantic validation utilities for Albumentations.
-
 This module provides a collection of validators and utility functions used for validating
 parameters in the Pydantic models throughout the Albumentations library. It includes
 functions for ensuring numeric ranges are valid, handling type conversions, and creating
@@ -17,7 +16,7 @@ from albumentations.core.utils import to_tuple
 
 def nondecreasing(value: tuple[Number, Number]) -> tuple[Number, Number]:
     """Ensure a tuple of two numbers is in non-decreasing order (value[0] <= value[1]). Raises
-    ValueError otherwise. Used in Pydantic.
+    ValueError otherwise. Use as a Pydantic validator for range params.
 
     Args:
         value (tuple[Number, Number]): Tuple of two numeric values to validate.
@@ -185,7 +184,7 @@ def check_range_bounds(
     max_inclusive: bool = True,
 ) -> Callable[[tuple[T, ...] | None], tuple[T, ...] | None]:
     """Return a validator that ensures all values in a tuple are within min/max bounds
-    (inclusive or exclusive). Used in Pydantic models.
+    (inclusive or exclusive). Use in Pydantic model field validators.
 
     Args:
         min_val (int | float):

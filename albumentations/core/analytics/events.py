@@ -39,27 +39,16 @@ class ComposeInitEvent:
     targets: str = "None"  # None/bboxes/keypoints/bboxes_keypoints
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert event to dictionary for other uses (not GA4)."""
+        """Convert event to dictionary for other uses (not GA4). Parameters and behavior: see Args, Returns, Examples."""
+
         return {
             "event_type": self.event_type,
             "timestamp": self.timestamp,
             "session_id": self.session_id,
             "user_id": self.user_id,
             "pipeline_hash": self.pipeline_hash,
-            "environment": {
-                "albumentationsx_version": self.albumentationsx_version,
-                "python_version": self.python_version,
-                "os": self.os,
-                "cpu": self.cpu,
-                "gpu": self.gpu,
-                "ram_gb": self.ram_gb,
-                "environment": self.environment,
-            },
-            "pipeline": {
-                "transforms": self.transforms,
-                "targets": self.targets,
-            },
         }
+
 
     @staticmethod
     def generate_pipeline_hash(transforms: list[str]) -> str:

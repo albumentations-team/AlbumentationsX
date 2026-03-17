@@ -1,4 +1,4 @@
-"""Transforms for type conversion between float and other data types.
+"""Transforms for type conversion between float and other data types. of album
 
 This module provides transform classes for converting image data types, primarily
 for converting between floating point and integer representations. These transforms
@@ -32,11 +32,8 @@ __all__ = [
 
 
 class ToFloat(ImageOnlyTransform):
-    """Convert the input image to a floating-point representation.
-
-    This transform divides pixel values by `max_value` to get a float32 output array
-    where all values lie in the range [0, 1.0]. It's useful for normalizing image data
-    before feeding it into neural networks or other algorithms that expect float input.
+    """Convert the input image to float32 in [0, 1] by dividing by max_value. Useful for
+    normalizing before neural networks or other algorithms that expect float input.
 
     Args:
         max_value (float | None): The maximum possible input value. If None, the transform
@@ -103,7 +100,7 @@ class ToFloat(ImageOnlyTransform):
 
 
 class FromFloat(ImageOnlyTransform):
-    """Convert an image from floating point representation to the specified data type.
+    """Convert an image from floating point representation to the specified data type.  See Args for parameters and types, Returns for output, and Examples for usage.
 
     This transform is designed to convert images from a normalized floating-point representation
     (typically with values in the range [0, 1]) to other data types, scaling the values appropriately.

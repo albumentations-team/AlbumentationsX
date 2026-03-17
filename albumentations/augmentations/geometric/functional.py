@@ -1,4 +1,4 @@
-"""Functional implementations of geometric image transformations.
+"""Functional implementations of geometric image transformations. of albumenta
 
 This module provides low-level functions for geometric operations such as rotation,
 resizing, flipping, perspective transforms, and affine transformations on images,
@@ -3559,11 +3559,10 @@ def compute_perspective_params(
     image_shape: tuple[int, int],
 ) -> tuple[np.ndarray, int, int]:
     """Compute perspective params from four points and image_shape. Returns
-    (matrix, max_width, max_height). Adjusts dims so transform keeps size.
+    (matrix, max_width, max_height). Adjusts dims so transformed image keeps size.
 
-    Used by the Perspective transform. This function computes the perspective transformation
-    parameters for a given set of points. It adjusts the points to ensure that the transformed
-    image retains its original dimensions.
+    Computes the perspective transformation matrix and output dimensions for a given
+    set of four corner points; call from Perspective or similar transforms.
 
     Args:
         points (np.ndarray): The points to compute the perspective transformation parameters for.

@@ -45,7 +45,8 @@ NUM_PADS_ALL_SIDES = 4
 
 
 class Pad(DualTransform):
-    """Pad the sides of an image by specified number of pixels.
+    """Pad image sides by a number of pixels (all sides, x/y, or per-side). Params: padding, fill,
+    fill_mask, border_mode. Supports image, mask, bboxes, keypoints.
 
     Args:
         padding (int, tuple[int, int] or tuple[int, int, int, int]): Padding values. Can be:

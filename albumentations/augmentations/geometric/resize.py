@@ -22,7 +22,7 @@ __all__ = ["LongestMaxSize", "RandomScale", "Resize", "SmallestMaxSize"]
 
 
 class RandomScale(DualTransform):
-    """Randomly resize the input. Output image size is different from the input image size.
+    """Randomly resize the input. Output image size is different from the input image size.  See Args for parameters and types, Returns for output, and Examples for us
 
     Args:
         scale_limit (float or tuple[float, float]): scaling factor range. If scale_limit is a single float value, the
@@ -222,7 +222,8 @@ class RandomScale(DualTransform):
 
 
 class MaxSizeTransform(DualTransform):
-    """Base class for transforms that resize based on maximum size constraints.
+    """Base class for resizing by max size (longest or smallest side). Preserves aspect ratio.
+    Params: max_size or max_size_hw, interpolation.
 
     This class provides common functionality for derived transforms like LongestMaxSize and
     SmallestMaxSize that resize images based on size constraints while preserving aspect ratio.
@@ -669,7 +670,8 @@ class SmallestMaxSize(MaxSizeTransform):
 
 
 class Resize(DualTransform):
-    """Resize the input to the given height and width.
+    """Resize to given height and width. Params: height, width, interpolation, area_for_downscale.
+    Supports image, mask, bboxes, keypoints.
 
     Args:
         height (int): desired height of the output.

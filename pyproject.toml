@@ -415,6 +415,7 @@ require_param_types = false   # TODO: add param/return types to docstrings; then
 check_references = true
 check_type_consistency = false  # TODO: fix docstring types to match annotations (Union→|, Literal quotes, ImageType, etc.)
 exclude_files = [ "__init__.py" ]
+# First paragraph: 120-160 chars (elevator pitch). See .cursor/skills/docstring-deep-dive.
 min_short_description_length = 120
 max_short_description_length = 160
 verbose = false

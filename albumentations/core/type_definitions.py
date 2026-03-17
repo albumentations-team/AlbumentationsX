@@ -1,4 +1,4 @@
-"""Module containing type definitions and constants used throughout Albumentations.
+"""Module containing type definitions and constants used throughout Albumentations.  See Args for parameters and types, Returns for output, and Examples for usage.
 
 This module defines common types, constants, and enumerations that are used across the
 Albumentations library. It includes type aliases for numeric types, enumerations for
@@ -59,7 +59,8 @@ D4_INVERSE: dict[D4GroupElement, D4GroupElement] = {
 
 
 class ReferenceImage(TypedDict):
-    """TypedDict for reference image data: image (required), optional mask, bbox, keypoints. Used by reference-based transforms.
+    """TypedDict for reference image data: image (required), optional mask, bbox, keypoints.
+    Use for reference-based transforms (e.g. style transfer, exemplar).
 
     A typed dictionary defining the structure of reference image data used within
     Albumentations, including optional components like masks, bounding boxes,
@@ -81,7 +82,7 @@ class ReferenceImage(TypedDict):
 
 class Targets(Enum):
     """Enum of supported target types: image, mask, bboxes, keypoints, volume, mask3d, user_data.
-    Used by Compose and transform targets to dispatch apply_* methods.
+    Compose and transform targets use this to dispatch apply_* methods.
 
     This enum defines the different types of data that can be augmented
     by Albumentations transforms, including both 2D and 3D targets.

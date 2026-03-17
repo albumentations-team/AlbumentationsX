@@ -1,5 +1,4 @@
 """Module for composing multiple transforms into augmentation pipelines.
-
 This module provides classes for combining multiple transformations into cohesive
 augmentation pipelines. It includes various composition strategies such as sequential
 application, random selection, and conditional application of transforms. These
@@ -1133,15 +1132,15 @@ class Compose(BaseCompose, HubMixin):
             processor.preprocess(data)
 
     def _preprocess_arrays(self, data: dict[str, Any]) -> None:
-        """Ensure all arrays are contiguous and add channel dimensions to grayscale data.
-        Calls _ensure_contiguous then _add_grayscale_channels. Used in preprocess.
+        """Ensure arrays are contiguous and add channel dims to grayscale data.
+        Calls _ensure_contiguous then _add_grayscale_channels. Call during preprocess.
         """
         self._ensure_contiguous(data)
         self._add_grayscale_channels(data)
 
     def _ensure_contiguous(self, data: dict[str, Any]) -> None:
         """Ensure all numpy arrays are contiguous. Replaces non-C-contiguous arrays in data
-        with np.ascontiguousarray copies. Used in _preprocess_arrays.
+        with np.ascontiguousarray copies. Called by _preprocess_arrays.
         """
         for key, value in data.items():
             if isinstance(value, np.ndarray) and not value.flags["C_CONTIGUOUS"]:

@@ -19,7 +19,6 @@ __all__ = ["GridMask"]
 
 class GridMask(BaseDropout):
     """Apply GridMask augmentation by dropping grid-line regions.
-
     Unlike GridDropout which drops rectangular cells, GridMask drops the grid lines
     themselves — continuous horizontal and vertical stripes forming a grid pattern.
     The grid can optionally be rotated.

@@ -1,4 +1,4 @@
-"""Transform classes for applying various blur operations to images.
+"""Transform classes for applying various blur operations to images. of albume
 
 This module contains transform classes that implement different blur effects including
 standard blur, motion blur, median blur, Gaussian blur, glass blur, advanced blur, defocus,
@@ -65,7 +65,7 @@ class BlurInitSchema(BaseTransformInitSchema):
 
 
 class Blur(ImageOnlyTransform):
-    """Apply uniform box blur to the input image using a randomly sized square kernel.
+    """Apply uniform box blur to the input image using a randomly sized square kernel.  See Args for parameters and types, Returns for output, and Examples for usage.
 
     This transform uses OpenCV's cv2.blur function, which performs a simple box filter blur.
     The size of the blur kernel is randomly selected for each application, allowing for
@@ -173,7 +173,6 @@ class Blur(ImageOnlyTransform):
 
 class MotionBlur(Blur):
     """Apply motion blur to the input image using a directional kernel.
-
     This transform simulates motion blur effects that occur during image capture,
     such as camera shake or object movement. It creates a directional blur using
     a line-shaped kernel with controllable angle, direction, and position.
@@ -570,7 +569,6 @@ class MedianBlur(Blur):
 
 class GaussianBlur(ImageOnlyTransform):
     """Apply Gaussian blur to the input image using a randomly sized kernel.
-
     This transform blurs the input image using a Gaussian filter with a random kernel size
     and sigma value. Gaussian blur is a widely used image processing technique that reduces
     image noise and detail, creating a smoothing effect.
@@ -937,7 +935,7 @@ class GlassBlur(ImageOnlyTransform):
 
 
 class AdvancedBlur(ImageOnlyTransform):
-    """Applies a Generalized Gaussian blur to the input image with randomized parameters for advanced data augmentation.
+    """Applies a Generalized Gaussian blur to the input image with randomized parameters for advanced data augmentation.  See Args for parameters and types, Returns fo
 
     This transform creates a custom blur kernel based on the Generalized Gaussian distribution,
     which allows for a wide range of blur effects beyond standard Gaussian blur. It then applies

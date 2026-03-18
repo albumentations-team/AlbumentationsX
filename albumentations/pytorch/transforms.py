@@ -34,6 +34,9 @@ class ToTensorV2(BasicTransform):
             `[num_channels, height, width]`.
         p (float): Probability of applying the transform. Default: 1.0.
 
+    Targets:
+        image, mask
+
     """
 
     _targets = (Targets.IMAGE, Targets.MASK)
@@ -86,8 +89,6 @@ class ToTensor3D(BasicTransform):
     """Convert 3D volumes and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
     For 3D medical imaging pipelines; p=1.0 by default.
 
-    Targets: volume, mask3d
-
     This transform is designed for 3D medical imaging data. It converts numpy arrays
     to PyTorch tensors and ensures consistent channel positioning.
 
@@ -103,6 +104,9 @@ class ToTensor3D(BasicTransform):
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0
+
+    Tarets:
+        volume, mask3d
 
     """
 

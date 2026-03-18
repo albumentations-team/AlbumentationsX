@@ -1,19 +1,19 @@
 from inspect import Parameter, signature
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
 from pydantic import BaseModel
+from pydantic.functional_validators import AfterValidator
 
 import albumentations as A
 from albumentations.core.pydantic import (
-    NonNegativeFloatRangeType,
-    NonNegativeIntRangeType,
-    OnePlusFloatRangeType,
-    OnePlusIntRangeType,
-    SymmetricRangeType,
-    ZeroOneRangeType,
     check_range_bounds,
+    convert_to_0plus_range,
+    convert_to_1plus_int_range,
+    convert_to_1plus_range,
     create_symmetric_range,
+    nondecreasing,
+    process_non_negative_int_range,
     process_non_negative_range,
 )
 from albumentations.core.transforms_interface import ImageOnlyTransform
@@ -88,12 +88,54 @@ def test_process_non_negative_range_with_invalid_input(value: tuple[float, float
 
 
 class ValidationModel(BaseModel):
-    non_negative_range_float: NonNegativeFloatRangeType | None = None
-    non_negative_range_int: NonNegativeIntRangeType | None = None
-    symmetric_range: SymmetricRangeType | None = None
-    one_plus_range_float: OnePlusFloatRangeType | None = None
-    one_plus_range_int: OnePlusIntRangeType | None = None
-    zero_one_range: ZeroOneRangeType | None = None
+    non_negative_range_float: (
+        Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        | None
+    ) = None
+    non_negative_range_int: (
+        Annotated[
+            tuple[int, int] | int,
+            AfterValidator(process_non_negative_int_range),
+            AfterValidator(nondecreasing),
+        ]
+        | None
+    ) = None
+    symmetric_range: (
+        Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        | None
+    ) = None
+    one_plus_range_float: (
+        Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1plus_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
+        | None
+    ) = None
+    one_plus_range_int: (
+        Annotated[
+            tuple[int, int] | int,
+            AfterValidator(convert_to_1plus_int_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
+        | None
+    ) = None
+    zero_one_range: (
+        Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        | None
+    ) = None
 
 
 @pytest.mark.parametrize("probability", [0, 0.5, 1])

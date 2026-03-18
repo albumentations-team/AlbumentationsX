@@ -7,22 +7,21 @@ from typing import Annotated, Any, Literal, cast
 import numpy as np
 from albucore import median_blur
 from pydantic import (
-    AfterValidator,
     Field,
     ValidationInfo,
     field_validator,
     model_validator,
 )
+from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
 
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.pydantic import (
-    NonNegativeFloatRangeType,
-    OnePlusFloatRangeType,
-    OnePlusIntRangeType,
-    SymmetricRangeType,
     check_range_bounds,
     convert_to_0plus_range,
+    convert_to_1plus_int_range,
+    convert_to_1plus_range,
+    create_symmetric_range,
     nondecreasing,
     process_non_negative_range,
 )
@@ -1147,11 +1146,30 @@ class AdvancedBlur(ImageOnlyTransform):
     """
 
     class InitSchema(BlurInitSchema):
-        sigma_x_limit: NonNegativeFloatRangeType
-        sigma_y_limit: NonNegativeFloatRangeType
-        beta_limit: NonNegativeFloatRangeType
-        noise_limit: NonNegativeFloatRangeType
-        rotate_limit: SymmetricRangeType
+        sigma_x_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        sigma_y_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        beta_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        noise_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        rotate_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
 
         @field_validator("beta_limit")
         @classmethod
@@ -1349,8 +1367,16 @@ class Defocus(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        radius: OnePlusIntRangeType
-        alias_blur: NonNegativeFloatRangeType
+        radius: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(convert_to_1plus_int_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
+        alias_blur: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
 
     def __init__(
         self,
@@ -1473,8 +1499,16 @@ class ZoomBlur(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        max_factor: OnePlusFloatRangeType
-        step_factor: NonNegativeFloatRangeType
+        max_factor: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1plus_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
+        step_factor: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
 
     def __init__(
         self,

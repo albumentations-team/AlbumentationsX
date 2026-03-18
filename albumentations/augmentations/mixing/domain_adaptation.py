@@ -11,7 +11,8 @@ from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
-from pydantic import AfterValidator, field_validator
+from pydantic import field_validator
+from pydantic.functional_validators import AfterValidator
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.mixing.domain_adaptation_functional import (
@@ -19,7 +20,11 @@ from albumentations.augmentations.mixing.domain_adaptation_functional import (
     apply_histogram,
     fourier_domain_adaptation,
 )
-from albumentations.core.pydantic import ZeroOneRangeType, check_range_bounds, nondecreasing
+from albumentations.core.pydantic import (
+    check_range_bounds,
+    convert_to_0plus_range,
+    nondecreasing,
+)
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -451,7 +456,12 @@ class FDA(BaseDomainAdaptation):
     """
 
     class InitSchema(BaseDomainAdaptationInitSchema):
-        beta_limit: ZeroOneRangeType
+        beta_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
 
         @field_validator("beta_limit")
         @classmethod

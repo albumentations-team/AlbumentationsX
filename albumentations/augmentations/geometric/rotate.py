@@ -8,15 +8,16 @@ border handling options.
 from __future__ import annotations
 
 import math
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
 from albucore import warp_affine
+from pydantic.functional_validators import AfterValidator
 
 from albumentations.augmentations.crops import functional as fcrops
 from albumentations.augmentations.geometric.transforms import Affine
-from albumentations.core.pydantic import SymmetricRangeType
+from albumentations.core.pydantic import create_symmetric_range
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -231,7 +232,10 @@ class RandomRotate90(DualTransform):
 
 
 class RotateInitSchema(BaseTransformInitSchema):
-    limit: SymmetricRangeType
+    limit: Annotated[
+        tuple[float, float] | float,
+        AfterValidator(create_symmetric_range),
+    ]
 
     interpolation: Literal[cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
 

@@ -25,7 +25,6 @@ from albucore import (
     normalize_per_image,
 )
 from pydantic import (
-    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -33,6 +32,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic.functional_validators import AfterValidator
 from scipy import special
 from typing_extensions import Self
 
@@ -42,15 +42,14 @@ from albumentations.augmentations.blur.transforms import BlurInitSchema
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.utils import non_rgb_error
 from albumentations.core.pydantic import (
-    NonNegativeFloatRangeType,
-    OneCenteredRangeType,
-    OnePlusFloatRangeType,
-    OnePlusIntRangeType,
-    SymmetricRangeType,
-    ZeroOneRangeType,
     check_range_bounds,
+    convert_to_0plus_range,
+    convert_to_1centered_range,
+    convert_to_1plus_int_range,
+    convert_to_1plus_range,
     create_symmetric_range,
     nondecreasing,
+    process_non_negative_range,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -1654,9 +1653,18 @@ class HueSaturationValue(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        hue_shift_limit: SymmetricRangeType
-        sat_shift_limit: SymmetricRangeType
-        val_shift_limit: SymmetricRangeType
+        hue_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        sat_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        val_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
 
     def __init__(
         self,
@@ -2145,8 +2153,14 @@ class RandomBrightnessContrast(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        brightness_limit: SymmetricRangeType
-        contrast_limit: SymmetricRangeType
+        brightness_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        contrast_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
         brightness_by_max: bool
         ensure_safe_range: bool
 
@@ -2492,7 +2506,11 @@ class CLAHE(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        clip_limit: OnePlusFloatRangeType
+        clip_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1plus_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
         tile_grid_size: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
 
     def __init__(
@@ -2708,7 +2726,11 @@ class RandomGamma(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        gamma_limit: OnePlusFloatRangeType
+        gamma_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1plus_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
 
     def __init__(
         self,
@@ -3495,9 +3517,24 @@ class ColorJitter(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        brightness: OneCenteredRangeType
-        contrast: OneCenteredRangeType
-        saturation: OneCenteredRangeType
+        brightness: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1centered_range),
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        contrast: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1centered_range),
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        saturation: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1centered_range),
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
         hue: Annotated[
             tuple[float, float] | float,
             AfterValidator(create_symmetric_range),
@@ -3970,8 +4007,17 @@ class Superpixels(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        p_replace: ZeroOneRangeType
-        n_segments: OnePlusIntRangeType
+        p_replace: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        n_segments: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(convert_to_1plus_int_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
         max_size: int | None = Field(ge=1)
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -4226,8 +4272,17 @@ class UnsharpMask(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        sigma_limit: NonNegativeFloatRangeType
-        alpha: ZeroOneRangeType
+        sigma_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        alpha: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
         threshold: int = Field(ge=0, le=255)
         blur_limit: tuple[int, int] | int
 
@@ -4418,11 +4473,35 @@ class Spatter(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        mean: ZeroOneRangeType
-        std: ZeroOneRangeType
-        gauss_sigma: NonNegativeFloatRangeType
-        cutout_threshold: ZeroOneRangeType
-        intensity: ZeroOneRangeType
+        mean: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        std: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        gauss_sigma: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        cutout_threshold: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        intensity: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
         mode: Literal["rain", "mud"]
         color: Sequence[int] | None
 
@@ -4598,8 +4677,14 @@ class ChromaticAberration(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        primary_distortion_limit: SymmetricRangeType
-        secondary_distortion_limit: SymmetricRangeType
+        primary_distortion_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        secondary_distortion_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
         mode: Literal["green_purple", "red_blue", "random"]
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -5371,9 +5456,18 @@ class RGBShift(AdditiveNoise):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        r_shift_limit: SymmetricRangeType
-        g_shift_limit: SymmetricRangeType
-        b_shift_limit: SymmetricRangeType
+        r_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        g_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        b_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
 
     def __init__(
         self,

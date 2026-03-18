@@ -6,15 +6,19 @@ segmentation and object detection tasks, as it simulates occlusions or missing o
 semantically meaningful way, rather than dropping out random pixels or regions.
 """
 
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
+from pydantic.functional_validators import AfterValidator
 
 import albumentations.augmentations.dropout.functional as fdropout
 from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, normalize_bboxes
 from albumentations.core.keypoints_utils import KeypointsProcessor
-from albumentations.core.pydantic import OnePlusIntRangeType
+from albumentations.core.pydantic import (
+    check_range_bounds,
+    convert_to_1plus_int_range,
+)
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 
@@ -118,7 +122,11 @@ class MaskDropout(DualTransform):
     _targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        max_objects: OnePlusIntRangeType
+        max_objects: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(convert_to_1plus_int_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
 
         fill: float | Literal["inpaint_telea", "inpaint_ns"]
         fill_mask: float

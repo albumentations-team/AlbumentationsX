@@ -5,14 +5,18 @@ and other grid-like data representations where masking in specific directions (t
 can improve model robustness and generalization.
 """
 
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 import numpy as np
 from pydantic import model_validator
+from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
 
 from albumentations.augmentations.dropout.transforms import BaseDropout
-from albumentations.core.pydantic import NonNegativeIntRangeType
+from albumentations.core.pydantic import (
+    nondecreasing,
+    process_non_negative_int_range,
+)
 from albumentations.core.transforms_interface import BaseTransformInitSchema
 
 __all__ = ["XYMasking"]
@@ -68,10 +72,26 @@ class XYMasking(BaseDropout):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        num_masks_x: NonNegativeIntRangeType
-        num_masks_y: NonNegativeIntRangeType
-        mask_x_length: NonNegativeIntRangeType
-        mask_y_length: NonNegativeIntRangeType
+        num_masks_x: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(process_non_negative_int_range),
+            AfterValidator(nondecreasing),
+        ]
+        num_masks_y: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(process_non_negative_int_range),
+            AfterValidator(nondecreasing),
+        ]
+        mask_x_length: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(process_non_negative_int_range),
+            AfterValidator(nondecreasing),
+        ]
+        mask_y_length: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(process_non_negative_int_range),
+            AfterValidator(nondecreasing),
+        ]
 
         fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]
         fill_mask: tuple[float, ...] | float | None

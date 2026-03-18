@@ -13,12 +13,12 @@ import cv2
 import numpy as np
 from albucore import batch_transform, is_grayscale_image, is_rgb_image, warp_affine
 from pydantic import (
-    AfterValidator,
     Field,
     ValidationInfo,
     field_validator,
     model_validator,
 )
+from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
 
 from albumentations.augmentations.utils import check_range
@@ -28,10 +28,11 @@ from albumentations.core.bbox_utils import (
     normalize_bboxes,
 )
 from albumentations.core.pydantic import (
-    NonNegativeFloatRangeType,
-    OnePlusIntRangeType,
-    SymmetricRangeType,
     check_range_bounds,
+    convert_to_1plus_int_range,
+    create_symmetric_range,
+    nondecreasing,
+    process_non_negative_range,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -153,7 +154,11 @@ class Perspective(DualTransform):
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
-        scale: NonNegativeFloatRangeType
+        scale: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
         keep_size: bool
         fit_output: bool
         interpolation: Literal[
@@ -1016,9 +1021,18 @@ class ShiftScaleRotate(Affine):
     _targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        shift_limit: SymmetricRangeType
-        scale_limit: SymmetricRangeType
-        rotate_limit: SymmetricRangeType
+        shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        scale_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        rotate_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -1631,7 +1645,11 @@ class Morphological(DualTransform):
     _targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        scale: OnePlusIntRangeType
+        scale: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(convert_to_1plus_int_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
         operation: Literal["erosion", "dilation"]
 
     def __init__(

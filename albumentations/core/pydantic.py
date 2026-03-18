@@ -6,9 +6,7 @@ standardized validation patterns that are reused across the codebase.
 """
 
 from collections.abc import Callable
-from typing import Annotated, TypeVar, overload
-
-from pydantic.functional_validators import AfterValidator
+from typing import TypeVar, overload
 
 from albumentations.core.type_definitions import Number
 from albumentations.core.utils import to_tuple
@@ -57,32 +55,26 @@ def process_non_negative_range(value: tuple[float, float] | float | None) -> tup
     return result
 
 
-def float2int(value: tuple[float, float]) -> tuple[int, int]:
-    """Convert a tuple of two floats to a tuple of two integers (truncation). Used for Pydantic
-    int range types in InitSchema fields.
-
-    Args:
-        value (tuple[float, float]): Tuple of two float values.
-
-    Returns:
-        tuple[int, int]: Tuple of two integer values.
-
+def convert_to_1plus_int_range(
+    value: tuple[int, int] | tuple[float, float] | float,
+) -> tuple[int, int]:
+    """Normalize int range with lower bound 1: scalar or tuple -> tuple[int, int].
+    Accepts int or float input (e.g. from JSON); output is always (int, int).
     """
-    return int(value[0]), int(value[1])
+    result = to_tuple(value, low=1)
+    return (int(result[0]), int(result[1]))
 
 
-NonNegativeFloatRangeType = Annotated[
-    tuple[float, float] | float,
-    AfterValidator(process_non_negative_range),
-    AfterValidator(nondecreasing),
-]
-
-NonNegativeIntRangeType = Annotated[
-    tuple[int, int] | int,
-    AfterValidator(process_non_negative_range),
-    AfterValidator(nondecreasing),
-    AfterValidator(float2int),
-]
+def process_non_negative_int_range(
+    value: tuple[int, int] | tuple[float, float] | float | None,
+) -> tuple[int, int]:
+    """Normalize non-negative int range: scalar or tuple -> tuple[int, int].
+    None treated as 0. Accepts int or float input; output is always (int, int).
+    """
+    result = to_tuple(value if value is not None else 0, 0)
+    if not all(x >= 0 for x in result):
+        raise ValueError("All values in the non negative range should be non negative")
+    return (int(result[0]), int(result[1]))
 
 
 @overload
@@ -107,9 +99,6 @@ def create_symmetric_range(value: tuple[float, float] | float) -> tuple[float, f
 
     """
     return to_tuple(value)
-
-
-SymmetricRangeType = Annotated[tuple[float, float] | float, AfterValidator(create_symmetric_range)]
 
 
 def convert_to_1plus_range(value: tuple[float, float] | float) -> tuple[float, float]:
@@ -236,36 +225,8 @@ def check_range_bounds(
     return validator
 
 
-ZeroOneRangeType = Annotated[
-    tuple[float, float] | float,
-    AfterValidator(convert_to_0plus_range),
-    AfterValidator(check_range_bounds(0, 1)),
-    AfterValidator(nondecreasing),
-]
-
-OneCenteredRangeType = Annotated[
-    tuple[float, float] | float,
-    AfterValidator(convert_to_1centered_range),
-    AfterValidator(check_range_bounds(0, None)),
-    AfterValidator(nondecreasing),
-]
-
-
-OnePlusFloatRangeType = Annotated[
-    tuple[float, float] | float,
-    AfterValidator(convert_to_1plus_range),
-    AfterValidator(check_range_bounds(1, None)),
-]
-OnePlusIntRangeType = Annotated[
-    tuple[int, int] | int,
-    AfterValidator(convert_to_1plus_range),
-    AfterValidator(check_range_bounds(1, None)),
-    AfterValidator(float2int),
-]
-
-OnePlusIntNonDecreasingRangeType = Annotated[
-    tuple[int, int],
-    AfterValidator(check_range_bounds(1, None)),
-    AfterValidator(nondecreasing),
-    AfterValidator(float2int),
-]
+def convert_to_int_pair(value: tuple[int, int] | int) -> tuple[int, int]:
+    """Convert an int to (value, value) or return a tuple unchanged.
+    For Pydantic range fields that accept either a single int or (min, max) tuple.
+    """
+    return to_tuple(value, value)

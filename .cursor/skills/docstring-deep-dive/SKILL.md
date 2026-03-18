@@ -64,8 +64,10 @@ The **first paragraph** is the useful short description: an elevator pitch that 
 ## 6. Similar transforms / See also
 
 - **Where possible**, mention related or alternative transforms so users who know basic ones discover others.
-- Add a **See also** or **Related transforms** section listing 2–4 alternatives with brief when-to-use hints (e.g. “For per-channel shifts see `RGBShift`; for full affine see `Affine`”).
-- This improves discoverability: many users only use a few transforms and are unaware of better alternatives.
+- **See also** (and **Related transforms**): Use a **bullet list** (`-` per item) with 2–4 alternatives and brief when-to-use hints (e.g. `- RandomFog: Patch-based fog; use when…`). **One transform per bullet** — do not combine multiple transforms in a single bullet.
+- **Note:** Use a **bullet list** (`-` per point). Note is **pure info** only — no call-to-action (no "Explore other transforms…" or "Consider using…"). Put discoverability in See also, not in Note.
+- **Reciprocal cross-links:** When you add transform X to transform Y's See also, update X's docstring to mention Y in its own See also so discoverability works both ways.
+- Many users rely on a limited set (e.g. RandomResizedCrop, ColorJitter); See also helps them discover alternatives.
 
 ## 7. Deep dive (combined bar)
 

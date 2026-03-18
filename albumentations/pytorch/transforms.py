@@ -105,12 +105,12 @@ class ToTensor3D(BasicTransform):
     Args:
         p (float): Probability of applying the transform. Default: 1.0
 
-    Tarets:
+    Targets:
         volume, mask3d
 
     """
 
-    _targets = (Targets.IMAGE, Targets.MASK)
+    _targets = (Targets.VOLUME, Targets.MASK3D)
 
     def __init__(self, p: float = 1.0):
         super().__init__(p=p)

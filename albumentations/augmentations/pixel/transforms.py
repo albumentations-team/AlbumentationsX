@@ -25,7 +25,6 @@ from albucore import (
     normalize_per_image,
 )
 from pydantic import (
-    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -33,6 +32,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic.functional_validators import AfterValidator
 from scipy import special
 from typing_extensions import Self
 
@@ -42,15 +42,14 @@ from albumentations.augmentations.blur.transforms import BlurInitSchema
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.utils import non_rgb_error
 from albumentations.core.pydantic import (
-    NonNegativeFloatRangeType,
-    OneCenteredRangeType,
-    OnePlusFloatRangeType,
-    OnePlusIntRangeType,
-    SymmetricRangeType,
-    ZeroOneRangeType,
     check_range_bounds,
+    convert_to_0plus_range,
+    convert_to_1centered_range,
+    convert_to_1plus_int_range,
+    convert_to_1plus_range,
     create_symmetric_range,
     nondecreasing,
+    process_non_negative_range,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -353,22 +352,18 @@ class ImageCompression(ImageOnlyTransform):
 
 
 class RandomSnow(ImageOnlyTransform):
-    """Add random snow overlay: brightness and snowflake density controlled by parameters.
-    Good for robustness to winter or snowy conditions in outdoor imagery.
+    """Add snow overlay via bleach (brightness threshold) or texture (noise-based overlay).
+    Good for winter or snowy-scene robustness in outdoor imagery.
 
-    This transform simulates snowfall by either bleaching out some pixel values or
-    adding a snow texture to the image, depending on the chosen method.
+    Two methods: "bleach" brightens pixels above a threshold (faster, simpler); "texture"
+    adds a depth-weighted snow layer with sparkle (more realistic, heavier).
 
     Args:
-        snow_point_range (tuple[float, float]): Range for the snow point threshold.
-            Both values should be in the (0, 1) range. Default: (0.1, 0.3).
-        brightness_coeff (float): Coefficient applied to increase the brightness of pixels
-            below the snow_point threshold. Larger values lead to more pronounced snow effects.
-            Should be > 0. Default: 2.5.
-        method (Literal['bleach', 'texture']): The snow simulation method to use. Options are:
-            - "bleach": Uses a simple pixel value thresholding technique.
-            - "texture": Applies a more realistic snow texture overlay.
-            Default: "texture".
+        snow_point_range (tuple[float, float]): Range for snow intensity threshold in (0, 1).
+            Default: (0.1, 0.3).
+        brightness_coeff (float): Brightness multiplier for snow; must be > 0. Default: 2.5.
+        method (Literal['bleach', 'texture']): "bleach" = threshold + brighten; "texture" =
+            noise-based overlay with depth and sparkle. Default: "bleach".
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -378,17 +373,10 @@ class RandomSnow(ImageOnlyTransform):
         uint8, float32
 
     Note:
-        - The "bleach" method increases the brightness of pixels above a certain threshold,
-          creating a simple snow effect. This method is faster but may look less realistic.
-        - The "texture" method creates a more realistic snow effect through the following steps:
-          1. Converts the image to HSV color space for better control over brightness.
-          2. Increases overall image brightness to simulate the reflective nature of snow.
-          3. Generates a snow texture using Gaussian noise, which is then smoothed with a Gaussian filter.
-          4. Applies a depth effect to the snow texture, making it more prominent at the top of the image.
-          5. Blends the snow texture with the original image using alpha compositing.
-          6. Adds a slight blue tint to simulate the cool color of snow.
-          7. Adds random sparkle effects to simulate light reflecting off snow crystals.
-          This method produces a more realistic result but is computationally more expensive.
+        - "bleach": brightness threshold in HLS; pixels above snow_point are scaled by
+          brightness_coeff. Fast, less realistic.
+        - "texture": HSV brightness boost, Gaussian noise texture, depth gradient (stronger
+          at top), alpha blend, blue tint, sparkle. More realistic, heavier.
 
     Mathematical Formulation:
         For the "bleach" method:
@@ -426,6 +414,11 @@ class RandomSnow(ImageOnlyTransform):
         - Bleach method: https://github.com/UjjwalSaxena/Automold--Road-Augmentation-Library
         - Texture method: Inspired by computer graphics techniques for snow rendering
           and atmospheric scattering simulations.
+
+    See Also:
+        - RandomRain: Rain streaks and blur for rainy conditions.
+        - RandomFog: Patch-based fog without depth.
+        - AtmosphericFog: Depth-dependent fog via scattering.
 
     """
 
@@ -674,12 +667,12 @@ class RandomGravel(ImageOnlyTransform):
 
 
 class RandomRain(ImageOnlyTransform):
-    """Add rain streak effects: slant, drop length, brightness. Rain_drops controls density.
-    Simulates rainy conditions for outdoor or driving datasets.
+    """Add rain streaks (semi-transparent lines), optional blur and brightness reduction.
+    Good for outdoor or driving robustness to rainy conditions.
 
-    This transform simulates rainfall by overlaying semi-transparent streaks onto the image,
-    creating a realistic rain effect. It can be used to augment datasets for computer vision
-    tasks that need to perform well in rainy conditions.
+    Streaks are drawn with configurable slant, length, and width; blur and darkening
+    simulate wet, low-contrast views. Density and style are configurable (e.g. drizzle,
+    heavy, torrential).
 
     Args:
         slant_range (tuple[float, float]): Range for the rain slant angle in degrees.
@@ -704,15 +697,12 @@ class RandomRain(ImageOnlyTransform):
 
     Number of channels:
         3
+
     Note:
-        - The rain effect is created by drawing semi-transparent lines on the image.
-        - The slant of the rain can be controlled to simulate wind effects.
-        - Different rain types (drizzle, heavy, torrential) adjust the density and appearance of the rain.
-        - The transform also adjusts image brightness and applies a blur to simulate the visual effects of rain.
-        - This transform is particularly useful for:
-          * Augmenting datasets for autonomous driving in rainy conditions
-          * Testing the robustness of computer vision models to weather effects
-          * Creating realistic rainy scenes for image editing or film production
+        - Rain is drawn as semi-transparent lines; slant simulates wind.
+        - rain_type (drizzle, heavy, torrential, default) controls drop count and style.
+        - Blur and brightness reduction mimic wet, darker scenes.
+
     Mathematical Formulation:
         For each raindrop:
         1. Start position (x1, y1) is randomly generated within the image.
@@ -725,11 +715,13 @@ class RandomRain(ImageOnlyTransform):
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
-        >>> image = np.random.randint(0, 256, [100, 100, 3], dtype=np.uint8)
-        # Default usage
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>>
+        >>> # Default usage
         >>> transform = A.RandomRain(p=1.0)
         >>> rainy_image = transform(image=image)["image"]
-        # Custom rain parameters
+        >>>
+        >>> # Custom rain parameters
         >>> transform = A.RandomRain(
         ...     slant_range=(-15, 15),
         ...     drop_length=30,
@@ -740,13 +732,19 @@ class RandomRain(ImageOnlyTransform):
         ...     p=1.0
         ... )
         >>> rainy_image = transform(image=image)["image"]
-        # Simulating heavy rain
+        >>>
+        >>> # Heavy rain
         >>> transform = A.RandomRain(rain_type="heavy", p=1.0)
         >>> heavy_rain_image = transform(image=image)["image"]
 
     References:
         - Rain visualization techniques: https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-27-real-time-rain-rendering
         - Weather effects in computer vision: https://www.sciencedirect.com/science/article/pii/S1077314220300692
+
+    See Also:
+        - RandomSnow: Snow overlay for winter conditions.
+        - RandomFog: Patch-based fog without depth.
+        - AtmosphericFog: Depth-dependent fog via scattering.
 
     """
 
@@ -844,17 +842,17 @@ class RandomRain(ImageOnlyTransform):
 
 
 class RandomFog(ImageOnlyTransform):
-    """Simulate fog by blending with fog color; alpha_range and fog_coef control density.
+    """Simulate fog by overlaying semi-transparent circles and blending with a fog color.
     Good for driving or outdoor robustness to weather.
 
-    This transform creates a fog effect by generating semi-transparent overlays
-    that mimic the visual characteristics of fog. The fog intensity and distribution
-    can be controlled to create various fog-like conditions. An image size dependent
-    Gaussian blur is applied to the resulting image
+    Fog is built from random circles with controllable intensity; an image-size-dependent
+    Gaussian blur is applied to the result. Patch-based (no depth); for distance-dependent
+    fog use AtmosphericFog.
 
     Args:
-        fog_coef_range (tuple[float, float]): Range for fog intensity coefficient. Should be in [0, 1] range.
-        alpha_coef (float): Transparency of the fog circles. Should be in [0, 1] range. Default: 0.08.
+        fog_coef_range (tuple[float, float]): Range for fog intensity coefficient in [0, 1].
+            Default: (0.3, 1).
+        alpha_coef (float): Transparency of the fog circles in [0, 1]. Default: 0.08.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -867,14 +865,12 @@ class RandomFog(ImageOnlyTransform):
         3
 
     Note:
-        - The fog effect is created by overlaying semi-transparent circles on the image.
-        - Higher fog coefficient values result in denser fog effects.
-        - The fog is typically denser in the center of the image and gradually decreases towards the edges.
-        - Image is blurred to decrease the sharpness
-        - This transform is useful for:
-          * Simulating various weather conditions in outdoor scenes
-          * Data augmentation for improving model robustness to foggy conditions
-          * Creating atmospheric effects in image editing
+        - Fog is created by overlaying semi-transparent circles at random positions
+          and with random radius; alpha is controlled by alpha_coef.
+        - Higher fog_coef values give denser fog; effect is typically stronger toward center
+          and gradually decreases toward the edges.
+        - A Gaussian blur (dependent on the shorter image dimension) is applied after blending
+          to reduce sharpness.
 
     Mathematical Formulation:
         For each fog particle:
@@ -899,16 +895,22 @@ class RandomFog(ImageOnlyTransform):
         >>> foggy_image = transform(image=image)["image"]
 
         # Custom fog intensity range
-        >>> transform = A.RandomFog(fog_coef_lower=0.3, fog_coef_upper=0.8, p=1.0)
+        >>> transform = A.RandomFog(fog_coef_range=(0.3, 0.8), p=1.0)
         >>> foggy_image = transform(image=image)["image"]
 
         # Adjust fog transparency
-        >>> transform = A.RandomFog(fog_coef_lower=0.2, fog_coef_upper=0.5, alpha_coef=0.1, p=1.0)
+        >>> transform = A.RandomFog(fog_coef_range=(0.2, 0.5), alpha_coef=0.1, p=1.0)
         >>> foggy_image = transform(image=image)["image"]
 
     References:
         - Fog: https://en.wikipedia.org/wiki/Fog
         - Atmospheric perspective: https://en.wikipedia.org/wiki/Aerial_perspective
+
+    See Also:
+        - AtmosphericFog: Depth-dependent fog via scattering; use when you need
+          distance-based haze.
+        - RandomRain: Rain streaks and blur for rainy conditions.
+        - RandomSnow: Snow overlay for winter conditions.
 
     """
 
@@ -1651,9 +1653,18 @@ class HueSaturationValue(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        hue_shift_limit: SymmetricRangeType
-        sat_shift_limit: SymmetricRangeType
-        val_shift_limit: SymmetricRangeType
+        hue_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        sat_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        val_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
 
     def __init__(
         self,
@@ -2142,8 +2153,14 @@ class RandomBrightnessContrast(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        brightness_limit: SymmetricRangeType
-        contrast_limit: SymmetricRangeType
+        brightness_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        contrast_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
         brightness_by_max: bool
         ensure_safe_range: bool
 
@@ -2204,21 +2221,22 @@ class RandomBrightnessContrast(ImageOnlyTransform):
 
 
 class GaussNoise(ImageOnlyTransform):
-    """Add Gaussian (normal) noise to the image. var_limit controls variance; per_channel
-    and mean optional. Common for robustness to sensor or transmission noise.
+    """Add Gaussian (normal) noise to the image. i.i.d. per pixel (or per block if scaled).
+    Use for robustness to sensor or transmission noise.
+
+    Noise standard deviation and mean are sampled from configurable ranges and scaled
+    to image dtype (255 for uint8, 1.0 for float32). Optional per-channel sampling
+    and lower-resolution noise for speed.
 
     Args:
         std_range (tuple[float, float]): Range for noise standard deviation as a fraction
-            of the maximum value (255 for uint8 images or 1.0 for float images).
-            Values should be in range [0, 1]. Default: (0.2, 0.44).
-        mean_range (tuple[float, float]): Range for noise mean as a fraction
-            of the maximum value (255 for uint8 images or 1.0 for float images).
-            Values should be in range [-1, 1]. Default: (0.0, 0.0).
-        per_channel (bool): If True, noise will be sampled for each channel independently.
-            Otherwise, the noise will be sampled once for all channels. Default: False.
-        noise_scale_factor (float): Scaling factor for noise generation. Value should be in the range (0, 1].
-            When set to 1, noise is sampled for each pixel independently. If less, noise is sampled for a smaller size
-            and resized to fit the shape of the image. Smaller values make the transform faster. Default: 1.0.
+            of the max value (255 for uint8, 1.0 for float32). In [0, 1]. Default: (0.2, 0.44).
+        mean_range (tuple[float, float]): Range for noise mean as a fraction of max.
+            In [-1, 1]. Default: (0.0, 0.0).
+        per_channel (bool): If True, sample noise per channel; else same noise for all.
+            Default: False.
+        noise_scale_factor (float): If < 1, noise is generated at lower resolution and
+            resized (faster, coarser). 1 = per-pixel. In (0, 1]. Default: 1.0.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -2231,23 +2249,23 @@ class GaussNoise(ImageOnlyTransform):
         Any
 
     Note:
-        - The noise parameters (std_range and mean_range) are normalized to [0, 1] range:
-          * For uint8 images, they are multiplied by 255
-          * For float32 images, they are used directly
-        - Setting per_channel=False is faster but applies the same noise to all channels
-        - The noise_scale_factor parameter allows for a trade-off between transform speed and noise granularity
-        - pr_channel=False (default) is faster and applies same noise to all channels
-        - per_channel=True is slower but creates more diverse noise patterns across channels
-        - For RGB images: per_channel=False creates grayscale-like noise, per_channel=True creates colored noise
+        - std_range and mean_range are in [0, 1] / [-1, 1]; scaled by 255 (uint8) or
+          used directly (float32).
+        - per_channel=False: faster, same noise on all channels (grayscale-like on RGB).
+        - per_channel=True: different noise per channel (colored noise).
+        - noise_scale_factor < 1 trades speed for noise granularity.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
-        >>> image = np.random.randint(0, 256, (224, 224, 3), dtype=np.uint8)
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>>
-        >>> # Apply Gaussian noise with normalized std_range
-        >>> transform = A.GaussNoise(std_range=(0.1, 0.2), p=1.0)  # 10-20% of max value
-        >>> noisy_image = transform(image=image)['image']
+        >>> transform = A.GaussNoise(std_range=(0.1, 0.2), p=1.0)
+        >>> noisy_image = transform(image=image)["image"]
+
+    See Also:
+        - FilmGrain: Luminance-dependent, spatially correlated (film-like) noise.
+        - ShotNoise: Poisson noise in linear space; sensor-realistic for low light.
 
     """
 
@@ -2488,7 +2506,11 @@ class CLAHE(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        clip_limit: OnePlusFloatRangeType
+        clip_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1plus_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
         tile_grid_size: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
 
     def __init__(
@@ -2513,8 +2535,11 @@ class CLAHE(ImageOnlyTransform):
 
 
 class ChannelShuffle(ImageOnlyTransform):
-    """Randomly permute channel order (e.g. RGB → BGR). p controls probability. Makes model
-    invariant to channel order; useful for multi-channel data.
+    """Randomly permute channel order (e.g. RGB→BGR) each call. Makes model invariant
+    to channel order; useful for multi-channel or color-agnostic training.
+
+    Unlike ChannelSwap, the permutation is random every time (uniform over all orders).
+    All pixel data is preserved; only channel indices change.
 
     Args:
         p (float): Probability of applying the transform. Default: 0.5.
@@ -2522,34 +2547,26 @@ class ChannelShuffle(ImageOnlyTransform):
     Targets:
         image, volume
 
+    Image types:
+        uint8, float32
+
     Number of channels:
         Any
 
-    Image types:
-        uint8, float32
+    Note:
+        - Permutation is chosen uniformly over all channel orderings.
+        - Same image can get different orderings on different calls.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>>
-        >>> # Create a sample image with distinct RGB channels
-        >>> image = np.zeros((100, 100, 3), dtype=np.uint8)
-        >>> # Red channel (first channel)
-        >>> image[:, :, 0] = np.linspace(0, 255, 100, dtype=np.uint8).reshape(1, 100)
-        >>> # Green channel (second channel)
-        >>> image[:, :, 1] = np.linspace(0, 255, 100, dtype=np.uint8).reshape(100, 1)
-        >>> # Blue channel (third channel) - constant value
-        >>> image[:, :, 2] = 128
-        >>>
-        >>> # Apply channel shuffle transform
         >>> transform = A.ChannelShuffle(p=1.0)
-        >>> result = transform(image=image)
-        >>> shuffled_image = result['image']
-        >>>
-        >>> # The channels have been randomly rearranged
-        >>> # For example, the original order [R, G, B] might become [G, B, R] or [B, R, G]
-        >>> # This results in a color shift while preserving all the original image data
-        >>> # Note: For images with more than 3 channels, all channels are shuffled similarly
+        >>> result = transform(image=image)["image"]
+
+    See Also:
+        - ChannelSwap: Fixed channel order (e.g. RGB→BGR); use for deterministic reorder.
 
     """
 
@@ -2709,7 +2726,11 @@ class RandomGamma(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        gamma_limit: OnePlusFloatRangeType
+        gamma_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1plus_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
 
     def __init__(
         self,
@@ -3496,9 +3517,24 @@ class ColorJitter(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        brightness: OneCenteredRangeType
-        contrast: OneCenteredRangeType
-        saturation: OneCenteredRangeType
+        brightness: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1centered_range),
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        contrast: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1centered_range),
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        saturation: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_1centered_range),
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
         hue: Annotated[
             tuple[float, float] | float,
             AfterValidator(create_symmetric_range),
@@ -3971,8 +4007,17 @@ class Superpixels(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        p_replace: ZeroOneRangeType
-        n_segments: OnePlusIntRangeType
+        p_replace: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        n_segments: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(convert_to_1plus_int_range),
+            AfterValidator(check_range_bounds(1, None)),
+        ]
         max_size: int | None = Field(ge=1)
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -4227,8 +4272,17 @@ class UnsharpMask(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        sigma_limit: NonNegativeFloatRangeType
-        alpha: ZeroOneRangeType
+        sigma_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        alpha: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
         threshold: int = Field(ge=0, le=255)
         blur_limit: tuple[int, int] | int
 
@@ -4419,11 +4473,35 @@ class Spatter(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        mean: ZeroOneRangeType
-        std: ZeroOneRangeType
-        gauss_sigma: NonNegativeFloatRangeType
-        cutout_threshold: ZeroOneRangeType
-        intensity: ZeroOneRangeType
+        mean: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        std: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        gauss_sigma: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        cutout_threshold: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        intensity: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
         mode: Literal["rain", "mud"]
         color: Sequence[int] | None
 
@@ -4599,8 +4677,14 @@ class ChromaticAberration(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        primary_distortion_limit: SymmetricRangeType
-        secondary_distortion_limit: SymmetricRangeType
+        primary_distortion_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        secondary_distortion_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
         mode: Literal["green_purple", "red_blue", "random"]
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -4939,32 +5023,17 @@ class PlanckianJitter(ImageOnlyTransform):
 
 
 class ShotNoise(ImageOnlyTransform):
-    """Shot noise via Poisson process in linear light space. scale_range, approximation. Good for
-    sensor-realistic noise in low-light.
+    """Shot noise (Poisson) in linear light space. Sensor-realistic; use for low-light
+    or photon-limited imaging and camera simulation.
 
-    Shot noise (also known as Poisson noise) occurs in imaging due to the quantum nature of light.
-    When photons hit an imaging sensor, they arrive at random times following Poisson statistics.
-    This transform simulates this physical process in linear light space by:
-    1. Converting to linear space (removing gamma)
-    2. Treating each pixel value as an expected photon count
-    3. Sampling actual photon counts from a Poisson distribution
-    4. Converting back to display space (reapplying gamma)
-
-    The noise characteristics follow real camera behavior:
-    - Noise variance equals signal mean in linear space (Poisson statistics)
-    - Brighter regions have more absolute noise but less relative noise
-    - Darker regions have less absolute noise but more relative noise
-    - Noise is generated independently for each pixel and color channel
+    Simulates photon-counting: convert to linear space (gamma removed), treat pixel
+    values as expected photon counts, sample from Poisson, convert back. Variance
+    equals mean in linear space; brighter regions have more absolute noise, less relative.
 
     Args:
-        scale_range (tuple[float, float]): Range for sampling the noise scale factor.
-            Represents the reciprocal of the expected photon count per unit intensity.
-            Higher values mean more noise:
-            - scale = 0.1: ~100 photons per unit intensity (low noise)
-            - scale = 1.0: ~1 photon per unit intensity (moderate noise)
-            - scale = 10.0: ~0.1 photons per unit intensity (high noise)
-            Default: (0.1, 0.3)
-        p (float): Probability of applying the transform. Default: 0.5
+        scale_range (tuple[float, float]): Reciprocal of photons per unit intensity.
+            Higher = more noise. e.g. 0.1 ≈ low, 1.0 ≈ moderate, 10.0 ≈ high. Default: (0.1, 0.3).
+        p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
         image, volume
@@ -4972,18 +5041,18 @@ class ShotNoise(ImageOnlyTransform):
     Image types:
         uint8, float32
 
+    Number of channels:
+        Any
+
     Note:
-        - Performs calculations in linear light space (gamma = 2.2)
-        - Preserves the image's mean intensity
-        - Memory efficient with in-place operations
-        - Thread-safe with independent random seeds
+        - Pipeline: linear space (gamma = 2.2), Poisson sample, back to display space.
+        - Preserves mean intensity. Per-pixel, per-channel independent.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
-        >>> # Generate synthetic image
-        >>> image = np.random.randint(0, 256, [100, 100, 3], dtype=np.uint8)
-        >>> # Apply moderate shot noise
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>>
         >>> transform = A.ShotNoise(scale_range=(0.1, 1.0), p=1.0)
         >>> noisy_image = transform(image=image)["image"]
 
@@ -4992,6 +5061,10 @@ class ShotNoise(ImageOnlyTransform):
         - Original paper: https://doi.org/10.1002/andp.19183622304 (Schottky, 1918)
         - Poisson process: https://en.wikipedia.org/wiki/Poisson_point_process
         - Gamma correction: https://en.wikipedia.org/wiki/Gamma_correction
+
+    See Also:
+        - GaussNoise: i.i.d. Gaussian noise; use for sensor or transmission noise.
+        - FilmGrain: Luminance-dependent, spatially correlated (film-like) noise.
 
     """
 
@@ -5383,9 +5456,18 @@ class RGBShift(AdditiveNoise):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        r_shift_limit: SymmetricRangeType
-        g_shift_limit: SymmetricRangeType
-        b_shift_limit: SymmetricRangeType
+        r_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        g_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
+        b_shift_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
 
     def __init__(
         self,
@@ -6934,19 +7016,17 @@ class PhotoMetricDistort(ImageOnlyTransform):
 
 
 class Vignetting(ImageOnlyTransform):
-    """Darken corners with radial gradient (lens vignetting). intensity_range, center_range control
-    strength and center. Simulates natural light falloff.
+    """Darken corners with a radial (elliptical) gradient. Simulates lens vignetting or
+    natural light falloff. Use for lens realism or stylistic darkening.
 
-    Simulates the natural light falloff that occurs in camera lenses, where corners
-    and edges of an image appear darker than the center.
+    Center of the image stays bright; corners and edges are darkened. Center position
+    can be jittered for variety.
 
     Args:
-        intensity_range (tuple[float, float]): Range for the darkening intensity at corners.
-            0 means no effect, 1 means corners go fully black.
+        intensity_range (tuple[float, float]): Darkening at corners: 0 = no effect, 1 = black.
             Default: (0.2, 0.5).
-        center_range (tuple[float, float]): Range for jittering the vignette center position,
-            expressed as fractions of width/height. (0.5, 0.5) is the image center.
-            Default: (0.3, 0.7).
+        center_range (tuple[float, float]): Range for vignette center as fraction of width/height.
+            (0.5, 0.5) = image center. Default: (0.3, 0.7).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -6959,15 +7039,20 @@ class Vignetting(ImageOnlyTransform):
         Any
 
     Note:
-        The vignette is an elliptical gradient centered at a random point within
-        center_range. The darkening follows a quadratic falloff from center to edges.
+        - Elliptical gradient centered at a random point (within center_range).
+        - Quadratic falloff from center to edges.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>>
         >>> transform = A.Vignetting(intensity_range=(0.2, 0.5), p=1.0)
         >>> result = transform(image=image)["image"]
+
+    See Also:
+        - Halftone: Dot pattern (printing-style) for vintage or print aesthetic.
+        - FilmGrain: Luminance-dependent film grain for vintage texture.
 
     """
 
@@ -7018,16 +7103,15 @@ class Vignetting(ImageOnlyTransform):
 
 
 class ChannelSwap(ImageOnlyTransform):
-    """Fixed channel reordering (e.g. RGB->BGR). channel_order is permutation of indices;
-    deterministic unlike ChannelShuffle. Use for color-space conversion.
+    """Fixed channel reordering (e.g. RGB→BGR). Deterministic permutation; unlike
+    ChannelShuffle. Use for color-space conversion or fixed channel layouts.
 
-    Unlike ChannelShuffle which randomly permutes channels each time, ChannelSwap
-    applies a deterministic, user-specified channel order. Useful for BGR<->RGB conversion,
-    or for training models that should be invariant to a specific channel ordering.
+    Applies a user-specified channel order every time (no randomness). Useful for
+    BGR↔RGB conversion or training models invariant to a specific channel ordering.
 
     Args:
-        channel_order (tuple[int, ...]): Target channel order as a tuple of indices.
-            For a 3-channel image, (2, 1, 0) swaps R and B (RGB->BGR).
+        channel_order (tuple[int, ...]): Permutation of channel indices. Length must
+            match image channels. For 3-channel, (2, 1, 0) swaps R and B (RGB→BGR).
             Default: (2, 1, 0).
         p (float): Probability of applying the transform. Default: 0.5.
 
@@ -7038,16 +7122,24 @@ class ChannelSwap(ImageOnlyTransform):
         uint8, float32
 
     Number of channels:
-        Any (but channel_order length must match the number of channels)
+        Any (channel_order length must match)
+
+    Note:
+        - channel_order must be a permutation of 0..C-1 for C channels.
+        - (2, 1, 0) gives RGB→BGR; (0, 2, 1) swaps G and B.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> # Swap R and B channels (RGB -> BGR)
+        >>>
+        >>> # Swap R and B (RGB → BGR)
         >>> transform = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
         >>> result = transform(image=image)["image"]
         >>> np.testing.assert_array_equal(result[:, :, 0], image[:, :, 2])
+
+    See Also:
+        - ChannelShuffle: Random permutation each call; use for invariance to channel order.
 
     """
 
@@ -7122,8 +7214,8 @@ class ChannelSwap(ImageOnlyTransform):
 
 
 class FilmGrain(ImageOnlyTransform):
-    """Analog film grain: luminance-dependent, spatially correlated noise. intensity_range,
-    grain_size_range, chromatic. Distinct from i.i.d. GaussNoise or ShotNoise.
+    """Analog film grain: luminance-dependent, spatially correlated noise. Distinct from
+    i.i.d. GaussNoise or ShotNoise. Use for vintage or film-like augmentation.
 
     Unlike GaussNoise or ShotNoise, film grain is:
     - Luminance-dependent: darker areas show more visible grain
@@ -7131,11 +7223,10 @@ class FilmGrain(ImageOnlyTransform):
     - Optionally chromatic: separate grain patterns per channel
 
     Args:
-        intensity_range (tuple[float, float]): Range for grain intensity.
-            Higher values produce more prominent grain. Default: (0.1, 0.3).
-        grain_size_range (tuple[int, int]): Range for the grain generation resolution
-            as a divisor of image size. 1 = full resolution (fine grain),
-            4 = quarter resolution (coarse, clumped grain). Default: (1, 3).
+        intensity_range (tuple[float, float]): Range for grain intensity. Higher values
+            give more prominent grain. Default: (0.1, 0.3).
+        grain_size_range (tuple[int, int]): Grain resolution as divisor of image size.
+            1 = full resolution (fine); larger = coarser, more clumped. Default: (1, 3).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -7148,17 +7239,22 @@ class FilmGrain(ImageOnlyTransform):
         Any
 
     Note:
-        Grain is generated at a lower resolution and upscaled, which creates the
-        natural spatial correlation (clumping) seen in real film. The grain visibility
-        is modulated by inverse luminance — darker regions show more grain, matching
-        how silver halide crystals behave in real film emulsion.
+        - Grain is generated at lower resolution and upscaled → spatial correlation
+          (clumping) like real film.
+        - Visibility modulated by inverse luminance; darker regions show more grain
+          (silver halide-like behavior).
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>>
         >>> transform = A.FilmGrain(intensity_range=(0.1, 0.3), grain_size_range=(1, 3), p=1.0)
         >>> result = transform(image=image)["image"]
+
+    See Also:
+        - GaussNoise: i.i.d. Gaussian noise; use for sensor or transmission noise.
+        - ShotNoise: Poisson (photon) noise in linear space; use for low-light sensor noise.
 
     """
 
@@ -7231,18 +7327,18 @@ class FilmGrain(ImageOnlyTransform):
 
 
 class Halftone(ImageOnlyTransform):
-    """Halftone dot pattern (printing-style). dot_size_range, blend_range control cell size and mix.
-    Continuous tones become dots of varying size.
+    """Halftone dot pattern (printing-style). Continuous tones become dots of varying size.
+    Use for vintage or print-aesthetic augmentation.
 
-    Simulates the halftone printing technique where continuous-tone images are
-    reproduced using dots of varying size. Larger dots represent brighter areas,
-    smaller dots represent darker areas.
+    Simulates halftone printing: a grid of cells, each drawn as a filled circle whose
+    size is proportional to mean luminance in that cell. Larger dots = brighter, smaller = darker.
+    Optional blend with the original image controls strength.
 
     Args:
-        dot_size_range (tuple[int, int]): Range for the grid cell size in pixels.
-            Larger values produce coarser halftone patterns. Default: (4, 10).
-        blend_range (tuple[float, float]): Range for blending with the original image.
-            0 = pure halftone, 1 = original image. Default: (0.0, 0.5).
+        dot_size_range (tuple[int, int]): Range for grid cell size in pixels. Larger =
+            coarser pattern. Default: (4, 10).
+        blend_range (tuple[float, float]): Blend with original: 0 = pure halftone, 1 = original.
+            Default: (0.0, 0.5).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -7255,16 +7351,20 @@ class Halftone(ImageOnlyTransform):
         Any
 
     Note:
-        The halftone effect samples mean luminance per grid cell and draws a filled
-        circle whose radius is proportional to that luminance. Cell color is preserved
-        from the original image.
+        - Mean luminance per grid cell drives dot radius; cell color from original image.
+        - Dot size is proportional to luminance (bright → large dot, dark → small dot).
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>>
         >>> transform = A.Halftone(dot_size_range=(4, 8), blend_range=(0.0, 0.3), p=1.0)
         >>> result = transform(image=image)["image"]
+
+    See Also:
+        - FilmGrain: Luminance-dependent film grain for vintage texture.
+        - Vignetting: Darkened edges for period or stylistic effect.
 
     """
 
@@ -7313,12 +7413,11 @@ class Halftone(ImageOnlyTransform):
 
 
 class LensFlare(ImageOnlyTransform):
-    """Lens flare: starburst rays and ghost reflections. flare_roi, num_ghosts, intensity control
-    placement and strength. Simulates optical artifacts.
+    """Add lens flare: starburst rays and ghost reflections from a bright source.
+    Use for outdoor or backlit robustness and optical-artifact simulation.
 
-    Simulates optical lens flare artifacts including a central bright spot with
-    radiating starburst pattern and secondary ghost reflections along the axis
-    from source to image center.
+    A flare center is chosen in a configurable region; starburst rays and mirrored
+    ghost circles are drawn toward the image center. Strength and blur are configurable.
 
     Args:
         flare_roi (tuple[float, float, float, float]): Region of interest for flare
@@ -7344,9 +7443,8 @@ class LensFlare(ImageOnlyTransform):
         3
 
     Note:
-        Ghost reflections appear along the line between the flare source and the
-        image center, at mirrored positions. Their size decreases and color shifts
-        slightly as they get farther from the source.
+        - Ghost reflections lie along the line from flare source to image center.
+        - Size decreases and color shifts with distance from the source.
 
     Examples:
         >>> import numpy as np
@@ -7354,6 +7452,12 @@ class LensFlare(ImageOnlyTransform):
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> transform = A.LensFlare(intensity_range=(0.3, 0.6), p=1.0)
         >>> result = transform(image=image)["image"]
+
+    See Also:
+        - AtmosphericFog: Depth-dependent fog via scattering.
+        - RandomFog: Patch-based fog without depth.
+        - RandomRain: Rain streaks for rainy conditions.
+        - RandomSnow: Snow overlay for winter conditions.
 
     """
 
@@ -7490,24 +7594,26 @@ class LensFlare(ImageOnlyTransform):
 
 
 class AtmosphericFog(ImageOnlyTransform):
-    """Depth-aware fog via scattering: image*exp(-density*depth) + fog_color*(1 - ...). Requires
-    depth map. density_range, fog_color. More realistic than RandomFog.
+    """Add depth-dependent fog via the atmospheric scattering equation and a synthetic depth map.
+    Use for outdoor and driving robustness to haze.
 
-    Unlike RandomFog which overlays circular fog patches, this transform uses
-    the physically-based atmospheric scattering equation with a synthetic depth map,
-    producing more realistic distance-dependent fog.
+    Unlike RandomFog (which overlays circular fog patches), this transform uses a
+    physically-based scattering model: farther pixels (by synthetic depth) get more
+    fog, producing realistic distance-dependent haze. Depth is derived from image
+    position (linear, diagonal, or radial), not from a real depth map.
 
-    Formula: result = image * exp(-density * depth) + fog_color * (1 - exp(-density * depth))
+    Formula: `result = image * exp(-density * depth) + fog_color * (1 - exp(-density * depth))`
 
     Args:
-        density_range (tuple[float, float]): Range for fog density.
-            Higher values = thicker fog. Default: (1.0, 3.0).
-        fog_color (tuple[int, ...]): RGB color of the fog. Default: (200, 200, 200).
-        depth_mode (Literal['linear', 'diagonal', 'radial']): How to generate
-            the synthetic depth map:
-            - "linear": top of image is far, bottom is near
-            - "diagonal": top-left corner is far
-            - "radial": center is near, edges are far
+        density_range (tuple[float, float]): Range for fog density. Higher values
+            give thicker fog. Default: (1.0, 3.0).
+        fog_color (tuple[int, ...]): Fog color per channel, e.g. (R, G, B) for 3
+            channels. Length must match image channels. Default: (200, 200, 200).
+        depth_mode (Literal['linear', 'diagonal', 'radial']): How synthetic depth
+            is generated:
+            - "linear": top of image = far, bottom = near (sky vs ground).
+            - "diagonal": top-left = far.
+            - "radial": center = near, edges = far.
             Default: "linear".
         p (float): Probability of applying the transform. Default: 0.5.
 
@@ -7521,9 +7627,8 @@ class AtmosphericFog(ImageOnlyTransform):
         Any
 
     Note:
-        The depth map is synthetic (generated from image position), not from
-        actual scene geometry. For best results with outdoor scenes, "linear"
-        mode works well since distant objects tend to be near the top of the frame.
+        - Depth is synthetic (from pixel position), not from scene geometry.
+        - For typical outdoor frames, "linear" matches sky far / ground near.
 
     Examples:
         >>> import numpy as np
@@ -7531,6 +7636,16 @@ class AtmosphericFog(ImageOnlyTransform):
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> transform = A.AtmosphericFog(density_range=(1.0, 2.5), depth_mode="linear", p=1.0)
         >>> result = transform(image=image)["image"]
+        >>> # Radial fog (center clear, edges foggy)
+        >>> transform_radial = A.AtmosphericFog(density_range=(1.5, 3.0), depth_mode="radial", p=1.0)
+        >>> result_radial = transform_radial(image=image)["image"]
+
+    See Also:
+        - RandomFog: Patch-based fog without depth; simpler and faster when
+          distance-dependent haze is not needed.
+        - RandomRain: Rain streaks and blur for rainy-scene robustness.
+        - RandomSnow: Snow overlay (bleach or texture) for winter conditions.
+        - LensFlare: Starburst and ghost reflections for optical artifacts.
 
     """
 

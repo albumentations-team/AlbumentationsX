@@ -45,10 +45,11 @@ from albumentations.core.bbox_utils import (
     normalize_bboxes,
 )
 from albumentations.core.pydantic import (
-    NonNegativeFloatRangeType,
-    SymmetricRangeType,
     check_range_bounds,
+    convert_to_int_pair,
+    create_symmetric_range,
     nondecreasing,
+    process_non_negative_range,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -56,7 +57,6 @@ from albumentations.core.transforms_interface import (
 )
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
-    BIG_INTEGER,
     ImageType,
     VolumeType,
 )
@@ -588,22 +588,22 @@ class PiecewiseAffine(BaseDistortion):
     """
 
     class InitSchema(BaseDistortion.InitSchema):
-        scale: NonNegativeFloatRangeType
-        nb_rows: tuple[int, int] | int
-        nb_cols: tuple[int, int] | int
+        scale: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(process_non_negative_range),
+            AfterValidator(nondecreasing),
+        ]
+        nb_rows: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(convert_to_int_pair),
+            AfterValidator(check_range_bounds(2, None)),
+        ]
+        nb_cols: Annotated[
+            tuple[int, int] | int,
+            AfterValidator(convert_to_int_pair),
+            AfterValidator(check_range_bounds(2, None)),
+        ]
         absolute_scale: bool
-
-        @field_validator("nb_rows", "nb_cols")
-        @classmethod
-        def _process_range(
-            cls,
-            value: tuple[int, int] | int,
-            info: ValidationInfo,
-        ) -> tuple[int, int]:
-            bounds = 2, BIG_INTEGER
-            result = to_tuple(value, value)
-            check_range(result, *bounds, info.field_name)
-            return result
 
     def __init__(
         self,
@@ -774,7 +774,10 @@ class OpticalDistortion(BaseDistortion):
     """
 
     class InitSchema(BaseDistortion.InitSchema):
-        distort_limit: SymmetricRangeType
+        distort_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
         mode: Literal["camera", "fisheye"]
         keypoint_remapping_method: Literal["direct", "mask"]
 
@@ -933,7 +936,10 @@ class GridDistortion(BaseDistortion):
 
     class InitSchema(BaseDistortion.InitSchema):
         num_steps: Annotated[int, Field(ge=1)]
-        distort_limit: SymmetricRangeType
+        distort_limit: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(create_symmetric_range),
+        ]
         normalized: bool
         keypoint_remapping_method: Literal["direct", "mask"]
 

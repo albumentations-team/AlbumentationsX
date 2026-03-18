@@ -13,9 +13,11 @@ Apply these criteria to **every docstring you write or update** in albumentation
 
 The **first paragraph** is the useful short description: an elevator pitch that explains intuitively what the function or transform does. It appears as the web/search preview under the link.
 
+- **Paragraphs are separated by blank lines.** There is no blank line within a paragraph. So the first elevator pitch (120–160 chars) is **one paragraph**: it occupies two lines of text **with no blank line between them** (two lines, not "line + blank line + line").
 - **Length:** **120–160 characters** (under 120 loses value, over 160 gets cut off).
+- **Line limit 120 chars** ⇒ **first paragraph is two lines**. No single line may exceed 120 characters (ruff E501). So the first paragraph must be split across two lines; do not use a single long line with `# noqa: E501`.
 - **Content:** Intuitive, user-facing summary — a true **elevator pitch**: what the transform/function does, how it works in one sentence, and when it's useful. So someone can decide "do I need to click?" Do **not** list parameter names ("Parameters: x, y, z" or "Params: ...") in the first paragraph — that belongs in Args. Do **not** write "Used by X" or "Used in Y". Do **not** use "Preserves X" boilerplate (e.g. "Preserves channel count", "preserves dtype and channels", "preserves shape") — that wastes the short description; describe effect and when to use it instead. Do not put: "Targets: ...", "Same shape", **return type**, or **"Supports uint8 and float32"** / Image types — return type in Returns; dtype/target support in Image types / Targets. All transforms support uint8 and float32 unless noted.
-- **Line wrap:** Line limit 120 chars, so the first paragraph usually spans **two lines** (break at a word boundary).
+- **Line wrap:** Break at a word boundary so each line stays under 120 chars.
 - **When shortening:** Do not delete useful information. Move any removed content into the second paragraph, a Note, or the relevant Args/Returns section so it is still documented.
 
 **Good example (first paragraph, elevator pitch, two lines):**
@@ -64,8 +66,10 @@ The **first paragraph** is the useful short description: an elevator pitch that 
 ## 6. Similar transforms / See also
 
 - **Where possible**, mention related or alternative transforms so users who know basic ones discover others.
-- Add a **See also** or **Related transforms** section listing 2–4 alternatives with brief when-to-use hints (e.g. “For per-channel shifts see `RGBShift`; for full affine see `Affine`”).
-- This improves discoverability: many users only use a few transforms and are unaware of better alternatives.
+- **See also** (and **Related transforms**): Use a **bullet list** (`-` per item) with 2–4 alternatives and brief when-to-use hints (e.g. `- RandomFog: Patch-based fog; use when…`). **One transform per bullet** — do not combine multiple transforms in a single bullet.
+- **Note:** Use a **bullet list** (`-` per point). Note is **pure info** only — no call-to-action (no "Explore other transforms…" or "Consider using…"). Put discoverability in See also, not in Note.
+- **Reciprocal cross-links:** When you add transform X to transform Y's See also, update X's docstring to mention Y in its own See also so discoverability works both ways.
+- Many users rely on a limited set (e.g. RandomResizedCrop, ColorJitter); See also helps them discover alternatives.
 
 ## 7. Deep dive (combined bar)
 

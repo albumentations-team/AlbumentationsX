@@ -3649,10 +3649,9 @@ def create_piecewise_affine_maps(
     absolute_scale: bool,
     random_generator: np.random.Generator,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
-    """Create map_x, map_y for piecewise affine remap. image_shape, grid, scale,
-    absolute_scale, random_generator. For PiecewiseAffine transform.
+    """Create map_x and map_y for PiecewiseAffine: jittered grid and IDW yield full-resolution
+    remap maps. Used by the transform; result is passed to OpenCV remap.
 
-    This function creates maps for piecewise affine transformation using OpenCV's remap function.
     It generates the control points for the transformation, then uses the remap function to create
     the transformation maps.
 
@@ -3688,15 +3687,25 @@ def create_piecewise_affine_maps(
         np.float32,
     )
 
-    # Create control points with jitter (vectorized)
+    # Control points: source (x,y) and jittered destination (x,y)
     control_points = np.zeros((nb_rows * nb_cols, 4), dtype=np.float32)
     control_points[:, 0] = xx_src.ravel()
     control_points[:, 1] = yy_src.ravel()
-    np.clip(xx_src.ravel() + jitter[:, :, 1].ravel(), 0, width - 1, out=control_points[:, 2])
-    np.clip(yy_src.ravel() + jitter[:, :, 0].ravel(), 0, height - 1, out=control_points[:, 3])
+    np.clip(
+        xx_src.ravel() + jitter[:, :, 1].ravel(),
+        0,
+        width - 1,
+        out=control_points[:, 2],
+    )
+    np.clip(
+        yy_src.ravel() + jitter[:, :, 0].ravel(),
+        0,
+        height - 1,
+        out=control_points[:, 3],
+    )
 
-    # IDW interpolation: accumulate per control point to keep memory O(H*W)
-    # instead of O(H*W*K) which can exceed 1 GB for large grids.
+    # IDW: loop over control points, accumulate weights and weighted dest on full grid.
+    # O(H*W*K) memory would be large; we keep O(H*W) by accumulating per control point.
     yy, xx = np.mgrid[:height, :width]
     xx_f = xx.astype(np.float32)
     yy_f = yy.astype(np.float32)
@@ -3716,7 +3725,6 @@ def create_piecewise_affine_maps(
     map_x = numerator_x / weight_sum
     map_y = numerator_y / weight_sum
 
-    # Ensure output is within bounds
     map_x = np.clip(map_x, 0, width - 1, out=map_x)
     map_y = np.clip(map_y, 0, height - 1, out=map_y)
 

@@ -13,14 +13,15 @@ from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
-from pydantic import AfterValidator, Field, model_validator
+from pydantic import Field, model_validator
+from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes, union_of_bboxes
 from albumentations.core.pydantic import (
-    ZeroOneRangeType,
     check_range_bounds,
+    convert_to_0plus_range,
     nondecreasing,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
@@ -2126,7 +2127,12 @@ class RandomCropNearBBox(BaseCrop):
     _targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        max_part_shift: ZeroOneRangeType
+        max_part_shift: Annotated[
+            tuple[float, float] | float,
+            AfterValidator(convert_to_0plus_range),
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
         cropping_bbox_key: str
 
     def __init__(

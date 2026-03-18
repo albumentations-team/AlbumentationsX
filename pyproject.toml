@@ -410,13 +410,13 @@ verbose = false
 check_references = true
 
 # Pre-commit hook check-google-docstrings reads this section (see package README).
+# First paragraph: 120-160 chars (elevator pitch). First paragraph = two lines (line limit 120). See .cursor/skills/docstring-deep-dive and docs/contributing/coding_guidelines.md.
 [tool.docstring_checker]
 paths = [ "albumentations" ]
 require_param_types = true
 check_references = true
 check_type_consistency = true
 exclude_files = [ "__init__.py" ]
-# First paragraph: 120-160 chars (elevator pitch). See .cursor/skills/docstring-deep-dive.
 min_short_description_length = 120
 max_short_description_length = 160
 verbose = false

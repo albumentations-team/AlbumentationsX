@@ -377,6 +377,156 @@ def test_create_piecewise_affine_maps_reproducibility():
     np.testing.assert_array_almost_equal(result1[1], result2[1])
 
 
+# Golden fingerprint for create_piecewise_affine_maps (seed=137, (64,64), (4,4), 0.05, False).
+# Any optimization (e.g. vectorized IDW) must reproduce these to preserve qualitative behavior.
+_PIECEWISE_AFFINE_GOLDEN = {
+    "map_x_at_0_0": 1.988969e-09,
+    "map_x_at_32_32": 31.595943,
+    "map_x_at_63_63": 61.986984,
+    "map_y_at_0_0": 1.9218556e-09,
+    "map_y_at_32_32": 31.684547,
+    "map_y_at_63_63": 63.0,
+    "mean_map_x": 31.224098,
+    "mean_map_y": 31.166132,
+}
+
+
+def test_create_piecewise_affine_maps_golden_fingerprint():
+    """Lock exact numeric behavior for one fixed config; future vectorization must match this."""
+    rng = np.random.default_rng(137)
+    map_x, map_y = fgeometric.create_piecewise_affine_maps(
+        (64, 64),
+        (4, 4),
+        0.05,
+        False,
+        rng,
+    )
+    assert map_x is not None and map_y is not None
+    np.testing.assert_allclose(
+        map_x[0, 0],
+        _PIECEWISE_AFFINE_GOLDEN["map_x_at_0_0"],
+        rtol=0,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        map_x[32, 32],
+        _PIECEWISE_AFFINE_GOLDEN["map_x_at_32_32"],
+        rtol=0,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        map_x[63, 63],
+        _PIECEWISE_AFFINE_GOLDEN["map_x_at_63_63"],
+        rtol=0,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        map_y[0, 0],
+        _PIECEWISE_AFFINE_GOLDEN["map_y_at_0_0"],
+        rtol=0,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        map_y[32, 32],
+        _PIECEWISE_AFFINE_GOLDEN["map_y_at_32_32"],
+        rtol=0,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        map_y[63, 63],
+        _PIECEWISE_AFFINE_GOLDEN["map_y_at_63_63"],
+        rtol=0,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        np.mean(map_x),
+        _PIECEWISE_AFFINE_GOLDEN["mean_map_x"],
+        rtol=0,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        np.mean(map_y),
+        _PIECEWISE_AFFINE_GOLDEN["mean_map_y"],
+        rtol=0,
+        atol=1e-5,
+    )
+
+
+@pytest.mark.parametrize(
+    "seed",
+    [0, 42, 137, 999],
+)
+def test_create_piecewise_affine_maps_determinism_seeds(seed):
+    """Same seed must yield identical maps (required for reproducible pipelines)."""
+    rng = np.random.default_rng(seed)
+    map_x1, map_y1 = fgeometric.create_piecewise_affine_maps(
+        (50, 50),
+        (4, 4),
+        0.05,
+        False,
+        rng,
+    )
+    rng2 = np.random.default_rng(seed)
+    map_x2, map_y2 = fgeometric.create_piecewise_affine_maps(
+        (50, 50),
+        (4, 4),
+        0.05,
+        False,
+        rng2,
+    )
+    np.testing.assert_array_equal(map_x1, map_x2)
+    np.testing.assert_array_equal(map_y1, map_y2)
+
+
+def test_create_piecewise_affine_maps_different_seeds_different_maps():
+    """Different seeds must produce different maps (sanity check for randomness)."""
+    mx1, my1 = fgeometric.create_piecewise_affine_maps(
+        (32, 32),
+        (3, 3),
+        0.08,
+        False,
+        np.random.default_rng(1),
+    )
+    mx2, my2 = fgeometric.create_piecewise_affine_maps(
+        (32, 32),
+        (3, 3),
+        0.08,
+        False,
+        np.random.default_rng(2),
+    )
+    assert not np.array_equal(mx1, mx2) or not np.array_equal(my1, my2)
+
+
+def test_create_piecewise_affine_maps_smaller_scale_smaller_deviation():
+    """Smaller scale should produce maps closer to identity than larger scale."""
+    height, width = 40, 40
+    xx = np.arange(width, dtype=np.float32)
+    yy = np.arange(height, dtype=np.float32)
+    identity_x = np.broadcast_to(xx, (height, width))
+    identity_y = np.broadcast_to(yy[:, np.newaxis], (height, width))
+
+    rng_small = np.random.default_rng(137)
+    map_x_small, map_y_small = fgeometric.create_piecewise_affine_maps(
+        (height, width),
+        (4, 4),
+        1e-5,
+        False,
+        rng_small,
+    )
+    rng_large = np.random.default_rng(137)
+    map_x_large, map_y_large = fgeometric.create_piecewise_affine_maps(
+        (height, width),
+        (4, 4),
+        0.1,
+        False,
+        rng_large,
+    )
+
+    dev_small = np.mean(np.abs(map_x_small - identity_x)) + np.mean(np.abs(map_y_small - identity_y))
+    dev_large = np.mean(np.abs(map_x_large - identity_x)) + np.mean(np.abs(map_y_large - identity_y))
+    assert dev_small < dev_large
+
+
 @pytest.mark.parametrize(
     ["image_shape", "grid"],
     [
@@ -932,7 +1082,7 @@ class TestPiecewiseAffineNumericalAccuracy:
         ],
     )
     def test_maps_match_reference(self, image_shape, grid, scale, absolute_scale):
-        """Vectorized IDW must match per-pixel reference to float32 precision."""
+        """Implementation must match per-pixel reference within float32 tolerance."""
         ref_mx, ref_my = self._reference_piecewise_affine_maps(
             image_shape,
             grid,
@@ -940,15 +1090,15 @@ class TestPiecewiseAffineNumericalAccuracy:
             absolute_scale,
             np.random.default_rng(137),
         )
-        vec_mx, vec_my = fgeometric.create_piecewise_affine_maps(
+        mx, my = fgeometric.create_piecewise_affine_maps(
             image_shape,
             grid,
             scale,
             absolute_scale,
             np.random.default_rng(137),
         )
-        np.testing.assert_allclose(vec_mx, ref_mx, atol=1e-3, rtol=1e-5)
-        np.testing.assert_allclose(vec_my, ref_my, atol=1e-3, rtol=1e-5)
+        np.testing.assert_allclose(mx, ref_mx, rtol=0, atol=3e-5)
+        np.testing.assert_allclose(my, ref_my, rtol=0, atol=3e-5)
 
     @pytest.mark.parametrize("scale", [0.0, -0.01])
     def test_nonpositive_scale_returns_none(self, scale):
@@ -971,7 +1121,7 @@ class TestPiecewiseAffineNumericalAccuracy:
         assert vec == (None, None)
 
     def test_remapped_images_match(self):
-        """End-to-end: remap with vectorized maps must produce near-identical output."""
+        """End-to-end: remap with implementation maps must match reference within 1 pixel."""
         img = np.random.default_rng(137).integers(0, 256, (64, 64, 3), dtype=np.uint8)
 
         ref_mx, ref_my = self._reference_piecewise_affine_maps(
@@ -981,7 +1131,7 @@ class TestPiecewiseAffineNumericalAccuracy:
             False,
             np.random.default_rng(42),
         )
-        vec_mx, vec_my = fgeometric.create_piecewise_affine_maps(
+        mx, my = fgeometric.create_piecewise_affine_maps(
             (64, 64),
             (4, 4),
             0.05,
@@ -990,11 +1140,11 @@ class TestPiecewiseAffineNumericalAccuracy:
         )
 
         ref_out = cv2.remap(img, ref_mx, ref_my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-        vec_out = cv2.remap(img, vec_mx, vec_my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        out = cv2.remap(img, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
 
-        diff = np.abs(ref_out.astype(np.int16) - vec_out.astype(np.int16))
-        assert diff.max() <= 10, f"Max pixel diff {diff.max()} exceeds tolerance"
-        assert diff.mean() < 0.1, f"Mean pixel diff {diff.mean():.4f} exceeds tolerance"
+        diff = np.abs(ref_out.astype(np.int16) - out.astype(np.int16))
+        assert diff.max() <= 1, f"Max pixel diff {diff.max()} exceeds 1"
+        assert diff.mean() < 0.01, f"Mean pixel diff {diff.mean():4f} exceeds 0.01"
 
 
 class TestGenerateInverseDistortionMap:

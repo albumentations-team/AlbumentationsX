@@ -2,7 +2,7 @@ from inspect import Parameter, signature
 from typing import Annotated, Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from pydantic.functional_validators import AfterValidator
 
 import albumentations as A
@@ -162,8 +162,64 @@ def test_non_negative_range_invalid(non_negative_range: int | tuple[int, int]) -
     with pytest.raises(ValueError):
         ValidationModel(non_negative_range_float=non_negative_range)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         ValidationModel(non_negative_range_int=non_negative_range)
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (5, (0, 5)),  # scalar -> to_tuple(5, low=0)
+        ((0, 10), (0, 10)),
+    ],
+)
+def test_non_negative_int_range_normalization(value, expected):
+    model = ValidationModel(non_negative_range_int=value)
+    assert model.non_negative_range_int == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        -1,
+        (-1, 5),
+        (0, -5),
+    ],
+)
+def test_non_negative_int_range_rejects_negative_values(value):
+    with pytest.raises(ValidationError) as excinfo:
+        ValidationModel(non_negative_range_int=value)
+    msg = str(excinfo.value).lower()
+    assert "non negative" in msg
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (3, (1, 3)),
+        (1, (1, 1)),
+        ((2, 5), (2, 5)),
+        ((1, 1), (1, 1)),
+    ],
+)
+def test_one_plus_int_range_normalization(value, expected):
+    model = ValidationModel(one_plus_range_int=value)
+    assert model.one_plus_range_int == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        0,
+        -1,
+        (0, 5),
+        (1, 0),
+        (0.5, 3.5),
+    ],
+)
+def test_one_plus_int_range_rejects_values_below_1(value):
+    with pytest.raises(ValidationError):
+        ValidationModel(one_plus_range_int=value)
 
 
 @pytest.mark.parametrize("one_plus_range", [(0, 5), 0.5])  # Invalid 1+ ranges

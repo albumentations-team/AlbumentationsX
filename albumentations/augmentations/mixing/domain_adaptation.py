@@ -117,10 +117,10 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         ...
         ...         # Simple color transfer implementation
         ...         # Calculate mean and std of source and target images
-        ...         src_mean = np.mean(img, axis=(0, 1))
-        ...         src_std = np.std(img, axis=(0, 1))
-        ...         tgt_mean = np.mean(target_image, axis=(0, 1))
-        ...         tgt_std = np.std(target_image, axis=(0, 1))
+        ...         src_mean = mean(img, axis=(0, 1))
+        ...         src_std = std(img, axis=(0, 1))
+        ...         tgt_mean = mean(target_image, axis=(0, 1))
+        ...         tgt_std = std(target_image, axis=(0, 1))
         ...
         ...         # Normalize source image
         ...         normalized = (img - src_mean) / (src_std + 1e-7)

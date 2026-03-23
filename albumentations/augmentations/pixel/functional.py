@@ -29,6 +29,7 @@ from albucore import (
     is_grayscale_image,
     is_rgb_image,
     maybe_process_in_chunks,
+    mean,
     multiply,
     multiply_add,
     multiply_by_array,
@@ -36,10 +37,12 @@ from albucore import (
     normalize_per_image,
     power,
     preserve_channel_dim,
+    reduce_sum,
     reshape_ndhwc_channel,
     reshape_xhwc_channel,
     restore_ndhwc_channel,
     restore_xhwc_channel,
+    std,
     sz_lut,
     to_float,
     uint8_io,
@@ -241,7 +244,7 @@ def _equalize_pil(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if len(h) <= 1:
         return img.copy()
 
-    step = np.sum(h[:-1]) // 255
+    step = reduce_sum(h[:-1]) // 255
     if not step:
         return img.copy()
 
@@ -259,7 +262,7 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     # Find the first non-zero index with a numpy operation
     i = np.flatnonzero(histogram)[0] if np.any(histogram) else 255
 
-    total = np.sum(histogram)
+    total = reduce_sum(histogram)
 
     # Safe division for equalize: handle edge case of uniform histograms
     # If histogram is uniform (denominator == 0), return image unchanged
@@ -1630,7 +1633,7 @@ def to_gray_average(img: ImageType) -> ImageType:
         any
 
     """
-    return np.mean(img, axis=-1).astype(img.dtype)
+    return mean(img, axis=-1).astype(img.dtype)
 
 
 def to_gray_max(img: ImageType) -> ImageType:
@@ -1892,12 +1895,12 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     img_reshaped = img.reshape(-1, num_channels)
 
     # Center the pixel values
-    img_mean = np.mean(img_reshaped, axis=0)
+    img_mean = mean(img_reshaped, axis=0, dtype=np.float32)
     img_centered = img_reshaped - img_mean
 
     if num_channels == 1:
         # For grayscale images, apply a simple scaling
-        std_dev = np.std(img_centered)
+        std_dev = std(img_centered, eps=0)
         noise = alpha_vector[0] * std_dev * img_centered
     else:
         # Compute covariance matrix
@@ -1970,14 +1973,14 @@ def adjust_contrast_torchvision(img: ImageType, factor: float) -> ImageType:
     if factor == 1:
         return img
 
-    mean = img.mean() if is_grayscale_image(img) else cv2.cvtColor(img, cv2.COLOR_RGB2GRAY).mean()
+    img_mean = mean(img) if is_grayscale_image(img) else mean(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
 
     if factor == 0:
         if img.dtype != np.float32:
-            mean = int(mean + 0.5)
-        return np.full_like(img, mean, dtype=img.dtype)
+            img_mean = int(img_mean + 0.5)
+        return np.full_like(img, img_mean, dtype=img.dtype)
 
-    return multiply_add(img, factor, mean * (1 - factor), inplace=False)
+    return multiply_add(img, factor, img_mean * (1 - factor), inplace=False)
 
 
 @clipped
@@ -2078,12 +2081,12 @@ def apply_brightness_contrast_torchvision(
         if is_grayscale_image(img)
         else (to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img))
     )
-    mean = float(gray_for_mean.mean())
+    img_mean = float(mean(gray_for_mean))
     if img.dtype == np.uint8:
-        mean /= 255.0
+        img_mean /= 255.0
 
     # Propagate mean analytically: brightness scales the mean, clipped to [0, 1].
-    mean_at_contrast = float(np.clip(mean * brightness_factor, 0.0, 1.0)) if brightness_first else float(mean)
+    mean_at_contrast = float(np.clip(img_mean * brightness_factor, 0.0, 1.0)) if brightness_first else img_mean
 
     if img.dtype == np.uint8:
         lut = np.arange(256, dtype=np.float32)
@@ -2176,7 +2179,7 @@ def superpixels(
             # replace_samples then does not have enough values, so we just start over with the first one again.
             if replace_samples[idx % len(replace_samples)]:
                 mask = segments == label
-                mean_intensity = np.mean(image_sp_c[mask])
+                mean_intensity = mean(image_sp_c[mask])
 
                 if image_sp_c.dtype.kind in ["i", "u", "b"]:
                     # After rounding the value can end up slightly outside of the value_range. Hence, we need to clip.
@@ -2586,7 +2589,7 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
     n_tiles = np.prod(img.shape) // np.prod(noise.shape)
     noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
 
-    return add_array(img, noise, inplace=False)
+    return add_array(img, noise)
 
 
 def slic(
@@ -2637,7 +2640,7 @@ def slic(
 
             crop = image_normalized[y_low:y_high, x_low:x_high]
             color_diff = crop - image_normalized[y, x]
-            color_distance = np.sum(color_diff**2, axis=-1)
+            color_distance = reduce_sum(color_diff**2, axis=-1)
 
             yy, xx = np.ogrid[y_low:y_high, x_low:x_high]
             spatial_distance = ((yy - y) ** 2 + (xx - x) ** 2) * inv_grid_step_sq
@@ -2653,7 +2656,7 @@ def slic(
             mask = labels == i
             if np.any(mask):
                 ys, xs = np.where(mask)
-                centers[i] = [xs.mean(), ys.mean()]
+                centers[i] = [mean(xs.astype(np.float32)), mean(ys.astype(np.float32))]
 
     return labels
 
@@ -3302,12 +3305,12 @@ def apply_plasma_brightness_contrast(
 
     # Apply contrast adjustment
     if contrast_factor != 0:
-        mean = img.mean()
+        img_mean = mean(img)
         contrast_weights = multiply(plasma_pattern, contrast_factor, inplace=False) + 1
 
         img = multiply(img, contrast_weights, inplace=True)
 
-        mean_factor = mean * (1.0 - contrast_weights)
+        mean_factor = img_mean * (1.0 - contrast_weights)
         return add(img, mean_factor, inplace=True)
 
     return img
@@ -3728,7 +3731,7 @@ def get_histogram_bounds(hist: np.ndarray, cutoff: float) -> tuple[int, int]:
             return 0, 0
         return int(non_zero_intensities[0]), int(non_zero_intensities[-1])
 
-    total_pixels = float(hist.sum())
+    total_pixels = float(reduce_sum(hist))
     if total_pixels == 0:
         return 0, 0
 
@@ -4008,7 +4011,7 @@ def get_mud_params(
 
     # Create initial mask (ensure we have some non-zero values)
     mask = (liquid_layer > cutout_threshold).astype(np.float32)
-    if np.sum(mask) == 0:  # If mask is all zeros
+    if reduce_sum(mask) == 0:  # If mask is all zeros
         # Force minimum coverage of 10%
         num_pixels = height * width
         num_needed = max(1, int(0.1 * num_pixels))  # At least 1 pixel
@@ -4144,7 +4147,7 @@ def normalize_vectors(vectors: np.ndarray) -> np.ndarray:
         np.ndarray: Normalized vectors.
 
     """
-    norms = np.sqrt(np.sum(vectors**2, axis=1, keepdims=True))
+    norms = np.sqrt(reduce_sum(vectors**2, axis=1, keepdims=True))
     return vectors / norms
 
 
@@ -4297,8 +4300,8 @@ def order_stains_combined(stain_colors: np.ndarray) -> tuple[int, int]:
     angles = np.mod(np.arctan2(stain_colors[:, 1], stain_colors[:, 0]), np.pi)
 
     # Calculate spectral ratios (Ruifrok)
-    blue_ratio = stain_colors[:, 2] / (np.sum(stain_colors, axis=1) + 1e-6)
-    red_ratio = stain_colors[:, 0] / (np.sum(stain_colors, axis=1) + 1e-6)
+    blue_ratio = stain_colors[:, 2] / (reduce_sum(stain_colors, axis=1) + 1e-6)
+    red_ratio = stain_colors[:, 0] / (reduce_sum(stain_colors, axis=1) + 1e-6)
 
     # Combine scores
     # High angle and high blue ratio indicates Hematoxylin
@@ -4478,7 +4481,7 @@ class MacenkoNormalizer(StainNormalizer):
         stain_vectors = np.abs(stain_vectors)
 
         # Step 9: Normalize vectors to unit length
-        stain_vectors = stain_vectors / np.sqrt(np.sum(stain_vectors**2, axis=1, keepdims=True) + epsilon)
+        stain_vectors = stain_vectors / np.sqrt(reduce_sum(stain_vectors**2, axis=1, keepdims=True) + epsilon)
 
         # Step 10: Order vectors as [hematoxylin, eosin]
         self.stain_matrix_target = stain_vectors if stain_vectors[0, 0] > stain_vectors[1, 0] else stain_vectors[::-1]
@@ -4692,7 +4695,7 @@ def apply_film_grain(
     """
     num_channels = img.shape[-1]
 
-    luminance = img.mean(axis=-1) if num_channels > 1 else img[..., 0]
+    luminance = mean(img, axis=-1) if num_channels > 1 else img[..., 0]
 
     max_val = MAX_VALUES_BY_DTYPE[img.dtype]
 
@@ -4726,7 +4729,7 @@ def apply_halftone(
     num_channels = img.shape[-1]
 
     luminance = (
-        np.mean(img, axis=-1).astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
+        mean(img, axis=-1).astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
         if num_channels > 1
         else img[..., 0].astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
     )
@@ -4740,13 +4743,13 @@ def apply_halftone(
                 y_end = min(y_start + dot_size, height)
                 x_end = min(x_start + dot_size, width)
 
-                cell_lum = float(np.mean(luminance[y_start:y_end, x_start:x_end]))
+                cell_lum = float(mean(luminance[y_start:y_end, x_start:x_end]))
                 cell_h = y_end - y_start
                 cell_w = x_end - x_start
                 radius = max(1, int(dot_size * 0.5 * cell_lum))
 
                 cell = img[y_start:y_end, x_start:x_end]
-                avg_color = np.mean(cell.reshape(-1, num_channels), axis=0).astype(img.dtype)
+                avg_color = mean(cell.reshape(-1, num_channels), axis=0).astype(img.dtype)
 
                 # Cell-local mask: avoids O(N_cells * H * W) allocation
                 local_cx = cell_w // 2
@@ -4762,18 +4765,16 @@ def apply_halftone(
                 y_end = min(y_start + dot_size, height)
                 x_end = min(x_start + dot_size, width)
 
-                cell_lum = float(np.mean(luminance[y_start:y_end, x_start:x_end]))
+                cell_lum = float(mean(luminance[y_start:y_end, x_start:x_end]))
                 cx = (x_start + x_end) // 2
                 cy = (y_start + y_end) // 2
                 radius = max(1, int(dot_size * 0.5 * cell_lum))
 
                 cell = img[y_start:y_end, x_start:x_end]
                 if num_channels > 1:
-                    color: tuple[int, ...] | int = tuple(
-                        int(v) for v in np.mean(cell.reshape(-1, num_channels), axis=0)
-                    )
+                    color: tuple[int, ...] | int = tuple(int(v) for v in mean(cell.reshape(-1, num_channels), axis=0))
                 else:
-                    color = int(np.mean(cell))
+                    color = int(mean(cell))
 
                 cv2.circle(canvas, (cx, cy), radius, color, -1, lineType=cv2.LINE_AA)
 

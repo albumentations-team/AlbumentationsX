@@ -1983,10 +1983,34 @@ def test_bbox_hflip_idempotence_property():
     @given(
         st.lists(
             st.tuples(
-                st.floats(0.0, 0.7, allow_nan=False, allow_infinity=False),  # x_min
-                st.floats(0.0, 0.7, allow_nan=False, allow_infinity=False),  # y_min
-                st.floats(0.3, 1.0, allow_nan=False, allow_infinity=False),  # x_max
-                st.floats(0.3, 1.0, allow_nan=False, allow_infinity=False),  # y_max
+                st.floats(
+                    0.0,
+                    0.7,
+                    allow_nan=False,
+                    allow_infinity=False,
+                    allow_subnormal=False,
+                ),  # x_min
+                st.floats(
+                    0.0,
+                    0.7,
+                    allow_nan=False,
+                    allow_infinity=False,
+                    allow_subnormal=False,
+                ),  # y_min
+                st.floats(
+                    0.3,
+                    1.0,
+                    allow_nan=False,
+                    allow_infinity=False,
+                    allow_subnormal=False,
+                ),  # x_max
+                st.floats(
+                    0.3,
+                    1.0,
+                    allow_nan=False,
+                    allow_infinity=False,
+                    allow_subnormal=False,
+                ),  # y_max
             ).filter(lambda x: x[2] > x[0] + 0.01 and x[3] > x[1] + 0.01),
             min_size=1,
             max_size=10,
@@ -2049,8 +2073,20 @@ def test_keypoint_hflip_idempotence_property():
     @given(
         st.lists(
             st.tuples(
-                st.floats(5.0, 94.99, allow_nan=False, allow_infinity=False),  # x (well inside bounds)
-                st.floats(5.0, 94.99, allow_nan=False, allow_infinity=False),  # y (well inside bounds)
+                st.floats(
+                    5.0,
+                    94.99,
+                    allow_nan=False,
+                    allow_infinity=False,
+                    allow_subnormal=False,
+                ),  # x (well inside bounds)
+                st.floats(
+                    5.0,
+                    94.99,
+                    allow_nan=False,
+                    allow_infinity=False,
+                    allow_subnormal=False,
+                ),  # y (well inside bounds)
             ),
             min_size=1,
             max_size=20,

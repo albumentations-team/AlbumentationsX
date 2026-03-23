@@ -22,6 +22,7 @@ from albucore import (
     from_float,
     hflip,
     preserve_channel_dim,
+    reduce_sum,
     remap,
     to_float,
     vflip,
@@ -3383,8 +3384,10 @@ def normalize_grid_distortion_steps(
     # now normalize such that distortion never leaves image bounds.
     tx = width / math.floor(width / num_steps)
     ty = height / math.floor(height / num_steps)
-    x_steps = np.array(x_steps) * (tx / np.sum(x_steps))
-    y_steps = np.array(y_steps) * (ty / np.sum(y_steps))
+    x_steps_arr = np.array(x_steps, dtype=np.float32)
+    y_steps_arr = np.array(y_steps, dtype=np.float32)
+    x_steps = x_steps_arr * (tx / reduce_sum(x_steps_arr))
+    y_steps = y_steps_arr * (ty / reduce_sum(y_steps_arr))
 
     return {"steps_x": x_steps, "steps_y": y_steps}
 
@@ -3582,7 +3585,7 @@ def compute_perspective_params(
         dim2: np.ndarray,
         min_size: int = 2,
     ) -> float:
-        size = np.sqrt(np.sum((dim1 - dim2) ** 2))
+        size = np.sqrt(reduce_sum((dim1 - dim2) ** 2))
         if size < min_size:
             step_size = (min_size - size) / 2
             dim1[dim1 > dim2] += step_size
@@ -4039,7 +4042,7 @@ def bboxes_grid_shuffle(
     extra_bbox_data = []  # Store additional bbox data for each component
 
     for idx, mask in enumerate(masks):
-        original_area = np.sum(mask)  # Get original mask area
+        original_area = reduce_sum(mask)  # Get original mask area
 
         # Shuffle the mask
         shuffled_mask = swap_tiles_on_image(mask, tiles, mapping)
@@ -4054,7 +4057,7 @@ def bboxes_grid_shuffle(
             component_mask = (components == comp_idx).astype(np.uint8)
 
             # Calculate area and visibility ratio
-            component_area = np.sum(component_mask)
+            component_area = reduce_sum(component_mask)
             # Check if component meets minimum requirements
             if is_valid_component(
                 component_area,
@@ -4145,8 +4148,8 @@ def compute_pairwise_distances(
     points2 = np.ascontiguousarray(points2, dtype=np.float32)
 
     # Compute squared terms
-    p1_squared = cv2.multiply(points1, points1).sum(axis=1, keepdims=True)
-    p2_squared = cv2.multiply(points2, points2).sum(axis=1)[None, :]
+    p1_squared = reduce_sum(cv2.multiply(points1, points1), axis=1, keepdims=True)
+    p2_squared = reduce_sum(cv2.multiply(points2, points2), axis=1)[None, :]
 
     # Compute dot product
     dot_product = cv2.gemm(points1, points2.T, 1, None, 0)

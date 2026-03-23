@@ -13,6 +13,7 @@ from typing import Any, Concatenate, TypeVar, cast
 
 import cv2
 import numpy as np
+from albucore import reduce_sum
 from albucore.utils import (
     is_grayscale_image,
     is_multispectral_image,
@@ -354,7 +355,7 @@ class PCA:
             raise ValueError(
                 "This PCA instance is not fitted yet. Call 'fit' with appropriate arguments before using this method.",
             )
-        total_variance = np.sum(self.explained_variance_)
+        total_variance = reduce_sum(self.explained_variance_)
         return self.explained_variance_ / total_variance
 
     def cumulative_explained_variance_ratio(self) -> np.ndarray:

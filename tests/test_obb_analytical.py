@@ -1024,12 +1024,12 @@ def test_obb_affine_translate_rotate_preserves_dimensions() -> None:
     from hypothesis import given, settings
 
     @given(
-        rotate=st.floats(-180, 180),
+        rotate=st.floats(-180, 180, allow_subnormal=False),
         translate_x=st.integers(-10, 10),
         translate_y=st.integers(-10, 10),
-        box_w=st.floats(0.05, 0.25),
-        box_h=st.floats(0.05, 0.25),
-        angle=st.floats(-90, 90),
+        box_w=st.floats(0.05, 0.25, allow_subnormal=False),
+        box_h=st.floats(0.05, 0.25, allow_subnormal=False),
+        angle=st.floats(-90, 90, allow_subnormal=False),
     )
     @settings(max_examples=50, deadline=5000)
     def _run(

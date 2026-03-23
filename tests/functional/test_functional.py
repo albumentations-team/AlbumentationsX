@@ -379,7 +379,7 @@ def test_solarize_value_range_property():
             st.integers(10, 100),  # width
             st.integers(1, 3),  # channels
         ),
-        threshold=st.floats(0.0, 1.0),
+        threshold=st.floats(0.0, 1.0, allow_subnormal=False),
     )
     @settings(max_examples=50, deadline=3000)
     def property_test(dtype, shape, threshold):

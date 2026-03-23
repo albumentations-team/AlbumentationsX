@@ -20,9 +20,11 @@ from albucore import (
     get_num_channels,
     is_grayscale_image,
     is_rgb_image,
+    mean,
     multiply,
     normalize,
     normalize_per_image,
+    reduce_sum,
 )
 from pydantic import (
     BaseModel,
@@ -2187,7 +2189,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
     ) -> ImageType:
         max_value = MAX_VALUES_BY_DTYPE[img.dtype]
         # Scale beta according to brightness_by_max setting
-        beta = beta * max_value if self.brightness_by_max else beta * np.mean(img)
+        beta = beta * max_value if self.brightness_by_max else beta * mean(img)
 
         # Clip values to safe ranges if needed
         if self.ensure_safe_range:
@@ -4199,7 +4201,7 @@ class RingingOvershoot(ImageOnlyTransform):
         kernel[(ksize - 1) // 2, (ksize - 1) // 2] = cutoff**2 / (4 * np.pi)
 
         # Normalize kernel
-        kernel = kernel.astype(np.float32) / np.sum(kernel)
+        kernel = kernel.astype(np.float32) / reduce_sum(kernel)
 
         return {"kernel": kernel}
 

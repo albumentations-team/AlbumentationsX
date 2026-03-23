@@ -5,6 +5,9 @@ import cv2
 import numpy as np
 import pytest
 
+# albucore → numkong may set flush-to-zero (FTZ) on import; then struct-based float
+# bit tricks in Hypothesis see subnormals as 0 and st.floats() raises unless
+# allow_subnormal=False (see tests using @given / st.floats).
 import albumentations as A
 
 cv2.setRNGSeed(137)

@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
+from albucore import reduce_sum
 from pydantic import Field, model_validator
 from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
@@ -1400,7 +1401,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
 
         if mask.any():
             # Find non-zero regions in mask
-            mask_sum = mask.sum(axis=-1) if mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else mask
+            mask_sum = reduce_sum(mask, axis=-1) if mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else mask
             non_zero_yx = np.argwhere(mask_sum)
             y, x = self.py_random.choice(non_zero_yx)
 

@@ -17,6 +17,7 @@ from albucore import (
     clipped,
     from_float,
     get_num_channels,
+    mean_std,
     preserve_channel_dim,
     to_float,
     uint8_io,
@@ -39,7 +40,6 @@ class BaseScaler:
         self.data_min: np.ndarray | None = None
         self.data_max: np.ndarray | None = None
         self.mean: np.ndarray | None = None
-        self.var: np.ndarray | None = None
         self.scale: np.ndarray | None = None
 
     def fit(self, x: np.ndarray) -> None:
@@ -191,10 +191,8 @@ class StandardScaler(BaseScaler):
             When variance is zero for a feature, the scale is set to 1 to avoid division by zero.
 
         """
-        self.mean = np.mean(x, axis=0)
-        self.var = np.var(x, axis=0)
-        self.scale = np.sqrt(self.var)
-        # Handle case where variance is zero
+        self.mean, self.scale = mean_std(x, axis=0, eps=0)
+        # Handle case where std is zero
         self.scale[self.scale == 0] = 1
 
     def transform(self, x: np.ndarray) -> np.ndarray:

@@ -15,6 +15,7 @@ from albucore import (
     get_num_channels,
     is_grayscale_image,
     preserve_channel_dim,
+    reduce_sum,
     uint8_io,
     warp_affine,
 )
@@ -564,7 +565,7 @@ def filter_bboxes_by_holes(
     # Filter boxes by area and visibility
     bboxes_int = bboxes.astype(int)
     box_areas = (bboxes_int[:, 2] - bboxes_int[:, 0]) * (bboxes_int[:, 3] - bboxes_int[:, 1])
-    intersection_areas = np.array([np.sum(hole_mask[y:y2, x:x2]) for x, y, x2, y2 in bboxes_int[:, :4]])
+    intersection_areas = np.array([reduce_sum(hole_mask[y:y2, x:x2]) for x, y, x2, y2 in bboxes_int[:, :4]])
     remaining_areas = box_areas - intersection_areas
     # Safe division: avoid division by zero when box_areas=0
     visibility_ratios = np.divide(
@@ -782,7 +783,7 @@ def mask_dropout_bboxes(
     box_areas = (bboxes[:, 2] - bboxes[:, 0]) * (bboxes[:, 3] - bboxes[:, 1])
 
     # Calculate the visible area of each box (non-intersecting area with dropout mask)
-    visible_areas = np.sum(box_masks & ~dropout_mask, axis=(1, 2))
+    visible_areas = reduce_sum(box_masks & ~dropout_mask, axis=(1, 2))
 
     # Calculate visibility ratio (visible area / total box area)
     visibility_ratio = visible_areas / box_areas

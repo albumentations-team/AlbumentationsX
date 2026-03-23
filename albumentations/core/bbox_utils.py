@@ -12,6 +12,7 @@ from typing import Annotated, Any, Literal
 
 import cv2
 import numpy as np
+from albucore import mean
 from pydantic import BaseModel, ConfigDict, Field
 
 from albumentations.augmentations.utils import handle_empty_array
@@ -711,8 +712,8 @@ def _corners_to_obb_params(corners: np.ndarray) -> tuple[float, float, float, fl
         width, height = len2, len1
         angle = a2
 
-    cx = float(corners[:, 0].mean())
-    cy = float(corners[:, 1].mean())
+    cx = float(mean(corners[:, 0].astype(np.float32)))
+    cy = float(mean(corners[:, 1].astype(np.float32)))
     return cx, cy, width, height, angle
 
 

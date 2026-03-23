@@ -18,6 +18,7 @@ from albucore import (
     clipped,
     float32_io,
     preserve_channel_dim,
+    reduce_sum,
 )
 from pydantic import ValidationInfo
 
@@ -114,7 +115,7 @@ def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
 
     x, y = np.meshgrid(length, length)
     aliased_disk = np.array((x**2 + y**2) <= radius**2, dtype=np.float32)
-    aliased_disk /= np.sum(aliased_disk)
+    aliased_disk /= reduce_sum(aliased_disk)
 
     return cv2.GaussianBlur(aliased_disk, (ksize, ksize), sigmaX=alias_blur)
 
@@ -373,7 +374,7 @@ def create_gaussian_kernel(sigma: float, ksize: int = 0) -> np.ndarray:
 
     # Compute 1D kernel using vectorized operations
     kernel_1d = np.exp(-0.5 * (x / sigma) ** 2)
-    kernel_1d = kernel_1d / kernel_1d.sum()
+    kernel_1d = kernel_1d / reduce_sum(kernel_1d)
 
     # Create 2D kernel
     return kernel_1d[:, np.newaxis] @ kernel_1d[np.newaxis, :]
@@ -409,7 +410,7 @@ def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
 
     x_f32 = x.astype(np.float32)
     kernel_1d = np.exp(np.float32(-0.5) * (x_f32 / np.float32(sigma)) ** 2)
-    return (kernel_1d / kernel_1d.sum()).astype(np.float32)
+    return (kernel_1d / reduce_sum(kernel_1d)).astype(np.float32)
 
 
 def create_gaussian_kernel_input_array(size: int) -> np.ndarray:

@@ -5,7 +5,7 @@ defocus, zoom). Each transform documents its parameters and behavior in Args and
 from typing import Annotated, Any, Literal, cast
 
 import numpy as np
-from albucore import median_blur
+from albucore import median_blur, reduce_sum
 from pydantic import (
     Field,
     ValidationInfo,
@@ -425,7 +425,7 @@ class MotionBlur(Blur):
             random_state=self.py_random,
         )
 
-        return {"kernel": kernel.astype(np.float32) / np.sum(kernel)}
+        return {"kernel": kernel.astype(np.float32) / reduce_sum(kernel)}
 
 
 class MedianBlur(Blur):
@@ -1252,13 +1252,13 @@ class AdvancedBlur(ImageOnlyTransform):
         inverse_sigma = np.linalg.inv(sigma_matrix)
         # Described in "Parameter Estimation For Multivariate Generalized Gaussian Distributions"
         kernel = np.exp(
-            -0.5 * np.power(np.sum(np.dot(grid, inverse_sigma) * grid, 2), beta),
+            -0.5 * np.power(reduce_sum(np.dot(grid, inverse_sigma) * grid, axis=2), beta),
         )
         # Add noise
         kernel *= noise_matrix
 
         # Normalize kernel
-        kernel = kernel.astype(np.float32) / np.sum(kernel)
+        kernel = kernel.astype(np.float32) / reduce_sum(kernel)
         return {"kernel": kernel}
 
 

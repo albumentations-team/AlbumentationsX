@@ -181,6 +181,12 @@ class CoarseDropout(BaseDropout):
 
         holes = np.stack([x_min, y_min, x_max, y_max], axis=-1)
 
+        self.applied_config = {
+            "num_holes_range": num_holes,
+            "hole_height_range": (int(hole_heights.min()), int(hole_heights.max())),
+            "hole_width_range": (int(hole_widths.min()), int(hole_widths.max())),
+        }
+
         return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}
 
 
@@ -342,6 +348,12 @@ class Erasing(BaseDropout):
         left = self.py_random.randint(0, width - w)
 
         holes = np.array([[left, top, left + w, top + h]], dtype=np.int32)
+
+        self.applied_config = {
+            "scale": erase_area / total_area,
+            "ratio": aspect_ratio,
+        }
+
         return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}
 
 
@@ -564,6 +576,12 @@ class ConstrainedCoarseDropout(BaseDropout):
         else:
             warn("Neither valid mask nor bboxes provided, do not apply Constrained Coarse Dropout", stacklevel=2)
             holes = np.array([], dtype=np.int32).reshape((0, 4))
+
+        self.applied_config = {
+            "num_holes_range": num_holes_per_obj,
+            "hole_height_range": self.hole_height_range,
+            "hole_width_range": self.hole_width_range,
+        }
 
         return {
             "holes": holes,

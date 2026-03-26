@@ -150,6 +150,7 @@ class MaskDropout(DualTransform):
 
         if num_labels == 0:
             dropout_mask = None
+            objects_to_drop = 0
         else:
             objects_to_drop = self.py_random.randint(*self.max_objects)
             objects_to_drop = min(num_labels, objects_to_drop)
@@ -161,6 +162,10 @@ class MaskDropout(DualTransform):
                 dropout_mask = np.zeros(mask.shape[:2], dtype=bool)
                 for label_index in labels_index:
                     dropout_mask |= label_image == label_index
+
+        self.applied_config = {
+            "max_objects": objects_to_drop,
+        }
 
         return {"dropout_mask": dropout_mask}
 

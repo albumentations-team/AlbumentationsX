@@ -165,8 +165,11 @@ class RandomRotate90(DualTransform):
 
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270"]]:
         if self.group_element is not None:
-            return {"group_element": self.group_element}
-        return {"group_element": self.random_generator.choice(c4_group_elements)}
+            group_element = self.group_element
+        else:
+            group_element = self.random_generator.choice(c4_group_elements)
+        self.applied_config = {"group_element": group_element}
+        return {"group_element": group_element}
 
     def apply_to_bboxes(
         self,
@@ -542,6 +545,8 @@ class Rotate(DualTransform):
     ) -> dict[str, Any]:
         angle = self.py_random.uniform(*self.limit)
 
+        self.applied_config = {"limit": angle}
+
         if self.crop_border:
             height, width = params["shape"][:2]
             out_params = self._rotated_rect_with_max_area(height, width, angle)
@@ -755,11 +760,11 @@ class SafeRotate(Affine):
         image_shape = params["shape"][:2]
         angle = self.py_random.uniform(*self.limit)
 
-        # Calculate centers for image and bbox
+        self.applied_config = {"limit": angle}
+
         image_center = fgeometric.center(image_shape)
         bbox_center = fgeometric.center_bbox(image_shape)
 
-        # Create matrices for image and bbox
         matrix, scale = self._create_safe_rotate_matrix(
             angle,
             image_center,

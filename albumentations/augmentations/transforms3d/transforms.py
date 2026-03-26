@@ -1201,6 +1201,13 @@ class CoarseDropout3D(Transform3D):
 
         holes = np.stack([z_min, y_min, x_min, z_max, y_max, x_max], axis=-1)
 
+        self.applied_config = {
+            "num_holes_range": num_holes,
+            "hole_depth_range": (int(hole_depths.min()), int(hole_depths.max())),
+            "hole_height_range": (int(hole_heights.min()), int(hole_heights.max())),
+            "hole_width_range": (int(hole_widths.min()), int(hole_widths.max())),
+        }
+
         return {"holes": holes}
 
     def apply_to_volume(self, volume: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:

@@ -302,9 +302,15 @@ class HistogramMatching(BaseDomainAdaptation):
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         reference_image = self._get_reference_image(data)
+        blend_ratio = self.py_random.uniform(*self.blend_ratio)
+
+        self.applied_config = {
+            "blend_ratio": blend_ratio,
+        }
+
         return {
             "reference_image": reference_image,
-            "blend_ratio": self.py_random.uniform(*self.blend_ratio),
+            "blend_ratio": blend_ratio,
         }
 
     def apply(
@@ -487,7 +493,13 @@ class FDA(BaseDomainAdaptation):
         # Resize the target image to match the input image dimensions
         target_image_resized = fgeometric.resize(target_image, (height, width), cv2.INTER_LINEAR)
 
-        return {"target_image": target_image_resized, "beta": self.py_random.uniform(*self.beta_limit)}
+        beta = self.py_random.uniform(*self.beta_limit)
+
+        self.applied_config = {
+            "beta_limit": beta,
+        }
+
+        return {"target_image": target_image_resized, "beta": beta}
 
     def apply(
         self,
@@ -657,9 +669,15 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
         self.transform_type = transform_type
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        blend_ratio = self.py_random.uniform(*self.blend_ratio)
+
+        self.applied_config = {
+            "blend_ratio": blend_ratio,
+        }
+
         return {
             "reference_image": self._get_reference_image(data),
-            "blend_ratio": self.py_random.uniform(*self.blend_ratio),
+            "blend_ratio": blend_ratio,
         }
 
     def apply(self, img: ImageType, reference_image: ImageType, blend_ratio: float, **params: Any) -> ImageType:

@@ -15,3 +15,10 @@ description: After completing code changes, runs tests and pre-commit, then iter
 
 - Iterate until clean. Do not report errors and stop—fix them.
 - Exclude slow tests during iteration; run full suite once at the end if desired: `uv run pytest`
+
+## Common Pre-commit Fixes
+
+### E501 Line too long
+- **Never** suppress with `# noqa: E501` or add `E501` to `pyproject.toml` ignore list.
+- **Fix**: Split the line at a word or operator boundary. For docstrings, wrap to the next line — the
+  Google format allows multi-line short descriptions. For code, break at `(`, `,`, or `+`.

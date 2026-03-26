@@ -183,7 +183,9 @@ class RandomScale(DualTransform):
         self.area_for_downscale = area_for_downscale
 
     def get_params(self) -> dict[str, float]:
-        return {"scale": self.py_random.uniform(*self.scale_limit) + 1.0}
+        scale = self.py_random.uniform(*self.scale_limit) + 1.0
+        self.applied_config = {"scale_limit": scale - 1.0}
+        return {"scale": scale}
 
     def apply(
         self,
@@ -535,20 +537,17 @@ class LongestMaxSize(MaxSizeTransform):
                 max_size = self.py_random.choice(self.max_size)
             else:
                 max_size = self.max_size
+            self.applied_config = {"max_size": max_size}
             scale = max_size / max(img_h, img_w)
         elif self.max_size_hw is not None:
-            # We know max_size_hw is not None here due to model validator
             max_h, max_w = self.max_size_hw
             if max_h is not None and max_w is not None:
-                # Scale based on longest side to maintain aspect ratio
                 h_scale = max_h / img_h
                 w_scale = max_w / img_w
                 scale = min(h_scale, w_scale)
             elif max_h is not None:
-                # Only height specified
                 scale = max_h / img_h
             else:
-                # Only width specified
                 scale = max_w / img_w
 
         return {"scale": scale}
@@ -652,19 +651,17 @@ class SmallestMaxSize(MaxSizeTransform):
                 max_size = self.py_random.choice(self.max_size)
             else:
                 max_size = self.max_size
+            self.applied_config = {"max_size": max_size}
             scale = max_size / min(img_h, img_w)
         elif self.max_size_hw is not None:
             max_h, max_w = self.max_size_hw
             if max_h is not None and max_w is not None:
-                # Scale based on smallest side to maintain aspect ratio
                 h_scale = max_h / img_h
                 w_scale = max_w / img_w
                 scale = max(h_scale, w_scale)
             elif max_h is not None:
-                # Only height specified
                 scale = max_h / img_h
             else:
-                # Only width specified
                 scale = max_w / img_w
 
         return {"scale": scale}

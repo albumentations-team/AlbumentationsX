@@ -1088,20 +1088,18 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
     """Test ConstrainedCoarseDropout with bounding boxes."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
+    ccd = A.ConstrainedCoarseDropout(
+        num_holes_range=(2, 2),  # Fixed 2 holes per object
+        hole_height_range=(0.3, 0.3),  # Fixed 30% of object height
+        hole_width_range=(0.3, 0.3),  # Fixed 30% of object width
+        bbox_labels=bbox_labels,
+        p=1.0,
+    )
     transform = A.Compose(
-        [
-            A.ConstrainedCoarseDropout(
-                num_holes_range=(2, 2),  # Fixed 2 holes per object
-                hole_height_range=(0.3, 0.3),  # Fixed 30% of object height
-                hole_width_range=(0.3, 0.3),  # Fixed 30% of object width
-                bbox_labels=bbox_labels,
-                p=1.0,
-            ),
-        ],
+        [ccd],
         strict=True,
         bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]),
         seed=137,
-        save_applied_params=True,
     )
 
     # Extract labels for bbox_params
@@ -1109,11 +1107,9 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
     bboxes_without_labels = [bbox[:4] for bbox in bboxes]
 
     # Apply transform
-    transformed = transform(image=image, bboxes=bboxes_without_labels, class_labels=labels)
+    transform(image=image, bboxes=bboxes_without_labels, class_labels=labels)
 
-    # Get applied parameters
-    applied_params = transformed["applied_transforms"][0][1]  # First transform's params
-    holes = applied_params["holes"]
+    holes = ccd.params["holes"]
 
     # Verify number of holes (2 per object)
     assert len(holes) == expected_num_objects * 2, (

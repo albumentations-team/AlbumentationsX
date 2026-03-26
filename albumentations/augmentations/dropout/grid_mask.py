@@ -106,4 +106,10 @@ class GridMask(BaseDropout):
             self.random_generator,
         )
 
+        self.applied_config = {
+            "num_grid_range": num_grid,
+            "line_width_range": line_width_ratio,
+            "rotation_range": rotation,
+        }
+
         return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}

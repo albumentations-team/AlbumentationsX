@@ -20,6 +20,13 @@ These guidelines represent our current best practices, developed through experie
 
 ## Code Style and Formatting
 
+### Line Length
+
+- Maximum line length is **120 characters** (enforced by ruff).
+- **Never** add `E501` to `pyproject.toml` or `# noqa: E501` inline suppression to work around long lines.
+- Long strings (docstrings, comments, expressions) must be split across multiple lines at a word or operator boundary.
+- For docstrings, wrap to the next line — the Google docstring format allows multi-line short descriptions.
+
 ### Pre-commit Hooks
 
 We use pre-commit hooks to maintain consistent code quality. These hooks automatically check and format your code before each commit.

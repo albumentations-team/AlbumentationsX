@@ -344,6 +344,8 @@ class Perspective(DualTransform):
                 image_shape,
             )
 
+        self.applied_config = {"scale": scale}
+
         return {
             "matrix": matrix,
             "max_height": max_height,
@@ -864,6 +866,12 @@ class Affine(DualTransform):
             self.py_random,
         )
         rotate = self.py_random.uniform(*self.rotate)
+
+        self.applied_config = {"rotate": rotate, "scale": scale, "shear": shear}
+        if self.translate_percent is not None:
+            self.applied_config["translate_percent"] = translate
+        elif self.translate_px is not None:
+            self.applied_config["translate_px"] = translate
 
         image_shift = fgeometric.center(image_shape)
         bbox_shift = fgeometric.center_bbox(image_shape)

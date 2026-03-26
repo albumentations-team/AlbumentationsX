@@ -347,8 +347,12 @@ class ImageCompression(ImageOnlyTransform):
     def get_params(self) -> dict[str, int | str]:
         image_type = ".jpg" if self.compression_type == "jpeg" else ".webp"
 
+        quality = self.py_random.randint(*self.quality_range)
+
+        self.applied_config = {"quality_range": quality}
+
         return {
-            "quality": self.py_random.randint(*self.quality_range),
+            "quality": quality,
             "image_type": image_type,
         }
 
@@ -476,8 +480,10 @@ class RandomSnow(ImageOnlyTransform):
         data: dict[str, Any],
     ) -> dict[str, np.ndarray | None]:
         image_shape = params["shape"][:2]
+        snow_point = self.py_random.uniform(*self.snow_point_range)
+
         result = {
-            "snow_point": self.py_random.uniform(*self.snow_point_range),
+            "snow_point": snow_point,
             "snow_texture": None,
             "sparkle_mask": None,
         }
@@ -489,6 +495,8 @@ class RandomSnow(ImageOnlyTransform):
             )
             result["snow_texture"] = snow_texture
             result["sparkle_mask"] = sparkle_mask
+
+        self.applied_config = {"snow_point_range": snow_point}
 
         return result
 
@@ -665,6 +673,8 @@ class RandomGravel(ImageOnlyTransform):
                     ],
                 )
 
+        self.applied_config = {"number_of_patches": self.number_of_patches, "gravel_roi": self.gravel_roi}
+
         return {"gravels_infos": np.array(gravels_info, dtype=np.int64)}
 
 
@@ -840,6 +850,15 @@ class RandomRain(ImageOnlyTransform):
         else:
             rain_drops = np.empty((0, 2), dtype=np.int32)
 
+        self.applied_config = {
+            "slant_range": slant,
+            "drop_length": drop_length,
+            "drop_width": self.drop_width,
+            "blur_value": self.blur_value,
+            "brightness_coefficient": self.brightness_coefficient,
+            "drop_color": self.drop_color,
+        }
+
         return {"drop_length": drop_length, "slant": slant, "rain_drops": rain_drops}
 
 
@@ -1013,6 +1032,8 @@ class RandomFog(ImageOnlyTransform):
             intensity,
             self.random_generator,
         )
+
+        self.applied_config = {"fog_coef_range": intensity, "alpha_coef": self.alpha_coef}
 
         return {
             "particle_positions": particle_positions,
@@ -1274,6 +1295,13 @@ class RandomSunFlare(ImageOnlyTransform):
                 ),
             )
 
+        self.applied_config = {
+            "angle_range": angle,
+            "num_flare_circles_range": num_circles,
+            "src_radius": self.src_radius,
+            "src_color": self.src_color,
+        }
+
         return {
             "circles": circles,
             "flare_center": (flare_center_x, flare_center_y),
@@ -1446,6 +1474,12 @@ class RandomShadow(ImageOnlyTransform):
             size=num_shadows,
         )
 
+        self.applied_config = {
+            "num_shadows_limit": num_shadows,
+            "shadow_dimension": self.shadow_dimension,
+            "shadow_roi": self.shadow_roi,
+        }
+
         return {"vertices_list": vertices_list, "intensities": intensities}
 
 
@@ -1568,6 +1602,8 @@ class RandomToneCurve(ImageOnlyTransform):
         result = {
             "num_channels": num_channels,
         }
+
+        self.applied_config = {"scale": self.scale}
 
         if self.per_channel and result["num_channels"] != 1:
             result["low_y"] = np.clip(
@@ -1704,10 +1740,20 @@ class HueSaturationValue(ImageOnlyTransform):
         return fpixel.shift_hsv_images(images, hue_shift, sat_shift, val_shift)
 
     def get_params(self) -> dict[str, float]:
+        hue_shift = self.py_random.uniform(*self.hue_shift_limit)
+        sat_shift = self.py_random.uniform(*self.sat_shift_limit)
+        val_shift = self.py_random.uniform(*self.val_shift_limit)
+
+        self.applied_config = {
+            "hue_shift_limit": hue_shift,
+            "sat_shift_limit": sat_shift,
+            "val_shift_limit": val_shift,
+        }
+
         return {
-            "hue_shift": self.py_random.uniform(*self.hue_shift_limit),
-            "sat_shift": self.py_random.uniform(*self.sat_shift_limit),
-            "val_shift": self.py_random.uniform(*self.val_shift_limit),
+            "hue_shift": hue_shift,
+            "sat_shift": sat_shift,
+            "val_shift": val_shift,
         }
 
 
@@ -1807,7 +1853,11 @@ class Solarize(ImageOnlyTransform):
         return self.apply(volumes, **params)
 
     def get_params(self) -> dict[str, float]:
-        return {"threshold": self.py_random.uniform(*self.threshold_range)}
+        threshold = self.py_random.uniform(*self.threshold_range)
+
+        self.applied_config = {"threshold_range": threshold}
+
+        return {"threshold": threshold}
 
 
 class Posterize(ImageOnlyTransform):
@@ -1920,9 +1970,12 @@ class Posterize(ImageOnlyTransform):
 
     def get_params(self) -> dict[str, Any]:
         if isinstance(self.num_bits, list):
-            num_bits = [self.py_random.randint(*i) for i in self.num_bits]
-            return {"num_bits": num_bits}
-        return {"num_bits": self.py_random.randint(*self.num_bits)}
+            num_bits_list = [self.py_random.randint(*i) for i in self.num_bits]
+            self.applied_config = {"num_bits": num_bits_list}
+            return {"num_bits": num_bits_list}
+        num_bits = self.py_random.randint(*self.num_bits)
+        self.applied_config = {"num_bits": num_bits}
+        return {"num_bits": num_bits}
 
 
 class Equalize(ImageOnlyTransform):
@@ -2216,6 +2269,11 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         alpha = 1.0 + self.py_random.uniform(*self.contrast_limit)
         beta = self.py_random.uniform(*self.brightness_limit)
 
+        self.applied_config = {
+            "brightness_limit": beta,
+            "contrast_limit": alpha - 1.0,
+        }
+
         return {
             "alpha": alpha,
             "beta": beta,
@@ -2324,6 +2382,8 @@ class GaussNoise(ImageOnlyTransform):
 
         sigma = self.py_random.uniform(*self.std_range)
         mean = self.py_random.uniform(*self.mean_range)
+
+        self.applied_config = {"std_range": sigma, "mean_range": mean}
 
         noise_map = fpixel.generate_spatial_noise(
             noise_type="gaussian",
@@ -2446,9 +2506,14 @@ class ISONoise(ImageOnlyTransform):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         random_seed = self.random_generator.integers(0, 2**32 - 1)
+        color_shift = self.py_random.uniform(*self.color_shift)
+        intensity = self.py_random.uniform(*self.intensity)
+
+        self.applied_config = {"color_shift": color_shift, "intensity": intensity}
+
         return {
-            "color_shift": self.py_random.uniform(*self.color_shift),
-            "intensity": self.py_random.uniform(*self.intensity),
+            "color_shift": color_shift,
+            "intensity": intensity,
             "random_seed": random_seed,
         }
 
@@ -2533,7 +2598,11 @@ class CLAHE(ImageOnlyTransform):
         return fpixel.clahe(img, clip_limit, self.tile_grid_size)
 
     def get_params(self) -> dict[str, float]:
-        return {"clip_limit": self.py_random.uniform(*self.clip_limit)}
+        clip_limit = self.py_random.uniform(*self.clip_limit)
+
+        self.applied_config = {"clip_limit": clip_limit}
+
+        return {"clip_limit": clip_limit}
 
 
 class ChannelShuffle(ImageOnlyTransform):
@@ -2752,8 +2821,12 @@ class RandomGamma(ImageOnlyTransform):
         return self.apply(images, gamma=gamma)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        gamma = self.py_random.uniform(*self.gamma_limit)
+
+        self.applied_config = {"gamma_limit": gamma}
+
         return {
-            "gamma": self.py_random.uniform(*self.gamma_limit) / 100.0,
+            "gamma": gamma / 100.0,
         }
 
 
@@ -3243,7 +3316,11 @@ class Downscale(ImageOnlyTransform):
         )
 
     def get_params(self) -> dict[str, Any]:
-        return {"scale": self.py_random.uniform(*self.scale_range)}
+        scale = self.py_random.uniform(*self.scale_range)
+
+        self.applied_config = {"scale_range": scale}
+
+        return {"scale": scale}
 
 
 class MultiplicativeNoise(ImageOnlyTransform):
@@ -3565,6 +3642,13 @@ class ColorJitter(ImageOnlyTransform):
         saturation = self.py_random.uniform(*self.saturation)
         hue = self.py_random.uniform(*self.hue)
 
+        self.applied_config = {
+            "brightness": brightness,
+            "contrast": contrast,
+            "saturation": saturation,
+            "hue": hue,
+        }
+
         order = ["brightness", "contrast", "saturation", "hue"]
         self.random_generator.shuffle(order)
 
@@ -3788,6 +3872,7 @@ class Sharpen(ImageOnlyTransform):
 
         if self.method == "kernel":
             lightness = self.py_random.uniform(*self.lightness)
+            self.applied_config = {"alpha": alpha, "lightness": lightness}
             return {
                 "alpha": alpha,
                 "sharpening_matrix": self.__generate_sharpening_matrix(
@@ -3796,6 +3881,7 @@ class Sharpen(ImageOnlyTransform):
                 ),
             }
 
+        self.applied_config = {"alpha": alpha}
         return {"alpha": alpha, "sharpening_matrix": None}
 
     def apply(
@@ -3906,6 +3992,7 @@ class Emboss(ImageOnlyTransform):
             alpha_sample=alpha,
             strength_sample=strength,
         )
+        self.applied_config = {"alpha": alpha, "strength": strength}
         return {"emboss_matrix": emboss_matrix}
 
     def apply(
@@ -4056,6 +4143,7 @@ class Superpixels(ImageOnlyTransform):
     def get_params(self) -> dict[str, Any]:
         n_segments = self.py_random.randint(*self.n_segments)
         p = self.py_random.uniform(*self.p_replace)
+        self.applied_config = {"n_segments": n_segments, "p_replace": p}
         return {
             "replace_samples": self.random_generator.random(n_segments) < p,
             "n_segments": n_segments,
@@ -4203,6 +4291,7 @@ class RingingOvershoot(ImageOnlyTransform):
         # Normalize kernel
         kernel = kernel.astype(np.float32) / reduce_sum(kernel)
 
+        self.applied_config = {"blur_limit": ksize, "cutoff": cutoff}
         return {"kernel": kernel}
 
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
@@ -4316,15 +4405,11 @@ class UnsharpMask(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        return {
-            "ksize": self.py_random.randrange(
-                self.blur_limit[0],
-                self.blur_limit[1] + 1,
-                2,
-            ),
-            "sigma": self.py_random.uniform(*self.sigma_limit),
-            "alpha": self.py_random.uniform(*self.alpha),
-        }
+        ksize = self.py_random.randrange(self.blur_limit[0], self.blur_limit[1] + 1, 2)
+        sigma = self.py_random.uniform(*self.sigma_limit)
+        alpha = self.py_random.uniform(*self.alpha)
+        self.applied_config = {"blur_limit": ksize, "sigma_limit": sigma, "alpha": alpha}
+        return {"ksize": ksize, "sigma": sigma, "alpha": alpha}
 
     def apply(
         self,
@@ -4588,6 +4673,14 @@ class Spatter(ImageOnlyTransform):
         # Important line, without it the rain effect looses drops
         liquid_layer[liquid_layer < cutout_threshold] = 0
 
+        self.applied_config = {
+            "mean": mean,
+            "std": std,
+            "cutout_threshold": cutout_threshold,
+            "gauss_sigma": sigma,
+            "intensity": intensity,
+        }
+
         if mode == "rain":
             return {
                 "mode": "rain",
@@ -4785,6 +4878,10 @@ class ChromaticAberration(ImageOnlyTransform):
                 secondary_distortion_blue,
             )
 
+        self.applied_config = {
+            "primary_distortion_limit": (primary_distortion_red, primary_distortion_blue),
+            "secondary_distortion_limit": (secondary_distortion_red, secondary_distortion_blue),
+        }
         return {
             "primary_distortion_red": primary_distortion_red,
             "secondary_distortion_red": secondary_distortion_red,
@@ -5021,6 +5118,7 @@ class PlanckianJitter(ImageOnlyTransform):
             self.temperature_limit[1],
         )
 
+        self.applied_config = {"temperature_limit": int(temperature)}
         return {"temperature": int(temperature)}
 
 
@@ -5095,8 +5193,10 @@ class ShotNoise(ImageOnlyTransform):
         return fpixel.shot_noise(img, scale, np.random.default_rng(random_seed))
 
     def get_params(self) -> dict[str, Any]:
+        scale = self.py_random.uniform(*self.scale_range)
+        self.applied_config = {"scale_range": scale}
         return {
-            "scale": self.py_random.uniform(*self.scale_range),
+            "scale": scale,
             "random_seed": self.random_generator.integers(0, 2**32 - 1),
         }
 
@@ -5613,6 +5713,8 @@ class SaltAndPepper(ImageOnlyTransform):
         total_amount = self.py_random.uniform(*self.amount)
         salt_ratio = self.py_random.uniform(*self.salt_vs_pepper)
 
+        self.applied_config = {"amount": total_amount, "salt_vs_pepper": salt_ratio}
+
         area = height * width
 
         num_pixels = int(area * total_amount)
@@ -5802,6 +5904,8 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         brightness = self.py_random.uniform(*self.brightness_range)
         contrast = self.py_random.uniform(*self.contrast_range)
 
+        self.applied_config = {"brightness_range": brightness, "contrast_range": contrast}
+
         # Generate plasma pattern
         plasma = fpixel.generate_plasma_pattern(
             target_shape=shape[:2],
@@ -5962,6 +6066,8 @@ class PlasmaShadow(ImageOnlyTransform):
 
         # Sample shadow intensity
         intensity = self.py_random.uniform(*self.shadow_intensity_range)
+
+        self.applied_config = {"shadow_intensity_range": intensity}
 
         # Generate plasma pattern
         plasma = fpixel.generate_plasma_pattern(
@@ -6177,12 +6283,14 @@ class Illumination(ImageOnlyTransform):
 
         if self.mode == "linear":
             angle = self.py_random.uniform(*self.angle_range)
+            self.applied_config = {"intensity_range": abs(intensity), "angle_range": angle}
             return {
                 "intensity": intensity,
                 "angle": angle,
             }
         if self.mode == "corner":
             corner = self.py_random.randint(0, 3)  # Choose random corner
+            self.applied_config = {"intensity_range": abs(intensity)}
             return {
                 "intensity": intensity,
                 "corner": corner,
@@ -6191,6 +6299,7 @@ class Illumination(ImageOnlyTransform):
         x = self.py_random.uniform(*self.center_range)
         y = self.py_random.uniform(*self.center_range)
         sigma = self.py_random.uniform(*self.sigma_range)
+        self.applied_config = {"intensity_range": abs(intensity), "center_range": (x, y), "sigma_range": sigma}
         return {
             "intensity": intensity,
             "center": (x, y),
@@ -6572,18 +6681,18 @@ class HEStain(ImageOnlyTransform):
         stain_matrix = self._get_stain_matrix(image)
 
         # Generate random scaling and shift parameters for both H&E channels
-        scale_factors = np.array(
-            [
-                self.py_random.uniform(*self.intensity_scale_range),
-                self.py_random.uniform(*self.intensity_scale_range),
-            ],
-        )
-        shift_values = np.array(
-            [
-                self.py_random.uniform(*self.intensity_shift_range),
-                self.py_random.uniform(*self.intensity_shift_range),
-            ],
-        )
+        scale_h = self.py_random.uniform(*self.intensity_scale_range)
+        scale_e = self.py_random.uniform(*self.intensity_scale_range)
+        shift_h = self.py_random.uniform(*self.intensity_shift_range)
+        shift_e = self.py_random.uniform(*self.intensity_shift_range)
+
+        scale_factors = np.array([scale_h, scale_e])
+        shift_values = np.array([shift_h, shift_e])
+
+        self.applied_config = {
+            "intensity_scale_range": (scale_h, scale_e),
+            "intensity_shift_range": (shift_h, shift_e),
+        }
 
         return {
             "stain_matrix": stain_matrix,
@@ -6946,6 +7055,17 @@ class PhotoMetricDistort(ImageOnlyTransform):
         else:
             channel_permutation = None
 
+        applied: dict[str, Any] = {}
+        if brightness_factor is not None:
+            applied["brightness_range"] = brightness_factor
+        if contrast_factor is not None:
+            applied["contrast_range"] = contrast_factor
+        if saturation_factor is not None:
+            applied["saturation_range"] = saturation_factor
+        if hue_factor is not None:
+            applied["hue_range"] = hue_factor
+        self.applied_config = applied
+
         return {
             "brightness_factor": brightness_factor,
             "contrast_factor": contrast_factor,
@@ -7097,10 +7217,14 @@ class Vignetting(ImageOnlyTransform):
         return result
 
     def get_params(self) -> dict[str, float]:
+        intensity = self.py_random.uniform(*self.intensity_range)
+        center_x = self.py_random.uniform(*self.center_range)
+        center_y = self.py_random.uniform(*self.center_range)
+        self.applied_config = {"intensity_range": intensity, "center_range": (center_x, center_y)}
         return {
-            "intensity": self.py_random.uniform(*self.intensity_range),
-            "center_x": self.py_random.uniform(*self.center_range),
-            "center_y": self.py_random.uniform(*self.center_range),
+            "intensity": intensity,
+            "center_x": center_x,
+            "center_y": center_y,
         }
 
 
@@ -7322,6 +7446,7 @@ class FilmGrain(ImageOnlyTransform):
 
         grain = grain[:, :, 0]
 
+        self.applied_config = {"intensity_range": intensity, "grain_size_range": grain_size}
         return {
             "grain": grain,
             "intensity": intensity,
@@ -7408,9 +7533,12 @@ class Halftone(ImageOnlyTransform):
         return result
 
     def get_params(self) -> dict[str, Any]:
+        dot_size = self.py_random.randint(*self.dot_size_range)
+        blend = self.py_random.uniform(*self.blend_range)
+        self.applied_config = {"dot_size_range": dot_size, "blend_range": blend}
         return {
-            "dot_size": self.py_random.randint(*self.dot_size_range),
-            "blend": self.py_random.uniform(*self.blend_range),
+            "dot_size": dot_size,
+            "blend": blend,
         }
 
 
@@ -7586,6 +7714,12 @@ class LensFlare(ImageOnlyTransform):
         bloom_frac = self.py_random.uniform(*self.bloom_range)
         bloom_radius = max(1, int(diag * bloom_frac)) | 1
 
+        self.applied_config = {
+            "intensity_range": intensity,
+            "num_rays_range": num_rays,
+            "num_ghosts_range": num_ghosts,
+            "bloom_range": bloom_frac,
+        }
         return {
             "flare_center": (fx, fy),
             "ghosts": ghosts,
@@ -7717,6 +7851,7 @@ class AtmosphericFog(ImageOnlyTransform):
         actual_max = float(albucore.MAX_VALUES_BY_DTYPE[img_dtype])
         fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)
 
+        self.applied_config = {"density_range": density}
         return {
             "density": density,
             "depth_map": depth_map,

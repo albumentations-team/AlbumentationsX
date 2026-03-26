@@ -1874,6 +1874,10 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
 
         crop_coords = fcrops.get_crop_coords(image_shape, crop_shape, h_start, w_start)
 
+        self.applied_config = {
+            "min_max_height": (crop_height, crop_height),
+        }
+
         return {"crop_coords": crop_coords}
 
 
@@ -2079,6 +2083,11 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
                 h_start = self.py_random.random()
                 w_start = self.py_random.random()
                 crop_coords = fcrops.get_crop_coords(image_shape, (height, width), h_start, w_start)
+                sampled_scale = target_area / area
+                self.applied_config = {
+                    "scale": (sampled_scale, sampled_scale),
+                    "ratio": (aspect_ratio, aspect_ratio),
+                }
                 return {"crop_coords": crop_coords}
 
         # Fallback to central crop - use proper function
@@ -2094,6 +2103,12 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
             height = image_height
 
         crop_coords = fcrops.get_center_crop_coords(image_shape, (height, width))
+        fallback_scale = (width * height) / area
+        fallback_ratio = width / height if height > 0 else 1.0
+        self.applied_config = {
+            "scale": (fallback_scale, fallback_scale),
+            "ratio": (fallback_ratio, fallback_ratio),
+        }
         return {"crop_coords": crop_coords}
 
 
@@ -2973,13 +2988,27 @@ class CropAndPad(DualTransform):
         else:
             pad_params = []
 
+        sampled_fill = None if pad_params is None else self._get_pad_value(self.fill)
+        sampled_fill_mask = (
+            None if pad_params is None else self._get_pad_value(cast("tuple[float, ...] | float", self.fill_mask))
+        )
+
+        applied_config: dict[str, Any] = {}
+        if self.px is not None:
+            applied_config["px"] = tuple(new_params)
+        else:
+            applied_config["percent"] = tuple(percent_params)
+        if sampled_fill is not None:
+            applied_config["fill"] = sampled_fill
+        if sampled_fill_mask is not None:
+            applied_config["fill_mask"] = sampled_fill_mask
+        self.applied_config = applied_config
+
         return {
             "crop_params": crop_params or None,
             "pad_params": pad_params or None,
-            "fill": None if pad_params is None else self._get_pad_value(self.fill),
-            "fill_mask": None
-            if pad_params is None
-            else self._get_pad_value(cast("tuple[float, ...] | float", self.fill_mask)),
+            "fill": sampled_fill,
+            "fill_mask": sampled_fill_mask,
             "result_shape": (result_rows, result_cols),
         }
 
@@ -3185,6 +3214,13 @@ class RandomCropFromBorders(BaseCrop):
         y_max = self.py_random.randint(max(y_min + 1, int((1 - self.crop_bottom) * height)), height)
 
         crop_coords = x_min, y_min, x_max, y_max
+
+        self.applied_config = {
+            "crop_left": x_min / width if width > 0 else 0.0,
+            "crop_right": 1.0 - x_max / width if width > 0 else 0.0,
+            "crop_top": y_min / height if height > 0 else 0.0,
+            "crop_bottom": 1.0 - y_max / height if height > 0 else 0.0,
+        }
 
         return {"crop_coords": crop_coords}
 

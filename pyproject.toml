@@ -410,7 +410,10 @@ verbose = false
 check_references = true
 
 # Pre-commit hook check-google-docstrings reads this section (see package README).
-# First paragraph: 120-160 chars (elevator pitch). First paragraph = two lines (line limit 120). See .cursor/skills/docstring-deep-dive and docs/contributing/coding_guidelines.md.
+# First paragraph: 120-160 chars (concatenated). Each physical line must be <= 120 chars (ruff E501).
+# Solution: split the first paragraph across two lines; the hook joins them with a space.
+# NEVER add E501 to pyproject ignores or use # noqa: E501 — split long lines instead.
+# See .cursor/skills/docstring-deep-dive and docs/contributing/coding_guidelines.md.
 [tool.docstring_checker]
 paths = [ "albumentations" ]
 require_param_types = true

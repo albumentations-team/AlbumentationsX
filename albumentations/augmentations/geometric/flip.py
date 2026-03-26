@@ -587,10 +587,11 @@ class D4(DualTransform):
 
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
         if self.group_element is not None:
-            return {"group_element": self.group_element}
-        return {
-            "group_element": self.random_generator.choice(d4_group_elements),
-        }
+            group_element = self.group_element
+        else:
+            group_element = self.random_generator.choice(d4_group_elements)
+        self.applied_config = {"group_element": group_element}
+        return {"group_element": group_element}
 
     def inverse(self) -> D4:
         """Return a new D4 with the inverse group element to undo this transform. Use after inference

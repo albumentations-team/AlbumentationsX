@@ -235,6 +235,10 @@ class TextImage(ImageOnlyTransform):
             for bbox_index in bbox_indices_to_update
         ]
 
+        self.applied_config = {
+            "fraction_range": fraction,
+        }
+
         return {
             "overlay_data": overlay_data,
         }

@@ -66,6 +66,12 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - **Flag as important**: Unused imports, variables
 - Dead code wastes maintenance effort and confuses developers
 
+### Line Length
+
+- Max line length is **120 characters** (enforced by ruff `E501`).
+- **Never** add `E501` to `pyproject.toml` ignores or use `# noqa: E501`.
+- Long lines must be split at a word/operator boundary. Docstrings can wrap — Google format allows multi-line short descriptions.
+
 ### Code Patterns
 
 ```python

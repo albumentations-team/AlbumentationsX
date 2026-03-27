@@ -164,6 +164,7 @@ class Blur(ImageOnlyTransform):
             self.blur_limit[0],
             self.blur_limit[1],
         )
+        self.applied_config = {"blur_limit": kernel}
         return {"kernel": kernel}
 
 
@@ -416,7 +417,12 @@ class MotionBlur(Blur):
         angle = self.py_random.uniform(*self.angle_range)
         direction = self.py_random.uniform(*self.direction_range)
 
-        # Create motion blur kernel
+        self.applied_config = {
+            "blur_limit": ksize,
+            "angle_range": angle,
+            "direction_range": direction,
+        }
+
         kernel = fblur.create_motion_kernel(
             ksize,
             angle,
@@ -740,6 +746,7 @@ class GaussianBlur(ImageOnlyTransform):
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, float]:
         sigma = self.py_random.uniform(*self.sigma_limit)
         ksize = self.py_random.randint(*self.blur_limit)
+        self.applied_config = {"sigma_limit": sigma, "blur_limit": ksize}
         return {"kernel": fblur.create_gaussian_kernel_1d(sigma, ksize)}
 
 
@@ -1232,6 +1239,14 @@ class AdvancedBlur(ImageOnlyTransform):
             else self.py_random.uniform(1, self.beta_limit[1])
         )
 
+        self.applied_config = {
+            "blur_limit": ksize,
+            "sigma_x_limit": sigma_x,
+            "sigma_y_limit": sigma_y,
+            "rotate_limit": float(np.rad2deg(angle)),
+            "beta_limit": beta,
+        }
+
         noise_matrix = self.random_generator.uniform(
             *self.noise_limit,
             size=(ksize, ksize),
@@ -1402,10 +1417,10 @@ class Defocus(ImageOnlyTransform):
         return self._apply_to_batch(images, lambda img: fpixel.convolve(img, kernel))
 
     def get_params(self) -> dict[str, Any]:
-        return {
-            "radius": self.py_random.randint(*self.radius),
-            "alias_blur": self.py_random.uniform(*self.alias_blur),
-        }
+        radius = self.py_random.randint(*self.radius)
+        alias_blur = self.py_random.uniform(*self.alias_blur)
+        self.applied_config = {"radius": radius, "alias_blur": alias_blur}
+        return {"radius": radius, "alias_blur": alias_blur}
 
 
 class ZoomBlur(ImageOnlyTransform):
@@ -1537,4 +1552,5 @@ class ZoomBlur(ImageOnlyTransform):
     def get_params(self) -> dict[str, Any]:
         step_factor = self.py_random.uniform(*self.step_factor)
         max_factor = max(1 + step_factor, self.py_random.uniform(*self.max_factor))
+        self.applied_config = {"step_factor": step_factor, "max_factor": max_factor}
         return {"zoom_factors": np.arange(1.0, max_factor, step_factor)}

@@ -114,4 +114,8 @@ class ChannelDropout(ImageOnlyTransform):
         num_drop_channels = self.py_random.randint(*self.channel_drop_range)
         channels_to_drop = self.py_random.sample(range(num_channels), k=num_drop_channels)
 
+        self.applied_config = {
+            "channel_drop_range": num_drop_channels,
+        }
+
         return {"channels_to_drop": channels_to_drop}

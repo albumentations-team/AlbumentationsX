@@ -412,6 +412,10 @@ class PixelDropout(DualTransform):
                 self.random_generator,
             )
 
+        self.applied_config = {
+            "dropout_prob": self.dropout_prob,
+        }
+
         return {
             "drop_mask": drop_mask,
             "drop_values": drop_values,

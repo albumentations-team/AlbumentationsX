@@ -11,7 +11,7 @@ import inspect
 import random
 from collections.abc import Callable, Sequence
 from copy import deepcopy
-from typing import Any
+from typing import Any, ClassVar
 from warnings import warn
 
 import cv2
@@ -94,10 +94,13 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
     class InitSchema(BaseTransformInitSchema):
         pass
 
+    _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
+
     def __init__(self, p: float = 0.5):
         self.p = p
         self._additional_targets: dict[str, str] = {}
         self.params: dict[Any, Any] = {}
+        self.applied_config: dict[str, Any] = {}
         self._key2func = {}
         self._set_keys()
         self.processors: dict[str, BboxProcessor | KeypointsProcessor] = {}
@@ -264,14 +267,14 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
                 return self.apply_with_params(self.params, **kwargs)
             return kwargs
 
-        # Reset params at the start of each call
         self.params = {}
+        self.applied_config = {}
 
         if self.should_apply(force_apply=force_apply):
             params = self.get_params()
             params = self.update_transform_params(params=params, data=kwargs)
 
-            if self.targets_as_params:  # check if all required targets are in kwargs.
+            if self.targets_as_params:
                 missing_keys = set(self.targets_as_params).difference(kwargs.keys())
                 if missing_keys and not (missing_keys == {"image"} and "images" in kwargs):
                     msg = f"{self.__class__.__name__} requires {self.targets_as_params} missing keys: {missing_keys}"
@@ -280,8 +283,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             params_dependent_on_data = self.get_params_dependent_on_data(params=params, data=kwargs)
             params.update(params_dependent_on_data)
 
-            # Store the final params
             self.params = params
+
+            self._build_applied_config()
 
             if self.deterministic:
                 kwargs[self.save_key][id(self)] = deepcopy(params)
@@ -294,6 +298,64 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         dict if transform was not applied.
         """
         return self.params
+
+    def get_applied_config(self) -> dict[str, Any]:
+        """Return the full applied_config from the last call, with all constructor params
+        and range params resolved to sampled scalar values. Lightweight and JSON-safe.
+
+        Empty dict if the transform was not applied. Range params are overridden by concrete
+        values sampled in get_params / get_params_dependent_on_data.
+        """
+        return self.applied_config
+
+    @classmethod
+    def _get_valid_config_keys(cls) -> frozenset[str]:
+        if (
+            "_valid_applied_config_keys_cache" not in cls.__dict__
+            or cls.__dict__["_valid_applied_config_keys_cache"] is None
+        ):
+            all_param_names: set[str] = set()
+            for klass in cls.__mro__:
+                if klass is object or "__init__" not in klass.__dict__:
+                    continue
+                try:
+                    init_method = klass.__dict__["__init__"]
+                    sig = inspect.signature(init_method)
+                    for name, param in sig.parameters.items():
+                        if param.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}:
+                            all_param_names.add(name)
+                except (ValueError, TypeError):
+                    continue
+            cls._valid_applied_config_keys_cache = frozenset(all_param_names - {"self", "strict"})
+        return cls._valid_applied_config_keys_cache  # type: ignore[return-value]
+
+    def _build_applied_config(self) -> None:
+        """Assemble the final applied_config by merging all constructor defaults with sampled overrides,
+        then validate the override keys.
+
+        Starts with get_base_init_args() + get_transform_init_args() (all constructor params
+        with instance values, e.g. blur_limit=(3,7), interpolation=1). Then overrides with
+        self.applied_config entries set by get_params/get_params_dependent_on_data (e.g.
+        blur_limit=5 — the concrete sampled value).
+
+        Validates that all override keys are valid constructor param names.
+        """
+        overrides = self.applied_config
+
+        if overrides:
+            invalid = set(overrides) - self._get_valid_config_keys()
+            if invalid:
+                msg = (
+                    f"{self.__class__.__name__}.applied_config has keys {invalid} "
+                    f"that are not constructor params. Valid keys: {sorted(self._get_valid_config_keys())}"
+                )
+                raise ValueError(msg)
+
+        config = self.get_base_init_args()
+        config.update(self.get_transform_init_args())
+        config.update(overrides)
+
+        self.applied_config = config
 
     def inverse(self) -> "BasicTransform":
         """Return a new transform that is the mathematical inverse of this one. Useful for TTA to

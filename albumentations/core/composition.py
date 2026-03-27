@@ -7,11 +7,13 @@ proper data flow and maintaining consistent behavior across the augmentation pip
 """
 
 import contextlib
+import inspect
 import random
+import types
 import warnings
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
-from typing import Any, Union, cast
+from typing import Any, Union, cast, get_args, get_origin
 
 import cv2
 import numpy as np
@@ -29,6 +31,7 @@ from .serialization import (
     Serializable,
     get_shortest_class_fullname,
     instantiate_nonserializable,
+    register_additional_transforms,
 )
 from .transforms_interface import BasicTransform
 from .utils import DataProcessor, format_args, get_shape
@@ -48,6 +51,65 @@ __all__ = [
 ]
 
 NUM_ONEOF_TRANSFORMS = 2
+
+_RANGE_PARAMS_CACHE: dict[type, frozenset[str]] = {}
+
+
+def _get_range_param_names(cls: type) -> frozenset[str]:
+    """Return constructor parameter names whose type annotation accepts a tuple range value
+    (e.g. tuple[int, int] | int). Results are cached per class for performance.
+    """
+    if cls in _RANGE_PARAMS_CACHE:
+        return _RANGE_PARAMS_CACHE[cls]
+
+    range_params: set[str] = set()
+    for klass in cls.__mro__:
+        if klass is object or "__init__" not in klass.__dict__:
+            continue
+        try:
+            sig = inspect.signature(klass.__dict__["__init__"])
+            for name, param in sig.parameters.items():
+                if name == "self" or param.annotation is inspect.Parameter.empty:
+                    continue
+                if _annotation_accepts_tuple(param.annotation):
+                    range_params.add(name)
+        except (ValueError, TypeError):
+            continue
+
+    result = frozenset(range_params)
+    _RANGE_PARAMS_CACHE[cls] = result
+    return result
+
+
+def _annotation_accepts_tuple(annotation: Any) -> bool:
+    """Return True if the annotation includes tuple as an accepted type
+    (e.g. tuple[int,int]|int). Handles typing.Union, types.UnionType (X|Y), and str annotations.
+    """
+    origin = get_origin(annotation)
+
+    if origin is tuple:
+        return True
+
+    if origin is Union or isinstance(annotation, types.UnionType):
+        return any(_annotation_accepts_tuple(arg) for arg in get_args(annotation))
+
+    return isinstance(annotation, str) and "tuple" in annotation.lower()
+
+
+def _wrap_scalars_for_replay(cls: type, config: dict[str, Any]) -> dict[str, Any]:
+    """Convert scalar values in config to (v,v) degenerate range tuples for params
+    that expect ranges (e.g. blur_limit=5 becomes (5,5)) to skip symmetric expansion.
+    """
+    range_params = _get_range_param_names(cls)
+    result = {}
+    for key, value in config.items():
+        if key in range_params and not isinstance(value, (tuple, list)):
+            result[key] = (value, value)
+        else:
+            result[key] = value
+    return result
+
+
 REPR_INDENT_STEP = 2
 
 TransformType = Union[BasicTransform, "BaseCompose"]
@@ -171,11 +233,13 @@ class BaseCompose(Serializable):
         self.save_applied_params = save_applied_params
 
     def _track_transform_params(self, transform: TransformType, data: dict[str, Any]) -> None:
-        """Track transform parameters if tracking is enabled. Appends (transform_name, params)
-        to data['applied_transforms'] when save_applied_params is True.
+        """Append a (class_fullname, applied_config) tuple to applied_transforms when
+        save_applied_params=True. Skipped transforms (empty applied_config) are not recorded.
         """
-        if "applied_transforms" in data and hasattr(transform, "params") and transform.params:
-            data["applied_transforms"].append((transform.__class__.__name__, transform.params.copy()))
+        if "applied_transforms" in data and hasattr(transform, "applied_config") and transform.applied_config:
+            data["applied_transforms"].append(
+                (transform.get_class_fullname(), transform.applied_config.copy()),
+            )
 
     def set_random_state(
         self,
@@ -929,6 +993,40 @@ class Compose(BaseCompose, HubMixin):
             data = self.check_data_post_transform(data)
 
         return self.postprocess(data)
+
+    @staticmethod
+    def from_applied_transforms(
+        applied_transforms: list[tuple[str, dict[str, Any]]],
+    ) -> "Compose":
+        """Reconstruct a Compose pipeline from the applied_transforms list
+        captured in a previous run; each entry is instantiated with p=1.0 for replay.
+
+        Each (class_fullname, applied_config) pair is instantiated with p=1.0. Range params
+        resolved to scalars during the original run are wrapped as (v, v) degenerate tuples so
+        the constructor's InitSchema validator accepts them without symmetric expansion.
+        This fixes constructor-level randomness only — transforms with internal randomness
+        (random crop positions, dropout masks, etc.) may still vary between runs.
+
+        Args:
+            applied_transforms (list[tuple[str, dict[str, Any]]]): List of (class_fullname, applied_config)
+                tuples as produced by Compose when save_applied_params=True.
+
+        Returns:
+            Compose: A pipeline with p=1.0 for all transforms and constructor params
+                fixed to the values sampled in the original run.
+
+        """
+        register_additional_transforms()
+        transforms = []
+        for class_name, config in applied_transforms:
+            cls = SERIALIZABLE_REGISTRY[class_name]
+
+            replay_config = _wrap_scalars_for_replay(cls, config)
+            replay_config["p"] = 1.0
+
+            transforms.append(cls(**replay_config))
+
+        return Compose(transforms, p=1.0)
 
     def _check_worker_seed(self) -> None:
         """Check and update random seed in worker context. Recalculates effective seed and

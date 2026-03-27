@@ -574,6 +574,10 @@ class Mosaic(DualTransform):
             py_random=self.py_random,
         )
 
+        self.applied_config = {
+            "center_range": center_xy,
+        }
+
         return fmixing.calculate_cell_placements(
             grid_yx=self.grid_yx,
             cell_shape=self.cell_shape,

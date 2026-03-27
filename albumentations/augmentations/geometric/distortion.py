@@ -472,28 +472,26 @@ class ElasticTransform(BaseDistortion):
         height, width = params["shape"][:2]
         kernel_size = (17, 17) if self.approximate else (0, 0)
 
-        # Sample map resolution
         map_resolution = self.py_random.uniform(
             self.map_resolution_range[0],
             self.map_resolution_range[1],
         )
 
-        # Calculate scaled dimensions
+        self.applied_config = {"map_resolution_range": map_resolution}
+
         scaled_height = max(1, int(height * map_resolution))
         scaled_width = max(1, int(width * map_resolution))
 
-        # Generate displacement fields at scaled resolution
         dx, dy = fgeometric.generate_displacement_fields(
             (scaled_height, scaled_width),
-            self.alpha * map_resolution,  # Scale alpha proportionally
-            self.sigma * map_resolution,  # Scale sigma proportionally
+            self.alpha * map_resolution,
+            self.sigma * map_resolution,
             same_dxdy=self.same_dxdy,
             kernel_size=kernel_size,
             random_generator=self.random_generator,
             noise_distribution=self.noise_distribution,
         )
 
-        # Generate coordinate grids and apply displacement
         y_coords, x_coords = np.meshgrid(
             np.arange(scaled_height, dtype=np.float32),
             np.arange(scaled_width, dtype=np.float32),
@@ -502,7 +500,6 @@ class ElasticTransform(BaseDistortion):
         map_x = (x_coords + dx).astype(np.float32)
         map_y = (y_coords + dy).astype(np.float32)
 
-        # Upscale maps to original resolution if needed
         if map_resolution < 1.0:
             map_x, map_y = fgeometric.upscale_distortion_maps(
                 map_x,
@@ -667,13 +664,11 @@ class PiecewiseAffine(BaseDistortion):
         image_shape = params["shape"][:2]
         height, width = image_shape
 
-        # Sample map resolution
         map_resolution = self.py_random.uniform(
             self.map_resolution_range[0],
             self.map_resolution_range[1],
         )
 
-        # Calculate scaled dimensions
         scaled_height = max(1, int(height * map_resolution))
         scaled_width = max(1, int(width * map_resolution))
         scaled_shape = (scaled_height, scaled_width)
@@ -681,6 +676,13 @@ class PiecewiseAffine(BaseDistortion):
         nb_rows = np.clip(self.py_random.randint(*self.nb_rows), 2, None)
         nb_cols = np.clip(self.py_random.randint(*self.nb_cols), 2, None)
         scale = self.py_random.uniform(*self.scale)
+
+        self.applied_config = {
+            "scale": scale,
+            "nb_rows": int(nb_rows),
+            "nb_cols": int(nb_cols),
+            "map_resolution_range": map_resolution,
+        }
 
         map_x, map_y = fgeometric.create_piecewise_affine_maps(
             image_shape=scaled_shape,
@@ -690,7 +692,6 @@ class PiecewiseAffine(BaseDistortion):
             random_generator=self.random_generator,
         )
 
-        # Upscale maps to original resolution if needed
         if map_resolution < 1.0:
             map_x, map_y = fgeometric.upscale_distortion_maps(
                 map_x,
@@ -833,33 +834,33 @@ class OpticalDistortion(BaseDistortion):
         image_shape = params["shape"][:2]
         height, width = image_shape
 
-        # Sample map resolution
         map_resolution = self.py_random.uniform(
             self.map_resolution_range[0],
             self.map_resolution_range[1],
         )
 
-        # Calculate scaled dimensions
+        k = self.py_random.uniform(*self.distort_limit)
+
+        self.applied_config = {
+            "distort_limit": k,
+            "map_resolution_range": map_resolution,
+        }
+
         scaled_height = max(1, int(height * map_resolution))
         scaled_width = max(1, int(width * map_resolution))
         scaled_shape = (scaled_height, scaled_width)
 
-        # Get distortion coefficient
-        k = self.py_random.uniform(*self.distort_limit)
-
-        # Get distortion maps based on mode
         if self.mode == "camera":
             map_x, map_y = fgeometric.get_camera_matrix_distortion_maps(
                 scaled_shape,
                 k,
             )
-        else:  # fisheye
+        else:
             map_x, map_y = fgeometric.get_fisheye_distortion_maps(
                 scaled_shape,
                 k,
             )
 
-        # Upscale maps to original resolution if needed
         if map_resolution < 1.0:
             map_x, map_y = fgeometric.upscale_distortion_maps(
                 map_x,
@@ -1009,13 +1010,13 @@ class GridDistortion(BaseDistortion):
         image_shape = params["shape"][:2]
         height, width = image_shape
 
-        # Sample map resolution
         map_resolution = self.py_random.uniform(
             self.map_resolution_range[0],
             self.map_resolution_range[1],
         )
 
-        # Calculate scaled dimensions
+        self.applied_config = {"map_resolution_range": map_resolution}
+
         scaled_height = max(1, int(height * map_resolution))
         scaled_width = max(1, int(width * map_resolution))
         scaled_shape = (scaled_height, scaled_width)
@@ -1042,7 +1043,6 @@ class GridDistortion(BaseDistortion):
             self.num_steps,
         )
 
-        # Upscale maps to original resolution if needed
         if map_resolution < 1.0:
             map_x, map_y = fgeometric.upscale_distortion_maps(
                 map_x,
@@ -1247,8 +1247,9 @@ class ThinPlateSpline(BaseDistortion):
 
         src_points = fgeometric.generate_control_points(self.num_control_points)
 
-        # Add random displacement to destination points
         scale = self.py_random.uniform(*self.scale_range) / 10
+
+        self.applied_config = {"scale_range": scale * 10, "map_resolution_range": map_resolution}
         dst_points = src_points + self.random_generator.normal(
             0,
             scale,
@@ -1408,9 +1409,18 @@ class WaterRefraction(BaseDistortion):
         height, width = image_shape
 
         img_size = min(height, width)
-        amplitude = self.py_random.uniform(*self.amplitude_range) * img_size
-        wavelength = self.py_random.uniform(*self.wavelength_range) * img_size
+        amplitude_frac = self.py_random.uniform(*self.amplitude_range)
+        wavelength_frac = self.py_random.uniform(*self.wavelength_range)
         num_waves = self.py_random.randint(*self.num_waves_range)
+
+        self.applied_config = {
+            "amplitude_range": amplitude_frac,
+            "wavelength_range": wavelength_frac,
+            "num_waves_range": num_waves,
+        }
+
+        amplitude = amplitude_frac * img_size
+        wavelength = wavelength_frac * img_size
 
         map_x, map_y = fpixel.generate_water_displacement_maps(
             image_shape,

@@ -155,4 +155,11 @@ class GridDropout(BaseDropout):
             self.shift_xy,
             self.random_generator,
         )
+
+        self.applied_config = {
+            "holes_number_xy": grid,
+            "ratio": self.ratio,
+            "shift_xy": self.shift_xy,
+        }
+
         return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}

@@ -979,16 +979,19 @@ class LetterBox(DualTransform):
     def apply(
         self,
         img: ImageType,
-        scale: float,
+        new_height: int,
+        new_width: int,
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
     ) -> ImageType:
-        img_h, img_w = img.shape[:2]
-        new_h, new_w = max(1, round(img_h * scale)), max(1, round(img_w * scale))
-        resized = fgeometric.resize(img, (new_h, new_w), interpolation=self.interpolation)
+        resized = fgeometric.resize(
+            img,
+            (new_height, new_width),
+            interpolation=self.interpolation,
+        )
         return fgeometric.pad_with_params(
             resized,
             pad_top,
@@ -1002,16 +1005,19 @@ class LetterBox(DualTransform):
     def apply_to_mask(
         self,
         mask: ImageType,
-        scale: float,
+        new_height: int,
+        new_width: int,
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
     ) -> ImageType:
-        img_h, img_w = mask.shape[:2]
-        new_h, new_w = max(1, round(img_h * scale)), max(1, round(img_w * scale))
-        resized = fgeometric.resize(mask, (new_h, new_w), interpolation=self.mask_interpolation)
+        resized = fgeometric.resize(
+            mask,
+            (new_height, new_width),
+            interpolation=self.mask_interpolation,
+        )
         return fgeometric.pad_with_params(
             resized,
             pad_top,
@@ -1025,7 +1031,8 @@ class LetterBox(DualTransform):
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,
-        scale: float,
+        new_height: int,
+        new_width: int,
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
@@ -1035,11 +1042,9 @@ class LetterBox(DualTransform):
         # Bboxes are normalized [0,1] w.r.t. original image dimensions.
         # Uniform-scale resize keeps normalized coords unchanged.
         # Padding shifts them: denormalize in resized space, shift, renormalize in padded space.
-        img_h, img_w = params["shape"][:2]
-        new_h, new_w = max(1, round(img_h * scale)), max(1, round(img_w * scale))
         target_h, target_w = self.size
 
-        bboxes_abs = denormalize_bboxes(bboxes, (new_h, new_w))
+        bboxes_abs = denormalize_bboxes(bboxes, (new_height, new_width))
         padded_abs = fgeometric.pad_bboxes(
             bboxes_abs,
             pad_top,
@@ -1047,7 +1052,7 @@ class LetterBox(DualTransform):
             pad_left,
             pad_right,
             cv2.BORDER_CONSTANT,
-            image_shape=(new_h, new_w),
+            image_shape=(new_height, new_width),
         )
         return normalize_bboxes(padded_abs, (target_h, target_w))
 
@@ -1055,14 +1060,14 @@ class LetterBox(DualTransform):
         self,
         keypoints: np.ndarray,
         scale: float,
+        new_height: int,
+        new_width: int,
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
     ) -> np.ndarray:
-        img_h, img_w = params["shape"][:2]
-        new_h, new_w = max(1, round(img_h * scale)), max(1, round(img_w * scale))
         scaled = fgeometric.keypoints_scale(keypoints, scale, scale)
         return fgeometric.pad_keypoints(
             scaled,
@@ -1071,7 +1076,7 @@ class LetterBox(DualTransform):
             pad_left,
             pad_right,
             cv2.BORDER_CONSTANT,
-            image_shape=(new_h, new_w),
+            image_shape=(new_height, new_width),
         )
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
@@ -1100,6 +1105,8 @@ class LetterBox(DualTransform):
 
         return {
             "scale": scale,
+            "new_height": new_h,
+            "new_width": new_w,
             "pad_top": pad_top,
             "pad_bottom": pad_bottom,
             "pad_left": pad_left,

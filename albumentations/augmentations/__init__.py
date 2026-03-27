@@ -17,7 +17,12 @@ from .mixing.domain_adaptation import *
 from .mixing.transforms import *
 from .other.lambda_transform import *
 from .other.type_transform import *
+from .pixel.channel import *
+from .pixel.color import *
+from .pixel.compression import *
+from .pixel.noise import *
 from .pixel.transforms import *
+from .pixel.weather import *
 from .spectrogram.transform import *
 from .text.transforms import *
 from .transforms3d.transforms import *

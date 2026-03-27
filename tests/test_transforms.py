@@ -1334,6 +1334,7 @@ def test_change_image(augmentation_cls, params, image):
             A.ToRGB,
             A.ChannelDropout,
             A.LongestMaxSize,
+            A.LetterBox,
             A.PadIfNeeded,
             A.RandomCropFromBorders,
             A.SmallestMaxSize,
@@ -2129,3 +2130,155 @@ def test_flip_inverse_roundtrip(transform_cls: type) -> None:
     restored = aug.inverse()(image=augmented)["image"]
     np.testing.assert_array_equal(restored, image)
     assert isinstance(aug.inverse(), transform_cls)
+
+
+# ===========================================================================
+# LetterBox
+# ===========================================================================
+
+
+@pytest.mark.parametrize(
+    ("input_shape", "target_size"),
+    [
+        ((480, 640, 3), (640, 640)),
+        ((640, 480, 3), (640, 640)),
+        ((100, 100, 3), (64, 128)),
+        ((100, 100, 3), (128, 64)),
+        ((200, 200, 3), (200, 200)),  # exact match, no resize or pad
+        ((300, 100, 3), (100, 100)),  # tall image
+    ],
+)
+def test_letterbox_output_shape(input_shape, target_size):
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, input_shape, dtype=np.uint8)
+    aug = A.Compose([A.LetterBox(size=target_size, p=1.0)])
+    result = aug(image=image)["image"]
+    assert result.shape[:2] == target_size, f"Expected {target_size}, got {result.shape[:2]}"
+
+
+@pytest.mark.parametrize("target_size", [(64, 64), (128, 96)])
+def test_letterbox_mask_output_shape(target_size):
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (100, 150, 3), dtype=np.uint8)
+    mask = rng.integers(0, 2, (100, 150), dtype=np.uint8)
+    aug = A.Compose([A.LetterBox(size=target_size, p=1.0)])
+    result = aug(image=image, mask=mask)
+    assert result["image"].shape[:2] == target_size
+    assert result["mask"].shape[:2] == target_size
+
+
+@pytest.mark.parametrize(
+    "position",
+    ["center", "top_left", "top_right", "bottom_left", "bottom_right"],
+)
+def test_letterbox_positions(position):
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (100, 150, 3), dtype=np.uint8)
+    aug = A.Compose([A.LetterBox(size=(200, 200), position=position, fill=114, p=1.0)])
+    result = aug(image=image)["image"]
+    assert result.shape == (200, 200, 3)
+
+
+def test_letterbox_fill_value():
+    """Padding region should be exactly the fill value."""
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    fill_val = 114
+    target_size = (200, 200)
+    aug = A.Compose([A.LetterBox(size=target_size, fill=fill_val, position="top_left", p=1.0)])
+    result = aug(image=image)["image"]
+    # wide image (100x200) -> fits width exactly at scale=1, pad_top=50
+    pad_bottom = result[150:, :, :]
+    np.testing.assert_array_equal(pad_bottom, fill_val)
+
+
+def test_letterbox_preserves_aspect_ratio():
+    """The resized content region must have the correct aspect ratio."""
+    image = np.ones((100, 200, 3), dtype=np.uint8) * 200
+    target_size = (300, 300)
+    aug = A.Compose([A.LetterBox(size=target_size, fill=0, position="center", p=1.0)])
+    result = aug(image=image)["image"]
+    # 100x200 -> scale=min(300/100, 300/200)=1.5 -> 150x300, pad_top=75
+    # center row should be 200, padding rows should be 0
+    np.testing.assert_array_equal(result[0, 0], 0)  # top padding
+    np.testing.assert_array_equal(result[150, 0], 200)  # image content
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_letterbox_dtypes(dtype):
+    rng = np.random.default_rng(137)
+    if dtype == np.uint8:
+        image = rng.integers(0, 256, (80, 120, 3), dtype=np.uint8)
+    else:
+        image = rng.random((80, 120, 3), dtype=np.float32)
+    aug = A.Compose([A.LetterBox(size=(128, 128), p=1.0)])
+    result = aug(image=image)["image"]
+    assert result.dtype == dtype
+    assert result.shape == (128, 128, 3)
+
+
+def test_letterbox_bboxes():
+    """Bboxes should be adjusted correctly after letterboxing."""
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    # bbox covers the full image in pascal_voc coords
+    bboxes = np.array([[0.0, 0.0, 200.0, 100.0]])
+    bbox_labels = [1]
+    target_size = (200, 200)
+    aug = A.Compose(
+        [A.LetterBox(size=target_size, fill=0, position="center", p=1.0)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+    )
+    result = aug(image=image, bboxes=bboxes, bbox_labels=bbox_labels)
+    out_bboxes = result["bboxes"]
+    assert len(out_bboxes) == 1
+    # image (100x200) -> scale=min(200/100, 200/200)=1.0 -> 100x200, pad_top=50, pad_bottom=50
+    # full-image bbox in padded space: (0,50,200,150)
+    out_x1, out_y1, out_x2, out_y2 = out_bboxes[0][:4]
+    np.testing.assert_allclose(out_x1, 0.0, atol=1e-4)
+    np.testing.assert_allclose(out_y1, 50.0, atol=1e-4)
+    np.testing.assert_allclose(out_x2, 200.0, atol=1e-4)
+    np.testing.assert_allclose(out_y2, 150.0, atol=1e-4)
+
+
+def test_letterbox_keypoints():
+    """Keypoints should be shifted by the padding offset."""
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    # keypoint at center of image
+    keypoints = np.array([[100.0, 50.0]])
+    keypoint_labels = [0]
+    target_size = (200, 200)
+    aug = A.Compose(
+        [A.LetterBox(size=target_size, fill=0, position="center", p=1.0)],
+        keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
+    )
+    result = aug(image=image, keypoints=keypoints, keypoint_labels=keypoint_labels)
+    out_kps = result["keypoints"]
+    assert len(out_kps) == 1
+    # scale=1.0, pad_top=50 -> kp moves from (100,50) to (100,100)
+    np.testing.assert_allclose(out_kps[0][0], 100.0, atol=1.0)
+    np.testing.assert_allclose(out_kps[0][1], 100.0, atol=1.0)
+
+
+def test_letterbox_equivalent_to_longestmaxsize_padifneeded():
+    """LetterBox must match LongestMaxSize + PadIfNeeded output pixel-for-pixel."""
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (480, 640, 3), dtype=np.uint8)
+    target_size = (640, 640)
+    fill_val = 114
+
+    letterbox = A.Compose([A.LetterBox(size=target_size, fill=fill_val, position="center", p=1.0)])
+    composed = A.Compose(
+        [
+            A.LongestMaxSize(max_size=640),
+            A.PadIfNeeded(
+                min_height=640,
+                min_width=640,
+                border_mode=0,
+                fill=fill_val,
+                position="center",
+            ),
+        ],
+    )
+
+    lb_result = letterbox(image=image)["image"]
+    cp_result = composed(image=image)["image"]
+    np.testing.assert_array_equal(lb_result, cp_result)

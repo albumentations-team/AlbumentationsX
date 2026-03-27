@@ -85,6 +85,7 @@ class TransformTestHelper:
         A.Crop,
         A.CropAndPad,
         A.LongestMaxSize,
+        A.LetterBox,
         A.RandomScale,
         A.PadIfNeeded,
         A.SmallestMaxSize,

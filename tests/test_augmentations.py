@@ -256,6 +256,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
             A.CropAndPad,
             A.Resize,
             A.LongestMaxSize,
+            A.LetterBox,
             A.SmallestMaxSize,
             A.PadIfNeeded,
             A.RandomScale,
@@ -856,6 +857,11 @@ def test_pad_if_needed_position(params, image_shape):
             },
             A.Pad: {
                 "fill": 0,
+            },
+            A.LetterBox: {
+                "size": (128, 128),
+                "fill": 0,
+                "fill_mask": 0,
             },
             A.Resize: {
                 "interpolation": cv2.INTER_NEAREST,

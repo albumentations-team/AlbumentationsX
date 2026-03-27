@@ -277,6 +277,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [GridMask](https://explore.albumentations.ai/transform/GridMask)                                 | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 | [HorizontalFlip](https://explore.albumentations.ai/transform/HorizontalFlip)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [Lambda](https://explore.albumentations.ai/transform/Lambda)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [LetterBox](https://explore.albumentations.ai/transform/LetterBox)                               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [LongestMaxSize](https://explore.albumentations.ai/transform/LongestMaxSize)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [MaskDropout](https://explore.albumentations.ai/transform/MaskDropout)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 | [Morphological](https://explore.albumentations.ai/transform/Morphological)                       | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |

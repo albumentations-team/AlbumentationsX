@@ -31,6 +31,7 @@ from .serialization import (
     Serializable,
     get_shortest_class_fullname,
     instantiate_nonserializable,
+    register_additional_transforms,
 )
 from .transforms_interface import BasicTransform
 from .utils import DataProcessor, format_args, get_shape
@@ -997,21 +998,25 @@ class Compose(BaseCompose, HubMixin):
     def from_applied_transforms(
         applied_transforms: list[tuple[str, dict[str, Any]]],
     ) -> "Compose":
-        """Reconstruct a deterministic Compose pipeline from the applied_transforms list
+        """Reconstruct a Compose pipeline from the applied_transforms list
         captured in a previous run; each entry is instantiated with p=1.0 for replay.
 
         Each (class_fullname, applied_config) pair is instantiated with p=1.0. Range params
         resolved to scalars during the original run are wrapped as (v, v) degenerate tuples so
         the constructor's InitSchema validator accepts them without symmetric expansion.
+        This fixes constructor-level randomness only — transforms with internal randomness
+        (random crop positions, dropout masks, etc.) may still vary between runs.
 
         Args:
             applied_transforms (list[tuple[str, dict[str, Any]]]): List of (class_fullname, applied_config)
                 tuples as produced by Compose when save_applied_params=True.
 
         Returns:
-            Compose: A new pipeline that deterministically reproduces the original run's output.
+            Compose: A pipeline with p=1.0 for all transforms and constructor params
+                fixed to the values sampled in the original run.
 
         """
+        register_additional_transforms()
         transforms = []
         for class_name, config in applied_transforms:
             cls = SERIALIZABLE_REGISTRY[class_name]

@@ -3102,7 +3102,7 @@ def test_applied_config_histogram_matching():
     image = _make_test_image()
     reference = np.random.default_rng(42).integers(0, 256, (100, 100, 3), dtype=np.uint8)
 
-    aug = A.HistogramMatching(reference_images=[reference], blend_ratio=(0.5, 1.0), p=1.0)
+    aug = A.HistogramMatching(blend_ratio=(0.5, 1.0), p=1.0)
     aug(image=image, hm_metadata=[reference])
     _assert_applied_config_valid(aug)
 
@@ -3111,7 +3111,7 @@ def test_applied_config_fda():
     image = _make_test_image()
     reference = np.random.default_rng(42).integers(0, 256, (100, 100, 3), dtype=np.uint8)
 
-    aug = A.FDA(reference_images=[reference], beta_limit=(0.05, 0.1), p=1.0)
+    aug = A.FDA(beta_limit=(0.05, 0.1), p=1.0)
     aug(image=image, fda_metadata=[reference])
     _assert_applied_config_valid(aug)
 
@@ -3120,6 +3120,6 @@ def test_applied_config_pixel_distribution_adaptation():
     image = _make_test_image()
     reference = np.random.default_rng(42).integers(0, 256, (100, 100, 3), dtype=np.uint8)
 
-    aug = A.PixelDistributionAdaptation(reference_images=[reference], blend_ratio=(0.5, 1.0), p=1.0)
+    aug = A.PixelDistributionAdaptation(blend_ratio=(0.5, 1.0), p=1.0)
     aug(image=image, pda_metadata=[reference])
     _assert_applied_config_valid(aug)

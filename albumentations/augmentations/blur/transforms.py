@@ -1243,7 +1243,7 @@ class AdvancedBlur(ImageOnlyTransform):
             "blur_limit": ksize,
             "sigma_x_limit": sigma_x,
             "sigma_y_limit": sigma_y,
-            "rotate_limit": np.rad2deg(angle),
+            "rotate_limit": float(np.rad2deg(angle)),
             "beta_limit": beta,
         }
 

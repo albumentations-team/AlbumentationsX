@@ -157,7 +157,6 @@ class GridDropout(BaseDropout):
         )
 
         self.applied_config = {
-            "unit_size_range": grid,
             "holes_number_xy": grid,
             "ratio": self.ratio,
             "shift_xy": self.shift_xy,

@@ -12,13 +12,14 @@ import numpy as np
 from pydantic import Field, field_validator, model_validator
 from typing_extensions import Self
 
+from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 from albumentations.core.utils import to_tuple
 
 from . import functional as fgeometric
 
-__all__ = ["LongestMaxSize", "RandomScale", "Resize", "SmallestMaxSize"]
+__all__ = ["LetterBox", "LongestMaxSize", "RandomScale", "Resize", "SmallestMaxSize"]
 
 
 class RandomScale(DualTransform):
@@ -847,3 +848,267 @@ class Resize(DualTransform):
         scale_x = self.width / width
         scale_y = self.height / height
         return fgeometric.keypoints_scale(keypoints, scale_x, scale_y)
+
+
+class LetterBox(DualTransform):
+    """Scale image to fit a target canvas preserving aspect ratio, then pad to exact canvas size:
+        YOLO letterbox, equivalent to LongestMaxSize + PadIfNeeded.
+
+    The image is downscaled or upscaled so its longest side fits the target, then constant-color padding
+    fills the remaining area. All targets (masks, bboxes, keypoints) are adjusted accordingly.
+
+    Args:
+        size (tuple[int, int]): Target `(height, width)` of the output canvas.
+        interpolation (OpenCV flag): Interpolation method used when resizing the image.
+            Default: `cv2.INTER_LINEAR`.
+        mask_interpolation (OpenCV flag): Interpolation method used when resizing masks.
+            Default: `cv2.INTER_NEAREST`.
+        fill (tuple[float, ...] | float): Constant pixel value for image padding.
+            Default: `114`.
+        fill_mask (tuple[float, ...] | float): Constant pixel value for mask padding.
+            Default: `0`.
+        position (Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]):
+            Where to place the resized image on the canvas. Default: `"center"`.
+        p (float): Probability of applying the transform. Default: `1.0`.
+
+    Targets:
+        image, mask, bboxes, keypoints, volume, mask3d
+
+    Image types:
+        uint8, float32
+
+    Supported bboxes:
+        hbb, obb
+
+    Note:
+        - The output size is always exactly `(height, width)`.
+        - Images smaller than the target are upscaled; images larger are downscaled.
+        - Bounding boxes and keypoints are adjusted for both the resize and padding steps.
+        - `fill=114` is the YOLO convention for letterbox padding.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> import cv2
+        >>> image = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
+        >>> mask = np.random.randint(0, 2, (480, 640), dtype=np.uint8)
+        >>> bboxes = np.array([[100, 80, 300, 200]], dtype=np.float32)
+        >>> bbox_labels = [1]
+        >>> keypoints = np.array([[200, 150]], dtype=np.float32)
+        >>> keypoint_labels = [0]
+        >>>
+        >>> transform = A.Compose([
+        ...     A.LetterBox(size=(640, 640), fill=114, fill_mask=0, p=1.0)
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
+        >>>
+        >>> result = transform(
+        ...     image=image,
+        ...     mask=mask,
+        ...     bboxes=bboxes,
+        ...     bbox_labels=bbox_labels,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels,
+        ... )
+        >>> result['image'].shape
+        (640, 640, 3)
+
+    """
+
+    _targets = ALL_TARGETS
+    _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+
+    class InitSchema(BaseTransformInitSchema):
+        size: tuple[int, int]
+        interpolation: Literal[
+            cv2.INTER_NEAREST,
+            cv2.INTER_NEAREST_EXACT,
+            cv2.INTER_LINEAR,
+            cv2.INTER_CUBIC,
+            cv2.INTER_AREA,
+            cv2.INTER_LANCZOS4,
+            cv2.INTER_LINEAR_EXACT,
+        ]
+        mask_interpolation: Literal[
+            cv2.INTER_NEAREST,
+            cv2.INTER_NEAREST_EXACT,
+            cv2.INTER_LINEAR,
+            cv2.INTER_CUBIC,
+            cv2.INTER_AREA,
+            cv2.INTER_LANCZOS4,
+            cv2.INTER_LINEAR_EXACT,
+        ]
+        fill: tuple[float, ...] | float
+        fill_mask: tuple[float, ...] | float
+        position: Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]
+
+    def __init__(
+        self,
+        size: tuple[int, int],
+        interpolation: Literal[
+            cv2.INTER_NEAREST,
+            cv2.INTER_NEAREST_EXACT,
+            cv2.INTER_LINEAR,
+            cv2.INTER_CUBIC,
+            cv2.INTER_AREA,
+            cv2.INTER_LANCZOS4,
+            cv2.INTER_LINEAR_EXACT,
+        ] = cv2.INTER_LINEAR,
+        mask_interpolation: Literal[
+            cv2.INTER_NEAREST,
+            cv2.INTER_NEAREST_EXACT,
+            cv2.INTER_LINEAR,
+            cv2.INTER_CUBIC,
+            cv2.INTER_AREA,
+            cv2.INTER_LANCZOS4,
+            cv2.INTER_LINEAR_EXACT,
+        ] = cv2.INTER_NEAREST,
+        fill: tuple[float, ...] | float = 114,
+        fill_mask: tuple[float, ...] | float = 0,
+        position: Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"] = "center",
+        p: float = 1.0,
+    ):
+        super().__init__(p=p)
+        self.size = size
+        self.interpolation = interpolation
+        self.mask_interpolation = mask_interpolation
+        self.fill = fill
+        self.fill_mask = fill_mask
+        self.position = position
+
+    def apply(
+        self,
+        img: ImageType,
+        new_height: int,
+        new_width: int,
+        pad_top: int,
+        pad_bottom: int,
+        pad_left: int,
+        pad_right: int,
+        **params: Any,
+    ) -> ImageType:
+        resized = fgeometric.resize(
+            img,
+            (new_height, new_width),
+            interpolation=self.interpolation,
+        )
+        return fgeometric.pad_with_params(
+            resized,
+            pad_top,
+            pad_bottom,
+            pad_left,
+            pad_right,
+            border_mode=cv2.BORDER_CONSTANT,
+            value=self.fill,
+        )
+
+    def apply_to_mask(
+        self,
+        mask: ImageType,
+        new_height: int,
+        new_width: int,
+        pad_top: int,
+        pad_bottom: int,
+        pad_left: int,
+        pad_right: int,
+        **params: Any,
+    ) -> ImageType:
+        resized = fgeometric.resize(
+            mask,
+            (new_height, new_width),
+            interpolation=self.mask_interpolation,
+        )
+        return fgeometric.pad_with_params(
+            resized,
+            pad_top,
+            pad_bottom,
+            pad_left,
+            pad_right,
+            border_mode=cv2.BORDER_CONSTANT,
+            value=self.fill_mask,
+        )
+
+    def apply_to_bboxes(
+        self,
+        bboxes: np.ndarray,
+        new_height: int,
+        new_width: int,
+        pad_top: int,
+        pad_bottom: int,
+        pad_left: int,
+        pad_right: int,
+        **params: Any,
+    ) -> np.ndarray:
+        # Bboxes are normalized [0,1] w.r.t. original image dimensions.
+        # Uniform-scale resize keeps normalized coords unchanged.
+        # Padding shifts them: denormalize in resized space, shift, renormalize in padded space.
+        target_h, target_w = self.size
+
+        bboxes_abs = denormalize_bboxes(bboxes, (new_height, new_width))
+        padded_abs = fgeometric.pad_bboxes(
+            bboxes_abs,
+            pad_top,
+            pad_bottom,
+            pad_left,
+            pad_right,
+            cv2.BORDER_CONSTANT,
+            image_shape=(new_height, new_width),
+        )
+        return normalize_bboxes(padded_abs, (target_h, target_w))
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        scale: float,
+        new_height: int,
+        new_width: int,
+        pad_top: int,
+        pad_bottom: int,
+        pad_left: int,
+        pad_right: int,
+        **params: Any,
+    ) -> np.ndarray:
+        scaled = fgeometric.keypoints_scale(keypoints, scale, scale)
+        return fgeometric.pad_keypoints(
+            scaled,
+            pad_top,
+            pad_bottom,
+            pad_left,
+            pad_right,
+            cv2.BORDER_CONSTANT,
+            image_shape=(new_height, new_width),
+        )
+
+    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        img_h, img_w = params["shape"][:2]
+        target_h, target_w = self.size
+
+        scale = min(target_h / img_h, target_w / img_w)
+        new_h, new_w = max(1, round(img_h * scale)), max(1, round(img_w * scale))
+
+        pad_h = target_h - new_h
+        pad_w = target_w - new_w
+
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+
+        pad_top, pad_bottom, pad_left, pad_right = fgeometric.adjust_padding_by_position(
+            h_top=pad_top,
+            h_bottom=pad_bottom,
+            w_left=pad_left,
+            w_right=pad_right,
+            position=self.position,
+            py_random=self.py_random,
+        )
+
+        return {
+            "scale": scale,
+            "new_height": new_h,
+            "new_width": new_w,
+            "pad_top": pad_top,
+            "pad_bottom": pad_bottom,
+            "pad_left": pad_left,
+            "pad_right": pad_right,
+        }

@@ -183,6 +183,14 @@ AUGMENTATION_CLS_PARAMS = [
     [A.Resize, {"height": 64, "width": 64}],
     [A.SmallestMaxSize, {"max_size": 64, "interpolation": cv2.INTER_AREA}],
     [A.LongestMaxSize, [{"max_size": 128}, {"max_size_hw": (127, 126)}]],
+    [
+        A.LetterBox,
+        [
+            {"size": (128, 128)},
+            {"size": (128, 64), "position": "top_left"},
+            {"size": (64, 128), "position": "bottom_right"},
+        ],
+    ],
     [A.RandomGridShuffle, {"grid": (4, 4)}],
     [A.Solarize, {"threshold_range": [0.5, 0.5]}],
     [A.Posterize, {"num_bits": (3, 5)}],

@@ -122,7 +122,7 @@ class TestChannelSwap:
     def test_channel_count_mismatch_returns_unchanged(self):
         img = _make_image(shape=(50, 50, 1), seed=4)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
-        with pytest.warns(UserWarning, match="channel_order has 3 elements but image has 1"):
+        with pytest.warns(UserWarning, match="channel_order has 3 elements but data has 1"):
             result = aug(image=img)["image"]
         np.testing.assert_array_equal(result, img)
 
@@ -175,7 +175,7 @@ class TestChannelSwap:
     def test_volume_channel_mismatch_unchanged(self):
         volume = _make_image(shape=(4, 50, 50, 1), seed=9)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
-        with pytest.warns(UserWarning, match="channel_order has 3 elements but .* have 1"):
+        with pytest.warns(UserWarning, match="channel_order has 3 elements but data has 1"):
             result = aug(volume=volume)["volume"]
         np.testing.assert_array_equal(result, volume)
 

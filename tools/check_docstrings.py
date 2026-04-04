@@ -26,7 +26,7 @@ if __name__ == "__main__":
         )
         sys.exit(1)
     repo_root = Path.cwd().resolve()
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [sys.executable, "-I", "-m", "tools.check_docstrings"],
         cwd=repo_root,
         check=False,

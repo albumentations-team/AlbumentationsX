@@ -183,3 +183,6 @@ data/
 notebooks/
 
 release_notes/
+
+# Local scratch / internal artifacts (never commit contents)
+_internal/

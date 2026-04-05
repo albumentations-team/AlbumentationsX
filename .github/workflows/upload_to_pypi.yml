@@ -28,7 +28,7 @@ jobs:
         python -m venv .release-venv
         . .release-venv/bin/activate
         python -m pip install --upgrade pip
-        python -m pip install "opencv-contrib-python-headless>=4.13.0.92"
+        python -m pip install "opencv-python-headless>=4.13.0.92"
         python -m pip install dist/*.whl
         cd /tmp
         python - <<'PY'

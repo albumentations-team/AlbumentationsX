@@ -103,7 +103,7 @@ jobs:
         activate-environment: true
     - name: Install all requirements
       run: |
-        uv pip install opencv-contrib-python-headless>=4.13.0.92 requests
+        uv pip install opencv-python-headless>=4.13.0.92 requests
         uv pip install .
     - name: Run checks for documentation
       run: python -m tools.make_transforms_docs check README.md

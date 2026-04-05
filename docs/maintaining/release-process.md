@@ -61,7 +61,7 @@ Each official release must publish:
 2. Prepare release notes.
 3. Ensure `main` is green and the version bump commit is merged.
 4. Publish the GitHub Release notes for the new version and create the matching tag as part of the release flow.
-6. GitHub Actions performs the release workflow:
+5. GitHub Actions performs the release workflow:
    - checks out the released tag/source
    - builds wheel and sdist with `uv build`
    - runs `twine check`
@@ -72,11 +72,11 @@ Each official release must publish:
    - computes `SHA256SUMS.txt`
    - uploads artifacts to the GitHub Release
    - publishes to PyPI via trusted publishing
-7. Verify the published release:
+6. Verify the published release:
    - release assets exist on GitHub
    - PyPI shows the new version
    - PyPI file details show provenance/attestation metadata
-8. If verification fails, pause announcements until the issue is resolved.
+7. If verification fails, pause announcements until the issue is resolved.
 
 ## Compatibility Checks
 

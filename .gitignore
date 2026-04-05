@@ -176,7 +176,7 @@ conda_build/
 
 .ruff_cache/
 
-uv.lock
+# uv.lock is intentionally tracked for reproducible release builds
 
 data/
 

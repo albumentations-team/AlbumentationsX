@@ -87,6 +87,8 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
+      actions: read
+      contents: read
     steps:
     - name: Download release artifacts
       uses: actions/download-artifact@v4

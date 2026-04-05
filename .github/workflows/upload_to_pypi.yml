@@ -21,12 +21,12 @@ jobs:
     - name: Resolve headless OpenCV dependency from pyproject
       run: |
         python - <<'PY' >> "$GITHUB_ENV"
-        import tomllib
+        import re
         from pathlib import Path
 
-        data = tomllib.loads(Path("pyproject.toml").read_text())
-        dependency = data["project"]["optional-dependencies"]["headless"][0]
-        print(f"OPENCV_HEADLESS_DEPENDENCY={dependency}")
+        text = Path("pyproject.toml").read_text()
+        dep = re.search(r'^headless\s*=\s*\["([^"]+)"\]', text, re.MULTILINE).group(1)
+        print(f"OPENCV_HEADLESS_DEPENDENCY={dep}")
         PY
     - name: Build distributions
       run: |

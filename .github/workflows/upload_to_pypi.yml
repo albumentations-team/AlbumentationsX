@@ -18,6 +18,16 @@ jobs:
         enable-cache: true
         python-version: "3.10"
         activate-environment: true
+    - name: Resolve headless OpenCV dependency from pyproject
+      run: |
+        python - <<'PY' >> "$GITHUB_ENV"
+        import tomllib
+        from pathlib import Path
+
+        data = tomllib.loads(Path("pyproject.toml").read_text())
+        dependency = data["project"]["optional-dependencies"]["headless"][0]
+        print(f"OPENCV_HEADLESS_DEPENDENCY={dependency}")
+        PY
     - name: Build distributions
       run: |
         uv build
@@ -25,10 +35,12 @@ jobs:
       run: uv tool run --from twine twine check dist/*
     - name: Smoke test built wheel
       run: |
-        python -m venv .release-venv
-        . .release-venv/bin/activate
+        VENV_DIR="$(mktemp -d /tmp/albumentationsx-release-venv.XXXXXX)"
+        trap 'rm -rf "$VENV_DIR"' EXIT
+        python -m venv "$VENV_DIR"
+        . "$VENV_DIR/bin/activate"
         python -m pip install --upgrade pip
-        python -m pip install "opencv-python-headless>=4.13.0.92"
+        python -m pip install "${OPENCV_HEADLESS_DEPENDENCY}"
         python -m pip install dist/*.whl
         cd /tmp
         python - <<'PY'
@@ -40,10 +52,9 @@ jobs:
       run: uv export --frozen --no-dev --format requirements-txt --output-file dist/runtime-requirements.txt
     - name: Generate CycloneDX SBOM
       run: |
-        uv tool run --from cyclonedx-bom cyclonedx-py requirements \
+        uv tool run --from cyclonedx-bom cyclonedx-py requirements dist/runtime-requirements.txt \
           --output-format JSON \
-          --output-file "dist/albumentationsx-${{ github.event.release.tag_name }}-sbom.cdx.json" \
-          dist/runtime-requirements.txt
+          --output-file "dist/albumentationsx-${{ github.event.release.tag_name }}-sbom.cdx.json"
     - name: Generate checksums
       run: |
         (

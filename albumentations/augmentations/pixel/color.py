@@ -1689,10 +1689,7 @@ class ColorJitter(ImageOnlyTransform):
         return img
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = self.apply(image, **params)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
 class ChromaticAberration(ImageOnlyTransform):
@@ -2832,10 +2829,7 @@ class Illumination(ImageOnlyTransform):
         )
         gradient = gradient[..., np.newaxis]
 
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = albucore.multiply_by_array(image, gradient)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: albucore.multiply_by_array(image, gradient))
 
 
 class AutoContrast(ImageOnlyTransform):
@@ -3421,10 +3415,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
         return img
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = self.apply(image, **params)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
 class Vignetting(ImageOnlyTransform):
@@ -3501,10 +3492,7 @@ class Vignetting(ImageOnlyTransform):
         return fpixel.apply_vignette(img, intensity, center_x, center_y)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = self.apply(image, **params)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def get_params(self) -> dict[str, float]:
         intensity = self.py_random.uniform(*self.intensity_range)

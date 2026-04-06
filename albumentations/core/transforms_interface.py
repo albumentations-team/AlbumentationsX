@@ -460,9 +460,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             np.ndarray: Transformed batch array.
 
         """
-        # Handle empty batch
         if len(batch) == 0:
-            return batch
+            return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
 
         # Process first element to determine output shape
         first_result = apply_fn(batch[0])
@@ -479,6 +478,35 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         for i in range(1, len(batch)):
             result[i] = apply_fn(batch[i])
+
+        return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
+
+    @staticmethod
+    def _apply_to_batch_same_shape(
+        batch: np.ndarray,
+        apply_fn: Callable[[np.ndarray], np.ndarray],
+        *,
+        ensure_contiguous: bool = False,
+    ) -> np.ndarray:
+        """Apply a function to each batch element with pre-allocation when every output preserves
+        the input element shape and dtype.
+
+        Args:
+            batch (np.ndarray): Input batch array of shape (N, ...)
+            apply_fn (Callable[[np.ndarray], np.ndarray]): Function to apply to each element
+            ensure_contiguous (bool): Whether to ensure C-contiguous output
+
+        Returns:
+            np.ndarray: Transformed batch array.
+
+        """
+        if len(batch) == 0:
+            return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+
+        result = np.empty_like(batch)
+
+        for i, item in enumerate(batch):
+            result[i] = apply_fn(item)
 
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 

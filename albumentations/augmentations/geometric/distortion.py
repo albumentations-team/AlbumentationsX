@@ -30,7 +30,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import batch_transform, remap
+from albucore import remap
 from pydantic import (
     AfterValidator,
     Field,
@@ -267,17 +267,8 @@ class BaseDistortion(DualTransform):
             border_value=self.fill,
         )
 
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
-
-    @batch_transform("spatial")
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
-    @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
-        return self.apply_to_mask(mask3d, **params)
+        return self._apply_to_batch_same_shape(mask3d, lambda mask: self.apply_to_mask(mask, **params))
 
     def apply_to_mask(
         self,

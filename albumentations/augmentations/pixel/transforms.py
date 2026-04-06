@@ -418,10 +418,7 @@ class Sharpen(ImageOnlyTransform):
         return fpixel.sharpen_gaussian(img, alpha, self.kernel_size, self.sigma)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = self.apply(image, **params)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
 class Emboss(ImageOnlyTransform):
@@ -1165,10 +1162,7 @@ class Dithering(ImageOnlyTransform):
         )
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = self.apply(image, **params)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
 class Halftone(ImageOnlyTransform):
@@ -1245,10 +1239,7 @@ class Halftone(ImageOnlyTransform):
         return fpixel.apply_halftone(img, dot_size, blend)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = self.apply(image, **params)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def get_params(self) -> dict[str, Any]:
         dot_size = self.py_random.randint(*self.dot_size_range)
@@ -1388,10 +1379,7 @@ class LensFlare(ImageOnlyTransform):
         )
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = self.apply(image, **params)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def get_params_dependent_on_data(
         self,

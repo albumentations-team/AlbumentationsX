@@ -460,9 +460,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             np.ndarray: Transformed batch array.
 
         """
-        # Handle empty batch
         if len(batch) == 0:
-            return batch
+            return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
 
         # Process first element to determine output shape
         first_result = apply_fn(batch[0])
@@ -502,9 +501,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         """
         if len(batch) == 0:
-            return batch
+            return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
 
-        result = np.empty(batch.shape, dtype=batch.dtype)
+        result = np.empty_like(batch)
 
         for i, item in enumerate(batch):
             result[i] = apply_fn(item)

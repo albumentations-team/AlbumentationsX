@@ -3,6 +3,7 @@ import pytest
 from albucore import MAX_VALUES_BY_DTYPE
 from skimage.measure import label as ski_label
 
+import albumentations as A
 import albumentations.augmentations.dropout.functional as fdropout
 from albumentations.augmentations.dropout.functional import label as cv_label
 from tests.utils import set_seed
@@ -762,3 +763,106 @@ def test_sample_points_from_components_multiple_components(mask, num_points, exp
         # Check that sizes match expected values
         for size in unique_sizes:
             assert any(np.isclose(size, exp_size, rtol=0.1) for exp_size in expected_sizes)
+
+
+def test_grid_dropout_accepts_equal_unit_size_range():
+    image = np.zeros((32, 32, 3), dtype=np.uint8)
+    transform = A.Compose([A.GridDropout(ratio=0.5, unit_size_range=(8, 8), p=1.0)])
+
+    result = transform(image=image)
+
+    assert result["image"].shape == image.shape
+
+
+@pytest.mark.parametrize(
+    ["bboxes", "dropout_mask", "image_shape", "min_area", "min_visibility", "expected_count"],
+    [
+        # Float coordinates: box [10.3, 20.7, 30.9, 40.2] should be treated as
+        # covering pixels 10–30 wide and 20–41 tall (floor/ceil).  The dropout mask
+        # covers none of the box, so it must be kept.
+        (
+            np.array([[10.3, 20.7, 30.9, 40.2]], dtype=np.float32),
+            np.zeros((100, 100), dtype=bool),
+            (100, 100),
+            1,
+            0.1,
+            1,
+        ),
+        # Box that extends past the right and bottom image edges – should be clipped
+        # and still counted correctly rather than raising IndexError.
+        (
+            np.array([[80.0, 80.0, 120.0, 120.0]], dtype=np.float32),
+            np.zeros((100, 100), dtype=bool),
+            (100, 100),
+            1,
+            0.1,
+            1,
+        ),
+        # Fully negative coordinates – box lies entirely outside the image, so after
+        # clamping it becomes degenerate (area 0) and must be dropped.
+        (
+            np.array([[-30.0, -20.0, -5.0, -3.0]], dtype=np.float32),
+            np.zeros((100, 100), dtype=bool),
+            (100, 100),
+            1,
+            0.1,
+            0,
+        ),
+        # Box crossing the left/top edges (partially outside).  Only the in-image
+        # portion is covered; because the dropout mask is empty it should survive.
+        (
+            np.array([[-10.0, -10.0, 20.0, 20.0]], dtype=np.float32),
+            np.zeros((100, 100), dtype=bool),
+            (100, 100),
+            1,
+            0.1,
+            1,
+        ),
+        # Out-of-bounds box where dropout mask fully covers the clipped region –
+        # box must be filtered out.
+        (
+            np.array([[80.0, 80.0, 120.0, 120.0]], dtype=np.float32),
+            np.ones((100, 100), dtype=bool),
+            (100, 100),
+            1,
+            0.1,
+            0,
+        ),
+    ],
+)
+def test_mask_dropout_bboxes_edge_cases(
+    bboxes: np.ndarray,
+    dropout_mask: np.ndarray,
+    image_shape: tuple[int, int],
+    min_area: float,
+    min_visibility: float,
+    expected_count: int,
+) -> None:
+    result = fdropout.mask_dropout_bboxes(bboxes, dropout_mask, image_shape, min_area, min_visibility)
+    assert len(result) == expected_count, f"Expected {expected_count} boxes, got {len(result)}: {result}"
+
+
+def test_mask_dropout_bboxes_float_coords_dropped_area_accuracy() -> None:
+    """Floor/ceil rounding must give correct dropped-area counts on fractional boxes."""
+    image_shape = (100, 100)
+    dropout_mask = np.zeros(image_shape, dtype=bool)
+    dropout_mask[20:30, 10:20] = True  # 10×10 dropped region
+
+    # Box exactly covers the dropout region with fractional coordinates.
+    # After floor/ceil: x_min=10, y_min=20, x_max=20, y_max=30 → box_area=100, dropped=100
+    bboxes = np.array([[10.0, 20.0, 20.0, 30.0]], dtype=np.float32)
+    result = fdropout.mask_dropout_bboxes(bboxes, dropout_mask, image_shape, min_area=1, min_visibility=0.01)
+    assert len(result) == 0, "Fully occluded box should be removed"
+
+    # Box with fractional edges that just clip the dropout region.
+    # x_min=floor(9.8)=9, x_max=ceil(15.3)=16, y_min=floor(19.6)=19, y_max=ceil(25.2)=26
+    # box_area=(16-9)*(26-19)=49; dropped pixels = mask[19:26, 9:16] = mask[20:26, 10:16] = 36
+    bboxes_frac = np.array([[9.8, 19.6, 15.3, 25.2]], dtype=np.float32)
+    result_frac = fdropout.mask_dropout_bboxes(
+        bboxes_frac,
+        dropout_mask,
+        image_shape,
+        min_area=1,
+        min_visibility=0.01,
+    )
+    assert len(result_frac) == 1, "Partially visible box should be kept"

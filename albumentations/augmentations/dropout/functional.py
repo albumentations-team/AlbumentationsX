@@ -636,7 +636,7 @@ def calculate_grid_dimensions(
     if unit_size_range is not None:
         if unit_size_range[1] > min(image_shape[:2]):
             raise ValueError("Grid size limits must be within the shortest image edge.")
-        unit_size = random_generator.integers(*unit_size_range)
+        unit_size = random_generator.integers(unit_size_range[0], unit_size_range[1] + 1)
         return unit_size, unit_size
 
     if holes_number_xy:
@@ -770,23 +770,44 @@ def mask_dropout_bboxes(
         else:  # Shape is (C, H, W)
             dropout_mask = np.any(dropout_mask, axis=0)
 
-    # Create binary masks for each bounding box
-    y, x = np.ogrid[:height, :width]
-    box_masks = (
-        (x[None, :] >= bboxes[:, 0, None, None])
-        & (x[None, :] <= bboxes[:, 2, None, None])
-        & (y[None, :] >= bboxes[:, 1, None, None])
-        & (y[None, :] <= bboxes[:, 3, None, None])
+    # Use floor for inclusive min corners and ceil for exclusive max corners so
+    # fractional coordinates don't silently lose a pixel row/column.  Clip to
+    # valid image bounds to handle bboxes that extend outside the image (e.g.
+    # when clip_after_transform=False in BboxParams).
+    x_min = np.clip(np.floor(bboxes[:, 0]).astype(np.int32), 0, width)
+    y_min = np.clip(np.floor(bboxes[:, 1]).astype(np.int32), 0, height)
+    x_max = np.clip(np.ceil(bboxes[:, 2]).astype(np.int32), 0, width)
+    y_max = np.clip(np.ceil(bboxes[:, 3]).astype(np.int32), 0, height)
+
+    box_areas = (x_max - x_min) * (y_max - y_min)
+
+    # For typical detection workloads, summing the covered subregions directly is cheaper
+    # than building a full-image integral map. Switch only when boxes collectively cover
+    # the image many times over.
+    total_bbox_area = box_areas.sum(dtype=np.int64)
+    if total_bbox_area > dropout_mask.size * 8:
+        integral_mask = np.pad(dropout_mask.astype(np.int64), ((1, 0), (1, 0)))
+        integral_mask = integral_mask.cumsum(axis=0).cumsum(axis=1)
+        dropped_areas = (
+            integral_mask[y_max, x_max]
+            - integral_mask[y_min, x_max]
+            - integral_mask[y_max, x_min]
+            + integral_mask[y_min, x_min]
+        )
+    else:
+        dropped_areas = np.array(
+            [reduce_sum(dropout_mask[y1:y2, x1:x2]) for x1, y1, x2, y2 in zip(x_min, y_min, x_max, y_max, strict=True)],
+            dtype=np.int64,
+        )
+
+    visible_areas = box_areas - dropped_areas
+
+    visibility_ratio = np.divide(
+        visible_areas,
+        box_areas,
+        out=np.zeros_like(visible_areas, dtype=np.float64),
+        where=box_areas != 0,
     )
-
-    # Calculate the area of each bounding box
-    box_areas = (bboxes[:, 2] - bboxes[:, 0]) * (bboxes[:, 3] - bboxes[:, 1])
-
-    # Calculate the visible area of each box (non-intersecting area with dropout mask)
-    visible_areas = reduce_sum(box_masks & ~dropout_mask, axis=(1, 2))
-
-    # Calculate visibility ratio (visible area / total box area)
-    visibility_ratio = visible_areas / box_areas
 
     # Create a boolean mask for boxes to keep
     keep_mask = (visible_areas >= min_area) & (visibility_ratio >= min_visibility)
@@ -957,25 +978,38 @@ def sample_points_from_components(
     if num_labels == 1:  # Only background
         return None
 
-    centers = []
-    obj_sizes = []
-    for label in range(1, num_labels):  # Skip background (0)
-        points = np.argwhere(labels == label)  # Returns (y, x) coordinates
-        if len(points) == 0:
-            continue
+    y_coords, x_coords = np.nonzero(labels)
+    component_labels = labels[y_coords, x_coords]
+    foreground_mask = component_labels > 0
 
-        # Calculate object size once per component
-        obj_size = np.sqrt(len(points))
+    if not np.any(foreground_mask):
+        return None
 
-        # Randomly sample points from the component, allowing repeats
-        indices = random_generator.choice(len(points), size=num_points, replace=True)
-        sampled_points = points[indices]
-        # Convert from (y, x) to (x, y)
-        centers.extend(sampled_points[:, ::-1])
-        # Add corresponding object size for each point
-        obj_sizes.extend([obj_size] * num_points)
+    y_coords = y_coords[foreground_mask]
+    x_coords = x_coords[foreground_mask]
+    component_labels = component_labels[foreground_mask]
 
-    return (np.array(centers), np.array(obj_sizes)) if centers else None
+    order = np.argsort(component_labels, kind="stable")
+    y_coords = y_coords[order]
+    x_coords = x_coords[order]
+    component_labels = component_labels[order]
+
+    _, starts, counts = np.unique(component_labels, return_index=True, return_counts=True)
+
+    num_components = len(starts)
+    centers = np.empty((num_components * num_points, 2), dtype=np.int32)
+    obj_sizes = np.empty(num_components * num_points, dtype=np.float32)
+
+    offset = 0
+    for start, count in zip(starts, counts, strict=True):
+        sampled_indices = start + random_generator.integers(0, count, size=num_points)
+        next_offset = offset + num_points
+        centers[offset:next_offset, 0] = x_coords[sampled_indices]
+        centers[offset:next_offset, 1] = y_coords[sampled_indices]
+        obj_sizes[offset:next_offset] = np.sqrt(count)
+        offset = next_offset
+
+    return centers, obj_sizes
 
 
 def get_holes_from_mask(

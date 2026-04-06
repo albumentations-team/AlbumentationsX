@@ -3,6 +3,7 @@ import pytest
 from albucore import MAX_VALUES_BY_DTYPE
 from skimage.measure import label as ski_label
 
+import albumentations as A
 import albumentations.augmentations.dropout.functional as fdropout
 from albumentations.augmentations.dropout.functional import label as cv_label
 from tests.utils import set_seed
@@ -762,3 +763,12 @@ def test_sample_points_from_components_multiple_components(mask, num_points, exp
         # Check that sizes match expected values
         for size in unique_sizes:
             assert any(np.isclose(size, exp_size, rtol=0.1) for exp_size in expected_sizes)
+
+
+def test_grid_dropout_accepts_equal_unit_size_range():
+    image = np.zeros((32, 32, 3), dtype=np.uint8)
+    transform = A.Compose([A.GridDropout(ratio=0.5, unit_size_range=(8, 8), p=1.0)])
+
+    result = transform(image=image)
+
+    assert result["image"].shape == image.shape

@@ -759,6 +759,8 @@ def mask_dropout_bboxes(
         np.ndarray: Filtered and resized bounding boxes
 
     """
+    height, width = image_shape
+
     # Ensure dropout_mask is 2D
     if dropout_mask.ndim > 2:
         if dropout_mask.shape[0] == 1:  # Shape is (1, H, W)
@@ -768,11 +770,14 @@ def mask_dropout_bboxes(
         else:  # Shape is (C, H, W)
             dropout_mask = np.any(dropout_mask, axis=0)
 
-    bboxes_int = bboxes.astype(np.int32)
-    x_min = bboxes_int[:, 0]
-    y_min = bboxes_int[:, 1]
-    x_max = bboxes_int[:, 2]
-    y_max = bboxes_int[:, 3]
+    # Use floor for inclusive min corners and ceil for exclusive max corners so
+    # fractional coordinates don't silently lose a pixel row/column.  Clip to
+    # valid image bounds to handle bboxes that extend outside the image (e.g.
+    # when clip_after_transform=False in BboxParams).
+    x_min = np.clip(np.floor(bboxes[:, 0]).astype(np.int32), 0, width)
+    y_min = np.clip(np.floor(bboxes[:, 1]).astype(np.int32), 0, height)
+    x_max = np.clip(np.ceil(bboxes[:, 2]).astype(np.int32), 0, width)
+    y_max = np.clip(np.ceil(bboxes[:, 3]).astype(np.int32), 0, height)
 
     box_areas = (x_max - x_min) * (y_max - y_min)
 
@@ -791,7 +796,7 @@ def mask_dropout_bboxes(
         )
     else:
         dropped_areas = np.array(
-            [reduce_sum(dropout_mask[y1:y2, x1:x2]) for x1, y1, x2, y2 in bboxes_int[:, :4]],
+            [reduce_sum(dropout_mask[y1:y2, x1:x2]) for x1, y1, x2, y2 in zip(x_min, y_min, x_max, y_max, strict=True)],
             dtype=np.int64,
         )
 

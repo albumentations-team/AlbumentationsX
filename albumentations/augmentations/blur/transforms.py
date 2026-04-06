@@ -1544,10 +1544,7 @@ class ZoomBlur(ImageOnlyTransform):
         return fblur.zoom_blur(img, zoom_factors)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        result = np.empty_like(images)
-        for i, image in enumerate(images):
-            result[i] = self.apply(image, **params)
-        return result
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def get_params(self) -> dict[str, Any]:
         step_factor = self.py_random.uniform(*self.step_factor)

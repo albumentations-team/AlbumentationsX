@@ -482,6 +482,35 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
+    @staticmethod
+    def _apply_to_batch_same_shape(
+        batch: np.ndarray,
+        apply_fn: Callable[[np.ndarray], np.ndarray],
+        *,
+        ensure_contiguous: bool = False,
+    ) -> np.ndarray:
+        """Apply a function to each batch element with pre-allocation when every output preserves
+        the input element shape and dtype.
+
+        Args:
+            batch (np.ndarray): Input batch array of shape (N, ...)
+            apply_fn (Callable[[np.ndarray], np.ndarray]): Function to apply to each element
+            ensure_contiguous (bool): Whether to ensure C-contiguous output
+
+        Returns:
+            np.ndarray: Transformed batch array.
+
+        """
+        if len(batch) == 0:
+            return batch
+
+        result = np.empty(batch.shape, dtype=batch.dtype)
+
+        for i, item in enumerate(batch):
+            result[i] = apply_fn(item)
+
+        return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
+
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         """Apply transform on images. Input shape (N, H, W, C); uses _apply_to_batch with per-image
         apply. Returns same format. Batch API.

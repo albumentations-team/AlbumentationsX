@@ -1,7 +1,6 @@
 [build-system]
-build-backend = "setuptools.build_meta"
-
-requires = [ "setuptools>=45", "wheel" ]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "albumentationsx"
@@ -74,7 +73,8 @@ keywords = [
   "volumetric masks",
 
 ]
-license = { file = "LICENSE" }
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 
@@ -91,8 +91,6 @@ classifiers = [
   "Intended Audience :: Information Technology",
 
   "Intended Audience :: Science/Research",
-  # License
-  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 
   # Operating System
   "Operating System :: OS Independent",
@@ -152,22 +150,19 @@ Changelog = "https://github.com/albumentations-team/AlbumentationsX/releases"
 Discord = "https://discord.gg/AKPrrDYNAt"
 "Bug Tracker" = "https://github.com/albumentations-team/AlbumentationsX/issues"
 
-[tool.setuptools]
-packages = { find = { include = [
-  "albumentations*",
-], exclude = [
+[tool.hatch.build.targets.wheel]
+packages = ["albumentations"]
+
+[tool.hatch.build]
+exclude = [
   "tests",
   "tools",
   "benchmark",
   "docs",
   ".github",
   ".cursor",
-] } }
-
-package-data = { albumentations = [ "*.txt", "*.md", "py.typed" ] }
-
-[tool.setuptools.exclude-package-data]
-"*" = [ "tests*", "tools*", "benchmark*", "conda.recipe*", "docs*", ".github*", ".cursor" ]
+  "conda.recipe",
+]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

@@ -1,7 +1,6 @@
 [build-system]
-build-backend = "setuptools.build_meta"
-
-requires = [ "setuptools>=77", "wheel" ]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "albumentationsx"
@@ -151,22 +150,19 @@ Changelog = "https://github.com/albumentations-team/AlbumentationsX/releases"
 Discord = "https://discord.gg/AKPrrDYNAt"
 "Bug Tracker" = "https://github.com/albumentations-team/AlbumentationsX/issues"
 
-[tool.setuptools]
-packages = { find = { include = [
-  "albumentations*",
-], exclude = [
+[tool.hatch.build.targets.wheel]
+packages = ["albumentations"]
+
+[tool.hatch.build]
+exclude = [
   "tests",
   "tools",
   "benchmark",
   "docs",
   ".github",
   ".cursor",
-] } }
-
-package-data = { albumentations = [ "*.txt", "*.md", "py.typed" ] }
-
-[tool.setuptools.exclude-package-data]
-"*" = [ "tests*", "tools*", "benchmark*", "conda.recipe*", "docs*", ".github*", ".cursor" ]
+  "conda.recipe",
+]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

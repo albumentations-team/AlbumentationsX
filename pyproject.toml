@@ -74,7 +74,8 @@ keywords = [
   "volumetric masks",
 
 ]
-license = { file = "LICENSE" }
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 
@@ -91,8 +92,6 @@ classifiers = [
   "Intended Audience :: Information Technology",
 
   "Intended Audience :: Science/Research",
-  # License
-  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 
   # Operating System
   "Operating System :: OS Independent",

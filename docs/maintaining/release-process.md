@@ -24,6 +24,9 @@ Before a release is published, all of the following must be true:
    - `twine check dist/*`
    - clean-environment wheel install with `opencv-python-headless`
    - `import albumentations` from outside the repository checkout
+7. Lockfile consistency passes:
+   - `uv lock --check`
+   - if `pyproject.toml` changed, `uv.lock` is updated in the same PR
 
 ## CI Quality Gates
 
@@ -40,6 +43,7 @@ The release process depends on the repository CI in `.github/workflows/ci.yml`:
   - `3.13`
   - `3.14`
 - code formatting and type checks through `pre-commit`
+- lockfile freshness check through `uv lock --check`
 - `tools.check_defaults`
 - README/doc consistency check via `tools.make_transforms_docs`
 
@@ -67,6 +71,7 @@ Each official release must publish:
    - runs `twine check`
    - installs the built wheel in a clean virtual environment together with `opencv-python-headless`
    - imports `albumentations` from outside the repository checkout
+   - verifies lock freshness with `uv lock --check`
    - exports locked runtime dependencies from `uv.lock`
    - generates a CycloneDX SBOM
    - computes `SHA256SUMS.txt`

@@ -13,6 +13,9 @@ on:
       - '**.md'
       - 'benchmark/**'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test_and_lint:
     name: Test and lint
@@ -46,6 +49,10 @@ jobs:
         uv pip install wheel
         uv pip install .  # project first so albucore etc. from pyproject.toml
         uv pip install -r requirements-dev.txt
+
+    - name: Verify uv.lock is up-to-date
+      if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'
+      run: uv lock --check
 
     - name: Run PyTest with coverage
       run: pytest -n auto --cov=albumentations --cov-branch --cov-report=xml

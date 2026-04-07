@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build_release_artifacts:
     runs-on: ubuntu-latest
@@ -16,23 +19,56 @@ jobs:
       uses: astral-sh/setup-uv@v7
       with:
         enable-cache: true
-        python-version: "3.10"
+        python-version: "3.11"
         activate-environment: true
-    - name: Resolve headless OpenCV dependency from pyproject
+
+    - name: Resolve release metadata from pyproject
+      env:
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
       run: |
         python - <<'PY' >> "$GITHUB_ENV"
-        import re
+        import os
+        import tomllib
         from pathlib import Path
 
-        text = Path("pyproject.toml").read_text()
-        dep = re.search(r'^headless\s*=\s*\["([^"]+)"\]', text, re.MULTILINE).group(1)
-        print(f"OPENCV_HEADLESS_DEPENDENCY={dep}")
+        pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+        project = pyproject.get("project")
+        if not isinstance(project, dict):
+            raise SystemExit("pyproject.toml is missing [project] metadata required for releases.")
+
+        package_version = project.get("version")
+        if not isinstance(package_version, str) or not package_version:
+            raise SystemExit("pyproject.toml is missing project.version required for releases.")
+
+        release_tag = os.environ["RELEASE_TAG"]
+        normalized_release_tag = release_tag.removeprefix("v")
+        if normalized_release_tag != package_version:
+            raise SystemExit(
+                f"Release tag '{release_tag}' does not match project.version '{package_version}'."
+            )
+
+        optional_dependencies = project.get("optional-dependencies", {})
+        if not isinstance(optional_dependencies, dict):
+            raise SystemExit("pyproject.toml project.optional-dependencies must be a table when present.")
+
+        headless_dependencies = optional_dependencies.get("headless", [])
+        if not isinstance(headless_dependencies, list):
+            raise SystemExit("pyproject.toml project.optional-dependencies.headless must be an array.")
+
+        print(f"PACKAGE_VERSION={package_version}")
+        print(f"SBOM_FILENAME=albumentationsx-{package_version}-sbom.cdx.json")
+        print("HEADLESS_RUNTIME_DEPENDENCIES<<EOF")
+        for dependency in headless_dependencies:
+            print(dependency)
+        print("EOF")
         PY
+
     - name: Build distributions
-      run: |
-        uv build
+      run: uv build
+
     - name: Check distribution metadata
       run: uv tool run --from twine twine check dist/*
+
     - name: Smoke test built wheel
       run: |
         VENV_DIR="$(mktemp -d /tmp/albumentationsx-release-venv.XXXXXX)"
@@ -40,28 +76,49 @@ jobs:
         python -m venv "$VENV_DIR"
         . "$VENV_DIR/bin/activate"
         python -m pip install --upgrade pip
-        python -m pip install "${OPENCV_HEADLESS_DEPENDENCY}"
+        if [ -n "${HEADLESS_RUNTIME_DEPENDENCIES:-}" ]; then
+          printf '%s\n' "${HEADLESS_RUNTIME_DEPENDENCIES}" > "$VENV_DIR/headless-runtime-requirements.txt"
+          python -m pip install -r "$VENV_DIR/headless-runtime-requirements.txt"
+        fi
         python -m pip install dist/*.whl
         cd /tmp
         python - <<'PY'
         import albumentations
-
-        print(albumentations.__version__)
+        import numpy as np
+        img = np.zeros((64, 64, 3), dtype=np.uint8)
+        result = albumentations.HorizontalFlip(p=1)(image=img)
+        print("albumentations smoke test passed, version:", albumentations.__version__)
         PY
+
+    - name: Verify uv.lock is up-to-date
+      run: uv lock --check
+
     - name: Export locked runtime dependencies
       run: uv export --frozen --no-dev --format requirements-txt --output-file dist/runtime-requirements.txt
+
     - name: Generate CycloneDX SBOM
       run: |
         uv tool run --from cyclonedx-bom cyclonedx-py requirements dist/runtime-requirements.txt \
           --output-format JSON \
-          --output-file "dist/albumentationsx-${{ github.event.release.tag_name }}-sbom.cdx.json"
+          --output-file "dist/${SBOM_FILENAME}"
+
     - name: Generate checksums
       run: |
         (
           cd dist
-          shasum -a 256 ./*.whl ./*.tar.gz ./*-sbom.cdx.json > SHA256SUMS.txt
+          sha256sum ./*.whl ./*.tar.gz ./*-sbom.cdx.json > SHA256SUMS.txt
         )
-    - name: Upload workflow artifacts
+
+    - name: Upload distribution artifacts for PyPI
+      uses: actions/upload-artifact@v4
+      with:
+        name: pypi-distributions
+        path: |
+          dist/*.whl
+          dist/*.tar.gz
+        if-no-files-found: error
+
+    - name: Upload release artifacts
       uses: actions/upload-artifact@v4
       with:
         name: release-artifacts
@@ -71,6 +128,7 @@ jobs:
           dist/*-sbom.cdx.json
           dist/SHA256SUMS.txt
         if-no-files-found: error
+
     - name: Attach artifacts to GitHub Release
       uses: softprops/action-gh-release@v2
       with:
@@ -90,10 +148,10 @@ jobs:
       actions: read
       contents: read
     steps:
-    - name: Download release artifacts
+    - name: Download distribution artifacts
       uses: actions/download-artifact@v4
       with:
-        name: release-artifacts
+        name: pypi-distributions
         path: dist
     - name: Publish distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1

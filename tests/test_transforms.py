@@ -49,6 +49,35 @@ def test_rotate_crop_border(image):
     assert (aug_img == border_value).sum() == 0
 
 
+def test_morphological_dilates_bboxes():
+    image = np.zeros((32, 1024, 3), dtype=np.uint8)
+    bboxes = np.array(
+        [
+            [100 / 1024, 5 / 32, 120 / 1024, 15 / 32],
+            [300 / 1024, 10 / 32, 330 / 1024, 20 / 32],
+        ],
+        dtype=np.float32,
+    )
+    labels = [137, 138]
+    transform = A.Compose(
+        [A.Morphological(scale=(3, 3), operation="dilation", p=1.0)],
+        bbox_params=A.BboxParams(coord_format="albumentations", label_fields=["labels"]),
+    )
+
+    result = transform(image=image, bboxes=bboxes, labels=labels)
+
+    expected_bboxes = np.array(
+        [
+            [99 / 1024, 4 / 32, 121 / 1024, 16 / 32],
+            [299 / 1024, 9 / 32, 331 / 1024, 21 / 32],
+        ],
+        dtype=np.float32,
+    )
+
+    np.testing.assert_allclose(np.array(result["bboxes"], dtype=np.float32), expected_bboxes)
+    assert result["labels"] == labels
+
+
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_dual_transforms(

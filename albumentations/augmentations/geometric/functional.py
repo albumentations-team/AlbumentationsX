@@ -4533,8 +4533,12 @@ def bboxes_morphology(
     """
     bboxes = bboxes.copy()
     masks = masks_from_bboxes(bboxes, image_shape)
-    masks = morphology(masks, kernel, operation)
-    bboxes[:, :4] = bboxes_from_masks(masks)
+    transformed_masks = np.empty_like(masks)
+
+    for index, mask in enumerate(masks):
+        transformed_masks[index] = morphology(mask, kernel, operation)
+
+    bboxes[:, :4] = bboxes_from_masks(transformed_masks)
     return bboxes
 
 

@@ -1913,6 +1913,35 @@ def test_bboxes_from_masks_output_type():
     assert result.dtype == np.int32
 
 
+def test_bboxes_morphology_dilates_each_bbox_mask_independently():
+    bboxes = np.array(
+        [
+            [2, 2, 4, 4, 137],
+            [5, 5, 7, 7, 138],
+        ],
+        dtype=np.float32,
+    )
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+
+    result = fgeometric.bboxes_morphology(
+        bboxes,
+        kernel,
+        operation="dilation",
+        image_shape=(10, 10),
+        bbox_type="hbb",
+    )
+
+    expected = np.array(
+        [
+            [1, 1, 5, 5, 137],
+            [4, 4, 8, 8, 138],
+        ],
+        dtype=np.float32,
+    )
+
+    np.testing.assert_array_equal(result, expected)
+
+
 def test_random_resized_crop():
     transform = A.Compose(
         [

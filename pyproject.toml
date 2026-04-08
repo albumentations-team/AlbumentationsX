@@ -74,7 +74,7 @@ keywords = [
 
 ]
 license = "AGPL-3.0-or-later"
-license-files = { paths = ["LICENSE"] }
+license-files = ["LICENSE"]
 
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 

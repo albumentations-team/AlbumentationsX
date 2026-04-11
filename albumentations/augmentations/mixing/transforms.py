@@ -7,6 +7,7 @@ like `Mosaic`.
 """
 
 import random
+from collections.abc import Sequence
 from copy import deepcopy
 from typing import Annotated, Any, Literal, cast
 
@@ -17,7 +18,14 @@ from typing_extensions import Self
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.mixing import functional as fmixing
-from albumentations.core.bbox_utils import BboxProcessor, check_bboxes, denormalize_bboxes, filter_bboxes
+from albumentations.core.bbox_utils import (
+    BboxProcessor,
+    check_bboxes,
+    convert_bboxes_from_albumentations,
+    convert_bboxes_to_albumentations,
+    denormalize_bboxes,
+    filter_bboxes,
+)
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
@@ -302,7 +310,8 @@ class CopyAndPaste(DualTransform):
             - mask (np.ndarray): Binary mask (H, W) of the object in the source image. Required.
             - bbox (np.ndarray | list): Bounding box of the object in the **same coordinate
               format** as `BboxParams.coord_format` declared in `Compose` (e.g. pascal_voc,
-              yolo, coco, albumentations). Optional — derived from mask if absent.
+              yolo, coco, albumentations). Optional — if absent, a tight box is derived from the
+              mask and converted to that format.
             - keypoints (np.ndarray): Keypoints for the object in the **same format** as
               `KeypointParams.coord_format` declared in `Compose`. Optional.
             - bbox_labels (dict[str, Any]): Label values for the object's bbox, keyed by the
@@ -397,20 +406,38 @@ class CopyAndPaste(DualTransform):
     def targets_as_params(self) -> list[str]:
         return [self.metadata_key]
 
+    @staticmethod
+    def _instance_masks_to_3d(masks: Any) -> np.ndarray | None:
+        """Normalize masks to (N, H, W) for CopyAndPaste visibility from a stacked ndarray (4D ok) or a sequence of
+        per-instance (H, W) arrays.
+        """
+        if masks is None:
+            return None
+        if isinstance(masks, np.ndarray):
+            if masks.size == 0:
+                return None
+            return masks.squeeze(-1) if masks.ndim == 4 else masks
+        if isinstance(masks, Sequence) and not isinstance(masks, (str, bytes, np.ndarray)):
+            if len(masks) == 0:
+                return None
+            return np.stack([np.asarray(m) for m in masks], axis=0)
+        return None
+
     def _compute_surviving_indices(
         self,
         data: dict[str, Any],
-        alpha: np.ndarray,
+        paste_union_mask: np.ndarray,
     ) -> np.ndarray | None:
-        """Compute which existing primary instances survive occlusion by the pasted alpha mask,
-        returning the indices that pass the min_visibility_after_paste threshold.
+        """Return indices of primary masks that still meet min_visibility_after_paste after binary-union paste
+        occlusion (hard mask, not blurred alpha).
+
+        Compares each instance mask to the opaque paste footprint for visibility ratios.
         """
-        primary_masks = data.get("masks")
-        if primary_masks is None or not isinstance(primary_masks, np.ndarray) or primary_masks.size == 0:
+        masks_3d = self._instance_masks_to_3d(data.get("masks"))
+        if masks_3d is None:
             return None
 
-        masks_3d = primary_masks.squeeze(-1) if primary_masks.ndim == 4 else primary_masks
-        visibility = fmixing.compute_instance_visibility(masks_3d, alpha)
+        visibility = fmixing.compute_instance_visibility(masks_3d, paste_union_mask)
         return np.where(visibility >= self.min_visibility_after_paste)[0]
 
     @staticmethod
@@ -420,20 +447,74 @@ class CopyAndPaste(DualTransform):
         return mask
 
     @staticmethod
-    def _derive_bbox_from_mask(mask: np.ndarray) -> np.ndarray:
-        """Derive a tight axis-aligned bounding box (x_min, y_min, x_max, y_max) in pixel coords
-        from a single binary (H, W) input mask.
+    def _derive_bbox_from_mask(mask: np.ndarray, bbox_processor: BboxProcessor) -> np.ndarray:
+        """Derive a tight HBB from a binary mask in BboxParams.coord_format via internal Pascal VOC pixels; OBB appends
+        angle zero.
         """
         rows = np.any(mask > 0, axis=1)
         cols = np.any(mask > 0, axis=0)
+        height, width = mask.shape[:2]
         if not np.any(rows):
-            return np.array([0, 0, 0, 0], dtype=np.float32)
-        row_indices = np.where(rows)[0]
-        col_indices = np.where(cols)[0]
-        return np.array(
-            [col_indices[0], row_indices[0], col_indices[-1] + 1, row_indices[-1] + 1],
-            dtype=np.float32,
+            pascal_px = np.zeros((1, 4), dtype=np.float32)
+        else:
+            row_indices = np.where(rows)[0]
+            col_indices = np.where(cols)[0]
+            pascal_px = np.array(
+                [
+                    [
+                        float(col_indices[0]),
+                        float(row_indices[0]),
+                        float(col_indices[-1] + 1),
+                        float(row_indices[-1] + 1),
+                    ],
+                ],
+                dtype=np.float32,
+            )
+
+        bbox_type = bbox_processor.params.bbox_type
+        if bbox_type == "obb" and pascal_px.shape[1] == 4:
+            pascal_px = np.column_stack([pascal_px, np.zeros(1, dtype=np.float32)])
+
+        alb = convert_bboxes_to_albumentations(
+            pascal_px,
+            "pascal_voc",
+            (height, width),
+            bbox_type,
+            check_validity=False,
         )
+        coord_format = bbox_processor.params.coord_format
+        if coord_format == "albumentations":
+            return alb.reshape(-1)
+
+        converted = convert_bboxes_from_albumentations(
+            alb,
+            coord_format,
+            (height, width),
+            bbox_type,
+            check_validity=False,
+        )
+        return converted.reshape(-1)
+
+    @staticmethod
+    def _keypoint_label_values_for_item(
+        val: Any,
+        num_keypoints: int,
+        field: str,
+        item_idx: int,
+    ) -> list[Any]:
+        if isinstance(val, np.ndarray):
+            field_values = np.asarray(val).reshape(-1).tolist()
+        elif isinstance(val, list):
+            field_values = val
+        else:
+            field_values = [val] * num_keypoints
+        if len(field_values) != num_keypoints:
+            raise ValueError(
+                f"CopyAndPaste: keypoint label field '{field}' must have one value per keypoint "
+                f"for pasted object at index {item_idx}; got {len(field_values)} for "
+                f"{num_keypoints} keypoints.",
+            )
+        return field_values
 
     def _prepare_pasted_bboxes(
         self,
@@ -458,22 +539,33 @@ class CopyAndPaste(DualTransform):
             bbox = (
                 np.asarray(item["bbox"], dtype=np.float32).ravel()
                 if "bbox" in item
-                else self._derive_bbox_from_mask(pasted_masks[idx])
+                else self._derive_bbox_from_mask(pasted_masks[idx], bbox_processor)
             )
             all_bboxes.append(bbox)
 
             item_labels: dict[str, Any] = item.get("bbox_labels", {})
             for field in label_fields:
-                if field in item_labels:
-                    all_labels[field].append(item_labels[field])
+                if field not in item_labels:
+                    raise ValueError(
+                        f"CopyAndPaste: missing bbox label field '{field}' for pasted object at index {idx}. "
+                        "Provide `bbox_labels` with every field declared in BboxParams.label_fields.",
+                    )
+                all_labels[field].append(item_labels[field])
+
+        num_bboxes = len(all_bboxes)
+        for field_name, field_values in all_labels.items():
+            if len(field_values) != num_bboxes:
+                raise ValueError(
+                    f"CopyAndPaste: label field '{field_name}' has {len(field_values)} values for "
+                    f"{num_bboxes} pasted bboxes; expected one label per bbox.",
+                )
 
         donor_item: dict[str, Any] = {
             "image": target_image,
             "bboxes": np.array(all_bboxes, dtype=np.float32),
         }
         for field in label_fields:
-            if all_labels[field]:
-                donor_item[field] = all_labels[field]
+            donor_item[field] = all_labels[field]
 
         return fmixing.preprocess_copy_paste_annotations(donor_item, bbox_processor, "bboxes")
 
@@ -495,33 +587,46 @@ class CopyAndPaste(DualTransform):
         all_kps: list[np.ndarray] = []
         all_labels: dict[str, list[Any]] = {field: [] for field in kp_label_fields}
 
-        for item in items:
+        for item_idx, item in enumerate(items):
             if "keypoints" not in item:
                 continue
             raw = np.asarray(item["keypoints"], dtype=np.float32)
             if raw.ndim == 1:
                 raw = raw[np.newaxis]
+            num_keypoints = raw.shape[0]
             all_kps.append(raw)
 
             item_labels: dict[str, Any] = item.get("keypoint_labels", {})
             for field in kp_label_fields:
-                if field in item_labels:
-                    val = item_labels[field]
-                    if isinstance(val, (list, np.ndarray)):
-                        all_labels[field].extend(val)
-                    else:
-                        all_labels[field].append(val)
+                if field not in item_labels:
+                    raise ValueError(
+                        f"CopyAndPaste: missing keypoint label field '{field}' for pasted object at "
+                        f"index {item_idx}. Provide `keypoint_labels` with every field declared in "
+                        "KeypointParams.label_fields.",
+                    )
+                val = item_labels[field]
+                field_values = self._keypoint_label_values_for_item(val, num_keypoints, field, item_idx)
+                all_labels[field].extend(field_values)
 
         if not all_kps:
             return None
 
+        concatenated_keypoints = np.concatenate(all_kps, axis=0)
+        total_keypoints = concatenated_keypoints.shape[0]
+
+        for field in kp_label_fields:
+            if len(all_labels[field]) != total_keypoints:
+                raise ValueError(
+                    f"CopyAndPaste: keypoint label field '{field}' has {len(all_labels[field])} values "
+                    f"for {total_keypoints} concatenated keypoints.",
+                )
+
         donor_item: dict[str, Any] = {
             "image": target_image,
-            "keypoints": np.concatenate(all_kps, axis=0),
+            "keypoints": concatenated_keypoints,
         }
         for field in kp_label_fields:
-            if all_labels[field]:
-                donor_item[field] = all_labels[field]
+            donor_item[field] = all_labels[field]
 
         return fmixing.preprocess_copy_paste_annotations(donor_item, keypoint_processor, "keypoints")
 
@@ -555,11 +660,12 @@ class CopyAndPaste(DualTransform):
             composite_image[mask_bool] = src_image[mask_bool]
 
         pasted_masks = np.stack(pasted_masks_list, axis=0)
+        paste_union_mask = np.any(pasted_masks > 0, axis=0)
 
         blend_sigma = self.py_random.uniform(*self.blend_sigma_range)
         alpha = fmixing.create_copy_paste_alpha(pasted_masks, self.blend_mode, blend_sigma)
 
-        surviving_indices = self._compute_surviving_indices(data, alpha)
+        surviving_indices = self._compute_surviving_indices(data, paste_union_mask)
 
         pasted_bboxes = (
             self._prepare_pasted_bboxes(valid_items, pasted_masks, composite_image) if "bboxes" in data else None
@@ -627,10 +733,16 @@ class CopyAndPaste(DualTransform):
             return mask
         if paste_donor_mask is not None:
             result = mask.copy()
-            paste_region = paste_alpha > 0
+            paste_instance_masks = params.get("paste_instance_masks")
+            if paste_instance_masks is not None:
+                paste_region = np.any(paste_instance_masks > 0, axis=0)
+            else:
+                paste_region = paste_alpha > 0
             donor = paste_donor_mask
             if result.ndim > donor.ndim:
                 donor = donor[..., np.newaxis]
+            if result.ndim > paste_region.ndim:
+                paste_region = paste_region[..., np.newaxis]
             result[paste_region] = donor[paste_region]
             return result
         return mask
@@ -646,6 +758,11 @@ class CopyAndPaste(DualTransform):
         if paste_alpha is None or paste_instance_masks is None:
             return masks
 
+        if isinstance(masks, (list, tuple)):
+            if len(masks) == 0:
+                return paste_instance_masks
+            masks = np.stack([np.asarray(m) for m in masks], axis=0)
+
         pasted = paste_instance_masks
         if masks.ndim == 4 and pasted.ndim == 3:
             pasted = pasted[..., np.newaxis]
@@ -653,7 +770,7 @@ class CopyAndPaste(DualTransform):
         if masks.size == 0:
             return pasted
 
-        paste_region = paste_alpha > 0
+        paste_region = np.any(paste_instance_masks > 0, axis=0)
 
         surviving = masks[paste_surviving_indices].copy() if paste_surviving_indices is not None else masks.copy()
 
@@ -699,12 +816,21 @@ class CopyAndPaste(DualTransform):
         if paste_alpha is None:
             return keypoints
 
-        if paste_keypoints is not None and paste_keypoints.size > 0:
-            if keypoints.size == 0:
-                return paste_keypoints
-            return np.concatenate([keypoints, paste_keypoints], axis=0)
+        paste_surviving_indices = params.get("paste_surviving_indices")
+        surviving_keypoints = keypoints
+        if (
+            paste_surviving_indices is not None
+            and keypoints.size > 0
+            and keypoints.shape[0] == len(paste_surviving_indices)
+        ):
+            surviving_keypoints = keypoints[paste_surviving_indices]
 
-        return keypoints
+        if paste_keypoints is not None and paste_keypoints.size > 0:
+            if surviving_keypoints.size == 0:
+                return paste_keypoints
+            return np.concatenate([surviving_keypoints, paste_keypoints], axis=0)
+
+        return surviving_keypoints
 
 
 class Mosaic(DualTransform):

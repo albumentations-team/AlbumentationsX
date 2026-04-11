@@ -72,6 +72,16 @@ def copy_and_paste_blend(
     return blended_image
 
 
+def _soft_blend_clip_high(base_image: np.ndarray, donor_image: np.ndarray) -> float:
+    """Choose the upper clip for soft alpha blends: 255 for uint8 inputs, and for floats either 1.0 or 255.0 based on
+    observed max channel values.
+    """
+    if base_image.dtype == np.uint8:
+        return 255.0
+    max_val = max(float(np.max(base_image)), float(np.max(donor_image)))
+    return 255.0 if max_val > 1.0 + 1e-3 else 1.0
+
+
 def blend_images_using_alpha(
     base_image: np.ndarray,
     donor_image: np.ndarray,
@@ -99,7 +109,8 @@ def blend_images_using_alpha(
 
     alpha_3d = alpha[..., np.newaxis].astype(np.float32)
     blended = donor_image.astype(np.float32) * alpha_3d + base_image.astype(np.float32) * (1.0 - alpha_3d)
-    return np.clip(blended, 0, 255 if img_dtype == np.uint8 else 1.0).astype(img_dtype)
+    clip_high = _soft_blend_clip_high(base_image, donor_image)
+    return np.clip(blended, 0, clip_high).astype(img_dtype)
 
 
 def create_copy_paste_alpha(
@@ -124,28 +135,31 @@ def create_copy_paste_alpha(
         kernel_size = int(np.ceil(blend_sigma * 6)) | 1
         alpha = cv2.GaussianBlur(alpha, (kernel_size, kernel_size), blend_sigma)
         np.clip(alpha, 0, 1, out=alpha)
+        # Drop numerical halo so low-opacity tails outside the true mask do not count as paste/occlusion.
+        alpha[alpha < 1e-3] = 0.0
 
     return alpha
 
 
 def compute_instance_visibility(
     existing_masks: np.ndarray,
-    alpha: np.ndarray,
+    paste_mask: np.ndarray,
 ) -> np.ndarray:
-    """Compute the fraction of each existing instance's original area that remains visible after the pasted alpha mask is applied.
+    """For each existing instance mask, compute the fraction of original foreground pixels that remain outside the
+    pasted binary union for CopyAndPaste survivor logic.
 
     Args:
         existing_masks (np.ndarray): (N, H, W) binary masks of existing instances.
-        alpha (np.ndarray): (H, W) alpha mask of pasted region (values > 0 = pasted).
+        paste_mask (np.ndarray): (H, W) binary mask of the pasted instance union (opaque region).
 
     Returns:
         np.ndarray: (N,) array of visibility ratios in [0, 1]. 1.0 = fully visible, 0.0 = fully occluded.
 
     """
-    paste_mask = alpha > 0
+    opaque_region = paste_mask > 0
 
     original_areas = np.sum(existing_masks > 0, axis=(1, 2)).astype(np.float64)
-    occluded_areas = np.sum((existing_masks > 0) & paste_mask[np.newaxis], axis=(1, 2)).astype(np.float64)
+    occluded_areas = np.sum((existing_masks > 0) & opaque_region[np.newaxis], axis=(1, 2)).astype(np.float64)
 
     remaining_areas = original_areas - occluded_areas
 
@@ -686,18 +700,19 @@ def process_cell_geometry(
         raise ValueError(f"Invalid fit_mode: {fit_mode}. Must be 'cover' or 'contain'.")
 
     # Prepare input data for the pipeline
-    geom_input = {"image": item["image"]}
-    if item.get("mask") is not None:
-        geom_input["mask"] = item["mask"]
-    if item.get("bboxes") is not None:
-        # Compose expects bboxes in a specific format, ensure it's compatible
-        # Assuming item['bboxes'] is already preprocessed correctly
-        geom_input["bboxes"] = item["bboxes"]
-    if item.get("keypoints") is not None:
-        geom_input["keypoints"] = item["keypoints"]
+    geom_input: dict[str, Any] = {"image": item["image"]}
+    item_mask = item.get("mask")
+    if item_mask is not None:
+        geom_input["mask"] = item_mask
+    item_bboxes = item.get("bboxes")
+    if item_bboxes is not None:
+        geom_input["bboxes"] = item_bboxes
+    item_keypoints = item.get("keypoints")
+    if item_keypoints is not None:
+        geom_input["keypoints"] = item_keypoints
 
-    # Apply the pipeline
-    processed_item = geom_pipeline(**geom_input)
+    # Apply the pipeline (`force_apply` explicit so **geom_input cannot bind to it under mypy)
+    processed_item = geom_pipeline(force_apply=False, **geom_input)
 
     # Ensure output dict has the same structure as ProcessedMosaicItem
     # Compose might not return None for missing keys, handle explicitly

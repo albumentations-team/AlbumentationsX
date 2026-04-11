@@ -280,6 +280,24 @@ class TestCopyAndPasteMasks:
         surviving_mask = result["masks"][0]
         assert np.sum(surviving_mask[40:60, 40:60]) == 0
 
+    def test_primary_masks_as_list_of_arrays(self):
+        """CopyAndPaste should accept masks as a list of (H, W) arrays like other targets."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        m = np.zeros((100, 100), dtype=np.uint8)
+        m[20:40, 20:40] = 1
+        primary_masks_list = [m]
+
+        obj = _make_object(137, (10, 50, 10, 50))
+
+        transform = A.Compose(
+            [
+                A.CopyAndPaste(min_visibility_after_paste=0.5, p=1.0),
+            ],
+            seed=137,
+        )
+        result = transform(image=image, masks=primary_masks_list, copy_paste_metadata=[obj])
+        assert result["masks"].shape[0] == 1
+
 
 class TestCopyAndPasteBboxes:
     """Bounding box handling with label sync."""
@@ -333,6 +351,30 @@ class TestCopyAndPasteBboxes:
         )
         assert len(result["bboxes"]) == 2
 
+    def test_derived_bbox_matches_yolo_coord_format(self):
+        """Mask-derived bbox must match the pipeline coord_format (not raw Pascal pixels)."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        bboxes = np.array([[0.5, 0.5, 0.2, 0.2]], dtype=np.float32)
+        class_labels = [1]
+
+        obj = _make_object(137, (50, 70, 50, 70))
+        obj["bbox_labels"] = {"class_labels": 2}
+
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.0, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="yolo", label_fields=["class_labels"]),
+            seed=137,
+        )
+        result = transform(
+            image=image,
+            bboxes=bboxes,
+            class_labels=class_labels,
+            copy_paste_metadata=[obj],
+        )
+        assert len(result["bboxes"]) == 2
+        pasted = result["bboxes"][1]
+        assert np.all((pasted[:4] > 0) & (pasted[:4] <= 1.0))
+
     def test_occluded_bbox_removed_with_mask(self):
         """Bbox of fully occluded instance should be removed when masks are present."""
         image = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -374,6 +416,17 @@ class TestCopyAndPasteBlending:
         result = fmixing.blend_images_using_alpha(base, donor, alpha)
         np.testing.assert_array_equal(result[10:20, 10:20], 137)
         np.testing.assert_array_equal(result[0:10, 0:10], 0)
+
+    def test_soft_blend_float_high_range_clip(self):
+        """Float images in ~[0, 255] should clip to 255, not 1.0."""
+        base = np.zeros((20, 20, 3), dtype=np.float32)
+        donor = np.full((20, 20, 3), 200.0, dtype=np.float32)
+        alpha = np.zeros((20, 20), dtype=np.float32)
+        alpha[5:15, 5:15] = 0.5
+
+        result = fmixing.blend_images_using_alpha(base, donor, alpha)
+        assert result.dtype == np.float32
+        assert float(np.max(result)) > 1.0
 
     def test_gaussian_blend_smooth_edges(self):
         """Gaussian blend should produce smooth transitions at edges."""

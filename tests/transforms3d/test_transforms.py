@@ -1,3 +1,5 @@
+from typing import Any
+
 import cv2
 import numpy as np
 import pytest
@@ -527,7 +529,15 @@ def test_image_volume_matching(image, augmentation_cls, params):
 
     volumes = np.stack([volume.copy()] * 2, axis=0)
 
-    transformed = aug(image=image, volumes=volumes, volume=volume, images=images)
+    call_kw: dict[str, Any] = {
+        "image": image,
+        "volumes": volumes,
+        "volume": volume,
+        "images": images,
+    }
+    if augmentation_cls == A.CopyAndPaste:
+        call_kw["copy_paste_metadata"] = []
+    transformed = aug(**call_kw)
 
     (
         np.testing.assert_allclose(transformed["image"], transformed["images"][0], atol=4, rtol=1e-1),
@@ -570,8 +580,14 @@ def test_image_transforms_matching(image, augmentation_cls, params):
     aug_1 = A.Compose([augmentation_cls(**params, p=1)], seed=137)
     aug_2 = A.Compose([augmentation_cls(**params, p=1)], seed=137)
 
-    transformed_1 = aug_1(images=test_data.copy())
-    transformed_2 = aug_2(volume=test_data.copy())
+    kw_images: dict[str, Any] = {"images": test_data.copy()}
+    kw_volume: dict[str, Any] = {"volume": test_data.copy()}
+    if augmentation_cls == A.CopyAndPaste:
+        kw_images["copy_paste_metadata"] = []
+        kw_volume["copy_paste_metadata"] = []
+
+    transformed_1 = aug_1(**kw_images)
+    transformed_2 = aug_2(**kw_volume)
 
     np.testing.assert_allclose(
         transformed_1["images"],
@@ -623,15 +639,16 @@ def test_keypoints_xy_xyz(augmentation_cls, params):
     )
 
     # Transform both formats
-    transformed_xy = aug1(
-        image=np.zeros((100, 100, 3), dtype=np.uint8),
-        keypoints=keypoints_xy,
-    )["keypoints"]
+    base_img = np.zeros((100, 100, 3), dtype=np.uint8)
+    call_xy: dict[str, Any] = {"image": base_img, "keypoints": keypoints_xy}
+    call_xyz: dict[str, Any] = {"image": base_img, "keypoints": keypoints_xyz}
+    if augmentation_cls == A.CopyAndPaste:
+        call_xy["copy_paste_metadata"] = []
+        call_xyz["copy_paste_metadata"] = []
 
-    transformed_xyz = aug2(
-        image=np.zeros((100, 100, 3), dtype=np.uint8),
-        keypoints=keypoints_xyz,
-    )["keypoints"]
+    transformed_xy = aug1(**call_xy)["keypoints"]
+
+    transformed_xyz = aug2(**call_xyz)["keypoints"]
 
     # Check that number of keypoints matches between formats
     assert len(transformed_xy) == len(transformed_xyz), (

@@ -172,6 +172,8 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
 
     if augmentation_cls == A.OverlayElements:
         data["overlay_metadata"] = []
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
     elif augmentation_cls == A.TextImage:
         data["textimage_metadata"] = {
             "text": "May the transformations be ever in your favor!",
@@ -214,6 +216,8 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
 
     if augmentation_cls == A.OverlayElements:
         data["overlay_metadata"] = []
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
     elif augmentation_cls == A.TextImage:
         data["textimage_metadata"] = {
             "text": "May the transformations be ever in your favor!",
@@ -278,6 +282,12 @@ def test_augmentations_wont_change_shape_rgb(augmentation_cls, params):
         data = {
             "image": image_3ch,
             "overlay_metadata": [],
+            "mask": mask_3ch,
+        }
+    elif augmentation_cls == A.CopyAndPaste:
+        data = {
+            "image": image_3ch,
+            "copy_paste_metadata": [],
             "mask": mask_3ch,
         }
     elif augmentation_cls == A.TextImage:
@@ -403,6 +413,8 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
 
     if augmentation_cls == A.OverlayElements:
         data["overlay_metadata"] = []
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
     elif augmentation_cls == A.TextImage:
         data["textimage_metadata"] = {
             "text": "May the transformations be ever in your favor!",
@@ -473,6 +485,8 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
 
     if augmentation_cls == A.OverlayElements:
         data["overlay_metadata"] = []
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
     elif augmentation_cls == A.TextImage:
         data["textimage_metadata"] = {
             "text": "May the transformations be ever in your favor!",
@@ -549,6 +563,8 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
 
     if augmentation_cls == A.OverlayElements:
         data["overlay_metadata"] = []
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
     elif augmentation_cls == A.TextImage:
         data["textimage_metadata"] = {
             "text": "May the transformations be ever in your favor!",
@@ -625,6 +641,8 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
 
     if augmentation_cls == A.OverlayElements:
         data["overlay_metadata"] = []
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
     elif augmentation_cls == A.TextImage:
         data["textimage_metadata"] = {
             "text": "May the transformations be ever in your favor!",
@@ -910,6 +928,8 @@ def test_augmentations_match_uint8_float32(augmentation_cls, params):
         data["mask"] = mask
     elif augmentation_cls == A.RandomCropNearBBox:
         data["cropping_bbox"] = [12, 77, 177, 231]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     transformed_uint8 = transform(**data)["image"]
 

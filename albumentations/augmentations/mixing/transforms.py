@@ -328,6 +328,9 @@ class CopyAndPaste(DualTransform):
     Image types:
         uint8, float32
 
+    Supported bboxes:
+        hbb
+
     Reference:
         Simple Copy-Paste is a Strong Data Augmentation Method for Instance Segmentation: https://arxiv.org/abs/2012.07177
 
@@ -818,12 +821,12 @@ class CopyAndPaste(DualTransform):
 
         paste_surviving_indices = params.get("paste_surviving_indices")
         surviving_keypoints = keypoints
-        if (
-            paste_surviving_indices is not None
-            and keypoints.size > 0
-            and keypoints.shape[0] == len(paste_surviving_indices)
-        ):
-            surviving_keypoints = keypoints[paste_surviving_indices]
+        if paste_surviving_indices is not None and keypoints.size > 0:
+            survivor_idx = np.asarray(paste_surviving_indices)
+            if survivor_idx.size == 0:
+                surviving_keypoints = keypoints[:0]
+            elif int(survivor_idx.max()) < keypoints.shape[0] and int(survivor_idx.min()) >= 0:
+                surviving_keypoints = keypoints[survivor_idx]
 
         if paste_keypoints is not None and paste_keypoints.size > 0:
             if surviving_keypoints.size == 0:

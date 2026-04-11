@@ -403,6 +403,36 @@ class TestCopyAndPasteBboxes:
         assert result["class_labels"] == [2]
 
 
+class TestCopyAndPasteKeypoints:
+    """Keypoint rows aligned with instance masks must follow paste survivor filtering."""
+
+    def test_surviving_keypoints_match_instance_mask_indices(self):
+        """When one of two instance masks is removed, keep only keypoints for surviving instances."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        primary_masks = np.zeros((2, 100, 100), dtype=np.uint8)
+        primary_masks[0, 20:40, 20:40] = 1
+        primary_masks[1, 60:80, 60:80] = 1
+        keypoints = np.array([[30.0, 30.0], [70.0, 70.0]], dtype=np.float32)
+        keypoint_labels = [0, 1]
+
+        obj = _make_object(137, (10, 50, 10, 50))
+
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.5, p=1.0)],
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
+            seed=137,
+        )
+        result = transform(
+            image=image,
+            masks=primary_masks,
+            keypoints=keypoints,
+            keypoint_labels=keypoint_labels,
+            copy_paste_metadata=[obj],
+        )
+        np.testing.assert_array_equal(result["keypoints"], np.array([[70.0, 70.0]], dtype=np.float32))
+        assert result["keypoint_labels"] == [1]
+
+
 class TestCopyAndPasteBlending:
     """Blend mode tests."""
 

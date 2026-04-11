@@ -769,6 +769,8 @@ def test_non_contiguous_input_dual(augmentation_cls, params):
         mask = np.zeros_like(image)[:, :, 0]
         mask[:20, :20] = 1
         data["mask"] = mask
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     # pipeline gracefully handles non-contiguous inputs
     data = transform(**data)
@@ -810,6 +812,8 @@ def test_non_contiguous_input_volume(augmentation_cls, params):
 
     transform = augmentation_cls(p=1, **params)
     data = {"volume": volume}
+    if augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     data = transform(**data)
     assert "volume" in data
@@ -1135,6 +1139,9 @@ def test_images_as_target(augmentation_cls, params, shape):
         mask[:20, :20] = 1
         data["mask"] = mask
 
+    if augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
+
     aug = A.Compose(
         [augmentation_cls(p=1, **params)],
         p=1,
@@ -1223,6 +1230,9 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
                 "mask": mask,
             },
         ]
+    elif augmentation_cls == A.CopyAndPaste:
+        aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
+        data["copy_paste_metadata"] = []
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
         aug = A.Compose([augmentation_cls(p=1, **params)], p=1, strict=True, seed=137)
@@ -1276,6 +1286,9 @@ def test_masks_as_target(augmentation_cls, params, masks):
         "image": image,
         "masks": masks,
     }
+
+    if augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     aug = A.Compose(
         [augmentation_cls(p=1, **params)],
@@ -1341,7 +1354,7 @@ def test_masks_as_target(augmentation_cls, params, masks):
         cv2.INTER_LINEAR_EXACT,
     ],
 )
-def test_mask_interpolation(augmentation_cls, params, interpolation, image):
+def test_mask_interpolation_all_cv_interpolation_modes(augmentation_cls, params, interpolation, image):
     mask = image.copy()
     # Use helper for interpolation restriction check
     if augmentation_cls in TransformTestHelper.INTERPOLATION_RESTRICTED_TRANSFORMS and interpolation in {
@@ -1360,7 +1373,10 @@ def test_mask_interpolation(augmentation_cls, params, interpolation, image):
 
     aug = A.Compose([augmentation_cls(**params, p=1)], seed=137, strict=False)
 
-    transformed = aug(image=image, mask=mask)
+    call_kw: dict[str, Any] = {"image": image, "mask": mask}
+    if augmentation_cls == A.CopyAndPaste:
+        call_kw["copy_paste_metadata"] = []
+    transformed = aug(**call_kw)
 
     np.testing.assert_array_equal(transformed["mask"], transformed["image"])
 
@@ -1874,7 +1890,10 @@ def test_mask_interpolation(augmentation_cls, params, border_mode, image):
 
     transform = A.Compose([augmentation_cls(**params, p=1)], seed=137, strict=False)
 
-    transform(image=image, mask=mask)
+    call_kw: dict[str, Any] = {"image": image, "mask": mask}
+    if augmentation_cls == A.CopyAndPaste:
+        call_kw["copy_paste_metadata"] = []
+    transform(**call_kw)
 
 
 @pytest.mark.parametrize(

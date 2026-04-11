@@ -276,8 +276,8 @@ class BboxParams(Params):
         )
 
     def make_empty_bboxes_array(self) -> np.ndarray:
-        """Return (0,C) float32 empty bboxes: C is four for HBB or five for OBB internally; use when
-        the bbox list is empty so preprocess receives a valid column count.
+        """Return (0,C) float32 empty bboxes: four cols HBB, five OBB internally; use when bbox list
+        is empty so preprocess ndarray column count stays valid.
 
         """
         cols = NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS if self.bbox_type == "hbb" else BBOX_OBB_MIN_COLUMNS

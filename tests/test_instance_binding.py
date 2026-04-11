@@ -158,6 +158,28 @@ class TestBboxFiltering:
         assert result["instances"][0]["bbox_labels"]["class_id"] == "cat"
         assert result["instances"][0]["keypoints"].shape[0] == 2
 
+    def test_mask_repack_uses_original_instance_index(self) -> None:
+        """When instance 0 is bbox-filtered but instance 1 survives, mask must index stack by old id."""
+        transform = A.Compose(
+            [A.Crop(x_min=40, y_min=40, x_max=60, y_max=60, p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", min_area=1),
+            instance_binding=["masks", "bboxes"],
+        )
+        image = _make_image()
+        instances = [
+            {
+                "mask": np.zeros((100, 100), dtype=np.uint8),
+                "bbox": np.array([10.0, 10.0, 15.0, 15.0], dtype=np.float32),
+            },
+            {
+                "mask": _make_mask(region=(42, 58, 42, 58)),
+                "bbox": np.array([45.0, 45.0, 55.0, 55.0], dtype=np.float32),
+            },
+        ]
+        result = transform(image=image, instances=instances)
+        assert len(result["instances"]) == 1
+        assert result["instances"][0]["mask"].sum() > 50
+
     def test_all_bboxes_removed(self) -> None:
         transform = A.Compose(
             [A.Crop(x_min=40, y_min=40, x_max=60, y_max=60, p=1)],
@@ -349,6 +371,25 @@ class TestValidation:
             transform(
                 image=image,
                 instances=[{"mask": _make_mask()}],
+            )
+
+    def test_missing_keypoints_when_bound(self) -> None:
+        transform = A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            keypoint_params=A.KeypointParams(coord_format="xy"),
+            instance_binding=["masks", "bboxes", "keypoints"],
+        )
+        image = _make_image()
+        with pytest.raises(ValueError, match="missing required key 'keypoints'"):
+            transform(
+                image=image,
+                instances=[
+                    {
+                        "mask": _make_mask(),
+                        "bbox": np.array([10, 10, 50, 50], dtype=np.float32),
+                    },
+                ],
             )
 
     def test_missing_bbox_labels(self) -> None:

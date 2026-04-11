@@ -1481,13 +1481,10 @@ class Compose(BaseCompose, HubMixin):
         if not isinstance(kp_proc_unpack, KeypointsProcessor):
             return
         kp_params = kp_proc_unpack.params
-        empty_kp = kp_params.make_empty_keypoints_array()
-        num_cols = empty_kp.shape[1]
-        default_empty = np.zeros((0, num_cols), dtype=np.float32)
         all_kps: list[np.ndarray] = []
         all_ids: list[int] = []
         for idx, inst in enumerate(instance_dicts):
-            kps = inst.get("keypoints", default_empty)
+            kps = inst["keypoints"]
             count = kps.shape[0] if isinstance(kps, np.ndarray) else len(kps)
             if count > 0:
                 all_kps.append(np.asarray(kps, dtype=np.float32))
@@ -1562,7 +1559,9 @@ class Compose(BaseCompose, HubMixin):
     ) -> None:
         if "keypoints" not in binding:
             return
-        kps = inst.get("keypoints", np.zeros((0, 2), dtype=np.float32))
+        if "keypoints" not in inst:
+            raise ValueError(f"instances[{idx}] missing required key 'keypoints'")
+        kps = inst["keypoints"]
         num_kps = kps.shape[0] if isinstance(kps, np.ndarray) else len(kps)
         if not (kp_label_fields and num_kps > 0):
             return
@@ -1610,7 +1609,8 @@ class Compose(BaseCompose, HubMixin):
         kp_ids: np.ndarray,
     ) -> dict[str, Any]:
         inst: dict[str, Any] = {}
-        self._repack_mask_into(inst, data, binding, new_idx)
+        # Masks are not filtered row-wise with bboxes; stack axis 0 still follows original instance ids.
+        self._repack_mask_into(inst, data, binding, int(old_idx))
         self._repack_bbox_into(inst, data, binding, new_idx)
         self._repack_keypoints_into(inst, data, binding, old_idx, kp_ids)
         self._repack_bbox_labels_into(inst, data, new_idx)
@@ -1622,16 +1622,16 @@ class Compose(BaseCompose, HubMixin):
         inst: dict[str, Any],
         data: dict[str, Any],
         binding: frozenset[str],
-        new_idx: int,
+        original_instance_idx: int,
     ) -> None:
         if "masks" in binding and "masks" in data:
-            mask = data["masks"][new_idx]
+            mask = data["masks"][original_instance_idx]
             added = hasattr(self, "_added_channel_dim") and self._added_channel_dim.get("masks")
             if added and mask.shape[-1] == 1:
                 mask = np.squeeze(mask, axis=-1)
             inst["mask"] = mask
         elif "mask" in binding and "mask" in data:
-            inst["mask"] = data["mask"][:, :, new_idx]
+            inst["mask"] = data["mask"][:, :, original_instance_idx]
 
     def _repack_bbox_into(
         self,

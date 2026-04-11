@@ -31,7 +31,7 @@ No transform changes are required.
 Which keys are required depends on `instance_binding`:
 - `"masks"` or `"mask"` → requires `"mask"` key
 - `"bboxes"` → requires `"bbox"` key
-- `"keypoints"` → requires `"keypoints"` key
+- `"keypoints"` → requires `"keypoints"` key (use a zero-row array such as `np.empty((0, 2))` for no points)
 
 `bbox_labels` / `keypoint_labels` are present when the corresponding `Params.label_fields`
 are non-empty. They use nested dicts to avoid name collisions (both bbox and keypoint can

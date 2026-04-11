@@ -546,6 +546,28 @@ class TestSerialization:
         assert params["keypoint_params"].check_each_transform is False
 
 
+class TestInstanceUnpackCollisions:
+    def test_rejects_existing_masks_key(self) -> None:
+        transform = A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["masks", "bboxes"],
+        )
+        image = _make_image()
+        existing = np.zeros((1, 100, 100), dtype=np.uint8)
+        with pytest.raises(ValueError, match="would overwrite existing data keys"):
+            transform(
+                image=image,
+                masks=existing,
+                instances=[
+                    {
+                        "mask": _make_mask(),
+                        "bbox": np.array([10, 10, 50, 50], dtype=np.float32),
+                    },
+                ],
+            )
+
+
 class TestInstanceBindingCallState:
     def test_state_cleared_when_transform_raises(self) -> None:
         def boom(img: np.ndarray, **kwargs: Any) -> np.ndarray:

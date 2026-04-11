@@ -1408,6 +1408,35 @@ class Compose(BaseCompose, HubMixin):
     def _get_user_kp_label_fields(self) -> list[str]:
         return list(self._kp_label_map.values())
 
+    def _reserved_keys_for_instance_unpack(self, binding: frozenset[str]) -> frozenset[str]:
+        """Return keys instance unpack assigns to pipeline data: mask targets, bboxes, keypoints, and
+        internal label columns used when repacking instances.
+        """
+        keys: set[str] = set()
+        if "masks" in binding:
+            keys.add("masks")
+        elif "mask" in binding:
+            keys.add("mask")
+        if "bboxes" in binding:
+            keys.update({_BBOX_INSTANCE_ID, "bboxes"})
+        if "keypoints" in binding:
+            keys.update({_KP_INSTANCE_ID, "keypoints"})
+        keys.update(self._bbox_label_map)
+        keys.update(self._kp_label_map)
+        return frozenset(keys)
+
+    def _reject_instance_unpack_key_collisions(self, data: dict[str, Any], binding: frozenset[str]) -> None:
+        reserved = self._reserved_keys_for_instance_unpack(binding)
+        collisions = sorted(reserved & data.keys())
+        if not collisions:
+            return
+        joined = ", ".join(collisions)
+        msg = (
+            f"Passing `instances` would overwrite existing data keys: {joined}. "
+            "Omit those keys from the input when using instance_binding."
+        )
+        raise ValueError(msg)
+
     def _unpack_instances(self, data: dict[str, Any]) -> None:
         binding = self._instance_binding
         if binding is None:
@@ -1417,6 +1446,8 @@ class Compose(BaseCompose, HubMixin):
         instances = data.pop("instances")
         if not isinstance(instances, (list, tuple)):
             raise TypeError("instances must be a list of dicts")
+
+        self._reject_instance_unpack_key_collisions(data, binding)
 
         num_instances = len(instances)
         self._instance_count = num_instances

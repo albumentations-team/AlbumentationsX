@@ -192,9 +192,8 @@ class KeypointParams(Params):
         )
 
     def make_empty_keypoints_array(self) -> np.ndarray:
-        """Return (0,K) float32 empty keypoints; K=len(coord_format). Use when list empty so width
-        matches user format before coordinate preprocess.
-
+        """Build an empty (0, K) float32 keypoints ndarray for an empty instance list so column width matches
+        coord_format before coordinate preprocessing.
         """
         return np.array([], dtype=np.float32).reshape(0, len(self.coord_format))
 

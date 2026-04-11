@@ -4,9 +4,6 @@ on:
   release:
     types: [published]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build_release_artifacts:
     runs-on: ubuntu-latest
@@ -14,7 +11,7 @@ jobs:
       contents: write
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
@@ -110,7 +107,7 @@ jobs:
         )
 
     - name: Upload distribution artifacts for PyPI
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: pypi-distributions
         path: |
@@ -119,7 +116,7 @@ jobs:
         if-no-files-found: error
 
     - name: Upload release artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: release-artifacts
         path: |
@@ -149,7 +146,7 @@ jobs:
       contents: read
     steps:
     - name: Download distribution artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: pypi-distributions
         path: dist

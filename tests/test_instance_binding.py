@@ -347,6 +347,16 @@ class TestOverlappingLabelNames:
 
 
 class TestValidation:
+    def test_missing_instances_key(self) -> None:
+        transform = A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["masks", "bboxes"],
+        )
+        image = _make_image()
+        with pytest.raises(ValueError, match="`instances` must be provided"):
+            transform(image=image)
+
     def test_missing_mask(self) -> None:
         transform = A.Compose(
             [A.NoOp(p=1)],
@@ -544,6 +554,43 @@ class TestSerialization:
         assert params["keypoint_params"].label_fields == ["name"]
         assert params["keypoint_params"].remove_invisible is False
         assert params["keypoint_params"].check_each_transform is False
+
+    def test_get_init_params_keypoints_binding_reflects_runtime_flags(self) -> None:
+        transform = A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            keypoint_params=A.KeypointParams(
+                coord_format="xy",
+                remove_invisible=True,
+                check_each_transform=True,
+            ),
+            instance_binding=["masks", "bboxes", "keypoints"],
+        )
+        params = transform._get_init_params()
+        kp = params["keypoint_params"]
+        assert kp.remove_invisible is False
+        assert kp.check_each_transform is False
+
+
+class TestNestedComposeInstanceBinding:
+    def test_inner_compose_preprocess_after_unpack(self) -> None:
+        inner = A.Compose([A.NoOp(p=1)])
+        transform = A.Compose(
+            [inner],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["masks", "bboxes"],
+        )
+        image = _make_image()
+        out = transform(
+            image=image,
+            instances=[
+                {
+                    "mask": _make_mask(),
+                    "bbox": np.array([10, 10, 50, 50], dtype=np.float32),
+                },
+            ],
+        )
+        assert len(out["instances"]) == 1
 
 
 class TestInstanceUnpackCollisions:

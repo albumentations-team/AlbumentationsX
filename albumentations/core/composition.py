@@ -1187,6 +1187,8 @@ class Compose(BaseCompose, HubMixin):
         """
         if self._instance_binding and "instances" in data and self.main_compose:
             self._unpack_instances(data)
+        elif self._instance_binding and self.main_compose and isinstance(data, dict):
+            self._require_instance_binding_data_present(data)
 
         # Always validate shapes if is_check_shapes is True, regardless of strict mode
         if self.is_check_shapes:
@@ -1407,6 +1409,26 @@ class Compose(BaseCompose, HubMixin):
 
     def _get_user_kp_label_fields(self) -> list[str]:
         return list(self._kp_label_map.values())
+
+    def _require_instance_binding_data_present(self, data: dict[str, Any]) -> None:
+        """Ensure instance_binding calls pass `instances` for unpack or already-unpacked data with mask tensors
+        and internal instance-id columns for nested preprocess.
+        """
+        binding = self._instance_binding
+        if binding is None:
+            return
+        if "masks" in binding and "masks" not in data:
+            msg = "`instances` must be provided when using instance_binding with `masks`."
+            raise ValueError(msg)
+        if "mask" in binding and "mask" not in data:
+            msg = "`instances` must be provided when using instance_binding with `mask`."
+            raise ValueError(msg)
+        if "bboxes" in binding and _BBOX_INSTANCE_ID not in data:
+            msg = "`instances` must be provided when using instance_binding with `bboxes`."
+            raise ValueError(msg)
+        if "keypoints" in binding and _KP_INSTANCE_ID not in data:
+            msg = "`instances` must be provided when using instance_binding with `keypoints`."
+            raise ValueError(msg)
 
     def _reserved_keys_for_instance_unpack(self, binding: frozenset[str]) -> frozenset[str]:
         """Return keys instance unpack assigns to pipeline data: mask targets, bboxes, keypoints, and
@@ -1959,9 +1981,9 @@ class Compose(BaseCompose, HubMixin):
                 kp_params = KeypointParams(
                     coord_format=kp.coord_format,
                     label_fields=user_fields,
-                    remove_invisible=True,
+                    remove_invisible=kp.remove_invisible,
                     angle_in_degrees=kp.angle_in_degrees,
-                    check_each_transform=True,
+                    check_each_transform=kp.check_each_transform,
                     label_mapping=kp.label_mapping or None,
                 )
             else:

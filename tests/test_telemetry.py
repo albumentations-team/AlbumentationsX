@@ -734,7 +734,7 @@ class TestComplexPipelines:
         ("ALBUMENTATIONS_OFFLINE", "1", False),
     ],
 )
-def test_environment_variables(monkeypatch, env_var, env_value, expected):
+def test_environment_variables(monkeypatch, env_var, env_value, expected, tmp_path):
     """Test various environment variable configurations."""
     # Clear all relevant env vars first
     for var in ["ALBUMENTATIONS_NO_TELEMETRY", "ALBUMENTATIONS_OFFLINE"]:
@@ -746,7 +746,8 @@ def test_environment_variables(monkeypatch, env_var, env_value, expected):
     # Create new settings instance to pick up env vars
     from albumentations.core.analytics.settings import SettingsManager
 
-    test_settings = SettingsManager()
+    # Isolate from shared cache settings.json (e.g. CI may persist telemetry: false).
+    test_settings = SettingsManager(settings_file=tmp_path / "telemetry_env_settings.json")
 
     assert test_settings.telemetry_enabled == expected
 

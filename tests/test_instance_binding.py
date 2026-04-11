@@ -210,6 +210,63 @@ class TestEmptyInput:
         assert len(result["instances"]) == 1
         assert result["instances"][0]["keypoints"].shape == (0, 2)
 
+    def test_zero_keypoints_with_label_fields_no_keypoint_labels_required(self) -> None:
+        transform = A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"]),
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["name"]),
+            instance_binding=["masks", "bboxes", "keypoints"],
+        )
+
+        image = _make_image()
+        instances = [
+            {
+                "mask": _make_mask(region=(10, 50, 10, 50)),
+                "bbox": np.array([10, 10, 50, 50], dtype=np.float32),
+                "keypoints": np.empty((0, 2), dtype=np.float32),
+                "bbox_labels": {"class_id": 1},
+            },
+        ]
+
+        result = transform(image=image, instances=instances)
+        np.testing.assert_array_equal(
+            result["instances"][0]["keypoints"],
+            np.empty((0, 2), dtype=np.float32),
+        )
+
+    def test_empty_instances_obb_bbox_processor_shape(self) -> None:
+        transform = A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", bbox_type="obb"),
+            instance_binding=["masks", "bboxes"],
+        )
+        image = _make_image()
+        result = transform(image=image, instances=[])
+        assert result["instances"] == []
+
+
+class TestParamsIsolation:
+    def test_shared_bbox_params_not_mutated_by_instance_binding(self) -> None:
+        shared = A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"])
+        A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=shared,
+            instance_binding=["masks", "bboxes"],
+        )
+        assert shared.label_fields == ["class_id"]
+
+    def test_shared_keypoint_params_not_mutated_by_instance_binding(self) -> None:
+        shared = A.KeypointParams(coord_format="xy", remove_invisible=True, check_each_transform=True)
+        A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            keypoint_params=shared,
+            instance_binding=["masks", "bboxes", "keypoints"],
+        )
+        assert shared.remove_invisible is True
+        assert shared.check_each_transform is True
+        assert shared.label_fields is None
+
 
 class TestKeypoints:
     def test_out_of_bounds_keypoints_preserved(self) -> None:

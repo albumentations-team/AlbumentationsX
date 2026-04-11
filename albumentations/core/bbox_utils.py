@@ -275,6 +275,14 @@ class BboxParams(Params):
             f" clip_after_transform={self.clip_after_transform})"
         )
 
+    def make_empty_bboxes_array(self) -> np.ndarray:
+        """Return (0,C) float32 empty bboxes: C is four for HBB or five for OBB internally; use when
+        the bbox list is empty so preprocess receives a valid column count.
+
+        """
+        cols = NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS if self.bbox_type == "hbb" else BBOX_OBB_MIN_COLUMNS
+        return np.array([], dtype=np.float32).reshape(0, cols)
+
 
 class BboxProcessor(DataProcessor):
     """DataProcessor for bboxes: conversion, validation, clipping, filtering. Uses
@@ -322,6 +330,8 @@ class BboxProcessor(DataProcessor):
 
     """
 
+    params: BboxParams
+
     def __init__(self, params: BboxParams, additional_targets: dict[str, str] | None = None):
         super().__init__(params, additional_targets)
 
@@ -340,8 +350,7 @@ class BboxProcessor(DataProcessor):
         """Create an empty bbox array (0 rows, 4 or 5 cols for hbb/obb). Call when the user
         passes an empty list for bboxes so the pipeline has a valid array shape.
         """
-        cols = NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS if self.params.bbox_type == "hbb" else BBOX_OBB_MIN_COLUMNS
-        return np.array([], dtype=np.float32).reshape(0, cols)
+        return self.params.make_empty_bboxes_array()
 
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
         """Validate that data contains all params.label_fields; raises ValueError if any are

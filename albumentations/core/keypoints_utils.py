@@ -191,6 +191,13 @@ class KeypointParams(Params):
             f" check_each_transform={self.check_each_transform}, label_mapping={self.label_mapping})"
         )
 
+    def make_empty_keypoints_array(self) -> np.ndarray:
+        """Return (0,K) float32 empty keypoints; K=len(coord_format). Empty-list inputs get ndarray width
+        matching user format before preprocess converts coordinates.
+
+        """
+        return np.array([], dtype=np.float32).reshape(0, len(self.coord_format))
+
 
 class KeypointsProcessor(DataProcessor):
     """DataProcessor for keypoints: conversion, validation, filtering. Uses KeypointParams
@@ -207,6 +214,8 @@ class KeypointsProcessor(DataProcessor):
 
     """
 
+    params: KeypointParams
+
     def __init__(self, params: KeypointParams, additional_targets: dict[str, str] | None = None):
         super().__init__(params, additional_targets)
         # Store encoded mappings for transforms - will be populated during preprocessing
@@ -215,6 +224,9 @@ class KeypointsProcessor(DataProcessor):
     @property
     def default_data_name(self) -> str:
         return "keypoints"
+
+    def _create_empty_keypoints_array(self) -> np.ndarray:
+        return self.params.make_empty_keypoints_array()
 
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
         """Validate that data has all params.label_fields; raises ValueError if any are

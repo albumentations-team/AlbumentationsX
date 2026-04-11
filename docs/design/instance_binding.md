@@ -62,7 +62,8 @@ Valid targets: `"mask"`, `"masks"`, `"bboxes"`, `"keypoints"`. Minimum 2. `"mask
 7. Inject hidden label fields: `_bbox_instance_id = [0..N-1]`,
    `_kp_instance_id = [0,0,..,1,1,..]` (one per keypoint row).
 
-Then the existing processor `preprocess` hstacks these label columns onto the arrays.
+Then the existing processor `preprocess` horizontally stacks (`numpy.hstack`) these label
+columns onto the arrays.
 
 ## Postprocessing (Repack)
 

@@ -7,6 +7,7 @@ proper data flow and maintaining consistent behavior across the augmentation pip
 """
 
 import contextlib
+import copy
 import inspect
 import random
 import types
@@ -932,54 +933,61 @@ class Compose(BaseCompose, HubMixin):
     def _setup_instance_binding(self, instance_binding: Sequence[str] | None) -> frozenset[str] | None:
         self._bbox_label_map: dict[str, str] = {}
         self._kp_label_map: dict[str, str] = {}
-
         if instance_binding is None:
             return None
-
         targets = frozenset(instance_binding)
+        self._validate_instance_binding_targets(targets)
+        self._apply_bbox_instance_binding(targets)
+        self._apply_keypoints_instance_binding(targets)
+        return targets
 
+    def _validate_instance_binding_targets(self, targets: frozenset[str]) -> None:
         if len(targets) < 2:
             raise ValueError("instance_binding must contain at least 2 targets")
-
         invalid = targets - _VALID_INSTANCE_BINDING_TARGETS
         if invalid:
             raise ValueError(
                 f"Invalid instance_binding targets: {invalid}. "
                 f"Valid targets: {sorted(_VALID_INSTANCE_BINDING_TARGETS)}",
             )
-
         if "mask" in targets and "masks" in targets:
             raise ValueError("instance_binding cannot contain both 'mask' and 'masks'")
-
         if "bboxes" in targets and "bboxes" not in self.processors:
             raise ValueError("bbox_params must be set when 'bboxes' is in instance_binding")
-
         if "keypoints" in targets and "keypoints" not in self.processors:
             raise ValueError("keypoint_params must be set when 'keypoints' is in instance_binding")
 
-        if "bboxes" in targets:
-            bbox_proc = self.processors["bboxes"]
-            user_fields = list(bbox_proc.params.label_fields or [])
-            internal_fields = [f"_ibl_bbox_{f}" for f in user_fields]
-            self._bbox_label_map = dict(zip(internal_fields, user_fields, strict=True))
-            internal_fields.append(_BBOX_INSTANCE_ID)
-            bbox_proc.params.label_fields = internal_fields
+    def _apply_bbox_instance_binding(self, targets: frozenset[str]) -> None:
+        if "bboxes" not in targets:
+            return
+        bbox_proc = self.processors["bboxes"]
+        if not isinstance(bbox_proc, BboxProcessor):
+            msg = "expected bbox processor"
+            raise TypeError(msg)
+        bbox_proc.params = copy.deepcopy(bbox_proc.params)
+        bbox_params = bbox_proc.params
+        user_fields = list(bbox_params.label_fields or [])
+        internal_fields = [f"_ibl_bbox_{f}" for f in user_fields]
+        self._bbox_label_map = dict(zip(internal_fields, user_fields, strict=True))
+        internal_fields.append(_BBOX_INSTANCE_ID)
+        bbox_params.label_fields = internal_fields
 
-        if "keypoints" in targets:
-            kp_proc = self.processors["keypoints"]
-            if not isinstance(kp_proc, KeypointsProcessor):
-                msg = "expected keypoints processor"
-                raise TypeError(msg)
-            kp_params = kp_proc.params
-            user_fields = list(kp_params.label_fields or [])
-            internal_fields = [f"_ibl_kp_{f}" for f in user_fields]
-            self._kp_label_map = dict(zip(internal_fields, user_fields, strict=True))
-            internal_fields.append(_KP_INSTANCE_ID)
-            kp_params.label_fields = internal_fields
-            kp_params.remove_invisible = False
-            kp_params.check_each_transform = False
-
-        return targets
+    def _apply_keypoints_instance_binding(self, targets: frozenset[str]) -> None:
+        if "keypoints" not in targets:
+            return
+        kp_proc = self.processors["keypoints"]
+        if not isinstance(kp_proc, KeypointsProcessor):
+            msg = "expected keypoints processor"
+            raise TypeError(msg)
+        kp_proc.params = copy.deepcopy(kp_proc.params)
+        kp_params = kp_proc.params
+        user_fields = list(kp_params.label_fields or [])
+        internal_fields = [f"_ibl_kp_{f}" for f in user_fields]
+        self._kp_label_map = dict(zip(internal_fields, user_fields, strict=True))
+        internal_fields.append(_KP_INSTANCE_ID)
+        kp_params.label_fields = internal_fields
+        kp_params.remove_invisible = False
+        kp_params.check_each_transform = False
 
     def _set_processors_for_transforms(self, transforms: TransformsSeqType) -> None:
         for transform in transforms:
@@ -1340,8 +1348,13 @@ class Compose(BaseCompose, HubMixin):
             for p in self.processors.values():
                 p.postprocess(data)
 
-            if self._instance_binding and hasattr(self, "_instance_count"):
-                self._repack_instances(data)
+            if self._instance_binding and getattr(self, "_repack_after_processors", False):
+                try:
+                    self._repack_instances(data)
+                finally:
+                    del self._repack_after_processors
+                    if hasattr(self, "_instance_count"):
+                        delattr(self, "_instance_count")
 
             # Remove channel dimensions that were added during preprocessing
             self._remove_grayscale_channels(data)
@@ -1397,10 +1410,10 @@ class Compose(BaseCompose, HubMixin):
 
         num_instances = len(instances)
         self._instance_count = num_instances
-        self._instance_kp_counts: list[int] = []
 
         if num_instances == 0:
             self._init_empty_instance_data(data, binding)
+            self._repack_after_processors = True
             return
 
         instance_dicts = self._validate_instances(instances)
@@ -1409,15 +1422,24 @@ class Compose(BaseCompose, HubMixin):
         self._unpack_keypoints(data, binding, instance_dicts)
         self._unpack_bbox_labels(data, instance_dicts)
         self._unpack_kp_labels(data, instance_dicts)
+        self._repack_after_processors = True
 
     def _init_empty_instance_data(self, data: dict[str, Any], binding: frozenset[str]) -> None:
         if "masks" in binding:
             data["masks"] = np.empty((0, 0, 0), dtype=np.uint8)
         if "bboxes" in binding:
-            data["bboxes"] = np.zeros((0, 4), dtype=np.float32)
+            bbox_proc = self.processors["bboxes"]
+            if isinstance(bbox_proc, BboxProcessor):
+                data["bboxes"] = bbox_proc.params.make_empty_bboxes_array()
+            else:
+                data["bboxes"] = np.zeros((0, 4), dtype=np.float32)
             data[_BBOX_INSTANCE_ID] = []
         if "keypoints" in binding:
-            data["keypoints"] = np.zeros((0, 2), dtype=np.float32)
+            kp_proc_init = self.processors["keypoints"]
+            if not isinstance(kp_proc_init, KeypointsProcessor):
+                msg = "expected keypoints processor"
+                raise TypeError(msg)
+            data["keypoints"] = kp_proc_init.params.make_empty_keypoints_array()
             data[_KP_INSTANCE_ID] = []
         for internal_name in self._bbox_label_map:
             data[internal_name] = []
@@ -1455,16 +1477,22 @@ class Compose(BaseCompose, HubMixin):
     ) -> None:
         if "keypoints" not in binding:
             return
+        kp_proc_unpack = self.processors["keypoints"]
+        if not isinstance(kp_proc_unpack, KeypointsProcessor):
+            return
+        kp_params = kp_proc_unpack.params
+        empty_kp = kp_params.make_empty_keypoints_array()
+        num_cols = empty_kp.shape[1]
+        default_empty = np.zeros((0, num_cols), dtype=np.float32)
         all_kps: list[np.ndarray] = []
         all_ids: list[int] = []
         for idx, inst in enumerate(instance_dicts):
-            kps = inst.get("keypoints", np.zeros((0, 2), dtype=np.float32))
+            kps = inst.get("keypoints", default_empty)
             count = kps.shape[0] if isinstance(kps, np.ndarray) else len(kps)
-            self._instance_kp_counts.append(count)
             if count > 0:
                 all_kps.append(np.asarray(kps, dtype=np.float32))
                 all_ids.extend([idx] * count)
-        data["keypoints"] = np.concatenate(all_kps) if all_kps else np.zeros((0, 2), dtype=np.float32)
+        data["keypoints"] = np.concatenate(all_kps) if all_kps else kp_params.make_empty_keypoints_array()
         data[_KP_INSTANCE_ID] = all_ids
 
     def _unpack_bbox_labels(self, data: dict[str, Any], instance_dicts: list[dict[str, Any]]) -> None:
@@ -1628,7 +1656,11 @@ class Compose(BaseCompose, HubMixin):
         if kp_ids.size > 0:
             inst["keypoints"] = data["keypoints"][kp_ids == old_idx]
         else:
-            inst["keypoints"] = np.zeros((0, 2), dtype=np.float32)
+            kp_proc = self.processors.get("keypoints")
+            if isinstance(kp_proc, KeypointsProcessor):
+                inst["keypoints"] = kp_proc.params.make_empty_keypoints_array()
+            else:
+                inst["keypoints"] = np.zeros((0, 2), dtype=np.float32)
 
     def _repack_bbox_labels_into(self, inst: dict[str, Any], data: dict[str, Any], new_idx: int) -> None:
         if not self._bbox_label_map:
@@ -1661,7 +1693,7 @@ class Compose(BaseCompose, HubMixin):
                 inst["keypoint_labels"][user_name] = []
 
     def _cleanup_instance_data(self, data: dict[str, Any], binding: frozenset[str]) -> None:
-        for key in ["masks", "bboxes", "keypoints"]:
+        for key in ("mask", "masks", "bboxes", "keypoints"):
             if key in binding:
                 data.pop(key, None)
         for internal_name in self._bbox_label_map:

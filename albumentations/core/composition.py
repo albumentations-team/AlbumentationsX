@@ -1045,14 +1045,24 @@ class Compose(BaseCompose, HubMixin):
         if not need_to_run:
             return data
 
-        self.preprocess(data)
+        try:
+            self.preprocess(data)
+            for t in self.transforms:
+                data = t(**data)
+                self._track_transform_params(t, data)
+                data = self.check_data_post_transform(data)
 
-        for t in self.transforms:
-            data = t(**data)
-            self._track_transform_params(t, data)
-            data = self.check_data_post_transform(data)
+            return self.postprocess(data)
+        finally:
+            # Clear per-call unpack/repack flags if preprocess or a transform raised mid-call.
+            if self.main_compose and self._instance_binding:
+                self._clear_instance_binding_call_state_if_pending()
 
-        return self.postprocess(data)
+    def _clear_instance_binding_call_state_if_pending(self) -> None:
+        if getattr(self, "_repack_after_processors", False):
+            del self._repack_after_processors
+        if hasattr(self, "_instance_count"):
+            delattr(self, "_instance_count")
 
     @staticmethod
     def from_applied_transforms(
@@ -1479,7 +1489,8 @@ class Compose(BaseCompose, HubMixin):
             return
         kp_proc_unpack = self.processors["keypoints"]
         if not isinstance(kp_proc_unpack, KeypointsProcessor):
-            return
+            msg = "expected keypoints processor"
+            raise TypeError(msg)
         kp_params = kp_proc_unpack.params
         all_kps: list[np.ndarray] = []
         all_ids: list[int] = []
@@ -1890,7 +1901,7 @@ class Compose(BaseCompose, HubMixin):
         bbox_params: BboxParams | None = None
         if bbox_processor:
             bp = cast("BboxParams", bbox_processor.params)
-            if self._instance_binding:
+            if self._instance_binding and "bboxes" in self._instance_binding:
                 user_fields = list(self._bbox_label_map.values()) or None
                 bbox_params = BboxParams(
                     coord_format=bp.coord_format,
@@ -1912,7 +1923,7 @@ class Compose(BaseCompose, HubMixin):
         kp_params: KeypointParams | None = None
         if keypoints_processor:
             kp = cast("KeypointParams", keypoints_processor.params)
-            if self._instance_binding:
+            if self._instance_binding and "keypoints" in self._instance_binding:
                 user_fields = list(self._kp_label_map.values()) or None
                 kp_params = KeypointParams(
                     coord_format=kp.coord_format,

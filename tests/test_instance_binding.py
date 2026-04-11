@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -513,6 +515,64 @@ class TestSerialization:
         bbox_params = params["bbox_params"]
         assert "_bbox_instance_id" not in (bbox_params.label_fields or [])
         assert params["instance_binding"] == ["bboxes", "masks"]
+
+    def test_get_init_params_masks_keypoints_preserves_bbox_params(self) -> None:
+        transform = A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"]),
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["name"]),
+            instance_binding=["masks", "keypoints"],
+        )
+
+        params = transform._get_init_params()
+        assert params["bbox_params"].label_fields == ["class_id"]
+
+    def test_get_init_params_masks_bboxes_preserves_keypoint_params(self) -> None:
+        transform = A.Compose(
+            [A.NoOp(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            keypoint_params=A.KeypointParams(
+                coord_format="xy",
+                label_fields=["name"],
+                remove_invisible=False,
+                check_each_transform=False,
+            ),
+            instance_binding=["masks", "bboxes"],
+        )
+
+        params = transform._get_init_params()
+        assert params["keypoint_params"].label_fields == ["name"]
+        assert params["keypoint_params"].remove_invisible is False
+        assert params["keypoint_params"].check_each_transform is False
+
+
+class TestInstanceBindingCallState:
+    def test_state_cleared_when_transform_raises(self) -> None:
+        def boom(img: np.ndarray, **kwargs: Any) -> np.ndarray:
+            msg = "intentional"
+            raise RuntimeError(msg)
+
+        transform = A.Compose(
+            [A.NoOp(p=1), A.Lambda(image=boom, p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            keypoint_params=A.KeypointParams(coord_format="xy"),
+            instance_binding=["masks", "bboxes", "keypoints"],
+        )
+
+        image = _make_image()
+        instances = [
+            {
+                "mask": _make_mask(),
+                "bbox": np.array([10, 10, 50, 50], dtype=np.float32),
+                "keypoints": np.array([[20.0, 20.0]], dtype=np.float32),
+            },
+        ]
+
+        with pytest.raises(RuntimeError, match="intentional"):
+            transform(image=image, instances=instances)
+
+        assert not getattr(transform, "_repack_after_processors", False)
+        assert not hasattr(transform, "_instance_count")
 
 
 class TestChannelMask:

@@ -45,7 +45,7 @@ The release process depends on the repository CI in `.github/workflows/ci.yml`:
 - code formatting and type checks through `pre-commit`
 - lockfile freshness check through `uv lock --check`
 - `tools.check_defaults`
-- README/doc consistency check via `tools.make_transforms_docs`
+- README transform tables vs code via pre-commit hook `check-readme-transforms-docs` (`make_transforms_docs check`)
 
 Releases must not be cut from a commit that has failing required checks.
 

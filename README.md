@@ -264,6 +264,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [CenterCrop](https://explore.albumentations.ai/transform/CenterCrop)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [CoarseDropout](https://explore.albumentations.ai/transform/CoarseDropout)                       | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 | [ConstrainedCoarseDropout](https://explore.albumentations.ai/transform/ConstrainedCoarseDropout) | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [CopyAndPaste](https://explore.albumentations.ai/transform/CopyAndPaste)                         | ✓     | ✓    | ✓            |              | ✓         |        |        |
 | [Crop](https://explore.albumentations.ai/transform/Crop)                                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [CropAndPad](https://explore.albumentations.ai/transform/CropAndPad)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [CropNonEmptyMaskIfExists](https://explore.albumentations.ai/transform/CropNonEmptyMaskIfExists) | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |

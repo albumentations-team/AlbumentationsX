@@ -119,6 +119,12 @@ repos:
         entry: python ./tools/check_conda_dependencies.py
         language: system
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
+      - id: check-readme-transforms-docs
+        name: Check README transform tables match albumentations
+        entry: python -m tools.make_transforms_docs check README.md
+        language: system
+        pass_filenames: false
+        files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.9
     hooks:

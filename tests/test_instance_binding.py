@@ -667,3 +667,712 @@ class TestChannelMask:
         result = transform(image=image, instances=instances)
         assert len(result["instances"]) == 2
         assert result["instances"][0]["mask"].shape == (100, 100)
+
+
+class TestMixingTransformsInstanceBinding:
+    def test_mosaic_instance_binding_masks_one_cell(self) -> None:
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(1, 1),
+                    target_size=(64, 64),
+                    cell_shape=(64, 64),
+                    center_range=(0.5, 0.5),
+                    p=1.0,
+                ),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        image = _make_image(64, 64)
+        m1 = _make_mask(64, 64, (10, 40, 10, 40))
+        m2 = _make_mask(64, 64, (45, 60, 45, 60))
+        instances = [
+            {
+                "mask": m1,
+                "bbox": np.array([10, 10, 40, 40], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+            {
+                "mask": m2,
+                "bbox": np.array([45, 45, 60, 60], dtype=np.float32),
+                "bbox_labels": {"cid": 2},
+            },
+        ]
+        result = transform(image=image, instances=instances, mosaic_metadata=[])
+        assert len(result["instances"]) == 2
+        assert result["instances"][0]["mask"].shape == (64, 64)
+        assert result["instances"][1]["mask"].shape == (64, 64)
+
+    def test_mosaic_instance_binding_two_sources_two_instances(self) -> None:
+        ch, cw = 64, 64
+        rng = np.random.default_rng(137)
+        img_p = rng.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        img_m = rng.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 36, 4, 36)),
+                "bbox": np.array([4, 4, 36, 36], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        mosaic_metadata = [
+            {
+                "image": img_m,
+                "masks": np.stack([_make_mask(ch, cw, (8, 44, 8, 44))]),
+                "bboxes": np.array([[8.0, 8.0, 44.0, 44.0]], dtype=np.float32),
+                "bbox_labels": {"cid": [2]},
+            },
+        ]
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(2, 1),
+                    target_size=(ch * 2, cw),
+                    cell_shape=(ch, cw),
+                    center_range=(0.5, 0.5),
+                    fit_mode="cover",
+                    p=1.0,
+                ),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=img_p, instances=instances, mosaic_metadata=mosaic_metadata)
+        assert len(result["instances"]) == 2
+        assert result["instances"][0]["mask"].shape == (ch * 2, cw)
+        assert result["instances"][1]["mask"].shape == (ch * 2, cw)
+        cids = {result["instances"][i]["bbox_labels"]["cid"] for i in range(2)}
+        assert cids == {1, 2}
+
+    def test_copy_paste_instance_binding_keypoints_survive_by_instance_id(self) -> None:
+        image = np.zeros((80, 80, 3), dtype=np.uint8)
+        m0 = _make_mask(80, 80, (5, 30, 5, 30))
+        m1 = _make_mask(80, 80, (50, 75, 50, 75))
+        instances = [
+            {
+                "mask": m0,
+                "bbox": np.array([5, 5, 30, 30], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+                "keypoints": np.array([[10.0, 10.0], [15.0, 15.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [1, 1]},
+            },
+            {
+                "mask": m1,
+                "bbox": np.array([50, 50, 75, 75], dtype=np.float32),
+                "bbox_labels": {"cid": 2},
+                "keypoints": np.array([[60.0, 60.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [2]},
+            },
+        ]
+        paste_mask = np.zeros((80, 80), dtype=np.uint8)
+        paste_mask[:40, :40] = 1
+        obj: dict[str, Any] = {
+            "image": np.full((80, 80, 3), 200, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, 40, 40],
+            "bbox_labels": {"cid": 99},
+            "keypoints": np.array([[20.0, 20.0]], dtype=np.float32),
+            "keypoint_labels": {"vis": [9]},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.05, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["vis"]),
+            instance_binding=["masks", "bboxes", "keypoints"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[obj])
+        assert len(result["instances"]) == 2
+        total_kp_rows = sum(inst["keypoints"].shape[0] for inst in result["instances"])
+        assert total_kp_rows == 2
+
+
+# ---------------------------------------------------------------------------
+# Mixing transforms × instance binding — matrix + corner cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def rng_137() -> np.random.Generator:
+    return np.random.default_rng(137)
+
+
+def _instances_by_cid(instances: list[dict[str, Any]]) -> dict[Any, dict[str, Any]]:
+    return {inst["bbox_labels"]["cid"]: inst for inst in instances}
+
+
+def _make_mosaic_compose(
+    *,
+    grid_yx: tuple[int, int],
+    target_size: tuple[int, int],
+    cell_shape: tuple[int, int],
+    fit_mode: str = "cover",
+    strict: bool = False,
+    instance_binding: list[str] | None = None,
+    with_keypoints: bool = False,
+) -> A.Compose:
+    binding = instance_binding if instance_binding is not None else ["masks", "bboxes"]
+    kp_params = None
+    if with_keypoints or "keypoints" in binding:
+        kp_params = A.KeypointParams(coord_format="xy", label_fields=["vis"])
+    return A.Compose(
+        [
+            A.Mosaic(
+                grid_yx=grid_yx,
+                target_size=target_size,
+                cell_shape=cell_shape,
+                center_range=(0.5, 0.5),
+                fit_mode=fit_mode,
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+        keypoint_params=kp_params,
+        instance_binding=binding,
+        seed=137,
+        strict=strict,
+    )
+
+
+def _two_source_mosaic_payload(
+    *,
+    ch: int,
+    cw: int,
+    layout: str,
+    rng: np.random.Generator,
+) -> tuple[
+    np.ndarray,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    tuple[int, int],
+    tuple[int, int],
+]:
+    """Primary + metadata for a 2-cell mosaic; layout is 'vertical' (2,1) or 'horizontal' (1,2)."""
+    img_p = rng.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+    img_m = rng.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+    instances = [
+        {
+            "mask": _make_mask(ch, cw, (4, 36, 4, 36)),
+            "bbox": np.array([4, 4, 36, 36], dtype=np.float32),
+            "bbox_labels": {"cid": 1},
+        },
+    ]
+    mosaic_metadata = [
+        {
+            "image": img_m,
+            "masks": np.stack([_make_mask(ch, cw, (8, 44, 8, 44))]),
+            "bboxes": np.array([[8.0, 8.0, 44.0, 44.0]], dtype=np.float32),
+            "bbox_labels": {"cid": [2]},
+        },
+    ]
+    if layout == "vertical":
+        target_size, grid_yx = (ch * 2, cw), (2, 1)
+    elif layout == "horizontal":
+        target_size, grid_yx = (ch, cw * 2), (1, 2)
+    else:
+        raise ValueError(layout)
+    return img_p, instances, mosaic_metadata, target_size, grid_yx
+
+
+class TestMosaicInstanceBindingExhaustive:
+    @pytest.mark.parametrize("strict", [False, True], ids=["loose", "strict"])
+    def test_strict_compose_accepts_mosaic_with_masks(self, strict: bool, rng_137: np.random.Generator) -> None:
+        ch, cw = 48, 48
+        transform = _make_mosaic_compose(
+            grid_yx=(1, 1),
+            target_size=(ch, cw),
+            cell_shape=(ch, cw),
+            strict=strict,
+        )
+        image = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (5, 25, 5, 25)),
+                "bbox": np.array([5, 5, 25, 25], dtype=np.float32),
+                "bbox_labels": {"cid": 7},
+            },
+        ]
+        result = transform(image=image, instances=instances, mosaic_metadata=[])
+        assert len(result["instances"]) == 1
+        assert result["instances"][0]["bbox_labels"]["cid"] == 7
+        assert result["instances"][0]["mask"].shape == (ch, cw)
+
+    @pytest.mark.parametrize(
+        ("fit_mode", "layout"),
+        [
+            ("cover", "vertical"),
+            ("cover", "horizontal"),
+            ("contain", "vertical"),
+            ("contain", "horizontal"),
+        ],
+        ids=["cv", "ch", "ktv", "kth"],
+    )
+    def test_two_cell_mosaic_fit_mode_and_layout(
+        self,
+        fit_mode: str,
+        layout: str,
+        rng_137: np.random.Generator,
+    ) -> None:
+        ch, cw = 56, 56
+        img_p, instances, mosaic_metadata, target_size, grid_yx = _two_source_mosaic_payload(
+            ch=ch,
+            cw=cw,
+            layout=layout,
+            rng=rng_137,
+        )
+        transform = _make_mosaic_compose(
+            grid_yx=grid_yx,
+            target_size=target_size,
+            cell_shape=(ch, cw),
+            fit_mode=fit_mode,
+        )
+        result = transform(image=img_p, instances=instances, mosaic_metadata=mosaic_metadata)
+        assert len(result["instances"]) == 2
+        th, tw = target_size
+        for inst in result["instances"]:
+            assert inst["mask"].shape == (th, tw)
+        assert _instances_by_cid(result["instances"]).keys() == {1, 2}
+
+    def test_mosaic_triple_binding_keypoint_counts_per_instance(self, rng_137: np.random.Generator) -> None:
+        ch, cw = 48, 48
+        img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        img_m = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 30, 4, 30)),
+                "bbox": np.array([4, 4, 30, 30], dtype=np.float32),
+                "bbox_labels": {"cid": 10},
+                "keypoints": np.array([[12.0, 12.0], [18.0, 18.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [1, 1]},
+            },
+        ]
+        mosaic_metadata = [
+            {
+                "image": img_m,
+                "masks": np.stack([_make_mask(ch, cw, (6, 40, 6, 40))]),
+                "bboxes": np.array([[6.0, 6.0, 40.0, 40.0]], dtype=np.float32),
+                "bbox_labels": {"cid": [20]},
+                "keypoints": np.array([[22.0, 22.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [2]},
+            },
+        ]
+        transform = _make_mosaic_compose(
+            grid_yx=(2, 1),
+            target_size=(ch * 2, cw),
+            cell_shape=(ch, cw),
+            with_keypoints=True,
+            instance_binding=["masks", "bboxes", "keypoints"],
+        )
+        result = transform(image=img_p, instances=instances, mosaic_metadata=mosaic_metadata)
+        assert len(result["instances"]) == 2
+        by_cid = _instances_by_cid(result["instances"])
+        assert by_cid[10]["keypoints"].shape == (2, 2)
+        assert by_cid[20]["keypoints"].shape == (1, 2)
+        np.testing.assert_array_equal(by_cid[10]["keypoint_labels"]["vis"], np.array([1, 1]))
+        np.testing.assert_array_equal(by_cid[20]["keypoint_labels"]["vis"], np.array([2]))
+
+    def test_mosaic_masks_plus_bboxes_only_no_keypoints_in_binding(self, rng_137: np.random.Generator) -> None:
+        ch, cw = 40, 40
+        img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (5, 25, 5, 25)),
+                "bbox": np.array([5, 5, 25, 25], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+            {
+                "mask": _make_mask(ch, cw, (28, 38, 28, 38)),
+                "bbox": np.array([28, 28, 38, 38], dtype=np.float32),
+                "bbox_labels": {"cid": 2},
+            },
+        ]
+        transform = _make_mosaic_compose(
+            grid_yx=(1, 1),
+            target_size=(ch, cw),
+            cell_shape=(ch, cw),
+            instance_binding=["masks", "bboxes"],
+        )
+        result = transform(image=img_p, instances=instances, mosaic_metadata=[])
+        assert len(result["instances"]) == 2
+        assert "keypoints" not in result["instances"][0]
+
+    def test_mosaic_empty_metadata_replicates_primary_into_both_cells(self, rng_137: np.random.Generator) -> None:
+        """Two cells, no donors: primary is cloned into each cell → two bbox/mask rows after fuse."""
+        ch, cw = 32, 32
+        transform = _make_mosaic_compose(
+            grid_yx=(2, 1),
+            target_size=(ch * 2, cw),
+            cell_shape=(ch, cw),
+        )
+        img = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 20, 4, 20)),
+                "bbox": np.array([4, 4, 20, 20], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        result = transform(image=img, instances=instances, mosaic_metadata=[])
+        assert len(result["instances"]) == 2
+        for inst in result["instances"]:
+            assert inst["mask"].shape == (ch * 2, cw)
+            assert int(inst["bbox_labels"]["cid"]) == 1
+
+    def test_mosaic_zero_instances_returns_empty(self) -> None:
+        transform = _make_mosaic_compose(
+            grid_yx=(1, 1),
+            target_size=(24, 24),
+            cell_shape=(24, 24),
+        )
+        image = np.zeros((24, 24, 3), dtype=np.uint8)
+        result = transform(image=image, instances=[], mosaic_metadata=[])
+        assert result["instances"] == []
+
+    def test_mosaic_chained_with_crop_repacks_instances(self, rng_137: np.random.Generator) -> None:
+        ch, cw = 48, 48
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(1, 1),
+                    target_size=(ch, cw),
+                    cell_shape=(ch, cw),
+                    center_range=(0.5, 0.5),
+                    p=1.0,
+                ),
+                A.Crop(x_min=0, y_min=0, x_max=32, y_max=32, p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"], min_area=1),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        image = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (5, 30, 5, 30)),
+                "bbox": np.array([5, 5, 30, 30], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        result = transform(image=image, instances=instances, mosaic_metadata=[])
+        assert len(result["instances"]) >= 1
+        assert result["instances"][0]["mask"].shape == (32, 32)
+
+
+class TestCopyPasteInstanceBindingExhaustive:
+    @pytest.fixture
+    def base_two_instance_payload(self) -> tuple[np.ndarray, list[dict[str, Any]]]:
+        """Shared primary image + two non-overlapping instances for CopyAndPaste matrices."""
+        image = np.zeros((72, 72, 3), dtype=np.uint8)
+        m0 = _make_mask(72, 72, (6, 34, 6, 34))
+        m1 = _make_mask(72, 72, (40, 68, 40, 68))
+        instances = [
+            {
+                "mask": m0,
+                "bbox": np.array([6, 6, 34, 34], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+            {
+                "mask": m1,
+                "bbox": np.array([40, 40, 68, 68], dtype=np.float32),
+                "bbox_labels": {"cid": 2},
+            },
+        ]
+        return image, instances
+
+    def test_masks_bboxes_only_pasted_labels_and_counts(
+        self,
+        base_two_instance_payload: tuple[np.ndarray, list[dict[str, Any]]],
+    ) -> None:
+        image, instances = base_two_instance_payload
+        paste_mask = np.zeros((72, 72), dtype=np.uint8)
+        paste_mask[:28, :28] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((72, 72, 3), 99, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, 28, 28],
+            "bbox_labels": {"cid": 77},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.05, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        by_cid = _instances_by_cid(result["instances"])
+        assert 77 in by_cid
+        assert by_cid[77]["bbox_labels"]["cid"] == 77
+        assert len(result["instances"]) >= 2
+
+    @pytest.mark.parametrize("min_vis", [0.0, 0.45, 0.9], ids=["v0", "v045", "v09"])
+    def test_copy_paste_min_visibility_param_survival_matrix(
+        self,
+        base_two_instance_payload: tuple[np.ndarray, list[dict[str, Any]]],
+        min_vis: float,
+    ) -> None:
+        image, instances = base_two_instance_payload
+        paste_mask = np.zeros((72, 72), dtype=np.uint8)
+        paste_mask[:20, :20] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((72, 72, 3), 50, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, 20, 20],
+            "bbox_labels": {"cid": 900},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=min_vis, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        assert len(result["instances"]) >= 1
+        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
+        assert 900 in cids
+
+    def test_all_primaries_occluded_only_paste_remains(self) -> None:
+        image = np.zeros((64, 64, 3), dtype=np.uint8)
+        full = np.ones((64, 64), dtype=np.uint8)
+        instances = [
+            {
+                "mask": full,
+                "bbox": np.array([0, 0, 64, 64], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        paste_mask = np.ones((64, 64), dtype=np.uint8)
+        donor: dict[str, Any] = {
+            "image": np.full((64, 64, 3), 200, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, 64, 64],
+            "bbox_labels": {"cid": 500},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.99, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        assert len(result["instances"]) == 1
+        assert result["instances"][0]["bbox_labels"]["cid"] == 500
+
+    def test_two_donors_distinct_cids_and_mask_stack(self) -> None:
+        image = np.zeros((80, 80, 3), dtype=np.uint8)
+        m0 = _make_mask(80, 80, (50, 78, 50, 78))
+        instances = [
+            {
+                "mask": m0,
+                "bbox": np.array([50, 50, 78, 78], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        d1_mask = np.zeros((80, 80), dtype=np.uint8)
+        d1_mask[0:15, 0:15] = 1
+        d2_mask = np.zeros((80, 80), dtype=np.uint8)
+        d2_mask[0:15, 20:35] = 1
+        meta = [
+            {
+                "image": np.full((80, 80, 3), 10, dtype=np.uint8),
+                "mask": d1_mask,
+                "bbox": [0, 0, 15, 15],
+                "bbox_labels": {"cid": 101},
+            },
+            {
+                "image": np.full((80, 80, 3), 20, dtype=np.uint8),
+                "mask": d2_mask,
+                "bbox": [20, 0, 35, 15],
+                "bbox_labels": {"cid": 102},
+            },
+        ]
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.0, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=meta)
+        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
+        assert {1, 101, 102}.issubset(cids)
+        stacked = np.stack([inst["mask"] for inst in result["instances"]], axis=0)
+        assert stacked.shape[0] == len(result["instances"])
+
+    def test_empty_metadata_no_paste_instances_unchanged_count(self) -> None:
+        image = _make_image(48, 48)
+        instances = [
+            {
+                "mask": _make_mask(48, 48, (5, 30, 5, 30)),
+                "bbox": np.array([5, 5, 30, 30], dtype=np.float32),
+                "bbox_labels": {"cid": 3},
+            },
+        ]
+        transform = A.Compose(
+            [A.CopyAndPaste(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[])
+        assert len(result["instances"]) == 1
+        assert result["instances"][0]["bbox_labels"]["cid"] == 3
+
+    def test_donor_mask_empty_skipped(self) -> None:
+        image = _make_image(40, 40)
+        instances = [
+            {
+                "mask": _make_mask(40, 40, (5, 25, 5, 25)),
+                "bbox": np.array([5, 5, 25, 25], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        donor: dict[str, Any] = {
+            "image": np.zeros((40, 40, 3), dtype=np.uint8),
+            "mask": np.zeros((40, 40), dtype=np.uint8),
+            "bbox": [0, 0, 1, 1],
+            "bbox_labels": {"cid": 99},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        assert len(result["instances"]) == 1
+
+    def test_triple_binding_assert_pasted_keypoint_row_and_survivor_cids(self) -> None:
+        image = np.zeros((88, 88, 3), dtype=np.uint8)
+        m0 = _make_mask(88, 88, (8, 40, 8, 40))
+        m1 = _make_mask(88, 88, (52, 84, 52, 84))
+        instances = [
+            {
+                "mask": m0,
+                "bbox": np.array([8, 8, 40, 40], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+                "keypoints": np.array([[12.0, 12.0], [20.0, 20.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [1, 1]},
+            },
+            {
+                "mask": m1,
+                "bbox": np.array([52, 52, 84, 84], dtype=np.float32),
+                "bbox_labels": {"cid": 2},
+                "keypoints": np.array([[70.0, 70.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [2]},
+            },
+        ]
+        paste_mask = np.zeros((88, 88), dtype=np.uint8)
+        paste_mask[:44, :44] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((88, 88, 3), 123, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, 44, 44],
+            "bbox_labels": {"cid": 999},
+            "keypoints": np.array([[22.0, 22.0], [30.0, 30.0]], dtype=np.float32),
+            "keypoint_labels": {"vis": [8, 8]},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.05, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["vis"]),
+            instance_binding=["masks", "bboxes", "keypoints"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        by_cid = _instances_by_cid(result["instances"])
+        assert 999 in by_cid
+        assert by_cid[999]["keypoints"].shape[0] == 2
+        np.testing.assert_array_equal(by_cid[999]["keypoint_labels"]["vis"], np.array([8, 8]))
+        assert 2 in by_cid
+        assert by_cid[2]["keypoints"].shape[0] == 1
+
+    def test_copy_paste_min_visibility_one_excludes_all_primaries(self) -> None:
+        """min_visibility_after_paste=1.0 requires untouched masks — any overlap removes instance."""
+        image = np.zeros((56, 56, 3), dtype=np.uint8)
+        m = _make_mask(56, 56, (10, 46, 10, 46))
+        instances = [
+            {
+                "mask": m,
+                "bbox": np.array([10, 10, 46, 46], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        paste = np.zeros((56, 56), dtype=np.uint8)
+        paste[20:30, 20:30] = 1
+        donor: dict[str, Any] = {
+            "image": np.ones((56, 56, 3), dtype=np.uint8),
+            "mask": paste,
+            "bbox": [20, 20, 30, 30],
+            "bbox_labels": {"cid": 88},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=1.0, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        assert len(result["instances"]) == 1
+        assert int(result["instances"][0]["bbox_labels"]["cid"]) == 88
+
+    @pytest.mark.parametrize("dtype_mask", [np.uint8, np.int32], ids=["u8", "i32"])
+    def test_copy_paste_mask_dtype_variants(self, dtype_mask: np.dtype) -> None:
+        image = np.zeros((50, 50, 3), dtype=np.uint8)
+        m = np.zeros((50, 50), dtype=dtype_mask)
+        m[10:30, 10:30] = 1
+        instances = [
+            {
+                "mask": m,
+                "bbox": np.array([10, 10, 30, 30], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        paste = np.zeros((50, 50), dtype=dtype_mask)
+        paste[:12, :12] = 1
+        donor: dict[str, Any] = {
+            "image": np.ones((50, 50, 3), dtype=np.uint8),
+            "mask": paste,
+            "bbox": [0, 0, 12, 12],
+            "bbox_labels": {"cid": 2},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.0, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        assert len(result["instances"]) == 2
+
+
+class TestMixingInstanceBindingRegression:
+    def test_mosaic_then_horizontal_flip_deterministic_seed(self, rng_137: np.random.Generator) -> None:
+        ch, cw = 40, 40
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(1, 1),
+                    target_size=(ch, cw),
+                    cell_shape=(ch, cw),
+                    p=1.0,
+                ),
+                A.HorizontalFlip(p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        image = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (5, 25, 5, 30)),
+                "bbox": np.array([5, 5, 30, 25], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        r1 = transform(image=image.copy(), instances=instances, mosaic_metadata=[])
+        r2 = transform(image=image.copy(), instances=instances, mosaic_metadata=[])
+        assert len(r1["instances"]) == len(r2["instances"]) == 1
+        np.testing.assert_array_equal(r1["instances"][0]["mask"], r2["instances"][0]["mask"])

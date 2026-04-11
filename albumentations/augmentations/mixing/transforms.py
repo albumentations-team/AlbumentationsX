@@ -540,13 +540,15 @@ class CopyAndPaste(DualTransform):
         items: list[dict[str, Any]],
         pasted_masks: np.ndarray,
         target_image: np.ndarray,
+        instance_ids: list[int],
     ) -> np.ndarray | None:
         """Build a preprocessed bounding-box array from all pasted object items, encoding extra
         label fields through the bbox processor.
 
         Label values are read from `bbox_labels` in each item — a dict mapping
         label field name to the scalar value for that object, e.g.
-        `{"class_id": 3, "is_crowd": 0}`.
+        `{"class_id": 3, "is_crowd": 0}`. With instance binding, internal `_ibl_bbox_*` fields
+        map to user keys; `_bbox_instance_id` is taken from `instance_ids`.
         """
         bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
         label_fields = (bbox_processor.params.label_fields or []) if bbox_processor else []
@@ -564,6 +566,18 @@ class CopyAndPaste(DualTransform):
 
             item_labels: dict[str, Any] = item.get("bbox_labels", {})
             for field in label_fields:
+                if field == "_bbox_instance_id":
+                    all_labels[field].append(instance_ids[idx])
+                    continue
+                if field.startswith("_ibl_bbox_"):
+                    user_key = field.removeprefix("_ibl_bbox_")
+                    if user_key not in item_labels:
+                        raise ValueError(
+                            f"CopyAndPaste: missing bbox label field '{user_key}' for pasted object at index {idx}. "
+                            "Provide `bbox_labels` with every field declared in BboxParams.label_fields.",
+                        )
+                    all_labels[field].append(item_labels[user_key])
+                    continue
                 if field not in item_labels:
                     raise ValueError(
                         f"CopyAndPaste: missing bbox label field '{field}' for pasted object at index {idx}. "
@@ -588,17 +602,55 @@ class CopyAndPaste(DualTransform):
 
         return fmixing.preprocess_copy_paste_annotations(donor_item, bbox_processor, "bboxes")
 
+    def _collect_labels_for_one_pasted_keypoint_item(
+        self,
+        item_idx: int,
+        item: dict[str, Any],
+        kp_label_fields: Sequence[str],
+        instance_ids: list[int],
+        num_keypoints: int,
+        all_labels: dict[str, list[Any]],
+    ) -> None:
+        item_labels: dict[str, Any] = item.get("keypoint_labels", {})
+        for field in kp_label_fields:
+            if field == "_kp_instance_id":
+                all_labels[field].extend([instance_ids[item_idx]] * num_keypoints)
+                continue
+            if field.startswith("_ibl_kp_"):
+                user_key = field.removeprefix("_ibl_kp_")
+                if user_key not in item_labels:
+                    raise ValueError(
+                        f"CopyAndPaste: missing keypoint label field '{user_key}' for pasted object at "
+                        f"index {item_idx}. Provide `keypoint_labels` with every field declared in "
+                        "KeypointParams.label_fields.",
+                    )
+                val = item_labels[user_key]
+                field_values = self._keypoint_label_values_for_item(val, num_keypoints, user_key, item_idx)
+                all_labels[field].extend(field_values)
+                continue
+            if field not in item_labels:
+                raise ValueError(
+                    f"CopyAndPaste: missing keypoint label field '{field}' for pasted object at "
+                    f"index {item_idx}. Provide `keypoint_labels` with every field declared in "
+                    "KeypointParams.label_fields.",
+                )
+            val = item_labels[field]
+            field_values = self._keypoint_label_values_for_item(val, num_keypoints, field, item_idx)
+            all_labels[field].extend(field_values)
+
     def _prepare_pasted_keypoints(
         self,
         items: list[dict[str, Any]],
         target_image: np.ndarray,
+        instance_ids: list[int],
     ) -> np.ndarray | None:
         """Build a preprocessed keypoints array from all pasted object items, encoding label
         fields through the keypoint processor.
 
         Label values are read from `keypoint_labels` in each item — a dict mapping
         label field name to scalar or list of values for that object, e.g.
-        `{"joint_name": "left_eye"}` or `{"visibility": [2, 2]}`.
+        `{"joint_name": "left_eye"}` or `{"visibility": [2, 2]}`. With instance binding,
+        `_kp_instance_id` is replicated per keypoint row from `instance_ids`.
         """
         keypoint_processor = cast("KeypointsProcessor", self.get_processor("keypoints"))
         kp_label_fields = (keypoint_processor.params.label_fields or []) if keypoint_processor else []
@@ -614,18 +666,14 @@ class CopyAndPaste(DualTransform):
                 raw = raw[np.newaxis]
             num_keypoints = raw.shape[0]
             all_kps.append(raw)
-
-            item_labels: dict[str, Any] = item.get("keypoint_labels", {})
-            for field in kp_label_fields:
-                if field not in item_labels:
-                    raise ValueError(
-                        f"CopyAndPaste: missing keypoint label field '{field}' for pasted object at "
-                        f"index {item_idx}. Provide `keypoint_labels` with every field declared in "
-                        "KeypointParams.label_fields.",
-                    )
-                val = item_labels[field]
-                field_values = self._keypoint_label_values_for_item(val, num_keypoints, field, item_idx)
-                all_labels[field].extend(field_values)
+            self._collect_labels_for_one_pasted_keypoint_item(
+                item_idx,
+                item,
+                kp_label_fields,
+                instance_ids,
+                num_keypoints,
+                all_labels,
+            )
 
         if not all_kps:
             return None
@@ -649,16 +697,14 @@ class CopyAndPaste(DualTransform):
 
         return fmixing.preprocess_copy_paste_annotations(donor_item, keypoint_processor, "keypoints")
 
-    def get_params_dependent_on_data(
+    def _gather_valid_copy_paste_items(
         self,
-        params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, Any]:
+        target_shape: tuple[int, int],
+    ) -> tuple[list[dict[str, Any]], list[np.ndarray], np.ndarray] | None:
         metadata = data.get(self.metadata_key)
         if not isinstance(metadata, list) or not metadata:
-            return self._no_op_params()
-
-        target_shape = params["shape"][:2]
+            return None
 
         valid_items: list[dict[str, Any]] = []
         pasted_masks_list: list[np.ndarray] = []
@@ -679,8 +725,20 @@ class CopyAndPaste(DualTransform):
             composite_image[mask_bool] = src_image[mask_bool]
 
         if not valid_items:
+            return None
+        return valid_items, pasted_masks_list, composite_image
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        target_shape = params["shape"][:2]
+        gathered = self._gather_valid_copy_paste_items(data, target_shape)
+        if gathered is None:
             return self._no_op_params()
 
+        valid_items, pasted_masks_list, composite_image = gathered
         pasted_masks = np.stack(pasted_masks_list, axis=0)
         paste_union_mask = np.any(pasted_masks > 0, axis=0)
 
@@ -689,11 +747,23 @@ class CopyAndPaste(DualTransform):
 
         surviving_indices, paste_primary_instance_count = self._compute_surviving_indices(data, paste_union_mask)
 
+        if surviving_indices is not None and surviving_indices.size > 0:
+            next_paste_instance_id = int(np.max(surviving_indices)) + 1
+        else:
+            next_paste_instance_id = 0
+        paste_instance_ids = [next_paste_instance_id + k for k in range(len(valid_items))]
+
         pasted_bboxes = (
-            self._prepare_pasted_bboxes(valid_items, pasted_masks, composite_image) if "bboxes" in data else None
+            self._prepare_pasted_bboxes(valid_items, pasted_masks, composite_image, paste_instance_ids)
+            if "bboxes" in data
+            else None
         )
 
-        pasted_keypoints = self._prepare_pasted_keypoints(valid_items, composite_image) if "keypoints" in data else None
+        pasted_keypoints = (
+            self._prepare_pasted_keypoints(valid_items, composite_image, paste_instance_ids)
+            if "keypoints" in data
+            else None
+        )
 
         donor_mask = None
         for item in valid_items:
@@ -818,8 +888,18 @@ class CopyAndPaste(DualTransform):
         if paste_alpha is None:
             return bboxes
 
+        bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
+        bbox_label_fields = bbox_processor.params.label_fields or []
+
         if paste_surviving_indices is not None and bboxes.size > 0:
-            surviving_bboxes = bboxes[paste_surviving_indices]
+            if "_bbox_instance_id" in bbox_label_fields:
+                n_lf = len(bbox_label_fields)
+                id_col = bboxes.shape[1] - n_lf + bbox_label_fields.index("_bbox_instance_id")
+                inst_col = bboxes[:, id_col].astype(np.int64, copy=False)
+                keep = np.isin(inst_col, paste_surviving_indices)
+                surviving_bboxes = bboxes[keep]
+            else:
+                surviving_bboxes = bboxes[paste_surviving_indices]
         else:
             surviving_bboxes = bboxes
 
@@ -842,18 +922,27 @@ class CopyAndPaste(DualTransform):
 
         paste_surviving_indices = params.get("paste_surviving_indices")
         paste_primary_instance_count = params.get("paste_primary_instance_count")
+        keypoint_processor = cast("KeypointsProcessor", self.get_processor("keypoints"))
+        kp_label_fields = keypoint_processor.params.label_fields or []
+
         surviving_keypoints = keypoints
-        aligned = (
-            paste_primary_instance_count is not None
-            and keypoints.size > 0
-            and keypoints.shape[0] == paste_primary_instance_count
-        )
-        if paste_surviving_indices is not None and aligned:
-            survivor_idx = np.asarray(paste_surviving_indices)
-            if survivor_idx.size == 0:
-                surviving_keypoints = keypoints[:0]
-            elif int(survivor_idx.max()) < keypoints.shape[0] and int(survivor_idx.min()) >= 0:
-                surviving_keypoints = keypoints[survivor_idx]
+        if paste_surviving_indices is not None and keypoints.size > 0:
+            if "_kp_instance_id" in kp_label_fields:
+                n_kf = len(kp_label_fields)
+                id_col = keypoints.shape[1] - n_kf + kp_label_fields.index("_kp_instance_id")
+                inst_col = keypoints[:, id_col].astype(np.int64, copy=False)
+                keep = np.isin(inst_col, paste_surviving_indices)
+                surviving_keypoints = keypoints[keep]
+            else:
+                aligned = (
+                    paste_primary_instance_count is not None and keypoints.shape[0] == paste_primary_instance_count
+                )
+                if aligned:
+                    survivor_idx = np.asarray(paste_surviving_indices)
+                    if survivor_idx.size == 0:
+                        surviving_keypoints = keypoints[:0]
+                    elif int(survivor_idx.max()) < keypoints.shape[0] and int(survivor_idx.min()) >= 0:
+                        surviving_keypoints = keypoints[survivor_idx]
 
         if paste_keypoints is not None and paste_keypoints.size > 0:
             if surviving_keypoints.size == 0:
@@ -892,9 +981,9 @@ class Mosaic(DualTransform):
         metadata_key (str): Key in the input dictionary specifying the list of additional data dictionaries
             for the mosaic. Each dictionary in the list should represent one potential additional item.
             Expected keys: 'image' (required, np.ndarray), and optionally 'mask' (np.ndarray),
-            'bboxes' (np.ndarray), 'keypoints' (np.ndarray), and label fields supplied via the
-            `bbox_labels` and `keypoint_labels` wrapper dicts (see Metadata Format below).
-            Default: "mosaic_metadata".
+            'masks' (np.ndarray, stacked instance masks), 'bboxes' (np.ndarray), 'keypoints' (np.ndarray),
+            and label fields supplied via the `bbox_labels` and `keypoint_labels` wrapper dicts
+            (see Metadata Format below). Default: "mosaic_metadata".
         center_range (tuple[float, float]): Range [0.0-1.0] to sample the center point of the mosaic view
             relative to the valid central region of the conceptual large grid. This affects which parts
             of the assembled grid are visible in the final crop. Default: (0.3, 0.7).
@@ -950,7 +1039,7 @@ class Mosaic(DualTransform):
         and the additional image in one cell, with one visible cell selected from these three.
 
     Targets:
-        image, mask, bboxes, keypoints
+        image, mask, masks, bboxes, keypoints
 
     Image types:
         uint8, float32
@@ -965,6 +1054,8 @@ class Mosaic(DualTransform):
         Each dict in the metadata list represents one additional image and must contain:
             - image (np.ndarray): Additional image. Required.
             - mask (np.ndarray): Semantic mask for the additional image. Optional.
+            - masks (np.ndarray): Stacked instance masks (N, H, W) for the additional image.
+              Optional; same geometry as image. Use with instance_binding / pipeline masks target.
             - bboxes (np.ndarray): Bounding boxes in the **same coordinate format** as
               `BboxParams.coord_format` declared in `Compose`. Optional.
             - keypoints (np.ndarray): Keypoints in the **same format** as
@@ -1179,6 +1270,19 @@ class Mosaic(DualTransform):
             bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
             keypoint_processor = cast("KeypointsProcessor", self.get_processor("keypoints"))
             return fmixing.preprocess_selected_mosaic_items(additional_items, bbox_processor, keypoint_processor)
+        if "masks" in data:
+            out: list[fmixing.ProcessedMosaicItem] = []
+            for item in additional_items:
+                if not isinstance(item, dict) or "image" not in item:
+                    continue
+                flat_item = fmixing.unpack_label_wrappers(item)
+                entry: fmixing.ProcessedMosaicItem = {"image": item["image"]}
+                if flat_item.get("mask") is not None:
+                    entry["mask"] = flat_item["mask"]
+                if flat_item.get("masks") is not None:
+                    entry["masks"] = np.copy(np.asarray(flat_item["masks"]))
+                out.append(entry)
+            return out
         return cast("list[fmixing.ProcessedMosaicItem]", list(additional_items))
 
     def _prepare_final_items(
@@ -1222,12 +1326,26 @@ class Mosaic(DualTransform):
             mask_interpolation=self.mask_interpolation,
         )
 
-        if "bboxes" in data or "keypoints" in data:
+        if "bboxes" in data or "keypoints" in data or "masks" in data:
             processed_cells = fmixing.shift_all_coordinates(processed_cells, canvas_shape=self.target_size)
+            bbox_proc = self.get_processor("bboxes")
+            kp_proc = self.get_processor("keypoints")
+            processed_cells = fmixing.remap_mosaic_instance_label_ids(
+                processed_cells,
+                bbox_proc if isinstance(bbox_proc, BboxProcessor) else None,
+                kp_proc if isinstance(kp_proc, KeypointsProcessor) else None,
+            )
 
         result = {"processed_cells": processed_cells, "target_shape": self._get_target_shape(data["image"].shape)}
         if "mask" in data:
             result["target_mask_shape"] = self._get_target_shape(data["mask"].shape)
+        if "masks" in data:
+            ms = data["masks"].shape
+            # Stacked instance masks are (N, H, W); do not treat N as spatial dim.
+            if len(ms) >= 3:
+                result["target_masks_shape"] = (int(ms[0]), self.target_size[0], self.target_size[1])
+            else:
+                result["target_masks_shape"] = tuple(self._get_target_shape(ms))
         return result
 
     @staticmethod
@@ -1251,12 +1369,18 @@ class Mosaic(DualTransform):
         keypoints = data.get("keypoints")
         if keypoints is not None:
             keypoints = keypoints.copy()
-        return {
+        masks = data.get("masks")
+        if masks is not None:
+            masks = masks.copy()
+        primary: fmixing.ProcessedMosaicItem = {
             "image": data["image"],
             "mask": mask,
             "bboxes": bboxes,
             "keypoints": keypoints,
         }
+        if masks is not None:
+            primary["masks"] = masks
+        return primary
 
     def _get_target_shape(self, np_shape: tuple[int, ...]) -> list[int]:
         target_shape = list(np_shape)
@@ -1294,6 +1418,21 @@ class Mosaic(DualTransform):
             fill=self.fill_mask,
         )
 
+    def apply_to_masks(
+        self,
+        masks: ImageType,
+        processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
+        target_masks_shape: tuple[int, ...],
+        **params: Any,
+    ) -> ImageType:
+        canvas_hw = (int(target_masks_shape[1]), int(target_masks_shape[2]))
+        return fmixing.assemble_mosaic_instance_masks_stack(
+            processed_cells=processed_cells,
+            canvas_hw=canvas_hw,
+            dtype=masks.dtype,
+            fill=self.fill_mask,
+        )
+
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,  # Original bboxes - ignored
@@ -1303,8 +1442,8 @@ class Mosaic(DualTransform):
         all_shifted_bboxes = []
 
         for cell_data in processed_cells.values():
-            shifted_bboxes = cell_data["bboxes"]
-            if shifted_bboxes.size > 0:
+            shifted_bboxes = cell_data.get("bboxes")
+            if shifted_bboxes is not None and np.asarray(shifted_bboxes).size > 0:
                 all_shifted_bboxes.append(shifted_bboxes)
 
         bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
@@ -1342,8 +1481,8 @@ class Mosaic(DualTransform):
         all_shifted_keypoints = []
 
         for cell_data in processed_cells.values():
-            shifted_keypoints = cell_data["keypoints"]
-            if shifted_keypoints.size > 0:
+            shifted_keypoints = cell_data.get("keypoints")
+            if shifted_keypoints is not None and np.asarray(shifted_keypoints).size > 0:
                 all_shifted_keypoints.append(shifted_keypoints)
 
         if not all_shifted_keypoints:
@@ -1351,7 +1490,15 @@ class Mosaic(DualTransform):
 
         combined_keypoints = np.concatenate(all_shifted_keypoints, axis=0)
 
-        # Filter out keypoints outside the target canvas boundaries
+        keypoint_processor = self.get_processor("keypoints")
+        kp_fields = (
+            keypoint_processor.params.label_fields
+            if isinstance(keypoint_processor, KeypointsProcessor) and keypoint_processor.params.label_fields
+            else []
+        )
+        if "_kp_instance_id" in kp_fields:
+            return combined_keypoints
+
         target_h, target_w = self.target_size
         valid_indices = (
             (combined_keypoints[:, 0] >= 0)

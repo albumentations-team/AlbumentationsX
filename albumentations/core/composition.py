@@ -1650,35 +1650,76 @@ class Compose(BaseCompose, HubMixin):
             msg = "_repack_instances requires instance_binding"
             raise RuntimeError(msg)
 
-        if "bboxes" in binding:
-            bbox_ids = data.pop(_BBOX_INSTANCE_ID, [])
+        kp_ids = np.array(data.pop(_KP_INSTANCE_ID, []))
+        bbox_ids = data.pop(_BBOX_INSTANCE_ID, [])
+
+        bboxes_arr = data.get("bboxes")
+        masks_arr = data.get("masks")
+        use_row_aligned_masks = (
+            "bboxes" in binding
+            and "masks" in binding
+            and isinstance(bbox_ids, list)
+            and isinstance(bboxes_arr, np.ndarray)
+            and isinstance(masks_arr, np.ndarray)
+            and len(bbox_ids) == len(bboxes_arr) == len(masks_arr)
+        )
+
+        if use_row_aligned_masks:
+            data["instances"] = [
+                self._repack_one_instance(
+                    data,
+                    binding,
+                    bbox_row_idx=row_idx,
+                    mask_row_idx=row_idx,
+                    kp_group_id=int(bbox_ids[row_idx]),
+                    kp_ids=kp_ids,
+                )
+                for row_idx in range(len(bbox_ids))
+            ]
+        elif "bboxes" in binding:
             surviving_ids = sorted(set(bbox_ids))
+            data["instances"] = [
+                self._repack_one_instance(
+                    data,
+                    binding,
+                    bbox_row_idx=new_idx,
+                    mask_row_idx=old_idx,
+                    kp_group_id=old_idx,
+                    kp_ids=kp_ids,
+                )
+                for new_idx, old_idx in enumerate(surviving_ids)
+            ]
         else:
             surviving_ids = list(range(self._instance_count))
+            data["instances"] = [
+                self._repack_one_instance(
+                    data,
+                    binding,
+                    bbox_row_idx=new_idx,
+                    mask_row_idx=old_idx,
+                    kp_group_id=old_idx,
+                    kp_ids=kp_ids,
+                )
+                for new_idx, old_idx in enumerate(surviving_ids)
+            ]
 
-        kp_ids = np.array(data.pop(_KP_INSTANCE_ID, []))
-
-        data["instances"] = [
-            self._repack_one_instance(data, binding, new_idx, old_idx, kp_ids)
-            for new_idx, old_idx in enumerate(surviving_ids)
-        ]
         self._cleanup_instance_data(data, binding)
 
     def _repack_one_instance(
         self,
         data: dict[str, Any],
         binding: frozenset[str],
-        new_idx: int,
-        old_idx: int,
+        bbox_row_idx: int,
+        mask_row_idx: int,
+        kp_group_id: int,
         kp_ids: np.ndarray,
     ) -> dict[str, Any]:
         inst: dict[str, Any] = {}
-        # Masks are not filtered row-wise with bboxes; stack axis 0 still follows original instance ids.
-        self._repack_mask_into(inst, data, binding, int(old_idx))
-        self._repack_bbox_into(inst, data, binding, new_idx)
-        self._repack_keypoints_into(inst, data, binding, old_idx, kp_ids)
-        self._repack_bbox_labels_into(inst, data, new_idx)
-        self._repack_kp_labels_into(inst, data, binding, old_idx, kp_ids)
+        self._repack_mask_into(inst, data, binding, int(mask_row_idx))
+        self._repack_bbox_into(inst, data, binding, bbox_row_idx)
+        self._repack_keypoints_into(inst, data, binding, kp_group_id, kp_ids)
+        self._repack_bbox_labels_into(inst, data, bbox_row_idx)
+        self._repack_kp_labels_into(inst, data, binding, kp_group_id, kp_ids)
         return inst
 
     def _repack_mask_into(

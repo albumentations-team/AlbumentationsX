@@ -11,12 +11,17 @@ from warnings import warn
 
 import cv2
 import numpy as np
+from typing_extensions import NotRequired
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.crops.transforms import Crop
 from albumentations.augmentations.geometric.resize import LongestMaxSize, SmallestMaxSize
 from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, normalize_bboxes
-from albumentations.core.composition import Compose
+from albumentations.core.composition import (
+    _BBOX_INSTANCE_ID,
+    _KP_INSTANCE_ID,
+    Compose,
+)
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.type_definitions import (
     NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS,
@@ -26,14 +31,13 @@ from albumentations.core.type_definitions import (
 
 # Type definition for a processed mosaic item
 class ProcessedMosaicItem(TypedDict):
-    """Single mosaic item (primary or additional) after preprocessing: image, optional mask,
-    bboxes, keypoints with preprocessed annotations.
-    """
+    """Preprocessed Mosaic grid item: cell RGB image, optional semantic mask, optional (N,H,W) instance masks, bboxes, keypoints."""
 
-    image: np.ndarray  # Image is mandatory
-    mask: np.ndarray | None
-    bboxes: np.ndarray | None
-    keypoints: np.ndarray | None
+    image: np.ndarray
+    mask: NotRequired[np.ndarray | None]
+    masks: NotRequired[np.ndarray | None]  # (N, H, W) instance masks aligned with item image
+    bboxes: NotRequired[np.ndarray | None]
+    keypoints: NotRequired[np.ndarray | None]
 
 
 def copy_and_paste_blend(
@@ -445,6 +449,50 @@ def assign_items_to_grid_cells(
     return placement_to_item_index
 
 
+def _ensure_mosaic_bbox_binding_fields(item: dict[str, Any], required_labels: Sequence[str]) -> None:
+    if not required_labels:
+        return
+    arr = item["bboxes"]
+    n_rows = len(arr) if isinstance(arr, np.ndarray) else len(np.asarray(arr))
+    if _BBOX_INSTANCE_ID in required_labels and _BBOX_INSTANCE_ID not in item:
+        item[_BBOX_INSTANCE_ID] = list(range(n_rows))
+    for field in required_labels:
+        if field.startswith("_ibl_bbox_") and field not in item:
+            user_key = field.removeprefix("_ibl_bbox_")
+            if user_key in item:
+                item[field] = item[user_key]
+
+
+def _ensure_mosaic_keypoint_binding_fields(item: dict[str, Any], required_labels: Sequence[str]) -> None:
+    if not required_labels:
+        return
+    kps = np.asarray(item["keypoints"])
+    n_kp = kps.shape[0]
+    if _KP_INSTANCE_ID in required_labels and _KP_INSTANCE_ID not in item:
+        item[_KP_INSTANCE_ID] = [0] * n_kp
+    for field in required_labels:
+        if field.startswith("_ibl_kp_") and field not in item:
+            user_key = field.removeprefix("_ibl_kp_")
+            if user_key in item:
+                item[field] = item[user_key]
+
+
+def _validate_mosaic_item_label_fields(
+    item: dict[str, Any],
+    required_labels: Sequence[str],
+    data_key: str,
+    params_cls_name: str,
+) -> None:
+    missing = [field for field in required_labels if field not in item]
+    if not missing:
+        return
+    raise ValueError(
+        f"Item contains '{data_key}' but is missing required label fields: {missing}. "
+        f"Ensure all label fields declared in {params_cls_name} ({required_labels}) are present "
+        f"in the item dictionary when '{data_key}' is present.",
+    )
+
+
 def _preprocess_item_annotations(
     item: dict[str, Any],
     processor: BboxProcessor | KeypointsProcessor | None,
@@ -455,40 +503,24 @@ def _preprocess_item_annotations(
     """
     original_data = item.get(data_key)
 
-    # Check if processor exists and the relevant data key is in the item
-    if processor and data_key in item and item.get(data_key) is not None:
-        # === Add validation for required label fields ===
-        required_labels = processor.params.label_fields
+    if not (processor and data_key in item and item.get(data_key) is not None):
+        return original_data
 
-        if required_labels and [field for field in required_labels if field not in item]:
-            raise ValueError(
-                f"Item contains '{data_key}' but is missing required label "
-                "fields: {[field for field in required_labels if field not in item]}. "
-                f"Ensure all label fields declared in {type(processor.params).__name__} "
-                f"({required_labels}) are present in the item dictionary when '{data_key}' is present.",
-            )
-        # === End validation ===
+    required_labels = processor.params.label_fields or []
+    if data_key == "bboxes":
+        _ensure_mosaic_bbox_binding_fields(item, required_labels)
+    else:
+        _ensure_mosaic_keypoint_binding_fields(item, required_labels)
 
-        # Create a temporary minimal dict for the processor
-        temp_data = {
-            "image": item["image"],
-            data_key: item[data_key],
-        }
+    _validate_mosaic_item_label_fields(item, required_labels, data_key, type(processor.params).__name__)
 
-        # Add declared label fields if they exist in the item (already validated above)
-        if required_labels:
-            for field in required_labels:
-                # Check again just in case validation logic changes, avoids KeyError
-                if field in item:
-                    temp_data[field] = item[field]
+    temp_data: dict[str, Any] = {"image": item["image"], data_key: item[data_key]}
+    for field in required_labels:
+        if field in item:
+            temp_data[field] = item[field]
 
-        # Preprocess modifies temp_data in-place
-        processor.preprocess(temp_data)
-        # Return the potentially modified data from the temp dict
-        return temp_data.get(data_key)
-
-    # Return original data if no processor or data key wasn't in item
-    return original_data
+    processor.preprocess(temp_data)
+    return temp_data.get(data_key)
 
 
 def preprocess_copy_paste_annotations(
@@ -502,7 +534,7 @@ def preprocess_copy_paste_annotations(
     return _preprocess_item_annotations(item, processor, data_key)
 
 
-def _unpack_label_wrappers(item: dict[str, Any]) -> dict[str, Any]:
+def unpack_label_wrappers(item: dict[str, Any]) -> dict[str, Any]:
     """Unpack `bbox_labels` and `keypoint_labels` wrapper dicts into top-level label fields so processors can find them directly.
 
     Both Mosaic and CopyAndPaste store per-item label values under `bbox_labels` and
@@ -537,7 +569,7 @@ def preprocess_selected_mosaic_items(
     result_data_items: list[ProcessedMosaicItem] = []
 
     for item in selected_raw_items:
-        flat_item = _unpack_label_wrappers(item)
+        flat_item = unpack_label_wrappers(item)
         processed_bboxes = _preprocess_item_annotations(flat_item, bbox_processor, "bboxes")
         processed_keypoints = _preprocess_item_annotations(flat_item, keypoint_processor, "keypoints")
 
@@ -548,6 +580,9 @@ def preprocess_selected_mosaic_items(
             "bboxes": processed_bboxes,  # Already np.ndarray or None
             "keypoints": processed_keypoints,  # Already np.ndarray or None
         }
+        inst_masks = flat_item.get("masks")
+        if inst_masks is not None:
+            processed_item_dict["masks"] = np.copy(np.asarray(inst_masks))
         result_data_items.append(processed_item_dict)
 
     return result_data_items
@@ -614,6 +649,71 @@ def get_opposite_crop_coords(
     return x_min, y_min, x_max, y_max
 
 
+def _mosaic_cell_geometry_compose(
+    cell_shape: tuple[int, int],
+    target_shape: tuple[int, int],
+    fill: float | tuple[float, ...],
+    fill_mask: float | tuple[float, ...],
+    fit_mode: Literal["cover", "contain"],
+    interpolation: int,
+    mask_interpolation: int,
+    cell_position: Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"],
+    *,
+    with_bbox_params: bool,
+    with_keypoint_params: bool,
+) -> Compose:
+    """Construct Albumentations Compose per Mosaic grid cell so RGB, mask, and stacked instance masks share identical resize/crop."""
+    compose_kwargs: dict[str, Any] = {"p": 1.0}
+    if with_bbox_params:
+        compose_kwargs["bbox_params"] = {"coord_format": "albumentations"}
+    if with_keypoint_params:
+        compose_kwargs["keypoint_params"] = {"coord_format": "xy"}
+
+    crop_coords = get_opposite_crop_coords(cell_shape, target_shape, cell_position)
+
+    if fit_mode == "cover":
+        return Compose(
+            [
+                SmallestMaxSize(
+                    max_size_hw=cell_shape,
+                    interpolation=interpolation,
+                    mask_interpolation=mask_interpolation,
+                    p=1.0,
+                ),
+                Crop(
+                    x_min=crop_coords[0],
+                    y_min=crop_coords[1],
+                    x_max=crop_coords[2],
+                    y_max=crop_coords[3],
+                ),
+            ],
+            **compose_kwargs,
+        )
+    if fit_mode == "contain":
+        return Compose(
+            [
+                LongestMaxSize(
+                    max_size_hw=cell_shape,
+                    interpolation=interpolation,
+                    mask_interpolation=mask_interpolation,
+                    p=1.0,
+                ),
+                Crop(
+                    x_min=crop_coords[0],
+                    y_min=crop_coords[1],
+                    x_max=crop_coords[2],
+                    y_max=crop_coords[3],
+                    pad_if_needed=True,
+                    fill=fill,
+                    fill_mask=fill_mask,
+                    p=1.0,
+                ),
+            ],
+            **compose_kwargs,
+        )
+    raise ValueError(f"Invalid fit_mode: {fit_mode}. Must be 'cover' or 'contain'.")
+
+
 def process_cell_geometry(
     cell_shape: tuple[int, int],
     item: ProcessedMosaicItem,
@@ -641,63 +741,24 @@ def process_cell_geometry(
         interpolation (int): Interpolation method for image.
         mask_interpolation (int): Interpolation method for mask.
         cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Position
-            of the cell.
+        of the cell.
 
     Returns: (ProcessedMosaicItem): Dictionary containing the geometrically processed image,
         mask, bboxes, and keypoints, fitting the target dimensions.
 
     """
-    # Define the pipeline: PadIfNeeded first, then Crop
-    compose_kwargs: dict[str, Any] = {"p": 1.0}
-    if item.get("bboxes") is not None:
-        compose_kwargs["bbox_params"] = {"coord_format": "albumentations"}
-    if item.get("keypoints") is not None:
-        compose_kwargs["keypoint_params"] = {"coord_format": "xy"}
-
-    crop_coords = get_opposite_crop_coords(cell_shape, target_shape, cell_position)
-
-    if fit_mode == "cover":
-        geom_pipeline = Compose(
-            [
-                SmallestMaxSize(
-                    max_size_hw=cell_shape,
-                    interpolation=interpolation,
-                    mask_interpolation=mask_interpolation,
-                    p=1.0,
-                ),
-                Crop(
-                    x_min=crop_coords[0],
-                    y_min=crop_coords[1],
-                    x_max=crop_coords[2],
-                    y_max=crop_coords[3],
-                ),
-            ],
-            **compose_kwargs,
-        )
-    elif fit_mode == "contain":
-        geom_pipeline = Compose(
-            [
-                LongestMaxSize(
-                    max_size_hw=cell_shape,
-                    interpolation=interpolation,
-                    mask_interpolation=mask_interpolation,
-                    p=1.0,
-                ),
-                Crop(
-                    x_min=crop_coords[0],
-                    y_min=crop_coords[1],
-                    x_max=crop_coords[2],
-                    y_max=crop_coords[3],
-                    pad_if_needed=True,
-                    fill=fill,
-                    fill_mask=fill_mask,
-                    p=1.0,
-                ),
-            ],
-            **compose_kwargs,
-        )
-    else:
-        raise ValueError(f"Invalid fit_mode: {fit_mode}. Must be 'cover' or 'contain'.")
+    geom_pipeline = _mosaic_cell_geometry_compose(
+        cell_shape,
+        target_shape,
+        fill,
+        fill_mask,
+        fit_mode,
+        interpolation,
+        mask_interpolation,
+        cell_position,
+        with_bbox_params=item.get("bboxes") is not None,
+        with_keypoint_params=item.get("keypoints") is not None,
+    )
 
     # Prepare input data for the pipeline
     geom_input: dict[str, Any] = {"image": item["image"]}
@@ -714,14 +775,43 @@ def process_cell_geometry(
     # Apply the pipeline (`force_apply` explicit so **geom_input cannot bind to it under mypy)
     processed_item = geom_pipeline(force_apply=False, **geom_input)
 
-    # Ensure output dict has the same structure as ProcessedMosaicItem
-    # Compose might not return None for missing keys, handle explicitly
-    return {
+    result: ProcessedMosaicItem = {
         "image": processed_item["image"],
         "mask": processed_item.get("mask"),
         "bboxes": processed_item.get("bboxes"),
         "keypoints": processed_item.get("keypoints"),
     }
+
+    raw_masks = item.get("masks")
+    if raw_masks is not None and isinstance(raw_masks, np.ndarray) and raw_masks.size > 0:
+        m = raw_masks
+        if m.ndim == 4 and m.shape[-1] == 1:
+            m = np.squeeze(m, axis=-1)
+        if m.ndim == 3 and m.shape[0] > 0:
+            geom_masks_only = _mosaic_cell_geometry_compose(
+                cell_shape,
+                target_shape,
+                fill,
+                fill_mask,
+                fit_mode,
+                interpolation,
+                mask_interpolation,
+                cell_position,
+                with_bbox_params=False,
+                with_keypoint_params=False,
+            )
+            ref_dtype = item["image"].dtype
+            planes: list[np.ndarray] = []
+            for i in range(m.shape[0]):
+                layer = m[i]
+                img3 = np.stack([layer, layer, layer], axis=-1)
+                if img3.dtype != ref_dtype:
+                    img3 = img3.astype(ref_dtype, copy=False)
+                out_img = geom_masks_only(force_apply=False, image=img3)["image"]
+                planes.append(out_img[..., 0])
+            result["masks"] = np.stack(planes, axis=0)
+
+    return result
 
 
 def shift_cell_coordinates(
@@ -818,6 +908,196 @@ def assemble_mosaic_from_processed_cells(
             canvas[tgt_y1:tgt_y2, tgt_x1:tgt_x2] = segment
 
     return canvas
+
+
+def assemble_mosaic_instance_masks_stack(
+    processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
+    canvas_hw: tuple[int, int],
+    dtype: np.dtype,
+    fill: float | tuple[float, ...] | None,
+) -> np.ndarray:
+    """One full-canvas mask per instance; iteration order over `processed_cells` matches
+    `Mosaic.apply_to_bboxes` / `apply_to_masks` (dict insertion order).
+    """
+    canvas_h, canvas_w = canvas_hw
+    actual_fill = fill if fill is not None else 0
+    fill_value = np.array(actual_fill, dtype=dtype)
+
+    layers: list[np.ndarray] = []
+    for placement_coords, cell_data in processed_cells.items():
+        stack = cell_data.get("masks")
+        if stack is None or not isinstance(stack, np.ndarray) or stack.size == 0:
+            continue
+        if stack.ndim == 4 and stack.shape[-1] == 1:
+            stack = np.squeeze(stack, axis=-1)
+        if stack.ndim != 3:
+            continue
+        tgt_x1, tgt_y1, tgt_x2, tgt_y2 = placement_coords
+        for i in range(stack.shape[0]):
+            canvas = np.full((canvas_h, canvas_w), fill_value=fill_value, dtype=dtype)
+            segment = stack[i]
+            if segment.ndim == 3 and segment.shape[-1] == 1:
+                segment = segment[..., 0]
+            canvas[tgt_y1:tgt_y2, tgt_x1:tgt_x2] = segment
+            layers.append(canvas)
+
+    if not layers:
+        return np.empty((0, canvas_h, canvas_w), dtype=dtype)
+    return np.stack(layers, axis=0)
+
+
+def _mosaic_cell_local_instance_ids(
+    bb: np.ndarray | None,
+    kp: np.ndarray | None,
+    need_bbox_remap: bool,
+    need_kp_remap: bool,
+    n_bf: int,
+    n_kf: int,
+    bbox_id_idx: int,
+    kp_id_idx: int,
+) -> set[int]:
+    local_ids: set[int] = set()
+    if need_bbox_remap and bb is not None and np.asarray(bb).size > 0 and n_bf > 0:
+        bb_np = np.asarray(bb)
+        n_geo_bb = bb_np.shape[1] - n_bf
+        id_col_bb = n_geo_bb + bbox_id_idx
+        for row in range(bb_np.shape[0]):
+            local_ids.add(int(bb_np[row, id_col_bb]))
+    if need_kp_remap and kp is not None and np.asarray(kp).size > 0 and n_kf > 0:
+        kp_np = np.asarray(kp)
+        n_geo_kp = kp_np.shape[1] - n_kf
+        id_col_kp = n_geo_kp + kp_id_idx
+        for row in range(kp_np.shape[0]):
+            local_ids.add(int(kp_np[row, id_col_kp]))
+    return local_ids
+
+
+def _remap_mosaic_bboxes_column(
+    bb_arr: np.ndarray,
+    need_bbox_remap: bool,
+    n_bf: int,
+    bbox_id_idx: int,
+    local_to_global: dict[int, int],
+) -> None:
+    if not (need_bbox_remap and n_bf > 0):
+        return
+    n_geo_bb = bb_arr.shape[1] - n_bf
+    id_col_bb = n_geo_bb + bbox_id_idx
+    for row in range(bb_arr.shape[0]):
+        lid = int(bb_arr[row, id_col_bb])
+        bb_arr[row, id_col_bb] = float(local_to_global[lid])
+
+
+def _remap_mosaic_keypoints_column(
+    kp_arr: np.ndarray,
+    need_kp_remap: bool,
+    n_kf: int,
+    kp_id_idx: int,
+    local_to_global: dict[int, int],
+) -> None:
+    if not (need_kp_remap and n_kf > 0):
+        return
+    n_geo_kp = kp_arr.shape[1] - n_kf
+    id_col_kp = n_geo_kp + kp_id_idx
+    for row in range(kp_arr.shape[0]):
+        lid = int(kp_arr[row, id_col_kp])
+        if lid in local_to_global:
+            kp_arr[row, id_col_kp] = float(local_to_global[lid])
+
+
+def _remap_one_mosaic_cell_instance_ids(
+    cell: ProcessedMosaicItem,
+    need_bbox_remap: bool,
+    need_kp_remap: bool,
+    n_bf: int,
+    n_kf: int,
+    bbox_id_idx: int,
+    kp_id_idx: int,
+    global_next: int,
+) -> tuple[ProcessedMosaicItem, int]:
+    cell_out: dict[str, Any] = {"image": cell["image"]}
+    if "mask" in cell:
+        cell_out["mask"] = cell["mask"]
+    if "masks" in cell:
+        cell_out["masks"] = cell["masks"]
+
+    bb = cell.get("bboxes")
+    kp = cell.get("keypoints")
+    local_ids = _mosaic_cell_local_instance_ids(
+        bb,
+        kp,
+        need_bbox_remap,
+        need_kp_remap,
+        n_bf,
+        n_kf,
+        bbox_id_idx,
+        kp_id_idx,
+    )
+    local_to_global = {lid: global_next + idx for idx, lid in enumerate(sorted(local_ids))}
+    next_global = global_next + len(local_to_global)
+
+    if bb is not None and np.asarray(bb).size > 0:
+        bb_arr = np.asarray(bb, dtype=np.float32, copy=True)
+        _remap_mosaic_bboxes_column(bb_arr, need_bbox_remap, n_bf, bbox_id_idx, local_to_global)
+        cell_out["bboxes"] = bb_arr
+    else:
+        cell_out["bboxes"] = cell.get(
+            "bboxes",
+            np.empty((0, NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS), dtype=np.float32),
+        )
+
+    if kp is not None and np.asarray(kp).size > 0:
+        kp_arr = np.asarray(kp, dtype=np.float32, copy=True)
+        _remap_mosaic_keypoints_column(kp_arr, need_kp_remap, n_kf, kp_id_idx, local_to_global)
+        cell_out["keypoints"] = kp_arr
+    else:
+        cell_out["keypoints"] = cell.get(
+            "keypoints",
+            np.empty((0, NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS), dtype=np.float32),
+        )
+
+    return cast("ProcessedMosaicItem", cell_out), next_global
+
+
+def remap_mosaic_instance_label_ids(
+    processed_cells: dict[tuple[int, int, int, int], ProcessedMosaicItem],
+    bbox_processor: BboxProcessor | None,
+    keypoint_processor: KeypointsProcessor | None,
+) -> dict[tuple[int, int, int, int], ProcessedMosaicItem]:
+    """Assign globally unique instance id column values per mosaic cell so repack does not
+    merge distinct instances that reused local ids (0..n-1) in different cells.
+    """
+    bbox_fields = bbox_processor.params.label_fields if bbox_processor else None
+    kp_fields = keypoint_processor.params.label_fields if keypoint_processor else None
+
+    need_bbox_remap = bool(bbox_fields and _BBOX_INSTANCE_ID in bbox_fields)
+    need_kp_remap = bool(kp_fields and _KP_INSTANCE_ID in kp_fields)
+    if not need_bbox_remap and not need_kp_remap:
+        return processed_cells
+
+    n_bf = len(bbox_fields) if bbox_fields else 0
+    bbox_id_idx = bbox_fields.index(_BBOX_INSTANCE_ID) if bbox_fields and need_bbox_remap else -1
+
+    n_kf = len(kp_fields) if kp_fields else 0
+    kp_id_idx = kp_fields.index(_KP_INSTANCE_ID) if kp_fields and need_kp_remap else -1
+
+    global_next = 0
+    new_cells: dict[tuple[int, int, int, int], ProcessedMosaicItem] = {}
+
+    for placement, cell in processed_cells.items():
+        cell_out, global_next = _remap_one_mosaic_cell_instance_ids(
+            cell,
+            need_bbox_remap,
+            need_kp_remap,
+            n_bf,
+            n_kf,
+            bbox_id_idx,
+            kp_id_idx,
+            global_next,
+        )
+        new_cells[placement] = cell_out
+
+    return new_cells
 
 
 def process_all_mosaic_geometries(
@@ -993,10 +1273,12 @@ def shift_all_coordinates(
         bboxes_geom = cell_data_geom.get("bboxes")
         keypoints_geom = cell_data_geom.get("keypoints")
 
-        final_cell_data = {
+        final_cell_data: ProcessedMosaicItem = {
             "image": cell_data_geom["image"],
             "mask": cell_data_geom.get("mask"),
         }
+        if "masks" in cell_data_geom:
+            final_cell_data["masks"] = cell_data_geom["masks"]
 
         # Perform shifting if data exists
         if bboxes_geom is not None and bboxes_geom.size > 0:
@@ -1022,6 +1304,6 @@ def shift_all_coordinates(
         else:
             final_cell_data["keypoints"] = np.empty((0, NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS))
 
-        final_processed_cells[placement_coords] = cast("ProcessedMosaicItem", final_cell_data)
+        final_processed_cells[placement_coords] = final_cell_data
 
     return final_processed_cells

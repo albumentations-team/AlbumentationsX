@@ -14,7 +14,14 @@ A new `instance_binding` parameter on `Compose` plus a structured `instances` in
 Users pass `instances` as a list of dicts, each representing one object. Compose unpacks them
 into flat arrays for the existing pipeline, then repacks the survivors into the same format.
 
-No transform changes are required.
+Standard geometric transforms need no special handling. **Mixing transforms that fuse
+multiple sources** (e.g. `Mosaic`, `CopyAndPaste`) must keep instance ids and stacked
+`masks` aligned with the fused geometry: remap `_bbox_instance_id` / `_kp_instance_id`
+across cells or pasted objects, run stacked instance masks through the same placement as
+images, and avoid per-keypoint out-of-bounds drops when `_kp_instance_id` is present (see
+`Mosaic.apply_to_keypoints`). `Compose._repack_instances` uses **row-aligned** mask indexing
+when `len(masks) == len(bboxes) == len(_bbox_instance_id)` so pasted rows with new ids still
+match one mask plane per bbox row.
 
 ## Instance Dict Schema
 

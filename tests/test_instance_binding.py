@@ -1376,3 +1376,134 @@ class TestMixingInstanceBindingRegression:
         r2 = transform(image=image.copy(), instances=instances, mosaic_metadata=[])
         assert len(r1["instances"]) == len(r2["instances"]) == 1
         np.testing.assert_array_equal(r1["instances"][0]["mask"], r2["instances"][0]["mask"])
+
+
+class TestMosaicCopyPasteInstanceBinding:
+    """Mosaic then CopyAndPaste: fused mosaic stack must flow through paste visibility + repack."""
+
+    def test_mosaic_then_copy_paste_masks_bboxes_occluded_primary_dropped_pasted_kept(
+        self,
+        rng_137: np.random.Generator,
+    ) -> None:
+        ch, cw = 48, 48
+        th, tw = ch * 2, cw
+        img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        img_m = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 40, 4, 40)),
+                "bbox": np.array([4, 4, 40, 40], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        mosaic_metadata = [
+            {
+                "image": img_m,
+                "masks": np.stack([_make_mask(ch, cw, (6, 42, 6, 42))]),
+                "bboxes": np.array([[6.0, 6.0, 42.0, 42.0]], dtype=np.float32),
+                "bbox_labels": {"cid": [2]},
+            },
+        ]
+        paste_mask = np.zeros((th, tw), dtype=np.uint8)
+        paste_mask[:ch, :] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((th, tw, 3), 222, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, int(tw), int(ch)],
+            "bbox_labels": {"cid": 900},
+        }
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(2, 1),
+                    target_size=(th, tw),
+                    cell_shape=(ch, cw),
+                    center_range=(0.5, 0.5),
+                    fit_mode="cover",
+                    p=1.0,
+                ),
+                A.CopyAndPaste(min_visibility_after_paste=0.05, p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(
+            image=img_p,
+            instances=instances,
+            mosaic_metadata=mosaic_metadata,
+            copy_paste_metadata=[donor],
+        )
+        cids = {int(inst["bbox_labels"]["cid"]) for inst in result["instances"]}
+        assert cids == {2, 900}
+        assert 1 not in cids
+        for inst in result["instances"]:
+            assert inst["mask"].shape == (th, tw)
+
+    def test_mosaic_then_copy_paste_triple_binding_keypoints_follow_survivors(
+        self,
+        rng_137: np.random.Generator,
+    ) -> None:
+        ch, cw = 48, 48
+        th, tw = ch * 2, cw
+        img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        img_m = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 40, 4, 40)),
+                "bbox": np.array([4, 4, 40, 40], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+                "keypoints": np.array([[12.0, 12.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [1]},
+            },
+        ]
+        mosaic_metadata = [
+            {
+                "image": img_m,
+                "masks": np.stack([_make_mask(ch, cw, (6, 42, 6, 42))]),
+                "bboxes": np.array([[6.0, 6.0, 42.0, 42.0]], dtype=np.float32),
+                "bbox_labels": {"cid": [2]},
+                "keypoints": np.array([[24.0, 24.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [2]},
+            },
+        ]
+        paste_mask = np.zeros((th, tw), dtype=np.uint8)
+        paste_mask[:ch, :] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((th, tw, 3), 111, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, int(tw), int(ch)],
+            "bbox_labels": {"cid": 900},
+            "keypoints": np.array([[8.0, 8.0]], dtype=np.float32),
+            "keypoint_labels": {"vis": [9]},
+        }
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(2, 1),
+                    target_size=(th, tw),
+                    cell_shape=(ch, cw),
+                    center_range=(0.5, 0.5),
+                    fit_mode="cover",
+                    p=1.0,
+                ),
+                A.CopyAndPaste(min_visibility_after_paste=0.05, p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["vis"]),
+            instance_binding=["masks", "bboxes", "keypoints"],
+            seed=137,
+        )
+        result = transform(
+            image=img_p,
+            instances=instances,
+            mosaic_metadata=mosaic_metadata,
+            copy_paste_metadata=[donor],
+        )
+        assert len(result["instances"]) == 2
+        by_cid = _instances_by_cid(result["instances"])
+        assert set(by_cid) == {2, 900}
+        assert by_cid[2]["keypoints"].shape == (1, 2)
+        assert by_cid[900]["keypoints"].shape == (1, 2)
+        np.testing.assert_array_equal(by_cid[2]["keypoint_labels"]["vis"], np.array([2]))
+        np.testing.assert_array_equal(by_cid[900]["keypoint_labels"]["vis"], np.array([9]))

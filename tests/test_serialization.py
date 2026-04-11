@@ -72,6 +72,8 @@ def test_augmentations_serialization(augmentation_cls, params, p, seed, image):
         data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
     elif augmentation_cls == A.Mosaic:
         data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -127,6 +129,8 @@ def test_augmentations_serialization_with_custom_parameters(
         data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
     elif augmentation_cls == A.Mosaic:
         data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -205,6 +209,8 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
         data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
     elif augmentation_cls == A.Mosaic:
         data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -228,6 +234,7 @@ def test_augmentations_serialization_to_file_with_custom_parameters(
             A.OverlayElements,
             A.TextImage,
             A.Mosaic,
+            A.CopyAndPaste,
         },
     ),
 )
@@ -272,6 +279,7 @@ def test_augmentations_for_bboxes_serialization(
             A.OverlayElements,
             A.TextImage,
             A.Mosaic,
+            A.CopyAndPaste,
         },
     ),
 )
@@ -579,6 +587,8 @@ def test_additional_targets_for_image_only_serialization(
         data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
     elif augmentation_cls == A.Mosaic:
         data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)

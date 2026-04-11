@@ -121,6 +121,8 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
                 "mask": mask,
             },
         ]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     result = aug(**data)
     np.testing.assert_array_equal(np.unique(result["mask"]), np.array([0, 1]))
@@ -161,6 +163,7 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
             A.HorizontalFlip,
             A.Transpose,
             A.Mosaic,
+            A.CopyAndPaste,
         },
     ),
 )
@@ -200,6 +203,7 @@ def __test_multiprocessing_support_proc(args):
             A.TextImage,
             A.MaskDropout,
             A.Mosaic,
+            A.CopyAndPaste,
         },
     ),
 )
@@ -1284,6 +1288,7 @@ def test_random_crop_from_borders(
             A.FrequencyMasking,
             A.TimeMasking,
             A.RandomRotate90,
+            A.CopyAndPaste,
         },
     ),
 )
@@ -1322,6 +1327,8 @@ def test_change_image(augmentation_cls, params, image):
                 "image": image,
             },
         ]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [np.random.randint(0, 255, image.shape, dtype=image.dtype)]
 
@@ -1382,6 +1389,7 @@ def test_change_image(augmentation_cls, params, image):
             A.FrequencyMasking,
             A.TimeMasking,
             A.Mosaic,
+            A.CopyAndPaste,
         },
     ),
 )
@@ -1494,6 +1502,7 @@ def test_pad_if_needed_functionality(params, expected):
             A.MaskDropout,
             A.TextImage,
             A.Mosaic,
+            A.CopyAndPaste,
         },
     ),
 )
@@ -1799,6 +1808,8 @@ def test_return_nonzero(augmentation_cls, params):
                 "image": image,
             },
         ]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
     elif augmentation_cls in transforms2metadata_key:
         data[transforms2metadata_key[augmentation_cls]] = [image]
 
@@ -1914,6 +1925,8 @@ def test_empty_bboxes_keypoints(augmentation_cls, params):
                 "image": image,
             },
         ]
+    elif augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
 
     data = aug(**data)
 
@@ -1987,6 +2000,7 @@ def test_mask_dropout_bboxes(remove_invisible, expected_keypoints):
             A.OpticalDistortion,
             A.ThinPlateSpline,
             A.Mosaic,
+            A.CopyAndPaste,
             A.FrequencyMasking,
         },
     ),

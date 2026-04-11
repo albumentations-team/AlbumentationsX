@@ -72,6 +72,87 @@ def copy_and_paste_blend(
     return blended_image
 
 
+def blend_images_using_alpha(
+    base_image: np.ndarray,
+    donor_image: np.ndarray,
+    alpha: np.ndarray,
+) -> np.ndarray:
+    """Blend donor pixels onto base image using a float alpha mask, doing a hard copy where alpha == 1 and linear blend elsewhere.
+
+    Args:
+        base_image (np.ndarray): Target image (H, W, C).
+        donor_image (np.ndarray): Source image, same shape as base_image.
+        alpha (np.ndarray): Float mask (H, W) in [0, 1]. 1 = full donor, 0 = full base.
+
+    Returns:
+        np.ndarray: Blended image, same shape and dtype as base_image.
+
+    """
+    img_dtype = base_image.dtype
+
+    is_hard = np.all((alpha == 0) | (alpha == 1))
+    if is_hard:
+        result = base_image.copy()
+        paste_mask = alpha > 0
+        result[paste_mask] = donor_image[paste_mask]
+        return result
+
+    alpha_3d = alpha[..., np.newaxis].astype(np.float32)
+    blended = donor_image.astype(np.float32) * alpha_3d + base_image.astype(np.float32) * (1.0 - alpha_3d)
+    return np.clip(blended, 0, 255 if img_dtype == np.uint8 else 1.0).astype(img_dtype)
+
+
+def create_copy_paste_alpha(
+    instance_masks: np.ndarray,
+    blend_mode: str,
+    blend_sigma: float,
+) -> np.ndarray:
+    """Create a float alpha mask from the union of selected instance masks, with optional Gaussian blur for soft edges at boundaries.
+
+    Args:
+        instance_masks (np.ndarray): (K, H, W) binary masks of instances to paste.
+        blend_mode (str): "hard" for binary alpha, "gaussian" for soft edges.
+        blend_sigma (float): Sigma for gaussian blur (only used when blend_mode="gaussian").
+
+    Returns:
+        np.ndarray: Float alpha mask (H, W) in [0, 1].
+
+    """
+    alpha = np.any(instance_masks > 0, axis=0).astype(np.float32)
+
+    if blend_mode == "gaussian" and blend_sigma > 0:
+        kernel_size = int(np.ceil(blend_sigma * 6)) | 1
+        alpha = cv2.GaussianBlur(alpha, (kernel_size, kernel_size), blend_sigma)
+        np.clip(alpha, 0, 1, out=alpha)
+
+    return alpha
+
+
+def compute_instance_visibility(
+    existing_masks: np.ndarray,
+    alpha: np.ndarray,
+) -> np.ndarray:
+    """Compute the fraction of each existing instance's original area that remains visible after the pasted alpha mask is applied.
+
+    Args:
+        existing_masks (np.ndarray): (N, H, W) binary masks of existing instances.
+        alpha (np.ndarray): (H, W) alpha mask of pasted region (values > 0 = pasted).
+
+    Returns:
+        np.ndarray: (N,) array of visibility ratios in [0, 1]. 1.0 = fully visible, 0.0 = fully occluded.
+
+    """
+    paste_mask = alpha > 0
+
+    original_areas = np.sum(existing_masks > 0, axis=(1, 2)).astype(np.float64)
+    occluded_areas = np.sum((existing_masks > 0) & paste_mask[np.newaxis], axis=(1, 2)).astype(np.float64)
+
+    remaining_areas = original_areas - occluded_areas
+
+    safe_areas = np.where(original_areas > 0, original_areas, 1.0)
+    return np.where(original_areas > 0, remaining_areas / safe_areas, 1.0)
+
+
 def calculate_mosaic_center_point(
     grid_yx: tuple[int, int],
     cell_shape: tuple[int, int],
@@ -396,6 +477,34 @@ def _preprocess_item_annotations(
     return original_data
 
 
+def preprocess_copy_paste_annotations(
+    item: dict[str, Any],
+    processor: BboxProcessor | KeypointsProcessor | None,
+    data_key: Literal["bboxes", "keypoints"],
+) -> np.ndarray | None:
+    """Preprocess bboxes or keypoints for a single donor item. Delegates to internal
+    annotation preprocessing with proper processor label encoding.
+    """
+    return _preprocess_item_annotations(item, processor, data_key)
+
+
+def _unpack_label_wrappers(item: dict[str, Any]) -> dict[str, Any]:
+    """Unpack `bbox_labels` and `keypoint_labels` wrapper dicts into top-level label fields so processors can find them directly.
+
+    Both Mosaic and CopyAndPaste store per-item label values under `bbox_labels` and
+    `keypoint_labels` (dicts mapping label-field-name → value). This helper flattens
+    them so that `_preprocess_item_annotations` can find the fields at the top level.
+    """
+    if "bbox_labels" not in item and "keypoint_labels" not in item:
+        return item
+    unpacked = {k: v for k, v in item.items() if k not in ("bbox_labels", "keypoint_labels")}
+    for wrapper_key in ("bbox_labels", "keypoint_labels"):
+        labels = item.get(wrapper_key)
+        if isinstance(labels, dict):
+            unpacked.update(labels)
+    return unpacked
+
+
 def preprocess_selected_mosaic_items(
     selected_raw_items: list[dict[str, Any]],
     bbox_processor: BboxProcessor | None,  # Allow None
@@ -414,8 +523,9 @@ def preprocess_selected_mosaic_items(
     result_data_items: list[ProcessedMosaicItem] = []
 
     for item in selected_raw_items:
-        processed_bboxes = _preprocess_item_annotations(item, bbox_processor, "bboxes")
-        processed_keypoints = _preprocess_item_annotations(item, keypoint_processor, "keypoints")
+        flat_item = _unpack_label_wrappers(item)
+        processed_bboxes = _preprocess_item_annotations(flat_item, bbox_processor, "bboxes")
+        processed_keypoints = _preprocess_item_annotations(flat_item, keypoint_processor, "keypoints")
 
         # Construct the final processed item dict
         processed_item_dict: ProcessedMosaicItem = {

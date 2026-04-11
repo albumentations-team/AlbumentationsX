@@ -8,6 +8,7 @@ transforms2metadata_key = {
     A.HistogramMatching: "hm_metadata",
     A.PixelDistributionAdaptation: "pda_metadata",
     A.Mosaic: "mosaic_metadata",
+    A.CopyAndPaste: "copy_paste_metadata",
 }
 
 AUGMENTATION_CLS_PARAMS = [
@@ -422,6 +423,7 @@ AUGMENTATION_CLS_PARAMS = [
     [A.SquareSymmetry, {}],
     [A.PlanckianJitter, {}],
     [A.OverlayElements, {}],
+    [A.CopyAndPaste, {}],
     [A.RandomCropNearBBox, {}],
     [
         A.TextImage,

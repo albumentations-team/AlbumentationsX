@@ -210,55 +210,114 @@ When a transform requires complex or variable auxiliary data beyond simple confi
 
 Instead, follow this preferred pattern:
 
-1. **Pass the auxiliary data** within the main `data` dictionary provided to the transform's `__call__` method, using a descriptive key (e.g., `mosaic_metadata`, `target_image`).
-2. **Declare this key** in the transform's `targets_as_params` class attribute. This attribute signals to the `Compose` pipeline that the associated auxiliary data should be extracted from the main data dictionary and forwarded to the transform. In other words, targets_as_params enables the dynamic inclusion of per-sample metadata into the `get_params_dependent_on_data` method, ensuring the transform has access to this additional context during processing.
+1. **Pass the auxiliary data** within the main `data` dictionary provided to the transform's `__call__` method, using a descriptive key (e.g., `mosaic_metadata`, `copy_paste_metadata`).
+2. **Declare this key** in the transform's `targets_as_params` property. This signals to `Compose` that the key should be extracted and forwarded to `get_params_dependent_on_data`.
 3. **Access the data** inside `get_params_dependent_on_data` using `data.get("your_metadata_key")`.
+4. **No-op gracefully** if the metadata is missing or empty — return unchanged inputs, never raise.
 
-This approach keeps the transform's initialization focused on static configuration and allows the dynamic, per-sample auxiliary data to flow through the standard pipeline mechanism.
+Passing data via `__init__` couples the transform instance to specific data, making it less reusable and potentially breaking serialization or pipeline composition.
+
+### Mixing Transforms: Additional Rules
+
+Mixing transforms (`Mosaic`, `CopyAndPaste`, etc.) combine data from multiple images and require
+additional conventions beyond the general metadata pattern.
+
+#### Donor sampling is the user's responsibility
+
+Mixing transforms **never** decide internally which donor image or which instances to use. The user
+builds the metadata list externally and passes it in. The transform processes every item in the list.
+
+```python
+# CORRECT — user selects donors before calling the transform
+donors = [dataset[i] for i in sampled_indices]
+result = transform(image=image, copy_paste_metadata=donors)
+
+# INCORRECT — transform samples internally
+result = TransformThatSamplesInternally(dataset=dataset)(image=image)
+```
+
+**Why**: one extra line outside the transform enables deterministic control, class-balanced pasting,
+hard-example mining, and curriculum strategies — none of which are possible inside the transform.
+
+#### Metadata format: `list[dict]`
+
+All mixing transforms use `list[dict]` as the metadata type — one dict per item (one full image for
+`Mosaic`, one object instance for `CopyAndPaste`). This is consistent across the library.
+
+#### Label fields in metadata
+
+All mixing transforms use `bbox_labels` and `keypoint_labels` wrapper dicts for label fields:
+
+- `bbox_labels` — `dict[str, Any]` mapping each label field name (as declared in
+  `BboxParams.label_fields`) to its value(s). Supports multiple label fields.
+- `keypoint_labels` — `dict[str, Any]` mapping each label field name (as declared in
+  `KeypointParams.label_fields`) to its value(s).
+
+For **CopyAndPaste** (one object per dict), values are scalars:
+
+```python
+{
+    "image": src_image,
+    "mask": obj_mask,
+    "bbox": [10, 20, 50, 80],          # same coord_format as BboxParams
+    "bbox_labels": {"class_id": 3, "is_crowd": 0},
+    "keypoints": [[25, 40]],           # same coord_format as KeypointParams
+    "keypoint_labels": {"joint_name": "left_eye"},
+}
+```
+
+For **Mosaic** (one full image per dict), values are lists — one entry per bbox/keypoint:
+
+```python
+{
+    "image": img,
+    "bboxes": [[10, 20, 50, 80], [5, 5, 30, 30]],
+    "bbox_labels": {"class_id": [3, 7], "is_crowd": [0, 1]},
+    "keypoints": [[25, 40]],
+    "keypoint_labels": {"joint_name": ["left_eye"]},
+}
+```
+
+The dict keys inside `bbox_labels` / `keypoint_labels` must exactly match the field names
+declared in `BboxParams(label_fields=[...])` and `KeypointParams(label_fields=[...])`.
+
+#### Coordinates use the same format as `BboxParams` / `KeypointParams`
+
+Bboxes and keypoints in metadata dicts must use the **same `coord_format`** as declared in `Compose`.
+The processor converts them to internal format automatically — no manual conversion needed.
 
 **Example (`Mosaic` transform):**
 
 ```python
-# Correct - Data passed via `data` dict, key declared in `targets_as_params`
 class Mosaic(DualTransform):
     def __init__(self, target_size: tuple[int, int] = (512, 512), p=0.5, metadata_key="mosaic_metadata"):
         super().__init__(p=p)
         self.target_size = target_size
-        # NO auxiliary data like list of images/bboxes in __init__
         self.metadata_key = metadata_key
 
     @property
     def targets_as_params(self) -> list[str]:
-        """Get list of targets that should be passed as parameters to transforms."""
         return [self.metadata_key]
 
     def get_params_dependent_on_data(self, params: dict, data: dict) -> dict:
-        # Access auxiliary data here
-        additional_items = data.get(self.metadata_key, [])
-        # ... process additional_items ...
-        return { ... } # Return calculated parameters
+        metadata = data.get(self.metadata_key)
+        if not isinstance(metadata, list) or not metadata:
+            return self._no_op_params()
+        # ... process metadata ...
+        return {...}
 
-# Usage
+# Usage — user selects which images to include
 transform = A.Mosaic(target_size=(640, 640))
-result = transform(image=img1, mask=mask1, bboxes=bboxes1,
-                   mosaic_metadata=[
-                       {'image': img2, 'bboxes': bboxes2},
-                       {'image': img3, 'bboxes': bboxes3},
-                       # ... more items
-                   ])
-
-
-# Incorrect - Avoid passing variable data structures via __init__
-class BadMosaic(DualTransform):
-    def __init__(self, additional_items: list[dict], target_size: tuple[int, int] = (512, 512), p=0.5):
-         super().__init__(p=p)
-         self.additional_items = additional_items # Discouraged!
-         self.target_size = target_size
-
-    # ... might not even need get_params_dependent_on_data if data is in self ...
+result = transform(
+    image=img1,
+    bboxes=bboxes1,
+    class_id=[1, 2],
+    mosaic_metadata=[
+        {"image": img2, "bboxes": bboxes2, "class_id": [3, 4]},
+        {"image": img3, "bboxes": bboxes3, "class_id": [5]},
+    ],
+)
 ```
-
-Passing data via `__init__` couples the transform instance to specific data, making it less reusable and potentially breaking serialization or pipeline composition.
 
 ## Random Number Generation
 

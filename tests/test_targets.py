@@ -48,6 +48,7 @@ def extract_targets_from_docstring(cls):
 DUAL_TARGETS = {
     A.OverlayElements: (Targets.IMAGE, Targets.MASK),
     A.Mosaic: (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS),
+    A.CopyAndPaste: (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS),
 }
 
 

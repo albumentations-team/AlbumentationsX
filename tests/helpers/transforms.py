@@ -245,6 +245,10 @@ class TransformTestHelper:
                     mosaic_entry["mask"] = mask
                 data["mosaic_metadata"] = [mosaic_entry]
 
+        elif transform_cls == A.CopyAndPaste:
+            if "copy_paste_metadata" not in data:
+                data["copy_paste_metadata"] = []
+
         elif transform_cls in transforms2metadata_key:
             metadata_key = transforms2metadata_key[transform_cls]
             if metadata_key not in data:

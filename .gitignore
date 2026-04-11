@@ -184,5 +184,7 @@ notebooks/
 
 release_notes/
 
-# Local scratch / internal artifacts (never commit contents)
-_internal/
+# Local-only workspace: scratch, temp, personal demos, agent dumps (see
+# .cursor/skills/internal-workspace/SKILL.md). Everything ignored except .gitkeep.
+_internal/*
+!_internal/.gitkeep

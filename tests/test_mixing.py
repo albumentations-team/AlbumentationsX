@@ -221,6 +221,29 @@ class TestCopyAndPasteBasic:
         result = transform(image=image, copy_paste_metadata=[obj])
         assert result["image"].shape == (100, 100, 3)
 
+    def test_metadata_all_zero_masks_is_no_op(self):
+        """Entries whose paste mask has no foreground after resize are skipped; all skipped => no paste."""
+        image = np.full((100, 100, 3), 50, dtype=np.uint8)
+        empty = {
+            "image": np.zeros((100, 100, 3), dtype=np.uint8),
+            "mask": np.zeros((100, 100), dtype=np.uint8),
+        }
+        transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
+        result = transform(image=image.copy(), copy_paste_metadata=[empty])
+        np.testing.assert_array_equal(result["image"], image)
+
+    def test_empty_paste_mask_skipped_other_objects_still_paste(self):
+        """Zero-only paste masks are dropped; remaining valid metadata still pastes."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        empty = {
+            "image": np.zeros((100, 100, 3), dtype=np.uint8),
+            "mask": np.zeros((100, 100), dtype=np.uint8),
+        }
+        good = _make_object(137, (40, 60, 40, 60))
+        transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
+        result = transform(image=image, copy_paste_metadata=[empty, good])
+        assert np.any(result["image"] > 0)
+
 
 class TestCopyAndPasteMasks:
     """Instance mask handling -- occlusion and appending."""
@@ -431,6 +454,32 @@ class TestCopyAndPasteKeypoints:
         )
         np.testing.assert_array_equal(result["keypoints"], np.array([[70.0, 70.0]], dtype=np.float32))
         assert result["keypoint_labels"] == [1]
+
+    def test_keypoints_preserved_when_row_count_not_instance_count(self):
+        """If keypoint rows are not one-per-instance, do not drop rows using mask survivor indices."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        primary_masks = np.zeros((2, 100, 100), dtype=np.uint8)
+        primary_masks[0, 20:40, 20:40] = 1
+        primary_masks[1, 60:80, 60:80] = 1
+        keypoints = np.array([[10.0, 10.0], [30.0, 30.0], [70.0, 70.0], [75.0, 75.0]], dtype=np.float32)
+        keypoint_labels = [0, 1, 2, 3]
+
+        obj = _make_object(137, (10, 50, 10, 50))
+
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.5, p=1.0)],
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
+            seed=137,
+        )
+        result = transform(
+            image=image,
+            masks=primary_masks,
+            keypoints=keypoints,
+            keypoint_labels=keypoint_labels,
+            copy_paste_metadata=[obj],
+        )
+        assert len(result["keypoints"]) == 4
+        assert result["keypoint_labels"] == [0, 1, 2, 3]
 
 
 class TestCopyAndPasteBlending:

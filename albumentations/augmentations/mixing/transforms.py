@@ -307,11 +307,18 @@ class CopyAndPaste(DualTransform):
         The value at `metadata_key` must be a list of dicts. Each dict represents one object
         to paste and must contain:
             - image (np.ndarray): Source image (H, W, C) containing the object. Required.
-            - mask (np.ndarray): Binary mask (H, W) of the object in the source image. Required.
+            - mask (np.ndarray): Binary **instance** mask (H, W) for this object in the source
+              image: pixels to paste from `image`. Required. This is not the same as the
+              pipeline `mask` target below (semantic segmentation); entries with no positive
+              pixels after resize to the target size are skipped.
+            - semantic_mask (np.ndarray): Optional semantic label map (H, W), same shape as
+              `image`, aligned pixel-wise. When provided and the pipeline passes a `mask`
+              target, pasted pixels copy class ids from this map into the output semantic mask
+              inside the paste footprint (see `apply_to_mask`).
             - bbox (np.ndarray | list): Bounding box of the object in the **same coordinate
               format** as `BboxParams.coord_format` declared in `Compose` (e.g. pascal_voc,
               yolo, coco, albumentations). Optional — if absent, a tight box is derived from the
-              mask and converted to that format.
+              instance `mask` and converted to that format.
             - keypoints (np.ndarray): Keypoints for the object in the **same format** as
               `KeypointParams.coord_format` declared in `Compose`. Optional.
             - bbox_labels (dict[str, Any]): Label values for the object's bbox, keyed by the
@@ -324,6 +331,12 @@ class CopyAndPaste(DualTransform):
 
     Targets:
         image, mask, bboxes, keypoints
+
+    Keypoints vs instance masks:
+        When the pipeline supplies instance masks as `masks` (N, H, W) and
+        `paste_surviving_indices` is computed from them, primary keypoints are filtered only if
+        `keypoints.shape[0]` equals N (one row per instance, same order as stacked masks).
+        Otherwise existing keypoints are left unchanged and pasted keypoints are still appended.
 
     Image types:
         uint8, float32
@@ -430,18 +443,21 @@ class CopyAndPaste(DualTransform):
         self,
         data: dict[str, Any],
         paste_union_mask: np.ndarray,
-    ) -> np.ndarray | None:
-        """Return indices of primary masks that still meet min_visibility_after_paste after binary-union paste
-        occlusion (hard mask, not blurred alpha).
+    ) -> tuple[np.ndarray | None, int | None]:
+        """Return surviving indices and n_instances from stacked masks vs paste visibility,
+        or (None, None) without instance masks.
 
         Compares each instance mask to the opaque paste footprint for visibility ratios.
+        n_instances is the stacked `masks` axis length and matches keypoint row count when filtering survivors.
         """
         masks_3d = self._instance_masks_to_3d(data.get("masks"))
         if masks_3d is None:
-            return None
+            return None, None
 
+        n_instances = int(masks_3d.shape[0])
         visibility = fmixing.compute_instance_visibility(masks_3d, paste_union_mask)
-        return np.where(visibility >= self.min_visibility_after_paste)[0]
+        surviving = np.where(visibility >= self.min_visibility_after_paste)[0]
+        return surviving, n_instances
 
     @staticmethod
     def _resize_mask_to_target(mask: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
@@ -644,23 +660,26 @@ class CopyAndPaste(DualTransform):
 
         target_shape = params["shape"][:2]
 
-        valid_items = [item for item in metadata if isinstance(item, dict) and "image" in item and "mask" in item]
-        if not valid_items:
-            return self._no_op_params()
-
+        valid_items: list[dict[str, Any]] = []
         pasted_masks_list: list[np.ndarray] = []
         composite_image = data["image"].copy()
 
-        for item in valid_items:
+        for item in metadata:
+            if not isinstance(item, dict) or "image" not in item or "mask" not in item:
+                continue
+            src_mask = self._resize_mask_to_target(item["mask"], target_shape)
+            if not np.any(src_mask > 0):
+                continue
             src_image = item["image"]
-            src_mask = item["mask"]
             if src_image.shape[0] != target_shape[0] or src_image.shape[1] != target_shape[1]:
                 src_image = fgeometric.resize(src_image, target_shape, cv2.INTER_AREA)
-            src_mask = self._resize_mask_to_target(src_mask, target_shape)
+            valid_items.append(item)
             pasted_masks_list.append(src_mask)
-
             mask_bool = src_mask > 0
             composite_image[mask_bool] = src_image[mask_bool]
+
+        if not valid_items:
+            return self._no_op_params()
 
         pasted_masks = np.stack(pasted_masks_list, axis=0)
         paste_union_mask = np.any(pasted_masks > 0, axis=0)
@@ -668,7 +687,7 @@ class CopyAndPaste(DualTransform):
         blend_sigma = self.py_random.uniform(*self.blend_sigma_range)
         alpha = fmixing.create_copy_paste_alpha(pasted_masks, self.blend_mode, blend_sigma)
 
-        surviving_indices = self._compute_surviving_indices(data, paste_union_mask)
+        surviving_indices, paste_primary_instance_count = self._compute_surviving_indices(data, paste_union_mask)
 
         pasted_bboxes = (
             self._prepare_pasted_bboxes(valid_items, pasted_masks, composite_image) if "bboxes" in data else None
@@ -697,6 +716,7 @@ class CopyAndPaste(DualTransform):
             "paste_alpha": alpha,
             "paste_instance_masks": pasted_masks,
             "paste_surviving_indices": surviving_indices,
+            "paste_primary_instance_count": paste_primary_instance_count,
             "paste_bboxes": pasted_bboxes,
             "paste_keypoints": pasted_keypoints,
             "paste_donor_mask": donor_mask,
@@ -709,6 +729,7 @@ class CopyAndPaste(DualTransform):
             "paste_alpha": None,
             "paste_instance_masks": None,
             "paste_surviving_indices": None,
+            "paste_primary_instance_count": None,
             "paste_bboxes": None,
             "paste_keypoints": None,
             "paste_donor_mask": None,
@@ -820,8 +841,14 @@ class CopyAndPaste(DualTransform):
             return keypoints
 
         paste_surviving_indices = params.get("paste_surviving_indices")
+        paste_primary_instance_count = params.get("paste_primary_instance_count")
         surviving_keypoints = keypoints
-        if paste_surviving_indices is not None and keypoints.size > 0:
+        aligned = (
+            paste_primary_instance_count is not None
+            and keypoints.size > 0
+            and keypoints.shape[0] == paste_primary_instance_count
+        )
+        if paste_surviving_indices is not None and aligned:
             survivor_idx = np.asarray(paste_surviving_indices)
             if survivor_idx.size == 0:
                 surviving_keypoints = keypoints[:0]

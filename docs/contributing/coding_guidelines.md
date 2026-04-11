@@ -27,6 +27,13 @@ These guidelines represent our current best practices, developed through experie
 - Long strings (docstrings, comments, expressions) must be split across multiple lines at a word or operator boundary.
 - For docstrings, wrap to the next line — the Google docstring format allows multi-line short descriptions.
 
+### Code Complexity
+
+- Ruff enforces McCabe complexity (`C901`, limit 10) and branch count (`PLR0912`, limit 12).
+- **Never** suppress these with `# noqa: C901`, `# noqa: PLR0912`, or any other inline suppression.
+- **Never** raise the limit in `pyproject.toml`.
+- **Fix**: Extract private helper methods that each own a single concern. A function over the limit is a signal it is doing too many things and should be split.
+
 ### Pre-commit Hooks
 
 We use pre-commit hooks to maintain consistent code quality. These hooks automatically check and format your code before each commit.

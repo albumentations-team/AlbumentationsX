@@ -803,7 +803,7 @@ class Compose(BaseCompose, HubMixin):
 
     """
 
-    def __init__(  # noqa: C901
+    def __init__(
         self,
         transforms: TransformsSeqType,
         bbox_params: dict[str, Any] | BboxParams | None = None,
@@ -818,23 +818,51 @@ class Compose(BaseCompose, HubMixin):
         telemetry: bool = True,
         instance_binding: Sequence[str] | None = None,
     ):
-        # Store the original base seed for worker context recalculation
         self._base_seed = seed
-
-        # Get effective seed considering worker context
-        effective_seed = self._get_effective_seed(seed)
-
         super().__init__(
             transforms=transforms,
             p=p,
             mask_interpolation=mask_interpolation,
-            seed=effective_seed,
+            seed=self._get_effective_seed(seed),
             save_applied_params=save_applied_params,
         )
 
-        # Store telemetry parameter
         self.telemetry = telemetry
+        self._resolve_processors(bbox_params, keypoint_params)
 
+        for proc in self.processors.values():
+            proc.ensure_transforms_valid(self.transforms)
+
+        self._instance_binding = self._setup_instance_binding(instance_binding)
+
+        self.add_targets(additional_targets)
+        if not self.transforms:  # if no transforms -> do nothing, all keys will be available
+            self._available_keys.update(AVAILABLE_KEYS)
+        if self._instance_binding:
+            self._available_keys.add("instances")
+
+        self.is_check_args = True
+        self.strict = strict
+        self.is_check_shapes = is_check_shapes
+        self.check_each_transform = tuple(  # processors that check after each transform
+            proc for proc in self.processors.values() if getattr(proc.params, "check_each_transform", False)
+        )
+        self._set_check_args_for_transforms(self.transforms)
+        self._set_processors_for_transforms(self.transforms)
+
+        self.save_applied_params = save_applied_params
+        self._images_was_list = False
+        self._masks_was_list = False
+        self._last_torch_seed: int | None = None
+
+        # Telemetry runs after nested composes so main_compose=False is already set on them.
+        self._maybe_send_telemetry(telemetry)
+
+    def _resolve_processors(
+        self,
+        bbox_params: dict[str, Any] | BboxParams | None,
+        keypoint_params: dict[str, Any] | KeypointParams | None,
+    ) -> None:
         if bbox_params:
             if isinstance(bbox_params, dict):
                 b_params = BboxParams(**bbox_params)
@@ -855,52 +883,13 @@ class Compose(BaseCompose, HubMixin):
                 raise ValueError(msg)
             self.processors["keypoints"] = KeypointsProcessor(k_params)
 
-        for proc in self.processors.values():
-            proc.ensure_transforms_valid(self.transforms)
-
-        self._instance_binding = self._setup_instance_binding(instance_binding)
-
-        self.add_targets(additional_targets)
-        if not self.transforms:  # if no transforms -> do nothing, all keys will be available
-            self._available_keys.update(AVAILABLE_KEYS)
-
-        if self._instance_binding:
-            self._available_keys.add("instances")
-
-        self.is_check_args = True
-        self.strict = strict
-
-        self.is_check_shapes = is_check_shapes
-        self.check_each_transform = tuple(  # processors that checks after each transform
-            proc for proc in self.processors.values() if getattr(proc.params, "check_each_transform", False)
-        )
-        self._set_check_args_for_transforms(self.transforms)
-
-        self._set_processors_for_transforms(self.transforms)
-
-        self.save_applied_params = save_applied_params
-        self._images_was_list = False
-        self._masks_was_list = False
-        self._last_torch_seed: int | None = None
-
-        # Track telemetry after nested composes are processed
-        # This ensures nested composes have main_compose=False from disable_check_args_private
-        if self.main_compose and settings.telemetry_enabled:
-            with contextlib.suppress(Exception):
-                client = get_telemetry_client()
-
-                # Collect telemetry data
-                env_info = get_environment_info()
-                pipeline_info = collect_pipeline_info(self)
-
-                # Combine all data
-                telemetry_data = {
-                    **env_info,
-                    **pipeline_info,
-                }
-
-                # Always call the client, let it decide based on telemetry parameter
-                client.track_compose_init(telemetry_data, telemetry=telemetry)
+    def _maybe_send_telemetry(self, telemetry: bool) -> None:
+        if not (self.main_compose and settings.telemetry_enabled):
+            return
+        with contextlib.suppress(Exception):
+            client = get_telemetry_client()
+            telemetry_data = {**get_environment_info(), **collect_pipeline_info(self)}
+            client.track_compose_init(telemetry_data, telemetry=telemetry)
 
     @property
     def strict(self) -> bool:
@@ -1396,7 +1385,7 @@ class Compose(BaseCompose, HubMixin):
     def _get_user_kp_label_fields(self) -> list[str]:
         return list(self._kp_label_map.values())
 
-    def _unpack_instances(self, data: dict[str, Any]) -> None:  # noqa: C901, PLR0912
+    def _unpack_instances(self, data: dict[str, Any]) -> None:
         binding = self._instance_binding
         if binding is None:
             msg = "_unpack_instances requires instance_binding"
@@ -1411,56 +1400,85 @@ class Compose(BaseCompose, HubMixin):
         self._instance_kp_counts: list[int] = []
 
         if num_instances == 0:
-            if "masks" in binding:
-                data["masks"] = np.empty((0, 0, 0), dtype=np.uint8)
-            if "bboxes" in binding:
-                data["bboxes"] = np.zeros((0, 4), dtype=np.float32)
-                data[_BBOX_INSTANCE_ID] = []
-            if "keypoints" in binding:
-                data["keypoints"] = np.zeros((0, 2), dtype=np.float32)
-                data[_KP_INSTANCE_ID] = []
-            for internal_name in self._bbox_label_map:
-                data[internal_name] = []
-            for internal_name in self._kp_label_map:
-                data[internal_name] = []
+            self._init_empty_instance_data(data, binding)
             return
 
         instance_dicts = self._validate_instances(instances)
+        self._unpack_masks(data, binding, instance_dicts)
+        self._unpack_bboxes(data, binding, instance_dicts, num_instances)
+        self._unpack_keypoints(data, binding, instance_dicts)
+        self._unpack_bbox_labels(data, instance_dicts)
+        self._unpack_kp_labels(data, instance_dicts)
 
+    def _init_empty_instance_data(self, data: dict[str, Any], binding: frozenset[str]) -> None:
+        if "masks" in binding:
+            data["masks"] = np.empty((0, 0, 0), dtype=np.uint8)
+        if "bboxes" in binding:
+            data["bboxes"] = np.zeros((0, 4), dtype=np.float32)
+            data[_BBOX_INSTANCE_ID] = []
+        if "keypoints" in binding:
+            data["keypoints"] = np.zeros((0, 2), dtype=np.float32)
+            data[_KP_INSTANCE_ID] = []
+        for internal_name in self._bbox_label_map:
+            data[internal_name] = []
+        for internal_name in self._kp_label_map:
+            data[internal_name] = []
+
+    def _unpack_masks(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        instance_dicts: list[dict[str, Any]],
+    ) -> None:
         if "masks" in binding:
             data["masks"] = np.stack([inst["mask"] for inst in instance_dicts])
         elif "mask" in binding:
             data["mask"] = np.stack([inst["mask"] for inst in instance_dicts], axis=-1)
 
-        if "bboxes" in binding:
-            data["bboxes"] = np.array([inst["bbox"] for inst in instance_dicts], dtype=np.float32)
-            data[_BBOX_INSTANCE_ID] = list(range(num_instances))
+    def _unpack_bboxes(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        instance_dicts: list[dict[str, Any]],
+        num_instances: int,
+    ) -> None:
+        if "bboxes" not in binding:
+            return
+        data["bboxes"] = np.array([inst["bbox"] for inst in instance_dicts], dtype=np.float32)
+        data[_BBOX_INSTANCE_ID] = list(range(num_instances))
 
-        if "keypoints" in binding:
-            all_kps: list[np.ndarray] = []
-            all_ids: list[int] = []
-            for idx, inst in enumerate(instance_dicts):
-                kps = inst.get("keypoints", np.zeros((0, 2), dtype=np.float32))
-                count = kps.shape[0] if isinstance(kps, np.ndarray) else len(kps)
-                self._instance_kp_counts.append(count)
-                if count > 0:
-                    all_kps.append(np.asarray(kps, dtype=np.float32))
-                    all_ids.extend([idx] * count)
-            data["keypoints"] = np.concatenate(all_kps) if all_kps else np.zeros((0, 2), dtype=np.float32)
-            data[_KP_INSTANCE_ID] = all_ids
+    def _unpack_keypoints(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        instance_dicts: list[dict[str, Any]],
+    ) -> None:
+        if "keypoints" not in binding:
+            return
+        all_kps: list[np.ndarray] = []
+        all_ids: list[int] = []
+        for idx, inst in enumerate(instance_dicts):
+            kps = inst.get("keypoints", np.zeros((0, 2), dtype=np.float32))
+            count = kps.shape[0] if isinstance(kps, np.ndarray) else len(kps)
+            self._instance_kp_counts.append(count)
+            if count > 0:
+                all_kps.append(np.asarray(kps, dtype=np.float32))
+                all_ids.extend([idx] * count)
+        data["keypoints"] = np.concatenate(all_kps) if all_kps else np.zeros((0, 2), dtype=np.float32)
+        data[_KP_INSTANCE_ID] = all_ids
 
+    def _unpack_bbox_labels(self, data: dict[str, Any], instance_dicts: list[dict[str, Any]]) -> None:
         for internal_name, user_name in self._bbox_label_map.items():
             data[internal_name] = [inst.get("bbox_labels", {})[user_name] for inst in instance_dicts]
 
+    def _unpack_kp_labels(self, data: dict[str, Any], instance_dicts: list[dict[str, Any]]) -> None:
         for internal_name, user_name in self._kp_label_map.items():
             flat: list[Any] = []
             for inst in instance_dicts:
-                kp_labels = inst.get("keypoint_labels", {})
-                values = kp_labels.get(user_name, [])
-                flat.extend(values)
+                flat.extend(inst.get("keypoint_labels", {}).get(user_name, []))
             data[internal_name] = flat
 
-    def _validate_instances(self, instances: Sequence[Any]) -> list[dict[str, Any]]:  # noqa: C901, PLR0912
+    def _validate_instances(self, instances: Sequence[Any]) -> list[dict[str, Any]]:
         binding = self._instance_binding
         if binding is None:
             msg = "_validate_instances requires instance_binding"
@@ -1473,49 +1491,69 @@ class Compose(BaseCompose, HubMixin):
         for idx, inst in enumerate(instances):
             if not isinstance(inst, dict):
                 raise TypeError(f"instances[{idx}] must be a dict, got {type(inst).__name__}")
-
-            mask_key = "masks" if "masks" in binding else ("mask" if "mask" in binding else None)
-            if mask_key is not None and "mask" not in inst:
-                raise ValueError(f"instances[{idx}] missing required key 'mask'")
-
-            if "bboxes" in binding and "bbox" not in inst:
-                raise ValueError(f"instances[{idx}] missing required key 'bbox'")
-
-            if "bboxes" in binding and bbox_label_fields:
-                inst_labels = inst.get("bbox_labels")
-                if inst_labels is None:
-                    raise ValueError(f"instances[{idx}] missing 'bbox_labels'")
-                missing = set(bbox_label_fields) - set(inst_labels)
-                if missing:
-                    raise ValueError(
-                        f"instances[{idx}]['bbox_labels'] missing keys: {missing}. Expected: {bbox_label_fields}",
-                    )
-
-            if "keypoints" in binding:
-                kps = inst.get("keypoints", np.zeros((0, 2), dtype=np.float32))
-                num_kps = kps.shape[0] if isinstance(kps, np.ndarray) else len(kps)
-
-                if kp_label_fields and num_kps > 0:
-                    kp_labels = inst.get("keypoint_labels")
-                    if kp_labels is None:
-                        raise ValueError(f"instances[{idx}] missing 'keypoint_labels'")
-                    missing = set(kp_label_fields) - set(kp_labels)
-                    if missing:
-                        raise ValueError(
-                            f"instances[{idx}]['keypoint_labels'] missing keys: {missing}. Expected: {kp_label_fields}",
-                        )
-                    for field in kp_label_fields:
-                        if len(kp_labels[field]) != num_kps:
-                            raise ValueError(
-                                f"instances[{idx}]['keypoint_labels']['{field}'] has "
-                                f"{len(kp_labels[field])} values but keypoints has {num_kps} rows",
-                            )
-
+            self._validate_instance_mask(inst, idx, binding)
+            self._validate_instance_bbox(inst, idx, binding, bbox_label_fields)
+            self._validate_instance_keypoints(inst, idx, binding, kp_label_fields)
             normalized.append(inst)
 
         return normalized
 
-    def _repack_instances(self, data: dict[str, Any]) -> None:  # noqa: C901, PLR0912
+    def _validate_instance_mask(self, inst: dict[str, Any], idx: int, binding: frozenset[str]) -> None:
+        has_mask_binding = "masks" in binding or "mask" in binding
+        if has_mask_binding and "mask" not in inst:
+            raise ValueError(f"instances[{idx}] missing required key 'mask'")
+
+    def _validate_instance_bbox(
+        self,
+        inst: dict[str, Any],
+        idx: int,
+        binding: frozenset[str],
+        bbox_label_fields: list[str],
+    ) -> None:
+        if "bboxes" not in binding:
+            return
+        if "bbox" not in inst:
+            raise ValueError(f"instances[{idx}] missing required key 'bbox'")
+        if not bbox_label_fields:
+            return
+        inst_labels = inst.get("bbox_labels")
+        if inst_labels is None:
+            raise ValueError(f"instances[{idx}] missing 'bbox_labels'")
+        missing = set(bbox_label_fields) - set(inst_labels)
+        if missing:
+            raise ValueError(
+                f"instances[{idx}]['bbox_labels'] missing keys: {missing}. Expected: {bbox_label_fields}",
+            )
+
+    def _validate_instance_keypoints(
+        self,
+        inst: dict[str, Any],
+        idx: int,
+        binding: frozenset[str],
+        kp_label_fields: list[str],
+    ) -> None:
+        if "keypoints" not in binding:
+            return
+        kps = inst.get("keypoints", np.zeros((0, 2), dtype=np.float32))
+        num_kps = kps.shape[0] if isinstance(kps, np.ndarray) else len(kps)
+        if not (kp_label_fields and num_kps > 0):
+            return
+        kp_labels = inst.get("keypoint_labels")
+        if kp_labels is None:
+            raise ValueError(f"instances[{idx}] missing 'keypoint_labels'")
+        missing = set(kp_label_fields) - set(kp_labels)
+        if missing:
+            raise ValueError(
+                f"instances[{idx}]['keypoint_labels'] missing keys: {missing}. Expected: {kp_label_fields}",
+            )
+        for field in kp_label_fields:
+            if len(kp_labels[field]) != num_kps:
+                raise ValueError(
+                    f"instances[{idx}]['keypoint_labels']['{field}'] has "
+                    f"{len(kp_labels[field])} values but keypoints has {num_kps} rows",
+                )
+
+    def _repack_instances(self, data: dict[str, Any]) -> None:
         binding = self._instance_binding
         if binding is None:
             msg = "_repack_instances requires instance_binding"
@@ -1529,51 +1567,100 @@ class Compose(BaseCompose, HubMixin):
 
         kp_ids = np.array(data.pop(_KP_INSTANCE_ID, []))
 
-        instances: list[dict[str, Any]] = []
-        for new_idx, old_idx in enumerate(surviving_ids):
-            inst: dict[str, Any] = {}
+        data["instances"] = [
+            self._repack_one_instance(data, binding, new_idx, old_idx, kp_ids)
+            for new_idx, old_idx in enumerate(surviving_ids)
+        ]
+        self._cleanup_instance_data(data, binding)
 
-            if "masks" in binding and "masks" in data:
-                mask = data["masks"][new_idx]
-                if hasattr(self, "_added_channel_dim") and self._added_channel_dim.get("masks") and mask.shape[-1] == 1:
-                    mask = np.squeeze(mask, axis=-1)
-                inst["mask"] = mask
-            elif "mask" in binding and "mask" in data:
-                inst["mask"] = data["mask"][:, :, new_idx]
+    def _repack_one_instance(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        new_idx: int,
+        old_idx: int,
+        kp_ids: np.ndarray,
+    ) -> dict[str, Any]:
+        inst: dict[str, Any] = {}
+        self._repack_mask_into(inst, data, binding, new_idx)
+        self._repack_bbox_into(inst, data, binding, new_idx)
+        self._repack_keypoints_into(inst, data, binding, old_idx, kp_ids)
+        self._repack_bbox_labels_into(inst, data, new_idx)
+        self._repack_kp_labels_into(inst, data, binding, old_idx, kp_ids)
+        return inst
 
-            if "bboxes" in binding and "bboxes" in data:
-                inst["bbox"] = data["bboxes"][new_idx]
+    def _repack_mask_into(
+        self,
+        inst: dict[str, Any],
+        data: dict[str, Any],
+        binding: frozenset[str],
+        new_idx: int,
+    ) -> None:
+        if "masks" in binding and "masks" in data:
+            mask = data["masks"][new_idx]
+            added = hasattr(self, "_added_channel_dim") and self._added_channel_dim.get("masks")
+            if added and mask.shape[-1] == 1:
+                mask = np.squeeze(mask, axis=-1)
+            inst["mask"] = mask
+        elif "mask" in binding and "mask" in data:
+            inst["mask"] = data["mask"][:, :, new_idx]
 
-            if "keypoints" in binding and "keypoints" in data:
-                if kp_ids.size > 0:
-                    kp_mask = kp_ids == old_idx
-                    inst["keypoints"] = data["keypoints"][kp_mask]
-                else:
-                    inst["keypoints"] = np.zeros((0, 2), dtype=np.float32)
+    def _repack_bbox_into(
+        self,
+        inst: dict[str, Any],
+        data: dict[str, Any],
+        binding: frozenset[str],
+        new_idx: int,
+    ) -> None:
+        if "bboxes" in binding and "bboxes" in data:
+            inst["bbox"] = data["bboxes"][new_idx]
 
-            if self._bbox_label_map:
-                inst["bbox_labels"] = {}
-                for internal_name, user_name in self._bbox_label_map.items():
-                    if internal_name in data:
-                        inst["bbox_labels"][user_name] = data[internal_name][new_idx]
+    def _repack_keypoints_into(
+        self,
+        inst: dict[str, Any],
+        data: dict[str, Any],
+        binding: frozenset[str],
+        old_idx: int,
+        kp_ids: np.ndarray,
+    ) -> None:
+        if "keypoints" not in binding or "keypoints" not in data:
+            return
+        if kp_ids.size > 0:
+            inst["keypoints"] = data["keypoints"][kp_ids == old_idx]
+        else:
+            inst["keypoints"] = np.zeros((0, 2), dtype=np.float32)
 
-            if self._kp_label_map and "keypoints" in binding:
-                inst["keypoint_labels"] = {}
-                for internal_name, user_name in self._kp_label_map.items():
-                    if internal_name in data:
-                        field_values = data[internal_name]
-                        if kp_ids.size > 0:
-                            kp_mask = kp_ids == old_idx
-                            inst["keypoint_labels"][user_name] = [
-                                field_values[i] for i, keep in enumerate(kp_mask) if keep
-                            ]
-                        else:
-                            inst["keypoint_labels"][user_name] = []
+    def _repack_bbox_labels_into(self, inst: dict[str, Any], data: dict[str, Any], new_idx: int) -> None:
+        if not self._bbox_label_map:
+            return
+        inst["bbox_labels"] = {
+            user_name: data[internal_name][new_idx]
+            for internal_name, user_name in self._bbox_label_map.items()
+            if internal_name in data
+        }
 
-            instances.append(inst)
+    def _repack_kp_labels_into(
+        self,
+        inst: dict[str, Any],
+        data: dict[str, Any],
+        binding: frozenset[str],
+        old_idx: int,
+        kp_ids: np.ndarray,
+    ) -> None:
+        if not (self._kp_label_map and "keypoints" in binding):
+            return
+        inst["keypoint_labels"] = {}
+        for internal_name, user_name in self._kp_label_map.items():
+            if internal_name not in data:
+                continue
+            field_values = data[internal_name]
+            if kp_ids.size > 0:
+                kp_mask = kp_ids == old_idx
+                inst["keypoint_labels"][user_name] = [field_values[i] for i, keep in enumerate(kp_mask) if keep]
+            else:
+                inst["keypoint_labels"][user_name] = []
 
-        data["instances"] = instances
-
+    def _cleanup_instance_data(self, data: dict[str, Any], binding: frozenset[str]) -> None:
         for key in ["masks", "bboxes", "keypoints"]:
             if key in binding:
                 data.pop(key, None)

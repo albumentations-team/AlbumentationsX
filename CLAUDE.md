@@ -72,6 +72,12 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - **Never** add `E501` to `pyproject.toml` ignores or use `# noqa: E501`.
 - Long lines must be split at a word/operator boundary. Docstrings can wrap — Google format allows multi-line short descriptions.
 
+### Code Complexity
+
+- Ruff enforces McCabe complexity (`C901`, limit 10) and branch count (`PLR0912`, limit 12).
+- **Never** suppress with `# noqa: C901`, `# noqa: PLR0912`, or raise the limits in `pyproject.toml`.
+- **Fix**: Extract private helper methods — a function over the limit is doing too many things.
+
 ### Code Patterns
 
 ```python

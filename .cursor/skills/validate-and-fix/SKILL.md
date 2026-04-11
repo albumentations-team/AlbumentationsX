@@ -22,3 +22,8 @@ description: After completing code changes, runs tests and pre-commit, then iter
 - **Never** suppress with `# noqa: E501` or add `E501` to `pyproject.toml` ignore list.
 - **Fix**: Split the line at a word or operator boundary. For docstrings, wrap to the next line — the
   Google format allows multi-line short descriptions. For code, break at `(`, `,`, or `+`.
+
+### C901 / PLR0912 Function too complex / too many branches
+- **Never** suppress with `# noqa: C901`, `# noqa: PLR0912`, or raise the limits in `pyproject.toml`.
+- **Fix**: Extract private helper methods that each own a single concern. If a function exceeds the
+  limit it is doing too many things and must be split.

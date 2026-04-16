@@ -3142,3 +3142,81 @@ def test_applied_config_pixel_distribution_adaptation():
     aug = A.PixelDistributionAdaptation(blend_ratio=(0.5, 1.0), p=1.0)
     aug(image=image, pda_metadata=[reference])
     _assert_applied_config_valid(aug)
+
+
+# ── applied_config: range params must resolve to sampled scalars ─────────────
+#
+# These transforms unconditionally sample exactly one scalar from a `_range`
+# constructor parameter on every apply (e.g., `self.py_random.uniform(*self.foo_range)`).
+# Per the get_applied_config contract, the sampled scalar must be recorded in
+# `applied_config[range_param_name]` so that replay/debug shows the concrete
+# value, not the original input range.
+#
+# Format: (transform_class, range_param_name, init_kwargs)
+# init_kwargs MUST set the range parameter to a non-degenerate range
+# (low != high) so we can distinguish "scalar sample" from "original tuple".
+SINGLE_SAMPLE_RANGE_RESOLUTIONS: list[tuple[type, str, dict[str, Any]]] = [
+    (A.Blur, "blur_limit", {"blur_limit": (3, 9)}),
+    (A.GaussianBlur, "blur_limit", {"blur_limit": (3, 9)}),
+    (A.MedianBlur, "blur_limit", {"blur_limit": (3, 9)}),
+    (A.MotionBlur, "blur_limit", {"blur_limit": (3, 9)}),
+    (A.Enhance, "alpha_range", {"alpha_range": (0.3, 0.9)}),
+    (A.PlasmaShadow, "shadow_intensity_range", {"shadow_intensity_range": (0.2, 0.8)}),
+    (A.PixelSpread, "map_resolution_range", {"radius": 2, "map_resolution_range": (0.3, 0.7)}),
+    (A.ElasticTransform, "map_resolution_range", {"map_resolution_range": (0.3, 0.7)}),
+    (A.GridDistortion, "map_resolution_range", {"map_resolution_range": (0.3, 0.7)}),
+    (A.OpticalDistortion, "map_resolution_range", {"map_resolution_range": (0.3, 0.7)}),
+    (A.PiecewiseAffine, "map_resolution_range", {"map_resolution_range": (0.3, 0.7)}),
+    (A.ThinPlateSpline, "map_resolution_range", {"map_resolution_range": (0.3, 0.7)}),
+]
+
+
+@pytest.mark.parametrize(("aug_cls", "range_param", "init_kwargs"), SINGLE_SAMPLE_RANGE_RESOLUTIONS)
+def test_applied_config_resolves_range_param_to_scalar(aug_cls, range_param, init_kwargs):
+    """Single-sample `_range` params must be recorded as the sampled scalar in applied_config.
+
+    Catches the bug pattern where get_params samples from a range but forgets to record the
+    scalar — leaving `applied_config[range]` as the original input tuple, which silently
+    breaks replay/debug consumers of get_applied_config().
+    """
+    image = _make_test_image()
+    aug = aug_cls(**init_kwargs, p=1.0)
+    original_range = init_kwargs[range_param]
+    low, high = original_range
+    assert low != high, "test setup error: pick a non-degenerate range to distinguish scalar from tuple"
+
+    data = TransformTestHelper.prepare_test_data(aug_cls, image)
+    aug(**data)
+
+    sampled = aug.applied_config.get(range_param)
+    assert sampled is not None, f"{aug_cls.__name__}.applied_config missing key {range_param!r}"
+    assert not isinstance(sampled, (tuple, list)), (
+        f"{aug_cls.__name__}.applied_config[{range_param!r}] is still a tuple {sampled!r}; "
+        f"get_params likely sampled but forgot to record the scalar via "
+        f"`self.applied_config = {{{range_param!r}: sampled_value, ...}}`"
+    )
+    assert isinstance(sampled, (int, float, np.integer, np.floating)), (
+        f"{aug_cls.__name__}.applied_config[{range_param!r}] should be a scalar, got {type(sampled).__name__}"
+    )
+    assert low <= sampled <= high, (
+        f"{aug_cls.__name__}.applied_config[{range_param!r}]={sampled} outside input range [{low}, {high}]"
+    )
+
+
+def test_applied_config_resolves_copy_and_paste_blend_sigma_range():
+    """CopyAndPaste.blend_sigma_range must resolve to a sampled scalar (special case: needs metadata)."""
+    image = _make_test_image()
+    mask = np.zeros((100, 100), dtype=np.uint8)
+    overlay = {
+        "image": np.full((40, 40, 3), 200, dtype=np.uint8),
+        "mask": np.ones((40, 40), dtype=np.uint8),
+    }
+
+    aug = A.CopyAndPaste(blend_mode="gaussian", blend_sigma_range=(0.5, 2.0), p=1.0)
+    aug(image=image, mask=mask, copy_paste_metadata=[overlay])
+
+    sampled = aug.applied_config.get("blend_sigma_range")
+    assert isinstance(sampled, float), (
+        f"CopyAndPaste.applied_config['blend_sigma_range'] should be a float scalar, got {sampled!r}"
+    )
+    assert 0.5 <= sampled <= 2.0

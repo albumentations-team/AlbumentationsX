@@ -743,6 +743,7 @@ class CopyAndPaste(DualTransform):
         paste_union_mask = np.any(pasted_masks > 0, axis=0)
 
         blend_sigma = self.py_random.uniform(*self.blend_sigma_range)
+        self.applied_config = {"blend_sigma_range": blend_sigma}
         alpha = fmixing.create_copy_paste_alpha(pasted_masks, self.blend_mode, blend_sigma)
 
         surviving_indices, paste_primary_instance_count = self._compute_surviving_indices(data, paste_union_mask)

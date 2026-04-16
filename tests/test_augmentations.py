@@ -1726,17 +1726,21 @@ def test_enhance_apply_to_images_matches_per_image(mode, dtype):
     np.testing.assert_array_equal(batched, per_image)
 
 
+def test_enhance_invalid_mode_raises():
+    with pytest.raises(ValueError):
+        A.Enhance(mode="invalid", alpha_range=(0.5, 1.0), p=1.0)
+
+
 @pytest.mark.parametrize(
-    ("mode", "alpha_range"),
+    "alpha_range",
     [
-        ("invalid", (0.5, 1.0)),
-        ("edge", (-0.1, 0.5)),
-        ("edge", (1.0, 0.5)),
+        (-0.1, 0.5),  # negative lower bound
+        (1.0, 0.5),  # decreasing
     ],
 )
-def test_enhance_invalid_params_raise(mode, alpha_range):
-    with pytest.raises(Exception):
-        A.Enhance(mode=mode, alpha_range=alpha_range, p=1.0)
+def test_enhance_invalid_alpha_range_raises(alpha_range):
+    with pytest.raises(ValueError):
+        A.Enhance(mode="edge", alpha_range=alpha_range, p=1.0)
 
 
 @pytest.mark.parametrize(

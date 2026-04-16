@@ -1557,7 +1557,7 @@ class PixelSpread(BaseDistortion):
         height, width = params["shape"][:2]
         map_resolution = self.py_random.uniform(*self.map_resolution_range)
 
-        self.applied_config = {"map_resolution_range": map_resolution}
+        self.applied_config["map_resolution_range"] = map_resolution
 
         scaled_height = max(1, int(height * map_resolution))
         scaled_width = max(1, int(width * map_resolution))

@@ -3203,6 +3203,37 @@ def test_applied_config_resolves_range_param_to_scalar(aug_cls, range_param, ini
     )
 
 
+@pytest.mark.parametrize(("aug_cls", "range_param", "init_kwargs"), SINGLE_SAMPLE_RANGE_RESOLUTIONS)
+def test_applied_config_range_param_refreshes_each_call(aug_cls, range_param, init_kwargs):
+    """applied_config[range_param] must reflect the *most recent* sample, not stale state.
+
+    Guards against a "sample once, reuse forever" regression where a transform instance
+    caches the first sampled value across subsequent calls. Runs the transform 8 times
+    with a wide range and asserts (a) every call produces a scalar in-range, and
+    (b) at least two distinct values appear (probabilistic; range is wide enough that
+    the false-positive rate is negligible).
+    """
+    image = _make_test_image()
+    aug = aug_cls(**init_kwargs, p=1.0)
+    low, high = init_kwargs[range_param]
+
+    samples = []
+    for _ in range(8):
+        data = TransformTestHelper.prepare_test_data(aug_cls, image)
+        aug(**data)
+        sampled = aug.applied_config.get(range_param)
+        assert isinstance(sampled, (int, float, np.integer, np.floating)), (
+            f"{aug_cls.__name__}.applied_config[{range_param!r}] not a scalar on repeat call: {sampled!r}"
+        )
+        assert low <= sampled <= high
+        samples.append(float(sampled))
+
+    assert len(set(samples)) > 1, (
+        f"{aug_cls.__name__}.applied_config[{range_param!r}] returned the same value across 8 calls: {samples!r}; "
+        f"likely cached/stale state instead of per-call resampling"
+    )
+
+
 def test_applied_config_resolves_copy_and_paste_blend_sigma_range():
     """CopyAndPaste.blend_sigma_range must resolve to a sampled scalar (special case: needs metadata)."""
     image = _make_test_image()

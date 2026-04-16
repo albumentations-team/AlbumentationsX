@@ -196,6 +196,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [Dithering](https://explore.albumentations.ai/transform/Dithering)
 - [Downscale](https://explore.albumentations.ai/transform/Downscale)
 - [Emboss](https://explore.albumentations.ai/transform/Emboss)
+- [Enhance](https://explore.albumentations.ai/transform/Enhance)
 - [Equalize](https://explore.albumentations.ai/transform/Equalize)
 - [FDA](https://explore.albumentations.ai/transform/FDA)
 - [FancyPCA](https://explore.albumentations.ai/transform/FancyPCA)

@@ -1642,3 +1642,98 @@ def test_sharpen_apply_to_volumes(dtype, method):
 
     expected = np.stack([transform(volume=volumes[i])["volume"] for i in range(volumes.shape[0])])
     np.testing.assert_array_equal(transformed, expected)
+
+
+@pytest.mark.parametrize("mode", ["edge", "detail"])
+def test_enhance_alpha_zero_is_identity(mode):
+    image = np.random.RandomState(137).randint(0, 256, (64, 64, 3), dtype=np.uint8)
+    transform = A.Compose([A.Enhance(mode=mode, alpha_range=(0.0, 0.0), p=1.0)])
+    np.testing.assert_array_equal(transform(image=image)["image"], image)
+
+
+@pytest.mark.parametrize("mode", ["edge", "detail"])
+def test_enhance_kernel_matches_pillow_preset(mode):
+    """alpha=1 must reproduce the Pillow preset kernel exactly (DC-preserving)."""
+    expected = {
+        "edge": np.array(
+            [[-0.5, -0.5, -0.5], [-0.5, 5.0, -0.5], [-0.5, -0.5, -0.5]],
+            dtype=np.float32,
+        ),
+        "detail": np.array(
+            [
+                [0.0, -1.0 / 6.0, 0.0],
+                [-1.0 / 6.0, 10.0 / 6.0, -1.0 / 6.0],
+                [0.0, -1.0 / 6.0, 0.0],
+            ],
+            dtype=np.float32,
+        ),
+    }[mode]
+    np.testing.assert_allclose(
+        fpixel.generate_enhance_matrix(mode, 1.0),
+        expected,
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(fpixel.generate_enhance_matrix(mode, 1.0).sum(), 1.0, rtol=1e-6)
+
+
+def test_enhance_edge_alpha_two_matches_edge_enhance_more():
+    """alpha=2 with mode=edge must reproduce Pillow's EDGE_ENHANCE_MORE kernel."""
+    expected = np.array(
+        [[-1.0, -1.0, -1.0], [-1.0, 9.0, -1.0], [-1.0, -1.0, -1.0]],
+        dtype=np.float32,
+    )
+    np.testing.assert_allclose(fpixel.generate_enhance_matrix("edge", 2.0), expected, rtol=1e-6)
+
+
+@pytest.mark.parametrize("mode", ["edge", "detail"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_enhance_preserves_shape_and_dtype(mode, dtype, num_channels):
+    rng = np.random.RandomState(137)
+    shape = (64, 64) if num_channels == 1 else (64, 64, num_channels)
+    if dtype == np.uint8:
+        image = rng.randint(0, 256, shape, dtype=np.uint8)
+    else:
+        image = rng.random(shape).astype(np.float32)
+
+    transform = A.Compose([A.Enhance(mode=mode, alpha_range=(0.5, 1.5), p=1.0)])
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    if dtype == np.float32:
+        assert result.min() >= 0.0
+        assert result.max() <= 1.0
+
+
+@pytest.mark.parametrize("mode", ["edge", "detail"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_enhance_apply_to_images_matches_per_image(mode, dtype):
+    rng = np.random.RandomState(137)
+    shape = (3, 48, 48, 3)
+    if dtype == np.uint8:
+        images = rng.randint(0, 256, shape, dtype=np.uint8)
+    else:
+        images = rng.random(shape).astype(np.float32)
+
+    transform = A.Compose([A.Enhance(mode=mode, alpha_range=(0.7, 0.7), p=1.0)])
+
+    batched = transform(images=images)["images"]
+    per_image = np.stack([transform(image=images[i])["image"] for i in range(images.shape[0])])
+
+    assert batched.shape == images.shape
+    assert batched.dtype == images.dtype
+    np.testing.assert_array_equal(batched, per_image)
+
+
+@pytest.mark.parametrize(
+    ("mode", "alpha_range"),
+    [
+        ("invalid", (0.5, 1.0)),
+        ("edge", (-0.1, 0.5)),
+        ("edge", (1.0, 0.5)),
+    ],
+)
+def test_enhance_invalid_params_raise(mode, alpha_range):
+    with pytest.raises(Exception):
+        A.Enhance(mode=mode, alpha_range=alpha_range, p=1.0)

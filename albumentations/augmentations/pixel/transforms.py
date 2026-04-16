@@ -41,6 +41,7 @@ from albumentations.core.type_definitions import ImageType, VolumeType
 __all__ = [
     "Dithering",
     "Emboss",
+    "Enhance",
     "Halftone",
     "InvertImg",
     "LensFlare",
@@ -342,9 +343,11 @@ class Sharpen(ImageOnlyTransform):
         - Gaussian blur: https://en.wikipedia.org/wiki/Gaussian_blur
 
     See Also:
-        - Blur: For Gaussian blurring
-        - UnsharpMask: Alternative sharpening method
-        - RandomBrightnessContrast: For adjusting image contrast
+        - Enhance: Compact Pillow-inspired preset family (edge/detail) for milder, more
+          targeted local enhancement than broad Sharpen.
+        - UnsharpMask: Alternative sharpening method.
+        - Blur: For Gaussian blurring.
+        - RandomBrightnessContrast: For adjusting image contrast.
 
     """
 
@@ -521,6 +524,115 @@ class Emboss(ImageOnlyTransform):
         **params: Any,
     ) -> ImageType:
         return fpixel.convolve(img, emboss_matrix)
+
+
+class Enhance(ImageOnlyTransform):
+    """Mild Pillow-inspired local enhancement (edge or detail) blended with the original via
+    alpha. Use for subtle contour or detail boost milder than Sharpen.
+
+    A native Albumentations implementation of the Pillow `EDGE_ENHANCE` / `EDGE_ENHANCE_MORE`
+    and `DETAIL` filter family. The enhanced image is computed via a small 3x3 convolution and
+    then blended with the original:
+
+        output = (1 - alpha) * image + alpha * enhanced_image
+
+    Equivalently, the convolution is applied with the precomputed kernel
+    `K(alpha) = (1 - alpha) * I + alpha * E` where `E` is the mode-specific kernel.
+    Because each `E` sums to 1, `K(alpha)` also sums to 1 and brightness is preserved.
+
+    For `mode="edge"`, `alpha=1` reproduces Pillow's `EDGE_ENHANCE` and `alpha=2`
+    reproduces `EDGE_ENHANCE_MORE`. For `mode="detail"`, `alpha=1` reproduces Pillow's
+    `DETAIL`. Values of `alpha` between 0 and 1 give milder presets; values above 1
+    overshoot for stronger effects.
+
+    Args:
+        mode (Literal['edge', 'detail']): Which native enhancement operator to use.
+            - "edge": crispens contours and boundaries (Pillow EDGE_ENHANCE family).
+            - "detail": mild local detail / fine-structure boost (Pillow DETAIL).
+            Default: "edge".
+        alpha_range (tuple[float, float]): Range from which the blend strength `alpha` is
+            sampled uniformly per call. `alpha=0` is no-op, `alpha=1` is the full Pillow
+            preset, `alpha>1` overshoots into a stronger variant. Must be non-decreasing
+            with non-negative values. Default: (0.5, 1.0).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Note:
+        - Edge handling follows the rest of Albumentations (cv2 `BORDER_REFLECT_101`),
+          which differs slightly from Pillow's clamping at borders.
+        - For uint8 inputs the output saturates to `[0, 255]`; for float32 it is clipped
+          to `[0, 1]` by `convolve`.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>>
+        >>> # Edge enhancement, mild to Pillow-EDGE_ENHANCE strength
+        >>> transform = A.Compose([A.Enhance(mode="edge", alpha_range=(0.5, 1.0), p=1.0)])
+        >>> result = transform(image=image)["image"]
+        >>>
+        >>> # Stronger edge variant (alpha=2 matches Pillow EDGE_ENHANCE_MORE)
+        >>> transform = A.Compose([A.Enhance(mode="edge", alpha_range=(1.0, 2.0), p=1.0)])
+        >>> result = transform(image=image)["image"]
+        >>>
+        >>> # Subtle detail / fine-structure boost
+        >>> transform = A.Compose([A.Enhance(mode="detail", alpha_range=(0.5, 1.0), p=1.0)])
+        >>> result = transform(image=image)["image"]
+
+    References:
+        Pillow ImageFilter (EDGE_ENHANCE, EDGE_ENHANCE_MORE, DETAIL):
+            https://pillow.readthedocs.io/en/stable/reference/ImageFilter.html
+
+    See Also:
+        - Sharpen: Broader high-frequency sharpening (kernel-Laplacian or unsharp-mask).
+          Use when you need a continuous, configurable sharpening primitive rather than
+          a compact preset family.
+        - UnsharpMask: Classic unsharp-mask sharpening with explicit blur radius.
+        - Emboss: Directional edge highlight for stylization rather than enhancement.
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        mode: Literal["edge", "detail"]
+        alpha_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        mode: Literal["edge", "detail"] = "edge",
+        alpha_range: tuple[float, float] = (0.5, 1.0),
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.mode = mode
+        self.alpha_range = alpha_range
+
+    def get_params(self) -> dict[str, Any]:
+        alpha = self.py_random.uniform(*self.alpha_range)
+        return {"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)}
+
+    def apply(
+        self,
+        img: ImageType,
+        enhance_matrix: np.ndarray,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.convolve(img, enhance_matrix)
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
 class Superpixels(ImageOnlyTransform):

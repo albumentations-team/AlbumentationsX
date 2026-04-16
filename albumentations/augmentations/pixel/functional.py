@@ -3149,6 +3149,56 @@ def sharpen_gaussian(
     return add_weighted(img, 1.0 + alpha, blurred, -alpha)
 
 
+# Native Albumentations equivalents of Pillow's enhancement filters. Each kernel is
+# normalized so its weights sum to 1 (DC-preserving). With the blend formula
+#     K(alpha) = (1 - alpha) * I + alpha * E
+# alpha=0 leaves the image untouched, alpha=1 reproduces the Pillow preset, and
+# larger alpha overshoots into stronger variants. For "edge" specifically, alpha=2
+# reproduces Pillow's EDGE_ENHANCE_MORE.
+_ENHANCE_KERNELS: dict[str, np.ndarray] = {
+    "edge": np.array(
+        [
+            [-0.5, -0.5, -0.5],
+            [-0.5, 5.0, -0.5],
+            [-0.5, -0.5, -0.5],
+        ],
+        dtype=np.float32,
+    ),
+    "detail": np.array(
+        [
+            [0.0, -1.0 / 6.0, 0.0],
+            [-1.0 / 6.0, 10.0 / 6.0, -1.0 / 6.0],
+            [0.0, -1.0 / 6.0, 0.0],
+        ],
+        dtype=np.float32,
+    ),
+}
+
+_ENHANCE_IDENTITY = np.array(
+    [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+    dtype=np.float32,
+)
+
+
+def generate_enhance_matrix(mode: Literal["edge", "detail"], alpha: float) -> np.ndarray:
+    """Build a Pillow-inspired 3x3 enhancement kernel via `(1 - alpha) * I + alpha * E`,
+    where E is selected by `mode` (edge or detail). Apply via `convolve`.
+
+    Args:
+        mode (Literal['edge', 'detail']): Which native enhancement operator to use.
+            - "edge": crispens contours; alpha=1 matches Pillow's EDGE_ENHANCE,
+              alpha=2 matches Pillow's EDGE_ENHANCE_MORE.
+            - "detail": mild local detail boost; alpha=1 matches Pillow's DETAIL.
+        alpha (float): Blend strength. 0 returns the identity kernel; 1 returns the
+            full preset; values >1 push past the preset for a stronger effect.
+
+    Returns:
+        np.ndarray: A `(3, 3)` float32 convolution kernel.
+
+    """
+    return (1.0 - alpha) * _ENHANCE_IDENTITY + alpha * _ENHANCE_KERNELS[mode]
+
+
 def apply_salt_and_pepper(
     img: ImageType,
     salt_mask: np.ndarray,

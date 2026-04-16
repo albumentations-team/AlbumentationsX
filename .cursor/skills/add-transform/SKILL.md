@@ -103,6 +103,7 @@ class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
 - **`fill` not `fill_value`**, **`fill_mask` not `fill_mask_value`**
 - **`border_mode`** not `mode` or `pad_mode`
 - **NO default values in `InitSchema`** (except Pydantic discriminator fields)
+- **Range parameters are always `tuple[T, T]`**, never `T | tuple[T, T]` — no union with a scalar. Users always pass a tuple.
 - **NO default argument values in `apply_*` methods** (other than `self`, `**params`)
 - **All randomness in `get_params` or `get_params_dependent_on_data`**, never in `apply_*`
 - Use **`self.py_random`** for simple random ops, **`self.random_generator`** only when numpy arrays needed

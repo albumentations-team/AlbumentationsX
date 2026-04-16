@@ -303,11 +303,14 @@ def test_mode_filter_apply_to_images_parity(dtype: np.dtype, num_channels: int, 
     [
         ((3, 3), (3, 3)),
         ((5, 7), (5, 7)),
+        ((4, 6), (5, 7)),  # even values bumped to next odd with a UserWarning
     ],
 )
 def test_mode_filter_kernel_range_stored(
     kernel_range_input: tuple[int, int],
     kernel_range_stored: tuple[int, int],
 ) -> None:
-    aug = A.ModeFilter(kernel_range=kernel_range_input, p=1.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        aug = A.ModeFilter(kernel_range=kernel_range_input, p=1.0)
     assert aug.kernel_range == kernel_range_stored

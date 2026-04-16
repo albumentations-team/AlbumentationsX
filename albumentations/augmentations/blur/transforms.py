@@ -589,9 +589,9 @@ class ModeFilter(ImageOnlyTransform):
     (deterministic, scipy.stats.mode default). Border pixels use reflect padding.
 
     Args:
-        kernel_range (tuple[int, int] | int): Range of square kernel sizes to sample from.
-            Both bounds must be odd integers ≥ 3. Even values are silently bumped to the
-            next odd number. Pass a single int to fix the kernel size. Default: (3, 7).
+        kernel_range (tuple[int, int]): Range of square kernel sizes to sample from.
+            Both bounds must be odd integers ≥ 3. Even values raise a UserWarning and
+            are automatically bumped to the next odd number. Default: (3, 7).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -630,24 +630,24 @@ class ModeFilter(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        kernel_range: tuple[int, int] | int
+        kernel_range: tuple[int, int]
 
         @field_validator("kernel_range")
         @classmethod
         def _validate_kernel_range(
             cls,
-            value: tuple[int, int] | int,
+            value: tuple[int, int],
             info: ValidationInfo,
         ) -> tuple[int, int]:
             return fblur.process_blur_limit(value, info, min_value=3)
 
     def __init__(
         self,
-        kernel_range: tuple[int, int] | int = (3, 7),
+        kernel_range: tuple[int, int] = (3, 7),
         p: float = 0.5,
     ) -> None:
         super().__init__(p=p)
-        self.kernel_range = cast("tuple[int, int]", kernel_range)
+        self.kernel_range = kernel_range
 
     def apply(self, img: ImageType, kernel_size: int, **params: Any) -> ImageType:
         return fblur.mode_filter(img, kernel_size)

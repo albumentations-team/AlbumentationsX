@@ -176,29 +176,28 @@ def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> Image
     return (img + out) * np.float32(1.0 / (len(zoom_factors) + 1))
 
 
+@preserve_channel_dim
 @uint8_io
-def mode_filter(img: np.ndarray, kernel_size: int) -> np.ndarray:
+def mode_filter(img: ImageType, kernel_size: int) -> ImageType:
     """Replace each pixel with the most frequent value (mode) in its local square neighborhood,
     computed per channel; ties broken by smallest value (scipy default).
 
     Args:
-        img (np.ndarray): Input image (uint8 after @uint8_io conversion).
+        img (ImageType): Input image (uint8 after @uint8_io conversion).
         kernel_size (int): Side length of the square neighborhood (must be odd, ≥ 3).
 
     Returns:
-        np.ndarray: Filtered image with the same shape and dtype as the input.
+        ImageType: Filtered image with the same shape and dtype as the input.
 
     """
     pad = kernel_size // 2
-    num_channels = img.shape[-1]
-    result = np.empty_like(img)
-    for channel_idx in range(num_channels):
-        channel = img[:, :, channel_idx]
-        padded = np.pad(channel, pad, mode="reflect")
-        windows = np.lib.stride_tricks.sliding_window_view(padded, (kernel_size, kernel_size))
-        flat = windows.reshape(windows.shape[0], windows.shape[1], -1)
-        result[:, :, channel_idx] = scipy_mode(flat, axis=-1, keepdims=False).mode
-    return result
+    padded = np.pad(img, ((pad, pad), (pad, pad), (0, 0)), mode="reflect")
+    # Slide a (kernel_size, kernel_size, 1) window over the padded HWC image.
+    # Output shape: (H, W, C, kernel_size, kernel_size, 1)
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (kernel_size, kernel_size, 1))
+    # Flatten neighborhood into trailing axis: (H, W, C, kernel_size * kernel_size)
+    flat = windows.reshape(windows.shape[0], windows.shape[1], windows.shape[2], -1)
+    return scipy_mode(flat, axis=-1, keepdims=False).mode.astype(img.dtype, copy=False)
 
 
 def _ensure_min_value(result: tuple[int, int], min_value: int, field_name: str | None) -> tuple[int, int]:

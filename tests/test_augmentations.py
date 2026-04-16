@@ -1737,3 +1737,38 @@ def test_enhance_apply_to_images_matches_per_image(mode, dtype):
 def test_enhance_invalid_params_raise(mode, alpha_range):
     with pytest.raises(Exception):
         A.Enhance(mode=mode, alpha_range=alpha_range, p=1.0)
+
+
+@pytest.mark.parametrize(
+    ("mode", "alpha", "pil_filter_name"),
+    [
+        ("edge", 1.0, "EDGE_ENHANCE"),
+        ("edge", 2.0, "EDGE_ENHANCE_MORE"),
+        ("detail", 1.0, "DETAIL"),
+    ],
+)
+def test_enhance_matches_pillow_interior(mode, alpha, pil_filter_name):
+    """Enhance must reproduce PIL's preset on interior pixels (within 1 LSB).
+
+    Border pixels are excluded because cv2 defaults to BORDER_REFLECT_101 while
+    PIL uses replicate at borders. Integer-only kernel (EDGE_ENHANCE_MORE) is
+    bit-exact; fractional kernels can differ by 1 LSB due to rounding mode.
+    """
+    pytest.importorskip("PIL")
+    from PIL import Image, ImageFilter
+
+    image = np.random.RandomState(137).randint(0, 256, (96, 96, 3), dtype=np.uint8)
+
+    pil_filter = getattr(ImageFilter, pil_filter_name)
+    pil_out = np.array(Image.fromarray(image).filter(pil_filter))
+
+    transform = A.Compose([A.Enhance(mode=mode, alpha_range=(alpha, alpha), p=1.0)])
+    ours = transform(image=image)["image"]
+
+    pil_interior = pil_out[1:-1, 1:-1]
+    ours_interior = ours[1:-1, 1:-1]
+
+    diff = np.abs(pil_interior.astype(np.int16) - ours_interior.astype(np.int16))
+    assert diff.max() <= 1, f"max abs diff {diff.max()} exceeds 1 LSB tolerance vs PIL {pil_filter_name}"
+    if pil_filter_name == "EDGE_ENHANCE_MORE":
+        np.testing.assert_array_equal(pil_interior, ours_interior)

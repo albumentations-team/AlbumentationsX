@@ -165,6 +165,7 @@ AUGMENTATION_CLS_PARAMS = [
             "interpolation": cv2.INTER_CUBIC,
         },
     ],
+    [A.PixelSpread, {"radius": 3}],
     [A.CenterCrop, {"height": 90, "width": 95}],
     [A.RandomCrop, {"height": 90, "width": 95}],
     [A.AtLeastOneBBoxRandomCrop, {"height": 90, "width": 95}],

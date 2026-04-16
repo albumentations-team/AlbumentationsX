@@ -1998,6 +1998,7 @@ def test_mask_dropout_bboxes(remove_invisible, expected_keypoints):
             A.ElasticTransform,
             A.GridDistortion,
             A.OpticalDistortion,
+            A.PixelSpread,
             A.ThinPlateSpline,
             A.Mosaic,
             A.CopyAndPaste,

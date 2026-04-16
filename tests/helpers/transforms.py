@@ -113,6 +113,7 @@ class TransformTestHelper:
         A.RandomResizedCrop,
         A.RandomScale,
         A.Rotate,
+        A.PixelSpread,
         A.WaterRefraction,
     }
 

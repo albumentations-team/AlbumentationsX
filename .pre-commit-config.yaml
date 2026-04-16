@@ -126,7 +126,7 @@ repos:
         pass_filenames: false
         files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.9
+    rev: v0.15.10
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -151,7 +151,7 @@ repos:
       - id: codespell
         additional_dependencies: ["tomli"]
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.20.0
+    rev: v1.20.1
     hooks:
       - id: mypy
         files: ^albumentations/

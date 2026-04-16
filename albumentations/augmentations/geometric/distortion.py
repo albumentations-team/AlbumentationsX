@@ -69,6 +69,7 @@ __all__ = [
     "GridDistortion",
     "OpticalDistortion",
     "PiecewiseAffine",
+    "PixelSpread",
     "ThinPlateSpline",
     "WaterRefraction",
 ]
@@ -1425,3 +1426,160 @@ class WaterRefraction(BaseDistortion):
             "map_x": map_x,
             "map_y": map_y,
         }
+
+
+class PixelSpread(BaseDistortion):
+    """Stochastically displaces each pixel by sampling its value from a random source within a
+    local square neighborhood, without blurring or coherent warping.
+
+    For every output pixel `(row, col)` an offset `(d_row, d_col)` is drawn independently and
+    uniformly from the square neighborhood `[-radius, radius] x [-radius, radius]` and the pixel
+    value is read from source position `(row + d_row, col + d_col)`. The same dense remapping
+    field is applied to all targets (image, mask, bboxes, keypoints) so spatial annotations remain
+    consistent.
+
+    This occupies a useful middle ground between blur (which aggregates a neighborhood) and smooth
+    elastic warps (which produce coherent displacement fields): the displacement field is intentionally
+    non-smooth and high-frequency, making it suitable for simulating sensor noise, compression
+    artifacts, fine-grained texture corruption, and domain shifts where local pixel structure
+    becomes unstable but global object geometry is preserved.
+
+    Args:
+        radius (int): Maximum pixel displacement in each direction. The sampling neighborhood is
+            the square `[-radius, radius] x [-radius, radius]`, giving `(2*radius+1)^2` possible
+            source locations per output pixel. Must be >= 1. Default: 2.
+        interpolation (int): Interpolation flag used by `cv2.remap`. Default: `cv2.INTER_NEAREST`.
+            Nearest-neighbor is the natural choice because the effect is explicitly about discrete
+            pixel reassignment, not sub-pixel blending.
+        mask_interpolation (int): Interpolation flag for masks. Default: `cv2.INTER_NEAREST`.
+        keypoint_remapping_method (Literal["direct", "mask"]): Strategy for remapping keypoints.
+            Default: `"mask"`.
+        border_mode (int): OpenCV border extrapolation mode for out-of-bounds source lookups.
+            Default: `cv2.BORDER_REFLECT_101`.
+        fill (float | tuple[float, ...]): Fill value used when `border_mode` is
+            `cv2.BORDER_CONSTANT`. Default: 0.
+        fill_mask (float | tuple[float, ...]): Fill value for masks under constant border.
+            Default: 0.
+        map_resolution_range (tuple[float, float]): Fraction of image resolution at which to
+            build the displacement map before upscaling. Default: `(1.0, 1.0)` (full resolution).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, mask, bboxes, keypoints, volume, mask3d
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Supported bboxes:
+        hbb, obb
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
+        >>> bboxes = np.array([[10, 10, 50, 50]], dtype=np.float32)
+        >>> bbox_labels = [1]
+        >>> keypoints = np.array([[20, 30]], dtype=np.float32)
+        >>> keypoint_labels = [0]
+        >>>
+        >>> transform = A.Compose([
+        ...     A.PixelSpread(radius=3, p=1.0)
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
+        >>>
+        >>> result = transform(
+        ...     image=image,
+        ...     mask=mask,
+        ...     bboxes=bboxes,
+        ...     bbox_labels=bbox_labels,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels,
+        ... )
+        >>> transformed_image = result['image']
+        >>> transformed_mask = result['mask']
+
+    """
+
+    class InitSchema(BaseDistortion.InitSchema):
+        radius: Annotated[int, Field(ge=1)]
+
+    def __init__(
+        self,
+        radius: int = 2,
+        interpolation: Literal[
+            cv2.INTER_NEAREST,
+            cv2.INTER_LINEAR,
+            cv2.INTER_CUBIC,
+            cv2.INTER_AREA,
+            cv2.INTER_LANCZOS4,
+        ] = cv2.INTER_NEAREST,
+        mask_interpolation: Literal[
+            cv2.INTER_NEAREST,
+            cv2.INTER_LINEAR,
+            cv2.INTER_CUBIC,
+            cv2.INTER_AREA,
+            cv2.INTER_LANCZOS4,
+        ] = cv2.INTER_NEAREST,
+        keypoint_remapping_method: Literal["direct", "mask"] = "mask",
+        border_mode: Literal[
+            cv2.BORDER_CONSTANT,
+            cv2.BORDER_REPLICATE,
+            cv2.BORDER_REFLECT,
+            cv2.BORDER_WRAP,
+            cv2.BORDER_REFLECT_101,
+        ] = cv2.BORDER_REFLECT_101,
+        fill: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        p: float = 0.5,
+    ):
+        super().__init__(
+            interpolation=interpolation,
+            mask_interpolation=mask_interpolation,
+            keypoint_remapping_method=keypoint_remapping_method,
+            border_mode=border_mode,
+            fill=fill,
+            fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
+            p=p,
+        )
+        self.radius = radius
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        height, width = params["shape"][:2]
+        map_resolution = self.py_random.uniform(*self.map_resolution_range)
+
+        scaled_height = max(1, int(height * map_resolution))
+        scaled_width = max(1, int(width * map_resolution))
+
+        row_coords, col_coords = np.meshgrid(
+            np.arange(scaled_height, dtype=np.float32),
+            np.arange(scaled_width, dtype=np.float32),
+            indexing="ij",
+        )
+        offsets = self.random_generator.integers(
+            -self.radius,
+            self.radius + 1,
+            size=(scaled_height, scaled_width, 2),
+            dtype=np.int32,
+        )
+        map_y = (row_coords + offsets[..., 0]).astype(np.float32)
+        map_x = (col_coords + offsets[..., 1]).astype(np.float32)
+
+        if map_resolution < 1.0:
+            map_x, map_y = fgeometric.upscale_distortion_maps(
+                map_x,
+                map_y,
+                (height, width),
+                self.interpolation,
+            )
+
+        return {"map_x": map_x, "map_y": map_y}

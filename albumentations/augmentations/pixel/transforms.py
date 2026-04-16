@@ -621,6 +621,9 @@ class Enhance(ImageOnlyTransform):
 
     def get_params(self) -> dict[str, Any]:
         alpha = self.py_random.uniform(*self.alpha_range)
+        # Record the resolved scalar (not the range) for replay/debug, per the
+        # applied_config contract documented on get_applied_config.
+        self.applied_config = {"alpha_range": alpha}
         return {"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)}
 
     def apply(

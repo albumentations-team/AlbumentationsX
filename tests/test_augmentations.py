@@ -1743,6 +1743,31 @@ def test_enhance_invalid_alpha_range_raises(alpha_range):
         A.Enhance(mode="edge", alpha_range=alpha_range, p=1.0)
 
 
+def test_enhance_invalid_mode_in_functional_raises():
+    """generate_enhance_matrix must raise ValueError (not KeyError) on bad mode."""
+    with pytest.raises(ValueError, match="Unsupported enhance mode"):
+        fpixel.generate_enhance_matrix("not_a_mode", 0.5)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("mode", ["edge", "detail"])
+def test_enhance_applied_config_resolves_range_to_scalar(mode):
+    """applied_config must record the *sampled* alpha (a scalar in alpha_range), not the range itself.
+
+    This enforces the contract documented on BasicTransform.get_applied_config:
+    "all constructor params and range params resolved to sampled scalar values".
+    """
+    image = np.random.RandomState(137).randint(0, 256, (32, 32, 3), dtype=np.uint8)
+    alpha_range = (0.3, 0.9)
+    aug = A.Enhance(mode=mode, alpha_range=alpha_range, p=1.0)
+    aug(image=image)
+
+    sampled = aug.applied_config["alpha_range"]
+    assert isinstance(sampled, float), f"expected sampled scalar, got {type(sampled).__name__}: {sampled!r}"
+    assert alpha_range[0] <= sampled <= alpha_range[1]
+    # mode is already covered by the base init args; verify it's preserved
+    assert aug.applied_config["mode"] == mode
+
+
 @pytest.mark.parametrize(
     ("mode", "alpha", "pil_filter_name"),
     [

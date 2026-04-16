@@ -3195,8 +3195,15 @@ def generate_enhance_matrix(mode: Literal["edge", "detail"], alpha: float) -> np
     Returns:
         np.ndarray: A `(3, 3)` float32 convolution kernel.
 
+    Raises:
+        ValueError: If `mode` is not one of the supported enhancement modes.
+
     """
-    return (1.0 - alpha) * _ENHANCE_IDENTITY + alpha * _ENHANCE_KERNELS[mode]
+    if mode not in _ENHANCE_KERNELS:
+        msg = f"Unsupported enhance mode: {mode!r}. Supported modes are: {tuple(_ENHANCE_KERNELS)}"
+        raise ValueError(msg)
+    kernel = (1.0 - alpha) * _ENHANCE_IDENTITY + alpha * _ENHANCE_KERNELS[mode]
+    return kernel.astype(np.float32, copy=False)
 
 
 def apply_salt_and_pepper(

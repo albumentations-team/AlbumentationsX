@@ -242,3 +242,72 @@ def test_gaussian_blur_matches_pil():
     # Assert reasonable absolute differences
     assert mean_diff < 10, f"Average absolute difference too high: {mean_diff:.2f}"
     assert max_diff < 83, f"Maximum absolute difference too high: {max_diff:.2f}"
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+@pytest.mark.parametrize("kernel_size", [3, 5, 7])
+def test_mode_filter_output_shape_and_dtype(dtype: np.dtype, num_channels: int, kernel_size: int) -> None:
+    rng = np.random.default_rng(137)
+    shape = (64, 64, num_channels)
+    if dtype == np.uint8:
+        image = rng.integers(0, 256, shape, dtype=np.uint8)
+    else:
+        image = rng.random(shape, dtype=np.float32)
+
+    transform = A.Compose([A.ModeFilter(kernel_range=(kernel_size, kernel_size), p=1.0)])
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == dtype
+
+
+def test_mode_filter_constant_image_passes_through() -> None:
+    """A constant-valued image should be unchanged: mode of identical values is that value."""
+    image = np.full((32, 32, 3), fill_value=137, dtype=np.uint8)
+    transform = A.Compose([A.ModeFilter(kernel_range=(5, 5), p=1.0)])
+    result = transform(image=image)["image"]
+    np.testing.assert_array_equal(result, image)
+
+
+def test_mode_filter_constant_image_float32_passes_through() -> None:
+    image = np.full((32, 32, 3), fill_value=0.5, dtype=np.float32)
+    transform = A.Compose([A.ModeFilter(kernel_range=(5, 5), p=1.0)])
+    result = transform(image=image)["image"]
+    # After uint8_io round-trip (0.5 → 127 → ~0.498), check within quantisation tolerance
+    np.testing.assert_allclose(result, image, atol=1.0 / 255)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+@pytest.mark.parametrize("kernel_size", [3, 5, 7])
+def test_mode_filter_apply_to_images_parity(dtype: np.dtype, num_channels: int, kernel_size: int) -> None:
+    """Batch processing via images= must match per-image processing."""
+    rng = np.random.default_rng(137)
+    shape = (32, 32, num_channels)
+    if dtype == np.uint8:
+        images = rng.integers(0, 256, (4, *shape), dtype=np.uint8)
+    else:
+        images = rng.random((4, *shape), dtype=np.float32)
+
+    transform = A.Compose([A.ModeFilter(kernel_range=(kernel_size, kernel_size), p=1.0)])
+
+    batch_result = transform(images=images)["images"]
+    per_image_results = np.stack([transform(image=img)["image"] for img in images])
+
+    np.testing.assert_array_equal(batch_result, per_image_results)
+
+
+@pytest.mark.parametrize(
+    "kernel_range_input, kernel_range_stored",
+    [
+        ((3, 3), (3, 3)),
+        ((5, 7), (5, 7)),
+    ],
+)
+def test_mode_filter_kernel_range_stored(
+    kernel_range_input: tuple[int, int],
+    kernel_range_stored: tuple[int, int],
+) -> None:
+    aug = A.ModeFilter(kernel_range=kernel_range_input, p=1.0)
+    assert aug.kernel_range == kernel_range_stored

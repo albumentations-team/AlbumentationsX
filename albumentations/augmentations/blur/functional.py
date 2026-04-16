@@ -19,14 +19,16 @@ from albucore import (
     float32_io,
     preserve_channel_dim,
     reduce_sum,
+    uint8_io,
 )
 from pydantic import ValidationInfo
+from scipy.stats import mode as scipy_mode
 
 from albumentations.augmentations.geometric.functional import scale
 from albumentations.augmentations.pixel.functional import convolve
 from albumentations.core.type_definitions import EIGHT, ImageType
 
-__all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "zoom_blur"]
+__all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "mode_filter", "zoom_blur"]
 
 
 @preserve_channel_dim
@@ -172,6 +174,31 @@ def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> Image
         out += central_zoom(img, zoom_factor)
 
     return (img + out) * np.float32(1.0 / (len(zoom_factors) + 1))
+
+
+@uint8_io
+def mode_filter(img: np.ndarray, kernel_size: int) -> np.ndarray:
+    """Replace each pixel with the most frequent value (mode) in its local square neighborhood,
+    computed per channel; ties broken by smallest value (scipy default).
+
+    Args:
+        img (np.ndarray): Input image (uint8 after @uint8_io conversion).
+        kernel_size (int): Side length of the square neighborhood (must be odd, ≥ 3).
+
+    Returns:
+        np.ndarray: Filtered image with the same shape and dtype as the input.
+
+    """
+    pad = kernel_size // 2
+    num_channels = img.shape[-1]
+    result = np.empty_like(img)
+    for channel_idx in range(num_channels):
+        channel = img[:, :, channel_idx]
+        padded = np.pad(channel, pad, mode="reflect")
+        windows = np.lib.stride_tricks.sliding_window_view(padded, (kernel_size, kernel_size))
+        flat = windows.reshape(windows.shape[0], windows.shape[1], -1)
+        result[:, :, channel_idx] = scipy_mode(flat, axis=-1, keepdims=False).mode
+    return result
 
 
 def _ensure_min_value(result: tuple[int, int], min_value: int, field_name: str | None) -> tuple[int, int]:

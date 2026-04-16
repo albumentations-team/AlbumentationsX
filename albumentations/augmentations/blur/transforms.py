@@ -41,6 +41,7 @@ __all__ = [
     "GaussianBlur",
     "GlassBlur",
     "MedianBlur",
+    "ModeFilter",
     "MotionBlur",
     "ZoomBlur",
 ]
@@ -570,6 +571,95 @@ class MedianBlur(Blur):
 
     def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return median_blur(img, kernel)
+
+
+class ModeFilter(ImageOnlyTransform):
+    """Replace each pixel with the most frequent value (mode) in its local neighborhood,
+    computed per channel. Useful for quantised, palette-like, or cartoon imagery.
+
+    Unlike median blur (order-statistic) or box blur (averaging), mode filtering is
+    frequency-based: it picks the value that appears most often in the window. This
+    preserves and expands dominant flat regions while suppressing isolated outliers, making
+    it well-suited for palette-like, synthetic, or segmentation-style imagery.
+
+    For float32 images the operation is performed in uint8 space (via @uint8_io); quantisation
+    is intentional — mode is meaningless for continuous-valued signals.
+
+    Tie-breaking: when multiple values share the highest frequency, the smallest is chosen
+    (deterministic, scipy.stats.mode default). Border pixels use reflect padding.
+
+    Args:
+        kernel_range (tuple[int, int] | int): Range of square kernel sizes to sample from.
+            Both bounds must be odd integers ≥ 3. Even values are silently bumped to the
+            next odd number. Pass a single int to fix the kernel size. Default: (3, 7).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
+        >>> bboxes = np.array([[10, 10, 50, 50]], dtype=np.float32)
+        >>> bbox_labels = [1]
+        >>> keypoints = np.array([[20, 30]], dtype=np.float32)
+        >>> keypoint_labels = [0]
+        >>>
+        >>> transform = A.Compose([
+        ...     A.ModeFilter(kernel_range=(3, 7), p=1.0)
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
+        >>>
+        >>> result = transform(
+        ...     image=image,
+        ...     mask=mask,
+        ...     bboxes=bboxes,
+        ...     bbox_labels=bbox_labels,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels,
+        ... )
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        kernel_range: tuple[int, int] | int
+
+        @field_validator("kernel_range")
+        @classmethod
+        def _validate_kernel_range(
+            cls,
+            value: tuple[int, int] | int,
+            info: ValidationInfo,
+        ) -> tuple[int, int]:
+            return fblur.process_blur_limit(value, info, min_value=3)
+
+    def __init__(
+        self,
+        kernel_range: tuple[int, int] | int = (3, 7),
+        p: float = 0.5,
+    ) -> None:
+        super().__init__(p=p)
+        self.kernel_range = cast("tuple[int, int]", kernel_range)
+
+    def apply(self, img: ImageType, kernel_size: int, **params: Any) -> ImageType:
+        return fblur.mode_filter(img, kernel_size)
+
+    def get_params(self) -> dict[str, Any]:
+        kernel_size = fblur.sample_odd_from_range(
+            self.py_random,
+            self.kernel_range[0],
+            self.kernel_range[1],
+        )
+        self.applied_config = {"kernel_range": kernel_size}
+        return {"kernel_size": kernel_size}
 
 
 class GaussianBlur(ImageOnlyTransform):

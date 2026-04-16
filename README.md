@@ -214,6 +214,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [InvertImg](https://explore.albumentations.ai/transform/InvertImg)
 - [LensFlare](https://explore.albumentations.ai/transform/LensFlare)
 - [MedianBlur](https://explore.albumentations.ai/transform/MedianBlur)
+- [ModeFilter](https://explore.albumentations.ai/transform/ModeFilter)
 - [MotionBlur](https://explore.albumentations.ai/transform/MotionBlur)
 - [MultiplicativeNoise](https://explore.albumentations.ai/transform/MultiplicativeNoise)
 - [Normalize](https://explore.albumentations.ai/transform/Normalize)

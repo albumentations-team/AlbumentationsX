@@ -28,6 +28,7 @@ AUGMENTATION_CLS_PARAMS = [
     [A.Blur, {"blur_limit": (3, 5)}],
     [A.MotionBlur, {"blur_limit": (3, 5)}],
     [A.MedianBlur, {"blur_limit": (3, 5)}],
+    [A.ModeFilter, {"kernel_range": (3, 5)}],
     [A.GaussianBlur, {"blur_limit": (3, 5)}],
     [
         A.GaussNoise,

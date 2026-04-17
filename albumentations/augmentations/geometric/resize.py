@@ -26,9 +26,8 @@ class RandomScale(DualTransform):
     targets scaled together. Useful for scale augmentation without cropping.
 
     Args:
-        scale_range (float or tuple[float, float]): scaling factor range. If scale_range is a single float value, the
-            range will be (-scale_range, scale_range). Note that the scale_range will be biased by 1.
-            If scale_range is a tuple, like (low, high), sampling will be done from the range (1 + low, 1 + high).
+        scale_range (tuple[float, float]): Scaling factor range (low, high), sampled per image.
+            The factor is biased by 1, i.e. the actual scale is sampled from (1 + low, 1 + high).
             Default: (-0.1, 0.1).
         interpolation (OpenCV flag): flag that is used to specify the interpolation algorithm. Should be one of:
             cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.

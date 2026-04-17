@@ -228,17 +228,14 @@ class HueSaturationValue(ImageOnlyTransform):
     and brightness modifications.
 
     Args:
-        hue_shift_range (float | tuple[float, float]): Range for changing hue.
-            If a single float value is provided, the range will be (-hue_shift_range, hue_shift_range).
+        hue_shift_range (tuple[float, float]): Range for changing hue, sampled per image.
             Values should be in the range [-180, 180]. Default: (-20, 20).
 
-        sat_shift_range (float | tuple[float, float]): Range for changing saturation.
-            If a single float value is provided, the range will be (-sat_shift_range, sat_shift_range).
+        sat_shift_range (tuple[float, float]): Range for changing saturation, sampled per image.
             Values should be in the range [-255, 255]. Default: (-30, 30).
 
-        val_shift_range (float | tuple[float, float]): Range for changing value (brightness).
-            If a single float value is provided, the range will be (-val_shift_range, val_shift_range).
-            Values should be in the range [-255, 255]. Default: (-20, 20).
+        val_shift_range (tuple[float, float]): Range for changing value (brightness),
+            sampled per image. Values should be in the range [-255, 255]. Default: (-20, 20).
 
         p (float): Probability of applying the transform. Default: 0.5.
 
@@ -264,10 +261,10 @@ class HueSaturationValue(ImageOnlyTransform):
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> transform = A.HueSaturationValue(
-        ...     hue_shift_range=20,
-        ...     sat_shift_range=30,
-        ...     val_shift_range=20,
-        ...     p=0.7
+        ...     hue_shift_range=(-20, 20),
+        ...     sat_shift_range=(-30, 30),
+        ...     val_shift_range=(-20, 20),
+        ...     p=0.7,
         ... )
         >>> result = transform(image=image)
         >>> augmented_image = result["image"]
@@ -701,15 +698,13 @@ class RandomBrightnessContrast(ImageOnlyTransform):
     in computer vision tasks, helping models become more robust to different lighting conditions.
 
     Args:
-        brightness_range (float | tuple[float, float]): Factor range for changing brightness.
-            If a single float value is provided, the range will be (-brightness_range, brightness_range).
-            Values should typically be in the range [-1.0, 1.0], where 0 means no change,
-            1.0 means maximum brightness, and -1.0 means minimum brightness.
+        brightness_range (tuple[float, float]): Factor range for changing brightness, sampled
+            per image. Values should typically be in the range [-1.0, 1.0], where 0 means no
+            change, 1.0 means maximum brightness, and -1.0 means minimum brightness.
             Default: (-0.2, 0.2).
 
-        contrast_range (float | tuple[float, float]): Factor range for changing contrast.
-            If a single float value is provided, the range will be (-contrast_range, contrast_range).
-            Values should typically be in the range [-1.0, 1.0], where 0 means no change,
+        contrast_range (tuple[float, float]): Factor range for changing contrast, sampled per
+            image. Values should typically be in the range [-1.0, 1.0], where 0 means no change,
             1.0 means maximum increase in contrast, and -1.0 means maximum decrease in contrast.
             Default: (-0.2, 0.2).
 
@@ -764,18 +759,18 @@ class RandomBrightnessContrast(ImageOnlyTransform):
 
         # Custom brightness and contrast limits
         >>> transform = A.RandomBrightnessContrast(
-        ...     brightness_range=0.3,
-        ...     contrast_range=0.3,
-        ...     p=1.0
+        ...     brightness_range=(-0.3, 0.3),
+        ...     contrast_range=(-0.3, 0.3),
+        ...     p=1.0,
         ... )
         >>> augmented_image = transform(image=image)["image"]
 
         # Adjust brightness based on mean value
         >>> transform = A.RandomBrightnessContrast(
-        ...     brightness_range=0.2,
-        ...     contrast_range=0.2,
+        ...     brightness_range=(-0.2, 0.2),
+        ...     contrast_range=(-0.2, 0.2),
         ...     brightness_by_max=False,
-        ...     p=1.0
+        ...     p=1.0,
         ... )
         >>> augmented_image = transform(image=image)["image"]
 
@@ -946,11 +941,9 @@ class RandomGamma(ImageOnlyTransform):
     for simulating different lighting conditions or correcting for display characteristics.
 
     Args:
-        gamma_range (float | tuple[float, float]): If gamma_range is a single float value, the range
-            will be (1, gamma_range). If it's a tuple of two floats, they will serve as
-            the lower and upper bounds for gamma adjustment. Values are in terms of percentage change,
-            e.g., (80, 120) means the gamma will be between 80% and 120% of the original.
-            Default: (80, 120).
+        gamma_range (tuple[float, float]): Lower and upper bounds for gamma adjustment, sampled
+            per image. Values are in terms of percentage change, e.g. (80, 120) means the gamma
+            will be between 80% and 120% of the original. Default: (80, 120).
         eps (float): A small value added to the gamma to avoid division by zero or log of zero errors.
             Default: 1e-7.
         p (float): Probability of applying the transform. Default: 0.5.
@@ -1491,36 +1484,17 @@ class ColorJitter(ImageOnlyTransform):
     These differences may result in slightly different output compared to torchvision's ColorJitter.
 
     Args:
-        brightness_range (tuple[float, float]): How much to jitter brightness.
-            If float:
-                The brightness factor is chosen uniformly from [max(0, 1 - brightness_range), 1 + brightness_range].
-            If tuple:
-                The brightness factor is sampled from the range specified.
-            Should be non-negative numbers.
-            Default: (0.8, 1.2)
+        brightness_range (tuple[float, float]): Range for the brightness factor, sampled per
+            image. Both ends should be non-negative. Default: (0.8, 1.2)
 
-        contrast_range (tuple[float, float]): How much to jitter contrast.
-            If float:
-                The contrast factor is chosen uniformly from [max(0, 1 - contrast_range), 1 + contrast_range].
-            If tuple:
-                The contrast factor is sampled from the range specified.
-            Should be non-negative numbers.
-            Default: (0.8, 1.2)
+        contrast_range (tuple[float, float]): Range for the contrast factor, sampled per image.
+            Both ends should be non-negative. Default: (0.8, 1.2)
 
-        saturation_range (tuple[float, float]): How much to jitter saturation.
-            If float:
-                The saturation factor is chosen uniformly from [max(0, 1 - saturation_range), 1 + saturation_range].
-            If tuple:
-                The saturation factor is sampled from the range specified.
-            Should be non-negative numbers.
-            Default: (0.8, 1.2)
+        saturation_range (tuple[float, float]): Range for the saturation factor, sampled per
+            image. Both ends should be non-negative. Default: (0.8, 1.2)
 
-        hue_range (float or tuple of float (min, max)): How much to jitter hue.
-            If float:
-                The hue factor is chosen uniformly from [-hue_range, hue_range]. Should have 0 <= hue_range <= 0.5.
-            If tuple:
-                The hue factor is sampled from the range specified. Values should be in range [-0.5, 0.5].
-            Default: (-0.5, 0.5)
+        hue_range (tuple[float, float]): Range for the hue factor, sampled per image. Values
+            should be in [-0.5, 0.5]. Default: (-0.5, 0.5)
 
          p (float): Probability of applying the transform. Should be in the range [0, 1].
             Default: 0.5
@@ -1545,7 +1519,11 @@ class ColorJitter(ImageOnlyTransform):
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> transform = A.ColorJitter(
-        ...     brightness_range=0.2, contrast_range=0.2, saturation_range=0.2, hue_range=0.1, p=1.0,
+        ...     brightness_range=(0.8, 1.2),
+        ...     contrast_range=(0.8, 1.2),
+        ...     saturation_range=(0.8, 1.2),
+        ...     hue_range=(-0.1, 0.1),
+        ...     p=1.0,
         ... )
         >>> result = transform(image=image)
         >>> jittered_image = result['image']
@@ -1676,18 +1654,14 @@ class ChromaticAberration(ImageOnlyTransform):
     of the image, while leaving the green channel unchanged.
 
     Args:
-        primary_distortion_range (tuple[float, float]): Range of the primary radial distortion coefficient.
-            If a single float value is provided, the range
-            will be (-primary_distortion_range, primary_distortion_range).
-            This parameter controls the distortion in the center of the image:
+        primary_distortion_range (tuple[float, float]): Range of the primary radial distortion
+            coefficient, sampled per image. Controls distortion in the center of the image:
             - Positive values result in pincushion distortion (edges bend inward)
             - Negative values result in barrel distortion (edges bend outward)
             Default: (-0.02, 0.02).
 
-        secondary_distortion_range (tuple[float, float]): Range of the secondary radial distortion coefficient.
-            If a single float value is provided, the range
-            will be (-secondary_distortion_range, secondary_distortion_range).
-            This parameter controls the distortion in the corners of the image:
+        secondary_distortion_range (tuple[float, float]): Range of the secondary radial
+            distortion coefficient, sampled per image. Controls distortion in the corners:
             - Positive values enhance pincushion distortion
             - Negative values enhance barrel distortion
             Default: (-0.05, 0.05).
@@ -1724,11 +1698,11 @@ class ChromaticAberration(ImageOnlyTransform):
         >>> import albumentations as A
         >>> import cv2
         >>> transform = A.ChromaticAberration(
-        ...     primary_distortion_range=0.05,
-        ...     secondary_distortion_range=0.1,
+        ...     primary_distortion_range=(-0.05, 0.05),
+        ...     secondary_distortion_range=(-0.1, 0.1),
         ...     mode='green_purple',
         ...     interpolation=cv2.INTER_LINEAR,
-        ...     p=1.0
+        ...     p=1.0,
         ... )
         >>> transformed = transform(image=image)
         >>> aberrated_image = transformed['image']
@@ -2085,26 +2059,15 @@ class RGBShift(AdditiveNoise):
     Each channel (R,G,B) can have its own shift range specified.
 
     Args:
-        r_shift_range ((int, int) or int): Range for shifting the red channel. Options:
-            - If tuple (min, max): Sample shift value from this range
-            - If int: Sample shift value from (-r_shift_range, r_shift_range)
-            - For uint8 images: Values represent absolute shifts in [0, 255]
-            - For float images: Values represent relative shifts in [0, 1]
-            Default: (-20, 20)
+        r_shift_range (tuple[int, int]): Range (min, max) for shifting the red channel,
+            sampled per image. For uint8 images values are absolute shifts in [0, 255];
+            for float images they are relative shifts in [0, 1]. Default: (-20, 20)
 
-        g_shift_range ((int, int) or int): Range for shifting the green channel. Options:
-            - If tuple (min, max): Sample shift value from this range
-            - If int: Sample shift value from (-g_shift_range, g_shift_range)
-            - For uint8 images: Values represent absolute shifts in [0, 255]
-            - For float images: Values represent relative shifts in [0, 1]
-            Default: (-20, 20)
+        g_shift_range (tuple[int, int]): Range (min, max) for shifting the green channel,
+            sampled per image. Same units as r_shift_range. Default: (-20, 20)
 
-        b_shift_range ((int, int) or int): Range for shifting the blue channel. Options:
-            - If tuple (min, max): Sample shift value from this range
-            - If int: Sample shift value from (-b_shift_range, b_shift_range)
-            - For uint8 images: Values represent absolute shifts in [0, 255]
-            - For float images: Values represent relative shifts in [0, 1]
-            Default: (-20, 20)
+        b_shift_range (tuple[int, int]): Range (min, max) for shifting the blue channel,
+            sampled per image. Same units as r_shift_range. Default: (-20, 20)
 
         p (float): Probability of applying the transform. Default: 0.5.
 
@@ -2131,10 +2094,10 @@ class RGBShift(AdditiveNoise):
 
         # Shift RGB channels of uint8 image
         >>> transform = A.RGBShift(
-        ...     r_shift_range=30,  # Will sample red shift from [-30, 30]
+        ...     r_shift_range=(-30, 30),  # Will sample red shift from [-30, 30]
         ...     g_shift_range=(-20, 20),  # Will sample green shift from [-20, 20]
         ...     b_shift_range=(-10, 10),  # Will sample blue shift from [-10, 10]
-        ...     p=1.0
+        ...     p=1.0,
         ... )
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> shifted = transform(image=image)["image"]
@@ -2153,7 +2116,6 @@ class RGBShift(AdditiveNoise):
         - AdditiveNoise: More general noise transform with various options:
             * Different noise distributions (uniform, gaussian, laplace, beta)
             * Spatial modes (constant, per-pixel, shared)
-            * Approximation for faster computation
         - RandomToneCurve: For non-linear color transformations
         - RandomBrightnessContrast: For combined brightness and contrast adjustments
         - PlankianJitter: For color temperature adjustments

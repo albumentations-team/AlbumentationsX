@@ -262,8 +262,8 @@ class Rotate(DualTransform):
     corners. Same rotation for image, mask, bboxes, keypoints.
 
     Args:
-        angle_range (float | tuple[float, float]): Range from which a random angle is picked.
-            If a single float, an angle is picked from (-angle_range, angle_range). Default: (-90, 90)
+        angle_range (tuple[float, float]): Range (in degrees) from which a random angle is
+            sampled per image. Default: (-90, 90)
         interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm. Should be one of:
             cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_LINEAR.
@@ -323,7 +323,7 @@ class Rotate(DualTransform):
         >>> keypoint_labels = [0, 1]  # Labels for keypoints
         >>> # Define the transform
         >>> transform = A.Compose([
-        ...     A.Rotate(angle_range=45, p=1.0),
+        ...     A.Rotate(angle_range=(-45, 45), p=1.0),
         ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
         ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>> # Apply the transform to all targets
@@ -585,8 +585,8 @@ class SafeRotate(Affine):
     rotation and scaling process.
 
     Args:
-        angle_range (float | tuple[float, float]): Range from which a random angle is picked.
-            If a single float, an angle is picked from (-angle_range, angle_range). Default: (-90, 90)
+        angle_range (tuple[float, float]): Range (in degrees) from which a random angle is
+            sampled per image. Default: (-90, 90)
         interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm. Should be one of:
             cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_LINEAR.
@@ -648,7 +648,7 @@ class SafeRotate(Affine):
         >>> keypoint_labels = [0, 1]  # Labels for keypoints
         >>> # Define the transform
         >>> transform = A.Compose([
-        ...     A.SafeRotate(angle_range=45, p=1.0),
+        ...     A.SafeRotate(angle_range=(-45, 45), p=1.0),
         ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
         ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>> # Apply the transform to all targets

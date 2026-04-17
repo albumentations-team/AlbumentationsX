@@ -1176,31 +1176,22 @@ class Spatter(ImageOnlyTransform):
     and spread control appearance. Good for dirty or wet lens robustness.
 
     Args:
-        mean_range (tuple[float, float]): Mean value of normal distribution for generating liquid layer.
-            If single float, sampled from `(0, mean_range)`.
-            If tuple of float, sampled from range `(mean_range[0], mean_range[1])`.
-            For a constant value use `(mean, mean)`.
-            Default (0.65, 0.65)
-        std_range (tuple[float, float]): Standard deviation of normal distribution for generating liquid
-            layer. If single float, sampled from `(0, std_range)`.
-            If tuple of float, sampled from range `(std_range[0], std_range[1])`.
-            For a constant value use `(std, std)`.
+        mean_range (tuple[float, float]): Mean of the normal distribution for generating the
+            liquid layer; sampled per image from `(mean_range[0], mean_range[1])`. For a
+            constant value use `(mean, mean)`. Default: (0.65, 0.65).
+        std_range (tuple[float, float]): Standard deviation of the normal distribution for
+            generating the liquid layer; sampled per image from
+            `(std_range[0], std_range[1])`. For a constant value use `(std, std)`.
             Default: (0.3, 0.3).
-        gauss_sigma_range (tuple[float, float]): Sigma value for gaussian filtering of liquid layer.
-            If single float, sampled from `(0, gauss_sigma_range)`.
-            If tuple of float, sampled from range `(gauss_sigma_range[0], gauss_sigma_range[1])`.
-            For a constant value use `(sigma, sigma)`.
-            Default: (2, 3).
-        cutout_threshold_range (tuple[float, float]): Threshold for filtering liquid layer
-            (determines number of drops).
-            If single float, sampled from `(0, cutout_threshold_range)`.
-            If tuple of float, sampled from range `(cutout_threshold_range[0], cutout_threshold_range[1])`.
-            For a constant value use `(t, t)`.
-            Default: (0.68, 0.68).
-        intensity_range (tuple[float, float]): Intensity of corruption.
-            If single float, sampled from `(0, intensity_range)`.
-            If tuple of float, sampled from range `(intensity_range[0], intensity_range[1])`.
-            For a constant value use `(i, i)`.
+        gauss_sigma_range (tuple[float, float]): Sigma for Gaussian filtering of the liquid
+            layer; sampled per image from `(gauss_sigma_range[0], gauss_sigma_range[1])`. For a
+            constant value use `(sigma, sigma)`. Default: (2, 3).
+        cutout_threshold_range (tuple[float, float]): Threshold for filtering the liquid layer
+            (controls number of drops); sampled per image from
+            `(cutout_threshold_range[0], cutout_threshold_range[1])`. For a constant value use
+            `(t, t)`. Default: (0.68, 0.68).
+        intensity_range (tuple[float, float]): Intensity of corruption; sampled per image from
+            `(intensity_range[0], intensity_range[1])`. For a constant value use `(i, i)`.
             Default: (0.6, 0.6).
         mode (Literal['rain', 'mud']): Type of corruption. Default: "rain".
         color (tuple[int, ...] | None): Corruption elements color.

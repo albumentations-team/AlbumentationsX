@@ -475,21 +475,16 @@ class PiecewiseAffine(BaseDistortion):
     around via affine transformations. This leads to local distortions in the image.
 
     Args:
-        scale_range (tuple[float, float]): Standard deviation of the normal distributions. These are used to
-            sample the random distances of the subimage's corners from the full image's corners.
-            If a single float value, the range will be (0, scale_range).
-            Recommended values are in the range (0.01, 0.05) for small distortions,
-            and (0.05, 0.1) for larger distortions. Default: (0.03, 0.05).
-        nb_rows_range (tuple[int, int]): Number of rows of points that the regular grid should have.
-            Must be at least 2. For large images, you might want to pick a higher value than 4.
-            If a single int, that value will always be used as the number of rows.
-            If a tuple (a, b), a value from the discrete interval [a..b] is uniformly sampled per image.
-            Default: 4.
-        nb_cols_range (tuple[int, int]): Number of columns of points that the regular grid should have.
-            Must be at least 2. For large images, you might want to pick a higher value than 4.
-            If a single int, that value will always be used as the number of columns.
-            If a tuple (a, b), a value from the discrete interval [a..b] is uniformly sampled per image.
-            Default: 4.
+        scale_range (tuple[float, float]): Standard deviation of the normal distributions used
+            to sample random corner offsets, sampled per image. Recommended values are in
+            (0.01, 0.05) for small distortions and (0.05, 0.1) for larger distortions.
+            Default: (0.03, 0.05).
+        nb_rows_range (tuple[int, int]): Range for the number of rows in the regular grid;
+            a value from the discrete interval [a..b] is uniformly sampled per image. Both ends
+            must be >= 2. Default: (4, 4).
+        nb_cols_range (tuple[int, int]): Range for the number of columns in the regular grid;
+            a value from the discrete interval [a..b] is uniformly sampled per image. Both ends
+            must be >= 2. Default: (4, 4).
         interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_LINEAR.
@@ -526,7 +521,7 @@ class PiecewiseAffine(BaseDistortion):
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> transform = A.Compose([
-        ...     A.PiecewiseAffine(scale_range=(0.03, 0.05), nb_rows_range=4, nb_cols_range=4, p=0.5),
+        ...     A.PiecewiseAffine(scale_range=(0.03, 0.05), nb_rows_range=(4, 4), nb_cols_range=(4, 4), p=0.5),
         ... ])
         >>> transformed = transform(image=image)
         >>> transformed_image = transformed["image"]
@@ -641,9 +636,9 @@ class OpticalDistortion(BaseDistortion):
        Direct radial distortion: r_dist = r * (1 + gamma * r²)
 
     Args:
-        distort_range (float | tuple[float, float]): Range of distortion coefficient.
-            For camera model: recommended range (-0.05, 0.05)
-            For fisheye model: recommended range (-0.3, 0.3)
+        distort_range (tuple[float, float]): Range of distortion coefficient, sampled per image.
+            For camera model: recommended range (-0.05, 0.05).
+            For fisheye model: recommended range (-0.3, 0.3).
             Default: (-0.05, 0.05)
 
         mode (Literal['camera', 'fisheye']): Distortion model to use:
@@ -685,7 +680,7 @@ class OpticalDistortion(BaseDistortion):
     Examples:
         >>> import albumentations as A
         >>> transform = A.Compose([
-        ...     A.OpticalDistortion(distort_range=0.1, p=1.0),
+        ...     A.OpticalDistortion(distort_range=(-0.1, 0.1), p=1.0),
         ... ])
         >>> transformed = transform(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)
         >>> transformed_image = transformed['image']
@@ -779,9 +774,8 @@ class GridDistortion(BaseDistortion):
     Args:
         num_steps (int): Number of grid cells on each side of the image. Higher values
             create more granular distortions. Must be at least 1. Default: 5.
-        distort_range (float or tuple[float, float]): Range of distortion. If a single float
-            is provided, the range will be (-distort_range, distort_range). Higher values
-            create stronger distortions. Should be in the range of -1 to 1.
+        distort_range (tuple[float, float]): Range of distortion, sampled per image. Higher
+            absolute values create stronger distortions. Should be in [-1, 1].
             Default: (-0.3, 0.3).
         interpolation (int): OpenCV interpolation method used for image transformation.
             Options include cv2.INTER_LINEAR, cv2.INTER_CUBIC, etc. Default: cv2.INTER_LINEAR.
@@ -816,7 +810,7 @@ class GridDistortion(BaseDistortion):
     Examples:
         >>> import albumentations as A
         >>> transform = A.Compose([
-        ...     A.GridDistortion(num_steps=5, distort_range=0.3, p=1.0),
+        ...     A.GridDistortion(num_steps=5, distort_range=(-0.3, 0.3), p=1.0),
         ... ])
         >>> transformed = transform(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)
         >>> transformed_image = transformed['image']

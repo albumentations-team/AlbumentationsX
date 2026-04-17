@@ -196,7 +196,7 @@ Only transforms that change parity (mirror/reflect) need label swapping:
 ```python
 transform = A.Compose([
     A.HorizontalFlip(p=0.5),
-    A.Rotate(angle_range=15, p=0.5),  # Rotation doesn't affect labels
+    A.Rotate(angle_range=(-15, 15), p=0.5),  # Rotation doesn't affect labels
 ], keypoint_params=A.KeypointParams(
     format='xy',
     label_fields=['keypoint_labels'],

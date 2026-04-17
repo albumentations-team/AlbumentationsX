@@ -106,7 +106,7 @@ class Blur(ImageOnlyTransform):
         >>>
         >>> # Example 2: Using a fixed blur kernel size
         >>> fixed_transform = A.Compose([
-        ...     A.Blur(blur_range=5, p=1.0)  # Always use kernel size 5x5
+        ...     A.Blur(blur_range=(5, 5), p=1.0)  # Always use kernel size 5x5
         ... ])
         >>>
         >>> fixed_result = fixed_transform(image=image)
@@ -124,7 +124,7 @@ class Blur(ImageOnlyTransform):
         >>>
         >>> # Example 4: As part of a pipeline with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_range=0.2, contrast_range=0.2, p=0.7),
+        ...     A.RandomBrightnessContrast(brightness_range=(-0.2, 0.2), contrast_range=(-0.2, 0.2), p=0.7),
         ...     A.Blur(blur_range=(3, 5), p=0.5),  # 50% chance of applying blur
         ...     A.HorizontalFlip(p=0.5)
         ... ])
@@ -168,11 +168,8 @@ class MotionBlur(Blur):
     a line-shaped kernel with controllable angle, direction, and position.
 
     Args:
-        blur_range (int | tuple[int, int]): Maximum kernel size for blurring.
-            Should be in range [3, inf).
-            - If int: kernel size will be randomly chosen from [3, blur_range]
-            - If tuple: kernel size will be randomly chosen from [min, max]
-            Larger values create stronger blur effects.
+        blur_range (tuple[int, int]): Range for kernel size, sampled from [min, max].
+            Both ends should be >= 3. Larger values create stronger blur effects.
             Default: (3, 7)
 
         angle_range (tuple[float, float]): Range of possible angles in degrees.
@@ -282,7 +279,7 @@ class MotionBlur(Blur):
         >>> # Example 4: Vertical motion (up-down)
         >>> vertical_motion = A.Compose([
         ...     A.MotionBlur(
-        ...         blur_range=9,             # Fixed kernel size
+        ...         blur_range=(9, 9),        # Fixed kernel size
         ...         angle_range=(90, 90),     # Vertical motion (90°)
         ...         direction_range=(-0.2, 0.2), # Near-symmetric (slight bias)
         ...         p=1.0
@@ -325,14 +322,19 @@ class MotionBlur(Blur):
         >>>
         >>> # Example 7: In a composition with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.5),
+        ...     A.RandomBrightnessContrast(brightness_range=(-0.1, 0.1), contrast_range=(-0.1, 0.1), p=0.5),
         ...     A.MotionBlur(                                   # 30% chance of applying motion blur
         ...         blur_range=(3, 7),
         ...         angle_range=(0, 180),                       # Only horizontal to vertical
         ...         direction_range=(-0.5, 0.5),                # Moderate direction bias
         ...         p=0.3
         ...     ),
-        ...     A.HueSaturationValue(hue_shift_range=10, sat_shift_range=15, val_shift_range=10, p=0.3)
+        ...     A.HueSaturationValue(
+        ...         hue_shift_range=(-10, 10),
+        ...         sat_shift_range=(-15, 15),
+        ...         val_shift_range=(-10, 10),
+        ...         p=0.3,
+        ...     ),
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -483,7 +485,7 @@ class MedianBlur(Blur):
         >>> # Example 1: Minimal median blur (3x3 kernel)
         >>> minimal_blur = A.Compose([
         ...     A.MedianBlur(
-        ...         blur_range=3,  # Fixed 3x3 kernel
+        ...         blur_range=(3, 3),  # Fixed 3x3 kernel
         ...         p=1.0          # Always apply
         ...     )
         ... ])
@@ -496,7 +498,7 @@ class MedianBlur(Blur):
         >>> # Example 2: Medium median blur
         >>> medium_blur = A.Compose([
         ...     A.MedianBlur(
-        ...         blur_range=5,  # Fixed 5x5 kernel
+        ...         blur_range=(5, 5),  # Fixed 5x5 kernel
         ...         p=1.0
         ...     )
         ... ])
@@ -509,7 +511,7 @@ class MedianBlur(Blur):
         >>> # Example 3: Strong median blur
         >>> strong_blur = A.Compose([
         ...     A.MedianBlur(
-        ...         blur_range=9,  # Fixed 9x9 kernel
+        ...         blur_range=(9, 9),  # Fixed 9x9 kernel
         ...         p=1.0
         ...     )
         ... ])
@@ -535,7 +537,7 @@ class MedianBlur(Blur):
         >>> pipeline = A.Compose([
         ...     A.GaussNoise(std_range=(0.04, 0.2), p=0.5),     # Possibly add some noise
         ...     A.MedianBlur(blur_range=(3, 5), p=0.7),         # 70% chance of applying median blur
-        ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.3)
+        ...     A.RandomBrightnessContrast(brightness_range=(-0.1, 0.1), contrast_range=(-0.1, 0.1), p=0.3)
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -679,13 +681,13 @@ class GaussianBlur(ImageOnlyTransform):
         Any
 
     Note:
-        - When blur_range=0 (default), this implementation exactly matches PIL's
+        - When blur_range=(0, 0) (default), this implementation exactly matches PIL's
           GaussianBlur behavior:
           * Kernel size is computed as int(sigma * 3.5) * 2 + 1
           * Gaussian values are computed using the standard formula
           * Kernel is normalized to preserve image luminance
-        - When blur_range is specified, the kernel size is randomly sampled from that range
-          regardless of sigma, which might result in inconsistent blur effects.
+        - When blur_range has positive values, the kernel size is randomly sampled from
+          that range regardless of sigma, which might result in inconsistent blur effects.
         - The default sigma range (0.5, 3.0) provides a good balance between subtle
           and strong blur effects:
           * sigma=0.5 results in a subtle blur
@@ -716,7 +718,7 @@ class GaussianBlur(ImageOnlyTransform):
         >>> light_blur = A.Compose([
         ...     A.GaussianBlur(
         ...         sigma_range=(0.2, 0.5),  # Small sigma for subtle blur
-        ...         blur_range=0,            # Auto-compute kernel size
+        ...         blur_range=(0, 0),       # Auto-compute kernel size
         ...         p=1.0
         ...     )
         ... ])
@@ -729,7 +731,7 @@ class GaussianBlur(ImageOnlyTransform):
         >>> strong_blur = A.Compose([
         ...     A.GaussianBlur(
         ...         sigma_range=(3.0, 7.0),  # Larger sigma for stronger blur
-        ...         blur_range=0,            # Auto-compute kernel size
+        ...         blur_range=(0, 0),       # Auto-compute kernel size
         ...         p=1.0
         ...     )
         ... ])
@@ -766,9 +768,9 @@ class GaussianBlur(ImageOnlyTransform):
         >>>
         >>> # Example 6: In an augmentation pipeline
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_range=0.2, contrast_range=0.2, p=0.5),
+        ...     A.RandomBrightnessContrast(brightness_range=(-0.2, 0.2), contrast_range=(-0.2, 0.2), p=0.5),
         ...     A.GaussianBlur(sigma_range=(0.5, 1.5), p=0.3),  # 30% chance of applying
-        ...     A.RGBShift(r_shift_range=10, g_shift_range=10, b_shift_range=10, p=0.3)
+        ...     A.RGBShift(r_shift_range=(-10, 10), g_shift_range=(-10, 10), b_shift_range=(-10, 10), p=0.3)
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -939,9 +941,14 @@ class GlassBlur(ImageOnlyTransform):
         >>>
         >>> # Example 5: In a pipeline with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.7),
+        ...     A.RandomBrightnessContrast(brightness_range=(-0.1, 0.1), contrast_range=(-0.1, 0.1), p=0.7),
         ...     A.GlassBlur(sigma=0.7, max_delta=4, iterations=2, p=0.5),  # 50% chance of applying
-        ...     A.HueSaturationValue(hue_shift_range=10, sat_shift_range=15, val_shift_range=10, p=0.3)
+        ...     A.HueSaturationValue(
+        ...         hue_shift_range=(-10, 10),
+        ...         sat_shift_range=(-15, 15),
+        ...         val_shift_range=(-10, 10),
+        ...         p=0.3,
+        ...     ),
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -1095,10 +1102,10 @@ class AdvancedBlur(ImageOnlyTransform):
         >>> # Example 1: Gaussian-like blur (beta = 1)
         >>> gaussian_like = A.Compose([
         ...     A.AdvancedBlur(
-        ...         blur_range=5,
+        ...         blur_range=(5, 5),
         ...         sigma_x_range=(0.5, 0.5),
         ...         sigma_y_range=(0.5, 0.5),
-        ...         rotate_range=0,
+        ...         rotate_range=(0, 0),
         ...         beta_range=(1.0, 1.0),  # Standard Gaussian (beta = 1)
         ...         noise_range=(1.0, 1.0),  # No noise
         ...         p=1.0
@@ -1115,7 +1122,7 @@ class AdvancedBlur(ImageOnlyTransform):
         ...         blur_range=(7, 9),
         ...         sigma_x_range=(0.6, 0.8),
         ...         sigma_y_range=(0.6, 0.8),
-        ...         rotate_range=0,
+        ...         rotate_range=(0, 0),
         ...         beta_range=(0.5, 0.7),  # Box-like blur (beta < 1)
         ...         noise_range=(0.9, 1.1),  # Slight noise
         ...         p=1.0
@@ -1132,7 +1139,7 @@ class AdvancedBlur(ImageOnlyTransform):
         ...         blur_range=(7, 9),
         ...         sigma_x_range=(0.6, 0.8),
         ...         sigma_y_range=(0.6, 0.8),
-        ...         rotate_range=0,
+        ...         rotate_range=(0, 0),
         ...         beta_range=(3.0, 6.0),  # Peaked blur (beta > 1)
         ...         noise_range=(0.9, 1.1),  # Slight noise
         ...         p=1.0
@@ -1419,8 +1426,8 @@ class Defocus(ImageOnlyTransform):
         >>>
         >>> # Example 4: Using in a pipeline with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.7),
-        ...     A.Defocus(radius_range=(3, 8), alias_blur_range=0.3, p=0.5),  # 50% chance of applying defocus
+        ...     A.RandomBrightnessContrast(brightness_range=(-0.1, 0.1), contrast_range=(-0.1, 0.1), p=0.7),
+        ...     A.Defocus(radius_range=(3, 8), alias_blur_range=(0.3, 0.3), p=0.5),  # 50% chance of applying defocus
         ...     A.GaussNoise(std_range=(0.04, 0.15), p=0.3)       # Possible noise after defocus
         ... ])
         >>>
@@ -1483,12 +1490,10 @@ class ZoomBlur(ImageOnlyTransform):
     a smooth transition from the center outward.
 
     Args:
-        max_factor_range ((float, float) or float): range for max factor for blurring.
-            If a single float, the range will be (1, max_factor_range). Default: (1, 1.31).
-            All max_factor_range values should be larger than 1.
-        step_factor_range ((float, float) or float): If single float will be used as step parameter for np.arange.
-            If tuple of float step_factor will be in range `[step_factor_range[0], step_factor_range[1])`.
-            Default: (0.01, 0.03). All step_factor_range values should be positive.
+        max_factor_range (tuple[float, float]): Range for max zoom factor; sampled per image.
+            Both ends must be >= 1. Default: (1, 1.31).
+        step_factor_range (tuple[float, float]): Range for step parameter passed to np.arange when
+            building the zoom levels; sampled per image. Both ends must be > 0. Default: (0.01, 0.03).
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -1513,7 +1518,7 @@ class ZoomBlur(ImageOnlyTransform):
         >>> subtle_transform = A.Compose([
         ...     A.ZoomBlur(
         ...         max_factor_range=(1.05, 1.10),  # Small zoom range
-        ...         step_factor_range=0.01,         # Fine steps
+        ...         step_factor_range=(0.01, 0.01), # Fine steps
         ...         p=1.0                           # Always apply
         ...     )
         ... ])
@@ -1526,7 +1531,7 @@ class ZoomBlur(ImageOnlyTransform):
         >>> moderate_transform = A.Compose([
         ...     A.ZoomBlur(
         ...         max_factor_range=(1.15, 1.25),  # Medium zoom range
-        ...         step_factor_range=0.02,         # Medium steps
+        ...         step_factor_range=(0.02, 0.02), # Medium steps
         ...         p=1.0
         ...     )
         ... ])
@@ -1550,8 +1555,8 @@ class ZoomBlur(ImageOnlyTransform):
         >>>
         >>> # Example 4: In a pipeline with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_range=0.2, contrast_range=0.2, p=0.7),
-        ...     A.ZoomBlur(max_factor_range=(1.1, 1.3), step_factor_range=0.02, p=0.5),
+        ...     A.RandomBrightnessContrast(brightness_range=(-0.2, 0.2), contrast_range=(-0.2, 0.2), p=0.7),
+        ...     A.ZoomBlur(max_factor_range=(1.1, 1.3), step_factor_range=(0.02, 0.02), p=0.5),
         ...     A.HorizontalFlip(p=0.5)
         ... ])
         >>>

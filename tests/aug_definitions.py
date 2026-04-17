@@ -328,6 +328,15 @@ AUGMENTATION_CLS_PARAMS = [
     [A.ToGray, {"method": "pca"}],
     [A.ToRGB, {}],
     [A.ToSepia, {}],
+    [
+        A.Colorize,
+        dict(
+            black=((0, 0, 200), (10, 10, 255)),
+            mid=((100, 0, 100), (160, 50, 160)),
+            white=((220, 200, 0), (255, 255, 50)),
+            mid_value_range=(100, 160),
+        ),
+    ],
     [A.Transpose, {}],
     [A.VerticalFlip, {}],
     [A.RingingOvershoot, dict(blur_range=(7, 15), cutoff_range=(np.pi / 5, np.pi / 2))],

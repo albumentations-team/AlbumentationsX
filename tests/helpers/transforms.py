@@ -47,6 +47,7 @@ class TransformTestHelper:
         A.ConstrainedCoarseDropout,
         A.ChannelShuffle,
         A.ToRGB,
+        A.Colorize,
         A.RandomSunFlare,
         A.LensFlare,
         A.RandomFog,

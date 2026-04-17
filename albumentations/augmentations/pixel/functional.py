@@ -1805,6 +1805,100 @@ def grayscale_to_multichannel(
     return np.tile(squeezed[..., np.newaxis], (1,) * squeezed.ndim + (num_output_channels,))
 
 
+def _build_colorize_lut(
+    black: tuple[int, int, int],
+    white: tuple[int, int, int],
+    mid: tuple[int, int, int] | None,
+    mid_value: int,
+) -> np.ndarray:
+    """Build a (256, 3) float32 LUT mapping uint8 intensity to an RGB ramp via linear
+    interpolation between (black, [mid], white) anchors. Used by `colorize`.
+
+    When `mid` is None the ramp has two anchors (0 -> black, 255 -> white). When `mid` is
+    given the ramp is piecewise-linear with three anchors (0 -> black, mid_value -> mid,
+    255 -> white).
+    """
+    if mid is None:
+        anchor_intensity = np.array([0.0, 255.0], dtype=np.float32)
+        anchor_color = np.array([black, white], dtype=np.float32)
+    else:
+        anchor_intensity = np.array([0.0, float(mid_value), 255.0], dtype=np.float32)
+        anchor_color = np.array([black, mid, white], dtype=np.float32)
+
+    intensities = np.arange(256, dtype=np.float32)
+    lut = np.empty((256, 3), dtype=np.float32)
+    for color_channel in range(3):
+        lut[:, color_channel] = np.interp(intensities, anchor_intensity, anchor_color[:, color_channel])
+    return lut
+
+
+def colorize(
+    img: ImageType,
+    black: tuple[int, int, int],
+    white: tuple[int, int, int],
+    mid: tuple[int, int, int] | None,
+    mid_value: int,
+) -> ImageType:
+    """Map grayscale intensity to a 2- or 3-color RGB gradient (Pillow `ImageOps.colorize`
+    style) using a (256, 3) LUT for uint8 and `np.interp` for float32.
+
+    Anchor colors are specified as RGB tuples in 0-255 regardless of input dtype; for float32
+    inputs the anchors are scaled into [0, 1] before interpolation. Output always has 3 channels.
+
+    Args:
+        img (ImageType): Single-channel image, shape `(H, W, 1)` or batch `(N, H, W, 1)`.
+        black (tuple[int, int, int]): RGB color for intensity 0.
+        white (tuple[int, int, int]): RGB color for intensity 255 (or 1.0 for float32).
+        mid (tuple[int, int, int] | None): Optional RGB color for the midpoint. `None` gives a
+            2-color ramp.
+        mid_value (int): Intensity (0-255) that maps to `mid`. Ignored when `mid is None`.
+
+    Returns:
+        ImageType: Image with the trailing channel dimension expanded to 3.
+
+    """
+    gray = img[..., 0]
+    lut_float = _build_colorize_lut(black, white, mid, mid_value)
+
+    if img.dtype == np.uint8:
+        # Floor-quantize to match `PIL.ImageOps.colorize` (integer floor division) bit-for-bit.
+        lut_uint8 = np.clip(np.floor(lut_float), 0, 255).astype(np.uint8)
+        # cv2.LUT on a 3-channel uint8 image with a (1, 256, 3) LUT is the fastest path
+        # (~30x vs numpy fancy indexing). Replicate the gray channel into 3 first; cv2 then
+        # applies a different per-channel LUT in C.
+        lut_cv = lut_uint8.reshape(1, 256, 3)
+        if gray.ndim == 2:
+            gray_3ch = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            return cv2.LUT(gray_3ch, lut_cv)
+        # Batched / volumetric: gray has a leading axis (N or D). Loop in Python over the
+        # leading axis but keep the per-frame work in cv2 — far cheaper than 4D fancy indexing.
+        out = np.empty((*gray.shape, 3), dtype=np.uint8)
+        flat_in = gray.reshape(-1, *gray.shape[-2:])
+        flat_out = out.reshape(-1, *gray.shape[-2:], 3)
+        for frame_index in range(flat_in.shape[0]):
+            flat_out[frame_index] = cv2.LUT(cv2.cvtColor(flat_in[frame_index], cv2.COLOR_GRAY2BGR), lut_cv)
+        return out
+
+    if img.dtype != np.float32:
+        raise ValueError(f"colorize: unsupported dtype {img.dtype}; expected uint8 or float32")
+
+    anchor_intensity_float = (
+        np.array([0.0, 1.0], dtype=np.float32)
+        if mid is None
+        else np.array([0.0, mid_value / 255.0, 1.0], dtype=np.float32)
+    )
+    anchor_color_float = (
+        np.array([black, white], dtype=np.float32) / 255.0
+        if mid is None
+        else np.array([black, mid, white], dtype=np.float32) / 255.0
+    )
+    out = np.empty((*gray.shape, 3), dtype=np.float32)
+    gray_clipped = np.clip(gray, 0.0, 1.0)
+    for color_channel in range(3):
+        out[..., color_channel] = np.interp(gray_clipped, anchor_intensity_float, anchor_color_float[:, color_channel])
+    return out
+
+
 @preserve_channel_dim
 @uint8_io
 def downscale(

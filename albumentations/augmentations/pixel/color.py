@@ -48,6 +48,7 @@ __all__ = [
     "AutoContrast",
     "ChromaticAberration",
     "ColorJitter",
+    "Colorize",
     "Equalize",
     "FancyPCA",
     "HEStain",
@@ -1292,6 +1293,156 @@ class ToRGB(ImageOnlyTransform):
             img,
             num_output_channels=self.num_output_channels,
         )
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        return self.apply(images, **params)
+
+    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
+        return self.apply(volumes, **params)
+
+
+ColorRange = tuple[tuple[int, int, int], tuple[int, int, int]]
+
+
+def _validate_color_range(rng: ColorRange) -> ColorRange:
+    """Validate a Colorize anchor range: each entry is an RGB triple in [0, 255], and the lower
+    bound must not exceed the upper bound on any channel.
+    """
+    lo, hi = rng
+    if len(lo) != NUM_RGB_CHANNELS or len(hi) != NUM_RGB_CHANNELS:
+        raise ValueError(f"Color range must be (rgb_low, rgb_high) with 3 channels each, got {rng}")
+    for channel in range(NUM_RGB_CHANNELS):
+        if not (0 <= lo[channel] <= 255 and 0 <= hi[channel] <= 255):
+            raise ValueError(f"Color range entries must be in [0, 255], got {rng}")
+        if lo[channel] > hi[channel]:
+            raise ValueError(f"Color range lower bound must be <= upper bound per channel, got {rng}")
+    return rng
+
+
+class Colorize(ImageOnlyTransform):
+    """Map a single-channel grayscale image to a 2- or 3-color RGB gradient with per-call sampled
+    anchor colors (Pillow `ImageOps.colorize` style).
+
+    Intensity acts as a coordinate along a sampled color ramp:
+
+    - `0` maps to a sample from `black`
+    - `255` (or `1.0` for float32) maps to a sample from `white`
+    - if `mid` is set, intensity sampled from `mid_value_range` maps to a sample from `mid` and
+      the ramp becomes piecewise linear
+
+    Each anchor is given as `(low_rgb, high_rgb)` and sampled per-channel uniformly on every call.
+    Pass identical low/high tuples to fix a color (e.g. `black=((0, 0, 255), (0, 0, 255))`).
+    Anchors are always specified in 0-255 RGB; for float32 inputs they are rescaled to [0, 1]
+    internally.
+
+    Args:
+        black (tuple[tuple[int, int, int], tuple[int, int, int]]): Inclusive per-channel range
+            from which the dark anchor is sampled. Default: ((0, 0, 0), (0, 0, 0)).
+        white (tuple[tuple[int, int, int], tuple[int, int, int]]): Inclusive per-channel range
+            from which the bright anchor is sampled. Default: ((255, 255, 255), (255, 255, 255)).
+        mid (tuple[tuple[int, int, int], tuple[int, int, int]] | None): Optional inclusive range
+            from which the midpoint anchor is sampled. `None` disables 3-color mode. Default: None.
+        mid_value_range (tuple[int, int]): Inclusive intensity range (each in 1-254) from which
+            the midpoint position is sampled. Ignored when `mid is None`. Default: (127, 127).
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        1
+
+    Note:
+        - Input must be single-channel; multi-channel input is a no-op with a warning.
+        - Interpolation is linear in RGB space.
+        - For uint8 inputs the per-call mapping is a (256, 3) LUT applied via fancy indexing;
+          for float32 inputs `np.interp` is used per channel.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 1), dtype=np.uint8)
+        >>>
+        >>> # Fixed blue -> yellow ramp (low == high)
+        >>> fixed = A.Compose([A.Colorize(
+        ...     black=((0, 0, 255), (0, 0, 255)),
+        ...     white=((255, 255, 0), (255, 255, 0)),
+        ...     p=1.0,
+        ... )])
+        >>> assert fixed(image=image)["image"].shape == (100, 100, 3)
+        >>>
+        >>> # Random thermal-ish ramp with random midpoint position
+        >>> random_thermal = A.Compose([A.Colorize(
+        ...     black=((0, 0, 64), (32, 0, 192)),
+        ...     mid=((96, 0, 96), (160, 64, 160)),
+        ...     white=((220, 160, 0), (255, 220, 32)),
+        ...     mid_value_range=(96, 160),
+        ...     p=1.0,
+        ... )])
+        >>> assert random_thermal(image=image)["image"].shape == (100, 100, 3)
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        black: Annotated[ColorRange, AfterValidator(_validate_color_range)]
+        white: Annotated[ColorRange, AfterValidator(_validate_color_range)]
+        mid: Annotated[ColorRange, AfterValidator(_validate_color_range)] | None
+        mid_value_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1, 254)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        black: tuple[tuple[int, int, int], tuple[int, int, int]] = ((0, 0, 0), (0, 0, 0)),
+        white: tuple[tuple[int, int, int], tuple[int, int, int]] = ((255, 255, 255), (255, 255, 255)),
+        mid: tuple[tuple[int, int, int], tuple[int, int, int]] | None = None,
+        mid_value_range: tuple[int, int] = (127, 127),
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.black = black
+        self.white = white
+        self.mid = mid
+        self.mid_value_range = mid_value_range
+
+    def _sample_color(self, color_range: ColorRange) -> tuple[int, int, int]:
+        lo, hi = color_range
+        return (
+            self.py_random.randint(lo[0], hi[0]),
+            self.py_random.randint(lo[1], hi[1]),
+            self.py_random.randint(lo[2], hi[2]),
+        )
+
+    def get_params(self) -> dict[str, Any]:
+        mid_color = self._sample_color(self.mid) if self.mid is not None else None
+        return {
+            "black_color": self._sample_color(self.black),
+            "white_color": self._sample_color(self.white),
+            "mid_color": mid_color,
+            "mid_value": self.py_random.randint(*self.mid_value_range),
+        }
+
+    def apply(
+        self,
+        img: ImageType,
+        black_color: tuple[int, int, int],
+        white_color: tuple[int, int, int],
+        mid_color: tuple[int, int, int] | None,
+        mid_value: int,
+        **params: Any,
+    ) -> ImageType:
+        if get_num_channels(img) != 1:
+            warnings.warn(
+                "Colorize expects a single-channel image; got a multi-channel image, returning it unchanged.",
+                stacklevel=2,
+            )
+            return img
+        return fpixel.colorize(img, black_color, white_color, mid_color, mid_value)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)

@@ -663,3 +663,218 @@ class TestAtmosphericFog:
         assert float(white_result.mean()) > float(dark_result.mean()), (
             "White fog should produce brighter result than dark fog"
         )
+
+
+# ===========================================================================
+# Colorize
+# ===========================================================================
+
+
+def _gradient_grayscale(height: int = 64, width: int = 256, dtype=np.uint8) -> np.ndarray:
+    """Horizontal grayscale ramp 0..255 (or 0..1 for float32) with a single channel dim."""
+    row = np.linspace(0, 1, width, dtype=np.float32)
+    img = np.broadcast_to(row, (height, width)).copy()
+    if dtype == np.uint8:
+        img = (img * 255).astype(np.uint8)
+    else:
+        img = img.astype(np.float32)
+    return img[..., np.newaxis]
+
+
+def _fixed(color):
+    return (color, color)
+
+
+class TestColorize:
+    @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+    def test_anchor_endpoints_match_when_range_is_fixed(self, dtype):
+        img = _gradient_grayscale(dtype=dtype)
+        black = (10, 20, 30)
+        white = (200, 150, 100)
+        aug = A.Compose(
+            [A.Colorize(black=_fixed(black), white=_fixed(white), p=1.0)],
+            seed=137,
+        )
+        out = aug(image=img)["image"]
+
+        assert out.shape == (img.shape[0], img.shape[1], 3)
+        assert out.dtype == dtype
+
+        if dtype == np.uint8:
+            np.testing.assert_array_equal(out[:, 0], np.broadcast_to(black, (img.shape[0], 3)))
+            np.testing.assert_array_equal(out[:, -1], np.broadcast_to(white, (img.shape[0], 3)))
+        else:
+            np.testing.assert_allclose(
+                out[:, 0],
+                np.broadcast_to(np.array(black) / 255.0, (img.shape[0], 3)),
+                atol=1e-6,
+            )
+            np.testing.assert_allclose(
+                out[:, -1],
+                np.broadcast_to(np.array(white) / 255.0, (img.shape[0], 3)),
+                atol=1e-6,
+            )
+
+    def test_two_color_ramp_is_monotonic(self):
+        img = _gradient_grayscale()
+        aug = A.Compose(
+            [A.Colorize(black=_fixed((0, 0, 255)), white=_fixed((255, 255, 0)), p=1.0)],
+            seed=137,
+        )
+        out = aug(image=img)["image"]
+        row = out[0].astype(np.int32)
+        assert np.all(np.diff(row[:, 0]) >= 0)
+        assert np.all(np.diff(row[:, 1]) >= 0)
+        assert np.all(np.diff(row[:, 2]) <= 0)
+
+    def test_three_color_ramp_hits_sampled_mid_value(self):
+        img = _gradient_grayscale()
+        black = (0, 0, 128)
+        mid = (128, 0, 128)
+        white = (255, 200, 0)
+        mid_value = 137
+        aug = A.Compose(
+            [
+                A.Colorize(
+                    black=_fixed(black),
+                    mid=_fixed(mid),
+                    white=_fixed(white),
+                    mid_value_range=(mid_value, mid_value),
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+        )
+        out = aug(image=img)["image"]
+        np.testing.assert_array_equal(out[:, mid_value], np.broadcast_to(mid, (img.shape[0], 3)))
+
+    def test_output_is_3_channel_from_2d_input(self):
+        img = (np.linspace(0, 255, 100 * 100).reshape(100, 100)).astype(np.uint8)
+        aug = A.Compose(
+            [A.Colorize(black=_fixed((0, 0, 0)), white=_fixed((255, 0, 0)), p=1.0)],
+            seed=137,
+        )
+        out = aug(image=img)["image"]
+        assert out.shape == (100, 100, 3)
+
+    def test_multichannel_input_passes_through_with_warning(self):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (32, 32, 3), dtype=np.uint8)
+        aug = A.Colorize(black=_fixed((0, 0, 255)), white=_fixed((255, 0, 0)), p=1.0)
+        with pytest.warns(UserWarning, match="single-channel"):
+            out = aug(image=img)["image"]
+        np.testing.assert_array_equal(out, img)
+
+    def test_random_anchors_change_with_seed(self):
+        img = _gradient_grayscale()
+        kwargs = dict(
+            black=((0, 0, 0), (50, 50, 50)),
+            white=((200, 200, 200), (255, 255, 255)),
+            mid=((90, 90, 90), (160, 160, 160)),
+            mid_value_range=(80, 180),
+            p=1.0,
+        )
+        out_a = A.Compose([A.Colorize(**kwargs)], seed=137)(image=img)["image"]
+        out_b = A.Compose([A.Colorize(**kwargs)], seed=999)(image=img)["image"]
+        assert not np.array_equal(out_a, out_b), "different seeds should sample different ramps"
+
+    def test_random_anchors_stay_within_range(self):
+        img = _gradient_grayscale(width=256)
+        black = ((0, 0, 64), (10, 10, 192))
+        white = ((230, 200, 0), (255, 255, 32))
+        aug = A.Compose(
+            [A.Colorize(black=black, white=white, p=1.0)],
+            seed=137,
+        )
+        for _ in range(8):
+            out = aug(image=img)["image"]
+            sampled_black = out[0, 0].astype(int)
+            sampled_white = out[0, -1].astype(int)
+            for channel in range(3):
+                assert black[0][channel] <= sampled_black[channel] <= black[1][channel]
+                assert white[0][channel] <= sampled_white[channel] <= white[1][channel]
+
+    @pytest.mark.parametrize("mid_value", [1, 64, 127, 200, 254])
+    def test_mid_value_range_accepts_range(self, mid_value):
+        A.Colorize(mid=_fixed((50, 50, 50)), mid_value_range=(mid_value, mid_value), p=1.0)
+
+    @pytest.mark.parametrize("mid_value_range", [(0, 100), (100, 255), (200, 100), (-1, 50)])
+    def test_mid_value_range_invalid_rejected(self, mid_value_range):
+        with pytest.raises(Exception):
+            A.Colorize(mid=_fixed((50, 50, 50)), mid_value_range=mid_value_range, p=1.0)
+
+    @pytest.mark.parametrize(
+        "color_range",
+        [
+            ((-1, 0, 0), (10, 10, 10)),
+            ((0, 0, 0), (256, 0, 0)),
+            ((100, 100, 100), (50, 50, 50)),
+            ((0, 0), (10, 10, 10)),
+        ],
+    )
+    def test_invalid_color_range_rejected(self, color_range):
+        with pytest.raises(Exception):
+            A.Colorize(black=color_range, p=1.0)
+
+    def test_serialization_round_trip(self):
+        original = A.Colorize(
+            black=((0, 0, 0), (32, 32, 32)),
+            mid=((60, 70, 80), (100, 110, 120)),
+            white=((200, 210, 220), (255, 255, 255)),
+            mid_value_range=(100, 150),
+            p=0.7,
+        )
+        restored = A.from_dict(A.to_dict(original))
+        assert restored.black == original.black
+        assert restored.mid == original.mid
+        assert restored.white == original.white
+        assert restored.mid_value_range == original.mid_value_range
+        assert restored.p == original.p
+
+    def test_two_color_default_collapses_to_neutral_gray(self):
+        # defaults: black==(0,0,0), white==(255,255,255), no mid -> per-channel identity
+        img = _gradient_grayscale()
+        aug = A.Compose([A.Colorize(p=1.0)], seed=137)
+        out = aug(image=img)["image"]
+        gray = img[..., 0]
+        for channel in range(3):
+            np.testing.assert_array_equal(out[..., channel], gray)
+
+    @pytest.mark.parametrize(
+        ("black", "white", "mid", "mid_value"),
+        [
+            ((0, 0, 255), (255, 255, 0), None, 127),  # 2-color
+            ((10, 20, 30), (200, 150, 100), None, 127),
+            ((0, 0, 0), (255, 255, 255), (128, 0, 128), 137),  # 3-color
+            ((0, 0, 128), (255, 200, 0), (128, 0, 128), 64),  # off-center midpoint
+            ((0, 0, 128), (255, 200, 0), (128, 0, 128), 200),
+        ],
+    )
+    def test_matches_pil_imageops_colorize_bit_exact(self, black, white, mid, mid_value):
+        """Bit-exact parity with `PIL.ImageOps.colorize` on uint8 grayscale input — proves we
+        compute the same transform, just faster.
+        """
+        from PIL import Image, ImageOps
+
+        img = _gradient_grayscale(height=32, width=256)
+        pil_in = Image.fromarray(img[..., 0], mode="L")
+        pil_kwargs = {"black": black, "white": white}
+        if mid is not None:
+            pil_kwargs["mid"] = mid
+            pil_kwargs["midpoint"] = mid_value
+        pil_out = np.array(ImageOps.colorize(pil_in, **pil_kwargs))
+
+        ours = A.Compose(
+            [
+                A.Colorize(
+                    black=(black, black),
+                    white=(white, white),
+                    mid=(mid, mid) if mid is not None else None,
+                    mid_value_range=(mid_value, mid_value),
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+        )(image=img)["image"]
+
+        np.testing.assert_array_equal(ours, pil_out)

@@ -1507,3 +1507,639 @@ class TestMosaicCopyPasteInstanceBinding:
         assert by_cid[900]["keypoints"].shape == (1, 2)
         np.testing.assert_array_equal(by_cid[2]["keypoint_labels"]["vis"], np.array([2]))
         np.testing.assert_array_equal(by_cid[900]["keypoint_labels"]["vis"], np.array([9]))
+
+
+# ---------------------------------------------------------------------------
+# CopyAndPaste regression tests for ID-driven survivor selection.
+# These pin the contract that mask rows stay row-aligned with surviving
+# bboxes (and that pasted IDs cannot collide with existing instance IDs)
+# even when an upstream transform has filtered some bboxes.
+# ---------------------------------------------------------------------------
+
+
+def _three_instance_payload(
+    side: int = 80,
+) -> tuple[np.ndarray, list[dict[str, Any]]]:
+    """Three non-overlapping instances laid out along the diagonal: A (top-left), B (middle), C (bottom-right)."""
+    image = np.zeros((side, side, 3), dtype=np.uint8)
+    third = side // 3
+    a = _make_mask(side, side, (2, third - 2, 2, third - 2))
+    b = _make_mask(side, side, (third + 2, 2 * third - 2, third + 2, 2 * third - 2))
+    c = _make_mask(side, side, (2 * third + 2, side - 2, 2 * third + 2, side - 2))
+    instances = [
+        {
+            "mask": a,
+            "bbox": np.array([2, 2, third - 2, third - 2], dtype=np.float32),
+            "bbox_labels": {"cid": "A"},
+        },
+        {
+            "mask": b,
+            "bbox": np.array([third + 2, third + 2, 2 * third - 2, 2 * third - 2], dtype=np.float32),
+            "bbox_labels": {"cid": "B"},
+        },
+        {
+            "mask": c,
+            "bbox": np.array([2 * third + 2, 2 * third + 2, side - 2, side - 2], dtype=np.float32),
+            "bbox_labels": {"cid": "C"},
+        },
+    ]
+    return image, instances
+
+
+def _mask_matches_cid_region(
+    mask: np.ndarray,
+    expected_region: tuple[int, int, int, int],
+) -> bool:
+    """Return True iff the non-zero pixels of `mask` fall (mostly) inside `expected_region` (y1, y2, x1, x2)."""
+    nz = np.argwhere(mask > 0)
+    if nz.size == 0:
+        return False
+    y1, y2, x1, x2 = expected_region
+    inside = (nz[:, 0] >= y1) & (nz[:, 0] < y2) & (nz[:, 1] >= x1) & (nz[:, 1] < x2)
+    return bool(inside.all())
+
+
+class TestCopyPasteBindingRegression:
+    """Regression tests for the ID-vs-position alignment bug between CopyAndPaste and instance binding."""
+
+    def test_crop_filters_then_copy_paste_no_indexerror(self) -> None:
+        """Crop drops middle instance B by min_area; CopyAndPaste then occludes A. Should survive C + paste."""
+        side = 90
+        image = np.zeros((side, side, 3), dtype=np.uint8)
+        third = side // 3
+        # A and C are big (area 676); B is intentionally tiny (area 4) so min_area filters only B.
+        a_region = (2, third - 2, 2, third - 2)
+        b_region = (third + 14, third + 16, third + 14, third + 16)
+        c_region = (2 * third + 2, side - 2, 2 * third + 2, side - 2)
+        instances = [
+            {
+                "mask": _make_mask(side, side, a_region),
+                "bbox": np.array([2, 2, third - 2, third - 2], dtype=np.float32),
+                "bbox_labels": {"cid": "A"},
+            },
+            {
+                "mask": _make_mask(side, side, b_region),
+                "bbox": np.array([third + 14, third + 14, third + 16, third + 16], dtype=np.float32),
+                "bbox_labels": {"cid": "B"},
+            },
+            {
+                "mask": _make_mask(side, side, c_region),
+                "bbox": np.array([2 * third + 2, 2 * third + 2, side - 2, side - 2], dtype=np.float32),
+                "bbox_labels": {"cid": "C"},
+            },
+        ]
+        paste_mask = np.zeros((side, side), dtype=np.uint8)
+        paste_mask[: third - 2, : third - 2] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((side, side, 3), 200, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, third - 2, third - 2],
+            "bbox_labels": {"cid": "PASTED"},
+        }
+        transform = A.Compose(
+            [
+                A.Crop(x_min=0, y_min=0, x_max=side, y_max=side, p=1.0),
+                A.CopyAndPaste(min_visibility_after_paste=0.3, p=1.0),
+            ],
+            bbox_params=A.BboxParams(
+                coord_format="pascal_voc",
+                label_fields=["cid"],
+                min_area=10,
+            ),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
+        assert "B" not in cids, "B was filtered by min_area"
+        assert "A" not in cids, "A is fully occluded by paste"
+        assert "C" in cids and "PASTED" in cids
+        for inst in result["instances"]:
+            assert inst["mask"].shape == (side, side)
+
+    def test_copy_paste_occludes_middle_primary_keeps_outer_masks_attached(self) -> None:
+        """3 instances; paste fully occludes B. A and C must keep their original masks (not B's)."""
+        side = 90
+        image, instances = _three_instance_payload(side)
+        third = side // 3
+        paste_mask = np.zeros((side, side), dtype=np.uint8)
+        paste_mask[third : 2 * third, third : 2 * third] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((side, side, 3), 100, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [third, third, 2 * third, 2 * third],
+            "bbox_labels": {"cid": "PASTED"},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.3, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        by_cid = _instances_by_cid(result["instances"])
+        assert set(by_cid) == {"A", "C", "PASTED"}, "B should be dropped, A/C kept, PASTED appended"
+        assert _mask_matches_cid_region(by_cid["A"]["mask"], (2, third - 2, 2, third - 2))
+        assert _mask_matches_cid_region(
+            by_cid["C"]["mask"],
+            (2 * third + 2, side - 2, 2 * third + 2, side - 2),
+        )
+
+    def test_copy_paste_id_collision_when_crop_drops_low_id_instance(self) -> None:
+        """After Crop drops A (id 0), pasted IDs must allocate above N_masks-1 to avoid colliding with B/C ids."""
+        side = 96
+        image, instances = _three_instance_payload(side)
+        third = side // 3
+        crop_offset = third + 1
+        cropped_side = side - crop_offset
+        # Paste mask is in post-crop coordinates and fully covers B (which sits at (1..29, 1..29) after crop).
+        paste_mask = np.zeros((cropped_side, cropped_side), dtype=np.uint8)
+        paste_mask[: third + 2, : third + 2] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((cropped_side, cropped_side, 3), 50, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, third + 2, third + 2],
+            "bbox_labels": {"cid": "PASTED"},
+        }
+        transform = A.Compose(
+            [
+                A.Crop(x_min=crop_offset, y_min=crop_offset, x_max=side, y_max=side, p=1.0),
+                A.CopyAndPaste(min_visibility_after_paste=0.3, p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
+        assert cids == {"C", "PASTED"}, "A is cropped out, B is occluded, C survives, PASTED appended"
+        for inst in result["instances"]:
+            assert inst["mask"].shape[:2] == (cropped_side, cropped_side)
+
+    def test_copy_paste_keypoint_id_filter_uses_ids_not_positions(self) -> None:
+        """Triple binding: Crop drops A, paste occludes B. Keypoints must follow C and the pasted donor."""
+        side = 96
+        image = np.zeros((side, side, 3), dtype=np.uint8)
+        third = side // 3
+        instances = [
+            {
+                "mask": _make_mask(side, side, (2, third - 2, 2, third - 2)),
+                "bbox": np.array([2, 2, third - 2, third - 2], dtype=np.float32),
+                "bbox_labels": {"cid": "A"},
+                "keypoints": np.array([[10.0, 10.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [1]},
+            },
+            {
+                "mask": _make_mask(side, side, (third + 2, 2 * third - 2, third + 2, 2 * third - 2)),
+                "bbox": np.array(
+                    [third + 2, third + 2, 2 * third - 2, 2 * third - 2],
+                    dtype=np.float32,
+                ),
+                "bbox_labels": {"cid": "B"},
+                "keypoints": np.array([[third + 5.0, third + 5.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [2]},
+            },
+            {
+                "mask": _make_mask(side, side, (2 * third + 2, side - 2, 2 * third + 2, side - 2)),
+                "bbox": np.array(
+                    [2 * third + 2, 2 * third + 2, side - 2, side - 2],
+                    dtype=np.float32,
+                ),
+                "bbox_labels": {"cid": "C"},
+                "keypoints": np.array([[2 * third + 5.0, 2 * third + 5.0]], dtype=np.float32),
+                "keypoint_labels": {"vis": [3]},
+            },
+        ]
+        crop_offset = third + 1
+        cropped_side = side - crop_offset
+        paste_mask = np.zeros((cropped_side, cropped_side), dtype=np.uint8)
+        paste_mask[: third - 4, : third - 4] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((cropped_side, cropped_side, 3), 99, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, third - 4, third - 4],
+            "bbox_labels": {"cid": "PASTED"},
+            "keypoints": np.array([[3.0, 3.0]], dtype=np.float32),
+            "keypoint_labels": {"vis": [9]},
+        }
+        transform = A.Compose(
+            [
+                A.Crop(x_min=crop_offset, y_min=crop_offset, x_max=side, y_max=side, p=1.0),
+                A.CopyAndPaste(min_visibility_after_paste=0.3, p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["vis"]),
+            instance_binding=["masks", "bboxes", "keypoints"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        by_cid = _instances_by_cid(result["instances"])
+        assert set(by_cid) == {"C", "PASTED"}
+        np.testing.assert_array_equal(by_cid["C"]["keypoint_labels"]["vis"], np.array([3]))
+        np.testing.assert_array_equal(by_cid["PASTED"]["keypoint_labels"]["vis"], np.array([9]))
+
+    def test_copy_paste_min_visibility_zero_keeps_all_primaries_with_binding(self) -> None:
+        """min_visibility_after_paste=0.0 means every primary survives regardless of overlap; pasted appended."""
+        side = 64
+        image, instances = _three_instance_payload(side)
+        paste_mask = np.ones((side, side), dtype=np.uint8)
+        donor: dict[str, Any] = {
+            "image": np.full((side, side, 3), 200, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, side, side],
+            "bbox_labels": {"cid": "PASTED"},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=0.0, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        cids = [inst["bbox_labels"]["cid"] for inst in result["instances"]]
+        assert cids == ["A", "B", "C", "PASTED"]
+
+    def test_copy_paste_min_visibility_one_drops_all_primaries_with_binding(self) -> None:
+        """min_visibility_after_paste=1.0 with any overlap removes all primaries; only pasted survives."""
+        side = 64
+        image, instances = _three_instance_payload(side)
+        paste_mask = np.ones((side, side), dtype=np.uint8)
+        donor: dict[str, Any] = {
+            "image": np.full((side, side, 3), 200, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, side, side],
+            "bbox_labels": {"cid": "PASTED"},
+        }
+        transform = A.Compose(
+            [A.CopyAndPaste(min_visibility_after_paste=1.0, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
+        assert [inst["bbox_labels"]["cid"] for inst in result["instances"]] == ["PASTED"]
+
+
+class TestMosaicBindingRegression:
+    """Mosaic edge cases that can stress the ID/position invariant in masks vs bboxes."""
+
+    def test_mosaic_min_area_filters_some_cells_then_repack_ok(self, rng_137: np.random.Generator) -> None:
+        """Mosaic with bbox min_area drops a tiny instance; remaining mask rows still attach to right ids."""
+        ch, cw = 64, 64
+        th, tw = ch * 2, cw
+        img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        img_m = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 30, 4, 30)),
+                "bbox": np.array([4, 4, 30, 30], dtype=np.float32),
+                "bbox_labels": {"cid": "P_BIG"},
+            },
+            {
+                "mask": _make_mask(ch, cw, (60, 62, 60, 62)),
+                "bbox": np.array([60, 60, 62, 62], dtype=np.float32),
+                "bbox_labels": {"cid": "P_TINY"},
+            },
+        ]
+        mosaic_metadata = [
+            {
+                "image": img_m,
+                "masks": np.stack([_make_mask(ch, cw, (5, 28, 5, 28))]),
+                "bboxes": np.array([[5, 5, 28, 28]], dtype=np.float32),
+                "bbox_labels": {"cid": ["M_BIG"]},
+            },
+        ]
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(2, 1),
+                    target_size=(th, tw),
+                    cell_shape=(ch, cw),
+                    center_range=(0.5, 0.5),
+                    fit_mode="cover",
+                    p=1.0,
+                ),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"], min_area=100),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=img_p, instances=instances, mosaic_metadata=mosaic_metadata)
+        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
+        assert "P_TINY" not in cids
+        assert {"P_BIG", "M_BIG"}.issubset(cids)
+        for inst in result["instances"]:
+            assert inst["mask"].shape == (th, tw)
+
+    def test_mosaic_obb_with_binding(self, rng_137: np.random.Generator) -> None:
+        """Mosaic must preserve the angle column on OBB bboxes when instance binding is active."""
+        ch, cw = 48, 48
+        th, tw = ch * 2, cw
+        img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        img_m = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 40, 4, 40)),
+                "bbox": np.array([4, 4, 40, 40, 0.0], dtype=np.float32),
+                "bbox_labels": {"cid": 1},
+            },
+        ]
+        mosaic_metadata = [
+            {
+                "image": img_m,
+                "masks": np.stack([_make_mask(ch, cw, (6, 42, 6, 42))]),
+                "bboxes": np.array([[6.0, 6.0, 42.0, 42.0, 0.0]], dtype=np.float32),
+                "bbox_labels": {"cid": [2]},
+            },
+        ]
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(2, 1),
+                    target_size=(th, tw),
+                    cell_shape=(ch, cw),
+                    center_range=(0.5, 0.5),
+                    fit_mode="cover",
+                    p=1.0,
+                ),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"], bbox_type="obb"),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=img_p, instances=instances, mosaic_metadata=mosaic_metadata)
+        for inst in result["instances"]:
+            assert inst["bbox"].shape[-1] == 5
+
+    def test_mosaic_then_crop_then_copy_paste_chain(self, rng_137: np.random.Generator) -> None:
+        """3-step chain that historically tripped the IndexError; all three exercise ID remapping."""
+        ch, cw = 64, 64
+        th, tw = ch * 2, cw
+        img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        img_m = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 30, 4, 30)),
+                "bbox": np.array([4, 4, 30, 30], dtype=np.float32),
+                "bbox_labels": {"cid": "P0"},
+            },
+            {
+                "mask": _make_mask(ch, cw, (40, 60, 40, 60)),
+                "bbox": np.array([40, 40, 60, 60], dtype=np.float32),
+                "bbox_labels": {"cid": "P1"},
+            },
+        ]
+        mosaic_metadata = [
+            {
+                "image": img_m,
+                "masks": np.stack([_make_mask(ch, cw, (8, 36, 8, 36))]),
+                "bboxes": np.array([[8.0, 8.0, 36.0, 36.0]], dtype=np.float32),
+                "bbox_labels": {"cid": ["M0"]},
+            },
+        ]
+        crop_h = th // 2 + ch // 4
+        paste_mask = np.zeros((crop_h, tw), dtype=np.uint8)
+        paste_mask[: ch // 2, : cw // 2] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((crop_h, tw, 3), 200, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, cw // 2, ch // 2],
+            "bbox_labels": {"cid": "PASTED"},
+        }
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(2, 1),
+                    target_size=(th, tw),
+                    cell_shape=(ch, cw),
+                    center_range=(0.5, 0.5),
+                    fit_mode="cover",
+                    p=1.0,
+                ),
+                A.Crop(x_min=0, y_min=0, x_max=tw, y_max=crop_h, p=1.0),
+                A.CopyAndPaste(min_visibility_after_paste=0.3, p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(
+            image=img_p,
+            instances=instances,
+            mosaic_metadata=mosaic_metadata,
+            copy_paste_metadata=[donor],
+        )
+        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
+        assert "PASTED" in cids
+        for inst in result["instances"]:
+            assert inst["mask"].shape == (crop_h, tw)
+
+
+class TestMosaicCopyPasteFourInstanceOcclusion:
+    """Mosaic emits 4 instances; CopyAndPaste occludes positions {0, 2}. Outer survivors must keep correct masks."""
+
+    def test_mosaic_4_instances_occlude_positions_0_and_2(self, rng_137: np.random.Generator) -> None:
+        ch, cw = 48, 48
+        th, tw = ch * 2, cw * 2
+        img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        img_m = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
+        instances = [
+            {
+                "mask": _make_mask(ch, cw, (4, 40, 4, 40)),
+                "bbox": np.array([4, 4, 40, 40], dtype=np.float32),
+                "bbox_labels": {"cid": "P0"},
+            },
+        ]
+        mosaic_metadata = [
+            {
+                "image": img_m,
+                "masks": np.stack([_make_mask(ch, cw, (4, 40, 4, 40))]),
+                "bboxes": np.array([[4.0, 4.0, 40.0, 40.0]], dtype=np.float32),
+                "bbox_labels": {"cid": [f"M{i}"]},
+            }
+            for i in range(3)
+        ]
+        # Paste covers the top half (cells 0 and 1) — should occlude P0 and one mosaic instance.
+        paste_mask = np.zeros((th, tw), dtype=np.uint8)
+        paste_mask[:ch, :] = 1
+        donor: dict[str, Any] = {
+            "image": np.full((th, tw, 3), 88, dtype=np.uint8),
+            "mask": paste_mask,
+            "bbox": [0, 0, tw, ch],
+            "bbox_labels": {"cid": "PASTED"},
+        }
+        transform = A.Compose(
+            [
+                A.Mosaic(
+                    grid_yx=(2, 2),
+                    target_size=(th, tw),
+                    cell_shape=(ch, cw),
+                    center_range=(0.5, 0.5),
+                    fit_mode="cover",
+                    p=1.0,
+                ),
+                A.CopyAndPaste(min_visibility_after_paste=0.3, p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"]),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(
+            image=img_p,
+            instances=instances,
+            mosaic_metadata=mosaic_metadata,
+            copy_paste_metadata=[donor],
+        )
+        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
+        assert "PASTED" in cids
+        # The two cells in the bottom row should have survivors with masks confined to bottom half.
+        for inst in result["instances"]:
+            mask = inst["mask"]
+            assert mask.shape == (th, tw)
+            if inst["bbox_labels"]["cid"] != "PASTED":
+                nz = np.argwhere(mask > 0)
+                if nz.size > 0:
+                    assert nz[:, 0].min() >= ch, (
+                        f"Surviving non-pasted instance {inst['bbox_labels']['cid']} mask has pixels in occluded "
+                        "top half — mask row was attached to the wrong instance id."
+                    )
+
+
+class TestFilteringTransformBinding:
+    """Generic sweep: filtering transforms must keep mask rows positionally aligned to instance ids."""
+
+    @staticmethod
+    def _three_inline_instances(side: int) -> tuple[np.ndarray, list[dict[str, Any]]]:
+        """A in left third, B in middle (will be filtered), C in right third."""
+        image = np.zeros((side, side, 3), dtype=np.uint8)
+        third = side // 3
+        instances = [
+            {
+                "mask": _make_mask(side, side, (10, side - 10, 2, third - 2)),
+                "bbox": np.array([2, 10, third - 2, side - 10], dtype=np.float32),
+                "bbox_labels": {"cid": "A"},
+            },
+            {
+                "mask": _make_mask(side, side, (10, side - 10, third + 2, 2 * third - 2)),
+                "bbox": np.array([third + 2, 10, 2 * third - 2, side - 10], dtype=np.float32),
+                "bbox_labels": {"cid": "B"},
+            },
+            {
+                "mask": _make_mask(side, side, (10, side - 10, 2 * third + 2, side - 2)),
+                "bbox": np.array([2 * third + 2, 10, side - 2, side - 10], dtype=np.float32),
+                "bbox_labels": {"cid": "C"},
+            },
+        ]
+        return image, instances
+
+    @pytest.mark.parametrize(
+        ("transform_factory", "expected_dropped"),
+        [
+            pytest.param(
+                lambda side: A.Crop(x_min=0, y_min=0, x_max=side // 3 + 4, y_max=side, p=1.0),
+                {"B", "C"},
+                id="crop-keep-A",
+            ),
+            pytest.param(
+                lambda side: A.CenterCrop(height=side // 3 - 2, width=side // 3 - 2, p=1.0),
+                {"A", "C"},
+                id="center-crop-keep-B",
+            ),
+        ],
+    )
+    def test_crop_family_drops_some_instances_with_binding(
+        self,
+        transform_factory: Any,
+        expected_dropped: set[str],
+    ) -> None:
+        side = 90
+        image, instances = self._three_inline_instances(side)
+        transform = A.Compose(
+            [transform_factory(side)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"], min_area=10),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances)
+        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
+        assert cids.isdisjoint({"A", "B", "C"} - expected_dropped) is False
+        for inst in result["instances"]:
+            label = inst["bbox_labels"]["cid"]
+            mask = inst["mask"]
+            assert mask.shape[:2] == result["image"].shape[:2]
+            nz = np.argwhere(mask > 0)
+            if nz.size == 0:
+                continue
+            x_min = float(inst["bbox"][0])
+            x_max = float(inst["bbox"][2])
+            assert nz[:, 1].min() + 0.5 >= x_min - 1, (
+                f"Mask of instance {label} has pixels left of its bbox - row was attached to wrong instance id."
+            )
+            assert nz[:, 1].max() <= x_max + 1, (
+                f"Mask of instance {label} has pixels right of its bbox - row was attached to wrong instance id."
+            )
+
+    def test_coarse_dropout_with_binding_filters_instance_under_hole(self, rng_137: np.random.Generator) -> None:
+        """A hole over instance B drops B from bboxes; A and C must keep their original masks."""
+        side = 96
+        image, instances = self._three_inline_instances(side)
+        third = side // 3
+        # Force the dropout hole to fully cover B by making it large and well-positioned.
+        transform = A.Compose(
+            [
+                A.CoarseDropout(
+                    num_holes_range=(1, 1),
+                    hole_height_range=(side - 20, side - 20),
+                    hole_width_range=(third - 2, third - 2),
+                    fill=0,
+                    p=1.0,
+                ),
+            ],
+            bbox_params=A.BboxParams(
+                coord_format="pascal_voc",
+                label_fields=["cid"],
+                min_area=10,
+                min_visibility=0.5,
+            ),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances)
+        for inst in result["instances"]:
+            label = inst["bbox_labels"]["cid"]
+            x_min = float(inst["bbox"][0])
+            x_max = float(inst["bbox"][2])
+            assert x_min >= 0 and x_max <= side
+            nz = np.argwhere(inst["mask"] > 0)
+            if nz.size > 0:
+                assert nz[:, 1].min() + 0.5 >= x_min - 1, (
+                    f"Mask of instance {label} bleeds left of bbox - id/position mismatch in dropout path."
+                )
+                assert nz[:, 1].max() <= x_max + 1, (
+                    f"Mask of instance {label} bleeds right of bbox - id/position mismatch in dropout path."
+                )
+
+    def test_keypoint_binding_through_crop(self) -> None:
+        """Crop drops B by leaving it outside the crop region; A and C survive with right keypoints attached."""
+        side = 90
+        image, instances = self._three_inline_instances(side)
+        third = side // 3
+        for inst, kp_xy in zip(
+            instances,
+            [(10.0, 10.0), (third + 5.0, 10.0), (2 * third + 5.0, 10.0)],
+            strict=True,
+        ):
+            inst["keypoints"] = np.array([list(kp_xy)], dtype=np.float32)
+            inst["keypoint_labels"] = {"vis": [int(inst["bbox_labels"]["cid"] != "B")]}
+        transform = A.Compose(
+            [A.Crop(x_min=0, y_min=0, x_max=third + 4, y_max=side, p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["cid"], min_area=10),
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["vis"]),
+            instance_binding=["masks", "bboxes", "keypoints"],
+            seed=137,
+        )
+        result = transform(image=image, instances=instances)
+        by_cid = _instances_by_cid(result["instances"])
+        assert "A" in by_cid
+        assert by_cid["A"]["keypoints"].shape[0] == 1
+        np.testing.assert_array_equal(by_cid["A"]["keypoint_labels"]["vis"], np.array([1]))

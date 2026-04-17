@@ -459,6 +459,81 @@ class CopyAndPaste(DualTransform):
         surviving = np.where(visibility >= self.min_visibility_after_paste)[0]
         return surviving, n_instances
 
+    def _bbox_instance_id_column(self, data: dict[str, Any]) -> np.ndarray | None:
+        """Return the per-row `_bbox_instance_id` integer values from `data["bboxes"]`
+        when instance binding is active, otherwise return `None`.
+
+        Drives ID-based filtering in `apply_to_bboxes` and keeps `apply_to_masks` row-aligned with the
+        surviving bboxes so `Compose._repack_instances` can take its row-aligned fast path instead of the
+        sparse fallback that crashes when positions and IDs disagree.
+        """
+        bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
+        if bbox_processor is None:
+            return None
+        label_fields = bbox_processor.params.label_fields or []
+        if "_bbox_instance_id" not in label_fields:
+            return None
+        bboxes = data.get("bboxes")
+        if not isinstance(bboxes, np.ndarray) or bboxes.size == 0:
+            return np.empty((0,), dtype=np.int64)
+        n_lf = len(label_fields)
+        id_col_idx = bboxes.shape[1] - n_lf + label_fields.index("_bbox_instance_id")
+        return bboxes[:, id_col_idx].astype(np.int64, copy=False)
+
+    def _resolve_paste_surviving_ids(
+        self,
+        data: dict[str, Any],
+        surviving_indices: np.ndarray | None,
+        n_instances: int | None,
+    ) -> tuple[list[int] | None, int]:
+        """Compute the ordered list of surviving original instance IDs and the next
+        paste ID for ID-driven survival selection in CopyAndPaste.
+
+        Returns `(paste_surviving_ids_ordered, next_paste_instance_id)` where:
+        - `paste_surviving_ids_ordered` is in current bbox order, intersected with visibility-surviving
+          mask positions (treated as IDs since the binding contract keeps `data["masks"]` positionally
+          indexed by `_bbox_instance_id`). Empty mask rows are excluded so we never resurrect
+          zero-area instances that an upstream transform happened to leave behind. Returns `None`
+          when binding is not active.
+        - `next_paste_instance_id` is `max(all_existing_ids) + 1` so pasted IDs cannot collide with
+          existing ones (prevents the bug where positions != IDs after upstream bbox filtering).
+        """
+        bbox_id_col = self._bbox_instance_id_column(data)
+        if bbox_id_col is None:
+            if surviving_indices is not None and surviving_indices.size > 0:
+                next_paste = int(np.max(surviving_indices)) + 1
+            else:
+                next_paste = 0
+            return None, next_paste
+
+        # Only IDs that actually carry mask area in the current frame can survive. This guards
+        # against upstream transforms (e.g. Crop without explicit min_area) leaving a zero-area
+        # bbox + zero-area mask row behind: compute_instance_visibility returns 1.0 for empty
+        # masks, which would otherwise sneak the dead instance back into the surviving set.
+        masks_3d = self._instance_masks_to_3d(data.get("masks"))
+        nonempty_set: set[int] | None = None
+        if masks_3d is not None:
+            nonempty_set = {int(i) for i, m in enumerate(masks_3d) if np.any(m > 0)}
+
+        visibility_set: set[int] | None = None
+        if surviving_indices is not None:
+            visibility_set = {int(x) for x in surviving_indices}
+
+        def _alive(i: int) -> bool:
+            if visibility_set is not None and i not in visibility_set:
+                return False
+            return not (nonempty_set is not None and i not in nonempty_set)
+
+        ordered = [int(i) for i in bbox_id_col if _alive(int(i))]
+
+        candidates: list[int] = []
+        if n_instances is not None and n_instances > 0:
+            candidates.append(int(n_instances) - 1)
+        if bbox_id_col.size > 0:
+            candidates.append(int(bbox_id_col.max()))
+        next_paste = (max(candidates) + 1) if candidates else 0
+        return ordered, next_paste
+
     @staticmethod
     def _resize_mask_to_target(mask: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
         if mask.shape[0] != target_shape[0] or mask.shape[1] != target_shape[1]:
@@ -751,10 +826,11 @@ class CopyAndPaste(DualTransform):
 
         surviving_indices, paste_primary_instance_count = self._compute_surviving_indices(data, paste_union_mask)
 
-        if surviving_indices is not None and surviving_indices.size > 0:
-            next_paste_instance_id = int(np.max(surviving_indices)) + 1
-        else:
-            next_paste_instance_id = 0
+        paste_surviving_ids_ordered, next_paste_instance_id = self._resolve_paste_surviving_ids(
+            data,
+            surviving_indices,
+            paste_primary_instance_count,
+        )
         paste_instance_ids = [next_paste_instance_id + k for k in range(len(valid_items))]
 
         pasted_bboxes = (
@@ -790,6 +866,7 @@ class CopyAndPaste(DualTransform):
             "paste_alpha": alpha,
             "paste_instance_masks": pasted_masks,
             "paste_surviving_indices": surviving_indices,
+            "paste_surviving_ids_ordered": paste_surviving_ids_ordered,
             "paste_primary_instance_count": paste_primary_instance_count,
             "paste_bboxes": pasted_bboxes,
             "paste_keypoints": pasted_keypoints,
@@ -803,6 +880,7 @@ class CopyAndPaste(DualTransform):
             "paste_alpha": None,
             "paste_instance_masks": None,
             "paste_surviving_indices": None,
+            "paste_surviving_ids_ordered": None,
             "paste_primary_instance_count": None,
             "paste_bboxes": None,
             "paste_keypoints": None,
@@ -845,46 +923,83 @@ class CopyAndPaste(DualTransform):
             return result
         return mask
 
+    @staticmethod
+    def _normalize_existing_masks(
+        masks: ImageType,
+        paste_instance_masks: np.ndarray,
+    ) -> tuple[np.ndarray | None, np.ndarray]:
+        """Coerce list/tuple existing-mask inputs into a stacked ndarray and align the
+        trailing channel dimension of the pasted mask for later row-wise concatenation.
+
+        Returns `(masks, pasted)` where `masks` is `None` for empty list/tuple inputs and `pasted` is reshaped
+        to match the existing-mask rank when needed (4D existing requires 4D pasted).
+        """
+        if isinstance(masks, (list, tuple)):
+            if len(masks) == 0:
+                return None, paste_instance_masks
+            masks = np.stack([np.asarray(m) for m in masks], axis=0)
+        pasted = paste_instance_masks
+        if masks.ndim == 4 and pasted.ndim == 3:
+            pasted = pasted[..., np.newaxis]
+        return masks, pasted
+
+    @staticmethod
+    def _select_surviving_masks(
+        masks: np.ndarray,
+        paste_surviving_ids_ordered: list[int] | None,
+        paste_surviving_indices: np.ndarray | None,
+    ) -> np.ndarray:
+        """Select the subset of mask rows that survive after the paste using either
+        ID-driven or legacy positional indexing depending on whether binding is active.
+
+        When `paste_surviving_ids_ordered` is not `None` (instance binding active) it indexes by surviving
+        `_bbox_instance_id` values; otherwise the legacy positional `paste_surviving_indices` path is used.
+        """
+        if paste_surviving_ids_ordered is not None:
+            if len(paste_surviving_ids_ordered) > 0:
+                return masks[paste_surviving_ids_ordered].copy()
+            return np.empty((0, *masks.shape[1:]), dtype=masks.dtype)
+        if paste_surviving_indices is not None:
+            return masks[paste_surviving_indices].copy()
+        return masks.copy()
+
+    @staticmethod
+    def _zero_out_paste_region(surviving: np.ndarray, paste_region: np.ndarray) -> None:
+        region = paste_region[np.newaxis, :, :, np.newaxis] if surviving.ndim == 4 else paste_region[np.newaxis, :, :]
+        np.putmask(surviving, np.broadcast_to(region, surviving.shape), 0)
+
     def apply_to_masks(
         self,
         masks: ImageType,
         paste_alpha: np.ndarray | None,
         paste_instance_masks: np.ndarray | None,
         paste_surviving_indices: np.ndarray | None,
+        paste_surviving_ids_ordered: list[int] | None,
         **params: Any,
     ) -> ImageType:
         if paste_alpha is None or paste_instance_masks is None:
             return masks
 
-        if isinstance(masks, (list, tuple)):
-            if len(masks) == 0:
-                return paste_instance_masks
-            masks = np.stack([np.asarray(m) for m in masks], axis=0)
+        masks, pasted = self._normalize_existing_masks(masks, paste_instance_masks)
+        if masks is None or masks.size == 0:
+            return pasted
 
-        pasted = paste_instance_masks
-        if masks.ndim == 4 and pasted.ndim == 3:
-            pasted = pasted[..., np.newaxis]
-
-        if masks.size == 0:
+        # ID-driven path (instance binding active): index masks by surviving _bbox_instance_id values
+        # so the output stays row-aligned with `apply_to_bboxes`. Without this, upstream bbox-only
+        # filtering (e.g. Crop with min_area) leaves position != ID and mask rows attach to wrong ids.
+        surviving = self._select_surviving_masks(masks, paste_surviving_ids_ordered, paste_surviving_indices)
+        if surviving.size == 0:
             return pasted
 
         paste_region = np.any(paste_instance_masks > 0, axis=0)
-
-        surviving = masks[paste_surviving_indices].copy() if paste_surviving_indices is not None else masks.copy()
-
-        if surviving.ndim == 4:
-            paste_region_4d = paste_region[np.newaxis, :, :, np.newaxis]
-            np.putmask(surviving, np.broadcast_to(paste_region_4d, surviving.shape), 0)
-        else:
-            paste_region_3d = paste_region[np.newaxis, :, :]
-            np.putmask(surviving, np.broadcast_to(paste_region_3d, surviving.shape), 0)
-
+        self._zero_out_paste_region(surviving, paste_region)
         return np.concatenate([surviving, pasted], axis=0)
 
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,
         paste_surviving_indices: np.ndarray | None,
+        paste_surviving_ids_ordered: list[int] | None,
         paste_bboxes: np.ndarray | None,
         paste_alpha: np.ndarray | None,
         **params: Any,
@@ -897,10 +1012,14 @@ class CopyAndPaste(DualTransform):
 
         if paste_surviving_indices is not None and bboxes.size > 0:
             if "_bbox_instance_id" in bbox_label_fields:
+                # Filter by _bbox_instance_id values against the resolved surviving ID set.
+                # Mixing IDs with positions (the old `paste_surviving_indices` path) silently
+                # mis-attached bboxes whenever upstream filtering broke position == ID.
+                surviving_ids = paste_surviving_ids_ordered if paste_surviving_ids_ordered is not None else []
                 n_lf = len(bbox_label_fields)
                 id_col = bboxes.shape[1] - n_lf + bbox_label_fields.index("_bbox_instance_id")
                 inst_col = bboxes[:, id_col].astype(np.int64, copy=False)
-                keep = np.isin(inst_col, paste_surviving_indices)
+                keep = np.isin(inst_col, np.asarray(surviving_ids, dtype=np.int64))
                 surviving_bboxes = bboxes[keep]
             else:
                 surviving_bboxes = bboxes[paste_surviving_indices]
@@ -925,6 +1044,7 @@ class CopyAndPaste(DualTransform):
             return keypoints
 
         paste_surviving_indices = params.get("paste_surviving_indices")
+        paste_surviving_ids_ordered = params.get("paste_surviving_ids_ordered")
         paste_primary_instance_count = params.get("paste_primary_instance_count")
         keypoint_processor = cast("KeypointsProcessor", self.get_processor("keypoints"))
         kp_label_fields = keypoint_processor.params.label_fields or []
@@ -932,10 +1052,13 @@ class CopyAndPaste(DualTransform):
         surviving_keypoints = keypoints
         if paste_surviving_indices is not None and keypoints.size > 0:
             if "_kp_instance_id" in kp_label_fields:
+                # Filter keypoints by _kp_instance_id against the resolved surviving ID set
+                # (same set that drives bbox/mask survival), not raw mask positions.
+                surviving_ids = paste_surviving_ids_ordered if paste_surviving_ids_ordered is not None else []
                 n_kf = len(kp_label_fields)
                 id_col = keypoints.shape[1] - n_kf + kp_label_fields.index("_kp_instance_id")
                 inst_col = keypoints[:, id_col].astype(np.int64, copy=False)
-                keep = np.isin(inst_col, paste_surviving_indices)
+                keep = np.isin(inst_col, np.asarray(surviving_ids, dtype=np.int64))
                 surviving_keypoints = keypoints[keep]
             else:
                 aligned = (

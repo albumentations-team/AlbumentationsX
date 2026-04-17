@@ -692,7 +692,7 @@ class TestColorize:
         black = (10, 20, 30)
         white = (200, 150, 100)
         aug = A.Compose(
-            [A.Colorize(black=_fixed(black), white=_fixed(white), p=1.0)],
+            [A.Colorize(black_range=_fixed(black), white_range=_fixed(white), p=1.0)],
             seed=137,
         )
         out = aug(image=img)["image"]
@@ -718,7 +718,7 @@ class TestColorize:
     def test_two_color_ramp_is_monotonic(self):
         img = _gradient_grayscale()
         aug = A.Compose(
-            [A.Colorize(black=_fixed((0, 0, 255)), white=_fixed((255, 255, 0)), p=1.0)],
+            [A.Colorize(black_range=_fixed((0, 0, 255)), white_range=_fixed((255, 255, 0)), p=1.0)],
             seed=137,
         )
         out = aug(image=img)["image"]
@@ -736,9 +736,9 @@ class TestColorize:
         aug = A.Compose(
             [
                 A.Colorize(
-                    black=_fixed(black),
-                    mid=_fixed(mid),
-                    white=_fixed(white),
+                    black_range=_fixed(black),
+                    mid_range=_fixed(mid),
+                    white_range=_fixed(white),
                     mid_value_range=(mid_value, mid_value),
                     p=1.0,
                 ),
@@ -751,7 +751,7 @@ class TestColorize:
     def test_output_is_3_channel_from_2d_input(self):
         img = (np.linspace(0, 255, 100 * 100).reshape(100, 100)).astype(np.uint8)
         aug = A.Compose(
-            [A.Colorize(black=_fixed((0, 0, 0)), white=_fixed((255, 0, 0)), p=1.0)],
+            [A.Colorize(black_range=_fixed((0, 0, 0)), white_range=_fixed((255, 0, 0)), p=1.0)],
             seed=137,
         )
         out = aug(image=img)["image"]
@@ -760,7 +760,7 @@ class TestColorize:
     def test_multichannel_input_passes_through_with_warning(self):
         rng = np.random.default_rng(137)
         img = rng.integers(0, 256, (32, 32, 3), dtype=np.uint8)
-        aug = A.Colorize(black=_fixed((0, 0, 255)), white=_fixed((255, 0, 0)), p=1.0)
+        aug = A.Colorize(black_range=_fixed((0, 0, 255)), white_range=_fixed((255, 0, 0)), p=1.0)
         with pytest.warns(UserWarning, match="single-channel"):
             out = aug(image=img)["image"]
         np.testing.assert_array_equal(out, img)
@@ -768,9 +768,9 @@ class TestColorize:
     def test_random_anchors_change_with_seed(self):
         img = _gradient_grayscale()
         kwargs = dict(
-            black=((0, 0, 0), (50, 50, 50)),
-            white=((200, 200, 200), (255, 255, 255)),
-            mid=((90, 90, 90), (160, 160, 160)),
+            black_range=((0, 0, 0), (50, 50, 50)),
+            white_range=((200, 200, 200), (255, 255, 255)),
+            mid_range=((90, 90, 90), (160, 160, 160)),
             mid_value_range=(80, 180),
             p=1.0,
         )
@@ -783,7 +783,7 @@ class TestColorize:
         black = ((0, 0, 64), (10, 10, 192))
         white = ((230, 200, 0), (255, 255, 32))
         aug = A.Compose(
-            [A.Colorize(black=black, white=white, p=1.0)],
+            [A.Colorize(black_range=black, white_range=white, p=1.0)],
             seed=137,
         )
         for _ in range(8):
@@ -796,12 +796,12 @@ class TestColorize:
 
     @pytest.mark.parametrize("mid_value", [1, 64, 127, 200, 254])
     def test_mid_value_range_accepts_range(self, mid_value):
-        A.Colorize(mid=_fixed((50, 50, 50)), mid_value_range=(mid_value, mid_value), p=1.0)
+        A.Colorize(mid_range=_fixed((50, 50, 50)), mid_value_range=(mid_value, mid_value), p=1.0)
 
     @pytest.mark.parametrize("mid_value_range", [(0, 100), (100, 255), (200, 100), (-1, 50)])
     def test_mid_value_range_invalid_rejected(self, mid_value_range):
         with pytest.raises(Exception):
-            A.Colorize(mid=_fixed((50, 50, 50)), mid_value_range=mid_value_range, p=1.0)
+            A.Colorize(mid_range=_fixed((50, 50, 50)), mid_value_range=mid_value_range, p=1.0)
 
     @pytest.mark.parametrize(
         "color_range",
@@ -814,25 +814,25 @@ class TestColorize:
     )
     def test_invalid_color_range_rejected(self, color_range):
         with pytest.raises(Exception):
-            A.Colorize(black=color_range, p=1.0)
+            A.Colorize(black_range=color_range, p=1.0)
 
     def test_serialization_round_trip(self):
         original = A.Colorize(
-            black=((0, 0, 0), (32, 32, 32)),
-            mid=((60, 70, 80), (100, 110, 120)),
-            white=((200, 210, 220), (255, 255, 255)),
+            black_range=((0, 0, 0), (32, 32, 32)),
+            mid_range=((60, 70, 80), (100, 110, 120)),
+            white_range=((200, 210, 220), (255, 255, 255)),
             mid_value_range=(100, 150),
             p=0.7,
         )
         restored = A.from_dict(A.to_dict(original))
-        assert restored.black == original.black
-        assert restored.mid == original.mid
-        assert restored.white == original.white
+        assert restored.black_range == original.black_range
+        assert restored.mid_range == original.mid_range
+        assert restored.white_range == original.white_range
         assert restored.mid_value_range == original.mid_value_range
         assert restored.p == original.p
 
     def test_two_color_default_collapses_to_neutral_gray(self):
-        # defaults: black==(0,0,0), white==(255,255,255), no mid -> per-channel identity
+        # defaults: black_range==(0,0,0), white_range==(255,255,255), no mid -> per-channel identity
         img = _gradient_grayscale()
         aug = A.Compose([A.Colorize(p=1.0)], seed=137)
         out = aug(image=img)["image"]
@@ -867,9 +867,9 @@ class TestColorize:
         ours = A.Compose(
             [
                 A.Colorize(
-                    black=(black, black),
-                    white=(white, white),
-                    mid=(mid, mid) if mid is not None else None,
+                    black_range=(black, black),
+                    white_range=(white, white),
+                    mid_range=(mid, mid) if mid is not None else None,
                     mid_value_range=(mid_value, mid_value),
                     p=1.0,
                 ),

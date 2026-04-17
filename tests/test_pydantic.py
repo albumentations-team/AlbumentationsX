@@ -362,19 +362,46 @@ def _arms(annotation: Any) -> list[Any]:
     return [annotation]
 
 
-def _is_two_number_tuple(annotation: Any) -> bool:
-    """Return True iff `annotation` is exactly `tuple[int, int]` or `tuple[float, float]`."""
+def _is_uniform_number_tuple(annotation: Any, length: int | None = None) -> bool:
+    """Return True iff `annotation` is `tuple[T, ...]` where every element is the same number
+    type (`int` or `float`). If `length` is given, the tuple must have that arity.
+    """
     annotation = _unwrap(annotation)
     if get_origin(annotation) is not tuple:
         return False
     args = get_args(annotation)
-    return len(args) == 2 and args[0] in (int, float) and args[0] is args[1]
+    if not args or (length is not None and len(args) != length):
+        return False
+    first = args[0]
+    if first not in (int, float):
+        return False
+    return all(arg is first for arg in args)
+
+
+def _is_two_number_tuple(annotation: Any) -> bool:
+    """Return True iff `annotation` is exactly `tuple[int, int]` or `tuple[float, float]`."""
+    return _is_uniform_number_tuple(annotation, length=2)
+
+
+def _is_two_vector_tuple(annotation: Any) -> bool:
+    """Return True iff `annotation` is `tuple[V, V]` where `V` is a uniform number tuple
+    (the per-channel `(low_rgb, high_rgb)` shape used by sampled color anchors).
+    """
+    annotation = _unwrap(annotation)
+    if get_origin(annotation) is not tuple:
+        return False
+    args = get_args(annotation)
+    if len(args) != 2:
+        return False
+    return _is_uniform_number_tuple(args[0]) and args[0] == args[1]
 
 
 def _is_valid_range_annotation(annotation: Any) -> bool:
-    """Each union arm (after stripping `None`/`Annotated`) must be a two-number tuple."""
+    """Each union arm must be either a two-number scalar range or a two-vector range
+    (per-channel sampling, e.g. `tuple[tuple[int, int, int], tuple[int, int, int]]`).
+    """
     arms = _arms(annotation)
-    return bool(arms) and all(_is_two_number_tuple(a) for a in arms)
+    return bool(arms) and all(_is_two_number_tuple(a) or _is_two_vector_tuple(a) for a in arms)
 
 
 def _collect_range_fields() -> list[tuple[type, str, Any]]:
@@ -411,12 +438,13 @@ def test_range_fields_discovered() -> None:
     [pytest.param(c, n, a, id=f"{c.__name__}.{n}") for c, n, a in _RANGE_FIELDS],
 )
 def test_range_field_is_two_number_tuple(cls: type, field_name: str, annotation: Any) -> None:
-    """Every InitSchema field ending in `_range` must be `tuple[int, int]` or
-    `tuple[float, float]` (optionally wrapped in `| None` or unioned across int/float
-    arms for parameters that accept either pixel or fraction inputs). Scalar shorthand
-    is forbidden.
+    """Every InitSchema field ending in `_range` must be either a scalar range
+    (`tuple[int, int]` / `tuple[float, float]`) or a per-channel vector range
+    (`tuple[tuple[int, ...], tuple[int, ...]]` / float variant), optionally wrapped
+    in `| None`. Scalar shorthand is forbidden.
     """
     assert _is_valid_range_annotation(annotation), (
-        f"{cls.__name__}.{field_name} must be typed as tuple[int, int] or tuple[float, float] "
-        f"(optionally `| None`, optionally union of int/float tuple arms); got {annotation!r}"
+        f"{cls.__name__}.{field_name} must be typed as tuple[int, int], tuple[float, float], "
+        f"or a two-vector range tuple[tuple[int, ...], tuple[int, ...]] "
+        f"(optionally `| None`); got {annotation!r}"
     )

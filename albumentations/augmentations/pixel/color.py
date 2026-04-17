@@ -1325,23 +1325,25 @@ class Colorize(ImageOnlyTransform):
 
     Intensity acts as a coordinate along a sampled color ramp:
 
-    - `0` maps to a sample from `black`
-    - `255` (or `1.0` for float32) maps to a sample from `white`
-    - if `mid` is set, intensity sampled from `mid_value_range` maps to a sample from `mid` and
-      the ramp becomes piecewise linear
+    - `0` maps to a sample from `black_range`
+    - `255` (or `1.0` for float32) maps to a sample from `white_range`
+    - if `mid_range` is set, intensity sampled from `mid_value_range` maps to a sample from
+      `mid_range` and the ramp becomes piecewise linear
 
-    Each anchor is given as `(low_rgb, high_rgb)` and sampled per-channel uniformly on every call.
-    Pass identical low/high tuples to fix a color (e.g. `black=((0, 0, 255), (0, 0, 255))`).
-    Anchors are always specified in 0-255 RGB; for float32 inputs they are rescaled to [0, 1]
-    internally.
+    Each anchor range is given as `(low_rgb, high_rgb)` and sampled per-channel uniformly on
+    every call. Pass identical low/high tuples to fix a color
+    (e.g. `black_range=((0, 0, 255), (0, 0, 255))`). Anchors are always specified in 0-255 RGB;
+    for float32 inputs they are rescaled to [0, 1] internally.
 
     Args:
-        black (tuple[tuple[int, int, int], tuple[int, int, int]]): Inclusive per-channel range
-            from which the dark anchor is sampled. Default: ((0, 0, 0), (0, 0, 0)).
-        white (tuple[tuple[int, int, int], tuple[int, int, int]]): Inclusive per-channel range
-            from which the bright anchor is sampled. Default: ((255, 255, 255), (255, 255, 255)).
-        mid (tuple[tuple[int, int, int], tuple[int, int, int]] | None): Optional inclusive range
-            from which the midpoint anchor is sampled. `None` disables 3-color mode. Default: None.
+        black_range (tuple[tuple[int, int, int], tuple[int, int, int]]): Inclusive per-channel
+            range from which the dark anchor is sampled. Default: ((0, 0, 0), (0, 0, 0)).
+        white_range (tuple[tuple[int, int, int], tuple[int, int, int]]): Inclusive per-channel
+            range from which the bright anchor is sampled.
+            Default: ((255, 255, 255), (255, 255, 255)).
+        mid_range (tuple[tuple[int, int, int], tuple[int, int, int]] | None): Optional inclusive
+            range from which the midpoint anchor is sampled. `None` disables 3-color mode.
+            Default: None.
         mid_value_range (tuple[int, int]): Inclusive intensity range (each in 1-254) from which
             the midpoint position is sampled. Ignored when `mid is None`. Default: (127, 127).
         p (float): Probability of applying the transform. Default: 0.5.
@@ -1368,17 +1370,17 @@ class Colorize(ImageOnlyTransform):
         >>>
         >>> # Fixed blue -> yellow ramp (low == high)
         >>> fixed = A.Compose([A.Colorize(
-        ...     black=((0, 0, 255), (0, 0, 255)),
-        ...     white=((255, 255, 0), (255, 255, 0)),
+        ...     black_range=((0, 0, 255), (0, 0, 255)),
+        ...     white_range=((255, 255, 0), (255, 255, 0)),
         ...     p=1.0,
         ... )])
         >>> assert fixed(image=image)["image"].shape == (100, 100, 3)
         >>>
         >>> # Random thermal-ish ramp with random midpoint position
         >>> random_thermal = A.Compose([A.Colorize(
-        ...     black=((0, 0, 64), (32, 0, 192)),
-        ...     mid=((96, 0, 96), (160, 64, 160)),
-        ...     white=((220, 160, 0), (255, 220, 32)),
+        ...     black_range=((0, 0, 64), (32, 0, 192)),
+        ...     mid_range=((96, 0, 96), (160, 64, 160)),
+        ...     white_range=((220, 160, 0), (255, 220, 32)),
         ...     mid_value_range=(96, 160),
         ...     p=1.0,
         ... )])
@@ -1387,9 +1389,9 @@ class Colorize(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        black: Annotated[ColorRange, AfterValidator(_validate_color_range)]
-        white: Annotated[ColorRange, AfterValidator(_validate_color_range)]
-        mid: Annotated[ColorRange, AfterValidator(_validate_color_range)] | None
+        black_range: Annotated[ColorRange, AfterValidator(_validate_color_range)]
+        white_range: Annotated[ColorRange, AfterValidator(_validate_color_range)]
+        mid_range: Annotated[ColorRange, AfterValidator(_validate_color_range)] | None
         mid_value_range: Annotated[
             tuple[int, int],
             AfterValidator(check_range_bounds(1, 254)),
@@ -1398,16 +1400,19 @@ class Colorize(ImageOnlyTransform):
 
     def __init__(
         self,
-        black: tuple[tuple[int, int, int], tuple[int, int, int]] = ((0, 0, 0), (0, 0, 0)),
-        white: tuple[tuple[int, int, int], tuple[int, int, int]] = ((255, 255, 255), (255, 255, 255)),
-        mid: tuple[tuple[int, int, int], tuple[int, int, int]] | None = None,
+        black_range: tuple[tuple[int, int, int], tuple[int, int, int]] = ((0, 0, 0), (0, 0, 0)),
+        white_range: tuple[tuple[int, int, int], tuple[int, int, int]] = (
+            (255, 255, 255),
+            (255, 255, 255),
+        ),
+        mid_range: tuple[tuple[int, int, int], tuple[int, int, int]] | None = None,
         mid_value_range: tuple[int, int] = (127, 127),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.black = black
-        self.white = white
-        self.mid = mid
+        self.black_range = black_range
+        self.white_range = white_range
+        self.mid_range = mid_range
         self.mid_value_range = mid_value_range
 
     def _sample_color(self, color_range: ColorRange) -> tuple[int, int, int]:
@@ -1419,10 +1424,10 @@ class Colorize(ImageOnlyTransform):
         )
 
     def get_params(self) -> dict[str, Any]:
-        mid_color = self._sample_color(self.mid) if self.mid is not None else None
+        mid_color = self._sample_color(self.mid_range) if self.mid_range is not None else None
         return {
-            "black_color": self._sample_color(self.black),
-            "white_color": self._sample_color(self.white),
+            "black_color": self._sample_color(self.black_range),
+            "white_color": self._sample_color(self.white_range),
             "mid_color": mid_color,
             "mid_value": self.py_random.randint(*self.mid_value_range),
         }

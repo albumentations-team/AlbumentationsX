@@ -1166,6 +1166,7 @@ class RandomShadow(ImageOnlyTransform):
             "num_shadows_range": num_shadows,
             "shadow_dimension": self.shadow_dimension,
             "shadow_roi": self.shadow_roi,
+            "shadow_intensity_range": intensities.tolist(),
         }
 
         return {"vertices_list": vertices_list, "intensities": intensities}

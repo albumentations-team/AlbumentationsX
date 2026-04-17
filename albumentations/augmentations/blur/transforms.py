@@ -1300,18 +1300,21 @@ class AdvancedBlur(ImageOnlyTransform):
             else self.py_random.uniform(1, self.beta_range[1])
         )
 
+        noise_matrix = self.random_generator.uniform(
+            *self.noise_range,
+            size=(ksize, ksize),
+        )
+
         self.applied_config = {
             "blur_range": ksize,
             "sigma_x_range": sigma_x,
             "sigma_y_range": sigma_y,
             "rotate_range": float(np.rad2deg(angle)),
             "beta_range": beta,
+            # noise_range is the per-pixel kernel-noise distribution bounds; record the realized
+            # (min, max) of the sampled matrix so applied_config reflects what was actually used.
+            "noise_range": (float(noise_matrix.min()), float(noise_matrix.max())),
         }
-
-        noise_matrix = self.random_generator.uniform(
-            *self.noise_range,
-            size=(ksize, ksize),
-        )
 
         # Generate mesh grid centered at zero.
         ax = np.arange(-ksize // 2 + 1.0, ksize // 2 + 1.0)

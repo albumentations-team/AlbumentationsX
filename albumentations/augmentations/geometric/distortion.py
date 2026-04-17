@@ -890,6 +890,11 @@ class GridDistortion(BaseDistortion):
         steps_x = (1 + self.random_generator.uniform(*self.distort_range, size=self.num_steps + 1)).tolist()
         steps_y = (1 + self.random_generator.uniform(*self.distort_range, size=self.num_steps + 1)).tolist()
 
+        # distort_range is per-cell uniform bounds; record realized (min, max) of sampled distortions
+        # (steps are stored as 1+sample, so subtract 1 to get the raw distortion values).
+        all_steps = np.array(steps_x + steps_y) - 1.0
+        self.applied_config["distort_range"] = (float(all_steps.min()), float(all_steps.max()))
+
         if self.normalized:
             normalized_params = fgeometric.normalize_grid_distortion_steps(
                 image_shape,

@@ -1424,12 +1424,22 @@ class Colorize(ImageOnlyTransform):
         )
 
     def get_params(self) -> dict[str, Any]:
+        black_color = self._sample_color(self.black_range)
+        white_color = self._sample_color(self.white_range)
         mid_color = self._sample_color(self.mid_range) if self.mid_range is not None else None
+        mid_value = self.py_random.randint(*self.mid_value_range)
+
+        # Resolve ranges to sampled scalars in applied_config (per BasicTransform contract).
+        self.applied_config["black_range"] = black_color
+        self.applied_config["white_range"] = white_color
+        self.applied_config["mid_range"] = mid_color
+        self.applied_config["mid_value_range"] = mid_value
+
         return {
-            "black_color": self._sample_color(self.black_range),
-            "white_color": self._sample_color(self.white_range),
+            "black_color": black_color,
+            "white_color": white_color,
             "mid_color": mid_color,
-            "mid_value": self.py_random.randint(*self.mid_value_range),
+            "mid_value": mid_value,
         }
 
     def apply(
@@ -2315,6 +2325,24 @@ class RGBShift(AdditiveNoise):
         self.g_shift_range = g_shift_range
         self.b_shift_range = b_shift_range
 
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        result = super().get_params_dependent_on_data(params=params, data=data)
+
+        # spatial_mode="constant" produces a (C,) noise_map of per-channel shifts already
+        # scaled to image dtype (uint8: [-255, 255], float: [-1, 1]). Record them as sampled scalars.
+        noise_map = result.get("noise_map")
+        if noise_map is not None and noise_map.size >= 3:
+            shifts = noise_map.reshape(-1)[:3].tolist()
+            self.applied_config["r_shift_range"] = float(shifts[0])
+            self.applied_config["g_shift_range"] = float(shifts[1])
+            self.applied_config["b_shift_range"] = float(shifts[2])
+
+        return result
+
 
 class PlasmaBrightnessContrast(ImageOnlyTransform):
     """Plasma fractal (Diamond-Square) pattern varies brightness and contrast spatially.
@@ -2841,16 +2869,24 @@ class Illumination(ImageOnlyTransform):
 
         intensity *= sign
 
+        # Always record all _range overrides so applied_config consistently reflects what was used,
+        # echoing the constructor range for params not active in this mode.
+        self.applied_config = {
+            "intensity_range": abs(intensity),
+            "angle_range": self.angle_range,
+            "center_range": self.center_range,
+            "sigma_range": self.sigma_range,
+        }
+
         if self.mode == "linear":
             angle = self.py_random.uniform(*self.angle_range)
-            self.applied_config = {"intensity_range": abs(intensity), "angle_range": angle}
+            self.applied_config["angle_range"] = angle
             return {
                 "intensity": intensity,
                 "angle": angle,
             }
         if self.mode == "corner":
             corner = self.py_random.randint(0, 3)  # Choose random corner
-            self.applied_config = {"intensity_range": abs(intensity)}
             return {
                 "intensity": intensity,
                 "corner": corner,
@@ -2859,7 +2895,8 @@ class Illumination(ImageOnlyTransform):
         x = self.py_random.uniform(*self.center_range)
         y = self.py_random.uniform(*self.center_range)
         sigma = self.py_random.uniform(*self.sigma_range)
-        self.applied_config = {"intensity_range": abs(intensity), "center_range": (x, y), "sigma_range": sigma}
+        self.applied_config["center_range"] = (x, y)
+        self.applied_config["sigma_range"] = sigma
         return {
             "intensity": intensity,
             "center": (x, y),

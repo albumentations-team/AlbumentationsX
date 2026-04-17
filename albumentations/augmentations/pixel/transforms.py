@@ -1267,6 +1267,12 @@ class Dithering(ImageOnlyTransform):
             random_generator=self.random_generator,
         )
 
+    def get_params(self) -> dict[str, Any]:
+        # noise_range is used as per-pixel uniform bounds inside apply_dithering — record the
+        # bounds in applied_config so consumers can see the parameter that was used.
+        self.applied_config["noise_range"] = self.noise_range
+        return {}
+
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 

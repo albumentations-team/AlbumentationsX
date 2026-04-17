@@ -2891,6 +2891,68 @@ def test_applied_config_contains_p(aug_cls, params):
     )
 
 
+def _get_applied_config_overrides(aug: A.BasicTransform, data: dict[str, Any]) -> dict[str, Any]:
+    """Run the transform and capture the override dict written by get_params* before _build_applied_config
+    merges in constructor defaults. Returns the raw overrides dict (what the transform explicitly set).
+    """
+    captured: dict[str, Any] = {}
+    original_build = aug._build_applied_config
+
+    def capturing_build() -> None:
+        captured.update(aug.applied_config)
+        original_build()
+
+    aug._build_applied_config = capturing_build  # type: ignore[method-assign]
+    aug(**data)
+    return captured
+
+
+@pytest.mark.parametrize(
+    ["aug_cls", "params"],
+    [(cls, p) for cls, p in _ALL_2D_TRANSFORMS if cls not in _SKIP_APPLIED_CONFIG],
+)
+def test_applied_config_writes_overrides_for_range_params(aug_cls, params):
+    """Every constructor param ending in `_range` must be explicitly written to applied_config by
+    get_params / get_params_dependent_on_data — even if the recorded value happens to equal the
+    constructor range (e.g. per-pixel noise bounds, conditional sampling that didn't trigger).
+
+    Contract from BasicTransform.get_applied_config:
+        "Range params are overridden by concrete values sampled in get_params /
+         get_params_dependent_on_data."
+
+    Without this, applied_config silently echoes the constructor range, hiding whether the
+    transform actually sampled anything. Catches transforms where get_params forgot to record
+    sampled values, or wrappers (RGBShift, ShiftScaleRotate) that delegate to a parent class
+    using different key names.
+
+    Conditional sampling (e.g. PhotoMetricDistort's distort_p, Illumination's mode) is handled
+    by retrying with multiple seeds until the override is captured.
+    """
+    range_keys = [k for k in aug_cls._get_valid_config_keys() if k.endswith("_range")]
+    if not range_keys:
+        return
+
+    image = _make_test_image()
+    seen_overrides: set[str] = set()
+    constructor_param_values: dict[str, Any] = {}
+
+    for seed in range(20):
+        aug = aug_cls(**copy.deepcopy(params), p=1.0)
+        aug.set_random_seed(seed)
+        data = TransformTestHelper.prepare_test_data(aug_cls, image)
+        overrides = _get_applied_config_overrides(aug, data)
+        seen_overrides.update(overrides.keys())
+        for key in range_keys:
+            constructor_param_values.setdefault(key, getattr(aug, key, None))
+
+    missing = [key for key in range_keys if key not in seen_overrides and constructor_param_values.get(key) is not None]
+    assert not missing, (
+        f"{aug_cls.__name__}: applied_config never recorded range params {missing} across 20 seeds. "
+        f"get_params/get_params_dependent_on_data must write `self.applied_config[<range_param>] "
+        f"= <sampled_value>` so consumers can introspect what was actually applied."
+    )
+
+
 def test_applied_config_empty_when_skipped():
     """applied_config is empty when transform is skipped (p=0)."""
     image = _make_test_image()

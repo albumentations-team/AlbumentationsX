@@ -733,6 +733,11 @@ class CopyAndPaste(DualTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
+        # Sample blend_sigma upfront so applied_config records it even when the no-op path is taken
+        # (e.g. no valid paste items provided).
+        blend_sigma = self.py_random.uniform(*self.blend_sigma_range)
+        self.applied_config["blend_sigma_range"] = blend_sigma
+
         target_shape = params["shape"][:2]
         gathered = self._gather_valid_copy_paste_items(data, target_shape)
         if gathered is None:
@@ -742,8 +747,6 @@ class CopyAndPaste(DualTransform):
         pasted_masks = np.stack(pasted_masks_list, axis=0)
         paste_union_mask = np.any(pasted_masks > 0, axis=0)
 
-        blend_sigma = self.py_random.uniform(*self.blend_sigma_range)
-        self.applied_config["blend_sigma_range"] = blend_sigma
         alpha = fmixing.create_copy_paste_alpha(pasted_masks, self.blend_mode, blend_sigma)
 
         surviving_indices, paste_primary_instance_count = self._compute_surviving_indices(data, paste_union_mask)

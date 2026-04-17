@@ -1269,7 +1269,7 @@ def test_random_rotate() -> None:
     image = np.ones((192, 192, 3))
     bboxes = [(78, 42, 142, 80, 1), (32, 12, 42, 72, 2)]
     aug = A.Compose(
-        [Rotate(angle_range=15, p=1.0, border_mode=cv2.BORDER_CONSTANT)],
+        [Rotate(angle_range=(-15, 15), p=1.0, border_mode=cv2.BORDER_CONSTANT)],
         bbox_params={"coord_format": "pascal_voc"},
         strict=True,
     )

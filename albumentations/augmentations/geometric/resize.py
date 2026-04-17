@@ -5,17 +5,16 @@ scaling with aspect ratio preservation, and size-constrained transformations.
 """
 
 from collections.abc import Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import cv2
 import numpy as np
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, model_validator
 from typing_extensions import Self
 
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import ALL_TARGETS, ImageType
-from albumentations.core.utils import to_tuple
 
 from . import functional as fgeometric
 
@@ -127,7 +126,7 @@ class RandomScale(DualTransform):
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
-        scale_range: tuple[float, float] | float
+        scale_range: tuple[float, float]
         area_for_downscale: Literal["image", "image_mask"] | None
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -148,14 +147,9 @@ class RandomScale(DualTransform):
             cv2.INTER_LINEAR_EXACT,
         ]
 
-        @field_validator("scale_range")
-        @classmethod
-        def _check_scale_range(cls, v: tuple[float, float] | float) -> tuple[float, float]:
-            return to_tuple(v)
-
     def __init__(
         self,
-        scale_range: tuple[float, float] | float = (-0.1, 0.1),
+        scale_range: tuple[float, float] = (-0.1, 0.1),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_NEAREST_EXACT,
@@ -178,7 +172,7 @@ class RandomScale(DualTransform):
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.scale_range = cast("tuple[float, float]", scale_range)
+        self.scale_range = scale_range
         self.interpolation = interpolation
         self.mask_interpolation = mask_interpolation
         self.area_for_downscale = area_for_downscale

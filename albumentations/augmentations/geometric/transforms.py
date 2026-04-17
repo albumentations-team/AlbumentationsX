@@ -29,7 +29,6 @@ from albumentations.core.bbox_utils import (
 )
 from albumentations.core.pydantic import (
     check_range_bounds,
-    convert_to_1plus_int_range,
     nondecreasing,
 )
 from albumentations.core.transforms_interface import (
@@ -1558,7 +1557,7 @@ class Morphological(DualTransform):
         >>>
         >>> # Example 1: Apply dilation to thicken text and fill gaps
         >>> dilation_transform = A.Morphological(
-        ...     scale=3,               # Size of the structuring element
+        ...     scale=(3, 3),          # Width and height of the structuring element
         ...     operation="dilation",  # Expand white regions (or black if inverted)
         ...     p=1.0                  # Always apply
         ... )
@@ -1568,7 +1567,7 @@ class Morphological(DualTransform):
         >>>
         >>> # Example 2: Apply erosion to thin text or remove noise
         >>> erosion_transform = A.Morphological(
-        ...     scale=(2, 3),          # Random kernel size between 2 and 3
+        ...     scale=(2, 3),          # Width and height of the structuring element
         ...     operation="erosion",   # Shrink white regions (or expand black if inverted)
         ...     p=1.0                  # Always apply
         ... )
@@ -1585,20 +1584,20 @@ class Morphological(DualTransform):
 
     class InitSchema(BaseTransformInitSchema):
         scale: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(convert_to_1plus_int_range),
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1)),
             AfterValidator(check_range_bounds(1, None)),
         ]
         operation: Literal["erosion", "dilation"]
 
     def __init__(
         self,
-        scale: tuple[int, int] | int = (2, 3),
+        scale: tuple[int, int] = (2, 3),
         operation: Literal["erosion", "dilation"] = "dilation",
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.scale = cast("tuple[int, int]", scale)
+        self.scale = scale
         self.operation = operation
 
     def apply(

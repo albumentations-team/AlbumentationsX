@@ -7,7 +7,7 @@ dithering, halftone, and lens flare effects.
 
 import math
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 
 import cv2
 import numpy as np
@@ -27,10 +27,7 @@ from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.utils import non_rgb_error
 from albumentations.core.pydantic import (
     check_range_bounds,
-    convert_to_0plus_range,
-    convert_to_1plus_int_range,
     nondecreasing,
-    process_non_negative_range,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -643,7 +640,7 @@ class Superpixels(ImageOnlyTransform):
     max_size control fraction and segment count. Reduces fine texture.
 
     Args:
-        p_replace_range (tuple[float, float] | float): Defines for any segment the probability that the pixels within
+        p_replace_range (tuple[float, float]): Defines for any segment the probability that the pixels within
             that segment are replaced by their average color (otherwise, the pixels are not changed).
 
 
@@ -662,7 +659,7 @@ class Superpixels(ImageOnlyTransform):
             sampled from the interval `[a, b]` per image.
             Default: (0.1, 0.3)
 
-        n_segments_range (tuple[int, int] | int): Rough target number of how many superpixels to generate.
+        n_segments_range (tuple[int, int]): Rough target number of how many superpixels to generate.
             The algorithm may deviate from this number.
             Lower value will lead to coarser superpixels.
             Higher values are computationally more intensive and will hence lead to a slowdown.
@@ -731,15 +728,13 @@ class Superpixels(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         p_replace_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_0plus_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
         n_segments_range: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(convert_to_1plus_int_range),
-            AfterValidator(check_range_bounds(1, None)),
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1)),
         ]
         max_size: int | None = Field(ge=1)
         interpolation: Literal[
@@ -754,8 +749,8 @@ class Superpixels(ImageOnlyTransform):
 
     def __init__(
         self,
-        p_replace_range: tuple[float, float] | float = (0, 0.1),
-        n_segments_range: tuple[int, int] | int = (100, 100),
+        p_replace_range: tuple[float, float] = (0, 0.1),
+        n_segments_range: tuple[int, int] = (100, 100),
         max_size: int | None = 128,
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -769,8 +764,8 @@ class Superpixels(ImageOnlyTransform):
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.p_replace_range = cast("tuple[float, float]", p_replace_range)
-        self.n_segments_range = cast("tuple[int, int]", n_segments_range)
+        self.p_replace_range = p_replace_range
+        self.n_segments_range = n_segments_range
         self.max_size = max_size
         self.interpolation = interpolation
 
@@ -808,11 +803,8 @@ class RingingOvershoot(ImageOnlyTransform):
     or overshoots near sharp transitions in the image.
 
     Args:
-        blur_range (tuple[int, int] | int): Maximum kernel size for the sinc filter.
-            Must be an odd number in the range [3, inf).
-            If a single int is provided, the kernel size will be randomly chosen
-            from the range (3, blur_range). If a tuple (min, max) is provided,
-            the kernel size will be randomly chosen from the range (min, max).
+        blur_range (tuple[int, int]): Inclusive range for the sinc filter kernel size.
+            Both ends must be odd and >= 3.
             Default: (7, 15).
         cutoff_range (tuple[float, float]): Range to choose the cutoff frequency in radians.
             Values should be in the range (0, π). A lower cutoff frequency will
@@ -884,7 +876,7 @@ class RingingOvershoot(ImageOnlyTransform):
     """
 
     class InitSchema(BlurInitSchema):
-        blur_range: tuple[int, int] | int
+        blur_range: tuple[int, int]
         cutoff_range: Annotated[
             tuple[float, float],
             AfterValidator(check_range_bounds(0, np.pi)),
@@ -893,12 +885,12 @@ class RingingOvershoot(ImageOnlyTransform):
 
     def __init__(
         self,
-        blur_range: tuple[int, int] | int = (7, 15),
+        blur_range: tuple[int, int] = (7, 15),
         cutoff_range: tuple[float, float] = (np.pi / 4, np.pi / 2),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.blur_range = cast("tuple[int, int]", blur_range)
+        self.blur_range = blur_range
         self.cutoff_range = cutoff_range
 
     def get_params(self) -> dict[str, np.ndarray]:
@@ -942,12 +934,12 @@ class UnsharpMask(ImageOnlyTransform):
     which is combined with the original image to enhance edges and fine details.
 
     Args:
-        blur_range (tuple[int, int] | int): maximum Gaussian kernel size for blurring the input image.
+        blur_range (tuple[int, int]): maximum Gaussian kernel size for blurring the input image.
             Must be zero or odd and in range [0, inf). If set to 0 it will be computed from sigma
             as `round(sigma * (3 if img.dtype == np.uint8 else 4) * 2 + 1) + 1`.
             If set single value `blur_range` will be in range (0, blur_range).
             Default: (3, 7).
-        sigma_range (tuple[float, float] | float): Gaussian kernel standard deviation. Must be more or equal to 0.
+        sigma_range (tuple[float, float]): Gaussian kernel standard deviation. Must be more or equal to 0.
             If set single value `sigma_range` will be in range (0, sigma_range).
             If set to 0 sigma will be computed as `sigma = 0.3*((ksize-1)*0.5 - 1) + 0.8`. Default: 0.
         alpha_range (tuple[float, float]): range to choose the visibility of the sharpened image.
@@ -998,40 +990,39 @@ class UnsharpMask(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         sigma_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
         alpha_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_0plus_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
         threshold: int = Field(ge=0, le=255)
-        blur_range: tuple[int, int] | int
+        blur_range: tuple[int, int]
 
         @field_validator("blur_range")
         @classmethod
         def _process_blur(
             cls,
-            value: tuple[int, int] | int,
+            value: tuple[int, int],
             info: ValidationInfo,
         ) -> tuple[int, int]:
             return fblur.process_blur_range(value, info, min_value=3)
 
     def __init__(
         self,
-        blur_range: tuple[int, int] | int = (3, 7),
-        sigma_range: tuple[float, float] | float = 0.0,
-        alpha_range: tuple[float, float] | float = (0.2, 0.5),
+        blur_range: tuple[int, int] = (3, 7),
+        sigma_range: tuple[float, float] = (0.0, 0.0),
+        alpha_range: tuple[float, float] = (0.2, 0.5),
         threshold: int = 10,
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.blur_range = cast("tuple[int, int]", blur_range)
-        self.sigma_range = cast("tuple[float, float]", sigma_range)
-        self.alpha_range = cast("tuple[float, float]", alpha_range)
+        self.blur_range = blur_range
+        self.sigma_range = sigma_range
+        self.alpha_range = alpha_range
         self.threshold = threshold
 
     def get_params_dependent_on_data(

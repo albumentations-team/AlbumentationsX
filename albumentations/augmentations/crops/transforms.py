@@ -22,7 +22,6 @@ from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes, union_of_bboxes
 from albumentations.core.pydantic import (
     check_range_bounds,
-    convert_to_0plus_range,
     nondecreasing,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
@@ -2117,10 +2116,8 @@ class RandomCropNearBBox(BaseCrop):
     Use when you have a region of interest to augment.
 
     Args:
-        max_part_shift (float, (float, float)): Max shift in `height` and `width` dimensions relative
-            to `cropping_bbox` dimension.
-            If max_part_shift is a single float, the range will be (0, max_part_shift).
-            Default (0, 0.3).
+        max_part_shift (tuple[float, float]): Range (min, max) for shift in `height` and `width`
+            dimensions relative to `cropping_bbox` dimension. Default (0, 0.3).
         cropping_bbox_key (str): Additional target key for cropping box. Default `cropping_bbox`.
         p (float): probability of applying the transform. Default: 1.
 
@@ -2144,8 +2141,7 @@ class RandomCropNearBBox(BaseCrop):
 
     class InitSchema(BaseTransformInitSchema):
         max_part_shift: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_0plus_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
@@ -2153,12 +2149,12 @@ class RandomCropNearBBox(BaseCrop):
 
     def __init__(
         self,
-        max_part_shift: tuple[float, float] | float = (0, 0.3),
+        max_part_shift: tuple[float, float] = (0, 0.3),
         cropping_bbox_key: str = "cropping_bbox",
         p: float = 1.0,
     ):
         super().__init__(p=p)
-        self.max_part_shift = cast("tuple[float, float]", max_part_shift)
+        self.max_part_shift = max_part_shift
         self.cropping_bbox_key = cropping_bbox_key
 
     def get_params_dependent_on_data(

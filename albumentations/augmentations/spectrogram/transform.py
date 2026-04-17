@@ -110,8 +110,8 @@ class TimeMasking(XYMasking):
 
     Note:
         This transform is implemented as a subset of XYMasking with fixed parameters:
-        - Single horizontal mask (num_masks_x=1)
-        - No vertical masks (num_masks_y=0)
+        - Single horizontal mask (num_masks_x_range=(1, 1))
+        - No vertical masks (num_masks_y_range=(0, 0))
         - Zero fill value
         - Random mask length up to time_mask_param
 
@@ -144,9 +144,9 @@ class TimeMasking(XYMasking):
             stacklevel=2,
         )
         super().__init__(
-            num_masks_x=1,
-            num_masks_y=0,
-            mask_x_length=(0, time_mask_param),
+            num_masks_x_range=(1, 1),
+            num_masks_y_range=(0, 0),
+            mask_x_length_range=(0, time_mask_param),
             fill=0,
             fill_mask=0,
             p=p,
@@ -186,8 +186,8 @@ class FrequencyMasking(XYMasking):
 
     Note:
         This transform is implemented as a subset of XYMasking with fixed parameters:
-        - Single vertical mask (num_masks_y=1)
-        - No horizontal masks (num_masks_x=0)
+        - Single vertical mask (num_masks_y_range=(1, 1))
+        - No horizontal masks (num_masks_x_range=(0, 0))
         - Zero fill value
         - Random mask length up to freq_mask_param
 
@@ -223,8 +223,8 @@ class FrequencyMasking(XYMasking):
             p=p,
             fill=0,
             fill_mask=0,
-            mask_y_length=(0, freq_mask_param),
-            num_masks_x=0,
-            num_masks_y=1,
+            mask_y_length_range=(0, freq_mask_param),
+            num_masks_x_range=(0, 0),
+            num_masks_y_range=(1, 1),
         )
         self.freq_mask_param = freq_mask_param

@@ -21,9 +21,7 @@ from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.utils import non_rgb_error
 from albumentations.core.pydantic import (
     check_range_bounds,
-    convert_to_0plus_range,
     nondecreasing,
-    process_non_negative_range,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -1178,28 +1176,28 @@ class Spatter(ImageOnlyTransform):
     and spread control appearance. Good for dirty or wet lens robustness.
 
     Args:
-        mean_range (tuple[float, float] | float): Mean value of normal distribution for generating liquid layer.
+        mean_range (tuple[float, float]): Mean value of normal distribution for generating liquid layer.
             If single float, sampled from `(0, mean_range)`.
             If tuple of float, sampled from range `(mean_range[0], mean_range[1])`.
             For a constant value use `(mean, mean)`.
             Default (0.65, 0.65)
-        std_range (tuple[float, float] | float): Standard deviation of normal distribution for generating liquid
+        std_range (tuple[float, float]): Standard deviation of normal distribution for generating liquid
             layer. If single float, sampled from `(0, std_range)`.
             If tuple of float, sampled from range `(std_range[0], std_range[1])`.
             For a constant value use `(std, std)`.
             Default: (0.3, 0.3).
-        gauss_sigma_range (tuple[float, float] | float): Sigma value for gaussian filtering of liquid layer.
+        gauss_sigma_range (tuple[float, float]): Sigma value for gaussian filtering of liquid layer.
             If single float, sampled from `(0, gauss_sigma_range)`.
             If tuple of float, sampled from range `(gauss_sigma_range[0], gauss_sigma_range[1])`.
             For a constant value use `(sigma, sigma)`.
             Default: (2, 3).
-        cutout_threshold_range (tuple[float, float] | float): Threshold for filtering liquid layer
+        cutout_threshold_range (tuple[float, float]): Threshold for filtering liquid layer
             (determines number of drops).
             If single float, sampled from `(0, cutout_threshold_range)`.
             If tuple of float, sampled from range `(cutout_threshold_range[0], cutout_threshold_range[1])`.
             For a constant value use `(t, t)`.
             Default: (0.68, 0.68).
-        intensity_range (tuple[float, float] | float): Intensity of corruption.
+        intensity_range (tuple[float, float]): Intensity of corruption.
             If single float, sampled from `(0, intensity_range)`.
             If tuple of float, sampled from range `(intensity_range[0], intensity_range[1])`.
             For a constant value use `(i, i)`.
@@ -1290,31 +1288,27 @@ class Spatter(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         mean_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_0plus_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
         std_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_0plus_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
         gauss_sigma_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
         cutout_threshold_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_0plus_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
         intensity_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_0plus_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
@@ -1337,21 +1331,21 @@ class Spatter(ImageOnlyTransform):
 
     def __init__(
         self,
-        mean_range: tuple[float, float] | float = (0.65, 0.65),
-        std_range: tuple[float, float] | float = (0.3, 0.3),
-        gauss_sigma_range: tuple[float, float] | float = (2, 2),
-        cutout_threshold_range: tuple[float, float] | float = (0.68, 0.68),
-        intensity_range: tuple[float, float] | float = (0.6, 0.6),
+        mean_range: tuple[float, float] = (0.65, 0.65),
+        std_range: tuple[float, float] = (0.3, 0.3),
+        gauss_sigma_range: tuple[float, float] = (2, 2),
+        cutout_threshold_range: tuple[float, float] = (0.68, 0.68),
+        intensity_range: tuple[float, float] = (0.6, 0.6),
         mode: Literal["rain", "mud"] = "rain",
         color: Sequence[int] | None = None,
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.mean_range = cast("tuple[float, float]", mean_range)
-        self.std_range = cast("tuple[float, float]", std_range)
-        self.gauss_sigma_range = cast("tuple[float, float]", gauss_sigma_range)
-        self.cutout_threshold_range = cast("tuple[float, float]", cutout_threshold_range)
-        self.intensity_range = cast("tuple[float, float]", intensity_range)
+        self.mean_range = mean_range
+        self.std_range = std_range
+        self.gauss_sigma_range = gauss_sigma_range
+        self.cutout_threshold_range = cutout_threshold_range
+        self.intensity_range = intensity_range
         self.mode = mode
         self.color = cast("tuple[int, ...]", color)
 

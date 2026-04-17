@@ -297,7 +297,7 @@ def test_random_crop_near_bbox_with_obb() -> None:
     cropping_bbox = [25, 25, 75, 75]
 
     transform = A.Compose(
-        [A.RandomCropNearBBox(max_part_shift=0.2, cropping_bbox_key="crop_bbox", p=1.0)],
+        [A.RandomCropNearBBox(max_part_shift=(0.2, 0.2), cropping_bbox_key="crop_bbox", p=1.0)],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
 

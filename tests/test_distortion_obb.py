@@ -10,9 +10,9 @@ import albumentations as A
     "transform_cls,params",
     [
         pytest.param(A.ElasticTransform, {"alpha": 1, "sigma": 50}, id="ElasticTransform"),
-        pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": 0.3}, id="GridDistortion"),
-        pytest.param(A.OpticalDistortion, {"distort_range": 0.05}, id="OpticalDistortion"),
-        pytest.param(A.PiecewiseAffine, {"scale": (0.03, 0.05)}, id="PiecewiseAffine"),
+        pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.3, 0.3)}, id="GridDistortion"),
+        pytest.param(A.OpticalDistortion, {"distort_range": (-0.05, 0.05)}, id="OpticalDistortion"),
+        pytest.param(A.PiecewiseAffine, {"scale_range": (0.03, 0.05)}, id="PiecewiseAffine"),
         pytest.param(A.ThinPlateSpline, {"scale_range": (0.2, 0.4)}, id="ThinPlateSpline"),
     ],
 )
@@ -31,9 +31,9 @@ def test_distortion_transforms_declare_obb_support(transform_cls, params):
     "transform_cls,params",
     [
         pytest.param(A.ElasticTransform, {"alpha": 1, "sigma": 50}, id="ElasticTransform"),
-        pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": 0.3}, id="GridDistortion"),
-        pytest.param(A.OpticalDistortion, {"distort_range": 0.05}, id="OpticalDistortion"),
-        pytest.param(A.PiecewiseAffine, {"scale": (0.03, 0.05)}, id="PiecewiseAffine"),
+        pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.3, 0.3)}, id="GridDistortion"),
+        pytest.param(A.OpticalDistortion, {"distort_range": (-0.05, 0.05)}, id="OpticalDistortion"),
+        pytest.param(A.PiecewiseAffine, {"scale_range": (0.03, 0.05)}, id="PiecewiseAffine"),
     ],
 )
 @pytest.mark.obb
@@ -71,7 +71,7 @@ def test_distortion_transforms_preserve_obb_format(transform_cls, params):
     "transform_cls,params",
     [
         pytest.param(A.ElasticTransform, {"alpha": 1, "sigma": 50}, id="ElasticTransform"),
-        pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": 0.3}, id="GridDistortion"),
+        pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.3, 0.3)}, id="GridDistortion"),
     ],
 )
 @pytest.mark.obb
@@ -114,14 +114,14 @@ def test_distortion_transforms_obb_with_labels(transform_cls, params):
         ),
         pytest.param(
             A.GridDistortion,
-            {"num_steps": 5, "distort_range": 0.3},
+            {"num_steps": 5, "distort_range": (-0.3, 0.3)},
             "pascal_voc",
             [30, 30, 70, 70, 45],
             id="GridDistortion-pascal_voc",
         ),
         pytest.param(
             A.OpticalDistortion,
-            {"distort_range": 0.05},
+            {"distort_range": (-0.05, 0.05)},
             "coco",
             [30, 30, 40, 40, 45],
             id="OpticalDistortion-coco",

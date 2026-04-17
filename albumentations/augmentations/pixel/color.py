@@ -29,9 +29,6 @@ from albumentations.augmentations.pixel.noise import AdditiveNoise
 from albumentations.augmentations.utils import non_rgb_error
 from albumentations.core.pydantic import (
     check_range_bounds,
-    convert_to_1centered_range,
-    convert_to_1plus_range,
-    create_symmetric_range,
     nondecreasing,
 )
 from albumentations.core.transforms_interface import (
@@ -45,7 +42,6 @@ from albumentations.core.type_definitions import (
     ImageType,
     VolumeType,
 )
-from albumentations.core.utils import to_tuple
 
 __all__ = [
     "CLAHE",
@@ -282,30 +278,21 @@ class HueSaturationValue(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        hue_shift_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
-        sat_shift_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
-        val_shift_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
+        hue_shift_range: tuple[float, float]
+        sat_shift_range: tuple[float, float]
+        val_shift_range: tuple[float, float]
 
     def __init__(
         self,
-        hue_shift_range: tuple[float, float] | float = (-20, 20),
-        sat_shift_range: tuple[float, float] | float = (-30, 30),
-        val_shift_range: tuple[float, float] | float = (-20, 20),
+        hue_shift_range: tuple[float, float] = (-20, 20),
+        sat_shift_range: tuple[float, float] = (-30, 30),
+        val_shift_range: tuple[float, float] = (-20, 20),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.hue_shift_range = cast("tuple[float, float]", hue_shift_range)
-        self.sat_shift_range = cast("tuple[float, float]", sat_shift_range)
-        self.val_shift_range = cast("tuple[float, float]", val_shift_range)
+        self.hue_shift_range = hue_shift_range
+        self.sat_shift_range = sat_shift_range
+        self.val_shift_range = val_shift_range
 
     def apply(
         self,
@@ -460,13 +447,11 @@ class Posterize(ImageOnlyTransform):
     color channel, effectively creating a "poster-like" effect with fewer color gradations.
 
     Args:
-        num_bits (int | tuple[int, int] | list[int] | list[tuple[int, int]]):
-            Defines the number of bits to keep for each color channel. Can be specified in several ways:
-            - Single int: Same number of bits for all channels. Range: [1, 7].
+        num_bits (tuple[int, int] | list[tuple[int, int]]):
+            Defines the number of bits to keep for each color channel. Can be specified as:
             - tuple of two ints: (min_bits, max_bits) to randomly choose from. Range for each: [1, 7].
-            - list of three ints: Specific number of bits for each channel [r_bits, g_bits, b_bits].
-            - list of three tuples: Ranges for each channel [(r_min, r_max), (g_min, g_max), (b_min, b_max)].
-            Default: 4
+            - list of per-channel tuples: Ranges per channel [(r_min, r_max), (g_min, g_max), ...].
+            Default: (4, 4)
 
         p (float): Probability of applying the transform. Default: 0.5.
 
@@ -499,15 +484,11 @@ class Posterize(ImageOnlyTransform):
         >>> image = np.random.randint(0, 256, [100, 100, 3], dtype=np.uint8)
 
         # Posterize all channels to 3 bits
-        >>> transform = A.Posterize(num_bits=3, p=1.0)
+        >>> transform = A.Posterize(num_bits=(3, 3), p=1.0)
         >>> posterized_image = transform(image=image)["image"]
 
         # Randomly posterize between 2 and 5 bits
         >>> transform = A.Posterize(num_bits=(2, 5), p=1.0)
-        >>> posterized_image = transform(image=image)["image"]
-
-        # Different bits for each channel
-        >>> transform = A.Posterize(num_bits=[3, 5, 2], p=1.0)
         >>> posterized_image = transform(image=image)["image"]
 
         # Range of bits for each channel
@@ -521,7 +502,7 @@ class Posterize(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        num_bits: int | tuple[int, int] | list[tuple[int, int]]
+        num_bits: tuple[int, int] | list[tuple[int, int]]
 
         @field_validator("num_bits")
         @classmethod
@@ -529,21 +510,27 @@ class Posterize(ImageOnlyTransform):
             cls,
             num_bits: Any,
         ) -> tuple[int, int] | list[tuple[int, int]]:
-            if isinstance(num_bits, int):
-                if num_bits < 1 or num_bits > SEVEN:
-                    raise ValueError("num_bits must be in the range [1, 7]")
-                return (num_bits, num_bits)
-            if isinstance(num_bits, Sequence) and len(num_bits) > PAIR:
-                return [to_tuple(i, i) for i in num_bits]
-            return to_tuple(num_bits, num_bits)
+            def _check_pair(pair: Any) -> tuple[int, int]:
+                if not isinstance(pair, Sequence) or isinstance(pair, str) or len(pair) != PAIR:
+                    raise ValueError("num_bits must be a tuple of two ints or a list of such tuples")
+                lo, hi = int(pair[0]), int(pair[1])
+                if not (1 <= lo <= SEVEN and 1 <= hi <= SEVEN):
+                    raise ValueError("num_bits values must be in [1, 7]")
+                if lo > hi:
+                    raise ValueError("num_bits min must be <= max")
+                return (lo, hi)
+
+            if isinstance(num_bits, list):
+                return [_check_pair(item) for item in num_bits]
+            return _check_pair(num_bits)
 
     def __init__(
         self,
-        num_bits: int | tuple[int, int] | list[tuple[int, int]] = 4,
+        num_bits: tuple[int, int] | list[tuple[int, int]] = (4, 4),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.num_bits = cast("tuple[int, int] | list[tuple[int, int]]", num_bits)
+        self.num_bits = num_bits
 
     def apply(
         self,
@@ -730,8 +717,8 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             maximum value of the image's dtype. If False, uses the mean pixel value for adjustment.
             Default: True.
 
-        ensure_safe_range (bool): If True, adjusts alpha and beta to prevent overflow/underflow.
-            This ensures output values stay within the valid range for the image dtype without clipping.
+        ensure_safe_output (bool): If True, adjusts alpha and beta to prevent overflow/underflow.
+            This keeps output values inside the valid range for the image dtype without clipping.
             Default: False.
 
         p (float): Probability of applying the transform. Default: 0.5.
@@ -799,30 +786,24 @@ class RandomBrightnessContrast(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        brightness_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
-        contrast_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
+        brightness_range: tuple[float, float]
+        contrast_range: tuple[float, float]
         brightness_by_max: bool
-        ensure_safe_range: bool
+        ensure_safe_output: bool
 
     def __init__(
         self,
-        brightness_range: tuple[float, float] | float = (-0.2, 0.2),
-        contrast_range: tuple[float, float] | float = (-0.2, 0.2),
+        brightness_range: tuple[float, float] = (-0.2, 0.2),
+        contrast_range: tuple[float, float] = (-0.2, 0.2),
         brightness_by_max: bool = True,
-        ensure_safe_range: bool = False,
+        ensure_safe_output: bool = False,
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.brightness_range = cast("tuple[float, float]", brightness_range)
-        self.contrast_range = cast("tuple[float, float]", contrast_range)
+        self.brightness_range = brightness_range
+        self.contrast_range = contrast_range
         self.brightness_by_max = brightness_by_max
-        self.ensure_safe_range = ensure_safe_range
+        self.ensure_safe_output = ensure_safe_output
 
     def apply(
         self,
@@ -835,8 +816,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         # Scale beta according to brightness_by_max setting
         beta = beta * max_value if self.brightness_by_max else beta * mean(img)
 
-        # Clip values to safe ranges if needed
-        if self.ensure_safe_range:
+        if self.ensure_safe_output:
             alpha, beta = fpixel.get_safe_brightness_contrast_params(
                 alpha,
                 beta,
@@ -1031,18 +1011,17 @@ class RandomGamma(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         gamma_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_1plus_range),
-            AfterValidator(check_range_bounds(1, None)),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(1)),
         ]
 
     def __init__(
         self,
-        gamma_range: tuple[float, float] | float = (80, 120),
+        gamma_range: tuple[float, float] = (80, 120),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.gamma_range = cast("tuple[float, float]", gamma_range)
+        self.gamma_range = gamma_range
 
     def apply(self, img: ImageType, gamma: float, **params: Any) -> ImageType:
         return fpixel.gamma_transform(img, gamma=gamma)
@@ -1512,7 +1491,7 @@ class ColorJitter(ImageOnlyTransform):
     These differences may result in slightly different output compared to torchvision's ColorJitter.
 
     Args:
-        brightness_range (tuple[float, float] | float): How much to jitter brightness.
+        brightness_range (tuple[float, float]): How much to jitter brightness.
             If float:
                 The brightness factor is chosen uniformly from [max(0, 1 - brightness_range), 1 + brightness_range].
             If tuple:
@@ -1520,7 +1499,7 @@ class ColorJitter(ImageOnlyTransform):
             Should be non-negative numbers.
             Default: (0.8, 1.2)
 
-        contrast_range (tuple[float, float] | float): How much to jitter contrast.
+        contrast_range (tuple[float, float]): How much to jitter contrast.
             If float:
                 The contrast factor is chosen uniformly from [max(0, 1 - contrast_range), 1 + contrast_range].
             If tuple:
@@ -1528,7 +1507,7 @@ class ColorJitter(ImageOnlyTransform):
             Should be non-negative numbers.
             Default: (0.8, 1.2)
 
-        saturation_range (tuple[float, float] | float): How much to jitter saturation.
+        saturation_range (tuple[float, float]): How much to jitter saturation.
             If float:
                 The saturation factor is chosen uniformly from [max(0, 1 - saturation_range), 1 + saturation_range].
             If tuple:
@@ -1579,44 +1558,40 @@ class ColorJitter(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         brightness_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_1centered_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
         ]
         contrast_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_1centered_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
         ]
         saturation_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_1centered_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
         ]
         hue_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(-0.5, 0.5)),
             AfterValidator(nondecreasing),
         ]
 
     def __init__(
         self,
-        brightness_range: tuple[float, float] | float = (0.8, 1.2),
-        contrast_range: tuple[float, float] | float = (0.8, 1.2),
-        saturation_range: tuple[float, float] | float = (0.8, 1.2),
-        hue_range: tuple[float, float] | float = (-0.5, 0.5),
+        brightness_range: tuple[float, float] = (0.8, 1.2),
+        contrast_range: tuple[float, float] = (0.8, 1.2),
+        saturation_range: tuple[float, float] = (0.8, 1.2),
+        hue_range: tuple[float, float] = (-0.5, 0.5),
         p: float = 0.5,
     ):
         super().__init__(p=p)
 
-        self.brightness_range = cast("tuple[float, float]", brightness_range)
-        self.contrast_range = cast("tuple[float, float]", contrast_range)
-        self.saturation_range = cast("tuple[float, float]", saturation_range)
-        self.hue_range = cast("tuple[float, float]", hue_range)
+        self.brightness_range = brightness_range
+        self.contrast_range = contrast_range
+        self.saturation_range = saturation_range
+        self.hue_range = hue_range
 
     def get_params(self) -> dict[str, Any]:
         brightness = self.py_random.uniform(*self.brightness_range)
@@ -1701,7 +1676,7 @@ class ChromaticAberration(ImageOnlyTransform):
     of the image, while leaving the green channel unchanged.
 
     Args:
-        primary_distortion_range (tuple[float, float] | float): Range of the primary radial distortion coefficient.
+        primary_distortion_range (tuple[float, float]): Range of the primary radial distortion coefficient.
             If a single float value is provided, the range
             will be (-primary_distortion_range, primary_distortion_range).
             This parameter controls the distortion in the center of the image:
@@ -1709,7 +1684,7 @@ class ChromaticAberration(ImageOnlyTransform):
             - Negative values result in barrel distortion (edges bend outward)
             Default: (-0.02, 0.02).
 
-        secondary_distortion_range (tuple[float, float] | float): Range of the secondary radial distortion coefficient.
+        secondary_distortion_range (tuple[float, float]): Range of the secondary radial distortion coefficient.
             If a single float value is provided, the range
             will be (-secondary_distortion_range, secondary_distortion_range).
             This parameter controls the distortion in the corners of the image:
@@ -1764,14 +1739,8 @@ class ChromaticAberration(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        primary_distortion_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
-        secondary_distortion_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
+        primary_distortion_range: tuple[float, float]
+        secondary_distortion_range: tuple[float, float]
         mode: Literal["green_purple", "red_blue", "random"]
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -1785,8 +1754,8 @@ class ChromaticAberration(ImageOnlyTransform):
 
     def __init__(
         self,
-        primary_distortion_range: tuple[float, float] | float = (-0.02, 0.02),
-        secondary_distortion_range: tuple[float, float] | float = (-0.05, 0.05),
+        primary_distortion_range: tuple[float, float] = (-0.02, 0.02),
+        secondary_distortion_range: tuple[float, float] = (-0.05, 0.05),
         mode: Literal["green_purple", "red_blue", "random"] = "green_purple",
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -1800,14 +1769,8 @@ class ChromaticAberration(ImageOnlyTransform):
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.primary_distortion_range = cast(
-            "tuple[float, float]",
-            primary_distortion_range,
-        )
-        self.secondary_distortion_range = cast(
-            "tuple[float, float]",
-            secondary_distortion_range,
-        )
+        self.primary_distortion_range = primary_distortion_range
+        self.secondary_distortion_range = secondary_distortion_range
         self.mode = mode
         self.interpolation = interpolation
 
@@ -2200,37 +2163,26 @@ class RGBShift(AdditiveNoise):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        r_shift_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
-        g_shift_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
-        b_shift_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
+        r_shift_range: tuple[float, float]
+        g_shift_range: tuple[float, float]
+        b_shift_range: tuple[float, float]
 
     def __init__(
         self,
-        r_shift_range: tuple[float, float] | float = (-20, 20),
-        g_shift_range: tuple[float, float] | float = (-20, 20),
-        b_shift_range: tuple[float, float] | float = (-20, 20),
+        r_shift_range: tuple[float, float] = (-20, 20),
+        g_shift_range: tuple[float, float] = (-20, 20),
+        b_shift_range: tuple[float, float] = (-20, 20),
         p: float = 0.5,
     ):
-        # Convert RGB shift limits to normalized ranges if needed
         def normalize_range(limit: tuple[float, float]) -> tuple[float, float]:
-            # If any value is > 1, assume uint8 range and normalize
             if abs(limit[0]) > 1 or abs(limit[1]) > 1:
                 return (limit[0] / 255.0, limit[1] / 255.0)
             return limit
 
         ranges = [
-            normalize_range(cast("tuple[float, float]", r_shift_range)),
-            normalize_range(cast("tuple[float, float]", g_shift_range)),
-            normalize_range(cast("tuple[float, float]", b_shift_range)),
+            normalize_range(r_shift_range),
+            normalize_range(g_shift_range),
+            normalize_range(b_shift_range),
         ]
 
         # Initialize with fixed noise type and spatial mode
@@ -2238,14 +2190,12 @@ class RGBShift(AdditiveNoise):
             noise_type="uniform",
             spatial_mode="constant",
             noise_params={"ranges": ranges},
-            approximation=1.0,
             p=p,
         )
 
-        # Store original limits for get_transform_init_args
-        self.r_shift_range = cast("tuple[float, float]", r_shift_range)
-        self.g_shift_range = cast("tuple[float, float]", g_shift_range)
-        self.b_shift_range = cast("tuple[float, float]", b_shift_range)
+        self.r_shift_range = r_shift_range
+        self.g_shift_range = g_shift_range
+        self.b_shift_range = b_shift_range
 
 
 class PlasmaBrightnessContrast(ImageOnlyTransform):

@@ -332,7 +332,7 @@ def test_augmentations_wont_change_shape_rgb(augmentation_cls, params):
     np.testing.assert_array_equal(mask_3ch.shape, result["mask"].shape)
 
 
-@pytest.mark.parametrize(["augmentation_cls", "params"], [[A.RandomCropNearBBox, {"max_part_shift": 0.15}]])
+@pytest.mark.parametrize(["augmentation_cls", "params"], [[A.RandomCropNearBBox, {"max_part_shift": (0.15, 0.15)}]])
 @pytest.mark.parametrize("image", IMAGES)
 def test_image_only_crop_around_bbox_augmentation(augmentation_cls, params, image):
     aug = augmentation_cls(p=1, **params)
@@ -841,7 +841,7 @@ def test_pad_if_needed_position(params, image_shape):
                 "fill": 0,
             },
             A.RandomScale: {
-                "scale_range": 0.2,
+                "scale_range": (-0.2, 0.2),
                 "interpolation": cv2.INTER_NEAREST,
             },
             A.Affine: {

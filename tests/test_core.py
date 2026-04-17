@@ -23,7 +23,6 @@ from albumentations.core.composition import (
     SomeOf,
 )
 from albumentations.core.transforms_interface import DualTransform, ImageOnlyTransform, NoOp
-from albumentations.core.utils import to_tuple
 from tests.conftest import (
     IMAGES,
     SQUARE_UINT8_IMAGE,
@@ -116,23 +115,6 @@ def test_sequential(target_as_params):
     image = np.ones((8, 8))
     augmentation(image=image)
     assert len([transform for transform in transforms if transform.called]) == len(transforms)
-
-
-@pytest.mark.parametrize(
-    "input,kwargs,expected",
-    [
-        (10, {}, (-10, 10)),
-        (0.5, {}, (-0.5, 0.5)),
-        ((-20, 20), {}, (-20, 20)),
-        ([-20, 20], {}, (-20, 20)),
-        ((1, 2), {"low": 1}, (1, 2)),
-        (100, {"low": 30}, (30, 100)),
-        (10, {"bias": 1}, (-9, 11)),
-        (100, {"bias": 2}, (-98, 102)),
-    ],
-)
-def test_to_tuple(input, kwargs, expected):
-    assert to_tuple(input, **kwargs) == expected
 
 
 @pytest.mark.parametrize("image", IMAGES)
@@ -1525,8 +1507,8 @@ def test_transform_tracking(image, transforms, expected_names):
 @pytest.mark.parametrize(
     ["transform_class", "transform_params"],
     [
-        (A.Blur, {"blur_range": 3}),
-        (A.RandomBrightnessContrast, {"brightness_range": 0.2, "contrast_range": 0.2}),
+        (A.Blur, {"blur_range": (3, 3)}),
+        (A.RandomBrightnessContrast, {"brightness_range": (-0.2, 0.2), "contrast_range": (-0.2, 0.2)}),
         (A.HorizontalFlip, {}),
     ],
 )
@@ -2310,7 +2292,7 @@ def test_uint8_grayscale_handling():
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
-            A.RandomBrightnessContrast(brightness_range=0.2, contrast_range=0.2, p=1.0),
+            A.RandomBrightnessContrast(brightness_range=(-0.2, 0.2), contrast_range=(-0.2, 0.2), p=1.0),
         ],
     )
 
@@ -2419,7 +2401,7 @@ def test_grayscale_mask_handling():
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
-            A.Rotate(angle_range=45, p=1.0),
+            A.Rotate(angle_range=(-45, 45), p=1.0),
         ],
     )
 
@@ -2441,7 +2423,7 @@ def test_grayscale_masks_batch_handling():
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
-            A.Rotate(angle_range=45, p=1.0),
+            A.Rotate(angle_range=(-45, 45), p=1.0),
         ],
     )
 

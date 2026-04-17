@@ -254,7 +254,7 @@ class TestKeypointLabelSwapping:
 
         transform = A.Compose(
             [
-                A.Rotate(angle_range=45, p=1.0),  # Rotation shouldn't affect semantic labels
+                A.Rotate(angle_range=(-45, 45), p=1.0),  # Rotation shouldn't affect semantic labels
             ],
             keypoint_params=A.KeypointParams(
                 coord_format="xy",

@@ -41,7 +41,7 @@ class TestRandomScaleOBB:
         bbox_labels = [1, 2, 3]
 
         transform = A.Compose(
-            [A.RandomScale(scale_range=0.5, p=1.0)],
+            [A.RandomScale(scale_range=(-0.5, 0.5), p=1.0)],
             bbox_params=A.BboxParams(
                 coord_format="albumentations",
                 bbox_type="obb",
@@ -63,7 +63,7 @@ class TestRandomScaleOBB:
         bbox_labels = [1]
 
         transform = A.Compose(
-            [A.RandomScale(scale_range=0.3, p=1.0)],
+            [A.RandomScale(scale_range=(-0.3, 0.3), p=1.0)],
             bbox_params=A.BboxParams(
                 coord_format="albumentations",
                 bbox_type="obb",

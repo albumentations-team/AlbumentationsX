@@ -5,7 +5,7 @@ and other grid-like data representations where masking in specific directions (t
 can improve model robustness and generalization.
 """
 
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 
 import numpy as np
 from pydantic import model_validator
@@ -14,8 +14,8 @@ from typing_extensions import Self
 
 from albumentations.augmentations.dropout.transforms import BaseDropout
 from albumentations.core.pydantic import (
+    check_range_bounds,
     nondecreasing,
-    process_non_negative_int_range,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema
 
@@ -32,18 +32,12 @@ class XYMasking(BaseDropout):
     maximum size along each axis.
 
     Args:
-        num_masks_x (int | tuple[int, int]): Number or range of horizontal regions to mask. Defaults to 0.
-        num_masks_y (int | tuple[int, int]): Number or range of vertical regions to mask. Defaults to 0.
-        mask_x_length (int | tuple[int, int]): Specifies the length of the masks along
-            the X (horizontal) axis. If an integer is provided, it sets a fixed mask length.
-            If a tuple of two integers (min, max) is provided,
-            the mask length is randomly chosen within this range for each mask.
-            This allows for variable-length masks in the horizontal direction.
-        mask_y_length (int | tuple[int, int]): Specifies the height of the masks along
-            the Y (vertical) axis. Similar to `mask_x_length`, an integer sets a fixed mask height,
-            while a tuple (min, max) allows for variable-height masks, chosen randomly
-            within the specified range for each mask. This flexibility facilitates creating masks of various
-            sizes in the vertical direction.
+        num_masks_x_range (tuple[int, int]): Range of horizontal regions to mask. Defaults to (0, 0).
+        num_masks_y_range (tuple[int, int]): Range of vertical regions to mask. Defaults to (0, 0).
+        mask_x_length_range (tuple[int, int]): Range (min, max) of mask length along the X (horizontal)
+            axis. The length is randomly chosen within this range for each mask. Defaults to (0, 0).
+        mask_y_length_range (tuple[int, int]): Range (min, max) of mask height along the Y (vertical)
+            axis. The height is randomly chosen within this range for each mask. Defaults to (0, 0).
         fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
@@ -67,29 +61,29 @@ class XYMasking(BaseDropout):
         hbb
 
     Note:
-        Either `max_x_length` or `max_y_length` or both must be defined.
+        Either `mask_x_length_range` or `mask_y_length_range` or both must have a positive max.
 
     """
 
     class InitSchema(BaseTransformInitSchema):
-        num_masks_x: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(process_non_negative_int_range),
+        num_masks_x_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
-        num_masks_y: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(process_non_negative_int_range),
+        num_masks_y_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
-        mask_x_length: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(process_non_negative_int_range),
+        mask_x_length_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
-        mask_y_length: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(process_non_negative_int_range),
+        mask_y_length_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
 
@@ -98,51 +92,42 @@ class XYMasking(BaseDropout):
 
         @model_validator(mode="after")
         def _check_mask_length(self) -> Self:
-            if (
-                isinstance(self.mask_x_length, int)
-                and self.mask_x_length <= 0
-                and isinstance(self.mask_y_length, int)
-                and self.mask_y_length <= 0
-            ):
-                msg = "At least one of `mask_x_length` or `mask_y_length` Should be a positive number."
+            if self.mask_x_length_range[1] <= 0 and self.mask_y_length_range[1] <= 0:
+                msg = "At least one of `mask_x_length_range` or `mask_y_length_range` must have a positive max value."
                 raise ValueError(msg)
 
             return self
 
     def __init__(
         self,
-        num_masks_x: tuple[int, int] | int = 0,
-        num_masks_y: tuple[int, int] | int = 0,
-        mask_x_length: tuple[int, int] | int = 0,
-        mask_y_length: tuple[int, int] | int = 0,
+        num_masks_x_range: tuple[int, int] = (0, 0),
+        num_masks_y_range: tuple[int, int] = (0, 0),
+        mask_x_length_range: tuple[int, int] = (0, 0),
+        mask_y_length_range: tuple[int, int] = (0, 0),
         fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"] = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):
         super().__init__(p=p, fill=fill, fill_mask=fill_mask)
-        self.num_masks_x = cast("tuple[int, int]", num_masks_x)
-        self.num_masks_y = cast("tuple[int, int]", num_masks_y)
+        self.num_masks_x_range = num_masks_x_range
+        self.num_masks_y_range = num_masks_y_range
 
-        self.mask_x_length = cast("tuple[int, int]", mask_x_length)
-        self.mask_y_length = cast("tuple[int, int]", mask_y_length)
+        self.mask_x_length_range = mask_x_length_range
+        self.mask_y_length_range = mask_y_length_range
 
     def _validate_mask_length(
         self,
-        mask_length: tuple[int, int] | None,
+        mask_length: tuple[int, int],
         dimension_size: int,
         dimension_name: str,
     ) -> None:
         """Validate mask length for XYMasking. Raises if mismatch with image dimension. Used when
         applying horizontal/vertical masks.
         """
-        if mask_length is not None:
-            if isinstance(mask_length, (tuple, list)):
-                if mask_length[0] < 0 or mask_length[1] > dimension_size:
-                    raise ValueError(
-                        f"{dimension_name} range {mask_length} is out of valid range [0, {dimension_size}]",
-                    )
-            elif mask_length < 0 or mask_length > dimension_size:
-                raise ValueError(f"{dimension_name} {mask_length} exceeds image {dimension_name} {dimension_size}")
+        if mask_length[0] < 0 or mask_length[1] > dimension_size:
+            raise ValueError(
+                f"{dimension_name} range {mask_length} is out of valid range [0, {dimension_size}]",
+            )
 
     def get_params_dependent_on_data(
         self,
@@ -153,19 +138,19 @@ class XYMasking(BaseDropout):
 
         height, width = image_shape
 
-        self._validate_mask_length(self.mask_x_length, width, "mask_x_length")
-        self._validate_mask_length(self.mask_y_length, height, "mask_y_length")
+        self._validate_mask_length(self.mask_x_length_range, width, "mask_x_length_range")
+        self._validate_mask_length(self.mask_y_length_range, height, "mask_y_length_range")
 
-        masks_x = self._generate_masks(self.num_masks_x, image_shape, self.mask_x_length, axis="x")
-        masks_y = self._generate_masks(self.num_masks_y, image_shape, self.mask_y_length, axis="y")
+        masks_x = self._generate_masks(self.num_masks_x_range, image_shape, self.mask_x_length_range, axis="x")
+        masks_y = self._generate_masks(self.num_masks_y_range, image_shape, self.mask_y_length_range, axis="y")
 
         holes = np.array(masks_x + masks_y)
 
         self.applied_config = {
-            "num_masks_x": len(masks_x),
-            "num_masks_y": len(masks_y),
-            "mask_x_length": self.mask_x_length,
-            "mask_y_length": self.mask_y_length,
+            "num_masks_x_range": len(masks_x),
+            "num_masks_y_range": len(masks_y),
+            "mask_x_length_range": self.mask_x_length_range,
+            "mask_y_length_range": self.mask_y_length_range,
         }
 
         return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}
@@ -177,16 +162,14 @@ class XYMasking(BaseDropout):
         self,
         num_masks: tuple[int, int],
         image_shape: tuple[int, int],
-        max_length: tuple[int, int] | None,
+        max_length: tuple[int, int],
         axis: str,
     ) -> list[tuple[int, int, int, int]]:
-        if max_length is None or max_length == 0 or (isinstance(num_masks, (int, float)) and num_masks == 0):
+        if max_length[1] == 0 or num_masks[1] == 0:
             return []
 
         masks = []
-        num_masks_integer = (
-            num_masks if isinstance(num_masks, int) else self.py_random.randint(num_masks[0], num_masks[1])
-        )
+        num_masks_integer = self.py_random.randint(num_masks[0], num_masks[1])
 
         height, width = image_shape
 

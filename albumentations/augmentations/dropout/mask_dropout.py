@@ -15,10 +15,7 @@ from pydantic.functional_validators import AfterValidator
 import albumentations.augmentations.dropout.functional as fdropout
 from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, normalize_bboxes
 from albumentations.core.keypoints_utils import KeypointsProcessor
-from albumentations.core.pydantic import (
-    check_range_bounds,
-    convert_to_1plus_int_range,
-)
+from albumentations.core.pydantic import check_range_bounds
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 
@@ -34,8 +31,8 @@ class MaskDropout(DualTransform):
     It can also handle bounding boxes and keypoints, removing or adjusting them based on the dropout regions.
 
     Args:
-        max_objects_range (int | tuple[int, int]): Maximum number of objects to dropout. If a single int is provided,
-            it's treated as the upper bound. If a tuple of two ints is provided, it's treated as a range [min, max].
+        max_objects_range (tuple[int, int]): Inclusive range `(min, max)` for the number of objects
+            to dropout per image.
         fill (float | Literal['inpaint_telea', 'inpaint_ns']): Value to fill dropped out regions in the image.
             Can be one of:
             - float: Constant value to fill the regions (e.g., 0 for black, 255 for white)
@@ -123,9 +120,8 @@ class MaskDropout(DualTransform):
 
     class InitSchema(BaseTransformInitSchema):
         max_objects_range: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(convert_to_1plus_int_range),
-            AfterValidator(check_range_bounds(1, None)),
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1)),
         ]
 
         fill: float | Literal["inpaint_telea", "inpaint_ns"]
@@ -133,13 +129,13 @@ class MaskDropout(DualTransform):
 
     def __init__(
         self,
-        max_objects_range: tuple[int, int] | int = (1, 1),
+        max_objects_range: tuple[int, int] = (1, 1),
         fill: float | Literal["inpaint_telea", "inpaint_ns"] = 0,
         fill_mask: float = 0,
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.max_objects_range = cast("tuple[int, int]", max_objects_range)
+        self.max_objects_range = max_objects_range
         self.fill = fill  # type: ignore[assignment]
         self.fill_mask = fill_mask
 

@@ -2,7 +2,7 @@
 defocus, zoom). Each transform documents its parameters and behavior in Args and Examples.
 """
 
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 
 import numpy as np
 from albucore import median_blur, reduce_sum
@@ -18,19 +18,13 @@ from typing_extensions import Self
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.pydantic import (
     check_range_bounds,
-    convert_to_0plus_range,
-    convert_to_1plus_int_range,
-    convert_to_1plus_range,
-    create_symmetric_range,
     nondecreasing,
-    process_non_negative_range,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
 from albumentations.core.type_definitions import ImageType
-from albumentations.core.utils import to_tuple
 
 from . import functional as fblur
 
@@ -52,11 +46,11 @@ TWO = 2
 
 
 class BlurInitSchema(BaseTransformInitSchema):
-    blur_range: tuple[int, int] | int
+    blur_range: tuple[int, int]
 
     @field_validator("blur_range")
     @classmethod
-    def _process_blur(cls, value: tuple[int, int] | int, info: ValidationInfo) -> tuple[int, int]:
+    def _process_blur(cls, value: tuple[int, int], info: ValidationInfo) -> tuple[int, int]:
         return fblur.process_blur_range(value, info, min_value=3)
 
 
@@ -69,12 +63,8 @@ class Blur(ImageOnlyTransform):
     varying degrees of blur intensity.
 
     Args:
-        blur_range (tuple[int, int] | int): Controls the range of the blur kernel size.
-            - If a single int is provided, the kernel size will be randomly chosen
-              between 3 and that value.
-            - If a tuple of two ints is provided, it defines the inclusive range
-              of possible kernel sizes.
-            The kernel size must be odd and greater than or equal to 3.
+        blur_range (tuple[int, int]): Inclusive range of the blur kernel size.
+            Both ends must be odd and greater than or equal to 3.
             Larger kernel sizes produce stronger blur effects.
             Default: (3, 7)
 
@@ -150,11 +140,11 @@ class Blur(ImageOnlyTransform):
 
     def __init__(
         self,
-        blur_range: tuple[int, int] | int = (3, 7),
+        blur_range: tuple[int, int] = (3, 7),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.blur_range = cast("tuple[int, int]", blur_range)
+        self.blur_range = blur_range
 
     def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return fblur.box_blur(img, kernel)
@@ -393,7 +383,7 @@ class MotionBlur(Blur):
 
     def __init__(
         self,
-        blur_range: tuple[int, int] | int = (3, 7),
+        blur_range: tuple[int, int] = (3, 7),
         allow_shifted: bool = True,
         angle_range: tuple[float, float] = (0, 360),
         direction_range: tuple[float, float] = (-1.0, 1.0),
@@ -401,7 +391,7 @@ class MotionBlur(Blur):
     ):
         super().__init__(blur_range=blur_range, p=p)
         self.allow_shifted = allow_shifted
-        self.blur_range = cast("tuple[int, int]", blur_range)
+        self.blur_range = blur_range
         self.angle_range = angle_range
         self.direction_range = direction_range
 
@@ -444,12 +434,8 @@ class MedianBlur(Blur):
     for noise reduction in image processing.
 
     Args:
-        blur_range (int | tuple[int, int]): Maximum aperture linear size for blurring the input image.
-            Must be odd and in the range [3, inf).
-            - If a single int is provided, the kernel size will be randomly chosen
-              between 3 and that value.
-            - If a tuple of two ints is provided, it defines the inclusive range
-              of possible kernel sizes.
+        blur_range (tuple[int, int]): Inclusive range of the median filter aperture linear size.
+            Both ends must be odd and >= 3.
             Default: (3, 7)
 
         p (float): Probability of applying the transform. Default: 0.5
@@ -564,7 +550,7 @@ class MedianBlur(Blur):
 
     def __init__(
         self,
-        blur_range: tuple[int, int] | int = (3, 7),
+        blur_range: tuple[int, int] = (3, 7),
         p: float = 0.5,
     ):
         super().__init__(blur_range=blur_range, p=p)
@@ -671,23 +657,15 @@ class GaussianBlur(ImageOnlyTransform):
     image noise and detail, creating a smoothing effect.
 
     Args:
-        sigma_range (tuple[float, float] | float): Range for the Gaussian kernel standard
-            deviation (sigma). Must be more or equal than 0.
-            - If a single float is provided, sigma will be randomly chosen
-              between 0 and that value.
-            - If a tuple of two floats is provided, it defines the inclusive range
-              of possible sigma values.
+        sigma_range (tuple[float, float]): Inclusive range for the Gaussian kernel standard
+            deviation (sigma). Both ends must be >= 0.
             Default: (0.5, 3.0)
 
-        blur_range (tuple[int, int] | int): Controls the range of the Gaussian kernel size.
-            - If a single int is provided, the kernel size will be randomly chosen
-              between 0 and that value.
-            - If a tuple of two ints is provided, it defines the inclusive range
-              of possible kernel sizes.
-            Must be zero or odd and in range [0, inf). If set to 0 (default), the kernel size
-            will be computed from sigma as `int(sigma * 3.5) * 2 + 1` to exactly match PIL's
+        blur_range (tuple[int, int]): Inclusive range of the Gaussian kernel size.
+            Both ends must be 0 or odd and >= 0. If set to (0, 0) (default), the kernel size
+            is computed from sigma as `int(sigma * 3.5) * 2 + 1` to exactly match PIL's
             implementation.
-            Default: 0
+            Default: (0, 0)
 
         p (float): Probability of applying the transform. Default: 0.5
 
@@ -805,25 +783,25 @@ class GaussianBlur(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         sigma_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
         blur_range: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(convert_to_0plus_range),
+            tuple[int, int],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
 
     def __init__(
         self,
-        blur_range: tuple[int, int] | int = 0,
-        sigma_range: tuple[float, float] | float = (0.5, 3.0),
+        blur_range: tuple[int, int] = (0, 0),
+        sigma_range: tuple[float, float] = (0.5, 3.0),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.blur_range = cast("tuple[int, int]", blur_range)
-        self.sigma_range = cast("tuple[float, float]", sigma_range)
+        self.blur_range = blur_range
+        self.sigma_range = sigma_range
 
     def apply(
         self,
@@ -1064,33 +1042,29 @@ class AdvancedBlur(ImageOnlyTransform):
         The resulting kernel is then applied to the image using convolution.
 
     Args:
-        blur_range (tuple[int, int] | int, optional): Controls the size of the blur kernel. If a single int
-            is provided, the kernel size will be randomly chosen between 3 and that value.
+        blur_range (tuple[int, int]): Controls the size of the blur kernel.
             Must be odd and ≥ 3. Larger values create stronger blur effects.
             Default: (3, 7)
 
-        sigma_x_range (tuple[float, float] | float): Controls the spread of the blur in the x direction.
+        sigma_x_range (tuple[float, float]): Controls the spread of the blur in the x direction.
             Higher values increase blur strength.
-            If a single float is provided, the range will be (0, limit).
             Default: (0.2, 1.0)
 
-        sigma_y_range (tuple[float, float] | float): Controls the spread of the blur in the y direction.
+        sigma_y_range (tuple[float, float]): Controls the spread of the blur in the y direction.
             Higher values increase blur strength.
-            If a single float is provided, the range will be (0, limit).
             Default: (0.2, 1.0)
 
-        rotate_range (tuple[int, int] | int): Range of angles (in degrees) for rotating the kernel.
-            This rotation allows for diagonal blur directions. If limit is a single int, an angle is picked
-            from (-rotate_range, rotate_range).
+        rotate_range (tuple[int, int]): Range of angles (in degrees) for rotating the kernel.
+            This rotation allows for diagonal blur directions.
             Default: (-90, 90)
 
-        beta_range (tuple[float, float] | float): Shape parameter of the Generalized Gaussian distribution.
+        beta_range (tuple[float, float]): Shape parameter of the Generalized Gaussian distribution.
             - beta = 1 gives a standard Gaussian distribution
             - beta < 1 creates heavier tails, resulting in more uniform, box-like blur
             - beta > 1 creates lighter tails, resulting in more peaked, focused blur
             Default: (0.5, 8.0)
 
-        noise_range (tuple[float, float] | float): Controls the strength of multiplicative noise
+        noise_range (tuple[float, float]): Controls the strength of multiplicative noise
             applied to the kernel. Values around 1.0 keep the original kernel mostly intact,
             while values further from 1.0 introduce more variation.
             Default: (0.75, 1.25)
@@ -1244,70 +1218,60 @@ class AdvancedBlur(ImageOnlyTransform):
 
     class InitSchema(BlurInitSchema):
         sigma_x_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
         sigma_y_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
         beta_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
         noise_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
-        rotate_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
+        rotate_range: tuple[float, float]
 
         @field_validator("beta_range")
         @classmethod
-        def _check_beta_range(cls, value: tuple[float, float] | float) -> tuple[float, float]:
-            result = to_tuple(value, low=0)
+        def _check_beta_range(cls, value: tuple[float, float]) -> tuple[float, float]:
+            result = (float(value[0]), float(value[1]))
             if not (result[0] < 1.0 < result[1]):
-                raise ValueError(
-                    f"Beta limit should include 1.0, got {result}",
-                )
+                raise ValueError(f"Beta range should include 1.0, got {result}")
             return result
 
         @model_validator(mode="after")
-        def _validate_limits(self) -> Self:
-            if (
-                isinstance(self.sigma_x_range, (tuple, list))
-                and self.sigma_x_range[0] == 0
-                and isinstance(self.sigma_y_range, (tuple, list))
-                and self.sigma_y_range[0] == 0
-            ):
+        def _validate_ranges(self) -> Self:
+            if self.sigma_x_range[0] == 0 and self.sigma_y_range[0] == 0:
                 msg = "sigma_x_range and sigma_y_range minimum value cannot be both equal to 0."
                 raise ValueError(msg)
             return self
 
     def __init__(
         self,
-        blur_range: tuple[int, int] | int = (3, 7),
-        sigma_x_range: tuple[float, float] | float = (0.2, 1.0),
-        sigma_y_range: tuple[float, float] | float = (0.2, 1.0),
-        rotate_range: tuple[float, float] | float = (-90, 90),
-        beta_range: tuple[float, float] | float = (0.5, 8.0),
-        noise_range: tuple[float, float] | float = (0.9, 1.1),
+        blur_range: tuple[int, int] = (3, 7),
+        sigma_x_range: tuple[float, float] = (0.2, 1.0),
+        sigma_y_range: tuple[float, float] = (0.2, 1.0),
+        rotate_range: tuple[float, float] = (-90, 90),
+        beta_range: tuple[float, float] = (0.5, 8.0),
+        noise_range: tuple[float, float] = (0.9, 1.1),
         p: float = 0.5,
     ):
         super().__init__(p=p)
 
-        self.blur_range = cast("tuple[int, int]", blur_range)
-        self.sigma_x_range = cast("tuple[float, float]", sigma_x_range)
-        self.sigma_y_range = cast("tuple[float, float]", sigma_y_range)
-        self.rotate_range = cast("tuple[int, int]", rotate_range)
-        self.beta_range = cast("tuple[float, float]", beta_range)
-        self.noise_range = cast("tuple[float, float]", noise_range)
+        self.blur_range = blur_range
+        self.sigma_x_range = sigma_x_range
+        self.sigma_y_range = sigma_y_range
+        self.rotate_range = rotate_range
+        self.beta_range = beta_range
+        self.noise_range = noise_range
 
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel=kernel)
@@ -1376,14 +1340,12 @@ class Defocus(ImageOnlyTransform):
     defocus effect.
 
     Args:
-        radius_range (tuple[int, int] | int): Range for the radius of the defocus blur.
-            If a single int is provided, the range will be [1, radius_range].
+        radius_range (tuple[int, int]): Range for the radius of the defocus blur.
             Larger values create a stronger blur effect.
             Default: (3, 10)
 
-        alias_blur_range (tuple[float, float] | float): Range for the standard deviation of the Gaussian blur
+        alias_blur_range (tuple[float, float]): Range for the standard deviation of the Gaussian blur
             applied after the main defocus blur. This helps to reduce aliasing artifacts.
-            If a single float is provided, the range will be (0, alias_blur_range).
             Larger values create a smoother, more aliased effect.
             Default: (0.1, 0.5)
 
@@ -1473,25 +1435,24 @@ class Defocus(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         radius_range: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(convert_to_1plus_int_range),
-            AfterValidator(check_range_bounds(1, None)),
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1)),
         ]
         alias_blur_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
 
     def __init__(
         self,
-        radius_range: tuple[int, int] | int = (3, 10),
-        alias_blur_range: tuple[float, float] | float = (0.1, 0.5),
+        radius_range: tuple[int, int] = (3, 10),
+        alias_blur_range: tuple[float, float] = (0.1, 0.5),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.radius_range = cast("tuple[int, int]", radius_range)
-        self.alias_blur_range = cast("tuple[float, float]", alias_blur_range)
+        self.radius_range = radius_range
+        self.alias_blur_range = alias_blur_range
 
     def apply(
         self,
@@ -1605,25 +1566,24 @@ class ZoomBlur(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         max_factor_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_1plus_range),
-            AfterValidator(check_range_bounds(1, None)),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(1)),
         ]
         step_factor_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
 
     def __init__(
         self,
-        max_factor_range: tuple[float, float] | float = (1, 1.31),
-        step_factor_range: tuple[float, float] | float = (0.01, 0.03),
+        max_factor_range: tuple[float, float] = (1, 1.31),
+        step_factor_range: tuple[float, float] = (0.01, 0.03),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.max_factor_range = cast("tuple[float, float]", max_factor_range)
-        self.step_factor_range = cast("tuple[float, float]", step_factor_range)
+        self.max_factor_range = max_factor_range
+        self.step_factor_range = step_factor_range
 
     def apply(
         self,

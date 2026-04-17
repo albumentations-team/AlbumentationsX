@@ -2834,13 +2834,10 @@ def generate_spatial_noise(
     shape: tuple[int, ...],
     params: dict[str, Any] | None,
     max_value: float,
-    approximation: float,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Generate spatial noise (per_pixel or shared) with optional approximation.
-    approximation < 1 reduces resolution for speed.
-
-    This function generates spatial noise with optional approximation for speed.
+    """Generate per-pixel or spatially-shared noise of the requested distribution and shape,
+    scaling samples by `max_value` into the image dtype range.
 
     Args:
         noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): The type of noise to generate.
@@ -2848,7 +2845,6 @@ def generate_spatial_noise(
         shape (tuple[int, ...]): The shape of the noise to generate.
         params (dict[str, Any] | None): The parameters of the noise to generate.
         max_value (float): The maximum value of the noise to generate.
-        approximation (float): The approximation to use for the noise to generate.
         random_generator (np.random.Generator): The random number generator to use.
 
     Returns:
@@ -2861,49 +2857,21 @@ def generate_spatial_noise(
     cv2_seed = random_generator.integers(0, 2**16)
     cv2.setRNGSeed(cv2_seed)
 
-    if approximation == 1.0:
-        if spatial_mode == "shared":
-            return generate_shared_noise(
-                noise_type,
-                shape,
-                params,
-                max_value,
-                random_generator,
-            )
-        return generate_per_pixel_noise(
+    if spatial_mode == "shared":
+        return generate_shared_noise(
             noise_type,
             shape,
             params,
             max_value,
             random_generator,
         )
-
-    # Calculate reduced size for noise generation
-    height, width = shape[:2]
-    reduced_height = max(1, int(height * approximation))
-    reduced_width = max(1, int(width * approximation))
-    reduced_shape = (reduced_height, reduced_width, *shape[2:])
-
-    # Generate noise at reduced resolution
-    if spatial_mode == "shared":
-        noise = generate_shared_noise(
-            noise_type,
-            reduced_shape,
-            params,
-            max_value,
-            random_generator,
-        )
-    else:  # per_pixel
-        noise = generate_per_pixel_noise(
-            noise_type,
-            reduced_shape,
-            params,
-            max_value,
-            random_generator,
-        )
-
-    # Resize noise to original size using existing resize function
-    return fgeometric.resize(noise, (height, width), interpolation=cv2.INTER_LINEAR)
+    return generate_per_pixel_noise(
+        noise_type,
+        shape,
+        params,
+        max_value,
+        random_generator,
+    )
 
 
 def generate_per_pixel_noise(

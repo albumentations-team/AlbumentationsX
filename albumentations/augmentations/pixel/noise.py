@@ -57,8 +57,6 @@ class GaussNoise(ImageOnlyTransform):
             In [-1, 1]. Default: (0.0, 0.0).
         per_channel (bool): If True, sample noise per channel; else same noise for all.
             Default: False.
-        noise_scale_factor (float): If < 1, noise is generated at lower resolution and
-            resized (faster, coarser). 1 = per-pixel. In (0, 1]. Default: 1.0.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -75,7 +73,6 @@ class GaussNoise(ImageOnlyTransform):
           used directly (float32).
         - per_channel=False: faster, same noise on all channels (grayscale-like on RGB).
         - per_channel=True: different noise per channel (colored noise).
-        - noise_scale_factor < 1 trades speed for noise granularity.
 
     Examples:
         >>> import numpy as np
@@ -103,21 +100,18 @@ class GaussNoise(ImageOnlyTransform):
             AfterValidator(nondecreasing),
         ]
         per_channel: bool
-        noise_scale_factor: float = Field(gt=0, le=1)
 
     def __init__(
         self,
         std_range: tuple[float, float] = (0.2, 0.44),  # sqrt(10 / 255), sqrt(50 / 255)
         mean_range: tuple[float, float] = (0.0, 0.0),
         per_channel: bool = False,
-        noise_scale_factor: float = 1,
         p: float = 0.5,
     ):
         super().__init__(p=p)
         self.std_range = std_range
         self.mean_range = mean_range
         self.per_channel = per_channel
-        self.noise_scale_factor = noise_scale_factor
 
     def apply(
         self,
@@ -153,7 +147,6 @@ class GaussNoise(ImageOnlyTransform):
             shape=shape,
             params={"mean_range": (mean, mean), "std_range": (sigma, sigma)},
             max_value=max_value,
-            approximation=self.noise_scale_factor,
             random_generator=self.random_generator,
         )
         return {"noise_map": noise_map}
@@ -572,13 +565,6 @@ class AdditiveNoise(ImageOnlyTransform):
             - "per_pixel": Independent noise value for each pixel and channel, slowest
             - "shared": One noise map shared across all channels, medium speed
 
-        approximation(float): float in [0, 1], default=1.0
-            Controls noise generation speed vs quality tradeoff.
-            - 1.0: Generate full resolution noise (slowest, highest quality)
-            - 0.5: Generate noise at half resolution and upsample
-            - 0.25: Generate noise at quarter resolution and upsample
-            Only affects 'per_pixel' and 'shared' spatial modes.
-
         noise_params(dict[str, Any] | None): Parameters for the chosen noise distribution.
             Must match the noise_type:
 
@@ -652,7 +638,6 @@ class AdditiveNoise(ImageOnlyTransform):
         noise_type: Literal["uniform", "gaussian", "laplace", "beta"]
         spatial_mode: Literal["constant", "per_pixel", "shared"]
         noise_params: dict[str, Any] | None
-        approximation: float = Field(ge=0.0, le=1.0)
 
         @model_validator(mode="after")
         def _validate_noise_params(self) -> Self:
@@ -697,14 +682,12 @@ class AdditiveNoise(ImageOnlyTransform):
         noise_type: Literal["uniform", "gaussian", "laplace", "beta"] = "uniform",
         spatial_mode: Literal["constant", "per_pixel", "shared"] = "constant",
         noise_params: dict[str, Any] | None = None,
-        approximation: float = 1.0,
         p: float = 0.5,
     ):
         super().__init__(p=p)
         self.noise_type = noise_type
         self.spatial_mode = spatial_mode
         self.noise_params = noise_params
-        self.approximation = approximation
 
     def apply(
         self,
@@ -744,7 +727,6 @@ class AdditiveNoise(ImageOnlyTransform):
                 shape=shape,
                 params=self.noise_params,
                 max_value=max_value,
-                approximation=self.approximation,
                 random_generator=self.random_generator,
             )
         return {"noise_map": noise_map}

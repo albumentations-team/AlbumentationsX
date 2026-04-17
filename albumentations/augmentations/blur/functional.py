@@ -228,18 +228,14 @@ def _ensure_odd_values(result: tuple[int, int], field_name: str | None = None) -
     return new_result
 
 
-def process_blur_range(value: int | tuple[int, int], info: ValidationInfo, min_value: int = 0) -> tuple[int, int]:
-    """Process blur range to valid kernel sizes (min, odd). Converts int or tuple to
-    (min, max); enforces constraints. For blur InitSchema validators.
+def process_blur_range(value: tuple[int, int], info: ValidationInfo, min_value: int = 0) -> tuple[int, int]:
+    """Validate a blur kernel range tuple, enforcing the `min_value` lower bound and odd kernel
+    sizes (non-odd values auto-adjusted with a warning).
     """
-    # Convert value to tuple[int, int]
-    if isinstance(value, Sequence):
-        if len(value) != 2:
-            raise ValueError("Sequence must contain exactly 2 elements")
-        result = (int(value[0]), int(value[1]))
-    else:
-        result = (min_value, int(value))
+    if not isinstance(value, Sequence) or len(value) != 2:
+        raise ValueError("blur range must be a tuple of exactly 2 ints")
 
+    result = (int(value[0]), int(value[1]))
     result = _ensure_min_value(result, min_value, info.field_name)
     result = _ensure_odd_values(result, info.field_name)
 

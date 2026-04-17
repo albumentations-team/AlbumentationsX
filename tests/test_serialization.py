@@ -320,7 +320,7 @@ def test_augmentations_for_keypoints_serialization(
     [
         [
             A.RandomCropNearBBox,
-            {"max_part_shift": 0.15},
+            {"max_part_shift": (0.15, 0.15)},
             {"cropping_bbox": [-59, 77, 177, 231]},
         ],
     ],

@@ -8,16 +8,14 @@ border handling options.
 from __future__ import annotations
 
 import math
-from typing import Annotated, Any, Literal, cast
+from typing import Any, Literal
 
 import cv2
 import numpy as np
 from albucore import warp_affine
-from pydantic.functional_validators import AfterValidator
 
 from albumentations.augmentations.crops import functional as fcrops
 from albumentations.augmentations.geometric.transforms import Affine
-from albumentations.core.pydantic import create_symmetric_range
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -235,10 +233,7 @@ class RandomRotate90(DualTransform):
 
 
 class RotateInitSchema(BaseTransformInitSchema):
-    angle_range: Annotated[
-        tuple[float, float] | float,
-        AfterValidator(create_symmetric_range),
-    ]
+    angle_range: tuple[float, float]
 
     interpolation: Literal[cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
 
@@ -361,7 +356,7 @@ class Rotate(DualTransform):
 
     def __init__(
         self,
-        angle_range: tuple[float, float] | float = (-90, 90),
+        angle_range: tuple[float, float] = (-90, 90),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -390,7 +385,7 @@ class Rotate(DualTransform):
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.angle_range = cast("tuple[float, float]", angle_range)
+        self.angle_range = angle_range
         self.interpolation = interpolation
         self.mask_interpolation = mask_interpolation
         self.border_mode = border_mode
@@ -681,7 +676,7 @@ class SafeRotate(Affine):
 
     def __init__(
         self,
-        angle_range: tuple[float, float] | float = (-90, 90),
+        angle_range: tuple[float, float] = (-90, 90),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -719,7 +714,7 @@ class SafeRotate(Affine):
             mask_interpolation=mask_interpolation,
             p=p,
         )
-        self.angle_range = cast("tuple[float, float]", angle_range)
+        self.angle_range = angle_range
 
     def _create_safe_rotate_matrix(
         self,

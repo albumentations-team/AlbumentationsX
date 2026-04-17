@@ -611,7 +611,7 @@ def test_unsharp_mask_float_uint8_diff_less_than_two(val_uint8):
     x_float32 = np.zeros((5, 5, 3)).astype(np.float32)
     x_float32[2, 2] = val_uint8 / 255.0
 
-    unsharpmask = A.UnsharpMask(blur_range=3, p=1)
+    unsharpmask = A.UnsharpMask(blur_range=(3, 3), p=1)
     unsharpmask.set_random_seed(0)
 
     usm_uint8 = unsharpmask(image=x_uint8)["image"]
@@ -853,7 +853,7 @@ def test_affine_with_dict_scale_keep_ratio_true():
 
 def test_safe_rotate_inherits_keep_ratio_default():
     """Test that SafeRotate inherits the new default keep_ratio=True behavior."""
-    transform = A.SafeRotate(angle_range=45, p=1.0)
+    transform = A.SafeRotate(angle_range=(-45, 45), p=1.0)
     # SafeRotate inherits from Affine and doesn't override keep_ratio
     assert transform.keep_ratio, "SafeRotate should inherit keep_ratio=True default"
 
@@ -1726,7 +1726,7 @@ def test_random_fog_invalid_input(params):
 @pytest.mark.parametrize("image", [*IMAGES, np.full((100, 100), 128, dtype=np.uint8)])
 @pytest.mark.parametrize("mean", (0, 0.1, -0.1))
 def test_gauss_noise(mean, image):
-    aug = A.GaussNoise(p=1, noise_scale_factor=1.0, mean_range=(mean, mean))
+    aug = A.GaussNoise(p=1, mean_range=(mean, mean))
     aug.set_random_seed(42)
 
     apply_params = aug.get_params_dependent_on_data(
@@ -1948,7 +1948,7 @@ def test_mask_dropout_bboxes(remove_invisible, expected_keypoints):
     keypoints = np.array([[10, 10]])
 
     transform = A.Compose(
-        [A.MaskDropout(p=1, max_objects_range=1, fill_mask=0, fill=1)],
+        [A.MaskDropout(p=1, max_objects_range=(1, 1), fill_mask=0, fill=1)],
         keypoint_params=A.KeypointParams(
             coord_format="xy",
             remove_invisible=remove_invisible,

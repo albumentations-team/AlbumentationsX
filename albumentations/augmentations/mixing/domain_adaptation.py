@@ -7,7 +7,7 @@ like histograms, frequency spectra, or overall pixel distributions.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 
 import cv2
 import numpy as np
@@ -22,7 +22,6 @@ from albumentations.augmentations.mixing.domain_adaptation_functional import (
 )
 from albumentations.core.pydantic import (
     check_range_bounds,
-    convert_to_0plus_range,
     nondecreasing,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
@@ -355,7 +354,7 @@ class FDA(BaseDomainAdaptation):
         metadata_key (str): Key in the input `data` dictionary to retrieve the reference image(s).
             The value should be a sequence (e.g., list) of numpy arrays (pre-loaded images).
             Default: "fda_metadata".
-        beta_range (tuple[float, float] | float): Controls the extent of the low-frequency
+        beta_range (tuple[float, float]): Controls the extent of the low-frequency
             spectrum swap. A larger beta means more components are swapped. Corresponds to the L
             parameter in the original paper. Should be in the range [0, 0.5]. Sampling is uniform
             within the provided range [min, max]. Default: (0, 0.1).
@@ -463,8 +462,7 @@ class FDA(BaseDomainAdaptation):
 
     class InitSchema(BaseDomainAdaptationInitSchema):
         beta_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(convert_to_0plus_range),
+            tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
@@ -479,12 +477,12 @@ class FDA(BaseDomainAdaptation):
 
     def __init__(
         self,
-        beta_range: tuple[float, float] | float = (0, 0.1),
+        beta_range: tuple[float, float] = (0, 0.1),
         metadata_key: str = "fda_metadata",
         p: float = 0.5,
     ):
         super().__init__(metadata_key=metadata_key, p=p)
-        self.beta_range = cast("tuple[float, float]", beta_range)
+        self.beta_range = beta_range
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         target_image = self._get_reference_image(data)

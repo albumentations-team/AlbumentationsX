@@ -21,10 +21,10 @@ AUGMENTATION_CLS_PARAMS = [
     ],
     [
         A.HueSaturationValue,
-        {"hue_shift_range": 70, "sat_shift_range": 95, "val_shift_range": 55},
+        {"hue_shift_range": (-70, 70), "sat_shift_range": (-95, 95), "val_shift_range": (-55, 55)},
     ],
-    [A.RGBShift, {"r_shift_range": 70, "g_shift_range": 80, "b_shift_range": 40}],
-    [A.RandomBrightnessContrast, {"brightness_range": 0.5, "contrast_range": 0.8}],
+    [A.RGBShift, {"r_shift_range": (-70, 70), "g_shift_range": (-80, 80), "b_shift_range": (-40, 40)}],
+    [A.RandomBrightnessContrast, {"brightness_range": (-0.5, 0.5), "contrast_range": (-0.8, 0.8)}],
     [A.Blur, {"blur_range": (3, 5)}],
     [A.MotionBlur, {"blur_range": (3, 5)}],
     [A.MedianBlur, {"blur_range": (3, 5)}],
@@ -105,7 +105,7 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.Rotate,
         {
-            "angle_range": 120,
+            "angle_range": (-120, 120),
             "interpolation": cv2.INTER_CUBIC,
             "border_mode": cv2.BORDER_CONSTANT,
             "fill": (10, 10, 10),
@@ -115,7 +115,7 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.SafeRotate,
         {
-            "angle_range": 120,
+            "angle_range": (-120, 120),
             "interpolation": cv2.INTER_CUBIC,
             "border_mode": cv2.BORDER_CONSTANT,
             "fill": 10,
@@ -146,7 +146,7 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.OpticalDistortion,
         {
-            "distort_range": 0.2,
+            "distort_range": (-0.2, 0.2),
             "interpolation": cv2.INTER_AREA,
         },
     ],
@@ -154,7 +154,7 @@ AUGMENTATION_CLS_PARAMS = [
         A.GridDistortion,
         {
             "num_steps": 10,
-            "distort_range": 0.5,
+            "distort_range": (-0.5, 0.5),
             "interpolation": cv2.INTER_CUBIC,
         },
     ],
@@ -182,7 +182,7 @@ AUGMENTATION_CLS_PARAMS = [
             "max_pixel_value": 100.0,
         },
     ],
-    [A.RandomScale, {"scale_range": 0.2, "interpolation": cv2.INTER_CUBIC}],
+    [A.RandomScale, {"scale_range": (-0.2, 0.2), "interpolation": cv2.INTER_CUBIC}],
     [A.Resize, {"height": 64, "width": 64}],
     [A.SmallestMaxSize, {"max_size": 64, "interpolation": cv2.INTER_AREA}],
     [A.LongestMaxSize, [{"max_size": 128}, {"max_size_hw": (127, 126)}]],
@@ -293,9 +293,9 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.PiecewiseAffine,
         {
-            "scale_range": 0.33,
+            "scale_range": (0.33, 0.33),
             "nb_rows_range": (10, 20),
-            "nb_cols_range": 33,
+            "nb_cols_range": (33, 33),
             "interpolation": cv2.INTER_AREA,
             "mask_interpolation": cv2.INTER_NEAREST,
             "absolute_scale": True,
@@ -317,7 +317,7 @@ AUGMENTATION_CLS_PARAMS = [
     [A.HorizontalFlip, {}],
     [A.ISONoise, dict(color_shift_range=(0.2, 0.3), intensity_range=(0.7, 0.9))],
     [A.InvertImg, {}],
-    [A.MaskDropout, dict(max_objects_range=2, fill=0, fill_mask=0)],
+    [A.MaskDropout, dict(max_objects_range=(2, 2), fill=0, fill_mask=0)],
     [A.NoOp, {}],
     [
         A.RandomResizedCrop,
@@ -381,8 +381,8 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.ChromaticAberration,
         dict(
-            primary_distortion_range=0.02,
-            secondary_distortion_range=0.05,
+            primary_distortion_range=(-0.02, 0.02),
+            secondary_distortion_range=(-0.05, 0.05),
             mode="green_purple",
             interpolation=cv2.INTER_LINEAR,
         ),
@@ -392,10 +392,10 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.XYMasking,
         {
-            "num_masks_x": (1, 3),
-            "num_masks_y": 3,
-            "mask_x_length": (10, 20),
-            "mask_y_length": 10,
+            "num_masks_x_range": (1, 3),
+            "num_masks_y_range": (3, 3),
+            "mask_x_length_range": (10, 20),
+            "mask_y_length_range": (10, 10),
             "fill_mask": 1,
             "fill": 0,
         },

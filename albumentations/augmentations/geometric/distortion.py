@@ -25,7 +25,7 @@ type, and characteristics of the distortion, as well as interpolation methods fo
 target types.
 """
 
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 from warnings import warn
 
 import cv2
@@ -46,10 +46,7 @@ from albumentations.core.bbox_utils import (
 )
 from albumentations.core.pydantic import (
     check_range_bounds,
-    convert_to_int_pair,
-    create_symmetric_range,
     nondecreasing,
-    process_non_negative_range,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -60,7 +57,6 @@ from albumentations.core.type_definitions import (
     ImageType,
     VolumeType,
 )
-from albumentations.core.utils import to_tuple
 
 from . import functional as fgeometric
 
@@ -479,17 +475,17 @@ class PiecewiseAffine(BaseDistortion):
     around via affine transformations. This leads to local distortions in the image.
 
     Args:
-        scale_range (tuple[float, float] | float): Standard deviation of the normal distributions. These are used to
+        scale_range (tuple[float, float]): Standard deviation of the normal distributions. These are used to
             sample the random distances of the subimage's corners from the full image's corners.
             If a single float value, the range will be (0, scale_range).
             Recommended values are in the range (0.01, 0.05) for small distortions,
             and (0.05, 0.1) for larger distortions. Default: (0.03, 0.05).
-        nb_rows_range (tuple[int, int] | int): Number of rows of points that the regular grid should have.
+        nb_rows_range (tuple[int, int]): Number of rows of points that the regular grid should have.
             Must be at least 2. For large images, you might want to pick a higher value than 4.
             If a single int, that value will always be used as the number of rows.
             If a tuple (a, b), a value from the discrete interval [a..b] is uniformly sampled per image.
             Default: 4.
-        nb_cols_range (tuple[int, int] | int): Number of columns of points that the regular grid should have.
+        nb_cols_range (tuple[int, int]): Number of columns of points that the regular grid should have.
             Must be at least 2. For large images, you might want to pick a higher value than 4.
             If a single int, that value will always be used as the number of columns.
             If a tuple (a, b), a value from the discrete interval [a..b] is uniformly sampled per image.
@@ -539,27 +535,25 @@ class PiecewiseAffine(BaseDistortion):
 
     class InitSchema(BaseDistortion.InitSchema):
         scale_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(process_non_negative_range),
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
         nb_rows_range: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(convert_to_int_pair),
+            tuple[int, int],
             AfterValidator(check_range_bounds(2, None)),
         ]
         nb_cols_range: Annotated[
-            tuple[int, int] | int,
-            AfterValidator(convert_to_int_pair),
+            tuple[int, int],
             AfterValidator(check_range_bounds(2, None)),
         ]
         absolute_scale: bool
 
     def __init__(
         self,
-        scale_range: tuple[float, float] | float = (0.03, 0.05),
-        nb_rows_range: tuple[int, int] | int = (4, 4),
-        nb_cols_range: tuple[int, int] | int = (4, 4),
+        scale_range: tuple[float, float] = (0.03, 0.05),
+        nb_rows_range: tuple[int, int] = (4, 4),
+        nb_cols_range: tuple[int, int] = (4, 4),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -602,9 +596,9 @@ class PiecewiseAffine(BaseDistortion):
             stacklevel=2,
         )
 
-        self.scale_range = cast("tuple[float, float]", scale_range)
-        self.nb_rows_range = cast("tuple[int, int]", nb_rows_range)
-        self.nb_cols_range = cast("tuple[int, int]", nb_cols_range)
+        self.scale_range = scale_range
+        self.nb_rows_range = nb_rows_range
+        self.nb_cols_range = nb_cols_range
         self.absolute_scale = absolute_scale
 
     def get_params_dependent_on_data(
@@ -702,16 +696,13 @@ class OpticalDistortion(BaseDistortion):
     """
 
     class InitSchema(BaseDistortion.InitSchema):
-        distort_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
+        distort_range: tuple[float, float]
         mode: Literal["camera", "fisheye"]
         keypoint_remapping_method: Literal["direct", "mask"]
 
     def __init__(
         self,
-        distort_range: tuple[float, float] | float = (-0.05, 0.05),
+        distort_range: tuple[float, float] = (-0.05, 0.05),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -748,7 +739,7 @@ class OpticalDistortion(BaseDistortion):
             fill=fill,
             fill_mask=fill_mask,
         )
-        self.distort_range = cast("tuple[float, float]", distort_range)
+        self.distort_range = distort_range
         self.mode = mode
 
     def get_params_dependent_on_data(
@@ -837,10 +828,7 @@ class GridDistortion(BaseDistortion):
 
     class InitSchema(BaseDistortion.InitSchema):
         num_steps: Annotated[int, Field(ge=1)]
-        distort_range: Annotated[
-            tuple[float, float] | float,
-            AfterValidator(create_symmetric_range),
-        ]
+        distort_range: tuple[float, float]
         normalized: bool
         keypoint_remapping_method: Literal["direct", "mask"]
 
@@ -851,15 +839,13 @@ class GridDistortion(BaseDistortion):
             v: tuple[float, float],
             info: ValidationInfo,
         ) -> tuple[float, float]:
-            bounds = -1, 1
-            result = to_tuple(v)
-            check_range(result, *bounds, info.field_name)
-            return result
+            check_range(v, -1, 1, info.field_name)
+            return v
 
     def __init__(
         self,
         num_steps: int = 5,
-        distort_range: tuple[float, float] | float = (-0.3, 0.3),
+        distort_range: tuple[float, float] = (-0.3, 0.3),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -897,7 +883,7 @@ class GridDistortion(BaseDistortion):
             fill_mask=fill_mask,
         )
         self.num_steps = num_steps
-        self.distort_range = cast("tuple[float, float]", distort_range)
+        self.distort_range = distort_range
         self.normalized = normalized
 
     def get_params_dependent_on_data(

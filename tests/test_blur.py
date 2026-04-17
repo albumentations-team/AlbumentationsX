@@ -102,7 +102,6 @@ class MockValidationInfo:
         # Basic valid cases - no warnings
         ((3, 5), 3, (3, 5), []),
         ((0, 3), 0, (0, 3), []),
-        (5, 3, (3, 5), []),
         # Adjust values below min_value
         (
             (1, 2),
@@ -179,19 +178,12 @@ def test_process_blur_range(
         assert len(w) == len(warning_messages)
 
 
-def test_process_blur_range_sequence_check() -> None:
-    """Test that non-sequence values are properly converted to tuples."""
+@pytest.mark.parametrize("scalar", [5, 5.0, 0])
+def test_process_blur_range_rejects_scalar(scalar: Any) -> None:
+    """Scalar inputs must be rejected; sampling ranges are tuple-only."""
     info = MockValidationInfo("test_field")
-
-    # Test with integer input
-    result = fblur.process_blur_range(5, info, min_value=0)
-    assert isinstance(result, tuple)
-    assert result == (0, 5)
-
-    # Test with float input
-    result = fblur.process_blur_range(5.0, info, min_value=0)
-    assert isinstance(result, tuple)
-    assert result == (0, 5)
+    with pytest.raises(ValueError, match="must be a tuple"):
+        fblur.process_blur_range(scalar, info, min_value=0)
 
 
 def compute_sharpness(image: np.ndarray) -> float:
@@ -227,7 +219,7 @@ def test_gaussian_blur_matches_pil():
         pil_sharpness.append(compute_sharpness(np.array(pil_blurred)))
 
         # Albumentations blur
-        alb_blurred = A.GaussianBlur(blur_range=0, sigma_range=(sigma, sigma), p=1.0)(image=image)["image"]
+        alb_blurred = A.GaussianBlur(blur_range=(0, 0), sigma_range=(sigma, sigma), p=1.0)(image=image)["image"]
         alb_sharpness.append(compute_sharpness(alb_blurred))
 
     # Convert to numpy arrays for easier comparison

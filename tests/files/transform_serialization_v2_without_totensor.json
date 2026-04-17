@@ -136,11 +136,11 @@
             {
                 "__class_fullname__": "ISONoise",
                 "p": 0.5,
-                "intensity": [
+                "intensity_range": [
                     0.1,
                     0.5
                 ],
-                "color_shift": [
+                "color_shift_range": [
                     0.01,
                     0.05
                 ]

@@ -472,27 +472,27 @@ class ElasticTransform(BaseDistortion):
 
 
 class PiecewiseAffine(BaseDistortion):
-    """Apply piecewise affine transformations via a regular grid of control points. Params: scale,
-    nb_rows, nb_cols, interpolation.
+    """Apply piecewise affine transformations via a regular grid of control points. Params:
+    scale_range, nb_rows_range, nb_cols_range, interpolation.
 
     This augmentation places a regular grid of points on an image and randomly moves the neighborhood of these points
     around via affine transformations. This leads to local distortions in the image.
 
     Args:
-        scale (tuple[float, float] | float): Standard deviation of the normal distributions. These are used to sample
-            the random distances of the subimage's corners from the full image's corners.
-            If scale is a single float value, the range will be (0, scale).
+        scale_range (tuple[float, float] | float): Standard deviation of the normal distributions. These are used to
+            sample the random distances of the subimage's corners from the full image's corners.
+            If a single float value, the range will be (0, scale_range).
             Recommended values are in the range (0.01, 0.05) for small distortions,
             and (0.05, 0.1) for larger distortions. Default: (0.03, 0.05).
-        nb_rows (tuple[int, int] | int): Number of rows of points that the regular grid should have.
+        nb_rows_range (tuple[int, int] | int): Number of rows of points that the regular grid should have.
             Must be at least 2. For large images, you might want to pick a higher value than 4.
-            If a single int, then that value will always be used as the number of rows.
-            If a tuple (a, b), then a value from the discrete interval [a..b] will be uniformly sampled per image.
+            If a single int, that value will always be used as the number of rows.
+            If a tuple (a, b), a value from the discrete interval [a..b] is uniformly sampled per image.
             Default: 4.
-        nb_cols (tuple[int, int] | int): Number of columns of points that the regular grid should have.
+        nb_cols_range (tuple[int, int] | int): Number of columns of points that the regular grid should have.
             Must be at least 2. For large images, you might want to pick a higher value than 4.
-            If a single int, then that value will always be used as the number of columns.
-            If a tuple (a, b), then a value from the discrete interval [a..b] will be uniformly sampled per image.
+            If a single int, that value will always be used as the number of columns.
+            If a tuple (a, b), a value from the discrete interval [a..b] is uniformly sampled per image.
             Default: 4.
         interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm.
             Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
@@ -530,7 +530,7 @@ class PiecewiseAffine(BaseDistortion):
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> transform = A.Compose([
-        ...     A.PiecewiseAffine(scale=(0.03, 0.05), nb_rows=4, nb_cols=4, p=0.5),
+        ...     A.PiecewiseAffine(scale_range=(0.03, 0.05), nb_rows_range=4, nb_cols_range=4, p=0.5),
         ... ])
         >>> transformed = transform(image=image)
         >>> transformed_image = transformed["image"]
@@ -538,17 +538,17 @@ class PiecewiseAffine(BaseDistortion):
     """
 
     class InitSchema(BaseDistortion.InitSchema):
-        scale: Annotated[
+        scale_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(process_non_negative_range),
             AfterValidator(nondecreasing),
         ]
-        nb_rows: Annotated[
+        nb_rows_range: Annotated[
             tuple[int, int] | int,
             AfterValidator(convert_to_int_pair),
             AfterValidator(check_range_bounds(2, None)),
         ]
-        nb_cols: Annotated[
+        nb_cols_range: Annotated[
             tuple[int, int] | int,
             AfterValidator(convert_to_int_pair),
             AfterValidator(check_range_bounds(2, None)),
@@ -557,9 +557,9 @@ class PiecewiseAffine(BaseDistortion):
 
     def __init__(
         self,
-        scale: tuple[float, float] | float = (0.03, 0.05),
-        nb_rows: tuple[int, int] | int = (4, 4),
-        nb_cols: tuple[int, int] | int = (4, 4),
+        scale_range: tuple[float, float] | float = (0.03, 0.05),
+        nb_rows_range: tuple[int, int] | int = (4, 4),
+        nb_cols_range: tuple[int, int] | int = (4, 4),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -602,9 +602,9 @@ class PiecewiseAffine(BaseDistortion):
             stacklevel=2,
         )
 
-        self.scale = cast("tuple[float, float]", scale)
-        self.nb_rows = cast("tuple[int, int]", nb_rows)
-        self.nb_cols = cast("tuple[int, int]", nb_cols)
+        self.scale_range = cast("tuple[float, float]", scale_range)
+        self.nb_rows_range = cast("tuple[int, int]", nb_rows_range)
+        self.nb_cols_range = cast("tuple[int, int]", nb_cols_range)
         self.absolute_scale = absolute_scale
 
     def get_params_dependent_on_data(
@@ -614,14 +614,14 @@ class PiecewiseAffine(BaseDistortion):
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
 
-        nb_rows = np.clip(self.py_random.randint(*self.nb_rows), 2, None)
-        nb_cols = np.clip(self.py_random.randint(*self.nb_cols), 2, None)
-        scale = self.py_random.uniform(*self.scale)
+        nb_rows = np.clip(self.py_random.randint(*self.nb_rows_range), 2, None)
+        nb_cols = np.clip(self.py_random.randint(*self.nb_cols_range), 2, None)
+        scale = self.py_random.uniform(*self.scale_range)
 
         self.applied_config = {
-            "scale": scale,
-            "nb_rows": int(nb_rows),
-            "nb_cols": int(nb_cols),
+            "scale_range": scale,
+            "nb_rows_range": int(nb_rows),
+            "nb_cols_range": int(nb_cols),
         }
 
         map_x, map_y = fgeometric.create_piecewise_affine_maps(

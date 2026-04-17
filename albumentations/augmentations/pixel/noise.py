@@ -160,8 +160,8 @@ class GaussNoise(ImageOnlyTransform):
 
 
 class ISONoise(ImageOnlyTransform):
-    """Add camera-sensor-like noise scaling with intensity (high ISO). color_shift and
-    intensity range control strength. Good for low-light or camera noise simulation.
+    """Add camera-sensor-like noise scaling with intensity (high ISO), useful for low-light or
+    camera noise simulation. See `color_shift_range` and `intensity_range`.
 
     This transform adds random noise to an image, mimicking the effect of using high ISO settings
     in digital photography. It simulates two main components of ISO noise:
@@ -169,11 +169,11 @@ class ISONoise(ImageOnlyTransform):
     2. Luminance noise: random variations in pixel intensity
 
     Args:
-        color_shift (tuple[float, float]): Range for changing color hue.
+        color_shift_range (tuple[float, float]): Range for changing color hue.
             Values should be in the range [0, 1], where 1 represents a full 360° hue rotation.
             Default: (0.01, 0.05)
 
-        intensity (tuple[float, float]): Range for the noise intensity.
+        intensity_range (tuple[float, float]): Range for the noise intensity.
             Higher values increase the strength of both color and luminance noise.
             Default: (0.1, 0.5)
 
@@ -200,7 +200,7 @@ class ISONoise(ImageOnlyTransform):
         >>> import numpy as np
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> transform = A.ISONoise(color_shift=(0.01, 0.05), intensity=(0.1, 0.5), p=0.5)
+        >>> transform = A.ISONoise(color_shift_range=(0.01, 0.05), intensity_range=(0.1, 0.5), p=0.5)
         >>> result = transform(image=image)
         >>> noisy_image = result["image"]
 
@@ -210,12 +210,12 @@ class ISONoise(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        color_shift: Annotated[
+        color_shift_range: Annotated[
             tuple[float, float],
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
-        intensity: Annotated[
+        intensity_range: Annotated[
             tuple[float, float],
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
@@ -223,13 +223,13 @@ class ISONoise(ImageOnlyTransform):
 
     def __init__(
         self,
-        color_shift: tuple[float, float] = (0.01, 0.05),
-        intensity: tuple[float, float] = (0.1, 0.5),
+        color_shift_range: tuple[float, float] = (0.01, 0.05),
+        intensity_range: tuple[float, float] = (0.1, 0.5),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.intensity = intensity
-        self.color_shift = color_shift
+        self.intensity_range = intensity_range
+        self.color_shift_range = color_shift_range
 
     def apply(
         self,
@@ -268,10 +268,10 @@ class ISONoise(ImageOnlyTransform):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         random_seed = self.random_generator.integers(0, 2**32 - 1)
-        color_shift = self.py_random.uniform(*self.color_shift)
-        intensity = self.py_random.uniform(*self.intensity)
+        color_shift = self.py_random.uniform(*self.color_shift_range)
+        intensity = self.py_random.uniform(*self.intensity_range)
 
-        self.applied_config = {"color_shift": color_shift, "intensity": intensity}
+        self.applied_config = {"color_shift_range": color_shift, "intensity_range": intensity}
 
         return {
             "color_shift": color_shift,
@@ -751,21 +751,21 @@ class AdditiveNoise(ImageOnlyTransform):
 
 
 class SaltAndPepper(ImageOnlyTransform):
-    """Apply salt-and-pepper (impulse) noise: randomly set pixels to min or max. amount and
-    salt_vs_pepper control density and ratio. Same mask for all channels.
+    """Apply salt-and-pepper (impulse) noise: randomly set pixels to min or max with
+    density and ratio controlled by `amount_range` and `salt_vs_pepper_range`.
 
     Salt and pepper noise is a form of impulse noise that randomly sets pixels to either maximum value (salt)
     or minimum value (pepper). The amount and proportion of salt vs pepper can be controlled.
     The same noise mask is applied to all channels of the image to preserve color consistency.
 
     Args:
-        amount ((float, float)): Range for total amount of noise (both salt and pepper).
+        amount_range ((float, float)): Range for total amount of noise (both salt and pepper).
             Values between 0 and 1. For example:
             - 0.05 means 5% of all pixels will be replaced with noise
             - (0.01, 0.06) will sample amount uniformly from 1% to 6%
             Default: (0.01, 0.06)
 
-        salt_vs_pepper ((float, float)): Range for ratio of salt (white) vs pepper (black) noise.
+        salt_vs_pepper_range ((float, float)): Range for ratio of salt (white) vs pepper (black) noise.
             Values between 0 and 1. For example:
             - 0.5 means equal amounts of salt and pepper
             - 0.7 means 70% of noisy pixels will be salt, 30% pepper
@@ -800,8 +800,8 @@ class SaltAndPepper(ImageOnlyTransform):
         - salt_mask and pepper_mask are 2D boolean arrays applied to all channels
         - Number of True values in salt_mask = floor(H*W * amount * salt_ratio)
         - Number of True values in pepper_mask = floor(H*W * amount * (1 - salt_ratio))
-        - amount ∈ [amount_min, amount_max]
-        - salt_ratio ∈ [salt_vs_pepper_min, salt_vs_pepper_max]
+        - amount ∈ amount_range
+        - salt_ratio ∈ salt_vs_pepper_range
 
     Examples:
         >>> import albumentations as A
@@ -813,8 +813,8 @@ class SaltAndPepper(ImageOnlyTransform):
 
         # Heavy noise with more salt than pepper
         >>> transform = A.SaltAndPepper(
-        ...     amount=(0.1, 0.2),       # 10-20% of pixels will be noisy
-        ...     salt_vs_pepper=(0.7, 0.9),  # 70-90% of noise will be salt
+        ...     amount_range=(0.1, 0.2),         # 10-20% of pixels will be noisy
+        ...     salt_vs_pepper_range=(0.7, 0.9), # 70-90% of noise will be salt
         ...     p=1.0
         ... )
         >>> noisy_image = transform(image=image)["image"]
@@ -833,18 +833,18 @@ class SaltAndPepper(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        amount: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1))]
-        salt_vs_pepper: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1))]
+        amount_range: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1))]
+        salt_vs_pepper_range: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1))]
 
     def __init__(
         self,
-        amount: tuple[float, float] = (0.01, 0.06),
-        salt_vs_pepper: tuple[float, float] = (0.4, 0.6),
+        amount_range: tuple[float, float] = (0.01, 0.06),
+        salt_vs_pepper_range: tuple[float, float] = (0.4, 0.6),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.amount = amount
-        self.salt_vs_pepper = salt_vs_pepper
+        self.amount_range = amount_range
+        self.salt_vs_pepper_range = salt_vs_pepper_range
 
     def get_params_dependent_on_data(
         self,
@@ -854,10 +854,10 @@ class SaltAndPepper(ImageOnlyTransform):
         metadata = get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
-        total_amount = self.py_random.uniform(*self.amount)
-        salt_ratio = self.py_random.uniform(*self.salt_vs_pepper)
+        total_amount = self.py_random.uniform(*self.amount_range)
+        salt_ratio = self.py_random.uniform(*self.salt_vs_pepper_range)
 
-        self.applied_config = {"amount": total_amount, "salt_vs_pepper": salt_ratio}
+        self.applied_config = {"amount_range": total_amount, "salt_vs_pepper_range": salt_ratio}
 
         area = height * width
 

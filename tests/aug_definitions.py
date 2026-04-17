@@ -205,10 +205,10 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.ColorJitter,
         {
-            "brightness": [0.2, 0.3],
-            "contrast": [0.7, 0.9],
-            "saturation": [1.2, 1.7],
-            "hue": [-0.2, 0.1],
+            "brightness_range": [0.2, 0.3],
+            "contrast_range": [0.7, 0.9],
+            "saturation_range": [1.2, 1.7],
+            "hue_range": [-0.2, 0.1],
         },
     ],
     [
@@ -233,8 +233,8 @@ AUGMENTATION_CLS_PARAMS = [
             "interpolation": cv2.INTER_CUBIC,
         },
     ],
-    [A.Sharpen, {"alpha": [0.2, 0.5], "lightness": [0.5, 1.0]}],
-    [A.Emboss, {"alpha": [0.2, 0.5], "strength": [0.5, 1.0]}],
+    [A.Sharpen, {"alpha_range": [0.2, 0.5], "lightness_range": [0.5, 1.0]}],
+    [A.Emboss, {"alpha_range": [0.2, 0.5], "strength_range": [0.5, 1.0]}],
     [A.Enhance, {"mode": "edge", "alpha_range": (0.5, 1.0)}],
     [A.Enhance, {"mode": "detail", "alpha_range": (0.5, 1.0)}],
     [A.RandomToneCurve, {"scale": 0.2, "per_channel": False}],
@@ -254,8 +254,8 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.Superpixels,
         {
-            "p_replace": (0.5, 0.7),
-            "n_segments": (20, 30),
+            "p_replace_range": (0.5, 0.7),
+            "n_segments_range": (20, 30),
             "max_size": 25,
             "interpolation": cv2.INTER_CUBIC,
         },
@@ -293,9 +293,9 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.PiecewiseAffine,
         {
-            "scale": 0.33,
-            "nb_rows": (10, 20),
-            "nb_cols": 33,
+            "scale_range": 0.33,
+            "nb_rows_range": (10, 20),
+            "nb_cols_range": 33,
             "interpolation": cv2.INTER_AREA,
             "mask_interpolation": cv2.INTER_NEAREST,
             "absolute_scale": True,
@@ -315,9 +315,9 @@ AUGMENTATION_CLS_PARAMS = [
     ],
     [A.FromFloat, dict(dtype="uint8", max_value=1)],
     [A.HorizontalFlip, {}],
-    [A.ISONoise, dict(color_shift=(0.2, 0.3), intensity=(0.7, 0.9))],
+    [A.ISONoise, dict(color_shift_range=(0.2, 0.3), intensity_range=(0.7, 0.9))],
     [A.InvertImg, {}],
-    [A.MaskDropout, dict(max_objects=2, fill=0, fill_mask=0)],
+    [A.MaskDropout, dict(max_objects_range=2, fill=0, fill_mask=0)],
     [A.NoOp, {}],
     [
         A.RandomResizedCrop,
@@ -330,13 +330,13 @@ AUGMENTATION_CLS_PARAMS = [
     [A.ToSepia, {}],
     [A.Transpose, {}],
     [A.VerticalFlip, {}],
-    [A.RingingOvershoot, dict(blur_range=(7, 15), cutoff=(np.pi / 5, np.pi / 2))],
+    [A.RingingOvershoot, dict(blur_range=(7, 15), cutoff_range=(np.pi / 5, np.pi / 2))],
     [
         A.UnsharpMask,
         {
             "blur_range": (3, 7),  # Allow for stronger blur
             "sigma_range": (0.5, 2.0),  # Increase sigma range
-            "alpha": (0.5, 1.0),  # Allow for stronger sharpening
+            "alpha_range": (0.5, 1.0),  # Allow for stronger sharpening
             "threshold": 5,  # Lower threshold to allow more changes
         },
     ],
@@ -362,19 +362,19 @@ AUGMENTATION_CLS_PARAMS = [
         [
             dict(
                 mode="rain",
-                mean=(0.65, 0.65),
-                std=(0.3, 0.3),
-                gauss_sigma=(2, 2),
-                cutout_threshold=(0.68, 0.68),
-                intensity=(0.6, 0.6),
+                mean_range=(0.65, 0.65),
+                std_range=(0.3, 0.3),
+                gauss_sigma_range=(2, 2),
+                cutout_threshold_range=(0.68, 0.68),
+                intensity_range=(0.6, 0.6),
             ),
             dict(
                 mode="mud",
-                mean=(0.65, 0.65),
-                std=(0.3, 0.3),
-                gauss_sigma=(2, 2),
-                cutout_threshold=(0.68, 0.68),
-                intensity=(0.6, 0.6),
+                mean_range=(0.65, 0.65),
+                std_range=(0.3, 0.3),
+                gauss_sigma_range=(2, 2),
+                cutout_threshold_range=(0.68, 0.68),
+                intensity_range=(0.6, 0.6),
             ),
         ],
     ],
@@ -387,8 +387,8 @@ AUGMENTATION_CLS_PARAMS = [
             interpolation=cv2.INTER_LINEAR,
         ),
     ],
-    [A.Defocus, {"radius": (5, 7), "alias_blur": (0.2, 0.6)}],
-    [A.ZoomBlur, {"max_factor": (1.56, 1.7), "step_factor": (0.02, 0.04)}],
+    [A.Defocus, {"radius_range": (5, 7), "alias_blur_range": (0.2, 0.6)}],
+    [A.ZoomBlur, {"max_factor_range": (1.56, 1.7), "step_factor_range": (0.02, 0.04)}],
     [
         A.XYMasking,
         {
@@ -460,7 +460,7 @@ AUGMENTATION_CLS_PARAMS = [
     [A.Pad, {"padding": 10}],
     [A.Erasing, {}],
     [A.AdditiveNoise, {}],
-    [A.SaltAndPepper, {"amount": (0.5, 0.5), "salt_vs_pepper": (0.5, 0.5)}],
+    [A.SaltAndPepper, {"amount_range": (0.5, 0.5), "salt_vs_pepper_range": (0.5, 0.5)}],
     [A.PlasmaBrightnessContrast, {"brightness_range": (0.5, 0.5), "contrast_range": (0.5, 0.5)}],
     [A.PlasmaShadow, {}],
     [A.Illumination, {}],

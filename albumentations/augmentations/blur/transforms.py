@@ -1368,22 +1368,22 @@ class AdvancedBlur(ImageOnlyTransform):
 
 
 class Defocus(ImageOnlyTransform):
-    """Simulate out-of-focus lens: disc-shaped kernel (aperture) plus optional Gaussian
-    alias blur. Radius and alias_blur control strength and edge softness.
+    """Simulate out-of-focus lens via a disc-shaped kernel plus optional Gaussian alias
+    blur. Strength and edge softness via `radius_range` and `alias_blur_range`.
 
     This transform simulates the effect of an out-of-focus camera by applying a defocus blur
     to the image. It uses a combination of disc kernels and Gaussian blur to create a realistic
     defocus effect.
 
     Args:
-        radius (tuple[int, int] | int): Range for the radius of the defocus blur.
-            If a single int is provided, the range will be [1, radius].
+        radius_range (tuple[int, int] | int): Range for the radius of the defocus blur.
+            If a single int is provided, the range will be [1, radius_range].
             Larger values create a stronger blur effect.
             Default: (3, 10)
 
-        alias_blur (tuple[float, float] | float): Range for the standard deviation of the Gaussian blur
+        alias_blur_range (tuple[float, float] | float): Range for the standard deviation of the Gaussian blur
             applied after the main defocus blur. This helps to reduce aliasing artifacts.
-            If a single float is provided, the range will be (0, alias_blur).
+            If a single float is provided, the range will be (0, alias_blur_range).
             Larger values create a smoother, more aliased effect.
             Default: (0.1, 0.5)
 
@@ -1398,10 +1398,10 @@ class Defocus(ImageOnlyTransform):
 
     Note:
         - The defocus effect is created using a disc kernel, which simulates the shape of a camera's aperture.
-        - The additional Gaussian blur (alias_blur) helps to soften the edges of the disc kernel, creating a
+        - The additional Gaussian blur (alias_blur_range) helps to soften the edges of the disc kernel, creating a
           more natural-looking defocus effect.
-        - Larger radius values will create a stronger, more noticeable defocus effect.
-        - The alias_blur parameter can be used to fine-tune the appearance of the defocus, with larger values
+        - Larger radius_range values will create a stronger, more noticeable defocus effect.
+        - The alias_blur_range parameter can be used to fine-tune the appearance of the defocus, with larger values
           creating a smoother, potentially more realistic effect.
 
     Examples:
@@ -1419,9 +1419,9 @@ class Defocus(ImageOnlyTransform):
         >>> # Example 1: Subtle defocus effect (small aperture)
         >>> subtle_transform = A.Compose([
         ...     A.Defocus(
-        ...         radius=(2, 3),           # Small defocus radius
-        ...         alias_blur=(0.1, 0.2),   # Minimal aliasing
-        ...         p=1.0                    # Always apply
+        ...         radius_range=(2, 3),           # Small defocus radius
+        ...         alias_blur_range=(0.1, 0.2),   # Minimal aliasing
+        ...         p=1.0                          # Always apply
         ...     )
         ... ])
         >>>
@@ -1432,8 +1432,8 @@ class Defocus(ImageOnlyTransform):
         >>> # Example 2: Moderate defocus effect (medium aperture)
         >>> moderate_transform = A.Compose([
         ...     A.Defocus(
-        ...         radius=(4, 6),           # Medium defocus radius
-        ...         alias_blur=(0.2, 0.3),   # Moderate aliasing
+        ...         radius_range=(4, 6),           # Medium defocus radius
+        ...         alias_blur_range=(0.2, 0.3),   # Moderate aliasing
         ...         p=1.0
         ...     )
         ... ])
@@ -1445,8 +1445,8 @@ class Defocus(ImageOnlyTransform):
         >>> # Example 3: Strong defocus effect (large aperture)
         >>> strong_transform = A.Compose([
         ...     A.Defocus(
-        ...         radius=(8, 12),          # Large defocus radius
-        ...         alias_blur=(0.4, 0.6),   # Strong aliasing
+        ...         radius_range=(8, 12),          # Large defocus radius
+        ...         alias_blur_range=(0.4, 0.6),   # Strong aliasing
         ...         p=1.0
         ...     )
         ... ])
@@ -1458,7 +1458,7 @@ class Defocus(ImageOnlyTransform):
         >>> # Example 4: Using in a pipeline with other transforms
         >>> pipeline = A.Compose([
         ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.7),
-        ...     A.Defocus(radius=(3, 8), alias_blur=0.3, p=0.5),  # 50% chance of applying defocus
+        ...     A.Defocus(radius_range=(3, 8), alias_blur_range=0.3, p=0.5),  # 50% chance of applying defocus
         ...     A.GaussNoise(std_range=(0.04, 0.15), p=0.3)       # Possible noise after defocus
         ... ])
         >>>
@@ -1472,12 +1472,12 @@ class Defocus(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        radius: Annotated[
+        radius_range: Annotated[
             tuple[int, int] | int,
             AfterValidator(convert_to_1plus_int_range),
             AfterValidator(check_range_bounds(1, None)),
         ]
-        alias_blur: Annotated[
+        alias_blur_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(process_non_negative_range),
             AfterValidator(nondecreasing),
@@ -1485,13 +1485,13 @@ class Defocus(ImageOnlyTransform):
 
     def __init__(
         self,
-        radius: tuple[int, int] | int = (3, 10),
-        alias_blur: tuple[float, float] | float = (0.1, 0.5),
+        radius_range: tuple[int, int] | int = (3, 10),
+        alias_blur_range: tuple[float, float] | float = (0.1, 0.5),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.radius = cast("tuple[int, int]", radius)
-        self.alias_blur = cast("tuple[float, float]", alias_blur)
+        self.radius_range = cast("tuple[int, int]", radius_range)
+        self.alias_blur_range = cast("tuple[float, float]", alias_blur_range)
 
     def apply(
         self,
@@ -1507,9 +1507,9 @@ class Defocus(ImageOnlyTransform):
         return self._apply_to_batch(images, lambda img: fpixel.convolve(img, kernel))
 
     def get_params(self) -> dict[str, Any]:
-        radius = self.py_random.randint(*self.radius)
-        alias_blur = self.py_random.uniform(*self.alias_blur)
-        self.applied_config = {"radius": radius, "alias_blur": alias_blur}
+        radius = self.py_random.randint(*self.radius_range)
+        alias_blur = self.py_random.uniform(*self.alias_blur_range)
+        self.applied_config = {"radius_range": radius, "alias_blur_range": alias_blur}
         return {"radius": radius, "alias_blur": alias_blur}
 
 
@@ -1522,12 +1522,12 @@ class ZoomBlur(ImageOnlyTransform):
     a smooth transition from the center outward.
 
     Args:
-        max_factor ((float, float) or float): range for max factor for blurring.
-            If max_factor is a single float, the range will be (1, limit). Default: (1, 1.31).
-            All max_factor values should be larger than 1.
-        step_factor ((float, float) or float): If single float will be used as step parameter for np.arange.
-            If tuple of float step_factor will be in range `[step_factor[0], step_factor[1])`. Default: (0.01, 0.03).
-            All step_factor values should be positive.
+        max_factor_range ((float, float) or float): range for max factor for blurring.
+            If a single float, the range will be (1, max_factor_range). Default: (1, 1.31).
+            All max_factor_range values should be larger than 1.
+        step_factor_range ((float, float) or float): If single float will be used as step parameter for np.arange.
+            If tuple of float step_factor will be in range `[step_factor_range[0], step_factor_range[1])`.
+            Default: (0.01, 0.03). All step_factor_range values should be positive.
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -1551,9 +1551,9 @@ class ZoomBlur(ImageOnlyTransform):
         >>> # Example 1: Subtle zoom blur
         >>> subtle_transform = A.Compose([
         ...     A.ZoomBlur(
-        ...         max_factor=(1.05, 1.10),  # Small zoom range
-        ...         step_factor=0.01,         # Fine steps
-        ...         p=1.0                     # Always apply
+        ...         max_factor_range=(1.05, 1.10),  # Small zoom range
+        ...         step_factor_range=0.01,         # Fine steps
+        ...         p=1.0                           # Always apply
         ...     )
         ... ])
         >>>
@@ -1564,8 +1564,8 @@ class ZoomBlur(ImageOnlyTransform):
         >>> # Example 2: Moderate zoom blur
         >>> moderate_transform = A.Compose([
         ...     A.ZoomBlur(
-        ...         max_factor=(1.15, 1.25),  # Medium zoom range
-        ...         step_factor=0.02,         # Medium steps
+        ...         max_factor_range=(1.15, 1.25),  # Medium zoom range
+        ...         step_factor_range=0.02,         # Medium steps
         ...         p=1.0
         ...     )
         ... ])
@@ -1577,8 +1577,8 @@ class ZoomBlur(ImageOnlyTransform):
         >>> # Example 3: Strong zoom blur
         >>> strong_transform = A.Compose([
         ...     A.ZoomBlur(
-        ...         max_factor=(1.3, 1.5),    # Large zoom range
-        ...         step_factor=(0.03, 0.05), # Larger steps (randomly chosen)
+        ...         max_factor_range=(1.3, 1.5),    # Large zoom range
+        ...         step_factor_range=(0.03, 0.05), # Larger steps (randomly chosen)
         ...         p=1.0
         ...     )
         ... ])
@@ -1590,7 +1590,7 @@ class ZoomBlur(ImageOnlyTransform):
         >>> # Example 4: In a pipeline with other transforms
         >>> pipeline = A.Compose([
         ...     A.RandomBrightnessContrast(brightness_range=0.2, contrast_range=0.2, p=0.7),
-        ...     A.ZoomBlur(max_factor=(1.1, 1.3), step_factor=0.02, p=0.5),
+        ...     A.ZoomBlur(max_factor_range=(1.1, 1.3), step_factor_range=0.02, p=0.5),
         ...     A.HorizontalFlip(p=0.5)
         ... ])
         >>>
@@ -1604,12 +1604,12 @@ class ZoomBlur(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        max_factor: Annotated[
+        max_factor_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(convert_to_1plus_range),
             AfterValidator(check_range_bounds(1, None)),
         ]
-        step_factor: Annotated[
+        step_factor_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(process_non_negative_range),
             AfterValidator(nondecreasing),
@@ -1617,13 +1617,13 @@ class ZoomBlur(ImageOnlyTransform):
 
     def __init__(
         self,
-        max_factor: tuple[float, float] | float = (1, 1.31),
-        step_factor: tuple[float, float] | float = (0.01, 0.03),
+        max_factor_range: tuple[float, float] | float = (1, 1.31),
+        step_factor_range: tuple[float, float] | float = (0.01, 0.03),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.max_factor = cast("tuple[float, float]", max_factor)
-        self.step_factor = cast("tuple[float, float]", step_factor)
+        self.max_factor_range = cast("tuple[float, float]", max_factor_range)
+        self.step_factor_range = cast("tuple[float, float]", step_factor_range)
 
     def apply(
         self,
@@ -1637,7 +1637,7 @@ class ZoomBlur(ImageOnlyTransform):
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def get_params(self) -> dict[str, Any]:
-        step_factor = self.py_random.uniform(*self.step_factor)
-        max_factor = max(1 + step_factor, self.py_random.uniform(*self.max_factor))
-        self.applied_config = {"step_factor": step_factor, "max_factor": max_factor}
+        step_factor = self.py_random.uniform(*self.step_factor_range)
+        max_factor = max(1 + step_factor, self.py_random.uniform(*self.max_factor_range))
+        self.applied_config = {"step_factor_range": step_factor, "max_factor_range": max_factor}
         return {"zoom_factors": np.arange(1.0, max_factor, step_factor)}

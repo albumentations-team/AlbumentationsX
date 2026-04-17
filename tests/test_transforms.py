@@ -645,10 +645,10 @@ def test_color_jitter_float_uint8_equal(brightness, contrast, saturation, hue):
     transform = A.Compose(
         [
             A.ColorJitter(
-                brightness=[brightness, brightness],
-                contrast=[contrast, contrast],
-                saturation=[saturation, saturation],
-                hue=[hue, hue],
+                brightness_range=[brightness, brightness],
+                contrast_range=[contrast, contrast],
+                saturation_range=[saturation, saturation],
+                hue_range=[hue, hue],
                 p=1,
             ),
         ],
@@ -1948,7 +1948,7 @@ def test_mask_dropout_bboxes(remove_invisible, expected_keypoints):
     keypoints = np.array([[10, 10]])
 
     transform = A.Compose(
-        [A.MaskDropout(p=1, max_objects=1, fill_mask=0, fill=1)],
+        [A.MaskDropout(p=1, max_objects_range=1, fill_mask=0, fill=1)],
         keypoint_params=A.KeypointParams(
             coord_format="xy",
             remove_invisible=remove_invisible,

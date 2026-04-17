@@ -1013,7 +1013,7 @@ def test_zoom_blur_apply_to_images(dtype):
         images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
 
     # Use fixed parameters so get_params produces deterministic zoom_factors
-    transform = A.ZoomBlur(max_factor=(1.1, 1.1), step_factor=(0.01, 0.01), p=1.0)
+    transform = A.ZoomBlur(max_factor_range=(1.1, 1.1), step_factor_range=(0.01, 0.01), p=1.0)
 
     transformed = transform(images=images)["images"]
 
@@ -1037,7 +1037,7 @@ def test_zoom_blur_apply_to_volumes(dtype):
         volumes = np.random.RandomState(137).random(shape).astype(np.float32)
 
     # Use fixed parameters so get_params produces deterministic zoom_factors
-    transform = A.ZoomBlur(max_factor=(1.1, 1.1), step_factor=(0.01, 0.01), p=1.0)
+    transform = A.ZoomBlur(max_factor_range=(1.1, 1.1), step_factor_range=(0.01, 0.01), p=1.0)
 
     transformed = transform(volumes=volumes)["volumes"]
 
@@ -1291,8 +1291,8 @@ def test_salt_and_pepper_noise():
     salt_vs_pepper = (0.6, 0.6)  # Exactly 60% salt, 40% pepper
 
     transform = A.SaltAndPepper(
-        amount=amount,
-        salt_vs_pepper=salt_vs_pepper,
+        amount_range=amount,
+        salt_vs_pepper_range=salt_vs_pepper,
         p=1.0,
     )
     transform.set_random_seed(137)
@@ -1320,8 +1320,8 @@ def test_salt_and_pepper_float_image():
     image[25:75, 25:75] = 0.5  # Gray square
 
     transform = A.SaltAndPepper(
-        amount=(0.05, 0.05),
-        salt_vs_pepper=(0.6, 0.6),
+        amount_range=(0.05, 0.05),
+        salt_vs_pepper_range=(0.6, 0.6),
         p=1.0,
     )
     transform.set_random_seed(137)
@@ -1340,8 +1340,8 @@ def test_salt_and_pepper_grayscale():
     image[25:75, 25:75] = 128
 
     transform = A.SaltAndPepper(
-        amount=(0.05, 0.05),
-        salt_vs_pepper=(0.6, 0.6),
+        amount_range=(0.05, 0.05),
+        salt_vs_pepper_range=(0.6, 0.6),
         p=1.0,
     )
     transform.set_random_seed(137)
@@ -1533,7 +1533,7 @@ def test_unsharp_mask_apply_to_images(dtype):
     transform = A.UnsharpMask(
         blur_range=(3, 3),
         sigma_range=(0.5, 0.5),
-        alpha=(0.3, 0.3),
+        alpha_range=(0.3, 0.3),
         threshold=10,
         p=1.0,
     )
@@ -1562,7 +1562,7 @@ def test_unsharp_mask_apply_to_volumes(dtype):
     transform = A.UnsharpMask(
         blur_range=(3, 3),
         sigma_range=(0.5, 0.5),
-        alpha=(0.3, 0.3),
+        alpha_range=(0.3, 0.3),
         threshold=10,
         p=1.0,
     )
@@ -1592,8 +1592,8 @@ def test_sharpen_apply_to_images(dtype, method):
         images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
 
     transform = A.Sharpen(
-        alpha=(0.3, 0.3),
-        lightness=(0.7, 0.7),
+        alpha_range=(0.3, 0.3),
+        lightness_range=(0.7, 0.7),
         method=method,
         kernel_size=5,
         sigma=1.0,
@@ -1627,8 +1627,8 @@ def test_sharpen_apply_to_volumes(dtype, method):
         volumes = np.random.RandomState(137).random(shape).astype(np.float32)
 
     transform = A.Sharpen(
-        alpha=(0.3, 0.3),
-        lightness=(0.7, 0.7),
+        alpha_range=(0.3, 0.3),
+        lightness_range=(0.7, 0.7),
         method=method,
         kernel_size=5,
         sigma=1.0,

@@ -3085,7 +3085,7 @@ def test_applied_config_mask_dropout():
     mask[10:40, 10:40, 0] = 1
     mask[60:90, 60:90, 0] = 1
 
-    aug = A.MaskDropout(max_objects=(1, 2), p=1.0)
+    aug = A.MaskDropout(max_objects_range=(1, 2), p=1.0)
     aug(image=image, mask=mask)
     _assert_applied_config_valid(aug)
 

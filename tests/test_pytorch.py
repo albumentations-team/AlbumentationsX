@@ -162,10 +162,10 @@ def test_color_jitter(brightness, contrast, saturation, hue):
     transform = A.Compose(
         [
             A.ColorJitter(
-                brightness=[brightness, brightness],
-                contrast=[contrast, contrast],
-                saturation=[saturation, saturation],
-                hue=[hue, hue],
+                brightness_range=[brightness, brightness],
+                contrast_range=[contrast, contrast],
+                saturation_range=[saturation, saturation],
+                hue_range=[hue, hue],
                 p=1,
             ),
         ],

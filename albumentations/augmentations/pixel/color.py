@@ -1501,7 +1501,7 @@ class FancyPCA(ImageOnlyTransform):
 
 
 class ColorJitter(ImageOnlyTransform):
-    """Randomly apply brightness, contrast, saturation, hue in random order. Separate ranges per
+    """Randomly jitter brightness/contrast/saturation/hue in random order. Separate _range per
     effect. Strong color augmentation for classification and detection.
 
     This transform is similar to torchvision's ColorJitter but with some differences due to the use of OpenCV
@@ -1512,33 +1512,33 @@ class ColorJitter(ImageOnlyTransform):
     These differences may result in slightly different output compared to torchvision's ColorJitter.
 
     Args:
-        brightness (tuple[float, float] | float): How much to jitter brightness.
+        brightness_range (tuple[float, float] | float): How much to jitter brightness.
             If float:
-                The brightness factor is chosen uniformly from [max(0, 1 - brightness), 1 + brightness].
+                The brightness factor is chosen uniformly from [max(0, 1 - brightness_range), 1 + brightness_range].
             If tuple:
                 The brightness factor is sampled from the range specified.
             Should be non-negative numbers.
             Default: (0.8, 1.2)
 
-        contrast (tuple[float, float] | float): How much to jitter contrast.
+        contrast_range (tuple[float, float] | float): How much to jitter contrast.
             If float:
-                The contrast factor is chosen uniformly from [max(0, 1 - contrast), 1 + contrast].
+                The contrast factor is chosen uniformly from [max(0, 1 - contrast_range), 1 + contrast_range].
             If tuple:
                 The contrast factor is sampled from the range specified.
             Should be non-negative numbers.
             Default: (0.8, 1.2)
 
-        saturation (tuple[float, float] | float): How much to jitter saturation.
+        saturation_range (tuple[float, float] | float): How much to jitter saturation.
             If float:
-                The saturation factor is chosen uniformly from [max(0, 1 - saturation), 1 + saturation].
+                The saturation factor is chosen uniformly from [max(0, 1 - saturation_range), 1 + saturation_range].
             If tuple:
                 The saturation factor is sampled from the range specified.
             Should be non-negative numbers.
             Default: (0.8, 1.2)
 
-        hue (float or tuple of float (min, max)): How much to jitter hue.
+        hue_range (float or tuple of float (min, max)): How much to jitter hue.
             If float:
-                The hue factor is chosen uniformly from [-hue, hue]. Should have 0 <= hue <= 0.5.
+                The hue factor is chosen uniformly from [-hue_range, hue_range]. Should have 0 <= hue_range <= 0.5.
             If tuple:
                 The hue factor is sampled from the range specified. Values should be in range [-0.5, 0.5].
             Default: (-0.5, 0.5)
@@ -1558,14 +1558,16 @@ class ColorJitter(ImageOnlyTransform):
 
     Note:
         - The order of application for these color transformations is random for each image.
-        - The ranges for brightness, contrast, and saturation are applied as multiplicative factors.
-        - The range for hue is applied as an additive factor.
+        - The ranges for brightness_range, contrast_range, and saturation_range are applied as multiplicative factors.
+        - The range for hue_range is applied as an additive factor.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> transform = A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0)
+        >>> transform = A.ColorJitter(
+        ...     brightness_range=0.2, contrast_range=0.2, saturation_range=0.2, hue_range=0.1, p=1.0,
+        ... )
         >>> result = transform(image=image)
         >>> jittered_image = result['image']
 
@@ -1576,25 +1578,25 @@ class ColorJitter(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        brightness: Annotated[
+        brightness_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(convert_to_1centered_range),
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
         ]
-        contrast: Annotated[
+        contrast_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(convert_to_1centered_range),
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
         ]
-        saturation: Annotated[
+        saturation_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(convert_to_1centered_range),
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
         ]
-        hue: Annotated[
+        hue_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(create_symmetric_range),
             AfterValidator(check_range_bounds(-0.5, 0.5)),
@@ -1603,30 +1605,30 @@ class ColorJitter(ImageOnlyTransform):
 
     def __init__(
         self,
-        brightness: tuple[float, float] | float = (0.8, 1.2),
-        contrast: tuple[float, float] | float = (0.8, 1.2),
-        saturation: tuple[float, float] | float = (0.8, 1.2),
-        hue: tuple[float, float] | float = (-0.5, 0.5),
+        brightness_range: tuple[float, float] | float = (0.8, 1.2),
+        contrast_range: tuple[float, float] | float = (0.8, 1.2),
+        saturation_range: tuple[float, float] | float = (0.8, 1.2),
+        hue_range: tuple[float, float] | float = (-0.5, 0.5),
         p: float = 0.5,
     ):
         super().__init__(p=p)
 
-        self.brightness = cast("tuple[float, float]", brightness)
-        self.contrast = cast("tuple[float, float]", contrast)
-        self.saturation = cast("tuple[float, float]", saturation)
-        self.hue = cast("tuple[float, float]", hue)
+        self.brightness_range = cast("tuple[float, float]", brightness_range)
+        self.contrast_range = cast("tuple[float, float]", contrast_range)
+        self.saturation_range = cast("tuple[float, float]", saturation_range)
+        self.hue_range = cast("tuple[float, float]", hue_range)
 
     def get_params(self) -> dict[str, Any]:
-        brightness = self.py_random.uniform(*self.brightness)
-        contrast = self.py_random.uniform(*self.contrast)
-        saturation = self.py_random.uniform(*self.saturation)
-        hue = self.py_random.uniform(*self.hue)
+        brightness = self.py_random.uniform(*self.brightness_range)
+        contrast = self.py_random.uniform(*self.contrast_range)
+        saturation = self.py_random.uniform(*self.saturation_range)
+        hue = self.py_random.uniform(*self.hue_range)
 
         self.applied_config = {
-            "brightness": brightness,
-            "contrast": contrast,
-            "saturation": saturation,
-            "hue": hue,
+            "brightness_range": brightness,
+            "contrast_range": contrast,
+            "saturation_range": saturation,
+            "hue_range": hue,
         }
 
         order = ["brightness", "contrast", "saturation", "hue"]

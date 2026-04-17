@@ -26,7 +26,7 @@ __all__ = ["MaskDropout"]
 
 
 class MaskDropout(DualTransform):
-    """Dropout random objects in a mask; zero those regions in image and mask. max_objects, fill,
+    """Dropout random objects in a mask; zero those regions in image and mask. max_objects_range, fill,
     fill_mask; filters bboxes/keypoints by visibility.
 
     This transform identifies objects in the mask (where each unique non-zero value represents a distinct object),
@@ -34,7 +34,7 @@ class MaskDropout(DualTransform):
     It can also handle bounding boxes and keypoints, removing or adjusting them based on the dropout regions.
 
     Args:
-        max_objects (int | tuple[int, int]): Maximum number of objects to dropout. If a single int is provided,
+        max_objects_range (int | tuple[int, int]): Maximum number of objects to dropout. If a single int is provided,
             it's treated as the upper bound. If a tuple of two ints is provided, it's treated as a range [min, max].
         fill (float | Literal['inpaint_telea', 'inpaint_ns']): Value to fill dropped out regions in the image.
             Can be one of:
@@ -76,11 +76,11 @@ class MaskDropout(DualTransform):
         >>> keypoints = np.array([[30, 30], [70, 70]], dtype=np.float32)
         >>> keypoint_labels = [0, 1]
         >>>
-        >>> # Define the transform with tuple for max_objects
+        >>> # Define the transform with tuple for max_objects_range
         >>> transform = A.Compose(
         ...     transforms=[
         ...         A.MaskDropout(
-        ...             max_objects=(1, 2),  # Using tuple to specify min and max objects to drop
+        ...             max_objects_range=(1, 2),  # Using tuple to specify min and max objects to drop
         ...             fill=0,  # Fill value for dropped regions in image
         ...             fill_mask=0,  # Fill value for dropped regions in mask
         ...             p=1.0
@@ -122,7 +122,7 @@ class MaskDropout(DualTransform):
     _targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        max_objects: Annotated[
+        max_objects_range: Annotated[
             tuple[int, int] | int,
             AfterValidator(convert_to_1plus_int_range),
             AfterValidator(check_range_bounds(1, None)),
@@ -133,13 +133,13 @@ class MaskDropout(DualTransform):
 
     def __init__(
         self,
-        max_objects: tuple[int, int] | int = (1, 1),
+        max_objects_range: tuple[int, int] | int = (1, 1),
         fill: float | Literal["inpaint_telea", "inpaint_ns"] = 0,
         fill_mask: float = 0,
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.max_objects = cast("tuple[int, int]", max_objects)
+        self.max_objects_range = cast("tuple[int, int]", max_objects_range)
         self.fill = fill  # type: ignore[assignment]
         self.fill_mask = fill_mask
 
@@ -152,7 +152,7 @@ class MaskDropout(DualTransform):
             dropout_mask = None
             objects_to_drop = 0
         else:
-            objects_to_drop = self.py_random.randint(*self.max_objects)
+            objects_to_drop = self.py_random.randint(*self.max_objects_range)
             objects_to_drop = min(num_labels, objects_to_drop)
 
             if objects_to_drop == num_labels:
@@ -164,7 +164,7 @@ class MaskDropout(DualTransform):
                     dropout_mask |= label_image == label_index
 
         self.applied_config = {
-            "max_objects": objects_to_drop,
+            "max_objects_range": objects_to_drop,
         }
 
         return {"dropout_mask": dropout_mask}

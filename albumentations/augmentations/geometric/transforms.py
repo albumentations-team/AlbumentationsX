@@ -938,15 +938,15 @@ class ShiftScaleRotate(Affine):
     for pose or scale augmentation without separate transforms.
 
     Args:
-        shift_limit ((float, float) or float): shift factor range for both height and width. If shift_limit
-            is a single float value, the range will be (-shift_limit, shift_limit). Absolute values for lower and
+        shift_range ((float, float) or float): shift factor range for both height and width. If shift_range
+            is a single float value, the range will be (-shift_range, shift_range). Absolute values for lower and
             upper bounds should lie in range [-1, 1]. Default: (-0.0625, 0.0625).
-        scale_limit ((float, float) or float): scaling factor range. If scale_limit is a single float value, the
-            range will be (-scale_limit, scale_limit). Note that the scale_limit will be biased by 1.
-            If scale_limit is a tuple, like (low, high), sampling will be done from the range (1 + low, 1 + high).
+        scale_range ((float, float) or float): scaling factor range. If scale_range is a single float value, the
+            range will be (-scale_range, scale_range). Note that the scale_range will be biased by 1.
+            If scale_range is a tuple, like (low, high), sampling will be done from the range (1 + low, 1 + high).
             Default: (-0.1, 0.1).
-        rotate_limit ((int, int) or int): rotation range. If rotate_limit is a single int value, the
-            range will be (-rotate_limit, rotate_limit). Default: (-45, 45).
+        rotate_range ((int, int) or int): rotation range. If rotate_range is a single int value, the
+            range will be (-rotate_range, rotate_range). Default: (-45, 45).
         interpolation (OpenCV flag): flag that is used to specify the interpolation algorithm. Should be one of:
             cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_LINEAR.
@@ -955,13 +955,13 @@ class ShiftScaleRotate(Affine):
             Default: cv2.BORDER_CONSTANT
         fill (tuple[float, ...] | float): padding value if border_mode is cv2.BORDER_CONSTANT.
         fill_mask (tuple[float, ...] | float): padding value if border_mode is cv2.BORDER_CONSTANT applied for masks.
-        shift_limit_x ((float, float) or float): shift factor range for width. If it is set then this value
-            instead of shift_limit will be used for shifting width.  If shift_limit_x is a single float value,
-            the range will be (-shift_limit_x, shift_limit_x). Absolute values for lower and upper bounds should lie in
+        shift_range_x ((float, float) or float): shift factor range for width. If it is set then this value
+            instead of shift_range will be used for shifting width.  If shift_range_x is a single float value,
+            the range will be (-shift_range_x, shift_range_x). Absolute values for lower and upper bounds should lie in
             the range [-1, 1]. Default: None.
-        shift_limit_y ((float, float) or float): shift factor range for height. If it is set then this value
-            instead of shift_limit will be used for shifting height.  If shift_limit_y is a single float value,
-            the range will be (-shift_limit_y, shift_limit_y). Absolute values for lower and upper bounds should lie
+        shift_range_y ((float, float) or float): shift factor range for height. If it is set then this value
+            instead of shift_range will be used for shifting height.  If shift_range_y is a single float value,
+            the range will be (-shift_range_y, shift_range_y). Absolute values for lower and upper bounds should lie
             in the range [-, 1]. Default: None.
         rotate_method (str): rotation method used for the bounding boxes. Should be one of "largest_box" or "ellipse".
             Default: "largest_box"
@@ -995,9 +995,9 @@ class ShiftScaleRotate(Affine):
         >>> # Define transform with parameters as tuples when possible
         >>> transform = A.Compose([
         ...     A.ShiftScaleRotate(
-        ...         shift_limit=(-0.0625, 0.0625),
-        ...         scale_limit=(-0.1, 0.1),
-        ...         rotate_limit=(-45, 45),
+        ...         shift_range=(-0.0625, 0.0625),
+        ...         scale_range=(-0.1, 0.1),
+        ...         rotate_range=(-45, 45),
         ...         interpolation=cv2.INTER_LINEAR,
         ...         border_mode=cv2.BORDER_CONSTANT,
         ...         rotate_method="largest_box",
@@ -1029,15 +1029,15 @@ class ShiftScaleRotate(Affine):
     _targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        shift_limit: Annotated[
+        shift_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(create_symmetric_range),
         ]
-        scale_limit: Annotated[
+        scale_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(create_symmetric_range),
         ]
-        rotate_limit: Annotated[
+        rotate_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(create_symmetric_range),
         ]
@@ -1060,8 +1060,8 @@ class ShiftScaleRotate(Affine):
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
 
-        shift_limit_x: tuple[float, float] | float | None
-        shift_limit_y: tuple[float, float] | float | None
+        shift_range_x: tuple[float, float] | float | None
+        shift_range_y: tuple[float, float] | float | None
         rotate_method: Literal["largest_box", "ellipse"]
         mask_interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -1072,22 +1072,22 @@ class ShiftScaleRotate(Affine):
         ]
 
         @model_validator(mode="after")
-        def _check_shift_limit(self) -> Self:
+        def _check_shift_range(self) -> Self:
             bounds = -1, 1
-            self.shift_limit_x = to_tuple(
-                self.shift_limit_x if self.shift_limit_x is not None else self.shift_limit,
+            self.shift_range_x = to_tuple(
+                self.shift_range_x if self.shift_range_x is not None else self.shift_range,
             )
-            check_range(self.shift_limit_x, *bounds, "shift_limit_x")
-            self.shift_limit_y = to_tuple(
-                self.shift_limit_y if self.shift_limit_y is not None else self.shift_limit,
+            check_range(self.shift_range_x, *bounds, "shift_range_x")
+            self.shift_range_y = to_tuple(
+                self.shift_range_y if self.shift_range_y is not None else self.shift_range,
             )
-            check_range(self.shift_limit_y, *bounds, "shift_limit_y")
+            check_range(self.shift_range_y, *bounds, "shift_range_y")
 
             return self
 
-        @field_validator("scale_limit")
+        @field_validator("scale_range")
         @classmethod
-        def _check_scale_limit(
+        def _check_scale_range(
             cls,
             value: tuple[float, float] | float,
             info: ValidationInfo,
@@ -1099,9 +1099,9 @@ class ShiftScaleRotate(Affine):
 
     def __init__(
         self,
-        shift_limit: tuple[float, float] | float = (-0.0625, 0.0625),
-        scale_limit: tuple[float, float] | float = (-0.1, 0.1),
-        rotate_limit: tuple[float, float] | float = (-45, 45),
+        shift_range: tuple[float, float] | float = (-0.0625, 0.0625),
+        scale_range: tuple[float, float] | float = (-0.1, 0.1),
+        rotate_range: tuple[float, float] | float = (-45, 45),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -1116,8 +1116,8 @@ class ShiftScaleRotate(Affine):
             cv2.BORDER_WRAP,
             cv2.BORDER_REFLECT_101,
         ] = cv2.BORDER_CONSTANT,
-        shift_limit_x: tuple[float, float] | float | None = None,
-        shift_limit_y: tuple[float, float] | float | None = None,
+        shift_range_x: tuple[float, float] | float | None = None,
+        shift_range_y: tuple[float, float] | float | None = None,
         rotate_method: Literal["largest_box", "ellipse"] = "largest_box",
         mask_interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -1130,12 +1130,12 @@ class ShiftScaleRotate(Affine):
         fill_mask: tuple[float, ...] | float = 0,
         p: float = 0.5,
     ):
-        shift_limit_x = cast("tuple[float, float]", shift_limit_x)
-        shift_limit_y = cast("tuple[float, float]", shift_limit_y)
+        shift_range_x = cast("tuple[float, float]", shift_range_x)
+        shift_range_y = cast("tuple[float, float]", shift_range_y)
         super().__init__(
-            scale=scale_limit,
-            translate_percent={"x": shift_limit_x, "y": shift_limit_y},
-            rotate=rotate_limit,
+            scale=scale_range,
+            translate_percent={"x": shift_range_x, "y": shift_range_y},
+            rotate=rotate_range,
             shear=(0, 0),
             interpolation=interpolation,
             mask_interpolation=mask_interpolation,
@@ -1152,21 +1152,21 @@ class ShiftScaleRotate(Affine):
             UserWarning,
             stacklevel=2,
         )
-        self.shift_limit_x = shift_limit_x
-        self.shift_limit_y = shift_limit_y
+        self.shift_range_x = shift_range_x
+        self.shift_range_y = shift_range_y
 
-        self.scale_limit = cast("tuple[float, float]", scale_limit)
-        self.rotate_limit = cast("tuple[int, int]", rotate_limit)
+        self.scale_range = cast("tuple[float, float]", scale_range)
+        self.rotate_range = cast("tuple[int, int]", rotate_range)
         self.border_mode = border_mode
         self.fill = fill
         self.fill_mask = fill_mask
 
     def get_transform_init_args(self) -> dict[str, Any]:
         return {
-            "shift_limit_x": self.shift_limit_x,
-            "shift_limit_y": self.shift_limit_y,
-            "scale_limit": to_tuple(self.scale_limit, bias=-1.0),
-            "rotate_limit": self.rotate_limit,
+            "shift_range_x": self.shift_range_x,
+            "shift_range_y": self.shift_range_y,
+            "scale_range": to_tuple(self.scale_range, bias=-1.0),
+            "rotate_range": self.rotate_range,
             "interpolation": self.interpolation,
             "border_mode": self.border_mode,
             "fill": self.fill,

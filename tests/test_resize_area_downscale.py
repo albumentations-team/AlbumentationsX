@@ -38,8 +38,8 @@ def get_mask(size):
     [
         (
             A.RandomScale,
-            {"scale_limit": (-0.5, -0.5)},  # Fixed 0.5 downscale (100px→50px)
-            {"scale_limit": (1.0, 1.0)},  # Fixed 2.0 upscale (50px→100px)
+            {"scale_range": (-0.5, -0.5)},  # Fixed 0.5 downscale (100px→50px)
+            {"scale_range": (1.0, 1.0)},  # Fixed 2.0 upscale (50px→100px)
         ),
         (
             A.Resize,

@@ -235,7 +235,7 @@ class RandomRotate90(DualTransform):
 
 
 class RotateInitSchema(BaseTransformInitSchema):
-    limit: Annotated[
+    angle_range: Annotated[
         tuple[float, float] | float,
         AfterValidator(create_symmetric_range),
     ]
@@ -263,12 +263,12 @@ class RotateInitSchema(BaseTransformInitSchema):
 
 
 class Rotate(DualTransform):
-    """Rotate by a random angle from limit (degrees). Optional crop_border removes black
+    """Rotate by a random angle from angle_range (degrees). Optional crop_border removes black
     corners. Same rotation for image, mask, bboxes, keypoints.
 
     Args:
-        limit (float | tuple[float, float]): Range from which a random angle is picked. If limit is a single float,
-            an angle is picked from (-limit, limit). Default: (-90, 90)
+        angle_range (float | tuple[float, float]): Range from which a random angle is picked.
+            If a single float, an angle is picked from (-angle_range, angle_range). Default: (-90, 90)
         interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm. Should be one of:
             cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_LINEAR.
@@ -296,7 +296,7 @@ class Rotate(DualTransform):
     Supported bboxes:
         hbb, obb
     Note:
-        - The rotation angle is randomly selected for each execution within the range specified by 'limit'.
+        - The rotation angle is randomly selected for each execution within the range specified by 'angle_range'.
         - When 'crop_border' is False, the output image will have the same size as the input, potentially
           introducing black triangles in the corners.
         - When 'crop_border' is True, the output image is cropped to remove black triangles, which may result
@@ -305,7 +305,7 @@ class Rotate(DualTransform):
         - Keypoints are rotated around the center of the image.
 
     Mathematical Details:
-        1. An angle θ is randomly sampled from the range specified by 'limit'.
+        1. An angle θ is randomly sampled from the range specified by 'angle_range'.
         2. The image is rotated around its center by θ degrees.
         3. The rotation matrix R is:
            R = [cos(θ)  -sin(θ)]
@@ -328,7 +328,7 @@ class Rotate(DualTransform):
         >>> keypoint_labels = [0, 1]  # Labels for keypoints
         >>> # Define the transform
         >>> transform = A.Compose([
-        ...     A.Rotate(limit=45, p=1.0),
+        ...     A.Rotate(angle_range=45, p=1.0),
         ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
         ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>> # Apply the transform to all targets
@@ -361,7 +361,7 @@ class Rotate(DualTransform):
 
     def __init__(
         self,
-        limit: tuple[float, float] | float = (-90, 90),
+        angle_range: tuple[float, float] | float = (-90, 90),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -390,7 +390,7 @@ class Rotate(DualTransform):
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.limit = cast("tuple[float, float]", limit)
+        self.angle_range = cast("tuple[float, float]", angle_range)
         self.interpolation = interpolation
         self.mask_interpolation = mask_interpolation
         self.border_mode = border_mode
@@ -543,9 +543,9 @@ class Rotate(DualTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        angle = self.py_random.uniform(*self.limit)
+        angle = self.py_random.uniform(*self.angle_range)
 
-        self.applied_config = {"limit": angle}
+        self.applied_config = {"angle_range": angle}
 
         if self.crop_border:
             height, width = params["shape"][:2]
@@ -582,16 +582,16 @@ class Rotate(DualTransform):
 
 
 class SafeRotate(Affine):
-    """Rotate by a random angle (limit) but scale to fit in the original frame. No black
-    corners; output size equals input. Good when fixed dimensions are required.
+    """Rotate by a random angle but scale to fit the original frame. No black corners;
+    output size equals input. Good when fixed dimensions are required.
 
     This transformation ensures that the entire rotated image fits within the original frame by scaling it
     down if necessary. The resulting image maintains its original dimensions but may contain artifacts due to the
     rotation and scaling process.
 
     Args:
-        limit (float | tuple[float, float]): Range from which a random angle is picked. If limit is a single float,
-            an angle is picked from (-limit, limit). Default: (-90, 90)
+        angle_range (float | tuple[float, float]): Range from which a random angle is picked.
+            If a single float, an angle is picked from (-angle_range, angle_range). Default: (-90, 90)
         interpolation (OpenCV flag): Flag that is used to specify the interpolation algorithm. Should be one of:
             cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_LINEAR.
@@ -624,7 +624,7 @@ class SafeRotate(Affine):
         - Bounding boxes and keypoints are transformed along with the image.
 
     Mathematical Details:
-        1. An angle θ is randomly sampled from the range specified by 'limit'.
+        1. An angle θ is randomly sampled from the range specified by 'angle_range'.
         2. The image is rotated around its center by θ degrees.
         3. The rotation matrix R is:
            R = [cos(θ)  -sin(θ)]
@@ -653,7 +653,7 @@ class SafeRotate(Affine):
         >>> keypoint_labels = [0, 1]  # Labels for keypoints
         >>> # Define the transform
         >>> transform = A.Compose([
-        ...     A.SafeRotate(limit=45, p=1.0),
+        ...     A.SafeRotate(angle_range=45, p=1.0),
         ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
         ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>> # Apply the transform to all targets
@@ -681,7 +681,7 @@ class SafeRotate(Affine):
 
     def __init__(
         self,
-        limit: tuple[float, float] | float = (-90, 90),
+        angle_range: tuple[float, float] | float = (-90, 90),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_LINEAR,
@@ -709,7 +709,7 @@ class SafeRotate(Affine):
         p: float = 0.5,
     ):
         super().__init__(
-            rotate=limit,
+            rotate=angle_range,
             interpolation=interpolation,
             border_mode=border_mode,
             fill=fill,
@@ -719,7 +719,7 @@ class SafeRotate(Affine):
             mask_interpolation=mask_interpolation,
             p=p,
         )
-        self.limit = cast("tuple[float, float]", limit)
+        self.angle_range = cast("tuple[float, float]", angle_range)
 
     def _create_safe_rotate_matrix(
         self,
@@ -758,9 +758,9 @@ class SafeRotate(Affine):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        angle = self.py_random.uniform(*self.limit)
+        angle = self.py_random.uniform(*self.angle_range)
 
-        self.applied_config = {"limit": angle}
+        self.applied_config = {"angle_range": angle}
 
         image_center = fgeometric.center(image_shape)
         bbox_center = fgeometric.center_bbox(image_shape)

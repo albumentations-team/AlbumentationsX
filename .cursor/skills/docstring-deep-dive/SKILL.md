@@ -33,7 +33,7 @@ The **first paragraph** is the useful short description: an elevator pitch that 
 **Bad example (do not use):** Filling the 120–160 chars with meta boilerplate instead of an elevator pitch:
 
 ```text
-    """Apply Gaussian blur using a randomly sized kernel. Params: blur_limit, sigma_limit.
+    """Apply Gaussian blur using a randomly sized kernel. Params: blur_range, sigma_range.
     Supports image, volume. See Args and Examples.
 ```
 

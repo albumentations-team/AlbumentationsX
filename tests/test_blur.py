@@ -14,19 +14,19 @@ from tests.conftest import UINT8_IMAGES
 
 @pytest.mark.parametrize("aug", [A.Blur, A.MedianBlur, A.MotionBlur])
 @pytest.mark.parametrize(
-    "blur_limit_input, blur_limit_used",
+    "blur_range_input, blur_range_used",
     [[(3, 3), (3, 3)], [(13, 13), (13, 13)]],
 )
 @pytest.mark.parametrize("image", UINT8_IMAGES)
 def test_blur_kernel_generation(
     image: np.ndarray,
     aug: BasicTransform,
-    blur_limit_input: tuple[int, int],
-    blur_limit_used: tuple[int, int],
+    blur_range_input: tuple[int, int],
+    blur_range_used: tuple[int, int],
 ) -> None:
-    aug = aug(blur_limit=blur_limit_input, p=1)
+    aug = aug(blur_range=blur_range_input, p=1)
 
-    assert aug.blur_limit == blur_limit_used
+    assert aug.blur_range == blur_range_used
     aug(image=image)["image"]
 
 
@@ -61,7 +61,7 @@ def test_advanced_blur_float_uint8_diff_less_than_two(val_uint8: list[int]) -> N
     x_float32 = np.zeros((5, 5, 1)).astype(np.float32)
     x_float32[2, 2] = val_uint8 / 255.0
 
-    adv_blur = A.AdvancedBlur(blur_limit=(3, 5), p=1)
+    adv_blur = A.AdvancedBlur(blur_range=(3, 5), p=1)
     adv_blur.set_random_seed(0)
 
     adv_blur_uint8 = adv_blur(image=x_uint8)["image"]
@@ -79,9 +79,9 @@ def test_advanced_blur_float_uint8_diff_less_than_two(val_uint8: list[int]) -> N
 @pytest.mark.parametrize(
     "params",
     [
-        {"sigma_x_limit": (0.0, 1.0), "sigma_y_limit": (0.0, 1.0)},
-        {"beta_limit": (0.1, 0.9)},
-        {"beta_limit": (1.1, 8.0)},
+        {"sigma_x_range": (0.0, 1.0), "sigma_y_range": (0.0, 1.0)},
+        {"beta_range": (0.1, 0.9)},
+        {"beta_range": (1.1, 8.0)},
     ],
 )
 def test_advanced_blur_raises_on_incorrect_params(
@@ -163,7 +163,7 @@ class MockValidationInfo:
         ),
     ],
 )
-def test_process_blur_limit(
+def test_process_blur_range(
     value: Any,
     min_value: int,
     expected: tuple[int, int],
@@ -173,23 +173,23 @@ def test_process_blur_limit(
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        result = fblur.process_blur_limit(value, info, min_value)
+        result = fblur.process_blur_range(value, info, min_value)
 
         assert result == expected
         assert len(w) == len(warning_messages)
 
 
-def test_process_blur_limit_sequence_check() -> None:
+def test_process_blur_range_sequence_check() -> None:
     """Test that non-sequence values are properly converted to tuples."""
     info = MockValidationInfo("test_field")
 
     # Test with integer input
-    result = fblur.process_blur_limit(5, info, min_value=0)
+    result = fblur.process_blur_range(5, info, min_value=0)
     assert isinstance(result, tuple)
     assert result == (0, 5)
 
     # Test with float input
-    result = fblur.process_blur_limit(5.0, info, min_value=0)
+    result = fblur.process_blur_range(5.0, info, min_value=0)
     assert isinstance(result, tuple)
     assert result == (0, 5)
 
@@ -227,7 +227,7 @@ def test_gaussian_blur_matches_pil():
         pil_sharpness.append(compute_sharpness(np.array(pil_blurred)))
 
         # Albumentations blur
-        alb_blurred = A.GaussianBlur(blur_limit=0, sigma_limit=(sigma, sigma), p=1.0)(image=image)["image"]
+        alb_blurred = A.GaussianBlur(blur_range=0, sigma_range=(sigma, sigma), p=1.0)(image=image)["image"]
         alb_sharpness.append(compute_sharpness(alb_blurred))
 
     # Convert to numpy arrays for easier comparison

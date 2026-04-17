@@ -9,8 +9,6 @@ Use albucore equivalents for multi-channel support:
 
 Allowlist:
 - cv2.remap in geometric/functional.py and pixel/functional.py: 2D data only.
-- cv2.resize in geometric/functional.py: upscale_distortion_maps uses 2D float32 maps,
-  not images, so albucore.resize does not apply there.
 """
 
 from __future__ import annotations
@@ -33,7 +31,7 @@ ALLOWLIST: list[tuple[str, str]] = [
     # 2D remap: remap_keypoints_via_mask (int16 mask), _distort_channel (single channel)
     ("albumentations/augmentations/geometric/functional.py", "remap"),
     ("albumentations/augmentations/pixel/functional.py", "remap"),
-    # upscale_distortion_maps: resizes 2D float32 coordinate maps, not images
+    # 2D resize: `resize()` falls back to cv2 for ndim==2 inputs (albucore.resize requires 3D).
     ("albumentations/augmentations/geometric/functional.py", "resize"),
 ]
 

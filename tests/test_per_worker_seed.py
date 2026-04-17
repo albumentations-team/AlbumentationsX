@@ -155,9 +155,9 @@ def test_dataloader_epoch_diversity():
     # Create transform with fixed seed (worker-aware seed is always enabled)
     transform = A.Compose(
         [
-            A.RandomBrightnessContrast(p=1.0, brightness_limit=0.3),
+            A.RandomBrightnessContrast(p=1.0, brightness_range=0.3),
             A.HorizontalFlip(p=0.5),
-            A.Rotate(limit=30, p=0.5),
+            A.Rotate(angle_range=30, p=0.5),
         ],
         seed=42,
     )
@@ -299,7 +299,7 @@ def test_multiple_compose_instances():
     transform1 = A.Compose(
         [
             A.HorizontalFlip(p=0.5),
-            A.Rotate(limit=45, p=0.5),
+            A.Rotate(angle_range=45, p=0.5),
         ],
         seed=137,
     )
@@ -307,7 +307,7 @@ def test_multiple_compose_instances():
     transform2 = A.Compose(
         [
             A.HorizontalFlip(p=0.5),
-            A.Rotate(limit=45, p=0.5),
+            A.Rotate(angle_range=45, p=0.5),
         ],
         seed=137,
     )

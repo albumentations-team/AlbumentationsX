@@ -405,8 +405,8 @@ class TestDataCollectors:
                 A.HorizontalFlip(p=0.5),
                 A.OneOf(
                     [
-                        A.Blur(blur_limit=3),
-                        A.MedianBlur(blur_limit=3),
+                        A.Blur(blur_range=3),
+                        A.MedianBlur(blur_range=3),
                     ],
                     p=0.5,
                 ),
@@ -639,8 +639,8 @@ class TestComplexPipelines:
                     A.HorizontalFlip(p=0.5),
                     A.OneOf(
                         [
-                            A.Blur(blur_limit=3),
-                            A.MedianBlur(blur_limit=3),
+                            A.Blur(blur_range=3),
+                            A.MedianBlur(blur_range=3),
                         ],
                         p=0.5,
                     ),
@@ -837,8 +837,8 @@ class TestTelemetryIntegration:
                 ),
                 A.OneOf(
                     [
-                        A.Blur(blur_limit=3),
-                        A.MedianBlur(blur_limit=3),
+                        A.Blur(blur_range=3),
+                        A.MedianBlur(blur_range=3),
                     ],
                     p=0.5,
                 ),

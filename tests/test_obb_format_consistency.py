@@ -25,7 +25,7 @@ import albumentations as A
     [
         pytest.param(A.HorizontalFlip(p=1.0), id="HFlip"),
         pytest.param(A.VerticalFlip(p=1.0), id="VFlip"),
-        pytest.param(A.Rotate(limit=(45, 45), p=1.0), id="Rotate"),
+        pytest.param(A.Rotate(angle_range=(45, 45), p=1.0), id="Rotate"),
         pytest.param(A.RandomRotate90(p=1.0), id="Rotate90"),
     ],
 )
@@ -178,7 +178,7 @@ def test_obb_format_preserved_through_pipeline(bbox_format: str, input_bbox: lis
         [
             A.HorizontalFlip(p=1.0),
             A.VerticalFlip(p=1.0),
-            A.Rotate(limit=(30, 30), p=1.0),
+            A.Rotate(angle_range=(30, 30), p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format=bbox_format, bbox_type="obb"),
     )

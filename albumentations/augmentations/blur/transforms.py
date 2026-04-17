@@ -52,24 +52,24 @@ TWO = 2
 
 
 class BlurInitSchema(BaseTransformInitSchema):
-    blur_limit: tuple[int, int] | int
+    blur_range: tuple[int, int] | int
 
-    @field_validator("blur_limit")
+    @field_validator("blur_range")
     @classmethod
     def _process_blur(cls, value: tuple[int, int] | int, info: ValidationInfo) -> tuple[int, int]:
-        return fblur.process_blur_limit(value, info, min_value=3)
+        return fblur.process_blur_range(value, info, min_value=3)
 
 
 class Blur(ImageOnlyTransform):
     """Average pixels over a random square kernel (box filter). Fast, soft blur; kernel size
-    from blur_limit. Good for mild smoothing or augmentation variety.
+    from blur_range. Good for mild smoothing or augmentation variety.
 
     This transform uses OpenCV's cv2.blur function, which performs a simple box filter blur.
     The size of the blur kernel is randomly selected for each application, allowing for
     varying degrees of blur intensity.
 
     Args:
-        blur_limit (tuple[int, int] | int): Controls the range of the blur kernel size.
+        blur_range (tuple[int, int] | int): Controls the range of the blur kernel size.
             - If a single int is provided, the kernel size will be randomly chosen
               between 3 and that value.
             - If a tuple of two ints is provided, it defines the inclusive range
@@ -107,7 +107,7 @@ class Blur(ImageOnlyTransform):
         >>>
         >>> # Example 1: Basic usage with default parameters
         >>> transform = A.Compose([
-        ...     A.Blur(p=1.0)  # Always apply with default blur_limit=(3, 7)
+        ...     A.Blur(p=1.0)  # Always apply with default blur_range=(3, 7)
         ... ])
         >>>
         >>> result = transform(image=image)
@@ -116,7 +116,7 @@ class Blur(ImageOnlyTransform):
         >>>
         >>> # Example 2: Using a fixed blur kernel size
         >>> fixed_transform = A.Compose([
-        ...     A.Blur(blur_limit=5, p=1.0)  # Always use kernel size 5x5
+        ...     A.Blur(blur_range=5, p=1.0)  # Always use kernel size 5x5
         ... ])
         >>>
         >>> fixed_result = fixed_transform(image=image)
@@ -125,7 +125,7 @@ class Blur(ImageOnlyTransform):
         >>>
         >>> # Example 3: Using a custom range for blur kernel sizes
         >>> strong_transform = A.Compose([
-        ...     A.Blur(blur_limit=(7, 13), p=1.0)  # Use larger kernel for stronger blur
+        ...     A.Blur(blur_range=(7, 13), p=1.0)  # Use larger kernel for stronger blur
         ... ])
         >>>
         >>> strong_result = strong_transform(image=image)
@@ -134,8 +134,8 @@ class Blur(ImageOnlyTransform):
         >>>
         >>> # Example 4: As part of a pipeline with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.7),
-        ...     A.Blur(blur_limit=(3, 5), p=0.5),  # 50% chance of applying blur
+        ...     A.RandomBrightnessContrast(brightness_range=0.2, contrast_range=0.2, p=0.7),
+        ...     A.Blur(blur_range=(3, 5), p=0.5),  # 50% chance of applying blur
         ...     A.HorizontalFlip(p=0.5)
         ... ])
         >>>
@@ -150,11 +150,11 @@ class Blur(ImageOnlyTransform):
 
     def __init__(
         self,
-        blur_limit: tuple[int, int] | int = (3, 7),
+        blur_range: tuple[int, int] | int = (3, 7),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.blur_limit = cast("tuple[int, int]", blur_limit)
+        self.blur_range = cast("tuple[int, int]", blur_range)
 
     def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return fblur.box_blur(img, kernel)
@@ -162,10 +162,10 @@ class Blur(ImageOnlyTransform):
     def get_params(self) -> dict[str, Any]:
         kernel = fblur.sample_odd_from_range(
             self.py_random,
-            self.blur_limit[0],
-            self.blur_limit[1],
+            self.blur_range[0],
+            self.blur_range[1],
         )
-        self.applied_config = {"blur_limit": kernel}
+        self.applied_config = {"blur_range": kernel}
         return {"kernel": kernel}
 
 
@@ -178,9 +178,9 @@ class MotionBlur(Blur):
     a line-shaped kernel with controllable angle, direction, and position.
 
     Args:
-        blur_limit (int | tuple[int, int]): Maximum kernel size for blurring.
+        blur_range (int | tuple[int, int]): Maximum kernel size for blurring.
             Should be in range [3, inf).
-            - If int: kernel size will be randomly chosen from [3, blur_limit]
+            - If int: kernel size will be randomly chosen from [3, blur_range]
             - If tuple: kernel size will be randomly chosen from [min, max]
             Larger values create stronger blur effects.
             Default: (3, 7)
@@ -250,7 +250,7 @@ class MotionBlur(Blur):
         >>> # Example 1: Horizontal camera shake (symmetric)
         >>> horizontal_shake = A.Compose([
         ...     A.MotionBlur(
-        ...         blur_limit=(10, 12),     # Strong blur
+        ...         blur_range=(10, 12),     # Strong blur
         ...         angle_range=(-5, 5),     # Near-horizontal motion (±5°)
         ...         direction_range=(0, 0),  # Symmetric blur (equally in both directions)
         ...         p=1.0                    # Always apply
@@ -264,7 +264,7 @@ class MotionBlur(Blur):
         >>> # Example 2: Object moving right (directional motion)
         >>> rightward_motion = A.Compose([
         ...     A.MotionBlur(
-        ...         blur_limit=(7, 9),         # Medium blur
+        ...         blur_range=(7, 9),         # Medium blur
         ...         angle_range=(0, 0),        # Exactly horizontal motion (0°)
         ...         direction_range=(0.8, 1.0), # Strong forward bias (mostly rightward)
         ...         p=1.0
@@ -278,7 +278,7 @@ class MotionBlur(Blur):
         >>> # Example 3: Object moving diagonally down-right
         >>> diagonal_motion = A.Compose([
         ...     A.MotionBlur(
-        ...         blur_limit=(9, 11),       # Stronger blur
+        ...         blur_range=(9, 11),       # Stronger blur
         ...         angle_range=(135, 135),   # 135° motion (down-right diagonal)
         ...         direction_range=(0.7, 0.9), # Forward bias
         ...         p=1.0
@@ -292,7 +292,7 @@ class MotionBlur(Blur):
         >>> # Example 4: Vertical motion (up-down)
         >>> vertical_motion = A.Compose([
         ...     A.MotionBlur(
-        ...         blur_limit=9,             # Fixed kernel size
+        ...         blur_range=9,             # Fixed kernel size
         ...         angle_range=(90, 90),     # Vertical motion (90°)
         ...         direction_range=(-0.2, 0.2), # Near-symmetric (slight bias)
         ...         p=1.0
@@ -306,7 +306,7 @@ class MotionBlur(Blur):
         >>> # Example 5: Random motion blur (can be in any direction)
         >>> random_motion = A.Compose([
         ...     A.MotionBlur(
-        ...         blur_limit=(5, 12),       # Variable strength
+        ...         blur_range=(5, 12),       # Variable strength
         ...         angle_range=(0, 360),     # Any angle
         ...         direction_range=(-1.0, 1.0), # Any direction bias
         ...         allow_shifted=True,       # Allow kernel to be shifted from center
@@ -321,7 +321,7 @@ class MotionBlur(Blur):
         >>> # Example 6: Multiple random parameters with kernel centered (not shifted)
         >>> centered_motion = A.Compose([
         ...     A.MotionBlur(
-        ...         blur_limit=(5, 9),
+        ...         blur_range=(5, 9),
         ...         angle_range=(0, 360),
         ...         direction_range=(-1.0, 1.0),
         ...         allow_shifted=False,      # Kernel will always be centered
@@ -335,14 +335,14 @@ class MotionBlur(Blur):
         >>>
         >>> # Example 7: In a composition with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.5),
+        ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.5),
         ...     A.MotionBlur(                                   # 30% chance of applying motion blur
-        ...         blur_limit=(3, 7),
+        ...         blur_range=(3, 7),
         ...         angle_range=(0, 180),                       # Only horizontal to vertical
         ...         direction_range=(-0.5, 0.5),                # Moderate direction bias
         ...         p=0.3
         ...     ),
-        ...     A.HueSaturationValue(hue_shift_limit=10, sat_shift_limit=15, val_shift_limit=10, p=0.3)
+        ...     A.HueSaturationValue(hue_shift_range=10, sat_shift_range=15, val_shift_range=10, p=0.3)
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -393,15 +393,15 @@ class MotionBlur(Blur):
 
     def __init__(
         self,
-        blur_limit: tuple[int, int] | int = (3, 7),
+        blur_range: tuple[int, int] | int = (3, 7),
         allow_shifted: bool = True,
         angle_range: tuple[float, float] = (0, 360),
         direction_range: tuple[float, float] = (-1.0, 1.0),
         p: float = 0.5,
     ):
-        super().__init__(blur_limit=blur_limit, p=p)
+        super().__init__(blur_range=blur_range, p=p)
         self.allow_shifted = allow_shifted
-        self.blur_limit = cast("tuple[int, int]", blur_limit)
+        self.blur_range = cast("tuple[int, int]", blur_range)
         self.angle_range = angle_range
         self.direction_range = direction_range
 
@@ -411,15 +411,15 @@ class MotionBlur(Blur):
     def get_params(self) -> dict[str, Any]:
         ksize = fblur.sample_odd_from_range(
             self.py_random,
-            self.blur_limit[0],
-            self.blur_limit[1],
+            self.blur_range[0],
+            self.blur_range[1],
         )
 
         angle = self.py_random.uniform(*self.angle_range)
         direction = self.py_random.uniform(*self.direction_range)
 
         self.applied_config = {
-            "blur_limit": ksize,
+            "blur_range": ksize,
             "angle_range": angle,
             "direction_range": direction,
         }
@@ -437,14 +437,14 @@ class MotionBlur(Blur):
 
 class MedianBlur(Blur):
     """Replace each pixel with median in a square window. Removes salt-and-pepper noise; edges
-    sharper than box or Gaussian. Kernel size from blur_limit.
+    sharper than box or Gaussian. Kernel size from blur_range.
 
     This transform uses a median filter to blur the input image. Median filtering is particularly
     effective at removing salt-and-pepper noise while preserving edges, making it a popular choice
     for noise reduction in image processing.
 
     Args:
-        blur_limit (int | tuple[int, int]): Maximum aperture linear size for blurring the input image.
+        blur_range (int | tuple[int, int]): Maximum aperture linear size for blurring the input image.
             Must be odd and in the range [3, inf).
             - If a single int is provided, the kernel size will be randomly chosen
               between 3 and that value.
@@ -497,7 +497,7 @@ class MedianBlur(Blur):
         >>> # Example 1: Minimal median blur (3x3 kernel)
         >>> minimal_blur = A.Compose([
         ...     A.MedianBlur(
-        ...         blur_limit=3,  # Fixed 3x3 kernel
+        ...         blur_range=3,  # Fixed 3x3 kernel
         ...         p=1.0          # Always apply
         ...     )
         ... ])
@@ -510,7 +510,7 @@ class MedianBlur(Blur):
         >>> # Example 2: Medium median blur
         >>> medium_blur = A.Compose([
         ...     A.MedianBlur(
-        ...         blur_limit=5,  # Fixed 5x5 kernel
+        ...         blur_range=5,  # Fixed 5x5 kernel
         ...         p=1.0
         ...     )
         ... ])
@@ -523,7 +523,7 @@ class MedianBlur(Blur):
         >>> # Example 3: Strong median blur
         >>> strong_blur = A.Compose([
         ...     A.MedianBlur(
-        ...         blur_limit=9,  # Fixed 9x9 kernel
+        ...         blur_range=9,  # Fixed 9x9 kernel
         ...         p=1.0
         ...     )
         ... ])
@@ -536,7 +536,7 @@ class MedianBlur(Blur):
         >>> # Example 4: Random kernel size range
         >>> random_kernel = A.Compose([
         ...     A.MedianBlur(
-        ...         blur_limit=(3, 9),  # Kernel size between 3x3 and 9x9
+        ...         blur_range=(3, 9),  # Kernel size between 3x3 and 9x9
         ...         p=1.0
         ...     )
         ... ])
@@ -547,9 +547,9 @@ class MedianBlur(Blur):
         >>>
         >>> # Example 5: In a pipeline for noise reduction
         >>> pipeline = A.Compose([
-        ...     A.GaussNoise(var_limit=(10, 50), p=0.5),        # Possibly add some noise
-        ...     A.MedianBlur(blur_limit=(3, 5), p=0.7),         # 70% chance of applying median blur
-        ...     A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.3)
+        ...     A.GaussNoise(std_range=(0.04, 0.2), p=0.5),     # Possibly add some noise
+        ...     A.MedianBlur(blur_range=(3, 5), p=0.7),         # 70% chance of applying median blur
+        ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.3)
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -564,10 +564,10 @@ class MedianBlur(Blur):
 
     def __init__(
         self,
-        blur_limit: tuple[int, int] | int = (3, 7),
+        blur_range: tuple[int, int] | int = (3, 7),
         p: float = 0.5,
     ):
-        super().__init__(blur_limit=blur_limit, p=p)
+        super().__init__(blur_range=blur_range, p=p)
 
     def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return median_blur(img, kernel)
@@ -639,7 +639,7 @@ class ModeFilter(ImageOnlyTransform):
             value: tuple[int, int],
             info: ValidationInfo,
         ) -> tuple[int, int]:
-            return fblur.process_blur_limit(value, info, min_value=3)
+            return fblur.process_blur_range(value, info, min_value=3)
 
     def __init__(
         self,
@@ -671,7 +671,7 @@ class GaussianBlur(ImageOnlyTransform):
     image noise and detail, creating a smoothing effect.
 
     Args:
-        sigma_limit (tuple[float, float] | float): Range for the Gaussian kernel standard
+        sigma_range (tuple[float, float] | float): Range for the Gaussian kernel standard
             deviation (sigma). Must be more or equal than 0.
             - If a single float is provided, sigma will be randomly chosen
               between 0 and that value.
@@ -679,7 +679,7 @@ class GaussianBlur(ImageOnlyTransform):
               of possible sigma values.
             Default: (0.5, 3.0)
 
-        blur_limit (tuple[int, int] | int): Controls the range of the Gaussian kernel size.
+        blur_range (tuple[int, int] | int): Controls the range of the Gaussian kernel size.
             - If a single int is provided, the kernel size will be randomly chosen
               between 0 and that value.
             - If a tuple of two ints is provided, it defines the inclusive range
@@ -701,12 +701,12 @@ class GaussianBlur(ImageOnlyTransform):
         Any
 
     Note:
-        - When blur_limit=0 (default), this implementation exactly matches PIL's
+        - When blur_range=0 (default), this implementation exactly matches PIL's
           GaussianBlur behavior:
           * Kernel size is computed as int(sigma * 3.5) * 2 + 1
           * Gaussian values are computed using the standard formula
           * Kernel is normalized to preserve image luminance
-        - When blur_limit is specified, the kernel size is randomly sampled from that range
+        - When blur_range is specified, the kernel size is randomly sampled from that range
           regardless of sigma, which might result in inconsistent blur effects.
         - The default sigma range (0.5, 3.0) provides a good balance between subtle
           and strong blur effects:
@@ -737,8 +737,8 @@ class GaussianBlur(ImageOnlyTransform):
         >>> # Example 2: Light Gaussian blur
         >>> light_blur = A.Compose([
         ...     A.GaussianBlur(
-        ...         sigma_limit=(0.2, 0.5),  # Small sigma for subtle blur
-        ...         blur_limit=0,            # Auto-compute kernel size
+        ...         sigma_range=(0.2, 0.5),  # Small sigma for subtle blur
+        ...         blur_range=0,            # Auto-compute kernel size
         ...         p=1.0
         ...     )
         ... ])
@@ -750,8 +750,8 @@ class GaussianBlur(ImageOnlyTransform):
         >>> # Example 3: Strong Gaussian blur
         >>> strong_blur = A.Compose([
         ...     A.GaussianBlur(
-        ...         sigma_limit=(3.0, 7.0),  # Larger sigma for stronger blur
-        ...         blur_limit=0,            # Auto-compute kernel size
+        ...         sigma_range=(3.0, 7.0),  # Larger sigma for stronger blur
+        ...         blur_range=0,            # Auto-compute kernel size
         ...         p=1.0
         ...     )
         ... ])
@@ -763,8 +763,8 @@ class GaussianBlur(ImageOnlyTransform):
         >>> # Example 4: Fixed kernel size
         >>> fixed_kernel = A.Compose([
         ...     A.GaussianBlur(
-        ...         sigma_limit=(0.5, 2.0),
-        ...         blur_limit=(9, 9),       # Fixed 9x9 kernel size
+        ...         sigma_range=(0.5, 2.0),
+        ...         blur_range=(9, 9),       # Fixed 9x9 kernel size
         ...         p=1.0
         ...     )
         ... ])
@@ -776,8 +776,8 @@ class GaussianBlur(ImageOnlyTransform):
         >>> # Example 5: Random kernel size range
         >>> random_kernel = A.Compose([
         ...     A.GaussianBlur(
-        ...         sigma_limit=(1.0, 2.0),
-        ...         blur_limit=(5, 9),       # Kernel size between 5x5 and 9x9
+        ...         sigma_range=(1.0, 2.0),
+        ...         blur_range=(5, 9),       # Kernel size between 5x5 and 9x9
         ...         p=1.0
         ...     )
         ... ])
@@ -788,9 +788,9 @@ class GaussianBlur(ImageOnlyTransform):
         >>>
         >>> # Example 6: In an augmentation pipeline
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-        ...     A.GaussianBlur(sigma_limit=(0.5, 1.5), p=0.3),  # 30% chance of applying
-        ...     A.RGBShift(r_shift_limit=10, g_shift_limit=10, b_shift_limit=10, p=0.3)
+        ...     A.RandomBrightnessContrast(brightness_range=0.2, contrast_range=0.2, p=0.5),
+        ...     A.GaussianBlur(sigma_range=(0.5, 1.5), p=0.3),  # 30% chance of applying
+        ...     A.RGBShift(r_shift_range=10, g_shift_range=10, b_shift_range=10, p=0.3)
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -804,12 +804,12 @@ class GaussianBlur(ImageOnlyTransform):
     """
 
     class InitSchema(BaseTransformInitSchema):
-        sigma_limit: Annotated[
+        sigma_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(process_non_negative_range),
             AfterValidator(nondecreasing),
         ]
-        blur_limit: Annotated[
+        blur_range: Annotated[
             tuple[int, int] | int,
             AfterValidator(convert_to_0plus_range),
             AfterValidator(nondecreasing),
@@ -817,13 +817,13 @@ class GaussianBlur(ImageOnlyTransform):
 
     def __init__(
         self,
-        blur_limit: tuple[int, int] | int = 0,
-        sigma_limit: tuple[float, float] | float = (0.5, 3.0),
+        blur_range: tuple[int, int] | int = 0,
+        sigma_range: tuple[float, float] | float = (0.5, 3.0),
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.blur_limit = cast("tuple[int, int]", blur_limit)
-        self.sigma_limit = cast("tuple[float, float]", sigma_limit)
+        self.blur_range = cast("tuple[int, int]", blur_range)
+        self.sigma_range = cast("tuple[float, float]", sigma_range)
 
     def apply(
         self,
@@ -834,9 +834,9 @@ class GaussianBlur(ImageOnlyTransform):
         return fpixel.separable_convolve(img, kernel=kernel)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, float]:
-        sigma = self.py_random.uniform(*self.sigma_limit)
-        ksize = self.py_random.randint(*self.blur_limit)
-        self.applied_config = {"sigma_limit": sigma, "blur_limit": ksize}
+        sigma = self.py_random.uniform(*self.sigma_range)
+        ksize = self.py_random.randint(*self.blur_range)
+        self.applied_config = {"sigma_range": sigma, "blur_range": ksize}
         return {"kernel": fblur.create_gaussian_kernel_1d(sigma, ksize)}
 
 
@@ -961,9 +961,9 @@ class GlassBlur(ImageOnlyTransform):
         >>>
         >>> # Example 5: In a pipeline with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.7),
+        ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.7),
         ...     A.GlassBlur(sigma=0.7, max_delta=4, iterations=2, p=0.5),  # 50% chance of applying
-        ...     A.HueSaturationValue(hue_shift_limit=10, sat_shift_limit=15, val_shift_limit=10, p=0.3)
+        ...     A.HueSaturationValue(hue_shift_range=10, sat_shift_range=15, val_shift_range=10, p=0.3)
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -1064,33 +1064,33 @@ class AdvancedBlur(ImageOnlyTransform):
         The resulting kernel is then applied to the image using convolution.
 
     Args:
-        blur_limit (tuple[int, int] | int, optional): Controls the size of the blur kernel. If a single int
+        blur_range (tuple[int, int] | int, optional): Controls the size of the blur kernel. If a single int
             is provided, the kernel size will be randomly chosen between 3 and that value.
             Must be odd and ≥ 3. Larger values create stronger blur effects.
             Default: (3, 7)
 
-        sigma_x_limit (tuple[float, float] | float): Controls the spread of the blur in the x direction.
+        sigma_x_range (tuple[float, float] | float): Controls the spread of the blur in the x direction.
             Higher values increase blur strength.
             If a single float is provided, the range will be (0, limit).
             Default: (0.2, 1.0)
 
-        sigma_y_limit (tuple[float, float] | float): Controls the spread of the blur in the y direction.
+        sigma_y_range (tuple[float, float] | float): Controls the spread of the blur in the y direction.
             Higher values increase blur strength.
             If a single float is provided, the range will be (0, limit).
             Default: (0.2, 1.0)
 
-        rotate_limit (tuple[int, int] | int): Range of angles (in degrees) for rotating the kernel.
+        rotate_range (tuple[int, int] | int): Range of angles (in degrees) for rotating the kernel.
             This rotation allows for diagonal blur directions. If limit is a single int, an angle is picked
-            from (-rotate_limit, rotate_limit).
+            from (-rotate_range, rotate_range).
             Default: (-90, 90)
 
-        beta_limit (tuple[float, float] | float): Shape parameter of the Generalized Gaussian distribution.
+        beta_range (tuple[float, float] | float): Shape parameter of the Generalized Gaussian distribution.
             - beta = 1 gives a standard Gaussian distribution
             - beta < 1 creates heavier tails, resulting in more uniform, box-like blur
             - beta > 1 creates lighter tails, resulting in more peaked, focused blur
             Default: (0.5, 8.0)
 
-        noise_limit (tuple[float, float] | float): Controls the strength of multiplicative noise
+        noise_range (tuple[float, float] | float): Controls the strength of multiplicative noise
             applied to the kernel. Values around 1.0 keep the original kernel mostly intact,
             while values further from 1.0 introduce more variation.
             Default: (0.75, 1.25)
@@ -1121,12 +1121,12 @@ class AdvancedBlur(ImageOnlyTransform):
         >>> # Example 1: Gaussian-like blur (beta = 1)
         >>> gaussian_like = A.Compose([
         ...     A.AdvancedBlur(
-        ...         blur_limit=5,
-        ...         sigma_x_limit=(0.5, 0.5),
-        ...         sigma_y_limit=(0.5, 0.5),
-        ...         rotate_limit=0,
-        ...         beta_limit=(1.0, 1.0),  # Standard Gaussian (beta = 1)
-        ...         noise_limit=(1.0, 1.0),  # No noise
+        ...         blur_range=5,
+        ...         sigma_x_range=(0.5, 0.5),
+        ...         sigma_y_range=(0.5, 0.5),
+        ...         rotate_range=0,
+        ...         beta_range=(1.0, 1.0),  # Standard Gaussian (beta = 1)
+        ...         noise_range=(1.0, 1.0),  # No noise
         ...         p=1.0
         ...     )
         ... ])
@@ -1138,12 +1138,12 @@ class AdvancedBlur(ImageOnlyTransform):
         >>> # Example 2: Box-like blur (beta < 1)
         >>> box_like = A.Compose([
         ...     A.AdvancedBlur(
-        ...         blur_limit=(7, 9),
-        ...         sigma_x_limit=(0.6, 0.8),
-        ...         sigma_y_limit=(0.6, 0.8),
-        ...         rotate_limit=0,
-        ...         beta_limit=(0.5, 0.7),  # Box-like blur (beta < 1)
-        ...         noise_limit=(0.9, 1.1),  # Slight noise
+        ...         blur_range=(7, 9),
+        ...         sigma_x_range=(0.6, 0.8),
+        ...         sigma_y_range=(0.6, 0.8),
+        ...         rotate_range=0,
+        ...         beta_range=(0.5, 0.7),  # Box-like blur (beta < 1)
+        ...         noise_range=(0.9, 1.1),  # Slight noise
         ...         p=1.0
         ...     )
         ... ])
@@ -1155,12 +1155,12 @@ class AdvancedBlur(ImageOnlyTransform):
         >>> # Example 3: Peaked blur (beta > 1)
         >>> peaked = A.Compose([
         ...     A.AdvancedBlur(
-        ...         blur_limit=(7, 9),
-        ...         sigma_x_limit=(0.6, 0.8),
-        ...         sigma_y_limit=(0.6, 0.8),
-        ...         rotate_limit=0,
-        ...         beta_limit=(3.0, 6.0),  # Peaked blur (beta > 1)
-        ...         noise_limit=(0.9, 1.1),  # Slight noise
+        ...         blur_range=(7, 9),
+        ...         sigma_x_range=(0.6, 0.8),
+        ...         sigma_y_range=(0.6, 0.8),
+        ...         rotate_range=0,
+        ...         beta_range=(3.0, 6.0),  # Peaked blur (beta > 1)
+        ...         noise_range=(0.9, 1.1),  # Slight noise
         ...         p=1.0
         ...     )
         ... ])
@@ -1172,12 +1172,12 @@ class AdvancedBlur(ImageOnlyTransform):
         >>> # Example 4: Anisotropic blur (directional)
         >>> directional = A.Compose([
         ...     A.AdvancedBlur(
-        ...         blur_limit=(9, 11),
-        ...         sigma_x_limit=(0.8, 1.0),    # Stronger x blur
-        ...         sigma_y_limit=(0.2, 0.3),    # Weaker y blur
-        ...         rotate_limit=(0, 0),         # No rotation
-        ...         beta_limit=(1.0, 2.0),
-        ...         noise_limit=(0.9, 1.1),
+        ...         blur_range=(9, 11),
+        ...         sigma_x_range=(0.8, 1.0),    # Stronger x blur
+        ...         sigma_y_range=(0.2, 0.3),    # Weaker y blur
+        ...         rotate_range=(0, 0),         # No rotation
+        ...         beta_range=(1.0, 2.0),
+        ...         noise_range=(0.9, 1.1),
         ...         p=1.0
         ...     )
         ... ])
@@ -1189,12 +1189,12 @@ class AdvancedBlur(ImageOnlyTransform):
         >>> # Example 5: Rotated directional blur
         >>> rotated = A.Compose([
         ...     A.AdvancedBlur(
-        ...         blur_limit=(9, 11),
-        ...         sigma_x_limit=(0.8, 1.0),    # Stronger x blur
-        ...         sigma_y_limit=(0.2, 0.3),    # Weaker y blur
-        ...         rotate_limit=(45, 45),       # 45 degree rotation
-        ...         beta_limit=(1.0, 2.0),
-        ...         noise_limit=(0.9, 1.1),
+        ...         blur_range=(9, 11),
+        ...         sigma_x_range=(0.8, 1.0),    # Stronger x blur
+        ...         sigma_y_range=(0.2, 0.3),    # Weaker y blur
+        ...         rotate_range=(45, 45),       # 45 degree rotation
+        ...         beta_range=(1.0, 2.0),
+        ...         noise_range=(0.9, 1.1),
         ...         p=1.0
         ...     )
         ... ])
@@ -1206,12 +1206,12 @@ class AdvancedBlur(ImageOnlyTransform):
         >>> # Example 6: Noisy blur
         >>> noisy = A.Compose([
         ...     A.AdvancedBlur(
-        ...         blur_limit=(5, 7),
-        ...         sigma_x_limit=(0.4, 0.6),
-        ...         sigma_y_limit=(0.4, 0.6),
-        ...         rotate_limit=(-30, 30),
-        ...         beta_limit=(0.8, 1.2),
-        ...         noise_limit=(0.7, 1.3),      # Strong noise variation
+        ...         blur_range=(5, 7),
+        ...         sigma_x_range=(0.4, 0.6),
+        ...         sigma_y_range=(0.4, 0.6),
+        ...         rotate_range=(-30, 30),
+        ...         beta_range=(0.8, 1.2),
+        ...         noise_range=(0.7, 1.3),      # Strong noise variation
         ...         p=1.0
         ...     )
         ... ])
@@ -1243,34 +1243,34 @@ class AdvancedBlur(ImageOnlyTransform):
     """
 
     class InitSchema(BlurInitSchema):
-        sigma_x_limit: Annotated[
+        sigma_x_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(process_non_negative_range),
             AfterValidator(nondecreasing),
         ]
-        sigma_y_limit: Annotated[
+        sigma_y_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(process_non_negative_range),
             AfterValidator(nondecreasing),
         ]
-        beta_limit: Annotated[
+        beta_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(process_non_negative_range),
             AfterValidator(nondecreasing),
         ]
-        noise_limit: Annotated[
+        noise_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(process_non_negative_range),
             AfterValidator(nondecreasing),
         ]
-        rotate_limit: Annotated[
+        rotate_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(create_symmetric_range),
         ]
 
-        @field_validator("beta_limit")
+        @field_validator("beta_range")
         @classmethod
-        def _check_beta_limit(cls, value: tuple[float, float] | float) -> tuple[float, float]:
+        def _check_beta_range(cls, value: tuple[float, float] | float) -> tuple[float, float]:
             result = to_tuple(value, low=0)
             if not (result[0] < 1.0 < result[1]):
                 raise ValueError(
@@ -1281,33 +1281,33 @@ class AdvancedBlur(ImageOnlyTransform):
         @model_validator(mode="after")
         def _validate_limits(self) -> Self:
             if (
-                isinstance(self.sigma_x_limit, (tuple, list))
-                and self.sigma_x_limit[0] == 0
-                and isinstance(self.sigma_y_limit, (tuple, list))
-                and self.sigma_y_limit[0] == 0
+                isinstance(self.sigma_x_range, (tuple, list))
+                and self.sigma_x_range[0] == 0
+                and isinstance(self.sigma_y_range, (tuple, list))
+                and self.sigma_y_range[0] == 0
             ):
-                msg = "sigma_x_limit and sigma_y_limit minimum value cannot be both equal to 0."
+                msg = "sigma_x_range and sigma_y_range minimum value cannot be both equal to 0."
                 raise ValueError(msg)
             return self
 
     def __init__(
         self,
-        blur_limit: tuple[int, int] | int = (3, 7),
-        sigma_x_limit: tuple[float, float] | float = (0.2, 1.0),
-        sigma_y_limit: tuple[float, float] | float = (0.2, 1.0),
-        rotate_limit: tuple[float, float] | float = (-90, 90),
-        beta_limit: tuple[float, float] | float = (0.5, 8.0),
-        noise_limit: tuple[float, float] | float = (0.9, 1.1),
+        blur_range: tuple[int, int] | int = (3, 7),
+        sigma_x_range: tuple[float, float] | float = (0.2, 1.0),
+        sigma_y_range: tuple[float, float] | float = (0.2, 1.0),
+        rotate_range: tuple[float, float] | float = (-90, 90),
+        beta_range: tuple[float, float] | float = (0.5, 8.0),
+        noise_range: tuple[float, float] | float = (0.9, 1.1),
         p: float = 0.5,
     ):
         super().__init__(p=p)
 
-        self.blur_limit = cast("tuple[int, int]", blur_limit)
-        self.sigma_x_limit = cast("tuple[float, float]", sigma_x_limit)
-        self.sigma_y_limit = cast("tuple[float, float]", sigma_y_limit)
-        self.rotate_limit = cast("tuple[int, int]", rotate_limit)
-        self.beta_limit = cast("tuple[float, float]", beta_limit)
-        self.noise_limit = cast("tuple[float, float]", noise_limit)
+        self.blur_range = cast("tuple[int, int]", blur_range)
+        self.sigma_x_range = cast("tuple[float, float]", sigma_x_range)
+        self.sigma_y_range = cast("tuple[float, float]", sigma_y_range)
+        self.rotate_range = cast("tuple[int, int]", rotate_range)
+        self.beta_range = cast("tuple[float, float]", beta_range)
+        self.noise_range = cast("tuple[float, float]", noise_range)
 
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel=kernel)
@@ -1315,30 +1315,30 @@ class AdvancedBlur(ImageOnlyTransform):
     def get_params(self) -> dict[str, np.ndarray]:
         ksize = fblur.sample_odd_from_range(
             self.py_random,
-            self.blur_limit[0],
-            self.blur_limit[1],
+            self.blur_range[0],
+            self.blur_range[1],
         )
-        sigma_x = self.py_random.uniform(*self.sigma_x_limit)
-        sigma_y = self.py_random.uniform(*self.sigma_y_limit)
-        angle = np.deg2rad(self.py_random.uniform(*self.rotate_limit))
+        sigma_x = self.py_random.uniform(*self.sigma_x_range)
+        sigma_y = self.py_random.uniform(*self.sigma_y_range)
+        angle = np.deg2rad(self.py_random.uniform(*self.rotate_range))
 
         # Split into 2 cases to avoid selection of narrow kernels (beta > 1) too often.
         beta = (
-            self.py_random.uniform(self.beta_limit[0], 1)
+            self.py_random.uniform(self.beta_range[0], 1)
             if self.py_random.random() < HALF
-            else self.py_random.uniform(1, self.beta_limit[1])
+            else self.py_random.uniform(1, self.beta_range[1])
         )
 
         self.applied_config = {
-            "blur_limit": ksize,
-            "sigma_x_limit": sigma_x,
-            "sigma_y_limit": sigma_y,
-            "rotate_limit": float(np.rad2deg(angle)),
-            "beta_limit": beta,
+            "blur_range": ksize,
+            "sigma_x_range": sigma_x,
+            "sigma_y_range": sigma_y,
+            "rotate_range": float(np.rad2deg(angle)),
+            "beta_range": beta,
         }
 
         noise_matrix = self.random_generator.uniform(
-            *self.noise_limit,
+            *self.noise_range,
             size=(ksize, ksize),
         )
 
@@ -1457,9 +1457,9 @@ class Defocus(ImageOnlyTransform):
         >>>
         >>> # Example 4: Using in a pipeline with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.7),
+        ...     A.RandomBrightnessContrast(brightness_range=0.1, contrast_range=0.1, p=0.7),
         ...     A.Defocus(radius=(3, 8), alias_blur=0.3, p=0.5),  # 50% chance of applying defocus
-        ...     A.GaussNoise(var_limit=(10, 30), p=0.3)           # Possible noise after defocus
+        ...     A.GaussNoise(std_range=(0.04, 0.15), p=0.3)       # Possible noise after defocus
         ... ])
         >>>
         >>> pipeline_result = pipeline(image=image)
@@ -1589,7 +1589,7 @@ class ZoomBlur(ImageOnlyTransform):
         >>>
         >>> # Example 4: In a pipeline with other transforms
         >>> pipeline = A.Compose([
-        ...     A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.7),
+        ...     A.RandomBrightnessContrast(brightness_range=0.2, contrast_range=0.2, p=0.7),
         ...     A.ZoomBlur(max_factor=(1.1, 1.3), step_factor=0.02, p=0.5),
         ...     A.HorizontalFlip(p=0.5)
         ... ])

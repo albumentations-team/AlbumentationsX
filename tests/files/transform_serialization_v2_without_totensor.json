@@ -7,7 +7,7 @@
             {
                 "__class_fullname__": "Blur",
                 "p": 0.5,
-                "blur_limit": [
+                "blur_range": [
                     3,
                     7
                 ]
@@ -15,7 +15,7 @@
             {
                 "__class_fullname__": "CLAHE",
                 "p": 0.5,
-                "clip_limit": [
+                "clip_range": [
                     1,
                     4.0
                 ],
@@ -87,11 +87,11 @@
             {
                 "__class_fullname__": "GaussianBlur",
                 "p": 0.5,
-                "blur_limit": [
+                "blur_range": [
                     3,
                     7
                 ],
-                "sigma_limit": [
+                "sigma_range": [
                     0,
                     0
                 ]
@@ -107,7 +107,7 @@
                 "__class_fullname__": "GridDistortion",
                 "p": 0.5,
                 "num_steps": 5,
-                "distort_limit": [
+                "distort_range": [
                     -0.3,
                     0.3
                 ],
@@ -120,15 +120,15 @@
             {
                 "__class_fullname__": "HueSaturationValue",
                 "p": 0.5,
-                "hue_shift_limit": [
+                "hue_shift_range": [
                     -20,
                     20
                 ],
-                "sat_shift_limit": [
+                "sat_shift_range": [
                     -30,
                     30
                 ],
-                "val_shift_limit": [
+                "val_shift_range": [
                     -20,
                     20
                 ]
@@ -164,7 +164,7 @@
             {
                 "__class_fullname__": "MedianBlur",
                 "p": 0.5,
-                "blur_limit": [
+                "blur_range": [
                     3,
                     7
                 ]
@@ -172,7 +172,7 @@
             {
                 "__class_fullname__": "MotionBlur",
                 "p": 0.5,
-                "blur_limit": [
+                "blur_range": [
                     3,
                     7
                 ]
@@ -194,7 +194,7 @@
             {
                 "__class_fullname__": "OpticalDistortion",
                 "p": 0.5,
-                "distort_limit": [
+                "distort_range": [
                     -0.05,
                     0.05
                 ],
@@ -223,15 +223,15 @@
             {
                 "__class_fullname__": "RGBShift",
                 "p": 0.5,
-                "r_shift_limit": [
+                "r_shift_range": [
                     -20,
                     20
                 ],
-                "g_shift_limit": [
+                "g_shift_range": [
                     -20,
                     20
                 ],
-                "b_shift_limit": [
+                "b_shift_range": [
                     -20,
                     20
                 ]
@@ -239,11 +239,11 @@
             {
                 "__class_fullname__": "RandomBrightnessContrast",
                 "p": 0.5,
-                "brightness_limit": [
+                "brightness_range": [
                     -0.2,
                     0.2
                 ],
-                "contrast_limit": [
+                "contrast_range": [
                     -0.2,
                     0.2
                 ],
@@ -258,7 +258,7 @@
             {
                 "__class_fullname__": "RandomGamma",
                 "p": 0.5,
-                "gamma_limit": [
+                "gamma_range": [
                     80,
                     120
                 ]
@@ -294,7 +294,7 @@
                 "__class_fullname__": "RandomScale",
                 "p": 0.5,
                 "interpolation": 1,
-                "scale_limit": [
+                "scale_range": [
                     -0.09999999999999998,
                     0.10000000000000009
                 ]
@@ -308,7 +308,7 @@
                     1,
                     1
                 ],
-                "num_shadows_limit": [
+                "num_shadows_range": [
                     1,
                     2
                 ],
@@ -353,19 +353,19 @@
             {
                 "__class_fullname__": "ShiftScaleRotate",
                 "p": 0.5,
-                "shift_limit_x": [
+                "shift_range_x": [
                     -0.0625,
                     0.0625
                 ],
-                "shift_limit_y": [
+                "shift_range_y": [
                     -0.0625,
                     0.0625
                 ],
-                "scale_limit": [
+                "scale_range": [
                     -0.09999999999999998,
                     0.10000000000000009
                 ],
-                "rotate_limit": [
+                "rotate_range": [
                     -45,
                     45
                 ],

@@ -9,16 +9,16 @@ import albumentations as A
 class TestRandomScaleOBB:
     """Test RandomScale transform with OBB bboxes."""
 
-    @pytest.mark.parametrize("scale_limit", [(-0.3, 0.3), (0.1, 0.5), (-0.5, -0.1)])
+    @pytest.mark.parametrize("scale_range", [(-0.3, 0.3), (0.1, 0.5), (-0.5, -0.1)])
     @pytest.mark.parametrize("angle", [0, 45, 90, -30, 135, -90])  # Removed 180 (equivalent to -180)
-    def test_random_scale_preserves_obb_angles(self, scale_limit, angle):
+    def test_random_scale_preserves_obb_angles(self, scale_range, angle):
         """Test that RandomScale preserves OBB angles since it's uniform scaling."""
         image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         obb_boxes = np.array([[0.2, 0.3, 0.4, 0.5, angle]], dtype=np.float32)
         bbox_labels = [1]
 
         transform = A.Compose(
-            [A.RandomScale(scale_limit=scale_limit, p=1.0)],
+            [A.RandomScale(scale_range=scale_range, p=1.0)],
             bbox_params=A.BboxParams(
                 coord_format="albumentations",
                 bbox_type="obb",
@@ -41,7 +41,7 @@ class TestRandomScaleOBB:
         bbox_labels = [1, 2, 3]
 
         transform = A.Compose(
-            [A.RandomScale(scale_limit=0.5, p=1.0)],
+            [A.RandomScale(scale_range=0.5, p=1.0)],
             bbox_params=A.BboxParams(
                 coord_format="albumentations",
                 bbox_type="obb",
@@ -63,7 +63,7 @@ class TestRandomScaleOBB:
         bbox_labels = [1]
 
         transform = A.Compose(
-            [A.RandomScale(scale_limit=0.3, p=1.0)],
+            [A.RandomScale(scale_range=0.3, p=1.0)],
             bbox_params=A.BboxParams(
                 coord_format="albumentations",
                 bbox_type="obb",

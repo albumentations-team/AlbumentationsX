@@ -91,7 +91,7 @@ def test_obb_rotation_centered_square_analytical(rotation_deg: int) -> None:
     # Apply rotation to OBB
     transform = A.Compose(
         [
-            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+            A.Rotate(angle_range=(rotation_deg, rotation_deg), p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
@@ -139,7 +139,7 @@ def test_obb_rotation_centered_rectangular_analytical(rotation_deg: int) -> None
 
     transform = A.Compose(
         [
-            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+            A.Rotate(angle_range=(rotation_deg, rotation_deg), p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
@@ -187,7 +187,7 @@ def test_obb_rotation_with_initial_angle_analytical(rotation_deg: int, initial_a
 
     transform = A.Compose(
         [
-            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+            A.Rotate(angle_range=(rotation_deg, rotation_deg), p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
@@ -236,7 +236,7 @@ def test_obb_rotation_offset_box_analytical(offset_x: float, offset_y: float, ro
 
     transform = A.Compose(
         [
-            A.Rotate(limit=(rotation_deg, rotation_deg), p=1.0),
+            A.Rotate(angle_range=(rotation_deg, rotation_deg), p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
@@ -663,7 +663,7 @@ def test_obb_360_rotation_analytical() -> None:
 
     transform = A.Compose(
         [
-            A.Rotate(limit=(360, 360), p=1.0),
+            A.Rotate(angle_range=(360, 360), p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
@@ -706,7 +706,7 @@ def test_obb_combined_transforms_analytical() -> None:
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
-            A.Rotate(limit=(90, 90), p=1.0),
+            A.Rotate(angle_range=(90, 90), p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )

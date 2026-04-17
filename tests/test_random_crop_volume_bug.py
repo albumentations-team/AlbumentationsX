@@ -14,7 +14,7 @@ def test_random_crop_with_pad_on_volume():
     transform = A.Compose(
         [
             A.Resize(height=256, width=256),
-            A.RandomScale(scale_limit=(-0.2, 0.3), p=1.0),  # This can make image smaller
+            A.RandomScale(scale_range=(-0.2, 0.3), p=1.0),  # This can make image smaller
             A.RandomCrop(height=256, width=256, pad_if_needed=True, p=1.0),
         ],
         seed=137,
@@ -49,7 +49,7 @@ def test_random_crop_edge_case_exact_size_after_scale():
     # Scale will make it exactly 256x256 (scale factor 1.0)
     transform = A.Compose(
         [
-            A.RandomScale(scale_limit=(0.0, 0.0), p=1.0),  # No scaling
+            A.RandomScale(scale_range=(0.0, 0.0), p=1.0),  # No scaling
             A.RandomCrop(height=256, width=256, pad_if_needed=True, p=1.0),
         ],
         seed=137,
@@ -77,7 +77,7 @@ def test_random_crop_various_scale_factors(scale_factor):
 
     transform = A.Compose(
         [
-            A.RandomScale(scale_limit=(scale_factor, scale_factor), p=1.0),
+            A.RandomScale(scale_range=(scale_factor, scale_factor), p=1.0),
             A.RandomCrop(height=256, width=256, pad_if_needed=True, p=1.0),
         ],
         seed=137,

@@ -334,9 +334,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         then validate the override keys.
 
         Starts with get_base_init_args() + get_transform_init_args() (all constructor params
-        with instance values, e.g. blur_limit=(3,7), interpolation=1). Then overrides with
+        with instance values, e.g. blur_range=(3,7), interpolation=1). Then overrides with
         self.applied_config entries set by get_params/get_params_dependent_on_data (e.g.
-        blur_limit=5 — the concrete sampled value).
+        blur_range=5 — the concrete sampled value).
 
         Validates that all override keys are valid constructor param names.
         """

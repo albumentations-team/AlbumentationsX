@@ -100,7 +100,7 @@ def _annotation_accepts_tuple(annotation: Any) -> bool:
 
 def _wrap_scalars_for_replay(cls: type, config: dict[str, Any]) -> dict[str, Any]:
     """Convert scalar values in config to (v,v) degenerate range tuples for params
-    that expect ranges (e.g. blur_limit=5 becomes (5,5)) to skip symmetric expansion.
+    that expect ranges (e.g. blur_range=5 becomes (5,5)) to skip symmetric expansion.
     """
     range_params = _get_range_param_names(cls)
     result = {}

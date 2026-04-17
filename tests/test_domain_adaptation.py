@@ -488,7 +488,7 @@ def test_fda_transform_5plus_channels(num_channels):
     image = rng.integers(0, 256, (100, 100, num_channels), dtype=np.uint8)
     reference = rng.integers(0, 256, (120, 120, num_channels), dtype=np.uint8)
     transform = A.FDA(
-        beta_limit=(0.05, 0.05),
+        beta_range=(0.05, 0.05),
         metadata_key="fda_metadata",
         p=1.0,
     )

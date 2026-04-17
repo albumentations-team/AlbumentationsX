@@ -559,7 +559,7 @@ def test_calculate_affine_transform_padding_properties(transform_params, image_s
     ["transform_class", "transform_params"],
     [
         (A.Affine, {"rotate": (90, 90)}),
-        (A.Rotate, {"limit": (90, 90)}),
+        (A.Rotate, {"angle_range": (90, 90)}),
         (A.RandomRotate90, {}),
     ],
 )

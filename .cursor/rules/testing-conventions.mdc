@@ -14,7 +14,7 @@ This exercises the full pipeline (parameter generation, dtype handling, Compose 
 
 ```python
 # CORRECT - use transform call interface
-transform = A.Compose([A.MedianBlur(blur_limit=(3, 7), p=1.0)])
+transform = A.Compose([A.MedianBlur(blur_range=(3, 7), p=1.0)])
 
 # Single image
 result = transform(image=image)["image"]

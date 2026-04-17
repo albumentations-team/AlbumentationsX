@@ -841,7 +841,7 @@ def test_pad_if_needed_position(params, image_shape):
                 "fill": 0,
             },
             A.RandomScale: {
-                "scale_limit": 0.2,
+                "scale_range": 0.2,
                 "interpolation": cv2.INTER_NEAREST,
             },
             A.Affine: {
@@ -1507,7 +1507,7 @@ def test_median_blur_apply_to_images(dtype: np.dtype, num_channels: int, kernel:
     else:
         images = rng.random((3, 50, 50, num_channels), dtype=np.float32)
 
-    transform = A.Compose([A.MedianBlur(blur_limit=(kernel, kernel), p=1.0)])
+    transform = A.Compose([A.MedianBlur(blur_range=(kernel, kernel), p=1.0)])
 
     # Batch result via images= key
     batch_result = transform(images=images)["images"]
@@ -1531,8 +1531,8 @@ def test_unsharp_mask_apply_to_images(dtype):
         images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
 
     transform = A.UnsharpMask(
-        blur_limit=(3, 3),
-        sigma_limit=(0.5, 0.5),
+        blur_range=(3, 3),
+        sigma_range=(0.5, 0.5),
         alpha=(0.3, 0.3),
         threshold=10,
         p=1.0,
@@ -1560,8 +1560,8 @@ def test_unsharp_mask_apply_to_volumes(dtype):
         volumes = np.random.RandomState(137).random(shape).astype(np.float32)
 
     transform = A.UnsharpMask(
-        blur_limit=(3, 3),
-        sigma_limit=(0.5, 0.5),
+        blur_range=(3, 3),
+        sigma_range=(0.5, 0.5),
         alpha=(0.3, 0.3),
         threshold=10,
         p=1.0,

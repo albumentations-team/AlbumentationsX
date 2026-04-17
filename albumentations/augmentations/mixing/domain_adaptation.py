@@ -325,7 +325,7 @@ class HistogramMatching(BaseDomainAdaptation):
 
 class FDA(BaseDomainAdaptation):
     """Fourier Domain Adaptation: swap low-frequency spectrum with reference (metadata_key).
-    beta_limit controls extent. Good for unsupervised domain adaptation (UDA).
+    beta_range controls extent. Good for unsupervised domain adaptation (UDA).
 
     Adapts the style of the input image to match the style of a reference image
     by manipulating their frequency components in the Fourier domain. This is
@@ -348,14 +348,14 @@ class FDA(BaseDomainAdaptation):
     How it works:
     FDA operates in the frequency domain. It replaces the low-frequency components
     of the source image's Fourier transform with the low-frequency components from the
-    reference (target domain) image's Fourier transform. The `beta_limit` parameter
+    reference (target domain) image's Fourier transform. The `beta_range` parameter
     controls the size of the frequency window being swapped.
 
     Args:
         metadata_key (str): Key in the input `data` dictionary to retrieve the reference image(s).
             The value should be a sequence (e.g., list) of numpy arrays (pre-loaded images).
             Default: "fda_metadata".
-        beta_limit (tuple[float, float] | float): Controls the extent of the low-frequency
+        beta_range (tuple[float, float] | float): Controls the extent of the low-frequency
             spectrum swap. A larger beta means more components are swapped. Corresponds to the L
             parameter in the original paper. Should be in the range [0, 0.5]. Sampling is uniform
             within the provided range [min, max]. Default: (0, 0.1).
@@ -396,7 +396,7 @@ class FDA(BaseDomainAdaptation):
         >>> # This will subtly adjust the frequency characteristics
         >>> minimal_fda = A.Compose([
         ...     A.FDA(
-        ...         beta_limit=(0.01, 0.05),  # Small beta range for subtle adaptation
+        ...         beta_range=(0.01, 0.05),  # Small beta range for subtle adaptation
         ...         metadata_key="target_domain",  # Custom metadata key
         ...         p=1.0
         ...     )
@@ -412,7 +412,7 @@ class FDA(BaseDomainAdaptation):
         >>> # Example 2: FDA with moderate adaptation (medium beta value)
         >>> moderate_fda = A.Compose([
         ...     A.FDA(
-        ...         beta_limit=(0.1, 0.2),  # Medium beta range
+        ...         beta_range=(0.1, 0.2),  # Medium beta range
         ...         metadata_key="target_domain",
         ...         p=1.0
         ...     )
@@ -424,7 +424,7 @@ class FDA(BaseDomainAdaptation):
         >>> # Example 3: FDA with strong adaptation (larger beta value)
         >>> strong_fda = A.Compose([
         ...     A.FDA(
-        ...         beta_limit=(0.3, 0.5),  # Larger beta range (upper limit is MAX_BETA_LIMIT)
+        ...         beta_range=(0.3, 0.5),  # Larger beta range (upper limit is MAX_BETA_LIMIT)
         ...         metadata_key="target_domain",
         ...         p=1.0
         ...     )
@@ -462,14 +462,14 @@ class FDA(BaseDomainAdaptation):
     """
 
     class InitSchema(BaseDomainAdaptationInitSchema):
-        beta_limit: Annotated[
+        beta_range: Annotated[
             tuple[float, float] | float,
             AfterValidator(convert_to_0plus_range),
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
 
-        @field_validator("beta_limit")
+        @field_validator("beta_range")
         @classmethod
         def _check_ranges(cls, value: tuple[float, float]) -> tuple[float, float]:
             bounds = 0, MAX_BETA_LIMIT
@@ -479,12 +479,12 @@ class FDA(BaseDomainAdaptation):
 
     def __init__(
         self,
-        beta_limit: tuple[float, float] | float = (0, 0.1),
+        beta_range: tuple[float, float] | float = (0, 0.1),
         metadata_key: str = "fda_metadata",
         p: float = 0.5,
     ):
         super().__init__(metadata_key=metadata_key, p=p)
-        self.beta_limit = cast("tuple[float, float]", beta_limit)
+        self.beta_range = cast("tuple[float, float]", beta_range)
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         target_image = self._get_reference_image(data)
@@ -493,10 +493,10 @@ class FDA(BaseDomainAdaptation):
         # Resize the target image to match the input image dimensions
         target_image_resized = fgeometric.resize(target_image, (height, width), cv2.INTER_LINEAR)
 
-        beta = self.py_random.uniform(*self.beta_limit)
+        beta = self.py_random.uniform(*self.beta_range)
 
         self.applied_config = {
-            "beta_limit": beta,
+            "beta_range": beta,
         }
 
         return {"target_image": target_image_resized, "beta": beta}

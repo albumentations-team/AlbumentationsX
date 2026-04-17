@@ -37,7 +37,7 @@ def test_rotate_crop_border(image):
     height = image.shape[0]
     border_value = 256
     aug = A.Rotate(
-        limit=(45, 45),
+        angle_range=(45, 45),
         p=1,
         fill=border_value,
         border_mode=cv2.BORDER_CONSTANT,
@@ -611,7 +611,7 @@ def test_unsharp_mask_float_uint8_diff_less_than_two(val_uint8):
     x_float32 = np.zeros((5, 5, 3)).astype(np.float32)
     x_float32[2, 2] = val_uint8 / 255.0
 
-    unsharpmask = A.UnsharpMask(blur_limit=3, p=1)
+    unsharpmask = A.UnsharpMask(blur_range=3, p=1)
     unsharpmask.set_random_seed(0)
 
     usm_uint8 = unsharpmask(image=x_uint8)["image"]
@@ -853,7 +853,7 @@ def test_affine_with_dict_scale_keep_ratio_true():
 
 def test_safe_rotate_inherits_keep_ratio_default():
     """Test that SafeRotate inherits the new default keep_ratio=True behavior."""
-    transform = A.SafeRotate(limit=45, p=1.0)
+    transform = A.SafeRotate(angle_range=45, p=1.0)
     # SafeRotate inherits from Affine and doesn't override keep_ratio
     assert transform.keep_ratio, "SafeRotate should inherit keep_ratio=True default"
 
@@ -881,9 +881,9 @@ def test_shift_scale_rotate_uses_keep_ratio_true():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         transform = A.ShiftScaleRotate(
-            shift_limit=0.1,
-            scale_limit=(-0.1, 0.1),
-            rotate_limit=45,
+            shift_range=0.1,
+            scale_range=(-0.1, 0.1),
+            rotate_range=45,
             p=1.0,
         )
     # ShiftScaleRotate now uses keep_ratio=True
@@ -1033,7 +1033,7 @@ def test_safe_rotate(angle: float, targets: dict, expected: dict):
     image = np.empty([100, 200, 3], dtype=np.uint8)
     t = A.Compose(
         [
-            A.SafeRotate(limit=(angle, angle), border_mode=0, fill=0, p=1),
+            A.SafeRotate(angle_range=(angle, angle), border_mode=0, fill=0, p=1),
         ],
         bbox_params=A.BboxParams(coord_format="pascal_voc", min_visibility=0.0),
         keypoint_params=A.KeypointParams("xyas", angle_in_degrees=True),
@@ -1053,9 +1053,9 @@ def test_safe_rotate(angle: float, targets: dict, expected: dict):
         (lambda rotate: A.Affine(rotate=rotate, p=1, border_mode=cv2.BORDER_CONSTANT, fill=0)),
         (
             lambda rotate: A.ShiftScaleRotate(
-                shift_limit=(0, 0),
-                scale_limit=(0, 0),
-                rotate_limit=rotate,
+                shift_range=(0, 0),
+                scale_range=(0, 0),
+                rotate_range=rotate,
                 p=1,
                 border_mode=cv2.BORDER_CONSTANT,
                 fill=0,
@@ -1123,7 +1123,7 @@ def test_motion_blur_allow_shifted():
         allow_shifted=False,
         angle_range=(0, 0),  # Fixed horizontal angle
         direction_range=(0, 0),  # Symmetric direction
-        blur_limit=(7, 7),  # Fixed kernel size
+        blur_range=(7, 7),  # Fixed kernel size
     )
     kernel = transform.get_params()["kernel"]
 
@@ -1154,7 +1154,7 @@ def test_motion_blur_allow_shifted_true():
         allow_shifted=True,
         angle_range=(0, 0),  # Fixed horizontal angle
         direction_range=(0, 0),  # Symmetric direction
-        blur_limit=(7, 7),  # Fixed kernel size
+        blur_range=(7, 7),  # Fixed kernel size
         p=1.0,
     )
 
@@ -1343,10 +1343,10 @@ def test_change_image(augmentation_cls, params, image):
     get_2d_transforms(
         custom_arguments={
             A.AdvancedBlur: {
-                "blur_limit": (5, 7),
-                "sigma_x_limit": (1, 3),
-                "sigma_y_limit": (1, 3),
-                "rotate_limit": (0, 0),
+                "blur_range": (5, 7),
+                "sigma_x_range": (1, 3),
+                "sigma_y_range": (1, 3),
+                "rotate_range": (0, 0),
             },
         },
         except_augmentations={
@@ -1849,7 +1849,7 @@ def test_return_nonzero(augmentation_cls, params):
         ),
         A.Rotate(
             p=1,
-            limit=(45, 45),
+            angle_range=(45, 45),
             interpolation=cv2.INTER_NEAREST,
             border_mode=cv2.BORDER_CONSTANT,
             fill=128,

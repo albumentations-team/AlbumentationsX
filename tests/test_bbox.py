@@ -1269,7 +1269,7 @@ def test_random_rotate() -> None:
     image = np.ones((192, 192, 3))
     bboxes = [(78, 42, 142, 80, 1), (32, 12, 42, 72, 2)]
     aug = A.Compose(
-        [Rotate(limit=15, p=1.0, border_mode=cv2.BORDER_CONSTANT)],
+        [Rotate(angle_range=15, p=1.0, border_mode=cv2.BORDER_CONSTANT)],
         bbox_params={"coord_format": "pascal_voc"},
         strict=True,
     )
@@ -1395,9 +1395,9 @@ def test_bounding_box_vflip(bbox, expected_bbox) -> None:
     [
         lambda sign: A.Affine(translate_px=sign * 2, border_mode=cv2.BORDER_CONSTANT, fill=255),
         lambda sign: A.ShiftScaleRotate(
-            shift_limit=(sign * 0.02, sign * 0.02),
-            scale_limit=0,
-            rotate_limit=0,
+            shift_range=(sign * 0.02, sign * 0.02),
+            scale_range=0,
+            rotate_range=0,
             border_mode=cv2.BORDER_CONSTANT,
             fill=255,
         ),

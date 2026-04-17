@@ -1010,7 +1010,7 @@ class RandomShadow(ImageOnlyTransform):
         shadow_roi (tuple[float, float, float, float]): Region of the image where shadows
             will appear (x_min, y_min, x_max, y_max). All values should be in range [0, 1].
             Default: (0, 0.5, 1, 1).
-        num_shadows_limit (tuple[int, int]): Lower and upper limits for the possible number of shadows.
+        num_shadows_range (tuple[int, int]): Lower and upper limits for the possible number of shadows.
             Default: (1, 2).
         shadow_dimension (int): Number of edges in the shadow polygons. Default: 5.
         shadow_intensity_range (tuple[float, float]): Range for the shadow intensity. Larger value
@@ -1054,7 +1054,7 @@ class RandomShadow(ImageOnlyTransform):
         # Custom shadow parameters
         >>> transform = A.RandomShadow(
         ...     shadow_roi=(0.2, 0.2, 0.8, 0.8),
-        ...     num_shadows_limit=(2, 4),
+        ...     num_shadows_range=(2, 4),
         ...     shadow_dimension=8,
         ...     shadow_intensity_range=(0.3, 0.7),
         ...     p=1.0
@@ -1076,7 +1076,7 @@ class RandomShadow(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         shadow_roi: tuple[float, float, float, float]
-        num_shadows_limit: Annotated[
+        num_shadows_range: Annotated[
             tuple[int, int],
             AfterValidator(check_range_bounds(1, None)),
             AfterValidator(nondecreasing),
@@ -1101,7 +1101,7 @@ class RandomShadow(ImageOnlyTransform):
     def __init__(
         self,
         shadow_roi: tuple[float, float, float, float] = (0, 0.5, 1, 1),
-        num_shadows_limit: tuple[int, int] = (1, 2),
+        num_shadows_range: tuple[int, int] = (1, 2),
         shadow_dimension: int = 5,
         shadow_intensity_range: tuple[float, float] = (0.5, 0.5),
         p: float = 0.5,
@@ -1110,7 +1110,7 @@ class RandomShadow(ImageOnlyTransform):
 
         self.shadow_roi = shadow_roi
         self.shadow_dimension = shadow_dimension
-        self.num_shadows_limit = num_shadows_limit
+        self.num_shadows_range = num_shadows_range
         self.shadow_intensity_range = shadow_intensity_range
 
     def apply(
@@ -1130,7 +1130,7 @@ class RandomShadow(ImageOnlyTransform):
         metadata = get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
-        num_shadows = self.py_random.randint(*self.num_shadows_limit)
+        num_shadows = self.py_random.randint(*self.num_shadows_range)
 
         x_min, y_min, x_max, y_max = self.shadow_roi
 
@@ -1165,7 +1165,7 @@ class RandomShadow(ImageOnlyTransform):
         )
 
         self.applied_config = {
-            "num_shadows_limit": num_shadows,
+            "num_shadows_range": num_shadows,
             "shadow_dimension": self.shadow_dimension,
             "shadow_roi": self.shadow_roi,
         }

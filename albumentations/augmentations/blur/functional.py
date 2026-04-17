@@ -228,8 +228,8 @@ def _ensure_odd_values(result: tuple[int, int], field_name: str | None = None) -
     return new_result
 
 
-def process_blur_limit(value: int | tuple[int, int], info: ValidationInfo, min_value: int = 0) -> tuple[int, int]:
-    """Process blur limit to valid kernel sizes (min, odd). Converts int or tuple to
+def process_blur_range(value: int | tuple[int, int], info: ValidationInfo, min_value: int = 0) -> tuple[int, int]:
+    """Process blur range to valid kernel sizes (min, odd). Converts int or tuple to
     (min, max); enforces constraints. For blur InitSchema validators.
     """
     # Convert value to tuple[int, int]

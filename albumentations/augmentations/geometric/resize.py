@@ -23,13 +23,13 @@ __all__ = ["LetterBox", "LongestMaxSize", "RandomScale", "Resize", "SmallestMaxS
 
 
 class RandomScale(DualTransform):
-    """Resize by a random scale factor (scale_limit). Output size differs from input; all
+    """Resize by a random scale factor (scale_range). Output size differs from input; all
     targets scaled together. Useful for scale augmentation without cropping.
 
     Args:
-        scale_limit (float or tuple[float, float]): scaling factor range. If scale_limit is a single float value, the
-            range will be (-scale_limit, scale_limit). Note that the scale_limit will be biased by 1.
-            If scale_limit is a tuple, like (low, high), sampling will be done from the range (1 + low, 1 + high).
+        scale_range (float or tuple[float, float]): scaling factor range. If scale_range is a single float value, the
+            range will be (-scale_range, scale_range). Note that the scale_range will be biased by 1.
+            If scale_range is a tuple, like (low, high), sampling will be done from the range (1 + low, 1 + high).
             Default: (-0.1, 0.1).
         interpolation (OpenCV flag): flag that is used to specify the interpolation algorithm. Should be one of:
             cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
@@ -64,7 +64,7 @@ class RandomScale(DualTransform):
 
     Mathematical formulation:
         Let (W, H) be the original image dimensions and (W', H') be the output dimensions.
-        The scale factor s is sampled from the range [1 + scale_limit[0], 1 + scale_limit[1]].
+        The scale factor s is sampled from the range [1 + scale_range[0], 1 + scale_range[1]].
         Then, W' = W * s and H' = H * s.
 
     Examples:
@@ -91,7 +91,7 @@ class RandomScale(DualTransform):
         >>> # Apply RandomScale transform with comprehensive parameters
         >>> transform = A.Compose([
         ...     A.RandomScale(
-        ...         scale_limit=(-0.3, 0.5),     # Scale between 0.7x and 1.5x
+        ...         scale_range=(-0.3, 0.5),     # Scale between 0.7x and 1.5x
         ...         interpolation=cv2.INTER_LINEAR,
         ...         mask_interpolation=cv2.INTER_NEAREST,
         ...         area_for_downscale="image",  # Use INTER_AREA for image downscaling
@@ -119,7 +119,7 @@ class RandomScale(DualTransform):
         >>> scaled_keypoint_labels = result['keypoint_labels']  # Labels remain unchanged
         >>>
         >>> # The image dimensions will vary based on the randomly sampled scale factor
-        >>> # With scale_limit=(-0.3, 0.5), dimensions could be anywhere from 70% to 150% of original
+        >>> # With scale_range=(-0.3, 0.5), dimensions could be anywhere from 70% to 150% of original
 
     """
 
@@ -127,7 +127,7 @@ class RandomScale(DualTransform):
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
-        scale_limit: tuple[float, float] | float
+        scale_range: tuple[float, float] | float
         area_for_downscale: Literal["image", "image_mask"] | None
         interpolation: Literal[
             cv2.INTER_NEAREST,
@@ -148,14 +148,14 @@ class RandomScale(DualTransform):
             cv2.INTER_LINEAR_EXACT,
         ]
 
-        @field_validator("scale_limit")
+        @field_validator("scale_range")
         @classmethod
-        def _check_scale_limit(cls, v: tuple[float, float] | float) -> tuple[float, float]:
+        def _check_scale_range(cls, v: tuple[float, float] | float) -> tuple[float, float]:
             return to_tuple(v)
 
     def __init__(
         self,
-        scale_limit: tuple[float, float] | float = (-0.1, 0.1),
+        scale_range: tuple[float, float] | float = (-0.1, 0.1),
         interpolation: Literal[
             cv2.INTER_NEAREST,
             cv2.INTER_NEAREST_EXACT,
@@ -178,14 +178,14 @@ class RandomScale(DualTransform):
         p: float = 0.5,
     ):
         super().__init__(p=p)
-        self.scale_limit = cast("tuple[float, float]", scale_limit)
+        self.scale_range = cast("tuple[float, float]", scale_range)
         self.interpolation = interpolation
         self.mask_interpolation = mask_interpolation
         self.area_for_downscale = area_for_downscale
 
     def get_params(self) -> dict[str, float]:
-        scale = self.py_random.uniform(*self.scale_limit) + 1.0
-        self.applied_config = {"scale_limit": scale - 1.0}
+        scale = self.py_random.uniform(*self.scale_range) + 1.0
+        self.applied_config = {"scale_range": scale - 1.0}
         return {"scale": scale}
 
     def apply(

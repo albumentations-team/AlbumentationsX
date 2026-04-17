@@ -224,7 +224,7 @@ AUGMENTATION_CLS_PARAMS = [
     [
         A.Perspective,
         {
-            "scale": 0.5,
+            "scale": (0.05, 0.5),
             "keep_size": True,
             "border_mode": cv2.BORDER_REFLECT_101,
             "fill": 10,
@@ -264,11 +264,11 @@ AUGMENTATION_CLS_PARAMS = [
         A.Affine,
         [
             {
-                "scale": 0.5,
-                "translate_percent": 0.1,
+                "scale": (0.5, 0.5),
+                "translate_percent": (0.1, 0.1),
                 "translate_px": None,
-                "rotate": 33,
-                "shear": 21,
+                "rotate": (33, 33),
+                "shear": (21, 21),
                 "interpolation": cv2.INTER_CUBIC,
                 "fill": 25,
                 "fill_mask": 0,

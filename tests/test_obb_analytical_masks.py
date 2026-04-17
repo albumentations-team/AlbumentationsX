@@ -625,7 +625,7 @@ def test_obb_identity_transform_analytical() -> None:
 
     transform = A.Compose(
         [
-            A.Affine(scale=1.0, rotate=0, translate_px={"x": 0, "y": 0}, p=1.0),
+            A.Affine(scale=(1.0, 1.0), rotate=(0, 0), translate_px={"x": (0, 0), "y": (0, 0)}, p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )
@@ -803,10 +803,10 @@ def test_obb_affine_identity_and_simple_transforms_mask(scale: float, rotation_d
     transform = A.Compose(
         [
             A.Affine(
-                scale=scale,
-                rotate=rotation_deg,
-                translate_px=0,
-                shear=0,
+                scale=(scale, scale),
+                rotate=(rotation_deg, rotation_deg),
+                translate_px=(0, 0),
+                shear=(0, 0),
                 p=1.0,
             ),
         ],
@@ -857,10 +857,10 @@ def test_obb_affine_translation_mask(translate_x: float, translate_y: float) -> 
     transform = A.Compose(
         [
             A.Affine(
-                scale=1.0,
-                rotate=0,
-                translate_percent={"x": translate_x, "y": translate_y},
-                shear=0,
+                scale=(1.0, 1.0),
+                rotate=(0, 0),
+                translate_percent={"x": (translate_x, translate_x), "y": (translate_y, translate_y)},
+                shear=(0, 0),
                 p=1.0,
             ),
         ],
@@ -907,10 +907,10 @@ def test_obb_affine_scaling_mask(scale: float) -> None:
     transform = A.Compose(
         [
             A.Affine(
-                scale=scale,
-                rotate=0,
-                translate_px=0,
-                shear=0,
+                scale=(scale, scale),
+                rotate=(0, 0),
+                translate_px=(0, 0),
+                shear=(0, 0),
                 p=1.0,
             ),
         ],
@@ -961,10 +961,10 @@ def test_obb_affine_shear_mask(shear_x: float, shear_y: float) -> None:
     transform = A.Compose(
         [
             A.Affine(
-                scale=1.0,
-                rotate=0,
-                translate_px=0,
-                shear={"x": shear_x, "y": shear_y},
+                scale=(1.0, 1.0),
+                rotate=(0, 0),
+                translate_px=(0, 0),
+                shear={"x": (shear_x, shear_x), "y": (shear_y, shear_y)},
                 p=1.0,
             ),
         ],
@@ -1015,10 +1015,10 @@ def test_obb_affine_combined_transforms_mask(scale: float, rotation_deg: int, tr
     transform = A.Compose(
         [
             A.Affine(
-                scale=scale,
-                rotate=rotation_deg,
-                translate_percent=translate,
-                shear=0,
+                scale=(scale, scale),
+                rotate=(rotation_deg, rotation_deg),
+                translate_percent=(translate, translate),
+                shear=(0, 0),
                 p=1.0,
             ),
         ],

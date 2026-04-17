@@ -860,7 +860,7 @@ def test_safe_rotate_inherits_keep_ratio_default():
 
 def test_affine_keep_ratio_with_single_scale_value():
     """Test that a single scale value works correctly with keep_ratio=True."""
-    transform = A.Affine(scale=1.5, keep_ratio=True, p=1.0)
+    transform = A.Affine(scale=(1.5, 1.5), keep_ratio=True, p=1.0)
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
@@ -881,9 +881,9 @@ def test_shift_scale_rotate_uses_keep_ratio_true():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         transform = A.ShiftScaleRotate(
-            shift_range=0.1,
+            shift_range=(0.1, 0.1),
             scale_range=(-0.1, 0.1),
-            rotate_range=45,
+            rotate_range=(45, 45),
             p=1.0,
         )
     # ShiftScaleRotate now uses keep_ratio=True
@@ -1050,12 +1050,12 @@ def test_safe_rotate(angle: float, targets: dict, expected: dict):
 @pytest.mark.parametrize(
     "aug_cls",
     [
-        (lambda rotate: A.Affine(rotate=rotate, p=1, border_mode=cv2.BORDER_CONSTANT, fill=0)),
+        (lambda rotate: A.Affine(rotate=(rotate, rotate), p=1, border_mode=cv2.BORDER_CONSTANT, fill=0)),
         (
             lambda rotate: A.ShiftScaleRotate(
                 shift_range=(0, 0),
                 scale_range=(0, 0),
-                rotate_range=rotate,
+                rotate_range=(rotate, rotate),
                 p=1,
                 border_mode=cv2.BORDER_CONSTANT,
                 fill=0,
@@ -1094,7 +1094,7 @@ def test_rotate_equal(img, aug_cls, angle):
     keypoint_params = A.KeypointParams("xya", remove_invisible=False)
 
     a = A.Compose(
-        [aug_cls(rotate=(angle, angle))],
+        [aug_cls(rotate=angle)],
         keypoint_params=keypoint_params,
         seed=137,
         strict=True,
@@ -1842,7 +1842,7 @@ def test_return_nonzero(augmentation_cls, params):
             interpolation=cv2.INTER_NEAREST_EXACT,
         ),
         A.Affine(
-            translate_px={"x": -1, "y": -1},
+            translate_px={"x": (-1, -1), "y": (-1, -1)},
             fill=128,
             p=1,
             interpolation=cv2.INTER_NEAREST,

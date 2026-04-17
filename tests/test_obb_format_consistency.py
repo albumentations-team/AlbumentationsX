@@ -352,8 +352,8 @@ def test_obb_affine_filters_out_of_bounds_boxes() -> None:
     transform = A.Compose(
         [
             A.Affine(
-                rotate=90,
-                translate_percent={"x": 0.5, "y": 0.5},  # Large shift to push bbox out
+                rotate=(90, 90),
+                translate_percent={"x": (0.5, 0.5), "y": (0.5, 0.5)},  # Large shift to push bbox out
                 p=1.0,
             ),
         ],
@@ -378,7 +378,7 @@ def test_obb_affine_preserves_in_bounds_boxes() -> None:
 
     transform = A.Compose(
         [
-            A.Affine(rotate=45, p=1.0),
+            A.Affine(rotate=(45, 45), p=1.0),
         ],
         bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
     )

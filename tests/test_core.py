@@ -1900,15 +1900,15 @@ def test_mask_interpolation(augmentation_cls, params, border_mode, image):
     "params, strict, expected_outcome, expected_error_params",
     [
         # Valid cases
-        ({"rotate": 45}, False, "valid", []),
-        ({"rotate": 45, "p": 0.5}, False, "valid", []),
+        ({"rotate": (45, 45)}, False, "valid", []),
+        ({"rotate": (45, 45), "p": 0.5}, False, "valid", []),
         # Invalid parameter names (affected by strict)
-        ({"rotate": 45, "invalid_param": 123}, False, "warning", []),
-        ({"rotate": 45, "invalid_param": 123}, True, "error", ["invalid_param"]),
-        ({"rotate": 45, "wrong_param": 0.5, "bad_param": 30}, False, "warning", []),
+        ({"rotate": (45, 45), "invalid_param": 123}, False, "warning", []),
+        ({"rotate": (45, 45), "invalid_param": 123}, True, "error", ["invalid_param"]),
+        ({"rotate": (45, 45), "wrong_param": 0.5, "bad_param": 30}, False, "warning", []),
         # Invalid parameter values (always error, regardless of strict)
-        ({"rotate": 45, "p": 1.5}, False, "value_error", ["p"]),
-        ({"rotate": 45, "p": -0.5}, False, "value_error", ["p"]),
+        ({"rotate": (45, 45), "p": 1.5}, False, "value_error", ["p"]),
+        ({"rotate": (45, 45), "p": -0.5}, False, "value_error", ["p"]),
         # Multiple invalid values
         (
             {"interpolation": -1, "mask_interpolation": -1, "p": 1.5},

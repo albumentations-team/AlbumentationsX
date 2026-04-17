@@ -474,7 +474,14 @@ class CopyAndPaste(DualTransform):
         if "_bbox_instance_id" not in label_fields:
             return None
         bboxes = data.get("bboxes")
-        if not isinstance(bboxes, np.ndarray) or bboxes.size == 0:
+        if bboxes is None:
+            return np.empty((0,), dtype=np.int64)
+        if not isinstance(bboxes, np.ndarray):
+            raise TypeError(
+                f"CopyAndPaste expects data['bboxes'] to be a numpy.ndarray when instance binding is active, "
+                f"got {type(bboxes).__name__}",
+            )
+        if bboxes.size == 0:
             return np.empty((0,), dtype=np.int64)
         n_lf = len(label_fields)
         id_col_idx = bboxes.shape[1] - n_lf + label_fields.index("_bbox_instance_id")
@@ -506,25 +513,8 @@ class CopyAndPaste(DualTransform):
                 next_paste = 0
             return None, next_paste
 
-        # Only IDs that actually carry mask area in the current frame can survive. This guards
-        # against upstream transforms (e.g. Crop without explicit min_area) leaving a zero-area
-        # bbox + zero-area mask row behind: compute_instance_visibility returns 1.0 for empty
-        # masks, which would otherwise sneak the dead instance back into the surviving set.
         masks_3d = self._instance_masks_to_3d(data.get("masks"))
-        nonempty_set: set[int] | None = None
-        if masks_3d is not None:
-            nonempty_set = {int(i) for i, m in enumerate(masks_3d) if np.any(m > 0)}
-
-        visibility_set: set[int] | None = None
-        if surviving_indices is not None:
-            visibility_set = {int(x) for x in surviving_indices}
-
-        def _alive(i: int) -> bool:
-            if visibility_set is not None and i not in visibility_set:
-                return False
-            return not (nonempty_set is not None and i not in nonempty_set)
-
-        ordered = [int(i) for i in bbox_id_col if _alive(int(i))]
+        ordered = self._select_alive_ids(bbox_id_col, masks_3d, surviving_indices)
 
         candidates: list[int] = []
         if n_instances is not None and n_instances > 0:
@@ -533,6 +523,36 @@ class CopyAndPaste(DualTransform):
             candidates.append(int(bbox_id_col.max()))
         next_paste = (max(candidates) + 1) if candidates else 0
         return ordered, next_paste
+
+    @staticmethod
+    def _select_alive_ids(
+        bbox_id_col: np.ndarray,
+        masks_3d: np.ndarray | None,
+        surviving_indices: np.ndarray | None,
+    ) -> list[int]:
+        """Vectorized survivor selection: keep `_bbox_instance_id` values whose mask row is both
+        non-empty and visible after paste, preserving current bbox order.
+
+        Filters `bbox_id_col` (per-row `_bbox_instance_id`) to the IDs that point at a non-empty mask row
+        in `masks_3d` AND lie in `surviving_indices` (the visibility-survivor set from
+        `_compute_surviving_indices`). Guards against upstream transforms (e.g. Crop without explicit
+        `min_area`) leaving zero-area mask rows behind, since `compute_instance_visibility` returns 1.0
+        for empty masks and would otherwise resurrect dead instances.
+        """
+        if masks_3d is None or bbox_id_col.size == 0:
+            return bbox_id_col.astype(int).tolist()
+        n_rows = masks_3d.shape[0]
+        in_range = (bbox_id_col >= 0) & (bbox_id_col < n_rows)
+        alive = in_range.copy()
+        valid_ids = bbox_id_col[in_range]
+        nonempty_mask = np.any(masks_3d > 0, axis=(1, 2))
+        alive[in_range] &= nonempty_mask[valid_ids]
+        if surviving_indices is not None:
+            visibility_mask = np.zeros(n_rows, dtype=bool)
+            if surviving_indices.size > 0:
+                visibility_mask[surviving_indices.astype(np.int64)] = True
+            alive[in_range] &= visibility_mask[valid_ids]
+        return bbox_id_col[alive].astype(int).tolist()
 
     @staticmethod
     def _resize_mask_to_target(mask: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:

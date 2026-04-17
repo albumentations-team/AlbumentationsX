@@ -1550,7 +1550,7 @@ def _mask_matches_cid_region(
     mask: np.ndarray,
     expected_region: tuple[int, int, int, int],
 ) -> bool:
-    """Return True iff the non-zero pixels of `mask` fall (mostly) inside `expected_region` (y1, y2, x1, x2)."""
+    """Return True iff every non-zero pixel of `mask` falls inside `expected_region` (y1, y2, x1, x2)."""
     nz = np.argwhere(mask > 0)
     if nz.size == 0:
         return False
@@ -2036,7 +2036,7 @@ class TestFilteringTransformBinding:
         ("transform_factory", "expected_dropped"),
         [
             pytest.param(
-                lambda side: A.Crop(x_min=0, y_min=0, x_max=side // 3 + 4, y_max=side, p=1.0),
+                lambda side: A.Crop(x_min=0, y_min=0, x_max=side // 3, y_max=side, p=1.0),
                 {"B", "C"},
                 id="crop-keep-A",
             ),
@@ -2062,7 +2062,10 @@ class TestFilteringTransformBinding:
         )
         result = transform(image=image, instances=instances)
         cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
-        assert cids.isdisjoint({"A", "B", "C"} - expected_dropped) is False
+        expected_survivors = {"A", "B", "C"} - expected_dropped
+        assert cids == expected_survivors, (
+            f"survivors mismatch: got {cids}, expected {expected_survivors} (dropped={expected_dropped})"
+        )
         for inst in result["instances"]:
             label = inst["bbox_labels"]["cid"]
             mask = inst["mask"]

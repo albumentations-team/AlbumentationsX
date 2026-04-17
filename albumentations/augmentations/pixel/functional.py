@@ -1858,9 +1858,9 @@ def colorize(
 
     """
     gray = img[..., 0]
-    lut_float = _build_colorize_lut(black, white, mid, mid_value)
 
     if img.dtype == np.uint8:
+        lut_float = _build_colorize_lut(black, white, mid, mid_value)
         # Floor-quantize to match `PIL.ImageOps.colorize` (integer floor division) bit-for-bit.
         lut_uint8 = np.clip(np.floor(lut_float), 0, 255).astype(np.uint8)
         # cv2.LUT on a 3-channel uint8 image with a (1, 256, 3) LUT is the fastest path

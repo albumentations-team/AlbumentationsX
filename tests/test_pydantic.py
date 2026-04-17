@@ -363,8 +363,9 @@ def _arms(annotation: Any) -> list[Any]:
 
 
 def _is_uniform_number_tuple(annotation: Any, length: int | None = None) -> bool:
-    """Return True iff `annotation` is `tuple[T, ...]` where every element is the same number
-    type (`int` or `float`). If `length` is given, the tuple must have that arity.
+    """Return True iff `annotation` is a fixed-arity `tuple[T, T, ...]` whose elements all have
+    the same number type (`int` or `float`). The variadic `tuple[T, ...]` form is rejected.
+    If `length` is given, the tuple must have that arity.
     """
     annotation = _unwrap(annotation)
     if get_origin(annotation) is not tuple:

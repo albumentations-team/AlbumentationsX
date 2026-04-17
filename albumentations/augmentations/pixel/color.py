@@ -1360,7 +1360,7 @@ class Colorize(ImageOnlyTransform):
     Note:
         - Input must be single-channel; multi-channel input is a no-op with a warning.
         - Interpolation is linear in RGB space.
-        - For uint8 inputs the per-call mapping is a (256, 3) LUT applied via fancy indexing;
+        - For uint8 inputs the per-call mapping is a (256, 3) LUT applied via `cv2.LUT`;
           for float32 inputs `np.interp` is used per channel.
 
     Examples:
@@ -1427,13 +1427,20 @@ class Colorize(ImageOnlyTransform):
         black_color = self._sample_color(self.black_range)
         white_color = self._sample_color(self.white_range)
         mid_color = self._sample_color(self.mid_range) if self.mid_range is not None else None
-        mid_value = self.py_random.randint(*self.mid_value_range)
+        # `fpixel.colorize(..., mid=None, mid_value=...)` ignores `mid_value`, so don't waste
+        # an RNG draw or report a phantom sampled value when no midpoint anchor is configured.
+        if mid_color is not None:
+            mid_value = self.py_random.randint(*self.mid_value_range)
+            applied_mid_value: int | tuple[int, int] = mid_value
+        else:
+            mid_value = self.mid_value_range[0]
+            applied_mid_value = self.mid_value_range
 
         # Resolve ranges to sampled scalars in applied_config (per BasicTransform contract).
         self.applied_config["black_range"] = black_color
         self.applied_config["white_range"] = white_color
         self.applied_config["mid_range"] = mid_color
-        self.applied_config["mid_value_range"] = mid_value
+        self.applied_config["mid_value_range"] = applied_mid_value
 
         return {
             "black_color": black_color,

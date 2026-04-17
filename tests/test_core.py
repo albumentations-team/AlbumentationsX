@@ -2939,11 +2939,16 @@ def test_applied_config_writes_overrides_for_range_params(aug_cls, params):
     for seed in range(20):
         aug = aug_cls(**copy.deepcopy(params), p=1.0)
         aug.set_random_seed(seed)
+        for key in range_keys:
+            constructor_param_values.setdefault(key, getattr(aug, key, None))
         data = TransformTestHelper.prepare_test_data(aug_cls, image)
         overrides = _get_applied_config_overrides(aug, data)
         seen_overrides.update(overrides.keys())
-        for key in range_keys:
-            constructor_param_values.setdefault(key, getattr(aug, key, None))
+        # Early-exit once every range key with a non-None constructor value has been written —
+        # most transforms hit this on the first seed; only conditional samplers need retries.
+        expected = {key for key in range_keys if constructor_param_values.get(key) is not None}
+        if expected.issubset(seen_overrides):
+            break
 
     missing = [key for key in range_keys if key not in seen_overrides and constructor_param_values.get(key) is not None]
     assert not missing, (

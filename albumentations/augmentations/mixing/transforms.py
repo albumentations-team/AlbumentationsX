@@ -14,7 +14,7 @@ from typing import Annotated, Any, ClassVar, Literal, cast
 
 import cv2
 import numpy as np
-from pydantic import AfterValidator, model_validator
+from pydantic import AfterValidator, Field, model_validator
 from typing_extensions import Self
 
 from albumentations.augmentations.geometric import functional as fgeometric
@@ -429,7 +429,7 @@ class CopyAndPaste(DualTransform):
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
         ]
-        min_paste_area: int
+        min_paste_area: Annotated[int, Field(ge=1)]
         metadata_key: str
 
     def __init__(
@@ -917,11 +917,10 @@ class CopyAndPaste(DualTransform):
         donor_mask = scaled["mask"]
         stamped_mask[y0 : y0 + h_s, x0 : x0 + w_s] = (donor_mask > 0).astype(np.uint8)
 
-        mask_bool = stamped_mask > 0
         donor_image = scaled["image"]
         # Use offset slicing on composite to avoid building a target-shaped copy of the donor image.
-        comp_view = composite_image[y0 : y0 + h_s, x0 : x0 + w_s]
         local_bool = donor_mask > 0
+        comp_view = composite_image[y0 : y0 + h_s, x0 : x0 + w_s]
         comp_view[local_bool] = donor_image[local_bool]
 
         if semantic_canvas is not None and scaled["semantic_mask"] is not None:
@@ -941,9 +940,6 @@ class CopyAndPaste(DualTransform):
             kp_target_alb = scaled["kp_alb"].copy()
             kp_target_alb[:, 0] += x0
             kp_target_alb[:, 1] += y0
-
-        # mask_bool unused after the comp_view path; explicitly drop for clarity.
-        del mask_bool
 
         return stamped_mask, bbox_target_px, kp_target_alb
 
@@ -1307,8 +1303,8 @@ class CopyAndPaste(DualTransform):
         if dropped_no_footprint > 0:
             warnings.warn(
                 f"CopyAndPaste dropped {dropped_no_footprint} donor item(s) with neither a usable "
-                "`mask` (non-empty) nor a `bbox`. Each donor must provide at least one to define "
-                "the paste footprint.",
+                "`mask` (non-empty) nor a usable `bbox` (requires `bbox_params` on the pipeline). "
+                "Each donor must provide at least one to define the paste footprint.",
                 UserWarning,
                 stacklevel=3,
             )

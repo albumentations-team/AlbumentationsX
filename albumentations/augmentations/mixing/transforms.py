@@ -7,9 +7,10 @@ like `Mosaic`.
 """
 
 import random
+import warnings
 from collections.abc import Sequence
 from copy import deepcopy
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, ClassVar, Literal, cast
 
 import cv2
 import numpy as np
@@ -26,7 +27,11 @@ from albumentations.core.bbox_utils import (
     denormalize_bboxes,
     filter_bboxes,
 )
-from albumentations.core.keypoints_utils import KeypointsProcessor
+from albumentations.core.keypoints_utils import (
+    KeypointsProcessor,
+    convert_keypoints_from_albumentations,
+    convert_keypoints_to_albumentations,
+)
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import LENGTH_RAW_BBOX, ImageType, Targets
@@ -274,20 +279,23 @@ class CopyAndPaste(DualTransform):
     """Paste object instances onto the primary image, updating all annotations (instance masks,
     bboxes, keypoints). Designed for instance segmentation training.
 
-    The user provides a list of object dicts via the metadata key — one dict per object to paste.
-    Every object in the list is pasted. Each object is resized from its source image dimensions
-    to the target image dimensions before pasting. Existing instances that become sufficiently
-    occluded by pasted objects are removed from annotations.
+    Each donor object is tight-cropped to its `mask` (or `bbox` rect for bbox-only donors,
+    optionally expanded to include `keypoints`), shrunk to fit the target image with aspect
+    preserved (no upscaling), optionally jittered by `scale_range`, and stamped at a uniformly
+    random location inside the target. Existing instances that become sufficiently occluded by
+    pasted objects are removed from annotations.
+
+    All per-object **content** augmentation (rotation, flip, color jitter, scale-up beyond fit)
+    is the user's responsibility — the transform only does crop -> shrink-fit -> optional scale
+    jitter -> uniform random placement -> stamp.
 
     Note:
         Most Copy-Paste implementations (e.g. detectron2) accept a single donor image with all
         its instance masks and internally sample a random subset of instances to paste, coupling
         donor selection, instance sampling, and pasting into one opaque step. This implementation
         separates those concerns: donor selection and instance selection are done by the user
-        externally, and the transform pastes every object in the provided list. One extra line of
-        code outside the transform enables deterministic control, class-balanced pasting,
-        hard-example mining, and curriculum strategies. The metadata format is `list[dict]`
-        (one dict per object), consistent with `Mosaic`.
+        externally, and the transform pastes every object in the provided list. The metadata
+        format is `list[dict]` (one dict per object), consistent with `Mosaic`.
 
     Args:
         min_visibility_after_paste (float): Minimum mask area ratio (area_after / area_before) for
@@ -299,35 +307,43 @@ class CopyAndPaste(DualTransform):
             soft edges at instance boundaries. Default: "hard".
         blend_sigma_range (tuple[float, float]): Sigma range for gaussian blur when
             blend_mode="gaussian". Ignored when blend_mode="hard". Default: (1.0, 3.0).
+        scale_range (tuple[float, float]): Multiplicative scale jitter applied on top of the
+            shrink-to-fit scale. Sampled uniformly from this range and capped at the fit scale,
+            so the result can shrink the donor further but never exceed fit-to-target.
+            Default: `(1.0, 1.0)` (pure shrink-to-fit, no jitter).
+        min_paste_area (int): Minimum scaled paste footprint area (pixels). Donors whose final
+            scaled `H*W` falls below this value are silently dropped — useful to avoid pasting
+            tiny blob-noise from huge donors onto small targets. Default: 1.
         metadata_key (str): Key in the Compose call data dict containing the list of object
             dictionaries to paste. Default: "copy_paste_metadata".
         p (float): Probability of applying the transform. Default: 0.5.
 
     Metadata Format:
-        The value at `metadata_key` must be a list of dicts. Each dict represents one object
-        to paste and must contain:
-            - image (np.ndarray): Source image (H, W, C) containing the object. Required.
-            - mask (np.ndarray): Binary **instance** mask (H, W) for this object in the source
-              image: pixels to paste from `image`. Required. This is not the same as the
-              pipeline `mask` target below (semantic segmentation); entries with no positive
-              pixels after resize to the target size are skipped.
-            - semantic_mask (np.ndarray): Optional semantic label map (H, W), same shape as
-              `image`, aligned pixel-wise. When provided and the pipeline passes a `mask`
-              target, pasted pixels copy class ids from this map into the output semantic mask
-              inside the paste footprint (see `apply_to_mask`).
-            - bbox (np.ndarray | list): Bounding box of the object in the **same coordinate
-              format** as `BboxParams.coord_format` declared in `Compose` (e.g. pascal_voc,
-              yolo, coco, albumentations). Optional — if absent, a tight box is derived from the
-              instance `mask` and converted to that format.
-            - keypoints (np.ndarray): Keypoints for the object in the **same format** as
-              `KeypointParams.coord_format` declared in `Compose`. Optional.
-            - bbox_labels (dict[str, Any]): Label values for the object's bbox, keyed by the
-              label field names declared in `BboxParams.label_fields`. Supports multiple
-              label fields. E.g. `{"class_id": 3, "is_crowd": 0}`.
-            - keypoint_labels (dict[str, Any]): Label values for the object's keypoints, keyed
-              by the label field names declared in `KeypointParams.label_fields`. A list
-              value is accepted when the object has multiple keypoints.
-              E.g. `{"joint_name": "left_eye"}` or `{"visibility": [2, 2]}`.
+        The value at `metadata_key` must be a list of dicts. Each dict describes one donor object;
+        donor image dimensions can differ from the target image dimensions and from each other.
+        Coordinates for `bbox` / `keypoints` MUST be in the same `coord_format` declared in the
+        pipeline's `BboxParams` / `KeypointParams`, normalized (where applicable) to the
+        **donor** image dimensions — exactly as you would provide them if the donor were the
+        primary image. The transform handles internal coordinate conversions.
+            - image (np.ndarray): Donor image (Hd, Wd, C) containing the object. Required.
+            - mask (np.ndarray): Binary **instance** mask (Hd, Wd) defining the paste footprint.
+              Optional when `bbox` is provided. Empty masks (no positive pixels) are dropped.
+            - bbox (np.ndarray | list): Horizontal bounding box of the object in
+              `BboxParams.coord_format` on donor dims. Required for bbox-only donors; optional
+              otherwise (a tight box is derived from `mask` if absent).
+            - semantic_mask (np.ndarray): Optional semantic label map (Hd, Wd), same dims as
+              `image`. When provided AND the pipeline passes a `mask` target, the donor's class
+              ids replace the primary semantic mask inside the paste footprint. When the pipeline
+              has a `mask` target but no donor supplies `semantic_mask`, a `UserWarning` fires
+              once.
+            - keypoints (np.ndarray): Keypoints in `KeypointParams.coord_format` on donor dims.
+              Optional. Keypoints outside the mask/bbox tight crop expand the crop bounds so they
+              are preserved into the target.
+            - bbox_labels (dict[str, Any]): Label values for this donor's bbox, keyed by the
+              names declared in `BboxParams.label_fields`. E.g. `{"class_id": 3, "is_crowd": 0}`.
+            - keypoint_labels (dict[str, Any]): Label values for this donor's keypoints, keyed by
+              the names declared in `KeypointParams.label_fields`. A list value is accepted when
+              the object has multiple keypoints.
 
     Targets:
         image, mask, bboxes, keypoints
@@ -351,22 +367,24 @@ class CopyAndPaste(DualTransform):
         >>> import numpy as np
         >>> import albumentations as A
         >>>
-        >>> # Primary data
+        >>> # Primary data (target image is 100x100)
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> instance_masks = np.zeros((2, 100, 100), dtype=np.uint8)
+        >>> instance_masks = np.zeros((1, 100, 100), dtype=np.uint8)
         >>> instance_masks[0, 10:30, 10:30] = 1
-        >>> instance_masks[1, 50:80, 50:80] = 1
-        >>> bboxes = np.array([[10, 10, 30, 30], [50, 50, 80, 80]], dtype=np.float32)
-        >>> class_labels = [1, 2]
+        >>> bboxes = np.array([[10, 10, 30, 30]], dtype=np.float32)
+        >>> class_labels = [1]
         >>>
-        >>> # User selects which objects to paste (e.g. from another dataset sample)
-        >>> donor_image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> obj_mask = np.zeros((100, 100), dtype=np.uint8)
-        >>> obj_mask[40:60, 40:60] = 1
+        >>> # Donor 1: tight 40x40 mask-based donor (any donor dims work).
+        >>> donor1_image = np.full((40, 40, 3), 200, dtype=np.uint8)
+        >>> donor1_mask = np.ones((40, 40), dtype=np.uint8)
+        >>>
+        >>> # Donor 2: bbox-only donor on a 60x80 image (rectangle paste footprint).
+        >>> donor2_image = np.random.randint(0, 256, (60, 80, 3), dtype=np.uint8)
         >>>
         >>> transform = A.Compose([
         ...     A.CopyAndPaste(
         ...         min_visibility_after_paste=0.05,
+        ...         scale_range=(0.5, 1.0),  # randomly shrink donors to 50%-100% of fit
         ...         p=1.0,
         ...     ),
         ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['class_labels']))
@@ -378,16 +396,20 @@ class CopyAndPaste(DualTransform):
         ...     class_labels=class_labels,
         ...     copy_paste_metadata=[
         ...         {
-        ...             'image': donor_image,
-        ...             'mask': obj_mask,
-        ...             'bbox': [40, 40, 60, 60],
+        ...             'image': donor1_image,
+        ...             'mask': donor1_mask,
+        ...             'bbox_labels': {'class_labels': 2},
+        ...         },
+        ...         {
+        ...             'image': donor2_image,
+        ...             'bbox': [10, 5, 70, 55],  # pascal_voc on 60x80 donor dims
         ...             'bbox_labels': {'class_labels': 3},
         ...         },
         ...     ],
         ... )
         >>> result_image = result['image']
         >>> result_masks = result['masks']         # (N_surviving + K, H, W)
-        >>> result_bboxes = result['bboxes']       # Updated bboxes
+        >>> result_bboxes = result['bboxes']       # Updated bboxes (in pascal_voc, target dims)
         >>> result_labels = result['class_labels'] # Updated labels
 
     """
@@ -402,6 +424,12 @@ class CopyAndPaste(DualTransform):
             AfterValidator(check_range_bounds(0, None)),
             AfterValidator(nondecreasing),
         ]
+        scale_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        min_paste_area: int
         metadata_key: str
 
     def __init__(
@@ -409,6 +437,8 @@ class CopyAndPaste(DualTransform):
         min_visibility_after_paste: float = 0.05,
         blend_mode: Literal["hard", "gaussian"] = "hard",
         blend_sigma_range: tuple[float, float] = (1.0, 3.0),
+        scale_range: tuple[float, float] = (1.0, 1.0),
+        min_paste_area: int = 1,
         metadata_key: str = "copy_paste_metadata",
         p: float = 0.5,
     ) -> None:
@@ -416,6 +446,8 @@ class CopyAndPaste(DualTransform):
         self.min_visibility_after_paste = min_visibility_after_paste
         self.blend_mode = blend_mode
         self.blend_sigma_range = blend_sigma_range
+        self.scale_range = scale_range
+        self.min_paste_area = min_paste_area
         self.metadata_key = metadata_key
 
     @property
@@ -560,17 +592,372 @@ class CopyAndPaste(DualTransform):
             return fgeometric.resize(mask, target_shape, cv2.INTER_NEAREST)
         return mask
 
+    # ------------------------------------------------------------------
+    # Donor-side / target-side coord_format <-> pixel conversion helpers.
+    # The user passes donor `bbox` / `keypoints` in the same coord_format declared in
+    # BboxParams / KeypointParams (today's contract). The transform converts them into
+    # donor pixel coords for the geometric remap, then back to the pipeline coord_format
+    # on target dims before handing to _prepare_pasted_bboxes / _prepare_pasted_keypoints.
+    # ------------------------------------------------------------------
+
     @staticmethod
-    def _derive_bbox_from_mask(mask: np.ndarray, bbox_processor: BboxProcessor) -> np.ndarray:
+    def _donor_bbox_to_pascal_px(
+        item: dict[str, Any],
+        bbox_processor: BboxProcessor | None,
+        donor_shape: tuple[int, int],
+    ) -> np.ndarray | None:
+        """Convert one user-provided donor bbox into pascal_voc pixel coordinates on donor dims,
+        round-tripping through the albumentations normalized representation.
+
+        Returns a 1D array (4 cols for HBB, 5 cols for OBB) preserving the angle column for OBB.
+        Returns None when the item has no bbox or no bbox processor is wired in.
+        """
+        if bbox_processor is None or "bbox" not in item:
+            return None
+        coord_format = bbox_processor.params.coord_format
+        bbox_type = bbox_processor.params.bbox_type
+        bbox_2d = np.asarray(item["bbox"], dtype=np.float32).reshape(1, -1)
+        if coord_format == "albumentations":
+            alb = bbox_2d
+        else:
+            alb = convert_bboxes_to_albumentations(
+                bbox_2d,
+                coord_format,
+                donor_shape,
+                bbox_type,
+                check_validity=False,
+            )
+        pascal_px = convert_bboxes_from_albumentations(
+            alb,
+            "pascal_voc",
+            donor_shape,
+            bbox_type,
+            check_validity=False,
+        )
+        return pascal_px.reshape(-1)
+
+    @staticmethod
+    def _donor_keypoints_to_pixels(
+        item: dict[str, Any],
+        kp_processor: KeypointsProcessor | None,
+    ) -> np.ndarray | None:
+        """Convert one user-provided donor keypoint array into the internal albumentations layout
+        with donor pixel positions in cols 0/1 and z/angle/scale preserved.
+
+        Returns an (N, 5+) array with pixel x in column 0, pixel y in column 1, plus z/angle/scale
+        and any extras preserved. Coordinate values are donor pixel positions (the alb keypoint
+        format is *not* normalized). Returns None when the item has no keypoints.
+        """
+        if kp_processor is None or "keypoints" not in item:
+            return None
+        raw = np.asarray(item["keypoints"], dtype=np.float32)
+        if raw.ndim == 1:
+            raw = raw[np.newaxis]
+        if raw.size == 0:
+            return None
+        coord_format = kp_processor.params.coord_format
+        angle_in_degrees = kp_processor.params.angle_in_degrees
+        # Shape arg only matters for check_validity (which we skip), so any (h, w) works.
+        return convert_keypoints_to_albumentations(
+            raw,
+            coord_format,
+            (1, 1),
+            check_validity=False,
+            angle_in_degrees=angle_in_degrees,
+        )
+
+    @staticmethod
+    def _target_pascal_px_to_coord_format(
+        pascal_px: np.ndarray,
+        target_shape: tuple[int, int],
+        bbox_processor: BboxProcessor,
+    ) -> np.ndarray:
+        """Convert one bbox in pascal_voc pixel coords on target dims back to the pipeline
+        coord_format declared in BboxParams, returning a 1D array.
+        """
+        bbox_type = bbox_processor.params.bbox_type
+        coord_format = bbox_processor.params.coord_format
+        bbox_2d = pascal_px.reshape(1, -1)
+        alb = convert_bboxes_to_albumentations(
+            bbox_2d,
+            "pascal_voc",
+            target_shape,
+            bbox_type,
+            check_validity=False,
+        )
+        if coord_format == "albumentations":
+            return alb.reshape(-1)
+        return convert_bboxes_from_albumentations(
+            alb,
+            coord_format,
+            target_shape,
+            bbox_type,
+            check_validity=False,
+        ).reshape(-1)
+
+    @staticmethod
+    def _target_alb_keypoints_to_coord_format(
+        alb_kps: np.ndarray,
+        kp_processor: KeypointsProcessor,
+    ) -> np.ndarray:
+        """Convert (N, 5+) albumentations-format keypoints (with target-pixel x,y in cols 0,1) back to
+        the pipeline coord_format. Returns an (N, 2+) array.
+        """
+        coord_format = kp_processor.params.coord_format
+        angle_in_degrees = kp_processor.params.angle_in_degrees
+        return convert_keypoints_from_albumentations(
+            alb_kps,
+            coord_format,
+            (1, 1),
+            check_validity=False,
+            angle_in_degrees=angle_in_degrees,
+        )
+
+    # ------------------------------------------------------------------
+    # Per-donor geometry helpers: tight crop -> fit-to-target shrink + jitter -> random placement -> stamp.
+    # All work in pixel coords; coord_format <-> pixel translation is handled by the helpers above.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_crop_bounds(
+        item: dict[str, Any],
+        bbox_px: np.ndarray | None,
+        kp_alb: np.ndarray | None,
+        donor_shape: tuple[int, int],
+    ) -> tuple[int, int, int, int] | None:
+        """Resolve (y0, y1, x0, x1) tight crop bounds in donor pixel coords from mask / bbox /
+        keypoints, returning None when there is no usable footprint.
+
+        Mask path takes the mask tight bbox; bbox-only path uses floor/ceil of the user bbox rect.
+        Keypoints (when present) expand the bounds so every keypoint stays inside the crop.
+        Returns None when the donor has neither mask nor bbox or when the resulting crop is empty.
+        """
+        height, width = donor_shape
+        bounds: tuple[int, int, int, int] | None = None
+
+        mask = item.get("mask")
+        if mask is not None and np.any(mask > 0):
+            rows = np.any(mask > 0, axis=1)
+            cols = np.any(mask > 0, axis=0)
+            row_idx = np.where(rows)[0]
+            col_idx = np.where(cols)[0]
+            bounds = (int(row_idx[0]), int(row_idx[-1]) + 1, int(col_idx[0]), int(col_idx[-1]) + 1)
+        elif bbox_px is not None:
+            x0_f, y0_f, x1_f, y1_f = (float(v) for v in bbox_px[:4])
+            bounds = (
+                max(0, int(np.floor(y0_f))),
+                min(height, int(np.ceil(y1_f))),
+                max(0, int(np.floor(x0_f))),
+                min(width, int(np.ceil(x1_f))),
+            )
+
+        if bounds is None:
+            return None
+
+        if kp_alb is not None and kp_alb.size > 0:
+            xs = kp_alb[:, 0]
+            ys = kp_alb[:, 1]
+            bounds = (
+                min(bounds[0], int(np.floor(ys.min()))),
+                max(bounds[1], int(np.ceil(ys.max())) + 1),
+                min(bounds[2], int(np.floor(xs.min()))),
+                max(bounds[3], int(np.ceil(xs.max())) + 1),
+            )
+
+        y0, y1, x0, x1 = bounds
+        y0 = max(0, y0)
+        x0 = max(0, x0)
+        y1 = min(height, y1)
+        x1 = min(width, x1)
+        if y1 <= y0 or x1 <= x0:
+            return None
+        return y0, y1, x0, x1
+
+    @staticmethod
+    def _tight_crop(
+        item: dict[str, Any],
+        bounds: tuple[int, int, int, int],
+        bbox_px: np.ndarray | None,
+        kp_alb: np.ndarray | None,
+    ) -> dict[str, Any]:
+        """Slice donor arrays to the resolved bounds and translate bbox/keypoints into crop-local
+        pixels, synthesizing a footprint mask when the donor is bbox-only.
+
+        For bbox-only donors (no mask in item) the helper synthesizes an all-ones uint8 mask covering
+        the crop so the downstream paste pipeline has a single uniform "footprint" representation.
+        """
+        y0, y1, x0, x1 = bounds
+        crop_h, crop_w = y1 - y0, x1 - x0
+
+        image = item["image"][y0:y1, x0:x1]
+        if "mask" in item and item["mask"] is not None:
+            mask = item["mask"][y0:y1, x0:x1]
+        else:
+            mask = np.ones((crop_h, crop_w), dtype=np.uint8)
+        semantic_mask = item["semantic_mask"][y0:y1, x0:x1] if item.get("semantic_mask") is not None else None
+
+        local_bbox: np.ndarray | None = None
+        if bbox_px is not None:
+            local_bbox = bbox_px.copy()
+            local_bbox[0] -= x0
+            local_bbox[1] -= y0
+            local_bbox[2] -= x0
+            local_bbox[3] -= y0
+
+        local_kp: np.ndarray | None = None
+        if kp_alb is not None and kp_alb.size > 0:
+            local_kp = kp_alb.copy()
+            local_kp[:, 0] -= x0
+            local_kp[:, 1] -= y0
+
+        return {
+            "image": image,
+            "mask": mask,
+            "semantic_mask": semantic_mask,
+            "bbox_px": local_bbox,
+            "kp_alb": local_kp,
+        }
+
+    @staticmethod
+    def _fit_and_jitter_scale(
+        crop_h: int,
+        crop_w: int,
+        target_shape: tuple[int, int],
+        scale_jitter: float,
+    ) -> float:
+        """Compute the per-donor scale combining the shrink-to-fit cap with a uniform `scale_range`
+        jitter, capped so the scaled donor still fits inside the target image.
+
+        `s_fit = min(1, target_h/crop_h, target_w/crop_w)` ensures the scaled crop fits inside the
+        target without upscaling. The final scale is `min(s_fit, s_fit * scale_jitter)` so users
+        opting into `scale_range > 1.0` cannot upscale beyond what fits.
+        """
+        height, width = target_shape
+        s_fit = min(1.0, height / max(crop_h, 1), width / max(crop_w, 1))
+        return min(s_fit, s_fit * scale_jitter)
+
+    @staticmethod
+    def _resize_cropped(cropped: dict[str, Any], scale: float) -> dict[str, Any]:
+        """Resize the cropped donor data by `scale`: INTER_AREA for the image, INTER_NEAREST for masks,
+        and bbox / keypoint pixel coords multiplied by the same factor.
+
+        Bbox / keypoint pixel coords are multiplied by the same factor. When `scale == 1.0` the
+        arrays are returned as-is to skip the resize round trip.
+        """
+        image = cropped["image"]
+        mask = cropped["mask"]
+        crop_h, crop_w = mask.shape[:2]
+
+        if abs(scale - 1.0) < 1e-6:
+            new_h, new_w = crop_h, crop_w
+            scaled_image = image
+            scaled_mask = mask
+            scaled_semantic = cropped["semantic_mask"]
+        else:
+            new_h = max(1, round(crop_h * scale))
+            new_w = max(1, round(crop_w * scale))
+            scaled_image = fgeometric.resize(image, (new_h, new_w), cv2.INTER_AREA)
+            scaled_mask = fgeometric.resize(mask, (new_h, new_w), cv2.INTER_NEAREST)
+            scaled_semantic = (
+                fgeometric.resize(cropped["semantic_mask"], (new_h, new_w), cv2.INTER_NEAREST)
+                if cropped["semantic_mask"] is not None
+                else None
+            )
+
+        local_bbox = cropped["bbox_px"]
+        if local_bbox is not None:
+            local_bbox = local_bbox.copy()
+            local_bbox[:4] = local_bbox[:4] * scale
+
+        local_kp = cropped["kp_alb"]
+        if local_kp is not None:
+            local_kp = local_kp.copy()
+            local_kp[:, :2] = local_kp[:, :2] * scale
+
+        return {
+            "image": scaled_image,
+            "mask": scaled_mask,
+            "semantic_mask": scaled_semantic,
+            "bbox_px": local_bbox,
+            "kp_alb": local_kp,
+            "shape": (new_h, new_w),
+        }
+
+    def _sample_placement(self, scaled_h: int, scaled_w: int, target_shape: tuple[int, int]) -> tuple[int, int]:
+        """Sample a top-left (y0, x0) for the scaled donor uniformly inside the target image,
+        relying on the shrink-to-fit cap to guarantee non-negative placement bounds.
+
+        Bounds are inclusive and guaranteed non-negative thanks to the shrink-to-fit cap in
+        `_fit_and_jitter_scale`.
+        """
+        height, width = target_shape
+        y0 = self.py_random.randint(0, max(0, height - scaled_h))
+        x0 = self.py_random.randint(0, max(0, width - scaled_w))
+        return y0, x0
+
+    @staticmethod
+    def _stamp(
+        scaled: dict[str, Any],
+        y0: int,
+        x0: int,
+        target_shape: tuple[int, int],
+        composite_image: np.ndarray,
+        semantic_canvas: np.ndarray | None,
+    ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None]:
+        """Stamp the scaled donor onto the target-shaped canvases (image + optional semantic mask)
+        and shift the donor bbox / keypoints into target pixel coordinates.
+
+        Returns `(stamped_mask, bbox_target_px, kp_target_alb)` where `stamped_mask` is the
+        target-shaped binary footprint (uint8). `bbox_target_px` is in pascal_voc pixel coords on
+        target dims (None if no donor bbox). `kp_target_alb` keeps the (N, 5+) albumentations
+        layout with target-pixel x,y in cols 0,1 (None if no donor keypoints).
+        """
+        h_s, w_s = scaled["shape"]
+        stamped_mask = np.zeros(target_shape, dtype=np.uint8)
+        donor_mask = scaled["mask"]
+        stamped_mask[y0 : y0 + h_s, x0 : x0 + w_s] = (donor_mask > 0).astype(np.uint8)
+
+        mask_bool = stamped_mask > 0
+        donor_image = scaled["image"]
+        # Use offset slicing on composite to avoid building a target-shaped copy of the donor image.
+        comp_view = composite_image[y0 : y0 + h_s, x0 : x0 + w_s]
+        local_bool = donor_mask > 0
+        comp_view[local_bool] = donor_image[local_bool]
+
+        if semantic_canvas is not None and scaled["semantic_mask"] is not None:
+            sem_view = semantic_canvas[y0 : y0 + h_s, x0 : x0 + w_s]
+            sem_view[local_bool] = scaled["semantic_mask"][local_bool]
+
+        bbox_target_px = None
+        if scaled["bbox_px"] is not None:
+            bbox_target_px = scaled["bbox_px"].copy()
+            bbox_target_px[0] += x0
+            bbox_target_px[1] += y0
+            bbox_target_px[2] += x0
+            bbox_target_px[3] += y0
+
+        kp_target_alb = None
+        if scaled["kp_alb"] is not None:
+            kp_target_alb = scaled["kp_alb"].copy()
+            kp_target_alb[:, 0] += x0
+            kp_target_alb[:, 1] += y0
+
+        # mask_bool unused after the comp_view path; explicitly drop for clarity.
+        del mask_bool
+
+        return stamped_mask, bbox_target_px, kp_target_alb
+
+    @classmethod
+    def _derive_bbox_from_mask(cls, mask: np.ndarray, bbox_processor: BboxProcessor) -> np.ndarray:
         """Derive a tight HBB from a binary mask in BboxParams.coord_format via internal Pascal VOC pixels; OBB appends
         angle zero.
         """
         rows = np.any(mask > 0, axis=1)
-        cols = np.any(mask > 0, axis=0)
         height, width = mask.shape[:2]
         if not np.any(rows):
             pascal_px = np.zeros((1, 4), dtype=np.float32)
         else:
+            cols = np.any(mask > 0, axis=0)
             row_indices = np.where(rows)[0]
             col_indices = np.where(cols)[0]
             pascal_px = np.array(
@@ -585,29 +972,10 @@ class CopyAndPaste(DualTransform):
                 dtype=np.float32,
             )
 
-        bbox_type = bbox_processor.params.bbox_type
-        if bbox_type == "obb" and pascal_px.shape[1] == 4:
+        if bbox_processor.params.bbox_type == "obb":
             pascal_px = np.column_stack([pascal_px, np.zeros(1, dtype=np.float32)])
 
-        alb = convert_bboxes_to_albumentations(
-            pascal_px,
-            "pascal_voc",
-            (height, width),
-            bbox_type,
-            check_validity=False,
-        )
-        coord_format = bbox_processor.params.coord_format
-        if coord_format == "albumentations":
-            return alb.reshape(-1)
-
-        converted = convert_bboxes_from_albumentations(
-            alb,
-            coord_format,
-            (height, width),
-            bbox_type,
-            check_validity=False,
-        )
-        return converted.reshape(-1)
+        return cls._target_pascal_px_to_coord_format(pascal_px.reshape(-1), (height, width), bbox_processor)
 
     @staticmethod
     def _keypoint_label_values_for_item(
@@ -792,53 +1160,182 @@ class CopyAndPaste(DualTransform):
 
         return fmixing.preprocess_copy_paste_annotations(donor_item, keypoint_processor, "keypoints")
 
+    # Sentinel for `_process_one_donor` to signal "donor lacked a usable footprint" without
+    # conflating it with the silent-drop None return.
+    _NO_FOOTPRINT: ClassVar[object] = object()
+
+    def _process_one_donor(
+        self,
+        item: dict[str, Any],
+        target_shape: tuple[int, int],
+        composite_image: np.ndarray,
+        semantic_canvas_holder: list[np.ndarray | None],
+        bbox_processor: BboxProcessor | None,
+        kp_processor: KeypointsProcessor | None,
+        scale_jitter: float,
+    ) -> tuple[dict[str, Any], np.ndarray] | object | None:
+        """Run the per-donor pipeline (convert, crop, scale, place, stamp, back-convert) returning
+        the stamped item + mask, `_NO_FOOTPRINT` sentinel, or None on drop.
+
+        Returns the stamped item + binary mask on success, the `_NO_FOOTPRINT` sentinel when the
+        donor has neither a usable mask nor a bbox (caller counts it for the UserWarning), or
+        `None` when the donor is silently dropped (invalid shape, below `min_paste_area`, etc.).
+        """
+        if not isinstance(item, dict) or "image" not in item:
+            return None
+
+        donor_image = item["image"]
+        donor_shape = (donor_image.shape[0], donor_image.shape[1])
+
+        has_mask = item.get("mask") is not None and np.any(item["mask"] > 0)
+        has_bbox = "bbox" in item and bbox_processor is not None
+        if not has_mask and not has_bbox:
+            return self._NO_FOOTPRINT
+
+        bbox_px = self._donor_bbox_to_pascal_px(item, bbox_processor, donor_shape) if has_bbox else None
+        kp_alb = self._donor_keypoints_to_pixels(item, kp_processor)
+
+        bounds = self._resolve_crop_bounds(item, bbox_px, kp_alb, donor_shape)
+        if bounds is None:
+            return self._NO_FOOTPRINT
+
+        cropped = self._tight_crop(item, bounds, bbox_px, kp_alb)
+        crop_h, crop_w = cropped["mask"].shape[:2]
+        scale = self._fit_and_jitter_scale(crop_h, crop_w, target_shape, scale_jitter)
+        scaled = self._resize_cropped(cropped, scale)
+
+        h_s, w_s = scaled["shape"]
+        if h_s * w_s < self.min_paste_area:
+            return None
+
+        y0, x0 = self._sample_placement(h_s, w_s, target_shape)
+
+        if scaled["semantic_mask"] is not None and semantic_canvas_holder[0] is None:
+            semantic_canvas_holder[0] = np.zeros(target_shape, dtype=scaled["semantic_mask"].dtype)
+
+        stamped_mask, bbox_target_px, kp_target_alb = self._stamp(
+            scaled,
+            y0,
+            x0,
+            target_shape,
+            composite_image,
+            semantic_canvas_holder[0],
+        )
+        if not np.any(stamped_mask > 0):
+            return None
+
+        stamped_item = self._build_stamped_item(
+            item,
+            bbox_target_px,
+            kp_target_alb,
+            target_shape,
+            bbox_processor,
+            kp_processor,
+        )
+        return stamped_item, stamped_mask
+
+    def _build_stamped_item(
+        self,
+        item: dict[str, Any],
+        bbox_target_px: np.ndarray | None,
+        kp_target_alb: np.ndarray | None,
+        target_shape: tuple[int, int],
+        bbox_processor: BboxProcessor | None,
+        kp_processor: KeypointsProcessor | None,
+    ) -> dict[str, Any]:
+        """Assemble the per-donor output dict, converting bbox / keypoints back to the pipeline
+        coord_format on target dims while forwarding labels unchanged.
+        """
+        stamped: dict[str, Any] = {}
+        if bbox_target_px is not None and bbox_processor is not None:
+            stamped["bbox"] = self._target_pascal_px_to_coord_format(bbox_target_px, target_shape, bbox_processor)
+        if "bbox_labels" in item:
+            stamped["bbox_labels"] = item["bbox_labels"]
+        if kp_target_alb is not None and kp_target_alb.size > 0 and kp_processor is not None:
+            stamped["keypoints"] = self._target_alb_keypoints_to_coord_format(kp_target_alb, kp_processor)
+        if "keypoint_labels" in item:
+            stamped["keypoint_labels"] = item["keypoint_labels"]
+        return stamped
+
     def _gather_valid_copy_paste_items(
         self,
         data: dict[str, Any],
         target_shape: tuple[int, int],
-    ) -> tuple[list[dict[str, Any]], list[np.ndarray], np.ndarray] | None:
+        scale_jitter: float,
+    ) -> tuple[list[dict[str, Any]], list[np.ndarray], np.ndarray, np.ndarray | None] | None:
+        """Iterate donors through `_process_one_donor` to collect stamped items and masks, and
+        emit the no-footprint UserWarning if any donors lacked both mask and bbox.
+
+        Returns `(stamped_items, pasted_masks_list, composite_image, semantic_canvas)` or
+        `None` when no usable donor produced a stamp. `semantic_canvas` is None when no donor
+        provided a `semantic_mask`.
+        """
         metadata = data.get(self.metadata_key)
         if not isinstance(metadata, list) or not metadata:
             return None
 
-        valid_items: list[dict[str, Any]] = []
-        pasted_masks_list: list[np.ndarray] = []
+        bbox_processor = cast("BboxProcessor | None", self.get_processor("bboxes"))
+        kp_processor = cast("KeypointsProcessor | None", self.get_processor("keypoints"))
+
         composite_image = data["image"].copy()
+        # Wrapped in a 1-element list so `_process_one_donor` can lazily allocate it on first use
+        # without forcing a separate plumbing path.
+        semantic_canvas_holder: list[np.ndarray | None] = [None]
+        stamped_items: list[dict[str, Any]] = []
+        pasted_masks_list: list[np.ndarray] = []
+        dropped_no_footprint = 0
 
         for item in metadata:
-            if not isinstance(item, dict) or "image" not in item or "mask" not in item:
+            outcome = self._process_one_donor(
+                item,
+                target_shape,
+                composite_image,
+                semantic_canvas_holder,
+                bbox_processor,
+                kp_processor,
+                scale_jitter,
+            )
+            if outcome is None:
                 continue
-            src_mask = self._resize_mask_to_target(item["mask"], target_shape)
-            if not np.any(src_mask > 0):
+            if outcome is self._NO_FOOTPRINT:
+                dropped_no_footprint += 1
                 continue
-            src_image = item["image"]
-            if src_image.shape[0] != target_shape[0] or src_image.shape[1] != target_shape[1]:
-                src_image = fgeometric.resize(src_image, target_shape, cv2.INTER_AREA)
-            valid_items.append(item)
-            pasted_masks_list.append(src_mask)
-            mask_bool = src_mask > 0
-            composite_image[mask_bool] = src_image[mask_bool]
+            stamped_item, stamped_mask = cast("tuple[dict[str, Any], np.ndarray]", outcome)
+            stamped_items.append(stamped_item)
+            pasted_masks_list.append(stamped_mask)
 
-        if not valid_items:
+        if dropped_no_footprint > 0:
+            warnings.warn(
+                f"CopyAndPaste dropped {dropped_no_footprint} donor item(s) with neither a usable "
+                "`mask` (non-empty) nor a `bbox`. Each donor must provide at least one to define "
+                "the paste footprint.",
+                UserWarning,
+                stacklevel=3,
+            )
+
+        if not stamped_items:
             return None
-        return valid_items, pasted_masks_list, composite_image
+        return stamped_items, pasted_masks_list, composite_image, semantic_canvas_holder[0]
 
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        # Sample blend_sigma upfront so applied_config records it even when the no-op path is taken
-        # (e.g. no valid paste items provided).
+        # Sample blend_sigma + scale_jitter upfront so applied_config records them even when the
+        # no-op path is taken (e.g. no valid paste items provided). scale_jitter is shared across
+        # all donors in a single call so the recorded value matches what was actually applied.
         blend_sigma = self.py_random.uniform(*self.blend_sigma_range)
         self.applied_config["blend_sigma_range"] = blend_sigma
+        scale_jitter = self.py_random.uniform(*self.scale_range)
+        self.applied_config["scale_range"] = scale_jitter
 
         target_shape = params["shape"][:2]
-        gathered = self._gather_valid_copy_paste_items(data, target_shape)
+        gathered = self._gather_valid_copy_paste_items(data, target_shape, scale_jitter)
         if gathered is None:
             return self._no_op_params()
 
-        valid_items, pasted_masks_list, composite_image = gathered
+        valid_items, pasted_masks_list, composite_image, donor_mask = gathered
         pasted_masks = np.stack(pasted_masks_list, axis=0)
         paste_union_mask = np.any(pasted_masks > 0, axis=0)
 
@@ -865,21 +1362,15 @@ class CopyAndPaste(DualTransform):
             else None
         )
 
-        donor_mask = None
-        for item in valid_items:
-            if "semantic_mask" in item:
-                item_mask = self._resize_mask_to_target(item["semantic_mask"], target_shape)
-                if donor_mask is None:
-                    donor_mask = np.zeros(target_shape, dtype=item_mask.dtype)
-                paste_region = (
-                    item["mask"]
-                    if item["mask"].shape == target_shape
-                    else self._resize_mask_to_target(
-                        item["mask"],
-                        target_shape,
-                    )
-                )
-                donor_mask[paste_region > 0] = item_mask[paste_region > 0]
+        if donor_mask is None and "mask" in data:
+            warnings.warn(
+                "CopyAndPaste received a `mask` target but no donor item provided `semantic_mask`; "
+                "the primary mask will be returned unchanged. Add a `semantic_mask` (H, W) entry to "
+                "each donor dict to update the semantic mask under the paste footprint, or drop the "
+                "`mask` target from the pipeline if this is intentional.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         return {
             "paste_donor_image": composite_image,

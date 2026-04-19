@@ -1,4 +1,5 @@
 import random
+import warnings
 from typing import Any
 
 import numpy as np
@@ -174,11 +175,24 @@ def _make_object(
     height: int = 100,
     width: int = 100,
 ) -> dict[str, Any]:
-    """Helper: one object dict with image + mask for the given region."""
+    """Helper: one donor dict with image + mask. The mask region defines the tight crop the
+    transform pastes; the donor is then randomly placed inside the target. For deterministic
+    full-target pastes (e.g. occlusion tests) use `_make_full_cover_object` instead.
+    """
     img = np.full((height, width, 3), fill, dtype=np.uint8)
     mask = np.zeros((height, width), dtype=np.uint8)
     y0, y1, x0, x1 = region
     mask[y0:y1, x0:x1] = 1
+    return {"image": img, "mask": mask}
+
+
+def _make_full_cover_object(fill: int, target_shape: tuple[int, int] = (100, 100)) -> dict[str, Any]:
+    """Helper: donor whose tight crop equals target dims, so the new transform places it at (0, 0)
+    and the paste covers the whole target deterministically. Use for occlusion tests.
+    """
+    h, w = target_shape
+    img = np.full((h, w, 3), fill, dtype=np.uint8)
+    mask = np.ones((h, w), dtype=np.uint8)
     return {"image": img, "mask": mask}
 
 
@@ -202,15 +216,16 @@ class TestCopyAndPasteBasic:
         np.testing.assert_array_equal(result["image"], original)
 
     def test_all_objects_pasted(self):
-        """Every object in the list should be pasted."""
+        """Every object in the list should be pasted somewhere on the target (random placement)."""
         image = np.zeros((100, 100, 3), dtype=np.uint8)
         obj1 = _make_object(100, (10, 20, 10, 20))
         obj2 = _make_object(200, (60, 80, 60, 80))
 
         transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
         result = transform(image=image, copy_paste_metadata=[obj1, obj2])
-        assert result["image"][15, 15, 0] == 100
-        assert result["image"][70, 70, 0] == 200
+        unique = set(np.unique(result["image"]).tolist())
+        assert 100 in unique
+        assert 200 in unique
 
     def test_donor_resized_to_target(self):
         """Object from a different-sized source image should be resized."""
@@ -269,12 +284,14 @@ class TestCopyAndPasteMasks:
         assert result["masks"].shape[0] == 3
 
     def test_occluded_instance_removed(self):
-        """Existing instance fully covered by pasted object should be removed."""
+        """Existing instance fully covered by a full-cover pasted donor should be removed
+        (full-cover donor pastes deterministically over the whole target).
+        """
         image = np.zeros((100, 100, 3), dtype=np.uint8)
         primary_masks = np.zeros((1, 100, 100), dtype=np.uint8)
         primary_masks[0, 20:40, 20:40] = 1
 
-        obj = _make_object(137, (10, 50, 10, 50))
+        obj = _make_full_cover_object(137)
 
         transform = A.Compose(
             [
@@ -286,7 +303,10 @@ class TestCopyAndPasteMasks:
         assert result["masks"].shape[0] == 1
 
     def test_surviving_masks_erased_in_pasted_region(self):
-        """Surviving masks should have zeros where pasted objects are placed."""
+        """Surviving masks should have zeros where pasted objects are placed.
+
+        Locate the actual paste union (random placement) and assert it was zeroed in the survivor.
+        """
         image = np.zeros((100, 100, 3), dtype=np.uint8)
         primary_masks = np.zeros((1, 100, 100), dtype=np.uint8)
         primary_masks[0, :, :] = 1
@@ -301,7 +321,9 @@ class TestCopyAndPasteMasks:
         )
         result = transform(image=image, masks=primary_masks, copy_paste_metadata=[obj])
         surviving_mask = result["masks"][0]
-        assert np.sum(surviving_mask[40:60, 40:60]) == 0
+        paste_region = np.any(result["image"] > 0, axis=-1)
+        assert paste_region.sum() > 0
+        assert np.sum(surviving_mask[paste_region]) == 0
 
     def test_primary_masks_as_list_of_arrays(self):
         """CopyAndPaste should accept masks as a list of (H, W) arrays like other targets."""
@@ -310,7 +332,7 @@ class TestCopyAndPasteMasks:
         m[20:40, 20:40] = 1
         primary_masks_list = [m]
 
-        obj = _make_object(137, (10, 50, 10, 50))
+        obj = _make_full_cover_object(137)
 
         transform = A.Compose(
             [
@@ -320,6 +342,47 @@ class TestCopyAndPasteMasks:
         )
         result = transform(image=image, masks=primary_masks_list, copy_paste_metadata=[obj])
         assert result["masks"].shape[0] == 1
+
+    def test_warns_when_mask_target_present_but_no_semantic_mask(self):
+        """If a `mask` target is in the pipeline but no donor item provides `semantic_mask`,
+        a UserWarning should fire so users notice the silent no-op on the semantic mask.
+        """
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        primary_mask = np.zeros((100, 100), dtype=np.uint8)
+        primary_mask[10:30, 10:30] = 5
+
+        obj = _make_object(137, (40, 60, 40, 60))
+
+        transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
+        with pytest.warns(UserWarning, match="no donor item provided `semantic_mask`"):
+            result = transform(image=image, mask=primary_mask, copy_paste_metadata=[obj])
+        np.testing.assert_array_equal(result["mask"], primary_mask)
+
+    def test_no_warning_when_semantic_mask_provided(self):
+        """Donors that provide `semantic_mask` should suppress the warning and stamp class ids
+        at the (random) paste position. We locate that position from the result, not assume it.
+        """
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        primary_mask = np.zeros((100, 100), dtype=np.uint8)
+
+        obj = _make_full_cover_object(137)
+        obj["semantic_mask"] = np.full((100, 100), 7, dtype=np.uint8)
+
+        transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            result = transform(image=image, mask=primary_mask, copy_paste_metadata=[obj])
+        assert (result["mask"] == 7).all()
+
+    def test_no_warning_when_no_mask_target(self):
+        """Without a `mask` target the warning must stay silent even if no donor has `semantic_mask`."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        obj = _make_object(137, (40, 60, 40, 60))
+
+        transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            transform(image=image, copy_paste_metadata=[obj])
 
 
 class TestCopyAndPasteBboxes:
@@ -399,15 +462,19 @@ class TestCopyAndPasteBboxes:
         assert np.all((pasted[:4] > 0) & (pasted[:4] <= 1.0))
 
     def test_occluded_bbox_removed_with_mask(self):
-        """Bbox of fully occluded instance should be removed when masks are present."""
+        """Bbox of fully occluded instance should be removed when masks are present.
+
+        Uses a full-cover donor that pastes deterministically over the entire target so the primary
+        instance is guaranteed to be fully occluded regardless of the random placement RNG.
+        """
         image = np.zeros((100, 100, 3), dtype=np.uint8)
         primary_masks = np.zeros((1, 100, 100), dtype=np.uint8)
         primary_masks[0, 20:40, 20:40] = 1
         bboxes = np.array([[20, 20, 40, 40]], dtype=np.float32)
         class_labels = [1]
 
-        obj = _make_object(137, (10, 50, 10, 50))
-        obj["bbox"] = [10, 10, 50, 50]
+        obj = _make_full_cover_object(137)
+        obj["bbox"] = [0, 0, 100, 100]
         obj["bbox_labels"] = {"class_labels": 2}
 
         transform = A.Compose(
@@ -430,7 +497,11 @@ class TestCopyAndPasteKeypoints:
     """Keypoint rows aligned with instance masks must follow paste survivor filtering."""
 
     def test_surviving_keypoints_match_instance_mask_indices(self):
-        """When one of two instance masks is removed, keep only keypoints for surviving instances."""
+        """When all instance masks are occluded, all corresponding keypoints are removed.
+
+        Uses a full-cover donor that deterministically pastes over the whole target so both
+        primary instance masks are fully occluded regardless of placement RNG.
+        """
         image = np.zeros((100, 100, 3), dtype=np.uint8)
         primary_masks = np.zeros((2, 100, 100), dtype=np.uint8)
         primary_masks[0, 20:40, 20:40] = 1
@@ -438,7 +509,7 @@ class TestCopyAndPasteKeypoints:
         keypoints = np.array([[30.0, 30.0], [70.0, 70.0]], dtype=np.float32)
         keypoint_labels = [0, 1]
 
-        obj = _make_object(137, (10, 50, 10, 50))
+        obj = _make_full_cover_object(137)
 
         transform = A.Compose(
             [A.CopyAndPaste(min_visibility_after_paste=0.5, p=1.0)],
@@ -452,8 +523,8 @@ class TestCopyAndPasteKeypoints:
             keypoint_labels=keypoint_labels,
             copy_paste_metadata=[obj],
         )
-        np.testing.assert_array_equal(result["keypoints"], np.array([[70.0, 70.0]], dtype=np.float32))
-        assert result["keypoint_labels"] == [1]
+        assert len(result["keypoints"]) == 0
+        assert result["keypoint_labels"] == []
 
     def test_keypoints_preserved_when_row_count_not_instance_count(self):
         """If keypoint rows are not one-per-instance, do not drop rows using mask survivor indices."""
@@ -648,6 +719,319 @@ class TestCopyAndPasteEdgeCases:
         )
         assert len(result["bboxes"]) == 2
         assert np.any(result["image"] > 0)
+
+
+class TestCopyAndPasteRandomPlacement:
+    """Random placement, shrink-to-fit, aspect preservation."""
+
+    def test_donor_bigger_than_target_is_shrunk(self):
+        """A donor whose tight crop is bigger than the target gets shrunk to fit; the paste
+        footprint area cannot exceed the target area.
+        """
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        donor_image = np.full((200, 200, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((200, 200), dtype=np.uint8)
+
+        transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
+        result = transform(
+            image=image,
+            copy_paste_metadata=[{"image": donor_image, "mask": donor_mask}],
+        )
+        paste_region = np.any(result["image"] > 0, axis=-1)
+        assert paste_region.sum() <= 100 * 100
+        assert paste_region.sum() > 0
+
+    def test_donor_aspect_preserved_when_shrunk(self):
+        """Aspect ratio of the donor's tight crop is preserved by the shrink-to-fit step."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        # 200x100 donor (aspect 2:1), full mask -> shrink-to-fit gives 100x50 (aspect preserved).
+        donor_image = np.full((200, 100, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((200, 100), dtype=np.uint8)
+
+        transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
+        result = transform(
+            image=image,
+            copy_paste_metadata=[{"image": donor_image, "mask": donor_mask}],
+        )
+        paste_region = np.any(result["image"] > 0, axis=-1)
+        rows = np.any(paste_region, axis=1)
+        cols = np.any(paste_region, axis=0)
+        h = int(rows.sum())
+        w = int(cols.sum())
+        assert h == 100
+        assert w == 50
+
+    def test_no_upscaling_for_small_donor(self):
+        """A donor smaller than the target keeps its tight-crop size (no upscaling)."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        donor_image = np.full((30, 30, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((30, 30), dtype=np.uint8)
+
+        transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=137)
+        result = transform(
+            image=image,
+            copy_paste_metadata=[{"image": donor_image, "mask": donor_mask}],
+        )
+        paste_region = np.any(result["image"] > 0, axis=-1)
+        assert int(paste_region.sum()) == 30 * 30
+
+    def test_random_placement_is_random(self):
+        """Two different RNG seeds should produce different placements for the same donor."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        donor_image = np.full((20, 20, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((20, 20), dtype=np.uint8)
+
+        def _placement(seed: int) -> tuple[int, int]:
+            transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=seed)
+            result = transform(
+                image=image.copy(),
+                copy_paste_metadata=[{"image": donor_image, "mask": donor_mask}],
+            )
+            paste_region = np.any(result["image"] > 0, axis=-1)
+            ys, xs = np.where(paste_region)
+            return int(ys.min()), int(xs.min())
+
+        # Try a small bag of seeds and assert at least one differs from seed 0.
+        positions = {_placement(s) for s in range(8)}
+        assert len(positions) > 1, "random placement should produce >1 distinct positions across seeds"
+
+    def test_paste_stays_inside_target(self):
+        """Random placement must keep the paste footprint fully inside the target image."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        donor_image = np.full((37, 41, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((37, 41), dtype=np.uint8)
+
+        for seed in range(20):
+            transform = A.Compose([A.CopyAndPaste(p=1.0)], seed=seed)
+            result = transform(
+                image=image.copy(),
+                copy_paste_metadata=[{"image": donor_image, "mask": donor_mask}],
+            )
+            paste_region = np.any(result["image"] > 0, axis=-1)
+            ys, xs = np.where(paste_region)
+            assert ys.min() >= 0 and ys.max() < 100
+            assert xs.min() >= 0 and xs.max() < 100
+
+
+class TestCopyAndPasteBboxOnlyDonor:
+    """Donors that supply only a `bbox` (no instance mask) — rectangle paste footprint."""
+
+    @pytest.mark.parametrize("coord_format", ["pascal_voc", "yolo"])
+    def test_bbox_only_donor_pastes_rectangle(self, coord_format: str):
+        """Bbox-only donor should paste a rectangular footprint matching the bbox dims and the
+        returned bbox should round-trip through the pipeline `coord_format`.
+        """
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        # Donor is 60x80 (Hd, Wd); bbox covers a 30x40 (h, w) rectangle.
+        donor_image = np.full((60, 80, 3), 137, dtype=np.uint8)
+        if coord_format == "pascal_voc":
+            donor_bbox: list[float] = [10.0, 5.0, 50.0, 35.0]
+        else:  # yolo: cx, cy, w, h normalized to donor (Hd=60, Wd=80)
+            donor_bbox = [(10 + 50) / 2 / 80, (5 + 35) / 2 / 60, (50 - 10) / 80, (35 - 5) / 60]
+
+        transform = A.Compose(
+            [A.CopyAndPaste(p=1.0)],
+            bbox_params=A.BboxParams(coord_format=coord_format, label_fields=["class_labels"]),
+            seed=137,
+        )
+        result = transform(
+            image=image,
+            bboxes=np.zeros((0, 4), dtype=np.float32),
+            class_labels=[],
+            copy_paste_metadata=[
+                {
+                    "image": donor_image,
+                    "bbox": donor_bbox,
+                    "bbox_labels": {"class_labels": 2},
+                },
+            ],
+        )
+        paste_region = np.any(result["image"] > 0, axis=-1)
+        rows = np.any(paste_region, axis=1)
+        cols = np.any(paste_region, axis=0)
+        # Paste footprint should match the donor bbox dims (40w x 30h pixels) since both fit in target.
+        # Allow ±1 px slack for non-pixel-aligned coord formats (yolo normalization).
+        assert abs(int(rows.sum()) - 30) <= 1
+        assert abs(int(cols.sum()) - 40) <= 1
+        assert len(result["bboxes"]) == 1
+        out_bbox = np.asarray(result["bboxes"][0], dtype=np.float32)
+        if coord_format == "pascal_voc":
+            x_min, y_min, x_max, y_max = out_bbox[:4]
+            assert abs((x_max - x_min) - 40) <= 1.0
+            assert abs((y_max - y_min) - 30) <= 1.0
+        else:  # yolo: width/height are normalized to target (100x100)
+            assert np.isclose(out_bbox[2], 40 / 100, atol=1e-2)
+            assert np.isclose(out_bbox[3], 30 / 100, atol=1e-2)
+        assert result["class_labels"] == [2]
+
+    def test_bbox_only_donor_warns_when_mask_target_present(self):
+        """Bbox-only donor still triggers the no-semantic-mask warning when a `mask` target is present."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        donor_image = np.full((40, 40, 3), 137, dtype=np.uint8)
+        primary_mask = np.zeros((100, 100), dtype=np.uint8)
+
+        transform = A.Compose(
+            [A.CopyAndPaste(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]),
+            seed=137,
+        )
+        with pytest.warns(UserWarning, match="no donor item provided `semantic_mask`"):
+            transform(
+                image=image,
+                mask=primary_mask,
+                bboxes=np.zeros((0, 4), dtype=np.float32),
+                class_labels=[],
+                copy_paste_metadata=[
+                    {
+                        "image": donor_image,
+                        "bbox": [0, 0, 40, 40],
+                        "bbox_labels": {"class_labels": 2},
+                    },
+                ],
+            )
+
+
+class TestCopyAndPasteScaleJitter:
+    """`scale_range` shrink jitter and the cap at fit-to-target."""
+
+    def test_scale_range_halves_donor(self):
+        """`scale_range=(0.5, 0.5)` halves the donor relative to the shrink-to-fit scale."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        donor_image = np.full((40, 40, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((40, 40), dtype=np.uint8)
+
+        transform = A.Compose([A.CopyAndPaste(scale_range=(0.5, 0.5), p=1.0)], seed=137)
+        result = transform(
+            image=image,
+            copy_paste_metadata=[{"image": donor_image, "mask": donor_mask}],
+        )
+        paste_region = np.any(result["image"] > 0, axis=-1)
+        rows = np.any(paste_region, axis=1)
+        cols = np.any(paste_region, axis=0)
+        # Donor is 40x40, fits with scale 1.0 -> jitter 0.5 -> 20x20.
+        assert int(rows.sum()) == 20
+        assert int(cols.sum()) == 20
+
+    def test_scale_range_capped_by_fit(self):
+        """`scale_range=(2.0, 2.0)` is capped at fit-to-target — output never exceeds fit dims."""
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        # 200x200 donor: fit is 100x100; jitter 2.0 would normally double, but is capped.
+        donor_image = np.full((200, 200, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((200, 200), dtype=np.uint8)
+
+        transform = A.Compose([A.CopyAndPaste(scale_range=(2.0, 2.0), p=1.0)], seed=137)
+        result = transform(
+            image=image,
+            copy_paste_metadata=[{"image": donor_image, "mask": donor_mask}],
+        )
+        paste_region = np.any(result["image"] > 0, axis=-1)
+        assert int(paste_region.sum()) == 100 * 100
+
+
+class TestCopyAndPasteMinPasteArea:
+    """`min_paste_area` silently drops donors whose scaled footprint is too small."""
+
+    def test_min_paste_area_skips_tiny_donors(self):
+        """A 1000x1000 donor onto a 10x10 target with `min_paste_area=200` should drop the donor
+        (scale-to-fit gives a 10x10 footprint with area 100 < 200).
+        """
+        image = np.zeros((10, 10, 3), dtype=np.uint8)
+        donor_image = np.full((1000, 1000, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((1000, 1000), dtype=np.uint8)
+
+        transform = A.Compose([A.CopyAndPaste(min_paste_area=200, p=1.0)], seed=137)
+        result = transform(
+            image=image.copy(),
+            copy_paste_metadata=[{"image": donor_image, "mask": donor_mask}],
+        )
+        np.testing.assert_array_equal(result["image"], image)
+
+
+class TestCopyAndPasteCropExpansion:
+    """Keypoints outside the mask/bbox tight bbox extend the crop bounds."""
+
+    def test_keypoints_outside_mask_extend_crop(self):
+        """A keypoint outside the mask tight bbox should be preserved in the output (the crop is
+        expanded to include it).
+        """
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        donor_image = np.full((40, 40, 3), 137, dtype=np.uint8)
+        donor_mask = np.zeros((40, 40), dtype=np.uint8)
+        donor_mask[5:10, 5:10] = 1  # tight bbox: rows 5-10, cols 5-10
+        # Keypoint at donor (35, 35) -- well outside the mask tight bbox.
+        donor_keypoints = np.array([[35.0, 35.0]], dtype=np.float32)
+
+        transform = A.Compose(
+            [A.CopyAndPaste(p=1.0)],
+            keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
+            seed=137,
+        )
+        result = transform(
+            image=image,
+            keypoints=np.zeros((0, 2), dtype=np.float32),
+            keypoint_labels=[],
+            copy_paste_metadata=[
+                {
+                    "image": donor_image,
+                    "mask": donor_mask,
+                    "keypoints": donor_keypoints,
+                    "keypoint_labels": {"keypoint_labels": 7},
+                },
+            ],
+        )
+        assert len(result["keypoints"]) == 1
+        assert result["keypoint_labels"] == [7]
+
+    @pytest.mark.parametrize("coord_format", ["pascal_voc", "yolo"])
+    def test_bbox_coords_after_paste_match_target_position(self, coord_format: str):
+        """Round-trip: returned bbox in pipeline coord_format should map back to the actual paste
+        footprint on the target image.
+        """
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        donor_image = np.full((40, 40, 3), 137, dtype=np.uint8)
+        donor_mask = np.ones((40, 40), dtype=np.uint8)
+        if coord_format == "pascal_voc":
+            donor_bbox: list[float] = [0.0, 0.0, 40.0, 40.0]
+        else:  # yolo
+            donor_bbox = [0.5, 0.5, 1.0, 1.0]
+
+        transform = A.Compose(
+            [A.CopyAndPaste(p=1.0)],
+            bbox_params=A.BboxParams(coord_format=coord_format, label_fields=["class_labels"]),
+            seed=137,
+        )
+        result = transform(
+            image=image,
+            bboxes=np.zeros((0, 4), dtype=np.float32),
+            class_labels=[],
+            copy_paste_metadata=[
+                {
+                    "image": donor_image,
+                    "mask": donor_mask,
+                    "bbox": donor_bbox,
+                    "bbox_labels": {"class_labels": 2},
+                },
+            ],
+        )
+        paste_region = np.any(result["image"] > 0, axis=-1)
+        ys, xs = np.where(paste_region)
+        actual_x_min, actual_y_min = float(xs.min()), float(ys.min())
+        actual_x_max, actual_y_max = float(xs.max()) + 1, float(ys.max()) + 1
+
+        out_bbox = np.asarray(result["bboxes"][0], dtype=np.float32)
+        if coord_format == "pascal_voc":
+            assert np.allclose(out_bbox[:4], [actual_x_min, actual_y_min, actual_x_max, actual_y_max], atol=1.0)
+        else:  # yolo: convert returned cxcywh-normalized to pascal pixels for comparison
+            cx, cy, w, h = out_bbox[:4]
+            x_min = (cx - w / 2) * 100
+            y_min = (cy - h / 2) * 100
+            x_max = (cx + w / 2) * 100
+            y_max = (cy + h / 2) * 100
+            assert np.allclose(
+                [x_min, y_min, x_max, y_max],
+                [actual_x_min, actual_y_min, actual_x_max, actual_y_max],
+                atol=1.0,
+            )
 
 
 class TestUnpackLabelWrappers:

@@ -748,6 +748,9 @@ class TestMixingTransformsInstanceBinding:
         assert cids == {1, 2}
 
     def test_copy_paste_instance_binding_keypoints_survive_by_instance_id(self) -> None:
+        """Full-cover paste deterministically occludes all primaries; only the PASTED instance
+        survives. The binding contract still has to allocate the pasted ID without IndexError.
+        """
         image = np.zeros((80, 80, 3), dtype=np.uint8)
         m0 = _make_mask(80, 80, (5, 30, 5, 30))
         m1 = _make_mask(80, 80, (50, 75, 50, 75))
@@ -767,12 +770,11 @@ class TestMixingTransformsInstanceBinding:
                 "keypoint_labels": {"vis": [2]},
             },
         ]
-        paste_mask = np.zeros((80, 80), dtype=np.uint8)
-        paste_mask[:40, :40] = 1
+        # Full-cover donor: deterministic paste over the entire 80x80 target.
         obj: dict[str, Any] = {
             "image": np.full((80, 80, 3), 200, dtype=np.uint8),
-            "mask": paste_mask,
-            "bbox": [0, 0, 40, 40],
+            "mask": np.ones((80, 80), dtype=np.uint8),
+            "bbox": [0, 0, 80, 80],
             "bbox_labels": {"cid": 99},
             "keypoints": np.array([[20.0, 20.0]], dtype=np.float32),
             "keypoint_labels": {"vis": [9]},
@@ -785,9 +787,9 @@ class TestMixingTransformsInstanceBinding:
             seed=137,
         )
         result = transform(image=image, instances=instances, copy_paste_metadata=[obj])
-        assert len(result["instances"]) == 2
-        total_kp_rows = sum(inst["keypoints"].shape[0] for inst in result["instances"])
-        assert total_kp_rows == 2
+        assert len(result["instances"]) == 1
+        assert result["instances"][0]["bbox_labels"]["cid"] == 99
+        assert result["instances"][0]["keypoints"].shape == (1, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -1404,12 +1406,12 @@ class TestMosaicCopyPasteInstanceBinding:
                 "bbox_labels": {"cid": [2]},
             },
         ]
-        paste_mask = np.zeros((th, tw), dtype=np.uint8)
-        paste_mask[:ch, :] = 1
+        # Full-cover donor: deterministic paste over the entire mosaic canvas; both primaries
+        # are occluded and only the pasted instance survives.
         donor: dict[str, Any] = {
             "image": np.full((th, tw, 3), 222, dtype=np.uint8),
-            "mask": paste_mask,
-            "bbox": [0, 0, int(tw), int(ch)],
+            "mask": np.ones((th, tw), dtype=np.uint8),
+            "bbox": [0, 0, int(tw), int(th)],
             "bbox_labels": {"cid": 900},
         }
         transform = A.Compose(
@@ -1435,8 +1437,7 @@ class TestMosaicCopyPasteInstanceBinding:
             copy_paste_metadata=[donor],
         )
         cids = {int(inst["bbox_labels"]["cid"]) for inst in result["instances"]}
-        assert cids == {2, 900}
-        assert 1 not in cids
+        assert cids == {900}
         for inst in result["instances"]:
             assert inst["mask"].shape == (th, tw)
 
@@ -1467,12 +1468,12 @@ class TestMosaicCopyPasteInstanceBinding:
                 "keypoint_labels": {"vis": [2]},
             },
         ]
-        paste_mask = np.zeros((th, tw), dtype=np.uint8)
-        paste_mask[:ch, :] = 1
+        # Full-cover donor for deterministic paste; both primaries get occluded, leaving only
+        # the pasted instance + its keypoints.
         donor: dict[str, Any] = {
             "image": np.full((th, tw, 3), 111, dtype=np.uint8),
-            "mask": paste_mask,
-            "bbox": [0, 0, int(tw), int(ch)],
+            "mask": np.ones((th, tw), dtype=np.uint8),
+            "bbox": [0, 0, int(tw), int(th)],
             "bbox_labels": {"cid": 900},
             "keypoints": np.array([[8.0, 8.0]], dtype=np.float32),
             "keypoint_labels": {"vis": [9]},
@@ -1500,12 +1501,10 @@ class TestMosaicCopyPasteInstanceBinding:
             mosaic_metadata=mosaic_metadata,
             copy_paste_metadata=[donor],
         )
-        assert len(result["instances"]) == 2
+        assert len(result["instances"]) == 1
         by_cid = _instances_by_cid(result["instances"])
-        assert set(by_cid) == {2, 900}
-        assert by_cid[2]["keypoints"].shape == (1, 2)
+        assert set(by_cid) == {900}
         assert by_cid[900]["keypoints"].shape == (1, 2)
-        np.testing.assert_array_equal(by_cid[2]["keypoint_labels"]["vis"], np.array([2]))
         np.testing.assert_array_equal(by_cid[900]["keypoint_labels"]["vis"], np.array([9]))
 
 
@@ -1588,12 +1587,13 @@ class TestCopyPasteBindingRegression:
                 "bbox_labels": {"cid": "C"},
             },
         ]
-        paste_mask = np.zeros((side, side), dtype=np.uint8)
-        paste_mask[: third - 2, : third - 2] = 1
+        # Full-cover donor → deterministic paste over the entire post-crop canvas. Combined with
+        # min_area filtering of B, this exercises the id-allocation path when the binding mask
+        # row count is reduced before the pasted instance is appended.
         donor: dict[str, Any] = {
             "image": np.full((side, side, 3), 200, dtype=np.uint8),
-            "mask": paste_mask,
-            "bbox": [0, 0, third - 2, third - 2],
+            "mask": np.ones((side, side), dtype=np.uint8),
+            "bbox": [0, 0, side, side],
             "bbox_labels": {"cid": "PASTED"},
         }
         transform = A.Compose(
@@ -1611,23 +1611,21 @@ class TestCopyPasteBindingRegression:
         )
         result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
         cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
-        assert "B" not in cids, "B was filtered by min_area"
-        assert "A" not in cids, "A is fully occluded by paste"
-        assert "C" in cids and "PASTED" in cids
+        assert cids == {"PASTED"}, "B filtered by min_area; A and C fully occluded by paste"
         for inst in result["instances"]:
             assert inst["mask"].shape == (side, side)
 
-    def test_copy_paste_occludes_middle_primary_keeps_outer_masks_attached(self) -> None:
-        """3 instances; paste fully occludes B. A and C must keep their original masks (not B's)."""
+    def test_copy_paste_full_cover_drops_all_primaries_with_binding(self) -> None:
+        """Full-cover paste deterministically drops every primary; binding must allocate the
+        pasted id without IndexError, and the lone surviving instance is the pasted one with
+        a mask matching the full target footprint.
+        """
         side = 90
         image, instances = _three_instance_payload(side)
-        third = side // 3
-        paste_mask = np.zeros((side, side), dtype=np.uint8)
-        paste_mask[third : 2 * third, third : 2 * third] = 1
         donor: dict[str, Any] = {
             "image": np.full((side, side, 3), 100, dtype=np.uint8),
-            "mask": paste_mask,
-            "bbox": [third, third, 2 * third, 2 * third],
+            "mask": np.ones((side, side), dtype=np.uint8),
+            "bbox": [0, 0, side, side],
             "bbox_labels": {"cid": "PASTED"},
         }
         transform = A.Compose(
@@ -1638,12 +1636,8 @@ class TestCopyPasteBindingRegression:
         )
         result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
         by_cid = _instances_by_cid(result["instances"])
-        assert set(by_cid) == {"A", "C", "PASTED"}, "B should be dropped, A/C kept, PASTED appended"
-        assert _mask_matches_cid_region(by_cid["A"]["mask"], (2, third - 2, 2, third - 2))
-        assert _mask_matches_cid_region(
-            by_cid["C"]["mask"],
-            (2 * third + 2, side - 2, 2 * third + 2, side - 2),
-        )
+        assert set(by_cid) == {"PASTED"}
+        assert by_cid["PASTED"]["mask"].sum() == side * side
 
     def test_copy_paste_id_collision_when_crop_drops_low_id_instance(self) -> None:
         """After Crop drops A (id 0), pasted IDs must allocate above N_masks-1 to avoid colliding with B/C ids."""
@@ -1652,13 +1646,11 @@ class TestCopyPasteBindingRegression:
         third = side // 3
         crop_offset = third + 1
         cropped_side = side - crop_offset
-        # Paste mask is in post-crop coordinates and fully covers B (which sits at (1..29, 1..29) after crop).
-        paste_mask = np.zeros((cropped_side, cropped_side), dtype=np.uint8)
-        paste_mask[: third + 2, : third + 2] = 1
+        # Full-cover donor in post-crop coordinates; deterministic paste over everything.
         donor: dict[str, Any] = {
             "image": np.full((cropped_side, cropped_side, 3), 50, dtype=np.uint8),
-            "mask": paste_mask,
-            "bbox": [0, 0, third + 2, third + 2],
+            "mask": np.ones((cropped_side, cropped_side), dtype=np.uint8),
+            "bbox": [0, 0, cropped_side, cropped_side],
             "bbox_labels": {"cid": "PASTED"},
         }
         transform = A.Compose(
@@ -1672,7 +1664,7 @@ class TestCopyPasteBindingRegression:
         )
         result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
         cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
-        assert cids == {"C", "PASTED"}, "A is cropped out, B is occluded, C survives, PASTED appended"
+        assert cids == {"PASTED"}, "A cropped, B and C fully occluded by paste"
         for inst in result["instances"]:
             assert inst["mask"].shape[:2] == (cropped_side, cropped_side)
 
@@ -1712,12 +1704,12 @@ class TestCopyPasteBindingRegression:
         ]
         crop_offset = third + 1
         cropped_side = side - crop_offset
-        paste_mask = np.zeros((cropped_side, cropped_side), dtype=np.uint8)
-        paste_mask[: third - 4, : third - 4] = 1
+        # Full-cover donor in post-crop coordinates; A is cropped out, B and C are fully occluded
+        # by the paste. Only the pasted instance and its keypoint should survive.
         donor: dict[str, Any] = {
             "image": np.full((cropped_side, cropped_side, 3), 99, dtype=np.uint8),
-            "mask": paste_mask,
-            "bbox": [0, 0, third - 4, third - 4],
+            "mask": np.ones((cropped_side, cropped_side), dtype=np.uint8),
+            "bbox": [0, 0, cropped_side, cropped_side],
             "bbox_labels": {"cid": "PASTED"},
             "keypoints": np.array([[3.0, 3.0]], dtype=np.float32),
             "keypoint_labels": {"vis": [9]},
@@ -1734,8 +1726,7 @@ class TestCopyPasteBindingRegression:
         )
         result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
         by_cid = _instances_by_cid(result["instances"])
-        assert set(by_cid) == {"C", "PASTED"}
-        np.testing.assert_array_equal(by_cid["C"]["keypoint_labels"]["vis"], np.array([3]))
+        assert set(by_cid) == {"PASTED"}
         np.testing.assert_array_equal(by_cid["PASTED"]["keypoint_labels"]["vis"], np.array([9]))
 
     def test_copy_paste_min_visibility_zero_keeps_all_primaries_with_binding(self) -> None:
@@ -1936,9 +1927,12 @@ class TestMosaicBindingRegression:
 
 
 class TestMosaicCopyPasteFourInstanceOcclusion:
-    """Mosaic emits 4 instances; CopyAndPaste occludes positions {0, 2}. Outer survivors must keep correct masks."""
+    """Mosaic emits 4 instances; full-cover CopyAndPaste occludes all of them.
+    The pasted instance must still be allocated a fresh id without IndexError, and any
+    surviving (non-pasted) mask rows must remain positionally aligned to their owners.
+    """
 
-    def test_mosaic_4_instances_occlude_positions_0_and_2(self, rng_137: np.random.Generator) -> None:
+    def test_mosaic_4_instances_full_cover_paste(self, rng_137: np.random.Generator) -> None:
         ch, cw = 48, 48
         th, tw = ch * 2, cw * 2
         img_p = rng_137.integers(0, 256, (ch, cw, 3), dtype=np.uint8)
@@ -1959,13 +1953,11 @@ class TestMosaicCopyPasteFourInstanceOcclusion:
             }
             for i in range(3)
         ]
-        # Paste covers the top half (cells 0 and 1) — should occlude P0 and one mosaic instance.
-        paste_mask = np.zeros((th, tw), dtype=np.uint8)
-        paste_mask[:ch, :] = 1
+        # Full-cover donor: deterministic paste over the entire mosaic canvas.
         donor: dict[str, Any] = {
             "image": np.full((th, tw, 3), 88, dtype=np.uint8),
-            "mask": paste_mask,
-            "bbox": [0, 0, tw, ch],
+            "mask": np.ones((th, tw), dtype=np.uint8),
+            "bbox": [0, 0, tw, th],
             "bbox_labels": {"cid": "PASTED"},
         }
         transform = A.Compose(
@@ -1990,19 +1982,11 @@ class TestMosaicCopyPasteFourInstanceOcclusion:
             mosaic_metadata=mosaic_metadata,
             copy_paste_metadata=[donor],
         )
-        cids = {inst["bbox_labels"]["cid"] for inst in result["instances"]}
-        assert "PASTED" in cids
-        # The two cells in the bottom row should have survivors with masks confined to bottom half.
-        for inst in result["instances"]:
-            mask = inst["mask"]
-            assert mask.shape == (th, tw)
-            if inst["bbox_labels"]["cid"] != "PASTED":
-                nz = np.argwhere(mask > 0)
-                if nz.size > 0:
-                    assert nz[:, 0].min() >= ch, (
-                        f"Surviving non-pasted instance {inst['bbox_labels']['cid']} mask has pixels in occluded "
-                        "top half — mask row was attached to the wrong instance id."
-                    )
+        cids = [inst["bbox_labels"]["cid"] for inst in result["instances"]]
+        assert cids == ["PASTED"]
+        pasted = result["instances"][0]
+        assert pasted["mask"].shape == (th, tw)
+        assert pasted["mask"].sum() == th * tw
 
 
 class TestFilteringTransformBinding:

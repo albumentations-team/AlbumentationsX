@@ -648,3 +648,43 @@ class TestCopyAndPasteEdgeCases:
         )
         assert len(result["bboxes"]) == 2
         assert np.any(result["image"] > 0)
+
+
+class TestUnpackLabelWrappers:
+    """Tests for `unpack_label_wrappers` reserved-key handling."""
+
+    def test_no_wrapper_keys_returns_input_unchanged(self):
+        item = {"image": np.zeros((4, 4, 3), dtype=np.uint8), "class_labels": [1, 2]}
+        result = fmixing.unpack_label_wrappers(item)
+        assert result is item
+
+    def test_wrapper_dict_is_flattened(self):
+        item = {
+            "image": np.zeros((4, 4, 3), dtype=np.uint8),
+            "bbox_labels": {"class_labels": [1, 2]},
+            "keypoint_labels": {"kp_classes": ["eye"]},
+        }
+        result = fmixing.unpack_label_wrappers(item)
+        assert "bbox_labels" not in result
+        assert "keypoint_labels" not in result
+        assert result["class_labels"] == [1, 2]
+        assert result["kp_classes"] == ["eye"]
+
+    def test_none_wrapper_value_is_skipped(self):
+        item = {"image": np.zeros((4, 4, 3), dtype=np.uint8), "bbox_labels": None}
+        result = fmixing.unpack_label_wrappers(item)
+        assert "bbox_labels" not in result
+
+    @pytest.mark.parametrize(
+        ("wrapper_key", "bad_value"),
+        [
+            ("bbox_labels", [1, 2, 3]),
+            ("bbox_labels", (1, 2)),
+            ("keypoint_labels", ["eye", "nose"]),
+            ("keypoint_labels", np.array([1, 2])),
+        ],
+    )
+    def test_non_dict_wrapper_raises_typeerror(self, wrapper_key, bad_value):
+        item = {"image": np.zeros((4, 4, 3), dtype=np.uint8), wrapper_key: bad_value}
+        with pytest.raises(TypeError, match=f"`{wrapper_key}` must be a dict"):
+            fmixing.unpack_label_wrappers(item)

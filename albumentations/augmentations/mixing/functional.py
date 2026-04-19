@@ -540,14 +540,34 @@ def unpack_label_wrappers(item: dict[str, Any]) -> dict[str, Any]:
     Both Mosaic and CopyAndPaste store per-item label values under `bbox_labels` and
     `keypoint_labels` (dicts mapping label-field-name → value). This helper flattens
     them so that `_preprocess_item_annotations` can find the fields at the top level.
+
+    Raises:
+        TypeError: If `bbox_labels` or `keypoint_labels` is present but is not a dict
+            (e.g. a bare list of labels). Both wrapper keys are reserved by the
+            Mosaic/CopyAndPaste metadata format and must map label-field name to its
+            list of values, e.g. `{"class_id": [3, 7]}` — not `[3, 7]` directly.
+
     """
     if "bbox_labels" not in item and "keypoint_labels" not in item:
         return item
     unpacked = {k: v for k, v in item.items() if k not in ("bbox_labels", "keypoint_labels")}
     for wrapper_key in ("bbox_labels", "keypoint_labels"):
-        labels = item.get(wrapper_key)
-        if isinstance(labels, dict):
-            unpacked.update(labels)
+        if wrapper_key not in item:
+            continue
+        labels = item[wrapper_key]
+        if labels is None:
+            continue
+        if not isinstance(labels, dict):
+            raise TypeError(
+                f"Mosaic/CopyAndPaste metadata: `{wrapper_key}` must be a dict mapping "
+                f"label-field name to its values (e.g. `{{'class_id': [3, 7]}}`), got "
+                f"{type(labels).__name__}. The keys `bbox_labels` and `keypoint_labels` "
+                "are reserved wrapper keys in per-item metadata; if you intended to pass "
+                f"a bare list of labels, wrap it in a dict keyed by the label_field name "
+                f"declared in BboxParams/KeypointParams.label_fields, e.g. "
+                f"`{wrapper_key}={{'<your_label_field>': <values>}}`.",
+            )
+        unpacked.update(labels)
     return unpacked
 
 

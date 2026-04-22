@@ -134,15 +134,21 @@ def get_image_data(
 
 
 def _resolve_volume_key(data: dict[str, Any], aliases: dict[str, str], canonical: str) -> str | None:
-    """Find the user key in `data` whose canonical role matches `canonical`
-    ('volume' or 'volumes'); canonical wins over any alias. Helper for `get_volume_shape`.
+    """Resolve which user key holds volume or volumes data, skipping `None` values
+    and preferring the canonical key name over aliases (same rules as image resolution).
+
+    Returns None if no non-`None` entry matches `canonical`.
     """
-    if canonical in data:
-        return canonical
-    for key in data:
-        if aliases.get(key) == canonical:
-            return key
-    return None
+    chosen: str | None = None
+    for key, value in data.items():
+        if value is None:
+            continue
+        target = aliases.get(key, key)
+        if target != canonical:
+            continue
+        if chosen is None or key == canonical:
+            chosen = key
+    return chosen
 
 
 def _volume_shape_from_array(vol: Any) -> tuple[int, int, int]:

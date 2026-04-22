@@ -211,6 +211,20 @@ class TestGetVolumeShape:
         data = {"image": np.zeros((10, 20, 3), dtype=np.uint8)}
         assert get_volume_shape(data) is None
 
+    def test_canonical_volume_none_uses_aliased_key(self) -> None:
+        """`volume: None` must not shadow a non-`None` value under an alias (regression: PR review)."""
+        data = {
+            "volume": None,
+            "my_vol": np.zeros((5, 10, 20, 3), dtype=np.uint8),
+        }
+        assert get_volume_shape(data, {"my_vol": "volume"}) == (5, 10, 20)
+
+    def test_canonical_volume_wins_over_alias_when_both_set(self) -> None:
+        vol = np.zeros((5, 10, 20, 3), dtype=np.uint8)
+        other = np.zeros((2, 3, 4, 3), dtype=np.uint8)
+        data = {"my_vol": other, "volume": vol}
+        assert get_volume_shape(data, {"my_vol": "volume"}) == (5, 10, 20)
+
 
 # ---------------------------------------------------------------------------
 # BasicTransform._extract_shape_from_data + .get_image_data

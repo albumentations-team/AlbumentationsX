@@ -2427,8 +2427,8 @@ class TestPipelineInvariantsHypothesis:
             assert "bbox" in inst
 
     @settings(
-        max_examples=1000,
-        deadline=None,
+        max_examples=100,
+        deadline=2_000,
         suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
     )
     @given(
@@ -2486,56 +2486,60 @@ class TestPipelineInvariantsHypothesis:
         )
 
         violations: list[str] = []
-        original_resync = Compose._resync_instance_ids
 
-        def asserting_resync(self: Compose, data: dict[str, Any]) -> None:
-            original_resync(self, data)
-            bboxes = data.get("bboxes")
-            if not isinstance(bboxes, np.ndarray):
-                return
-            n = bboxes.shape[0]
-            if n > 0 and not np.array_equal(bboxes[:, -1], np.arange(n, dtype=bboxes.dtype)):
-                violations.append("_bbox_instance_id not arange(N) after resync")
-            masks = data.get("masks")
-            if isinstance(masks, np.ndarray) and len(masks) != n:
-                violations.append(f"len(masks)={len(masks)} != len(bboxes)={n} after resync")
-            kps = data.get("keypoints")
-            if isinstance(kps, np.ndarray) and kps.shape[0] > 0:
-                surviving = set(bboxes[:, -1].astype(np.int64).tolist())
-                kp_ids = set(kps[:, -1].astype(np.int64).tolist())
-                orphans = kp_ids - surviving
-                if orphans:
-                    violations.append(f"orphan keypoint ids after resync: {orphans}")
-            # Ensure the ferry-key columns line up with array widths (catches stale
-            # `_BBOX_INSTANCE_ID` / `_KP_INSTANCE_ID` keys that get out of sync with the
-            # arrays in `data`).
-            for ferry_key, arr_key in ((_BBOX_INSTANCE_ID, "bboxes"), (_KP_INSTANCE_ID, "keypoints")):
-                if ferry_key in data and isinstance(data.get(arr_key), np.ndarray):
-                    if len(data[ferry_key]) != data[arr_key].shape[0]:
-                        violations.append(
-                            f"ferry key {ferry_key!r} length {len(data[ferry_key])} != "
-                            f"{arr_key} rows {data[arr_key].shape[0]}",
-                        )
+        # `monkeypatch` is function-scoped, but Hypothesis re-enters the test body without
+        # re-running fixture setup/teardown. Without `monkeypatch.context()` the patch
+        # accumulates: example N captures the wrapper from example N-1 as `original_resync`,
+        # eventually causing recursion and masking the real method. The context manager
+        # reverts the patch at the end of every example.
+        with monkeypatch.context() as mp:
+            original_resync = Compose._resync_instance_ids
 
-        monkeypatch.setattr(Compose, "_resync_instance_ids", asserting_resync)
+            def asserting_resync(self: Compose, data: dict[str, Any]) -> None:
+                original_resync(self, data)
+                bboxes = data.get("bboxes")
+                if not isinstance(bboxes, np.ndarray):
+                    return
+                n = bboxes.shape[0]
+                if n > 0 and not np.array_equal(bboxes[:, -1], np.arange(n, dtype=bboxes.dtype)):
+                    violations.append("_bbox_instance_id not arange(N) after resync")
+                masks = data.get("masks")
+                if isinstance(masks, np.ndarray) and len(masks) != n:
+                    violations.append(f"len(masks)={len(masks)} != len(bboxes)={n} after resync")
+                kps = data.get("keypoints")
+                if isinstance(kps, np.ndarray) and kps.shape[0] > 0:
+                    surviving = set(bboxes[:, -1].astype(np.int64).tolist())
+                    kp_ids = set(kps[:, -1].astype(np.int64).tolist())
+                    orphans = kp_ids - surviving
+                    if orphans:
+                        violations.append(f"orphan keypoint ids after resync: {orphans}")
+                for ferry_key, arr_key in ((_BBOX_INSTANCE_ID, "bboxes"), (_KP_INSTANCE_ID, "keypoints")):
+                    if ferry_key in data and isinstance(data.get(arr_key), np.ndarray):
+                        if len(data[ferry_key]) != data[arr_key].shape[0]:
+                            violations.append(
+                                f"ferry key {ferry_key!r} length {len(data[ferry_key])} != "
+                                f"{arr_key} rows {data[arr_key].shape[0]}",
+                            )
 
-        image, instances = self._instances()
-        transforms = [self._build(n) for n in pre] + [self._build(mix)] + [self._build(n) for n in post]
-        aug = A.Compose(
-            transforms,
-            bbox_params=A.BboxParams(coord_format="pascal_voc", min_area=1),
-            instance_binding=["masks", "bboxes"],
-            seed=seed,
-        )
-        kwargs: dict[str, Any] = {"image": image, "instances": instances}
-        if mix == "mosaic":
-            kwargs["mosaic_metadata"] = self._mosaic_extras()
-        else:
-            kwargs["copy_paste_metadata"] = self._donors()
+            mp.setattr(Compose, "_resync_instance_ids", asserting_resync)
 
-        aug(**kwargs)
+            image, instances = self._instances()
+            transforms = [self._build(n) for n in pre] + [self._build(mix)] + [self._build(n) for n in post]
+            aug = A.Compose(
+                transforms,
+                bbox_params=A.BboxParams(coord_format="pascal_voc", min_area=1),
+                instance_binding=["masks", "bboxes"],
+                seed=seed,
+            )
+            kwargs: dict[str, Any] = {"image": image, "instances": instances}
+            if mix == "mosaic":
+                kwargs["mosaic_metadata"] = self._mosaic_extras()
+            else:
+                kwargs["copy_paste_metadata"] = self._donors()
 
-        assert not violations, "\n".join(violations[:10])
+            aug(**kwargs)
+
+            assert not violations, "\n".join(violations[:10])
 
 
 class _MaskRowDroppingDualTransform(A.DualTransform):

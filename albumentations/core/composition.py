@@ -154,7 +154,7 @@ _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoin
 _INSTANCE_ID = "_instance_id"
 _BBOX_INSTANCE_ID = "_bbox_instance_id"
 _KP_INSTANCE_ID = "_kp_instance_id"
-_INSTANCE_ID_FERRY_KEYS = frozenset({_BBOX_INSTANCE_ID, _KP_INSTANCE_ID, _INSTANCE_ID})
+_INSTANCE_ID_FERRY_KEYS = frozenset({_BBOX_INSTANCE_ID, _KP_INSTANCE_ID})
 
 
 def _make_stacked_masks(rows: list[np.ndarray]) -> StackedMasks4D:
@@ -539,7 +539,7 @@ class BaseCompose(Serializable):
         binding = getattr(self, "_instance_binding", None)
 
         for proc in self.check_each_transform:
-            if binding is not None and isinstance(proc, BboxProcessor):
+            if binding is not None and "bboxes" in binding and isinstance(proc, BboxProcessor):
                 self._bbox_filter_with_mirror(proc, data, shape, binding)
                 continue
             for data_name, data_value in data.items():
@@ -620,16 +620,26 @@ class BaseCompose(Serializable):
         data: dict[str, Any],
         shape: tuple[int, ...],
     ) -> np.ndarray | None:
-        """Run `BboxProcessor.filter_with_keep_mask` on every matching field in `data`, write
-        the filtered bboxes back, and return the keep-mask for the caller to mirror.
+        """Run `BboxProcessor.filter_with_keep_mask` on every matching field in `data`,
+        write back the filtered bboxes, return the canonical `"bboxes"` keep-mask only.
+
+        Only the canonical `"bboxes"` field's keep-mask is returned: instance binding lives
+        on the primary instances, and `additional_targets`-aliased bbox arrays describe a
+        SEPARATE coordinate space whose survival decision must not drive masks/keypoints
+        belonging to the primary `"bboxes"` row order.
         """
         keep_mask: np.ndarray | None = None
         for data_name, data_value in data.items():
             if data_name in proc.data_fields or (
                 data_name in self._additional_targets and self._additional_targets[data_name] in proc.data_fields
             ):
-                filtered, keep_mask = proc.filter_with_keep_mask(data_value, cast("tuple[int, int, int]", shape))
+                filtered, current_keep_mask = proc.filter_with_keep_mask(
+                    data_value,
+                    cast("tuple[int, int, int]", shape),
+                )
                 data[data_name] = filtered
+                if data_name == "bboxes":
+                    keep_mask = current_keep_mask
         return keep_mask
 
     def _mirror_keep_mask(
@@ -1671,20 +1681,27 @@ class Compose(BaseCompose, HubMixin):
 
         if "keypoints" in binding:
             kp_arr = data.get("keypoints")
-            if (
-                isinstance(kp_arr, np.ndarray)
-                and kp_arr.shape[0] > 0
-                and not np.array_equal(
-                    old_ids,
-                    np.arange(n, dtype=np.int64),
-                )
-            ):
-                old_to_new = {int(old): new for new, old in enumerate(old_ids.tolist())}
+            if isinstance(kp_arr, np.ndarray) and kp_arr.shape[0] > 0:
                 kp_ids_col = kp_arr[:, -1].astype(np.int64, copy=False)
-                kp_arr[:, -1] = np.array(
-                    [old_to_new.get(int(k), int(k)) for k in kp_ids_col],
-                    dtype=kp_arr.dtype,
-                )
+                # Defense in depth: orphan kp ids (no matching bbox) should already be filtered
+                # by `_bbox_filter_with_mirror`/`_prefilter_realign`. If we still see one here,
+                # the upstream chain is broken and silently passing it through corrupts the new
+                # positional namespace, so raise/warn the same as the masks-len breach.
+                bbox_id_set = set(old_ids.tolist())
+                orphans = [int(k) for k in kp_ids_col.tolist() if int(k) not in bbox_id_set]
+                if orphans:
+                    self._raise_or_warn_orphan_keypoints(orphans)
+                    keep_kp = np.isin(kp_ids_col, old_ids)
+                    if not keep_kp.all():
+                        kp_arr = kp_arr[keep_kp]
+                        data["keypoints"] = kp_arr
+                        kp_ids_col = kp_arr[:, -1].astype(np.int64, copy=False)
+                if not np.array_equal(old_ids, np.arange(n, dtype=np.int64)):
+                    old_to_new = {int(old): new for new, old in enumerate(old_ids.tolist())}
+                    kp_arr[:, -1] = np.array(
+                        [old_to_new[int(k)] for k in kp_ids_col],
+                        dtype=kp_arr.dtype,
+                    )
 
         bboxes_arr[:, -1] = np.arange(n, dtype=bboxes_arr.dtype)
 
@@ -1700,7 +1717,26 @@ class Compose(BaseCompose, HubMixin):
             raise RuntimeError(msg)
         warnings.warn(
             msg + " Falling back to legacy permissive mode "
-            "(strict_instance_invariant=False); this fallback will be removed in 2.4.",
+            "(strict_instance_invariant=False); this fallback will be removed in 2.3.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    def _raise_or_warn_orphan_keypoints(self, orphans: list[int]) -> None:
+        sample = orphans[:5]
+        more = "" if len(orphans) <= 5 else f" (+{len(orphans) - 5} more)"
+        msg = (
+            f"Instance-binding invariant violated: keypoints reference "
+            f"{len(orphans)} bbox id(s) that no longer exist: {sample}{more}. "
+            "The last transform must drop keypoints whose parent bbox was filtered out, "
+            "or `_bbox_filter_with_mirror` must mirror the bbox keep-mask onto keypoints."
+        )
+        if getattr(self, "_strict_instance_invariant", True):
+            raise RuntimeError(msg)
+        warnings.warn(
+            msg + " Falling back to legacy permissive mode "
+            "(strict_instance_invariant=False) — orphan keypoints will be dropped silently. "
+            "This fallback will be removed in 2.3.",
             UserWarning,
             stacklevel=3,
         )

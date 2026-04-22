@@ -126,7 +126,7 @@ repos:
         pass_filenames: false
         files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.10
+    rev: v0.15.11
     hooks:
       - id: ruff
         exclude: '__pycache__/'

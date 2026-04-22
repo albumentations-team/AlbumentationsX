@@ -953,6 +953,28 @@ class DualTransform(BasicTransform):
         return self.apply(mask, *args, **params)
 
     def apply_to_masks(self, masks: StackedMasks4D, *args: Any, **params: Any) -> StackedMasks4D:
+        """Apply the per-row mask transform to a `StackedMasks4D` `(N, H, W, C)` and return a
+        stack that upholds the row-alignment contract with bboxes and keypoints.
+
+        Row-alignment contract (enforced by `Compose._resync_instance_ids` after every
+        transform when `instance_binding` is active):
+
+        - `len(returned_masks) == len(returned_bboxes)` must hold simultaneously with the
+          same call's `apply_to_bboxes` return.
+        - Row `i` of the returned stack must describe the same instance as row `i` of the
+          returned bboxes (so `_bbox_instance_id == arange(N)` after Compose's resync).
+        - If your transform drops bbox rows from `apply_to_bboxes` (e.g. min-area or
+          out-of-frame culling), it MUST drop the corresponding mask rows from
+          `apply_to_masks`. Compose's bbox-processor mirror covers the case where
+          BboxProcessor is the SOLE filter; transform-internal filters need their own
+          shared keep-mask plumbed via `get_params_dependent_on_data` (see Mosaic /
+          CopyAndPaste for the canonical pattern).
+        - The default per-row implementation below preserves alignment for transforms
+          whose `apply_to_mask` is total (no row drops).
+
+        Violating this contract surfaces as a `RuntimeError` from `_resync_instance_ids`
+        in strict mode (the default since 2.2.2) or a `UserWarning` in legacy mode.
+        """
         if masks.size == 0:
             return masks
         return self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, *args, **params))

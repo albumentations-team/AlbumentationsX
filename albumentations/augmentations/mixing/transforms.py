@@ -25,8 +25,9 @@ from albumentations.core.bbox_utils import (
     convert_bboxes_from_albumentations,
     convert_bboxes_to_albumentations,
     denormalize_bboxes,
-    filter_bboxes,
+    filter_bboxes_with_mask,
 )
+from albumentations.core.composition import _BBOX_INSTANCE_ID, _KP_INSTANCE_ID
 from albumentations.core.keypoints_utils import (
     KeypointsProcessor,
     convert_keypoints_from_albumentations,
@@ -503,7 +504,7 @@ class CopyAndPaste(DualTransform):
         if bbox_processor is None:
             return None
         label_fields = bbox_processor.params.label_fields or []
-        if "_bbox_instance_id" not in label_fields:
+        if _BBOX_INSTANCE_ID not in label_fields:
             return None
         bboxes = data.get("bboxes")
         if bboxes is None:
@@ -516,7 +517,7 @@ class CopyAndPaste(DualTransform):
         if bboxes.size == 0:
             return np.empty((0,), dtype=np.int64)
         n_lf = len(label_fields)
-        id_col_idx = bboxes.shape[1] - n_lf + label_fields.index("_bbox_instance_id")
+        id_col_idx = bboxes.shape[1] - n_lf + label_fields.index(_BBOX_INSTANCE_ID)
         return bboxes[:, id_col_idx].astype(np.int64, copy=False)
 
     def _resolve_paste_surviving_ids(
@@ -1025,7 +1026,7 @@ class CopyAndPaste(DualTransform):
 
             item_labels: dict[str, Any] = item.get("bbox_labels", {})
             for field in label_fields:
-                if field == "_bbox_instance_id":
+                if field == _BBOX_INSTANCE_ID:
                     all_labels[field].append(instance_ids[idx])
                     continue
                 if field.startswith("_ibl_bbox_"):
@@ -1072,7 +1073,7 @@ class CopyAndPaste(DualTransform):
     ) -> None:
         item_labels: dict[str, Any] = item.get("keypoint_labels", {})
         for field in kp_label_fields:
-            if field == "_kp_instance_id":
+            if field == _KP_INSTANCE_ID:
                 all_labels[field].extend([instance_ids[item_idx]] * num_keypoints)
                 continue
             if field.startswith("_ibl_kp_"):
@@ -1378,6 +1379,7 @@ class CopyAndPaste(DualTransform):
             "paste_bboxes": pasted_bboxes,
             "paste_keypoints": pasted_keypoints,
             "paste_donor_mask": donor_mask,
+            "paste_instance_ids": paste_instance_ids,
         }
 
     @staticmethod
@@ -1392,6 +1394,7 @@ class CopyAndPaste(DualTransform):
             "paste_bboxes": None,
             "paste_keypoints": None,
             "paste_donor_mask": None,
+            "paste_instance_ids": None,
         }
 
     def apply(
@@ -1520,13 +1523,13 @@ class CopyAndPaste(DualTransform):
         bbox_label_fields = bbox_processor.params.label_fields or []
 
         if paste_surviving_indices is not None and bboxes.size > 0:
-            if "_bbox_instance_id" in bbox_label_fields:
+            if _BBOX_INSTANCE_ID in bbox_label_fields:
                 # Filter by _bbox_instance_id values against the resolved surviving ID set.
                 # Mixing IDs with positions (the old `paste_surviving_indices` path) silently
                 # mis-attached bboxes whenever upstream filtering broke position == ID.
                 surviving_ids = paste_surviving_ids_ordered if paste_surviving_ids_ordered is not None else []
                 n_lf = len(bbox_label_fields)
-                id_col = bboxes.shape[1] - n_lf + bbox_label_fields.index("_bbox_instance_id")
+                id_col = bboxes.shape[1] - n_lf + bbox_label_fields.index(_BBOX_INSTANCE_ID)
                 inst_col = bboxes[:, id_col].astype(np.int64, copy=False)
                 keep = np.isin(inst_col, np.asarray(surviving_ids, dtype=np.int64))
                 surviving_bboxes = bboxes[keep]
@@ -1547,8 +1550,15 @@ class CopyAndPaste(DualTransform):
         else:
             combined = surviving_bboxes
 
-        # `Compose._resync_masks_to_bboxes` rebases `_bbox_instance_id` to its new mask-row
-        # position after this transform returns; we just emit `[surviving; pasted]` in row order.
+        # Re-stamp `_bbox_instance_id` to dense `arange(N_out)` so the output is positionally
+        # equal to its id index. Without this, the output had sparse ids (`[0,1,2,3,donor_id]`)
+        # and any subsequent bbox processor drop broke the implicit `masks[id]` assumption that
+        # the resync used. Phase 2b of the rewrite moves this re-stamp into the transform
+        # itself so `_resync_instance_ids` becomes a pure assertion + keypoint-rebase.
+        if _BBOX_INSTANCE_ID in bbox_label_fields and combined.size > 0:
+            n_lf = len(bbox_label_fields)
+            id_col = combined.shape[1] - n_lf + bbox_label_fields.index(_BBOX_INSTANCE_ID)
+            combined[:, id_col] = np.arange(combined.shape[0], dtype=combined.dtype)
         return combined
 
     def apply_to_keypoints(
@@ -1569,12 +1579,12 @@ class CopyAndPaste(DualTransform):
 
         surviving_keypoints = keypoints
         if paste_surviving_indices is not None and keypoints.size > 0:
-            if "_kp_instance_id" in kp_label_fields:
+            if _KP_INSTANCE_ID in kp_label_fields:
                 # Filter keypoints by _kp_instance_id against the resolved surviving ID set
                 # (same set that drives bbox/mask survival), not raw mask positions.
                 surviving_ids = paste_surviving_ids_ordered if paste_surviving_ids_ordered is not None else []
                 n_kf = len(kp_label_fields)
-                id_col = keypoints.shape[1] - n_kf + kp_label_fields.index("_kp_instance_id")
+                id_col = keypoints.shape[1] - n_kf + kp_label_fields.index(_KP_INSTANCE_ID)
                 inst_col = keypoints[:, id_col].astype(np.int64, copy=False)
                 keep = np.isin(inst_col, np.asarray(surviving_ids, dtype=np.int64))
                 surviving_keypoints = keypoints[keep]
@@ -1601,9 +1611,46 @@ class CopyAndPaste(DualTransform):
         else:
             combined = surviving_keypoints
 
-        # `Compose._resync_masks_to_bboxes` remaps `_kp_instance_id` to the new bbox positions
-        # post-transform; nothing to do here.
+        # Re-stamp `_kp_instance_id` to refer to the new dense bbox positions emitted by
+        # `apply_to_bboxes` (Phase 2b). The mapping mirrors the bbox concatenation order:
+        # surviving first (indexed by `paste_surviving_ids_ordered`) then pasted (indexed by
+        # `paste_instance_ids`). After this, no `_resync_instance_ids` keypoint rebase is
+        # needed for the CopyAndPaste boundary.
+        if _KP_INSTANCE_ID in kp_label_fields and combined.size > 0:
+            self._restamp_keypoint_ids(
+                combined,
+                kp_label_fields,
+                paste_surviving_ids_ordered,
+                params.get("paste_instance_ids"),
+            )
         return combined
+
+    @staticmethod
+    def _restamp_keypoint_ids(
+        keypoints: np.ndarray,
+        kp_label_fields: Sequence[str],
+        paste_surviving_ids_ordered: list[int] | None,
+        paste_instance_ids: list[int] | None,
+    ) -> None:
+        n_kf = len(kp_label_fields)
+        id_col = keypoints.shape[1] - n_kf + kp_label_fields.index(_KP_INSTANCE_ID)
+
+        old_to_new: dict[int, int] = {}
+        new_idx = 0
+        if paste_surviving_ids_ordered:
+            for old in paste_surviving_ids_ordered:
+                old_to_new[int(old)] = new_idx
+                new_idx += 1
+        if paste_instance_ids:
+            for old in paste_instance_ids:
+                old_to_new[int(old)] = new_idx
+                new_idx += 1
+
+        kp_old = keypoints[:, id_col].astype(np.int64, copy=False)
+        keypoints[:, id_col] = np.array(
+            [old_to_new.get(int(k), int(k)) for k in kp_old],
+            dtype=keypoints.dtype,
+        )
 
 
 class Mosaic(DualTransform):
@@ -1986,6 +2033,14 @@ class Mosaic(DualTransform):
             processed_cells = fmixing.shift_all_coordinates(processed_cells, canvas_shape=self.target_size)
             bbox_proc = self.get_processor("bboxes")
             kp_proc = self.get_processor("keypoints")
+            # Per-cell mask realignment MUST run BEFORE `remap_mosaic_instance_label_ids`:
+            # at this point each cell's surviving bbox `_bbox_instance_id` column still holds
+            # the LOCAL position of the input mask stack (id k == row k in `cell_data["masks"]`).
+            # Once remap rewrites those to globally-unique ids, the local-position handle is gone.
+            # Without this pass, the cell-level Crop drops some bboxes but leaves all input mask
+            # rows intact, breaking positional alignment the moment we concatenate cells.
+            if "masks" in data and isinstance(bbox_proc, BboxProcessor):
+                processed_cells = self._filter_cell_masks_to_surviving_bboxes(processed_cells, bbox_proc)
             processed_cells = fmixing.remap_mosaic_instance_label_ids(
                 processed_cells,
                 bbox_proc if isinstance(bbox_proc, BboxProcessor) else None,
@@ -2002,7 +2057,113 @@ class Mosaic(DualTransform):
                 result["target_masks_shape"] = (int(ms[0]), self.target_size[0], self.target_size[1])
             else:
                 result["target_masks_shape"] = tuple(self._get_target_shape(ms))
+
+        # Compute the survival decision ONCE here so apply_to_{bboxes,masks,keypoints} share it.
+        # Without this, bboxes were filtered inside apply_to_bboxes and masks/keypoints had no
+        # way to mirror the survival, breaking positional alignment on the way to the next
+        # transform (the root cause of the Mosaic+Perspective+CopyAndPaste IndexError).
+        result.update(self._compute_mosaic_survival(processed_cells, data))
         return result
+
+    @staticmethod
+    def _filter_cell_masks_to_surviving_bboxes(
+        processed_cells: dict[tuple[int, int, int, int], fmixing.ProcessedMosaicItem],
+        bbox_proc: "BboxProcessor",
+    ) -> dict[tuple[int, int, int, int], fmixing.ProcessedMosaicItem]:
+        """Per-cell, slice `cell_data["masks"]` down to rows whose corresponding bbox survived
+        the cell-level crop in `process_cell_geometry`.
+
+        The cell pipeline (PadIfNeeded + Crop) drops bboxes but leaves the input mask stack
+        untouched, so per-cell `len(masks) > len(bboxes)` is the rule, not the exception.
+        Surviving bboxes still carry their LOCAL `_bbox_instance_id` (== input mask row
+        position) in their last label column at this point — `remap_mosaic_instance_label_ids`
+        hasn't run yet. We use that handle to fancy-index the per-cell mask stack so cells
+        come out of this pass with `len(masks) == len(bboxes)`, which is what the global
+        concat in `_compute_mosaic_survival` and `assemble_mosaic_instance_masks_stack` rely
+        on for keep-mask sharing.
+
+        Cells without bboxes (e.g. metadata items that brought masks-only) keep their masks
+        unchanged because there is no bbox-driven survival decision to mirror.
+        """
+        bbox_fields = bbox_proc.params.label_fields or []
+        if _BBOX_INSTANCE_ID not in bbox_fields:
+            return processed_cells
+        n_bf = len(bbox_fields)
+        id_offset_from_end = n_bf - bbox_fields.index(_BBOX_INSTANCE_ID)
+        out: dict[tuple[int, int, int, int], fmixing.ProcessedMosaicItem] = {}
+        for placement, cell in processed_cells.items():
+            masks = cell.get("masks")
+            if masks is None or not isinstance(masks, np.ndarray) or masks.size == 0:
+                out[placement] = cell
+                continue
+            bboxes = cell.get("bboxes")
+            new_cell = cast("fmixing.ProcessedMosaicItem", dict(cell))
+            if bboxes is None or not isinstance(bboxes, np.ndarray) or bboxes.size == 0:
+                # No surviving bboxes in this cell → drop ALL its mask rows so the cell does
+                # not contribute orphan mask layers to the global stack. Keeping them would
+                # restore the per-cell desync this pass exists to eliminate.
+                new_cell["masks"] = masks[:0]
+            else:
+                id_col = bboxes.shape[1] - id_offset_from_end
+                local_ids = bboxes[:, id_col].astype(np.int64, copy=False)
+                valid = local_ids[(local_ids >= 0) & (local_ids < masks.shape[0])]
+                new_cell["masks"] = masks[valid] if valid.shape[0] > 0 else masks[:0]
+            out[placement] = new_cell
+        return out
+
+    def _compute_mosaic_survival(
+        self,
+        processed_cells: dict[tuple[int, int, int, int], fmixing.ProcessedMosaicItem],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Concatenate per-cell bboxes once, run `filter_bboxes_with_mask`, and stash the result
+        so all three apply methods share one survival decision per call.
+
+        `keep_mask` is positional over `combined_bboxes`. `surviving_instance_ids` is the
+        `_INSTANCE_ID` set extracted from `combined_bboxes[keep_mask]` when instance binding
+        is active, otherwise `None` (legacy in-bounds-only filtering kicks in).
+        """
+        bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
+        if bbox_processor is None:
+            return {"mosaic_survival": None}
+
+        all_shifted: list[np.ndarray] = []
+        for cell_data in processed_cells.values():
+            shifted = cell_data.get("bboxes")
+            if shifted is not None and np.asarray(shifted).size > 0:
+                all_shifted.append(shifted)
+
+        if not all_shifted:
+            return {"mosaic_survival": None}
+
+        combined_bboxes = np.concatenate(all_shifted, axis=0)
+        filtered_bboxes, keep_mask = filter_bboxes_with_mask(
+            combined_bboxes,
+            self.target_size,
+            bbox_processor.params.bbox_type,
+            min_area=bbox_processor.params.min_area,
+            min_visibility=bbox_processor.params.min_visibility,
+            min_width=bbox_processor.params.min_width,
+            min_height=bbox_processor.params.min_height,
+            max_accept_ratio=bbox_processor.params.max_accept_ratio,
+            clip_after_transform=bbox_processor.params.clip_after_transform,
+        )
+
+        label_fields = bbox_processor.params.label_fields or []
+        surviving_instance_ids: set[int] | None = None
+        if _BBOX_INSTANCE_ID in label_fields and combined_bboxes.size > 0:
+            n_lf = len(label_fields)
+            id_col = combined_bboxes.shape[1] - n_lf + label_fields.index(_BBOX_INSTANCE_ID)
+            surviving_instance_ids = set(combined_bboxes[keep_mask, id_col].astype(np.int64).tolist())
+
+        return {
+            "mosaic_survival": {
+                "combined_bboxes": combined_bboxes,
+                "filtered_bboxes": filtered_bboxes,
+                "keep_mask": keep_mask,
+                "surviving_instance_ids": surviving_instance_ids,
+            },
+        }
 
     @staticmethod
     def get_primary_data(data: dict[str, Any]) -> fmixing.ProcessedMosaicItem:
@@ -2079,61 +2240,50 @@ class Mosaic(DualTransform):
         masks: StackedMasks4D,
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
         target_masks_shape: tuple[int, ...],
+        mosaic_survival: dict[str, Any] | None,
         **params: Any,
     ) -> StackedMasks4D:
         canvas_hw = (int(target_masks_shape[1]), int(target_masks_shape[2]))
-        return StackedMasks4D(
-            fmixing.assemble_mosaic_instance_masks_stack(
-                processed_cells=processed_cells,
-                canvas_hw=canvas_hw,
-                dtype=masks.dtype,
-                fill=self.fill_mask,
-            ),
+        assembled = fmixing.assemble_mosaic_instance_masks_stack(
+            processed_cells=processed_cells,
+            canvas_hw=canvas_hw,
+            dtype=masks.dtype,
+            fill=self.fill_mask,
         )
+        # Mirror the bbox survival decision onto masks so `len(masks) == len(bboxes)` going
+        # into the next transform. Only kicks in under instance binding; without binding the
+        # legacy "one mask per per-cell input mask" semantics are preserved.
+        if mosaic_survival is not None and mosaic_survival.get("surviving_instance_ids") is not None:
+            keep_mask = mosaic_survival["keep_mask"]
+            if assembled.shape[0] == keep_mask.shape[0]:
+                assembled = assembled[keep_mask]
+        return StackedMasks4D(assembled)
 
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,  # Original bboxes - ignored
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
+        mosaic_survival: dict[str, Any] | None,
         **params: Any,
     ) -> np.ndarray:
-        all_shifted_bboxes = []
-
-        for cell_data in processed_cells.values():
-            shifted_bboxes = cell_data.get("bboxes")
-            if shifted_bboxes is not None and np.asarray(shifted_bboxes).size > 0:
-                all_shifted_bboxes.append(shifted_bboxes)
-
         bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
 
-        if not all_shifted_bboxes:
-            # Preserve correct column count for empty result
-            if bbox_processor.params.bbox_type == "obb":
-                num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 5, 5)
-            else:
-                num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 4, 4)
-            return np.empty((0, num_cols), dtype=bboxes.dtype)
+        if mosaic_survival is not None:
+            return mosaic_survival["filtered_bboxes"]
 
-        # Concatenate (these are absolute pixel coordinates)
-        combined_bboxes = np.concatenate(all_shifted_bboxes, axis=0)
-
-        # Apply filtering using processor parameters
-        return filter_bboxes(
-            combined_bboxes,
-            self.target_size,
-            bbox_processor.params.bbox_type,
-            min_area=bbox_processor.params.min_area,
-            min_visibility=bbox_processor.params.min_visibility,
-            min_width=bbox_processor.params.min_width,
-            min_height=bbox_processor.params.min_height,
-            max_accept_ratio=bbox_processor.params.max_accept_ratio,
-            clip_after_transform=bbox_processor.params.clip_after_transform,
-        )
+        # Empty / no-bbox-processor fallback (mosaic_survival is None when there were no
+        # input bboxes anywhere in the grid).
+        if bbox_processor is None or bbox_processor.params.bbox_type == "obb":
+            num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 5, 5)
+        else:
+            num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 4, 4)
+        return np.empty((0, num_cols), dtype=bboxes.dtype)
 
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,  # Original keypoints - ignored
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
+        mosaic_survival: dict[str, Any] | None,
         **params: Any,
     ) -> np.ndarray:
         all_shifted_keypoints = []
@@ -2154,7 +2304,17 @@ class Mosaic(DualTransform):
             if isinstance(keypoint_processor, KeypointsProcessor) and keypoint_processor.params.label_fields
             else []
         )
-        if "_kp_instance_id" in kp_fields:
+
+        if _KP_INSTANCE_ID in kp_fields:
+            # Under binding: drop keypoints whose instance was filtered from bboxes so the
+            # post-transform `_resync_instance_ids` invariant (no orphan keypoints) holds.
+            if mosaic_survival is not None and mosaic_survival.get("surviving_instance_ids") is not None:
+                surviving_ids = mosaic_survival["surviving_instance_ids"]
+                n_kf = len(kp_fields)
+                id_col = combined_keypoints.shape[1] - n_kf + kp_fields.index(_KP_INSTANCE_ID)
+                kp_inst = combined_keypoints[:, id_col].astype(np.int64, copy=False)
+                in_surviving = np.fromiter((int(k) in surviving_ids for k in kp_inst), dtype=bool, count=kp_inst.size)
+                return combined_keypoints[in_surviving]
             return combined_keypoints
 
         target_h, target_w = self.target_size

@@ -417,6 +417,41 @@ class BboxProcessor(DataProcessor):
             )
             raise ValueError(msg)
 
+    def filter_with_keep_mask(
+        self,
+        data: np.ndarray,
+        shape: tuple[int, int] | tuple[int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Filter bboxes and also return the boolean keep mask so Compose can mirror the same
+        survival decision onto masks (positional) and keypoints (by surviving id).
+
+        Compose's `check_data_post_transform` calls this so it can mirror the bbox survival
+        decision onto positional masks and onto keypoints (by surviving `_instance_id`
+        membership) without recomputing the criteria.
+
+        Args:
+            data (np.ndarray): Array of bounding boxes in Albumentations format.
+            shape (tuple[int, int] | tuple[int, int, int]): Shape information for validation.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: `(filtered_bboxes, keep_mask)` where `keep_mask` has
+                the same length as the input `data`.
+
+        """
+        self.params: BboxParams
+        shape_2d = shape[:2] if len(shape) == 3 else shape
+        return filter_bboxes_with_mask(
+            data,
+            shape_2d,
+            self.params.bbox_type,
+            min_area=self.params.min_area,
+            min_visibility=self.params.min_visibility,
+            min_width=self.params.min_width,
+            min_height=self.params.min_height,
+            max_accept_ratio=self.params.max_accept_ratio,
+            clip_after_transform=self.params.clip_after_transform,
+        )
+
     def filter(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> np.ndarray:
         """Remove bboxes that fail min_area, min_visibility, min_width, min_height. Optionally
         clip. Uses params. Called in postprocess.
@@ -429,20 +464,7 @@ class BboxProcessor(DataProcessor):
             np.ndarray: Filtered bounding boxes that meet the criteria.
 
         """
-        self.params: BboxParams
-        # BboxProcessor only works with 2D shapes
-        shape_2d = shape[:2] if len(shape) == 3 else shape
-        return filter_bboxes(
-            data,
-            shape_2d,
-            self.params.bbox_type,
-            min_area=self.params.min_area,
-            min_visibility=self.params.min_visibility,
-            min_width=self.params.min_width,
-            min_height=self.params.min_height,
-            max_accept_ratio=self.params.max_accept_ratio,
-            clip_after_transform=self.params.clip_after_transform,
-        )
+        return self.filter_with_keep_mask(data, shape)[0]
 
     def check_and_convert(
         self,
@@ -1142,6 +1164,82 @@ def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: 
     return result
 
 
+def _empty_filter_result(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.ndarray:
+    """Construct the canonical empty-result array for `filter_bboxes` / `filter_bboxes_with_mask`,
+    preserving column count: OBB needs 5+ columns, HBB needs 4+.
+    """
+    if bbox_type == "obb":
+        num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else BBOX_OBB_MIN_COLUMNS, BBOX_OBB_MIN_COLUMNS)
+    else:
+        num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 4, 4)
+    return np.array([], dtype=np.float32).reshape(0, num_cols)
+
+
+def filter_bboxes_with_mask(
+    bboxes: np.ndarray,
+    shape: tuple[int, int],
+    bbox_type: Literal["hbb", "obb"],
+    min_area: float = 0.0,
+    min_visibility: float = 0.0,
+    min_width: float = 1.0,
+    min_height: float = 1.0,
+    max_accept_ratio: float | None = None,
+    clip_after_transform: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Filter bboxes and also return the boolean keep mask so callers can mirror the same
+    survival decision onto parallel arrays (masks by position, keypoint id sets).
+
+    The keep mask is the same survival decision applied to bboxes; callers can mirror it onto
+    masks (positional alignment) or keypoint id sets without recomputing the criteria.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: `(filtered_bboxes, keep_mask)`. `keep_mask` has shape
+            `(len(bboxes),)` with `True` for surviving rows. For empty input `keep_mask`
+            is empty.
+
+    """
+    epsilon = 1e-7
+
+    if len(bboxes) == 0:
+        return _empty_filter_result(bboxes, bbox_type), np.zeros(0, dtype=bool)
+
+    denormalized_box_areas = calculate_bbox_areas_in_pixels(bboxes, shape)
+
+    clipped_bboxes = bboxes if not clip_after_transform else clip_bboxes_geometry(bboxes, shape, bbox_type)
+
+    clipped_box_areas = calculate_bbox_areas_in_pixels(clipped_bboxes, shape)
+
+    denormalized_bboxes = denormalize_bboxes(clipped_bboxes[:, :4], shape)
+
+    clipped_widths = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]
+    clipped_heights = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]
+
+    if max_accept_ratio is not None:
+        aspect_ratios = np.maximum(
+            clipped_widths / (clipped_heights + epsilon),
+            clipped_heights / (clipped_widths + epsilon),
+        )
+        valid_ratios = aspect_ratios <= max_accept_ratio
+    else:
+        valid_ratios = np.ones_like(denormalized_box_areas, dtype=bool)
+
+    keep_mask = (
+        (denormalized_box_areas >= epsilon)
+        & (clipped_box_areas >= min_area - epsilon)
+        & (clipped_box_areas / (denormalized_box_areas + epsilon) >= min_visibility)
+        & (clipped_widths >= min_width - epsilon)
+        & (clipped_heights >= min_height - epsilon)
+        & valid_ratios
+    )
+
+    filtered_bboxes = clipped_bboxes[keep_mask]
+
+    if len(filtered_bboxes) == 0:
+        return _empty_filter_result(bboxes, bbox_type), keep_mask
+
+    return filtered_bboxes, keep_mask
+
+
 def filter_bboxes(
     bboxes: np.ndarray,
     shape: tuple[int, int],
@@ -1155,6 +1253,10 @@ def filter_bboxes(
 ) -> np.ndarray:
     """Remove bboxes that fail min_area, min_visibility, min_width, min_height, or
     max_accept_ratio. Optional clip to image. shape (H, W); bbox_type hbb/obb.
+
+    Thin wrapper over `filter_bboxes_with_mask` that discards the keep mask. Use the
+    `_with_mask` variant when callers need to mirror the survival decision onto masks
+    or keypoints.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -1174,60 +1276,17 @@ def filter_bboxes(
         np.ndarray: Filtered bounding boxes.
 
     """
-    epsilon = 1e-7
-
-    if len(bboxes) == 0:
-        # Preserve shape: OBB needs 5+ columns, HBB needs 4+ columns
-        if bbox_type == "obb":
-            num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else BBOX_OBB_MIN_COLUMNS, BBOX_OBB_MIN_COLUMNS)
-        else:
-            num_cols = max(bboxes.shape[1] if bboxes.ndim > 1 else 4, 4)
-        return np.array([], dtype=np.float32).reshape(0, num_cols)
-
-    # Calculate areas of bounding boxes before clipping in pixels
-    denormalized_box_areas = calculate_bbox_areas_in_pixels(bboxes, shape)
-
-    # Clip bounding boxes based on clip_after_transform
-    clipped_bboxes = bboxes if not clip_after_transform else clip_bboxes_geometry(bboxes, shape, bbox_type)
-
-    # Calculate areas of clipped bounding boxes in pixels
-    clipped_box_areas = calculate_bbox_areas_in_pixels(clipped_bboxes, shape)
-
-    # Calculate width and height of the clipped bounding boxes
-    denormalized_bboxes = denormalize_bboxes(clipped_bboxes[:, :4], shape)
-
-    clipped_widths = denormalized_bboxes[:, 2] - denormalized_bboxes[:, 0]
-    clipped_heights = denormalized_bboxes[:, 3] - denormalized_bboxes[:, 1]
-
-    # Calculate aspect ratios if needed
-    if max_accept_ratio is not None:
-        aspect_ratios = np.maximum(
-            clipped_widths / (clipped_heights + epsilon),
-            clipped_heights / (clipped_widths + epsilon),
-        )
-        valid_ratios = aspect_ratios <= max_accept_ratio
-    else:
-        valid_ratios = np.ones_like(denormalized_box_areas, dtype=bool)
-
-    # Create a mask for bboxes that meet all criteria
-    mask = (
-        (denormalized_box_areas >= epsilon)
-        & (clipped_box_areas >= min_area - epsilon)
-        & (clipped_box_areas / (denormalized_box_areas + epsilon) >= min_visibility)
-        & (clipped_widths >= min_width - epsilon)
-        & (clipped_heights >= min_height - epsilon)
-        & valid_ratios
-    )
-
-    # Apply the mask to get the filtered bboxes
-    filtered_bboxes = clipped_bboxes[mask]
-
-    if len(filtered_bboxes) == 0:
-        # Preserve column count from input
-        num_cols = max(bboxes.shape[1], BBOX_OBB_MIN_COLUMNS) if bbox_type == "obb" else max(bboxes.shape[1], 4)
-        return np.array([], dtype=np.float32).reshape(0, num_cols)
-
-    return filtered_bboxes
+    return filter_bboxes_with_mask(
+        bboxes,
+        shape,
+        bbox_type,
+        min_area=min_area,
+        min_visibility=min_visibility,
+        min_width=min_width,
+        min_height=min_height,
+        max_accept_ratio=max_accept_ratio,
+        clip_after_transform=clip_after_transform,
+    )[0]
 
 
 def union_of_bboxes(bboxes: np.ndarray, erosion_rate: float) -> np.ndarray | None:

@@ -145,8 +145,16 @@ CHECK_KEYPOINTS_PARAM = {"keypoints"}
 VOLUME_KEYS = {"volume", "volumes"}
 
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
+# Single conceptual id namespace shared by bboxes and keypoints: the trailing label column
+# on each array carries the same logical instance id. Resync logic and contracts reference
+# this single constant. The two ferry-key constants below remain DISTINCT dict-key strings
+# because the bbox per-row id list and the kp per-row id list have different lengths and
+# both must coexist in `data` between unpack and per-processor preprocess. Treat them as
+# implementation-detail aliases of the same `_INSTANCE_ID` namespace.
+_INSTANCE_ID = "_instance_id"
 _BBOX_INSTANCE_ID = "_bbox_instance_id"
 _KP_INSTANCE_ID = "_kp_instance_id"
+_INSTANCE_ID_FERRY_KEYS = frozenset({_BBOX_INSTANCE_ID, _KP_INSTANCE_ID, _INSTANCE_ID})
 
 
 def _make_stacked_masks(rows: list[np.ndarray]) -> StackedMasks4D:
@@ -509,6 +517,14 @@ class BaseCompose(Serializable):
         """Check and filter data after transformation. Runs each check_each_transform
         processor (e.g. bbox filter) on matching data keys. Returns filtered data dict.
 
+        When `instance_binding` is active and the bbox processor drops rows, this method
+        mirrors that survival decision onto `masks` (positionally) and `keypoints` (by
+        surviving `_bbox_instance_id` value) so the structural invariant
+        `len(masks) == len(bboxes)` and "no orphan keypoints" is upheld at every transform
+        boundary. Without this mirror-drop the resync would have to reconstruct the
+        survival decision from snapshot state — phase 3b of the rewrite collapses that
+        machinery into a single keep-mask plumbed straight from `BboxProcessor`.
+
         Args:
             data (dict[str, Any]): Dictionary containing transformed data
 
@@ -516,17 +532,128 @@ class BaseCompose(Serializable):
             dict[str, Any]: Filtered data dictionary
 
         """
-        if self.check_each_transform:
-            shape = get_shape(data, self._additional_targets)
+        if not self.check_each_transform:
+            return data
 
-            for proc in self.check_each_transform:
-                for data_name, data_value in data.items():
-                    if data_name in proc.data_fields or (
-                        data_name in self._additional_targets
-                        and self._additional_targets[data_name] in proc.data_fields
-                    ):
-                        data[data_name] = proc.filter(data_value, shape)
+        shape = get_shape(data, self._additional_targets)
+        binding = getattr(self, "_instance_binding", None)
+
+        for proc in self.check_each_transform:
+            if binding is not None and isinstance(proc, BboxProcessor):
+                self._bbox_filter_with_mirror(proc, data, shape, binding)
+                continue
+            for data_name, data_value in data.items():
+                if data_name in proc.data_fields or (
+                    data_name in self._additional_targets and self._additional_targets[data_name] in proc.data_fields
+                ):
+                    data[data_name] = proc.filter(data_value, shape)
         return data
+
+    def _bbox_filter_with_mirror(
+        self,
+        proc: "BboxProcessor",
+        data: dict[str, Any],
+        shape: tuple[int, ...],
+        binding: frozenset[str],
+    ) -> None:
+        """Run the bbox filter, mirror its keep-mask onto masks (positional) and keypoints (by
+        surviving id), and pre-realign legacy in-transform-filtered inputs first.
+
+        Two-stage drop so the bbox-row count drives BOTH legacy in-transform filtering AND
+        the bbox-processor visibility pass:
+
+        1. Pre-filter realignment. Some transforms (CoarseDropout, Crop with `min_area`,
+           etc.) drop bbox rows inside their own `apply_to_bboxes` without touching the
+           mask stack. At this point `len(masks) > len(bboxes)` and the surviving bboxes
+           carry their original `_bbox_instance_id` in the last column. That id is the row
+           index into the still-id-indexed mask stack, so we fancy-index masks down to the
+           surviving id set and drop keypoints whose `_kp_instance_id` is no longer present.
+           This collapses the legacy "id-indexed masks + sparse ids" layout into the
+           positional layout the rest of this method assumes.
+        2. BboxProcessor filter + post-filter mirror. Standard `filter_with_keep_mask` on
+           bboxes; mirror the resulting `keep_mask` positionally onto masks and by
+           surviving id onto keypoints.
+        """
+        bboxes_pre = data.get("bboxes")
+        if isinstance(bboxes_pre, np.ndarray) and bboxes_pre.shape[0] > 0:
+            pre_bbox_ids: np.ndarray | None = bboxes_pre[:, -1].astype(np.int64, copy=True)
+            n_pre = bboxes_pre.shape[0]
+        else:
+            pre_bbox_ids = None
+            n_pre = 0
+
+        if pre_bbox_ids is not None:
+            self._prefilter_realign(data, binding, pre_bbox_ids, n_pre)
+
+        keep_mask = self._run_bbox_filter(proc, data, shape)
+
+        if keep_mask is None or pre_bbox_ids is None or n_pre == 0:
+            return
+
+        self._mirror_keep_mask(data, binding, keep_mask, pre_bbox_ids, n_pre)
+
+    def _prefilter_realign(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        pre_bbox_ids: np.ndarray,
+        n_pre: int,
+    ) -> None:
+        """Drop mask rows / keypoints whose ids are not in `pre_bbox_ids` so the in-flight `data`
+        is positionally aligned BEFORE the bbox-processor's own filter runs.
+        """
+        if "masks" in binding:
+            masks_pre = data.get("masks")
+            if isinstance(masks_pre, np.ndarray) and len(masks_pre) > n_pre:
+                valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < len(masks_pre))]
+                data["masks"] = masks_pre[valid] if valid.shape[0] > 0 else masks_pre[:0]
+        if "keypoints" in binding:
+            kps_pre = data.get("keypoints")
+            if isinstance(kps_pre, np.ndarray) and kps_pre.shape[0] > 0:
+                kp_keep_pre = np.isin(kps_pre[:, -1].astype(np.int64, copy=False), pre_bbox_ids)
+                if not kp_keep_pre.all():
+                    data["keypoints"] = kps_pre[kp_keep_pre]
+
+    def _run_bbox_filter(
+        self,
+        proc: "BboxProcessor",
+        data: dict[str, Any],
+        shape: tuple[int, ...],
+    ) -> np.ndarray | None:
+        """Run `BboxProcessor.filter_with_keep_mask` on every matching field in `data`, write
+        the filtered bboxes back, and return the keep-mask for the caller to mirror.
+        """
+        keep_mask: np.ndarray | None = None
+        for data_name, data_value in data.items():
+            if data_name in proc.data_fields or (
+                data_name in self._additional_targets and self._additional_targets[data_name] in proc.data_fields
+            ):
+                filtered, keep_mask = proc.filter_with_keep_mask(data_value, cast("tuple[int, int, int]", shape))
+                data[data_name] = filtered
+        return keep_mask
+
+    def _mirror_keep_mask(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        keep_mask: np.ndarray,
+        pre_bbox_ids: np.ndarray,
+        n_pre: int,
+    ) -> None:
+        """Mirror the bbox-processor's positional `keep_mask` onto masks (positional) and
+        keypoints (by surviving `_kp_instance_id`) so all three arrays stay row-aligned.
+        """
+        if "masks" in binding:
+            masks = data.get("masks")
+            if isinstance(masks, np.ndarray) and len(masks) == n_pre:
+                data["masks"] = masks[keep_mask]
+        if "keypoints" in binding:
+            kps = data.get("keypoints")
+            if isinstance(kps, np.ndarray) and kps.shape[0] > 0:
+                surviving_bbox_ids = pre_bbox_ids[keep_mask]
+                kp_keep = np.isin(kps[:, -1].astype(np.int64, copy=False), surviving_bbox_ids)
+                if not kp_keep.all():
+                    data["keypoints"] = kps[kp_keep]
 
     def _validate_transforms(self, transforms: list[Any]) -> None:
         """Validate that all elements are BasicTransform instances. Raises TypeError if any
@@ -837,7 +964,14 @@ class Compose(BaseCompose, HubMixin):
         save_applied_params: bool = False,
         telemetry: bool = True,
         instance_binding: Sequence[str] | None = None,
+        strict_instance_invariant: bool = True,
     ):
+        # Strict-invariant mode (2.2.2+ default) raises RuntimeError when a transform breaks
+        # the masks/bboxes positional alignment contract instead of trying to recover.
+        # Setting `strict_instance_invariant=False` downgrades the structural breach to a
+        # warning and falls back to legacy permissive behavior — kept for one minor version
+        # so users with custom transforms that drop mask rows can opt out while migrating.
+        self._strict_instance_invariant = strict_instance_invariant
         self._base_seed = seed
         super().__init__(
             transforms=transforms,
@@ -1066,7 +1200,7 @@ class Compose(BaseCompose, HubMixin):
 
         try:
             self.preprocess(data)
-            resync = self._resync_masks_to_bboxes if self.main_compose and self._instance_binding else None
+            resync = self._resync_instance_ids if self.main_compose and self._instance_binding else None
             for t in self.transforms:
                 data = t(**data)
                 self._track_transform_params(t, data)
@@ -1500,19 +1634,25 @@ class Compose(BaseCompose, HubMixin):
         )
         raise ValueError(msg)
 
-    def _resync_masks_to_bboxes(self, data: dict[str, Any]) -> None:
-        """Re-establish the row-alignment invariant after each transform so the next transform
-        sees `_bbox_instance_id == range(N)` and aligned masks.
+    def _resync_instance_ids(self, data: dict[str, Any]) -> None:
+        """Rebase the per-row instance id namespace to `arange(N)` and assert the structural
+        invariant before the next transform sees the data.
 
-        When bboxes are bound, ensures `_bbox_instance_id == range(N)` and (when masks are also
-        bound) `len(data["masks"]) == N` going into the next transform.
+        Phase 4 of the instance-binding rewrite: positional alignment is now upheld
+        upstream — `Mosaic` shares one keep-mask across bboxes/masks/keypoints in
+        `get_params_dependent_on_data`, `CopyAndPaste` emits dense-id output, and
+        `check_data_post_transform` mirrors any bbox-processor drop onto masks (positional)
+        and keypoints (by surviving id). All this method has to do is:
 
-        Mid-pipeline the instance id lives as the LAST label column of `data["bboxes"]` (and
-        `data["keypoints"]`) — `_apply_bbox_instance_binding` appends `_BBOX_INSTANCE_ID` last, so
-        the column index is always `-1`. This is the structural chokepoint that makes the
-        invariant a property of the pipeline rather than a per-transform concern. The fast path
-        (non-mixing transforms that didn't reshuffle bbox order) early-outs at the
-        `np.array_equal` check in microseconds.
+        1. Assert `len(masks) == len(bboxes)` (raises `RuntimeError` in strict mode,
+           `UserWarning` in legacy mode for one minor version's worth of grace).
+        2. Translate `_kp_instance_id` from old bbox ids to the new positional ids.
+        3. Stamp `_bbox_instance_id = arange(N)` so the next transform sees a dense namespace.
+
+        The snapshot machinery (`_snapshot_pre_processor_bbox_ids`,
+        `_mask_positions_for_surviving_ids`) the 2.2.2 hotfix added is intentionally
+        deleted: it encoded a recovery branch for the dual-mask-layout case that no longer
+        exists after phases 2/2b/3b.
         """
         binding = self._instance_binding
         if binding is None or "bboxes" not in binding:
@@ -1520,28 +1660,50 @@ class Compose(BaseCompose, HubMixin):
         bboxes_arr = data.get("bboxes")
         if not isinstance(bboxes_arr, np.ndarray) or bboxes_arr.shape[0] == 0:
             return
-        bbox_ids_col = bboxes_arr[:, -1].astype(np.int64)
-        n = bbox_ids_col.shape[0]
-        new_ids = np.arange(n, dtype=np.int64)
-        if np.array_equal(bbox_ids_col, new_ids):
-            return
+
+        n = bboxes_arr.shape[0]
+        old_ids = bboxes_arr[:, -1].astype(np.int64, copy=True)
+
+        if "masks" in binding:
+            masks = data.get("masks")
+            if isinstance(masks, np.ndarray) and len(masks) != n:
+                self._raise_or_warn_invariant_violation(len(masks), n)
+
         if "keypoints" in binding:
             kp_arr = data.get("keypoints")
-            if isinstance(kp_arr, np.ndarray) and kp_arr.shape[0] > 0:
-                old_to_new = {int(old): new for new, old in enumerate(bbox_ids_col.tolist())}
-                kp_ids_col = kp_arr[:, -1].astype(np.int64)
+            if (
+                isinstance(kp_arr, np.ndarray)
+                and kp_arr.shape[0] > 0
+                and not np.array_equal(
+                    old_ids,
+                    np.arange(n, dtype=np.int64),
+                )
+            ):
+                old_to_new = {int(old): new for new, old in enumerate(old_ids.tolist())}
+                kp_ids_col = kp_arr[:, -1].astype(np.int64, copy=False)
                 kp_arr[:, -1] = np.array(
                     [old_to_new.get(int(k), int(k)) for k in kp_ids_col],
                     dtype=kp_arr.dtype,
                 )
-        if "masks" in binding:
-            masks = data.get("masks")
-            # When `len(masks) == n` the mixing transform produced row-aligned masks (Mosaic,
-            # CopyAndPaste post-concat), so just rebase ids. When lengths differ, the surviving
-            # ids point into the previous masks tensor — fancy-index to compact + reorder rows.
-            if isinstance(masks, np.ndarray) and len(masks) != n:
-                data["masks"] = masks[bbox_ids_col]
-        bboxes_arr[:, -1] = new_ids.astype(bboxes_arr.dtype)
+
+        bboxes_arr[:, -1] = np.arange(n, dtype=bboxes_arr.dtype)
+
+    def _raise_or_warn_invariant_violation(self, masks_len: int, bboxes_len: int) -> None:
+        msg = (
+            f"Instance-binding invariant violated: len(masks)={masks_len} != "
+            f"len(bboxes)={bboxes_len}. The last transform's `apply_to_masks` must keep "
+            "masks positionally aligned with bboxes (one mask row per bbox row, in order). "
+            "If this is custom transform code, share the per-row keep-mask across "
+            "`apply_to_{bboxes,masks,keypoints}` instead of filtering each independently."
+        )
+        if getattr(self, "_strict_instance_invariant", True):
+            raise RuntimeError(msg)
+        warnings.warn(
+            msg + " Falling back to legacy permissive mode "
+            "(strict_instance_invariant=False); this fallback will be removed in 2.4.",
+            UserWarning,
+            stacklevel=3,
+        )
 
     def _unpack_instances(self, data: dict[str, Any]) -> None:
         binding = self._instance_binding
@@ -1733,9 +1895,9 @@ class Compose(BaseCompose, HubMixin):
 
     def _repack_instances(self, data: dict[str, Any]) -> None:
         """Reconstitute per-instance dicts from flat arrays via a single row-aligned pass; relies
-        on the post-transform `_resync_masks_to_bboxes` invariant being in place.
+        on the post-transform `_resync_instance_ids` invariant being in place.
 
-        `_resync_masks_to_bboxes` runs every iteration of the run loop, so the row-alignment
+        `_resync_instance_ids` runs every iteration of the run loop, so the row-alignment
         invariant holds here: when `bboxes` is bound, `_bbox_instance_id == range(N)` and (when
         `masks` is also bound) `len(data["masks"]) == N`. So bbox/mask/kp row indices all coincide
         and a single linear `for row_idx in range(n)` rebuilds the instance dicts. The two old
@@ -1879,7 +2041,7 @@ class Compose(BaseCompose, HubMixin):
             return params_dict
         label_fields = params_dict.get("label_fields")
         if label_fields:
-            user_fields = [label_map.get(f, f) for f in label_fields if f not in {_BBOX_INSTANCE_ID, _KP_INSTANCE_ID}]
+            user_fields = [label_map.get(f, f) for f in label_fields if f not in _INSTANCE_ID_FERRY_KEYS]
             params_dict = {**params_dict, "label_fields": user_fields}
         return params_dict
 

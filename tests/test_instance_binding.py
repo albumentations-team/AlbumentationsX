@@ -2234,6 +2234,53 @@ class TestCopyAndPasteInstanceBindingDownstream:
             for inst in result["instances"]:
                 assert inst["mask"].ndim == 2
 
+    def test_mosaic_then_perspective_then_copy_and_paste_no_indexerror(self) -> None:
+        """Regression: Mosaic → Perspective → CopyAndPaste used to crash with IndexError in
+        `Compose._resync_masks_to_bboxes` when the bbox processor dropped one of CopyAndPaste's
+        emitted positions and the resync's fancy-index assumed `masks` was id-indexed.
+
+        Mosaic emits id-indexed masks (positions == ids). After CopyAndPaste, mask rows are
+        position-indexed but ids are sparse (`[0,1,2,3,donor_id]`). The post-CopyAndPaste bbox
+        processor drop then breaks the implicit `masks[id]` assumption.
+        """
+        H = W = 100
+        img = np.zeros((H, W, 3), dtype=np.uint8)
+        primary = [
+            {
+                "mask": np.ones((H, W), np.uint8),
+                "bbox": np.array([10, 10, 30, 30], np.float32),
+                "bbox_labels": {"c": "a"},
+            },
+            {
+                "mask": np.ones((H, W), np.uint8),
+                "bbox": np.array([40, 40, 80, 80], np.float32),
+                "bbox_labels": {"c": "b"},
+            },
+        ]
+        mosaic_meta = [
+            {
+                "image": img,
+                "masks": np.ones((1, H, W), np.uint8),
+                "bboxes": np.array([[10, 10, 30, 30]], np.float32),
+                "bbox_labels": {"c": ["a"]},
+            },
+        ]
+        cp_meta = [{"image": img, "mask": np.ones((H, W), np.uint8), "bbox_labels": {"c": "donor"}}]
+
+        aug = A.Compose(
+            [
+                A.Mosaic(grid_yx=(2, 2), target_size=(2 * H, 2 * W), cell_shape=(2 * H, 2 * W), p=1.0),
+                A.Perspective(scale=(0.05, 0.1), p=1.0),
+                A.CopyAndPaste(scale_range=(0.4, 1.0), p=1.0),
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["c"]),
+            instance_binding=["masks", "bboxes"],
+            seed=0,
+        )
+        result = aug(image=img, instances=primary, mosaic_metadata=mosaic_meta, copy_paste_metadata=cp_meta)
+        for inst in result["instances"]:
+            assert inst["mask"].ndim == 2
+
     def test_copy_and_paste_remaps_kp_instance_ids_to_match_bbox_ids(self) -> None:
         image, instances = self._edge_instances()
         for inst in instances:
@@ -2321,6 +2368,14 @@ class TestPipelineInvariantsHypothesis:
             return A.Mosaic(grid_yx=(2, 2), target_size=(100, 100), cell_shape=(100, 100), p=1.0)
         if name == "copy_and_paste":
             return A.CopyAndPaste(p=1.0)
+        if name == "coarse_dropout":
+            return A.CoarseDropout(
+                num_holes_range=(1, 3),
+                hole_height_range=(10, 20),
+                hole_width_range=(10, 20),
+                fill=0,
+                p=1.0,
+            )
         raise ValueError(name)
 
     @settings(
@@ -2370,3 +2425,186 @@ class TestPipelineInvariantsHypothesis:
         for inst in result["instances"]:
             assert inst["mask"].ndim == 2
             assert "bbox" in inst
+
+    @settings(
+        max_examples=1000,
+        deadline=None,
+        suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
+    )
+    @given(
+        seed=st.integers(0, 100_000),
+        pre=st.lists(
+            st.sampled_from(
+                [
+                    "affine",
+                    "perspective",
+                    "shift_scale_rotate",
+                    "horizontal_flip",
+                    "rotate",
+                    "random_crop",
+                    "coarse_dropout",
+                ],
+            ),
+            min_size=0,
+            max_size=2,
+        ),
+        mix=st.sampled_from(["mosaic", "copy_and_paste"]),
+        post=st.lists(
+            st.sampled_from(
+                [
+                    "affine",
+                    "perspective",
+                    "shift_scale_rotate",
+                    "horizontal_flip",
+                    "rotate",
+                    "random_crop",
+                    "coarse_dropout",
+                ],
+            ),
+            min_size=0,
+            max_size=3,
+        ),
+    )
+    def test_pipeline_invariant_after_every_transform(
+        self,
+        seed: int,
+        pre: list[str],
+        mix: str,
+        post: list[str],
+        monkeypatch: Any,
+    ) -> None:
+        """Phase 6 invariant fuzz. Wraps `Compose._resync_instance_ids` to assert the
+        structural contract — `len(masks) == len(bboxes)`, dense `_bbox_instance_id`
+        going INTO the next transform, no orphan keypoint ids — after every transform
+        boundary, not just at pipeline end. Failure surfaces as either an explicit
+        assertion or a `RuntimeError` raised from inside the resync itself.
+        """
+        from albumentations.core.composition import (
+            _BBOX_INSTANCE_ID,
+            _KP_INSTANCE_ID,
+            Compose,
+        )
+
+        violations: list[str] = []
+        original_resync = Compose._resync_instance_ids
+
+        def asserting_resync(self: Compose, data: dict[str, Any]) -> None:
+            original_resync(self, data)
+            bboxes = data.get("bboxes")
+            if not isinstance(bboxes, np.ndarray):
+                return
+            n = bboxes.shape[0]
+            if n > 0 and not np.array_equal(bboxes[:, -1], np.arange(n, dtype=bboxes.dtype)):
+                violations.append("_bbox_instance_id not arange(N) after resync")
+            masks = data.get("masks")
+            if isinstance(masks, np.ndarray) and len(masks) != n:
+                violations.append(f"len(masks)={len(masks)} != len(bboxes)={n} after resync")
+            kps = data.get("keypoints")
+            if isinstance(kps, np.ndarray) and kps.shape[0] > 0:
+                surviving = set(bboxes[:, -1].astype(np.int64).tolist())
+                kp_ids = set(kps[:, -1].astype(np.int64).tolist())
+                orphans = kp_ids - surviving
+                if orphans:
+                    violations.append(f"orphan keypoint ids after resync: {orphans}")
+            # Ensure the ferry-key columns line up with array widths (catches stale
+            # `_BBOX_INSTANCE_ID` / `_KP_INSTANCE_ID` keys that get out of sync with the
+            # arrays in `data`).
+            for ferry_key, arr_key in ((_BBOX_INSTANCE_ID, "bboxes"), (_KP_INSTANCE_ID, "keypoints")):
+                if ferry_key in data and isinstance(data.get(arr_key), np.ndarray):
+                    if len(data[ferry_key]) != data[arr_key].shape[0]:
+                        violations.append(
+                            f"ferry key {ferry_key!r} length {len(data[ferry_key])} != "
+                            f"{arr_key} rows {data[arr_key].shape[0]}",
+                        )
+
+        monkeypatch.setattr(Compose, "_resync_instance_ids", asserting_resync)
+
+        image, instances = self._instances()
+        transforms = [self._build(n) for n in pre] + [self._build(mix)] + [self._build(n) for n in post]
+        aug = A.Compose(
+            transforms,
+            bbox_params=A.BboxParams(coord_format="pascal_voc", min_area=1),
+            instance_binding=["masks", "bboxes"],
+            seed=seed,
+        )
+        kwargs: dict[str, Any] = {"image": image, "instances": instances}
+        if mix == "mosaic":
+            kwargs["mosaic_metadata"] = self._mosaic_extras()
+        else:
+            kwargs["copy_paste_metadata"] = self._donors()
+
+        aug(**kwargs)
+
+        assert not violations, "\n".join(violations[:10])
+
+
+class _MaskRowDroppingDualTransform(A.DualTransform):
+    """Deliberately broken: returns one fewer mask row than bbox row to verify the
+    `_resync_instance_ids` `RuntimeError` contract (Phase 6b).
+    """
+
+    _targets = A.HorizontalFlip._targets
+
+    def __init__(self, p: float = 1.0) -> None:
+        super().__init__(p=p)
+
+    def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+        return img
+
+    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+        return mask
+
+    def apply_to_masks(self, masks: np.ndarray, **params: Any) -> np.ndarray:
+        # Drop the last mask row without telling bboxes — the exact contract violation
+        # `_resync_instance_ids` is supposed to catch.
+        if len(masks) <= 1:
+            return masks
+        return masks[:-1]
+
+    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
+        return bboxes
+
+    def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
+        return keypoints
+
+
+class TestStructuralInvariantContract:
+    """Phase 6b: a transform whose `apply_to_masks` violates the row-alignment contract
+    must surface as a `RuntimeError` from `_resync_instance_ids` in strict mode (the
+    default), and as a `UserWarning` in legacy mode.
+    """
+
+    @staticmethod
+    def _instances() -> tuple[np.ndarray, list[dict[str, Any]]]:
+        image = _make_image()
+        regions = [(0, 30, 0, 30), (40, 70, 40, 70)]
+        return image, [
+            {"mask": _make_mask(region=r), "bbox": np.array([r[2], r[0], r[3], r[1]], dtype=np.float32)}
+            for r in regions
+        ]
+
+    def test_strict_mode_raises_runtime_error_on_mask_row_drop(self) -> None:
+        image, instances = self._instances()
+        aug = A.Compose(
+            [_MaskRowDroppingDualTransform(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["masks", "bboxes"],
+            seed=0,
+        )
+        with pytest.raises(RuntimeError, match="Instance-binding invariant violated"):
+            aug(image=image, instances=instances)
+
+    def test_legacy_mode_warns_instead_of_raising(self) -> None:
+        image, instances = self._instances()
+        aug = A.Compose(
+            [_MaskRowDroppingDualTransform(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["masks", "bboxes"],
+            seed=0,
+            strict_instance_invariant=False,
+        )
+        # Legacy mode downgrades the invariant violation to a warning at the resync, then
+        # lets downstream code (here `_repack_instances`) hit whatever followup error the
+        # bad contract produces — the point of strict mode is to catch this earlier.
+        with pytest.warns(UserWarning, match="Instance-binding invariant violated"), pytest.raises(IndexError):
+            aug(image=image, instances=instances)

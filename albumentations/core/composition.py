@@ -14,7 +14,7 @@ import types
 import warnings
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
-from typing import Any, Union, cast, get_args, get_origin
+from typing import Any, ClassVar, Union, cast, get_args, get_origin
 
 import cv2
 import numpy as np
@@ -498,7 +498,7 @@ class BaseCompose(Serializable):
 
         """
         if self.check_each_transform:
-            shape = get_shape(data)
+            shape = get_shape(data, self._additional_targets)
 
             for proc in self.check_each_transform:
                 for data_name, data_value in data.items():
@@ -1221,8 +1221,10 @@ class Compose(BaseCompose, HubMixin):
         shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks", "masks3d"}
 
         for data_name, data_value in data.items():
-            # Skip if not in our check list
-            if data_name not in shape_check_targets:
+            # Resolve aliases via additional_targets so e.g. {'custom_image_key': 'image'}
+            # gets the same shape-consistency check as the canonical 'image' key.
+            canonical = self._additional_targets.get(data_name, data_name)
+            if canonical not in shape_check_targets:
                 continue
 
             # Skip empty data
@@ -1233,7 +1235,7 @@ class Compose(BaseCompose, HubMixin):
             if data_value.size == 0:
                 continue
 
-            self._process_data_shape(data_name, data_value, shapes, volume_shapes)
+            self._process_data_shape(canonical, data_value, shapes, volume_shapes)
 
         return shapes, volume_shapes
 
@@ -1318,32 +1320,42 @@ class Compose(BaseCompose, HubMixin):
             if isinstance(value, np.ndarray) and not value.flags["C_CONTIGUOUS"]:
                 data[key] = np.ascontiguousarray(value)
 
+    # Maps canonical grayscale-bearing target -> expected ndim *without* the channel dim.
+    _GRAYSCALE_KEYS: ClassVar[dict[str, int]] = {
+        "image": 2,  # (H, W) => (H, W, 1)
+        "images": 3,  # (N, H, W) => (N, H, W, 1)
+        "mask": 2,  # (H, W) => (H, W, 1)
+        "masks": 3,  # (N, H, W) => (N, H, W, 1)
+        "volume": 3,  # (D, H, W) => (D, H, W, 1)
+        "volumes": 4,  # (N, D, H, W) => (N, D, H, W, 1)
+        "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
+        "masks3d": 4,  # (N, D, H, W) => (N, D, H, W, 1)
+    }
+
     def _add_grayscale_channels(self, data: dict[str, Any]) -> None:
-        """Add channel dimension to grayscale data if missing. (H,W) -> (H,W,1) etc. for
-        image, mask, images, volume, etc. Tracks in _added_channel_dim for postprocess.
+        """Add a trailing channel dimension to grayscale image/mask/volume entries,
+        resolving `_additional_targets` so aliased keys are handled like canonical ones.
+
+        Expands `(H, W)` to `(H, W, 1)` (and the equivalent for batches/volumes). Tracks
+        expansion in `_added_channel_dim` (keyed by user key) and `_added_channel_canonical`
+        (user_key -> canonical name) so postprocess can strip only what we added.
         """
-        # Track which data had channel dimensions added
         self._added_channel_dim = {}
+        self._added_channel_canonical = {}
 
-        # Keys that should have channel dimension added when grayscale
-        grayscale_keys = {
-            "image": 2,  # (H, W) => (H, W, 1)
-            "images": 3,  # (N, H, W) => (N, H, W, 1)
-            "mask": 2,  # (H, W) => (H, W, 1)
-            "masks": 3,  # (N, H, W) => (N, H, W, 1)
-            "volume": 3,  # (D, H, W) => (D, H, W, 1)
-            "volumes": 4,  # (N, D, H, W) => (N, D, H, W, 1)
-            "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
-            "masks3d": 4,  # (N, D, H, W) => (N, D, H, W, 1)
-        }
-
-        for key, expected_ndim in grayscale_keys.items():
-            if key in data and isinstance(data[key], np.ndarray):
-                if data[key].ndim == expected_ndim:
-                    data[key] = np.expand_dims(data[key], axis=-1)
-                    self._added_channel_dim[key] = True
-                else:
-                    self._added_channel_dim[key] = False
+        for key, value in data.items():
+            canonical = self._additional_targets.get(key, key)
+            expected_ndim = self._GRAYSCALE_KEYS.get(canonical)
+            if expected_ndim is None:
+                continue
+            if not isinstance(value, np.ndarray):
+                continue
+            self._added_channel_canonical[key] = canonical
+            if value.ndim == expected_ndim:
+                data[key] = np.expand_dims(value, axis=-1)
+                self._added_channel_dim[key] = True
+            else:
+                self._added_channel_dim[key] = False
 
     def postprocess(self, data: dict[str, Any]) -> dict[str, Any]:
         """Apply post-processing after all transforms. Runs processor postprocess and
@@ -1374,15 +1386,22 @@ class Compose(BaseCompose, HubMixin):
         return data
 
     def _remove_grayscale_channels(self, data: dict[str, Any]) -> None:
-        """Remove channel dimensions that were added during preprocessing. Uses
-        _added_channel_dim to squeeze only where we added; supports numpy and torch.
+        """Strip the trailing channel dimension that `_add_grayscale_channels` added,
+        for both numpy arrays and torch tensors, using the bookkeeping from preprocess.
+
+        Uses `_added_channel_dim` to squeeze only where we added a dim, and
+        `_added_channel_canonical` to dispatch torch logic by canonical role so aliased
+        keys are handled the same as their canonical counterparts.
         """
         if not hasattr(self, "_added_channel_dim"):
             return
 
+        canonical_map = getattr(self, "_added_channel_canonical", {})
+
         for key, was_added in self._added_channel_dim.items():
             if was_added and key in data:
                 value = data[key]
+                canonical = canonical_map.get(key, key)
 
                 # Handle numpy arrays
                 if isinstance(value, np.ndarray):
@@ -1397,10 +1416,10 @@ class Compose(BaseCompose, HubMixin):
                     if isinstance(value, torch.Tensor):
                         # For torch tensors, we need to handle different cases
                         # ToTensorV2 transposes image tensors but not mask tensors
-                        if key in {"image", "images"} and len(value.shape) >= 3 and value.shape[0] == 1:
+                        if canonical in {"image", "images"} and len(value.shape) >= 3 and value.shape[0] == 1:
                             # Image tensor with shape (1, H, W) -> (H, W) is not typical, skip
                             pass
-                        elif key in {"mask", "masks", "mask3d", "masks3d"} and value.shape[-1] == 1:
+                        elif canonical in {"mask", "masks", "mask3d", "masks3d"} and value.shape[-1] == 1:
                             # Mask tensor with shape (..., H, W, 1) -> (..., H, W)
                             data[key] = torch.squeeze(value, dim=-1)
 

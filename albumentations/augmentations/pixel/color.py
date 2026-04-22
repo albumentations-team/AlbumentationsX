@@ -14,7 +14,6 @@ import numpy as np
 from albucore import (
     MAX_VALUES_BY_DTYPE,
     batch_transform,
-    get_image_data,
     get_num_channels,
     is_grayscale_image,
     is_rgb_image,
@@ -186,7 +185,7 @@ class RandomToneCurve(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        num_channels = get_image_data(data)["num_channels"]
+        num_channels = self.get_image_data(data)["num_channels"]
         result = {
             "num_channels": num_channels,
         }

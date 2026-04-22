@@ -11,7 +11,6 @@ from typing import Annotated, Any, Literal, cast
 import albucore
 import cv2
 import numpy as np
-from albucore import get_image_data
 from pydantic import Field, model_validator
 from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
@@ -321,7 +320,7 @@ class RandomGravel(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, np.ndarray]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
         # Calculate ROI in pixels
@@ -507,7 +506,7 @@ class RandomRain(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
         # Simpler calculations, directly following Kornia
@@ -937,7 +936,7 @@ class RandomSunFlare(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
         diagonal = math.sqrt(height**2 + width**2)
 
@@ -1125,7 +1124,7 @@ class RandomShadow(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, list[np.ndarray]]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
         num_shadows = self.py_random.randint(*self.num_shadows_range)
@@ -1358,7 +1357,7 @@ class Spatter(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
         mean = self.py_random.uniform(*self.mean_range)
@@ -1529,7 +1528,7 @@ class AtmosphericFog(ImageOnlyTransform):
             depth_map = (dist / max_dist).astype(np.float32)
 
         max_val = float(albucore.MAX_VALUES_BY_DTYPE[np.uint8])
-        image_data = albucore.get_image_data(data)
+        image_data = self.get_image_data(data)
         img_dtype = image_data["dtype"]
         actual_max = float(albucore.MAX_VALUES_BY_DTYPE[img_dtype])
         fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)

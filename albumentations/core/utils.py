@@ -17,8 +17,38 @@ from albumentations.core.label_manager import LabelManager
 
 from .serialization import Serializable
 
+_IMAGE_DATA_PRIORITY: tuple[str, ...] = ("image", "images", "volume", "volumes")
 
-def get_shape(data: dict[str, Any]) -> tuple[int, int]:
+
+def _resolve_image_data_keys(
+    data: dict[str, Any],
+    additional_targets: dict[str, str] | None,
+) -> dict[str, str]:
+    """Map canonical image targets (image, images, volume, volumes) to the user key
+    holding that data, honoring `additional_targets` aliases (private shape helper).
+
+    The canonical key wins over any alias (so passing both `image=...` and `image2=...`
+    where `image2` aliases `image` keeps `image` as the source). Among aliases that map
+    to the same canonical target, the first one encountered in `data` wins.
+    """
+    aliases = additional_targets or {}
+    resolved: dict[str, str] = {}
+    for key, value in data.items():
+        target = aliases.get(key, key)
+        if target not in _IMAGE_DATA_PRIORITY:
+            continue
+        if value is None:
+            continue
+        # Canonical key always wins; otherwise, first alias seen wins.
+        if target not in resolved or key == target:
+            resolved[target] = key
+    return resolved
+
+
+def get_shape(
+    data: dict[str, Any],
+    additional_targets: dict[str, str] | None = None,
+) -> tuple[int, int]:
     """Extract (height, width) from data dict. Keys: image, images, volume, volumes.
     Raises if no image/volume present. Call for spatial checks during pipeline.
 
@@ -30,56 +60,143 @@ def get_shape(data: dict[str, Any]) -> tuple[int, int]:
             - 'volumes': Batch of 3D arrays of shape (N, D, H, W, C)
             - 'image': 2D array of shape (H, W, C)
             - 'images': Batch of arrays of shape (N, H, W, C)
+        additional_targets (dict[str, str] | None): Mapping of alias key -> canonical
+            target name (e.g. {'custom_image_key': 'image'}). When provided, aliased
+            keys are resolved to their canonical role.
 
     Returns:
         tuple[int, int]: (height, width) dimensions
 
     """
-    # After preprocessing, all data has channel dimension at the end
-    if "image" in data:
-        return _get_shape_from_image(data["image"])
-    if "images" in data:
-        return _get_shape_from_images(data["images"])
-    if "volume" in data:
-        return _get_shape_from_volume(data["volume"])
-    if "volumes" in data:
-        return _get_shape_from_volumes(data["volumes"])
+    resolved = _resolve_image_data_keys(data, additional_targets)
+    if "image" in resolved:
+        return _get_shape_from_image(data[resolved["image"]])
+    if "images" in resolved:
+        return _get_shape_from_images(data[resolved["images"]])
+    if "volume" in resolved:
+        return _get_shape_from_volume(data[resolved["volume"]])
+    if "volumes" in resolved:
+        return _get_shape_from_volumes(data[resolved["volumes"]])
 
     raise ValueError("No image or volume found in data", data.keys())
 
 
-def get_volume_shape(data: dict[str, Any]) -> tuple[int, int, int] | None:
-    """Extract (depth, height, width) from data containing 'volume' or 'volumes'.
-    Returns None if no volume data. Handles PyTorch tensor layouts (CDHW, NCDHW).
+def get_image_data(
+    data: dict[str, Any],
+    additional_targets: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Extract image metadata (dtype, height, width, num_channels) from a data dict,
+    resolving `additional_targets` aliases (priority: image, images, volume, volumes).
+
+    Checks for image data under canonical keys in priority order:
+    `'image'` > `'images'` > `'volume'` > `'volumes'`. When `additional_targets`
+    is provided, keys aliased to one of those canonical targets are also resolved (e.g.
+    `{'custom_image_key': 'image'}` makes `data['custom_image_key']` count as `'image'`).
+
+    Height and width skip batch/depth dimensions according to the canonical role:
+        - 'image':   H, W from shape[0], shape[1]
+        - 'images':  H, W from shape[1], shape[2]   (skip batch dim)
+        - 'volume':  H, W from shape[1], shape[2]   (skip depth dim)
+        - 'volumes': H, W from shape[2], shape[3]   (skip batch + depth dims)
+
+    Args:
+        data (dict[str, Any]): Dictionary potentially containing image/volume arrays.
+        additional_targets (dict[str, str] | None): Mapping of alias key -> canonical
+            target name. When None, only canonical keys are checked.
+
+    Returns:
+        dict[str, Any]: Dictionary with 'dtype', 'height', 'width', 'num_channels' keys.
+
+    Raises:
+        ValueError: If no valid image/volume data keys are found in the dictionary.
+
+    """
+    resolved = _resolve_image_data_keys(data, additional_targets)
+    for target in _IMAGE_DATA_PRIORITY:
+        key = resolved.get(target)
+        if key is None:
+            continue
+        arr = data[key]
+        shape = arr.shape
+        if target == "image":
+            height, width = shape[0], shape[1]
+        elif target in {"images", "volume"}:
+            height, width = shape[1], shape[2]
+        else:  # "volumes"
+            height, width = shape[2], shape[3]
+        return {
+            "dtype": arr.dtype,
+            "height": height,
+            "width": width,
+            "num_channels": shape[-1],
+        }
+    raise ValueError("No valid image/volume data found in data dict")
+
+
+def _resolve_volume_key(data: dict[str, Any], aliases: dict[str, str], canonical: str) -> str | None:
+    """Find the user key in `data` whose canonical role matches `canonical`
+    ('volume' or 'volumes'); canonical wins over any alias. Helper for `get_volume_shape`.
+    """
+    if canonical in data:
+        return canonical
+    for key in data:
+        if aliases.get(key) == canonical:
+            return key
+    return None
+
+
+def _volume_shape_from_array(vol: Any) -> tuple[int, int, int]:
+    """Return (D, H, W) from a single volume array, handling both torch CDHW/DHW layouts
+    and numpy DHWC/DHW layouts. Private helper for `get_volume_shape`.
+    """
+    if _is_torch_tensor(vol):
+        if len(vol.shape) == 4:  # (C, D, H, W)
+            return int(vol.shape[1]), int(vol.shape[2]), int(vol.shape[3])
+        if len(vol.shape) == 3:  # (D, H, W)
+            return int(vol.shape[0]), int(vol.shape[1]), int(vol.shape[2])
+    return vol.shape[0], vol.shape[1], vol.shape[2]
+
+
+def _volumes_shape_from_array(vols: Any) -> tuple[int, int, int]:
+    """Return (D, H, W) from a batch-of-volumes array, handling both torch NCDHW/NDHW
+    layouts and numpy NDHWC/NDHW layouts. Private helper for `get_volume_shape`.
+    """
+    if _is_torch_tensor(vols):
+        if len(vols.shape) == 5:  # (N, C, D, H, W)
+            return int(vols.shape[2]), int(vols.shape[3]), int(vols.shape[4])
+        if len(vols.shape) == 4:  # (N, D, H, W)
+            return int(vols.shape[1]), int(vols.shape[2]), int(vols.shape[3])
+    return vols[0].shape[0], vols[0].shape[1], vols[0].shape[2]
+
+
+def get_volume_shape(
+    data: dict[str, Any],
+    additional_targets: dict[str, str] | None = None,
+) -> tuple[int, int, int] | None:
+    """Extract (depth, height, width) from data containing 'volume' or 'volumes',
+    honoring `additional_targets` aliases; returns None when no volume data is present.
+
+    Handles PyTorch tensor layouts (CDHW, NCDHW) and numpy layouts (DHWC, NDHWC).
+    Aliased volume keys resolve to their canonical role.
 
     Args:
         data (dict[str, Any]): Dictionary containing volume data
+        additional_targets (dict[str, str] | None): Mapping of alias key -> canonical
+            target name. When None, only canonical keys are checked.
 
     Returns:
         tuple[int, int, int] | None: (depth, height, width) dimensions if volume data exists, None otherwise
 
     """
-    if "volume" in data:
-        vol = data["volume"]
-        # Handle PyTorch tensors
-        if _is_torch_tensor(vol):
-            if len(vol.shape) == 4:  # (C, D, H, W)
-                return int(vol.shape[1]), int(vol.shape[2]), int(vol.shape[3])
-            if len(vol.shape) == 3:  # (D, H, W)
-                return int(vol.shape[0]), int(vol.shape[1]), int(vol.shape[2])
-        # Regular numpy array
-        return vol.shape[0], vol.shape[1], vol.shape[2]
+    aliases = additional_targets or {}
 
-    if "volumes" in data:
-        vols = data["volumes"]
-        # Handle PyTorch tensors
-        if _is_torch_tensor(vols):
-            if len(vols.shape) == 5:  # (N, C, D, H, W)
-                return int(vols.shape[2]), int(vols.shape[3]), int(vols.shape[4])
-            if len(vols.shape) == 4:  # (N, D, H, W)
-                return int(vols.shape[1]), int(vols.shape[2]), int(vols.shape[3])
-        # Regular numpy array - take first volume
-        return vols[0].shape[0], vols[0].shape[1], vols[0].shape[2]
+    volume_key = _resolve_volume_key(data, aliases, "volume")
+    if volume_key is not None:
+        return _volume_shape_from_array(data[volume_key])
+
+    volumes_key = _resolve_volume_key(data, aliases, "volumes")
+    if volumes_key is not None:
+        return _volumes_shape_from_array(data[volumes_key])
 
     return None
 
@@ -211,6 +328,9 @@ class DataProcessor(ABC):
         self.params = params
         self.data_fields = [self.default_data_name]
         self.label_manager = LabelManager()
+        # Cached so get_shape lookups can resolve aliased image/mask/volume keys
+        # (e.g. {'custom_image_key': 'image'}). Updated by add_targets.
+        self._additional_targets: dict[str, str] = {}
 
         if additional_targets is not None:
             self.add_targets(additional_targets)
@@ -228,9 +348,14 @@ class DataProcessor(ABC):
         raise NotImplementedError
 
     def add_targets(self, additional_targets: dict[str, str]) -> None:
-        """Register additional target keys processed like default_data_name. Maps name to
-        type; type must match default_data_name. Compose calls when building pipeline.
+        """Register additional target keys processed like `default_data_name`, and cache
+        the full alias map so shape-helper lookups resolve aliased image/mask/volume keys.
+
+        Maps name to type; type must match `default_data_name`. Caching the full alias
+        map lets `get_shape`/`get_volume_shape` resolve aliased image/mask/volume keys.
+        Compose calls this when building the pipeline.
         """
+        self._additional_targets.update(additional_targets)
         for k, v in additional_targets.items():
             if v == self.default_data_name and k not in self.data_fields:
                 self.data_fields.append(k)
@@ -264,11 +389,11 @@ class DataProcessor(ABC):
             dict[str, Any]: Processed data dictionary.
 
         """
-        shape: tuple[int, int] | tuple[int, int, int] = get_shape(data)
+        shape: tuple[int, int] | tuple[int, int, int] = get_shape(data, self._additional_targets)
 
         # For xyz keypoints, get full 3D shape if available
         if hasattr(self.params, "coord_format") and self.params.coord_format == "xyz":
-            volume_shape = get_volume_shape(data)
+            volume_shape = get_volume_shape(data, self._additional_targets)
             if volume_shape is not None:
                 shape = volume_shape
 
@@ -308,7 +433,7 @@ class DataProcessor(ABC):
             data (dict[str, Any]): Data dictionary to preprocess.
 
         """
-        shape = get_shape(data)
+        shape = get_shape(data, self._additional_targets)
 
         # Convert all sequences (including empty lists) to numpy arrays with proper shape
         for data_name in set(self.data_fields) & set(data.keys()):

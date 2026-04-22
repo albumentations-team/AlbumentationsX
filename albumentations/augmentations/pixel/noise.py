@@ -11,7 +11,6 @@ import cv2
 import numpy as np
 from albucore import (
     MAX_VALUES_BY_DTYPE,
-    get_image_data,
     multiply,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -132,7 +131,7 @@ class GaussNoise(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, float]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
         shape = (metadata["height"], metadata["width"], metadata["num_channels"])
 
@@ -364,7 +363,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         image_shape = (metadata["height"], metadata["width"], metadata["num_channels"])
         num_channels = image_shape[-1]
 
@@ -708,7 +707,7 @@ class AdditiveNoise(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
         shape = (metadata["height"], metadata["width"], metadata["num_channels"])
 
@@ -833,7 +832,7 @@ class SaltAndPepper(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
         total_amount = self.py_random.uniform(*self.amount_range)

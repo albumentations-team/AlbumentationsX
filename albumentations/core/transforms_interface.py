@@ -26,6 +26,7 @@ from albumentations.core.validation import ValidatedTransformMeta
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
 from .type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
 from .utils import format_args
+from .utils import get_image_data as _get_image_data_impl
 
 __all__ = ["BasicTransform", "CustomTransformsApplyMixin", "DualTransform", "ImageOnlyTransform", "NoOp", "Transform3D"]
 
@@ -580,32 +581,56 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         return params
 
+    # Maps canonical shape-bearing target name -> callable extracting the raw shape tuple
+    # used by get_params_dependent_on_data implementations. Order encodes lookup priority.
+    _SHAPE_TARGETS_TUPLE: ClassVar[tuple[tuple[str, Callable[[Any], tuple[int, ...]]], ...]] = (
+        ("image", lambda v: v.shape),
+        ("images", lambda v: v[0].shape),
+        ("volume", lambda v: v[0].shape),  # first slice handles DHW or DHWC
+        ("volumes", lambda v: v[0][0].shape),  # first slice of first volume
+        ("mask", lambda v: v.shape),
+        ("masks", lambda v: v[0].shape),
+        ("mask3d", lambda v: v[0].shape),
+        ("masks3d", lambda v: v[0][0].shape),
+    )
+
     def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
-        """Extract shape information from various data types (image, images, volume, mask, etc.).
-        Used for params that need H, W. Returns tuple or None.
+        """Return the raw .shape tuple of the first image/mask/volume entry in `data`,
+        resolving aliases via `_additional_targets` (priority from `_SHAPE_TARGETS_TUPLE`).
+
+        Returns None if nothing matches. Aliased keys like
+        `{'custom_image_key': 'image'}` resolve to their canonical role.
         """
-        # Check images/volumes first (most common)
-        if "image" in data:
-            return data["image"].shape
-        if "images" in data:
-            return data["images"][0].shape
-        if "volume" in data:
-            # For volumes, take a slice to get 2D shape
-            return data["volume"][0].shape  # Take first slice (works for both DHWC and DHW)
-        if "volumes" in data:
-            # For batch of volumes
-            return data["volumes"][0][0].shape  # Take first slice of first volume (works for both NDHWC and NDHW)
-        if "mask" in data:
-            return data["mask"].shape
-        if "masks" in data:
-            return data["masks"][0].shape
-        if "mask3d" in data:
-            # For 3D masks, take a slice to get 2D shape
-            return data["mask3d"][0].shape  # Take first slice (works for both DHWC and DHW)
-        if "masks3d" in data:
-            # For batch of 3D masks
-            return data["masks3d"][0][0].shape  # Take first slice of first mask (works for both NDHWC and NDHW)
+        # Resolve canonical target -> user key, picking canonical when both present
+        # and otherwise the first alias seen.
+        resolved: dict[str, str] = {}
+        target_set = {name for name, _ in self._SHAPE_TARGETS_TUPLE}
+        for data_key, value in data.items():
+            target = self._additional_targets.get(data_key, data_key)
+            if target not in target_set or value is None:
+                continue
+            if target not in resolved or data_key == target:
+                resolved[target] = data_key
+
+        for target, extractor in self._SHAPE_TARGETS_TUPLE:
+            chosen = resolved.get(target)
+            if chosen is None:
+                continue
+            return extractor(data[chosen])
         return None
+
+    def get_image_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Return image metadata (dtype, height, width, num_channels) for the first match,
+        resolving aliases via `self._additional_targets` (drop-in for albucore helper).
+
+        Mirrors the contract of the previous `albucore.get_image_data` helper but
+        resolves aliased keys (e.g. `add_targets({'custom_image_key': 'image'})`) first.
+
+        Raises:
+            ValueError: If no valid image/volume data is present in `data`.
+
+        """
+        return _get_image_data_impl(data, self._additional_targets)
 
     def _add_transform_specific_params(self, params: dict[str, Any]) -> None:
         """Add transform-specific parameters to params dict (interpolation, fill, fill_mask).

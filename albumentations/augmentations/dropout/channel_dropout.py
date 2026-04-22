@@ -8,7 +8,6 @@ channels rather than relying on a subset.
 
 from typing import Annotated, Any
 
-from albucore import get_image_data
 from pydantic import AfterValidator
 
 from albumentations.core.pydantic import check_range_bounds
@@ -102,7 +101,7 @@ class ChannelDropout(ImageOnlyTransform):
         return result
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, list[int]]:
-        metadata = get_image_data(data)
+        metadata = self.get_image_data(data)
         num_channels = metadata["num_channels"]
         if num_channels == 1:
             msg = "Images has one channel. ChannelDropout is not defined."

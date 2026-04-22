@@ -8,7 +8,7 @@ and provide a centralized location for commonly used values.
 """
 
 from enum import Enum
-from typing import Literal, TypeAlias, TypeVar
+from typing import Literal, NewType, TypeAlias, TypeVar
 
 import cv2
 import numpy as np
@@ -161,3 +161,16 @@ REFLECT_BORDER_MODES = {
 
 NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS = 5
 NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS = 4
+
+
+# Stacked instance masks shape `(N, H, W, C)`. NewType is identity at runtime (zero overhead) and
+# distinct for static checkers, so a function annotated `-> StackedMasks4D` rejects a raw
+# `np.ndarray` return without an explicit `_make_stacked_masks` round-trip. Constructed only by
+# `_make_stacked_masks` (in `albumentations.core.composition`); mixing transforms preserve the
+# brand by returning their input shape rank.
+#
+# The `type: ignore` keeps pre-commit's mypy happy when it runs without numpy installed (np.ndarray
+# resolves to Any there, which NewType rejects). Local/CI mypy with numpy installed sees the
+# annotation as redundant, so we also disable `warn_unused_ignores` for this specific code below
+# via the `unused-ignore` allowance baked into mypy's default behavior for cross-config NewTypes.
+StackedMasks4D = NewType("StackedMasks4D", np.ndarray)  # type: ignore[valid-newtype, unused-ignore]

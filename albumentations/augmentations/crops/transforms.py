@@ -32,6 +32,7 @@ from albumentations.core.type_definitions import (
     ImageType,
     PercentType,
     PxType,
+    StackedMasks4D,
     VolumeType,
 )
 
@@ -185,17 +186,15 @@ class BaseCrop(DualTransform):
 
     def apply_to_masks(
         self,
-        masks: ImageType,
+        masks: StackedMasks4D,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> StackedMasks4D:
         if masks.size == 0:
-            # Return empty array with cropped dimensions
-            # Assume masks shape is (N, H, W, C)
             crop_height = crop_coords[3] - crop_coords[1]
             crop_width = crop_coords[2] - crop_coords[0]
-            return np.empty((0, crop_height, crop_width, masks.shape[3]), dtype=masks.dtype)
-        return self.apply_to_images(masks, crop_coords, **params)
+            return StackedMasks4D(np.empty((0, crop_height, crop_width, masks.shape[3]), dtype=masks.dtype))
+        return StackedMasks4D(self.apply_to_images(masks, crop_coords, **params))
 
     def apply_to_images(
         self,

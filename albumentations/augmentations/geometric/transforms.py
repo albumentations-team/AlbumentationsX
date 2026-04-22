@@ -35,7 +35,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS, ImageType, VolumeType
+from albumentations.core.type_definitions import ALL_TARGETS, ImageType, StackedMasks4D, VolumeType
 
 from . import functional as fgeometric
 
@@ -709,11 +709,11 @@ class Affine(DualTransform):
 
     def apply_to_masks(
         self,
-        masks: ImageType,
+        masks: StackedMasks4D,
         matrix: np.ndarray,
         output_shape: tuple[int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> StackedMasks4D:
         height, width = output_shape
         result = np.empty((len(masks), height, width, masks.shape[3]), dtype=masks.dtype)
         for i, mask in enumerate(masks):
@@ -725,7 +725,7 @@ class Affine(DualTransform):
                 border_value=self.fill_mask,
                 dsize=(width, height),
             )
-        return result
+        return StackedMasks4D(result)
 
     def apply_to_bboxes(
         self,

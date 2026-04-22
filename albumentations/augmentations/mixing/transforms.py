@@ -34,7 +34,7 @@ from albumentations.core.keypoints_utils import (
 )
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import LENGTH_RAW_BBOX, ImageType, Targets
+from albumentations.core.type_definitions import LENGTH_RAW_BBOX, ImageType, StackedMasks4D, Targets
 
 __all__ = ["CopyAndPaste", "Mosaic", "OverlayElements"]
 
@@ -1435,19 +1435,21 @@ class CopyAndPaste(DualTransform):
         masks: ImageType,
         paste_instance_masks: np.ndarray,
     ) -> tuple[np.ndarray | None, np.ndarray]:
-        """Coerce list/tuple existing-mask inputs into a stacked ndarray and align the
-        trailing channel dimension of the pasted mask for later row-wise concatenation.
+        """Coerce existing masks and the pasted instance-masks scratch array into the canonical
+        `(N, H, W, C)` 4-D shape that the rest of the paste path assumes.
 
-        Returns `(masks, pasted)` where `masks` is `None` for empty list/tuple inputs and `pasted` is reshaped
-        to match the existing-mask rank when needed (4D existing requires 4D pasted).
+        Existing masks under instance binding arrive 4-D from `Compose._add_grayscale_channels`;
+        list/tuple input from non-binding callers gets stacked then expanded if needed. The pasted
+        scratch array is built internally as `(N, H, W)` and always grows a trailing singleton here
+        so downstream concat / `_zero_out_paste_region` can stay branchless.
         """
         if isinstance(masks, (list, tuple)):
             if len(masks) == 0:
-                return None, paste_instance_masks
+                return None, paste_instance_masks[..., np.newaxis]
             masks = np.stack([np.asarray(m) for m in masks], axis=0)
-        pasted = paste_instance_masks
-        if masks.ndim == 4 and pasted.ndim == 3:
-            pasted = pasted[..., np.newaxis]
+        if masks.ndim == 3:
+            masks = masks[..., np.newaxis]
+        pasted = paste_instance_masks[..., np.newaxis]
         return masks, pasted
 
     @staticmethod
@@ -1472,35 +1474,35 @@ class CopyAndPaste(DualTransform):
 
     @staticmethod
     def _zero_out_paste_region(surviving: np.ndarray, paste_region: np.ndarray) -> None:
-        region = paste_region[np.newaxis, :, :, np.newaxis] if surviving.ndim == 4 else paste_region[np.newaxis, :, :]
+        region = paste_region[np.newaxis, :, :, np.newaxis]
         np.putmask(surviving, np.broadcast_to(region, surviving.shape), 0)
 
     def apply_to_masks(
         self,
-        masks: ImageType,
+        masks: StackedMasks4D,
         paste_alpha: np.ndarray | None,
         paste_instance_masks: np.ndarray | None,
         paste_surviving_indices: np.ndarray | None,
         paste_surviving_ids_ordered: list[int] | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> StackedMasks4D:
         if paste_alpha is None or paste_instance_masks is None:
             return masks
 
-        masks, pasted = self._normalize_existing_masks(masks, paste_instance_masks)
-        if masks is None or masks.size == 0:
-            return pasted
+        existing, pasted = self._normalize_existing_masks(masks, paste_instance_masks)
+        if existing is None or existing.size == 0:
+            return StackedMasks4D(pasted)
 
         # ID-driven path (instance binding active): index masks by surviving _bbox_instance_id values
         # so the output stays row-aligned with `apply_to_bboxes`. Without this, upstream bbox-only
         # filtering (e.g. Crop with min_area) leaves position != ID and mask rows attach to wrong ids.
-        surviving = self._select_surviving_masks(masks, paste_surviving_ids_ordered, paste_surviving_indices)
+        surviving = self._select_surviving_masks(existing, paste_surviving_ids_ordered, paste_surviving_indices)
         if surviving.size == 0:
-            return pasted
+            return StackedMasks4D(pasted)
 
         paste_region = np.any(paste_instance_masks > 0, axis=0)
         self._zero_out_paste_region(surviving, paste_region)
-        return np.concatenate([surviving, pasted], axis=0)
+        return StackedMasks4D(np.concatenate([surviving, pasted], axis=0))
 
     def apply_to_bboxes(
         self,
@@ -1534,11 +1536,20 @@ class CopyAndPaste(DualTransform):
             surviving_bboxes = bboxes
 
         if paste_bboxes is not None and paste_bboxes.size > 0:
-            if surviving_bboxes.size == 0:
-                return paste_bboxes
-            return np.concatenate([surviving_bboxes, paste_bboxes], axis=0)
+            combined = (
+                paste_bboxes
+                if surviving_bboxes.size == 0
+                else np.concatenate(
+                    [surviving_bboxes, paste_bboxes],
+                    axis=0,
+                )
+            )
+        else:
+            combined = surviving_bboxes
 
-        return surviving_bboxes
+        # `Compose._resync_masks_to_bboxes` rebases `_bbox_instance_id` to its new mask-row
+        # position after this transform returns; we just emit `[surviving; pasted]` in row order.
+        return combined
 
     def apply_to_keypoints(
         self,
@@ -1579,11 +1590,20 @@ class CopyAndPaste(DualTransform):
                         surviving_keypoints = keypoints[survivor_idx]
 
         if paste_keypoints is not None and paste_keypoints.size > 0:
-            if surviving_keypoints.size == 0:
-                return paste_keypoints
-            return np.concatenate([surviving_keypoints, paste_keypoints], axis=0)
+            combined = (
+                paste_keypoints
+                if surviving_keypoints.size == 0
+                else np.concatenate(
+                    [surviving_keypoints, paste_keypoints],
+                    axis=0,
+                )
+            )
+        else:
+            combined = surviving_keypoints
 
-        return surviving_keypoints
+        # `Compose._resync_masks_to_bboxes` remaps `_kp_instance_id` to the new bbox positions
+        # post-transform; nothing to do here.
+        return combined
 
 
 class Mosaic(DualTransform):
@@ -2056,17 +2076,19 @@ class Mosaic(DualTransform):
 
     def apply_to_masks(
         self,
-        masks: ImageType,
+        masks: StackedMasks4D,
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
         target_masks_shape: tuple[int, ...],
         **params: Any,
-    ) -> ImageType:
+    ) -> StackedMasks4D:
         canvas_hw = (int(target_masks_shape[1]), int(target_masks_shape[2]))
-        return fmixing.assemble_mosaic_instance_masks_stack(
-            processed_cells=processed_cells,
-            canvas_hw=canvas_hw,
-            dtype=masks.dtype,
-            fill=self.fill_mask,
+        return StackedMasks4D(
+            fmixing.assemble_mosaic_instance_masks_stack(
+                processed_cells=processed_cells,
+                canvas_hw=canvas_hw,
+                dtype=masks.dtype,
+                fill=self.fill_mask,
+            ),
         )
 
     def apply_to_bboxes(

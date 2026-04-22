@@ -36,6 +36,7 @@ from .serialization import (
     register_additional_transforms,
 )
 from .transforms_interface import BasicTransform
+from .type_definitions import StackedMasks4D
 from .utils import DataProcessor, format_args, get_shape
 
 __all__ = [
@@ -146,6 +147,24 @@ VOLUME_KEYS = {"volume", "volumes"}
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
 _BBOX_INSTANCE_ID = "_bbox_instance_id"
 _KP_INSTANCE_ID = "_kp_instance_id"
+
+
+def _make_stacked_masks(rows: list[np.ndarray]) -> StackedMasks4D:
+    """Sole construction site for stacked instance masks; only place the canonical 4-D
+    `(N, H, W, C)` shape brand is minted from raw per-instance arrays.
+
+    Input rows may be `(H, W)` or `(H, W, C)`; output is always `(N, H, W, C)` with the canonical
+    trailing channel dim added here so every consumer can index `masks.shape[3]` without rank
+    checks.
+
+    Empty `rows` returns a zero-row 4-D placeholder with `C=1` since no per-instance shape is known.
+    """
+    if not rows:
+        return StackedMasks4D(np.empty((0, 0, 0, 1), dtype=np.uint8))
+    arr = np.stack(rows, axis=0)
+    if arr.ndim == 3:
+        arr = arr[..., np.newaxis]
+    return StackedMasks4D(arr)
 
 
 class BaseCompose(Serializable):
@@ -1047,10 +1066,13 @@ class Compose(BaseCompose, HubMixin):
 
         try:
             self.preprocess(data)
+            resync = self._resync_masks_to_bboxes if self.main_compose and self._instance_binding else None
             for t in self.transforms:
                 data = t(**data)
                 self._track_transform_params(t, data)
                 data = self.check_data_post_transform(data)
+                if resync is not None:
+                    resync(data)
 
             return self.postprocess(data)
         finally:
@@ -1478,6 +1500,49 @@ class Compose(BaseCompose, HubMixin):
         )
         raise ValueError(msg)
 
+    def _resync_masks_to_bboxes(self, data: dict[str, Any]) -> None:
+        """Re-establish the row-alignment invariant after each transform so the next transform
+        sees `_bbox_instance_id == range(N)` and aligned masks.
+
+        When bboxes are bound, ensures `_bbox_instance_id == range(N)` and (when masks are also
+        bound) `len(data["masks"]) == N` going into the next transform.
+
+        Mid-pipeline the instance id lives as the LAST label column of `data["bboxes"]` (and
+        `data["keypoints"]`) — `_apply_bbox_instance_binding` appends `_BBOX_INSTANCE_ID` last, so
+        the column index is always `-1`. This is the structural chokepoint that makes the
+        invariant a property of the pipeline rather than a per-transform concern. The fast path
+        (non-mixing transforms that didn't reshuffle bbox order) early-outs at the
+        `np.array_equal` check in microseconds.
+        """
+        binding = self._instance_binding
+        if binding is None or "bboxes" not in binding:
+            return
+        bboxes_arr = data.get("bboxes")
+        if not isinstance(bboxes_arr, np.ndarray) or bboxes_arr.shape[0] == 0:
+            return
+        bbox_ids_col = bboxes_arr[:, -1].astype(np.int64)
+        n = bbox_ids_col.shape[0]
+        new_ids = np.arange(n, dtype=np.int64)
+        if np.array_equal(bbox_ids_col, new_ids):
+            return
+        if "keypoints" in binding:
+            kp_arr = data.get("keypoints")
+            if isinstance(kp_arr, np.ndarray) and kp_arr.shape[0] > 0:
+                old_to_new = {int(old): new for new, old in enumerate(bbox_ids_col.tolist())}
+                kp_ids_col = kp_arr[:, -1].astype(np.int64)
+                kp_arr[:, -1] = np.array(
+                    [old_to_new.get(int(k), int(k)) for k in kp_ids_col],
+                    dtype=kp_arr.dtype,
+                )
+        if "masks" in binding:
+            masks = data.get("masks")
+            # When `len(masks) == n` the mixing transform produced row-aligned masks (Mosaic,
+            # CopyAndPaste post-concat), so just rebase ids. When lengths differ, the surviving
+            # ids point into the previous masks tensor — fancy-index to compact + reorder rows.
+            if isinstance(masks, np.ndarray) and len(masks) != n:
+                data["masks"] = masks[bbox_ids_col]
+        bboxes_arr[:, -1] = new_ids.astype(bboxes_arr.dtype)
+
     def _unpack_instances(self, data: dict[str, Any]) -> None:
         binding = self._instance_binding
         if binding is None:
@@ -1508,7 +1573,7 @@ class Compose(BaseCompose, HubMixin):
 
     def _init_empty_instance_data(self, data: dict[str, Any], binding: frozenset[str]) -> None:
         if "masks" in binding:
-            data["masks"] = np.empty((0, 0, 0), dtype=np.uint8)
+            data["masks"] = _make_stacked_masks([])
         if "bboxes" in binding:
             bbox_proc = self.processors["bboxes"]
             if isinstance(bbox_proc, BboxProcessor):
@@ -1535,6 +1600,9 @@ class Compose(BaseCompose, HubMixin):
         instance_dicts: list[dict[str, Any]],
     ) -> None:
         if "masks" in binding:
+            # Stack as (N, H, W); `_add_grayscale_channels` will expand to canonical (N, H, W, 1)
+            # in the same preprocess pass and set `_added_channel_dim["masks"] = True` so the
+            # repack path strips the trailing singleton on the way back out.
             data["masks"] = np.stack([inst["mask"] for inst in instance_dicts])
         elif "mask" in binding:
             data["mask"] = np.stack([inst["mask"] for inst in instance_dicts], axis=-1)
@@ -1664,6 +1732,16 @@ class Compose(BaseCompose, HubMixin):
                 )
 
     def _repack_instances(self, data: dict[str, Any]) -> None:
+        """Reconstitute per-instance dicts from flat arrays via a single row-aligned pass; relies
+        on the post-transform `_resync_masks_to_bboxes` invariant being in place.
+
+        `_resync_masks_to_bboxes` runs every iteration of the run loop, so the row-alignment
+        invariant holds here: when `bboxes` is bound, `_bbox_instance_id == range(N)` and (when
+        `masks` is also bound) `len(data["masks"]) == N`. So bbox/mask/kp row indices all coincide
+        and a single linear `for row_idx in range(n)` rebuilds the instance dicts. The two old
+        fallback branches (id-as-position drift, no-bbox iteration over `_instance_count`) are no
+        longer reachable for the bboxes case.
+        """
         binding = self._instance_binding
         if binding is None:
             msg = "_repack_instances requires instance_binding"
@@ -1672,55 +1750,22 @@ class Compose(BaseCompose, HubMixin):
         kp_ids = np.array(data.pop(_KP_INSTANCE_ID, []))
         bbox_ids = data.pop(_BBOX_INSTANCE_ID, [])
 
-        bboxes_arr = data.get("bboxes")
-        masks_arr = data.get("masks")
-        use_row_aligned_masks = (
-            "bboxes" in binding
-            and "masks" in binding
-            and isinstance(bbox_ids, list)
-            and isinstance(bboxes_arr, np.ndarray)
-            and isinstance(masks_arr, np.ndarray)
-            and len(bbox_ids) == len(bboxes_arr) == len(masks_arr)
-        )
+        # When bboxes is bound, `bbox_ids` length is the surviving instance count (already rebased
+        # to range(N) by the resync hook). For masks-or-keypoints-only bindings (no bbox-driven
+        # filter exists), fall back to the unpack-time count.
+        n = len(bbox_ids) if "bboxes" in binding else self._instance_count
 
-        if use_row_aligned_masks:
-            data["instances"] = [
-                self._repack_one_instance(
-                    data,
-                    binding,
-                    bbox_row_idx=row_idx,
-                    mask_row_idx=row_idx,
-                    kp_group_id=int(bbox_ids[row_idx]),
-                    kp_ids=kp_ids,
-                )
-                for row_idx in range(len(bbox_ids))
-            ]
-        elif "bboxes" in binding:
-            surviving_ids = sorted(set(bbox_ids))
-            data["instances"] = [
-                self._repack_one_instance(
-                    data,
-                    binding,
-                    bbox_row_idx=new_idx,
-                    mask_row_idx=old_idx,
-                    kp_group_id=old_idx,
-                    kp_ids=kp_ids,
-                )
-                for new_idx, old_idx in enumerate(surviving_ids)
-            ]
-        else:
-            surviving_ids = list(range(self._instance_count))
-            data["instances"] = [
-                self._repack_one_instance(
-                    data,
-                    binding,
-                    bbox_row_idx=new_idx,
-                    mask_row_idx=old_idx,
-                    kp_group_id=old_idx,
-                    kp_ids=kp_ids,
-                )
-                for new_idx, old_idx in enumerate(surviving_ids)
-            ]
+        data["instances"] = [
+            self._repack_one_instance(
+                data,
+                binding,
+                bbox_row_idx=row_idx,
+                mask_row_idx=row_idx,
+                kp_group_id=row_idx,
+                kp_ids=kp_ids,
+            )
+            for row_idx in range(n)
+        ]
 
         self._cleanup_instance_data(data, binding)
 

@@ -36,6 +36,7 @@ from albumentations.core.type_definitions import (
     ALL_TARGETS,
     D4_INVERSE,
     ImageType,
+    StackedMasks4D,
     VolumeType,
     d4_group_elements,
 )
@@ -130,11 +131,10 @@ class VerticalFlip(DualTransform):
             return mask
         return self.apply(mask, **params)
 
-    def apply_to_masks(self, masks: ImageType, **params: Any) -> ImageType:
+    def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
         if masks.size == 0:
-            # Assume masks shape is (N, H, W, C) - return empty array with same shape
             return masks
-        return self.apply_to_images(masks, **params)
+        return StackedMasks4D(self.apply_to_images(masks, **params))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.vflip_images(images)
@@ -238,11 +238,10 @@ class HorizontalFlip(DualTransform):
             return mask
         return self.apply(mask, **params)
 
-    def apply_to_masks(self, masks: ImageType, **params: Any) -> ImageType:
+    def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
         if masks.size == 0:
-            # Assume masks shape is (N, H, W, C) - return empty array with same shape
             return masks
-        return self.apply_to_images(masks, **params)
+        return StackedMasks4D(self.apply_to_images(masks, **params))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.hflip_images(images)
@@ -354,12 +353,12 @@ class Transpose(DualTransform):
             return np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype)
         return self.apply(mask, **params)
 
-    def apply_to_masks(self, masks: ImageType, **params: Any) -> ImageType:
+    def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
         if masks.size == 0:
-            # Transpose swaps H and W
-            # Assume masks shape is (N, H, W, C) -> (N, W, H, C)
-            return np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype)
-        return self.apply_to_images(masks, **params)
+            return StackedMasks4D(
+                np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype),
+            )
+        return StackedMasks4D(self.apply_to_images(masks, **params))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.transpose_images(images)
@@ -517,19 +516,17 @@ class D4(DualTransform):
 
     def apply_to_masks(
         self,
-        masks: ImageType,
+        masks: StackedMasks4D,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> ImageType:
+    ) -> StackedMasks4D:
         if masks.size == 0:
-            # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
-            # Assume masks shape is (N, H, W, C)
             if group_element in {"r90", "r270", "t", "hvt"}:
-                # These swap H and W: (N, H, W, C) -> (N, W, H, C)
-                return np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype)
-            # Other elements preserve dimensions: "e", "r180", "v", "h"
+                return StackedMasks4D(
+                    np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype),
+                )
             return masks
-        return self.apply_to_images(masks, group_element)
+        return StackedMasks4D(self.apply_to_images(masks, group_element))
 
     def apply_to_images(
         self,

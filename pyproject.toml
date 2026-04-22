@@ -323,6 +323,25 @@ disable_error_code = [ "valid-type" ]
 # for strict mypy: (this is the tricky one :-))
 disallow_untyped_defs = true
 
+# Strict checking for the instance-binding boundary modules so the StackedMasks4D NewType brand
+# (and other structural contracts in Compose's transform loop / mixing transforms) keep being
+# enforced at typecheck time. Any apply_to_masks override that returns a raw np.ndarray instead
+# of StackedMasks4D will break CI here via the default [return-value] / [assignment] errors.
+# warn_return_any is intentionally NOT enabled because numpy's typing returns Any from most ops,
+# which would drown the StackedMasks4D signal in unrelated noise.
+[[tool.mypy.overrides]]
+module = [
+  "albumentations.core.composition",
+  "albumentations.augmentations.mixing.transforms",
+  "albumentations.augmentations.mixing.functional",
+  "albumentations.augmentations.geometric.transforms",
+  "albumentations.augmentations.geometric.flip",
+  "albumentations.augmentations.crops.transforms",
+  "albumentations.pytorch.transforms",
+]
+strict_equality = true
+warn_unused_ignores = true
+
 [tool.pydocstyle]
 # Allow fix for all enabled rules (when `--fix`) is provided.
 

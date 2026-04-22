@@ -17,6 +17,7 @@ from albumentations.core.type_definitions import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_VOLUME_DIMENSIONS,
     ImageType,
+    StackedMasks4D,
     Targets,
     VolumeType,
 )
@@ -76,10 +77,11 @@ class ToTensorV2(BasicTransform):
             mask = mask.transpose(2, 0, 1)
         return torch.from_numpy(np.ascontiguousarray(mask))
 
-    def apply_to_masks(self, masks: ImageType, **params: Any) -> torch.Tensor:
-        if self.transpose_mask and masks.ndim == NUM_VOLUME_DIMENSIONS:  # (N, H, W, C)
-            masks = np.transpose(masks, (0, 3, 1, 2))  # -> (N, C, H, W)
-        return torch.from_numpy(np.ascontiguousarray(masks))
+    def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> torch.Tensor:
+        arr: np.ndarray = masks
+        if self.transpose_mask and arr.ndim == NUM_VOLUME_DIMENSIONS:  # (N, H, W, C)
+            arr = np.transpose(arr, (0, 3, 1, 2))  # -> (N, C, H, W)
+        return torch.from_numpy(np.ascontiguousarray(arr))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> torch.Tensor:
         return torch.from_numpy(np.ascontiguousarray(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)

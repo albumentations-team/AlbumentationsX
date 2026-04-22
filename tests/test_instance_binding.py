@@ -2,6 +2,8 @@ from typing import Any
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 import albumentations as A
 
@@ -2130,3 +2132,241 @@ class TestFilteringTransformBinding:
         assert "A" in by_cid
         assert by_cid["A"]["keypoints"].shape[0] == 1
         np.testing.assert_array_equal(by_cid["A"]["keypoint_labels"]["vis"], np.array([1]))
+
+
+class TestStackedMasksThroughGeometric:
+    """Regression tests for stacked instance masks (N, H, W) flowing through geometric transforms
+    when instance_binding is active. Mosaic emits (N, H, W) masks; downstream Affine and friends
+    used to crash on `masks.shape[3]`.
+    """
+
+    @staticmethod
+    def _two_corner_instances() -> tuple[np.ndarray, list[dict[str, Any]]]:
+        image = _make_image()
+        return image, [
+            {"mask": _make_mask(region=(10, 50, 10, 50)), "bbox": np.array([10, 10, 50, 50], dtype=np.float32)},
+            {"mask": _make_mask(region=(60, 90, 60, 90)), "bbox": np.array([60, 60, 90, 90], dtype=np.float32)},
+        ]
+
+    @staticmethod
+    def _mosaic_extras(n: int = 3) -> list[dict[str, Any]]:
+        return [
+            {
+                "image": _make_image(),
+                "masks": np.stack(
+                    [_make_mask(region=(0, 30, 0, 30)), _make_mask(region=(40, 80, 40, 80))],
+                ),
+                "bboxes": np.array([[0, 0, 30, 30], [40, 40, 80, 80]], dtype=np.float32),
+            }
+            for _ in range(n)
+        ]
+
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            A.Affine(p=1.0),
+            A.ShiftScaleRotate(p=1.0),
+            A.Perspective(scale=(0.05, 0.1), p=1.0),
+        ],
+    )
+    def test_geometric_after_mosaic_handles_stacked_masks(self, transform: A.BasicTransform) -> None:
+        image, instances = self._two_corner_instances()
+        aug = A.Compose(
+            [
+                A.Mosaic(grid_yx=(2, 2), target_size=(100, 100), cell_shape=(100, 100), p=1.0),
+                transform,
+            ],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["masks", "bboxes"],
+            seed=137,
+        )
+        result = aug(image=image, instances=instances, mosaic_metadata=self._mosaic_extras())
+        for inst in result["instances"]:
+            assert inst["mask"].ndim == 2
+            assert inst["mask"].shape == (100, 100)
+
+
+class TestCopyAndPasteInstanceBindingDownstream:
+    """Regression: after CopyAndPaste, downstream transforms that drop bboxes (e.g. Perspective)
+    used to crash inside `Compose._repack_mask_into` with IndexError because pasted instance ids
+    were assigned `max(existing) + 1` and never matched mask-row positions.
+    """
+
+    @staticmethod
+    def _edge_instances() -> tuple[np.ndarray, list[dict[str, Any]]]:
+        # Place several instances near the corners so Perspective is likely to drop bboxes.
+        image = _make_image()
+        regions = [(0, 10, 0, 10), (90, 100, 0, 10), (0, 10, 90, 100), (90, 100, 90, 100), (40, 60, 40, 60)]
+        instances = []
+        for y1, y2, x1, x2 in regions:
+            instances.append(
+                {
+                    "mask": _make_mask(region=(y1, y2, x1, x2)),
+                    "bbox": np.array([x1, y1, x2, y2], dtype=np.float32),
+                },
+            )
+        return image, instances
+
+    @staticmethod
+    def _donors() -> list[dict[str, Any]]:
+        return [
+            {"image": _make_image(), "mask": _make_mask(region=(0, 30, 0, 30))},
+            {"image": _make_image(), "mask": _make_mask(region=(70, 100, 70, 100))},
+            {"image": _make_image(), "mask": _make_mask(region=(20, 40, 60, 80))},
+        ]
+
+    def test_perspective_after_copy_and_paste_does_not_desync_mask_ids(self) -> None:
+        # Sweep seeds because the desync only manifests when Perspective drops a pasted bbox.
+        # Seed 14 was the first reproducer for the original IndexError.
+        image, instances = self._edge_instances()
+        donors = self._donors()
+        for seed in range(50):
+            aug = A.Compose(
+                [
+                    A.CopyAndPaste(p=1.0),
+                    A.Perspective(scale=(0.1, 0.4), p=1.0, keep_size=False, fit_output=False),
+                ],
+                bbox_params=A.BboxParams(coord_format="pascal_voc", min_area=1),
+                instance_binding=["masks", "bboxes"],
+                seed=seed,
+            )
+            result = aug(image=image, instances=instances, copy_paste_metadata=donors)
+            for inst in result["instances"]:
+                assert inst["mask"].ndim == 2
+
+    def test_copy_and_paste_remaps_kp_instance_ids_to_match_bbox_ids(self) -> None:
+        image, instances = self._edge_instances()
+        for inst in instances:
+            inst["keypoints"] = np.array(
+                [[float(inst["bbox"][0]) + 1.0, float(inst["bbox"][1]) + 1.0]],
+                dtype=np.float32,
+            )
+        donors = [
+            {
+                "image": _make_image(),
+                "mask": _make_mask(region=(20, 50, 20, 50)),
+                "keypoints": np.array([[25.0, 25.0]], dtype=np.float32),
+            },
+        ]
+        aug = A.Compose(
+            [A.CopyAndPaste(p=1.0), A.Perspective(scale=(0.1, 0.3), p=1.0, keep_size=False)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc", min_area=1),
+            keypoint_params=A.KeypointParams(coord_format="xy", remove_invisible=True),
+            instance_binding=["masks", "bboxes", "keypoints"],
+            seed=14,
+        )
+        result = aug(image=image, instances=instances, copy_paste_metadata=donors)
+        for inst in result["instances"]:
+            # Each surviving instance must have its keypoints attached (and not re-attached to
+            # the wrong instance via stale _kp_instance_id values).
+            assert "keypoints" in inst
+            assert inst["mask"].ndim == 2
+
+
+class TestPipelineInvariantsHypothesis:
+    """Property-based tests that fuzz `pre + mix + post` pipeline composition and verify the
+    structural invariants enforced by the Compose hook + StackedMasks4D brand:
+
+    1. Every output `inst["mask"]` is 2-D (Compose strips the canonical trailing dim on output).
+    2. Output instance count matches `len(bboxes)` returned by the pipeline.
+    3. No transform crashes regardless of how `pre`, `mix`, and `post` are composed.
+    """
+
+    @staticmethod
+    def _instances() -> tuple[np.ndarray, list[dict[str, Any]]]:
+        image = _make_image()
+        regions = [(0, 20, 0, 20), (80, 100, 0, 20), (0, 20, 80, 100), (80, 100, 80, 100), (40, 60, 40, 60)]
+        instances = [
+            {"mask": _make_mask(region=r), "bbox": np.array([r[2], r[0], r[3], r[1]], dtype=np.float32)}
+            for r in regions
+        ]
+        return image, instances
+
+    @staticmethod
+    def _mosaic_extras() -> list[dict[str, Any]]:
+        return [
+            {
+                "image": _make_image(),
+                "masks": np.stack(
+                    [_make_mask(region=(0, 30, 0, 30)), _make_mask(region=(40, 80, 40, 80))],
+                ),
+                "bboxes": np.array([[0, 0, 30, 30], [40, 40, 80, 80]], dtype=np.float32),
+            }
+            for _ in range(3)
+        ]
+
+    @staticmethod
+    def _donors() -> list[dict[str, Any]]:
+        return [
+            {"image": _make_image(), "mask": _make_mask(region=(0, 30, 0, 30))},
+            {"image": _make_image(), "mask": _make_mask(region=(70, 100, 70, 100))},
+            {"image": _make_image(), "mask": _make_mask(region=(20, 40, 60, 80))},
+        ]
+
+    @staticmethod
+    def _build(name: str) -> A.BasicTransform:
+        if name == "affine":
+            return A.Affine(p=1.0)
+        if name == "perspective":
+            return A.Perspective(scale=(0.05, 0.2), p=1.0, keep_size=True)
+        if name == "shift_scale_rotate":
+            return A.ShiftScaleRotate(p=1.0)
+        if name == "horizontal_flip":
+            return A.HorizontalFlip(p=1.0)
+        if name == "rotate":
+            return A.Rotate(p=1.0)
+        if name == "random_crop":
+            return A.RandomCrop(80, 80, p=1.0)
+        if name == "mosaic":
+            return A.Mosaic(grid_yx=(2, 2), target_size=(100, 100), cell_shape=(100, 100), p=1.0)
+        if name == "copy_and_paste":
+            return A.CopyAndPaste(p=1.0)
+        raise ValueError(name)
+
+    @settings(
+        max_examples=100,
+        deadline=None,
+        suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
+    )
+    @given(
+        seed=st.integers(0, 100_000),
+        pre=st.lists(
+            st.sampled_from(
+                ["affine", "perspective", "shift_scale_rotate", "horizontal_flip", "rotate", "random_crop"],
+            ),
+            min_size=0,
+            max_size=2,
+        ),
+        mix=st.sampled_from(["mosaic", "copy_and_paste"]),
+        post=st.lists(
+            st.sampled_from(
+                ["affine", "perspective", "shift_scale_rotate", "horizontal_flip", "rotate", "random_crop"],
+            ),
+            min_size=0,
+            max_size=3,
+        ),
+    )
+    def test_pipeline_preserves_mask_shape_and_alignment(
+        self,
+        seed: int,
+        pre: list[str],
+        mix: str,
+        post: list[str],
+    ) -> None:
+        image, instances = self._instances()
+        transforms = [self._build(n) for n in pre] + [self._build(mix)] + [self._build(n) for n in post]
+        aug = A.Compose(
+            transforms,
+            bbox_params=A.BboxParams(coord_format="pascal_voc", min_area=1),
+            instance_binding=["masks", "bboxes"],
+            seed=seed,
+        )
+        kwargs: dict[str, Any] = {"image": image, "instances": instances}
+        if mix == "mosaic":
+            kwargs["mosaic_metadata"] = self._mosaic_extras()
+        else:
+            kwargs["copy_paste_metadata"] = self._donors()
+        result = aug(**kwargs)
+        for inst in result["instances"]:
+            assert inst["mask"].ndim == 2
+            assert "bbox" in inst

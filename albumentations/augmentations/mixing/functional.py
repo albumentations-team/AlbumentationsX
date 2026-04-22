@@ -936,33 +936,36 @@ def assemble_mosaic_instance_masks_stack(
     dtype: np.dtype,
     fill: float | tuple[float, ...] | None,
 ) -> np.ndarray:
-    """One full-canvas mask per instance; iteration order over `processed_cells` matches
-    `Mosaic.apply_to_bboxes` / `apply_to_masks` (dict insertion order).
+    """Build one full-canvas mask per instance from per-cell stacks; output preserves the
+    canonical 4-D `(N, H, W, C)` mask-stack shape brand.
+
+    Iteration order over `processed_cells` matches `Mosaic.apply_to_bboxes` /
+    `apply_to_masks` (dict insertion order). Output is always `(N, H, W, C)` to preserve the
+    canonical 4-D mask-stack shape Compose sets up via `_add_grayscale_channels`.
     """
     canvas_h, canvas_w = canvas_hw
     actual_fill = fill if fill is not None else 0
     fill_value = np.array(actual_fill, dtype=dtype)
 
     layers: list[np.ndarray] = []
+    channels = 1
     for placement_coords, cell_data in processed_cells.items():
         stack = cell_data.get("masks")
         if stack is None or not isinstance(stack, np.ndarray) or stack.size == 0:
             continue
-        if stack.ndim == 4 and stack.shape[-1] == 1:
-            stack = np.squeeze(stack, axis=-1)
-        if stack.ndim != 3:
+        if stack.ndim == 3:
+            stack = stack[..., np.newaxis]
+        if stack.ndim != 4:
             continue
+        channels = stack.shape[-1]
         tgt_x1, tgt_y1, tgt_x2, tgt_y2 = placement_coords
         for i in range(stack.shape[0]):
-            canvas = np.full((canvas_h, canvas_w), fill_value=fill_value, dtype=dtype)
-            segment = stack[i]
-            if segment.ndim == 3 and segment.shape[-1] == 1:
-                segment = segment[..., 0]
-            canvas[tgt_y1:tgt_y2, tgt_x1:tgt_x2] = segment
+            canvas = np.full((canvas_h, canvas_w, channels), fill_value=fill_value, dtype=dtype)
+            canvas[tgt_y1:tgt_y2, tgt_x1:tgt_x2, :] = stack[i]
             layers.append(canvas)
 
     if not layers:
-        return np.empty((0, canvas_h, canvas_w), dtype=dtype)
+        return np.empty((0, canvas_h, canvas_w, channels), dtype=dtype)
     return np.stack(layers, axis=0)
 
 

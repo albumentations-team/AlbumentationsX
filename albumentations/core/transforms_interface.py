@@ -24,7 +24,7 @@ from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.validation import ValidatedTransformMeta
 
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
-from .type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
+from .type_definitions import ALL_TARGETS, ImageType, StackedMasks4D, Targets, VolumeType
 from .utils import format_args
 from .utils import get_image_data as _get_image_data_impl
 
@@ -952,7 +952,7 @@ class DualTransform(BasicTransform):
     def apply_to_mask(self, mask: ImageType, *args: Any, **params: Any) -> ImageType:
         return self.apply(mask, *args, **params)
 
-    def apply_to_masks(self, masks: ImageType, *args: Any, **params: Any) -> ImageType:
+    def apply_to_masks(self, masks: StackedMasks4D, *args: Any, **params: Any) -> StackedMasks4D:
         if masks.size == 0:
             return masks
         return self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, *args, **params))

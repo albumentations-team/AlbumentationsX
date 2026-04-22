@@ -145,13 +145,12 @@ CHECK_KEYPOINTS_PARAM = {"keypoints"}
 VOLUME_KEYS = {"volume", "volumes"}
 
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
-# Single conceptual id namespace shared by bboxes and keypoints: the trailing label column
-# on each array carries the same logical instance id. Resync logic and contracts reference
-# this single constant. The two ferry-key constants below remain DISTINCT dict-key strings
-# because the bbox per-row id list and the kp per-row id list have different lengths and
-# both must coexist in `data` between unpack and per-processor preprocess. Treat them as
-# implementation-detail aliases of the same `_INSTANCE_ID` namespace.
-_INSTANCE_ID = "_instance_id"
+# Distinct ferry-key constants used to shuttle per-row instance ids through `data`
+# between unpack and per-processor preprocess. They MUST remain different dict-key
+# strings because the bbox per-row id list and the kp per-row id list can have
+# different lengths and both need to coexist in `data` simultaneously. Conceptually
+# they encode the same logical instance-id namespace (last column of `bboxes` / last
+# column of `keypoints`); resync logic re-establishes that pairing each step.
 _BBOX_INSTANCE_ID = "_bbox_instance_id"
 _KP_INSTANCE_ID = "_kp_instance_id"
 _INSTANCE_ID_FERRY_KEYS = frozenset({_BBOX_INSTANCE_ID, _KP_INSTANCE_ID})

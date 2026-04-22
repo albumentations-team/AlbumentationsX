@@ -161,10 +161,10 @@ disagrees with `len(bboxes)`" cases.
 
 ## Id namespace
 
-There is one logical instance-id namespace, conceptually named `_INSTANCE_ID` (last column of
-both bboxes and keypoints arrays). Inside the `data` dict it ferries under two distinct keys
-because the bbox per-row id list and the keypoint per-row id list have different lengths and
-both must coexist between unpack and per-processor preprocess:
+There is one logical instance-id namespace (last column of both bboxes and keypoints
+arrays). Inside the `data` dict it ferries under two distinct keys because the bbox
+per-row id list and the keypoint per-row id list can have different lengths and both
+must coexist between unpack and per-processor preprocess:
 
 - `_BBOX_INSTANCE_ID = "_bbox_instance_id"` — one entry per bbox row.
 - `_KP_INSTANCE_ID = "_kp_instance_id"` — one entry per keypoint row, valued at the parent

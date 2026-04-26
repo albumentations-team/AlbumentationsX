@@ -26,7 +26,6 @@ target types.
 """
 
 from typing import Annotated, Any, Literal
-from warnings import warn
 
 import cv2
 import numpy as np
@@ -511,7 +510,6 @@ class PiecewiseAffine(BaseDistortion):
         hbb, obb
 
     Note:
-        - This augmentation is very slow. Consider using `ElasticTransform` instead, which is at least 10x faster.
         - The augmentation may not always produce visible effects, especially with small scale values.
         - For keypoints and bounding boxes, the transformation might move them outside the image boundaries.
           In such cases, the keypoints will be set to (-1, -1) and the bounding boxes will be removed.
@@ -584,11 +582,6 @@ class PiecewiseAffine(BaseDistortion):
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
-        )
-
-        warn(
-            "This augmenter is very slow. Try to use `ElasticTransform` instead, which is at least 10x faster.",
-            stacklevel=2,
         )
 
         self.scale_range = scale_range

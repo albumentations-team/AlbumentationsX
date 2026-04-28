@@ -12,6 +12,7 @@ from albucore import (
 )
 from sklearn.decomposition import NMF
 
+import albumentations.augmentations.blur.functional as fblur
 import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.core.type_definitions import d4_group_elements
@@ -1531,6 +1532,63 @@ def test_pixel_dropout_sequence_per_channel():
         assert np.all(result[:, :, channel_idx] == expected_value), (
             f"Channel {channel_idx} should be filled with value {expected_value}"
         )
+
+
+def test_pixel_dropout_shared_2d_mask_applies_to_all_channels():
+    image = np.arange(3 * 4 * 3, dtype=np.uint8).reshape(3, 4, 3)
+    drop_mask = np.array(
+        [
+            [True, False, False, True],
+            [False, True, False, False],
+            [False, False, True, False],
+        ],
+    )
+
+    result = fpixel.pixel_dropout(image, drop_mask, np.array(137, dtype=np.uint8))
+
+    np.testing.assert_array_equal(result[drop_mask], np.full((4, 3), 137, dtype=np.uint8))
+    np.testing.assert_array_equal(result[~drop_mask], image[~drop_mask])
+
+
+def test_pixel_dropout_shared_2d_mask_broadcasts_to_image_batch():
+    images = np.arange(2 * 3 * 4 * 3, dtype=np.uint8).reshape(2, 3, 4, 3)
+    drop_mask = np.array(
+        [
+            [True, False, False, True],
+            [False, True, False, False],
+            [False, False, True, False],
+        ],
+    )
+
+    result = fpixel.pixel_dropout(images, drop_mask, np.array(137, dtype=np.uint8))
+
+    np.testing.assert_array_equal(result[:, drop_mask], np.full((2, 4, 3), 137, dtype=np.uint8))
+    np.testing.assert_array_equal(result[:, ~drop_mask], images[:, ~drop_mask])
+
+
+@pytest.mark.parametrize("channels", [1, 3, 5])
+def test_apply_salt_and_pepper_preserves_shape_and_values(channels):
+    image = np.full((3, 4, channels), 100, dtype=np.uint8)
+    salt_mask = np.zeros((3, 4), dtype=bool)
+    pepper_mask = np.zeros((3, 4), dtype=bool)
+    salt_mask[0, 1] = True
+    pepper_mask[2, 3] = True
+
+    result = fpixel.apply_salt_and_pepper(image, salt_mask, pepper_mask)
+
+    assert result.shape == image.shape
+    np.testing.assert_array_equal(result[0, 1], np.full(channels, 255, dtype=np.uint8))
+    np.testing.assert_array_equal(result[2, 3], np.zeros(channels, dtype=np.uint8))
+    np.testing.assert_array_equal(result[1, 1], image[1, 1])
+
+
+def test_create_defocus_kernel_returns_independent_arrays():
+    kernel = fblur.create_defocus_kernel(5, 0.3)
+    kernel[0, 0] = 137
+
+    fresh_kernel = fblur.create_defocus_kernel(5, 0.3)
+
+    assert fresh_kernel[0, 0] != 137
 
 
 def test_prepare_drop_values_random_two_channels():

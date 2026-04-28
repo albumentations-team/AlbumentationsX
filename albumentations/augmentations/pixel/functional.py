@@ -2406,6 +2406,13 @@ def pixel_dropout(
         np.ndarray: Image with dropped pixels
 
     """
+    if image.ndim == 4:
+        if drop_mask.ndim == 2:
+            drop_mask = drop_mask[None, :, :, None]
+        elif drop_mask.ndim == 3:
+            drop_mask = drop_mask[None, ...]
+    elif drop_mask.ndim == image.ndim - 1:
+        drop_mask = drop_mask[..., None]
     return np.where(drop_mask, drop_values, image)
 
 
@@ -3281,7 +3288,6 @@ def apply_salt_and_pepper(
 
     Args:
         img (ImageType): Input image of any dtype and dimensions:
-            - 2D: (H, W) - grayscale
             - 3D: (H, W, C) - RGB/multi-channel
             - 4D: (D, H, W, C) - volume with depth
         salt_mask (np.ndarray): Boolean mask indicating salt pixels (H, W)
@@ -3292,6 +3298,22 @@ def apply_salt_and_pepper(
 
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
+    num_channels = img.shape[-1]
+    if num_channels > 1:
+        result = img.copy()
+        if img.ndim == 3:
+            result[salt_mask] = max_value
+            result[pepper_mask] = 0
+        elif img.ndim == 4:
+            result[:, salt_mask] = max_value
+            result[:, pepper_mask] = 0
+        elif img.ndim == 5:
+            result[:, :, salt_mask] = max_value
+            result[:, :, pepper_mask] = 0
+        else:
+            return np.where(salt_mask[..., None], max_value, np.where(pepper_mask[..., None], 0, img))
+        return result
+
     return np.where(salt_mask[..., None], max_value, np.where(pepper_mask[..., None], 0, img))
 
 
@@ -3911,24 +3933,9 @@ def get_drop_mask(
 
     """
     if per_channel or len(shape) == 2:
-        return random_generator.choice(
-            [True, False],
-            shape,
-            p=[dropout_prob, 1 - dropout_prob],
-        )
+        return random_generator.random(shape) < dropout_prob
 
-    # Generate 2D mask and expand to match channels
-    mask_2d = random_generator.choice(
-        [True, False],
-        shape[:2],
-        p=[dropout_prob, 1 - dropout_prob],
-    )
-
-    # If input is 2D, return 2D mask
-    if len(shape) == 2:
-        return mask_2d
-
-    # For 3D input, expand and repeat across channels
+    mask_2d = random_generator.random(shape[:2]) < dropout_prob
     return np.repeat(mask_2d[..., None], shape[2], axis=2)
 
 

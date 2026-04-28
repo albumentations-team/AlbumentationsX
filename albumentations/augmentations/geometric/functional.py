@@ -1569,6 +1569,11 @@ def transpose(img: ImageType) -> ImageType:
         ImageType: Transposed array.
 
     """
+    num_channels = img.shape[-1]
+    if num_channels in {1, 3, 4}:
+        result = cv2.transpose(img if num_channels != 1 else img[..., 0])
+        return result[..., None] if num_channels == 1 else result
+
     # Generate the new axes order
     new_axes = list(range(img.ndim))
     new_axes[0], new_axes[1] = 1, 0  # Swap the first two dimensions
@@ -1652,6 +1657,22 @@ def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) ->
 
     """
     rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
+    if rot90_count == 0:
+        return img
+
+    num_channels = img.shape[-1]
+    if num_channels in {1, 3, 4}:
+        if rot90_count == 1:
+            rotate_code = cv2.ROTATE_90_COUNTERCLOCKWISE
+        elif rot90_count == 2:
+            rotate_code = cv2.ROTATE_180
+        else:
+            rotate_code = cv2.ROTATE_90_CLOCKWISE
+
+        cv2_input = img if num_channels != 1 else img[..., 0]
+        result = cv2.rotate(cv2_input, rotate_code)
+        return result[..., None] if num_channels == 1 else result
+
     return np.rot90(img, rot90_count)
 
 

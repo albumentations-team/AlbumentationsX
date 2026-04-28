@@ -7,6 +7,7 @@ These functions form the foundation for the corresponding transform classes.
 
 import random
 from collections.abc import Sequence
+from functools import lru_cache
 from itertools import product
 from math import ceil
 from typing import Literal
@@ -108,25 +109,30 @@ def glass_blur(
     return cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0))
 
 
+@lru_cache(maxsize=128)
+def _create_defocus_kernel_cached(radius: int, alias_blur: float) -> np.ndarray:
+    length = np.arange(-max(8, radius), max(8, radius) + 1, dtype=np.float32)
+    ksize = 3 if radius <= EIGHT else 5
+
+    x, y = np.meshgrid(length, length)
+    aliased_disk = (x**2 + y**2 <= radius**2).astype(np.float32)
+    aliased_disk /= reduce_sum(aliased_disk)
+
+    return cv2.GaussianBlur(aliased_disk, (ksize, ksize), sigmaX=alias_blur)
+
+
 def create_defocus_kernel(radius: int, alias_blur: float) -> np.ndarray:
     """Create defocus (aliased disk) convolution kernel. radius, alias_blur control disk
     shape and smoothing. Returns kernel for convolve.
     """
-    length = np.arange(-max(8, radius), max(8, radius) + 1)
-    ksize = 3 if radius <= EIGHT else 5
-
-    x, y = np.meshgrid(length, length)
-    aliased_disk = np.array((x**2 + y**2) <= radius**2, dtype=np.float32)
-    aliased_disk /= reduce_sum(aliased_disk)
-
-    return cv2.GaussianBlur(aliased_disk, (ksize, ksize), sigmaX=alias_blur)
+    return _create_defocus_kernel_cached(radius, alias_blur).copy()
 
 
 def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
     """Blur with aliased disk kernel to simulate out-of-focus. radius, alias_blur set size and
     softness. Use for depth-of-field or bokeh-style effects.
     """
-    return convolve(img, kernel=create_defocus_kernel(radius, alias_blur))
+    return convolve(img, kernel=_create_defocus_kernel_cached(radius, alias_blur))
 
 
 def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:

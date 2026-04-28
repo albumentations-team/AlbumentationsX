@@ -1570,7 +1570,7 @@ def transpose(img: ImageType) -> ImageType:
 
     """
     num_channels = img.shape[-1]
-    if num_channels in {1, 3, 4}:
+    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and num_channels in {1, 3, 4}:
         result = cv2.transpose(img if num_channels != 1 else img[..., 0])
         return result[..., None] if num_channels == 1 else result
 
@@ -1661,7 +1661,7 @@ def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) ->
         return img
 
     num_channels = img.shape[-1]
-    if num_channels in {1, 3, 4}:
+    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and num_channels in {1, 3, 4}:
         if rot90_count == 1:
             rotate_code = cv2.ROTATE_90_COUNTERCLOCKWISE
         elif rot90_count == 2:

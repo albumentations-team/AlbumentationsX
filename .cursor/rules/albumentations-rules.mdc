@@ -14,6 +14,10 @@ alwaysApply: true
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite
+- Within `Compose`, images and volumes always have an explicit channel dimension:
+  `(H, W, C)`, `(N, H, W, C)`, `(D, H, W, C)`, or `(N, D, H, W, C)`
+- Grayscale in Compose is `(H, W, 1)`, not `(H, W)`; do not add 2D grayscale compatibility branches to
+  transform `apply_*` methods or functional kernels used by Compose
 
 ## Complete Documentation
 

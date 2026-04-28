@@ -3275,6 +3275,9 @@ def generate_enhance_matrix(mode: Literal["edge", "detail"], alpha: float) -> np
     return kernel.astype(np.float32, copy=False)
 
 
+SPARSE_SALT_AND_PEPPER_THRESHOLD = 0.08
+
+
 def apply_salt_and_pepper(
     img: ImageType,
     salt_mask: np.ndarray,
@@ -3298,23 +3301,17 @@ def apply_salt_and_pepper(
 
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
-    num_channels = img.shape[-1]
-    if num_channels > 1:
-        result = img.copy()
-        if img.ndim == 3:
-            result[salt_mask] = max_value
-            result[pepper_mask] = 0
-        elif img.ndim == 4:
-            result[:, salt_mask] = max_value
-            result[:, pepper_mask] = 0
-        elif img.ndim == 5:
-            result[:, :, salt_mask] = max_value
-            result[:, :, pepper_mask] = 0
-        else:
-            return np.where(salt_mask[..., None], max_value, np.where(pepper_mask[..., None], 0, img))
-        return result
+    if img.shape[-1] > 1:
+        noisy_fraction = (np.count_nonzero(salt_mask) + np.count_nonzero(pepper_mask)) / salt_mask.size
+        if noisy_fraction <= SPARSE_SALT_AND_PEPPER_THRESHOLD:
+            result = img.copy()
+            result[..., salt_mask, :] = max_value
+            result[..., pepper_mask, :] = 0
+            return result
 
-    return np.where(salt_mask[..., None], max_value, np.where(pepper_mask[..., None], 0, img))
+    salt_mask = salt_mask[..., None]
+    pepper_mask = pepper_mask[..., None]
+    return np.where(salt_mask, max_value, np.where(pepper_mask, 0, img))
 
 
 # Pre-compute constant kernels

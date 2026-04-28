@@ -53,6 +53,14 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - Default test values should be 137, not 42
 - Prefer relative parameters (fractions of image size) over fixed pixel values
 
+### Image and Volume Shape Invariants
+
+- Within `Compose`, images and volumes are always channel-last with an explicit channel dimension.
+- Single images are `(H, W, C)`; grayscale is `(H, W, 1)`, not `(H, W)`.
+- Image batches are `(N, H, W, C)`, volumes are `(D, H, W, C)`, and volume batches are `(N, D, H, W, C)`.
+- Do not add functional-layer compatibility branches for 2D grayscale images when code is used through `Compose`.
+- Branching on `ndim` is appropriate to distinguish image, batch, volume, and volume batch paths, not to infer channels.
+
 ### Validation Principles
 
 - **Compose-level checks**: All validation of transform compatibility (bbox_type, target support) happens at `Compose.__init__()` time

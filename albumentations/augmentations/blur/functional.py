@@ -132,7 +132,7 @@ def defocus(img: ImageType, radius: int, alias_blur: float) -> ImageType:
     """Blur with aliased disk kernel to simulate out-of-focus. radius, alias_blur set size and
     softness. Use for depth-of-field or bokeh-style effects.
     """
-    return convolve(img, kernel=_create_defocus_kernel_cached(radius, alias_blur))
+    return convolve(img, kernel=create_defocus_kernel(radius, alias_blur))
 
 
 def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:

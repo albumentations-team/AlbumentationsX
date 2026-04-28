@@ -23,7 +23,8 @@ Always benchmark all 9 combinations:
 | 1024×1024  | 3        | High-res segmentation                 |
 | 1024×1024  | 5        | Satellite imagery                     |
 
-Skip channel counts the transform explicitly doesn't support.
+Skip channel counts the transform explicitly doesn't support. Always include the channel axis: grayscale inputs are
+`(H, W, 1)`, not `(H, W)`.
 
 ## Template: Isolated Function
 
@@ -37,7 +38,7 @@ N = 100
 
 for size_name, (h, w) in SIZES.items():
     for ch in CHANNELS:
-        shape = (h, w) if ch == 1 else (h, w, ch)
+        shape = (h, w, ch)
         img = np.random.randint(0, 256, shape, dtype=np.uint8)
 
         old_t = timeit.timeit(lambda img=img: old_func(img, **params), number=N)
@@ -59,7 +60,7 @@ transform = A.Compose([A.YourTransform(p=1.0)])
 
 for size_name, (h, w) in SIZES.items():
     for ch in CHANNELS:
-        shape = (h, w) if ch == 1 else (h, w, ch)
+        shape = (h, w, ch)
         img = np.random.randint(0, 256, shape, dtype=np.uint8)
 
         t = timeit.timeit(lambda img=img: transform(image=img), number=100)
@@ -157,3 +158,5 @@ for batch_size in BATCH_SIZES:
 - A **>5% regression** on any combination requires justification or rework
 - If adding a new transform, benchmark against the equivalent naive numpy implementation
 - For batch optimizations, compare 1-channel vs 3-channel to verify speedup holds across channel counts
+- Keep channel-last shapes throughout: images `(H,W,C)`, image batches `(N,H,W,C)`, volumes `(D,H,W,C)`,
+  volume batches `(N,D,H,W,C)`

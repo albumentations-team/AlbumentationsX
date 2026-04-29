@@ -249,6 +249,39 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     return sz_lut(img, lut, inplace=True)
 
 
+def _equalize_cv_multichannel_lut(img: ImageType) -> ImageType:
+    """Apply OpenCV-style equalization with one multichannel LUT pass for large
+    RGB images and multispectral inputs where per-channel assignment is slower.
+    """
+    luts = []
+    for channel_idx in range(get_num_channels(img)):
+        channel = img[..., channel_idx]
+        histogram = cv2.calcHist([channel], [0], None, [256], (0, 256)).ravel()
+        nonzero = np.flatnonzero(histogram)
+        if len(nonzero) == 0:
+            luts.append(np.arange(256, dtype=np.uint8))
+            continue
+
+        first_nonzero = nonzero[0]
+        total = reduce_sum(histogram)
+        denominator = total - histogram[first_nonzero]
+        if denominator == 0:
+            luts.append(np.arange(256, dtype=np.uint8))
+            continue
+
+        scale = 255.0 / denominator
+        cumsum_histogram = np.cumsum(histogram)
+        lut = np.clip(
+            ((cumsum_histogram - cumsum_histogram[first_nonzero]) * scale).round(),
+            0,
+            255,
+        ).astype(np.uint8)
+        luts.append(lut)
+
+    lut = np.stack(luts, axis=1).reshape(256, 1, get_num_channels(img))
+    return cv2.LUT(img, lut)
+
+
 def _check_preconditions(
     img: ImageType,
     mask: np.ndarray | None,
@@ -335,8 +368,13 @@ def equalize(
         return function(img, _handle_mask(mask))
 
     if mask is None and by_channels and mode == "cv" and is_rgb_image(img):
+        if img.shape[0] * img.shape[1] >= 1024 * 1024:
+            return _equalize_cv_multichannel_lut(img)
         channels = cv2.split(img)
         return cv2.merge([cv2.equalizeHist(channel) for channel in channels])
+
+    if mask is None and by_channels and mode == "cv" and get_num_channels(img) > NUM_RGB_CHANNELS:
+        return _equalize_cv_multichannel_lut(img)
 
     if not by_channels:
         result_img = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
@@ -344,7 +382,7 @@ def equalize(
         return cv2.cvtColor(result_img, cv2.COLOR_YCrCb2RGB)
 
     result_img = np.empty_like(img)
-    for i in range(NUM_RGB_CHANNELS):
+    for i in range(get_num_channels(img)):
         _mask = _handle_mask(mask, i)
         # Extract channel, process, and ensure we maintain 2D shape
         channel_result = function(img[..., i], _mask)
@@ -376,6 +414,17 @@ def evaluate_bez(
 
     one_minus_t = 1 - t
     return (3 * one_minus_t**2 * t * low_y + 3 * one_minus_t * t**2 * high_y + t**3) * 255
+
+
+def _apply_multichannel_lut(img: ImageType, luts: np.ndarray, num_channels: int) -> ImageType:
+    """Apply channel-specific uint8 LUTs in one OpenCV pass for images,
+    batches, and volumes while preserving the original shape and channel order.
+    """
+    lut = np.ascontiguousarray(luts.T.reshape(256, 1, num_channels))
+    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
+        return cv2.LUT(img, lut)
+
+    return cv2.LUT(img.reshape(-1, 1, num_channels), lut).reshape(img.shape)
 
 
 @uint8_io
@@ -410,10 +459,7 @@ def move_tone_curve(
             np.uint8,
             inplace=False,
         )
-        result = np.empty_like(img)
-        for i in range(num_channels):
-            result[..., i] = sz_lut(img[..., i], np.ascontiguousarray(luts[i]), inplace=False)
-        return result
+        return _apply_multichannel_lut(img, luts, num_channels)
 
     raise TypeError(
         f"low_y and high_y must both be of type float or np.ndarray. Got {type(low_y)} and {type(high_y)}",

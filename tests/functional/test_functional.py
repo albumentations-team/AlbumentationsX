@@ -439,6 +439,15 @@ def test_equalize_rgb():
     assert np.all(img_cv == fpixel.equalize(img, mode="cv", by_channels=False))
 
 
+def test_equalize_multichannel():
+    rng = np.random.default_rng(137)
+    img = rng.integers(0, 256, (64, 64, 5), dtype=np.uint8)
+
+    expected = np.stack([cv2.equalizeHist(img[..., channel_idx]) for channel_idx in range(img.shape[2])], axis=-1)
+
+    np.testing.assert_array_equal(fpixel.equalize(img, mode="cv"), expected)
+
+
 def test_equalize_grayscale_mask():
     # Need fresh image for this test - equalize depends on histogram
     rng = np.random.default_rng(137)
@@ -1262,6 +1271,21 @@ def test_auto_contrast(img, expected):
         assert not np.all(
             result == img,
         ), "The output should change for non-constant input."
+
+
+def test_auto_contrast_multichannel_cdf_matches_per_channel():
+    rng = np.random.default_rng(137)
+    img = rng.integers(0, 256, (64, 64, 5), dtype=np.uint8)
+
+    expected = np.concatenate(
+        [
+            fpixel.auto_contrast(img[..., channel_idx : channel_idx + 1], cutoff=0, ignore=None, method="cdf")
+            for channel_idx in range(img.shape[2])
+        ],
+        axis=-1,
+    )
+
+    np.testing.assert_array_equal(fpixel.auto_contrast(img, cutoff=0, ignore=None, method="cdf"), expected)
 
 
 @pytest.mark.parametrize(

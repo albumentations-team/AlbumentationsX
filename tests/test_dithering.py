@@ -116,6 +116,27 @@ class TestDitheringFunctional:
         with pytest.raises(ValueError):
             error_diffusion_dither(img, n_colors=2, algorithm="invalid")
 
+    def test_uint8_binary_floyd_steinberg_matches_float32_reference(self):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (16, 16, 1), dtype=np.uint8)
+
+        result = apply_dithering(
+            img,
+            method="error_diffusion",
+            n_colors=2,
+            color_mode="per_channel",
+            error_diffusion_algorithm="floyd_steinberg",
+            serpentine=False,
+        )
+        expected = error_diffusion_dither(
+            img.astype(np.float32) / 255.0,
+            n_colors=2,
+            algorithm="floyd_steinberg",
+            serpentine=False,
+        )
+
+        np.testing.assert_array_equal(result, (expected * 255).astype(np.uint8))
+
     def test_apply_dithering_grayscale_mode(self):
         """Test dithering with grayscale conversion."""
         rng = np.random.default_rng(137)

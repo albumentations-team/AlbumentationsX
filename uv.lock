@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "albucore"
-version = "0.1.5"
+version = "0.1.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numkong" },
@@ -17,9 +17,9 @@ dependencies = [
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "stringzilla" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/23/d1eff908effdec4d6c79ef8566978f3cb55435ad19de0f090ebcd7794923/albucore-0.1.5.tar.gz", hash = "sha256:7f188c437405dbe132c168cb291f3b015f5f6c56d6c333277ab42ba635270ff4", size = 73106 }
+sdist = { url = "https://files.pythonhosted.org/packages/73/33/af2df301ecfd4f039acffa741d3266c1fa27d9f6ca6d60eafe83d8ba8267/albucore-0.1.6.tar.gz", hash = "sha256:0afdb9c4840bf060cab8c5b85ebf43c2df4de53c42013988a808aaba1ec0b5b1", size = 107185 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/0a/454d887ff1e19f7c7729f88acebfadc4b3e428d0172f1f385cd3d88dd6e1/albucore-0.1.5-py3-none-any.whl", hash = "sha256:13948e6bb80d55715ce2d17e47831f8f4e934d72e65bb2289ab69d5a2eda265a", size = 42044 },
+    { url = "https://files.pythonhosted.org/packages/e8/98/609eb10dfd2b6968eee5b01a3c9c2fc8caf79e40b86be2f5f4ec18d6a969/albucore-0.1.6-py3-none-any.whl", hash = "sha256:bd44b7af009e73d8906895c371d38aa210a9ea7e5fb06128c54875cc3ad4e3d4", size = 42578 },
 ]
 
 [[package]]
@@ -68,7 +68,7 @@ text = [
 
 [package.metadata]
 requires-dist = [
-    { name = "albucore", specifier = "==0.1.5" },
+    { name = "albucore", specifier = "==0.1.6" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
     { name = "numpy", specifier = ">=1.24.4" },
     { name = "opencv-contrib-python", marker = "extra == 'contrib'", specifier = ">=4.13.0.92" },

@@ -360,6 +360,42 @@ def random_dither(
     return quantized.astype(np.float32)
 
 
+def _floyd_steinberg_binary_uint8(img: ImageUInt8) -> ImageUInt8:
+    """Apply binary Floyd-Steinberg dithering to a single-channel uint8 image without
+    dtype-wrapper dispatch overhead in the default grayscale path.
+    """
+    channel = img[:, :, 0].astype(np.float32) * (1.0 / 255.0)
+    height, width = channel.shape
+
+    for row_idx in range(height):
+        next_row_idx = row_idx + 1
+        has_next_row = next_row_idx < height
+        for col_idx in range(width):
+            old_val = channel[row_idx, col_idx]
+            new_val = 1.0 if old_val >= 0.5 else 0.0
+            channel[row_idx, col_idx] = new_val
+            error = old_val - new_val
+
+            next_col_idx = col_idx + 1
+            if next_col_idx < width:
+                channel[row_idx, next_col_idx] += error * (7.0 / 16.0)
+
+            if has_next_row:
+                if col_idx > 0:
+                    channel[next_row_idx, col_idx - 1] += error * (3.0 / 16.0)
+                channel[next_row_idx, col_idx] += error * (5.0 / 16.0)
+                if next_col_idx < width:
+                    channel[next_row_idx, next_col_idx] += error * (1.0 / 16.0)
+
+    np.clip(channel, 0, 1, out=channel)
+    return (channel[:, :, np.newaxis] * 255).astype(np.uint8)
+
+
+def _should_vectorize_ordered_dither(height: int, width: int, num_channels: int) -> bool:
+    num_pixels = height * width
+    return (num_channels > 3 and num_pixels >= 512 * 512) or num_pixels >= 1024 * 1024
+
+
 def ordered_dither_uint8(
     img: ImageUInt8,
     n_colors: int,
@@ -393,6 +429,12 @@ def ordered_dither_uint8(
     levels = np.linspace(0, 255, n_colors).astype(np.uint8)
 
     lut = levels[np.minimum(np.arange(256) * n_colors // 256, n_colors - 1)]
+
+    if _should_vectorize_ordered_dither(height, width, img.shape[2]):
+        dithered = img.astype(np.int16)
+        dithered += ((tiled.astype(np.int16) - 128) // n_colors)[:, :, np.newaxis]
+        np.clip(dithered, 0, 255, out=dithered)
+        return sz_lut(dithered.astype(np.uint8), lut, inplace=False)
 
     for channel_idx in range(img.shape[2]):
         channel = img[:, :, channel_idx]
@@ -583,6 +625,15 @@ def _apply_single_dithering_method(
             kwargs.get("noise_range", (-0.5, 0.5)),
             random_generator,
         )
+    if (
+        img.dtype == np.uint8
+        and method == "error_diffusion"
+        and n_colors == 2
+        and kwargs.get("error_diffusion_algorithm", "floyd_steinberg") == "floyd_steinberg"
+        and not kwargs.get("serpentine", False)
+        and img.shape[2] == 1
+    ):
+        return _floyd_steinberg_binary_uint8(img)
 
     # Use float32 versions
     if method == "random":

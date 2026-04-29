@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 
 import albumentations as A
-import albumentations.augmentations.pixel.dithering_functional as dither_functional
 from albumentations.augmentations.pixel.dithering_functional import (
     apply_dithering,
     error_diffusion_dither,
     generate_bayer_matrix,
     ordered_dither,
+    ordered_dither_uint8,
     quantize_value,
     random_dither,
 )
@@ -111,11 +111,17 @@ class TestDitheringFunctional:
         rng = np.random.default_rng(137)
         img = rng.integers(0, 256, (17, 19, 5), dtype=np.uint8)
 
-        monkeypatch.setattr(dither_functional, "_should_vectorize_ordered_dither", lambda *_args: False)
-        expected = dither_functional.ordered_dither_uint8(img, n_colors=5, matrix_size=4)
+        monkeypatch.setattr(
+            "albumentations.augmentations.pixel.dithering_functional._should_vectorize_ordered_dither",
+            lambda *_args: False,
+        )
+        expected = ordered_dither_uint8(img, n_colors=5, matrix_size=4)
 
-        monkeypatch.setattr(dither_functional, "_should_vectorize_ordered_dither", lambda *_args: True)
-        result = dither_functional.ordered_dither_uint8(img, n_colors=5, matrix_size=4)
+        monkeypatch.setattr(
+            "albumentations.augmentations.pixel.dithering_functional._should_vectorize_ordered_dither",
+            lambda *_args: True,
+        )
+        result = ordered_dither_uint8(img, n_colors=5, matrix_size=4)
 
         np.testing.assert_array_equal(result, expected)
 

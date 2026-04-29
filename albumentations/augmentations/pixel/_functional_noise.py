@@ -554,7 +554,7 @@ def generate_enhance_matrix(mode: Literal["edge", "detail"], alpha: float) -> np
     return kernel.astype(np.float32, copy=False)
 
 
-SPARSE_SALT_AND_PEPPER_THRESHOLD = 0.08
+SPARSE_SALT_AND_PEPPER_THRESHOLD = 0.16
 
 
 def apply_salt_and_pepper(

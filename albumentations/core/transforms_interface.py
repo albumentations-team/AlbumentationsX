@@ -82,6 +82,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         str,
         Callable[..., Any],
     ]  # mapping for targets (plus additional targets) and methods for which they depend
+    _transform_init_args_names_cache: ClassVar[tuple[str, ...] | None] = None
     call_backup = None
     interpolation: int
     fill: tuple[float, ...] | float
@@ -198,7 +199,10 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         to collect all possible parameters, excluding 'self' and 'strict'
         which are handled separately.
         """
-        import inspect
+        transform_cls = type(self)
+        cache = transform_cls.__dict__.get("_transform_init_args_names_cache")
+        if cache is not None:
+            return cache
 
         all_param_names = set()
 
@@ -218,7 +222,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
                 continue
 
         # Exclude 'self' and 'strict'
-        return tuple(sorted(all_param_names - {"self", "strict"}))
+        result = tuple(sorted(all_param_names - {"self", "strict"}))
+        type.__setattr__(transform_cls, "_transform_init_args_names_cache", result)
+        return result
 
     def set_processors(self, processors: dict[str, BboxProcessor | KeypointsProcessor]) -> None:
         """Set the processors dictionary used for processing bbox and keypoint transformations.

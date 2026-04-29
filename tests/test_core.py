@@ -2991,6 +2991,27 @@ def test_applied_config_invalid_key_raises():
         aug(image=_make_test_image())
 
 
+def test_transform_init_args_names_are_cached():
+    """Repeated applied_config builds should not re-run signature introspection."""
+
+    class CacheProbeTransform(ImageOnlyTransform):
+        def __init__(self, alpha: int = 137, p: float = 1.0):
+            super().__init__(p=p)
+            self.alpha = alpha
+
+        def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
+            return img
+
+    CacheProbeTransform._transform_init_args_names_cache = None
+    aug = CacheProbeTransform(alpha=138)
+
+    assert "alpha" in aug.get_transform_init_args_names()
+
+    with mock.patch("inspect.signature", side_effect=AssertionError("signature should be cached")):
+        assert "alpha" in aug.get_transform_init_args_names()
+        assert aug.get_transform_init_args()["alpha"] == 138
+
+
 def test_from_applied_transforms_reproduces_output():
     """Compose.from_applied_transforms() produces identical output to the original run."""
     image = _make_test_image()

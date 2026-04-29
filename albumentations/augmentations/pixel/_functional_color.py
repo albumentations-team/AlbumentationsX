@@ -193,22 +193,16 @@ def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[
         >>> result = posterize(image, bits=[3, 4, 5])  # RGB channels
 
     """
-    bits_array = np.uint8(bits)
+    bits_array = np.asarray(bits, dtype=np.uint8)
 
-    if not bits_array.shape or len(bits_array) == 1:
-        lut = np.arange(0, 256, dtype=np.uint8)
-        mask = ~np.uint8(2 ** (8 - bits_array) - 1)
-        lut &= mask
-
-        return sz_lut(img, lut, inplace=False)
+    if bits_array.ndim == 0 or bits_array.size == 1:
+        mask = ~np.uint8(2 ** (8 - int(bits_array.item())) - 1)
+        return img & mask
 
     result_img = np.empty_like(img)
     for i, channel_bits in enumerate(bits_array):
-        lut = np.arange(0, 256, dtype=np.uint8)
-        mask = ~np.uint8(2 ** (8 - channel_bits) - 1)
-        lut &= mask
-
-        result_img[..., i] = sz_lut(img[..., i], lut, inplace=True)
+        mask = ~np.uint8(2 ** (8 - int(channel_bits)) - 1)
+        np.bitwise_and(img[..., i], mask, out=result_img[..., i])
 
     return result_img
 

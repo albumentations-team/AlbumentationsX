@@ -2132,6 +2132,27 @@ def test_gradient_range():
         assert gradient.max() <= 1 + 1e-7
 
 
+@pytest.mark.parametrize("corner", [0, 1, 2, 3])
+@pytest.mark.parametrize("intensity", [-0.2, 0.2])
+def test_create_corner_illumination_gradient_matches_distance_transform(corner, intensity):
+    height, width = 13, 17
+    corners = [(0, 0), (0, width - 1), (height - 1, width - 1), (height - 1, 0)]
+    mask = np.full((height, width), 255, dtype=np.uint8)
+    mask[corners[corner]] = 0
+    expected = cv2.distanceTransform(
+        mask,
+        distanceType=cv2.DIST_L2,
+        maskSize=cv2.DIST_MASK_PRECISE,
+        dstType=cv2.CV_32F,
+    )
+    cv2.multiply(expected, -intensity / np.sqrt(height * height + width * width), dst=expected)
+    cv2.add(expected, 1, dst=expected)
+
+    result = fpixel.create_corner_illumination_gradient(height, width, intensity, corner)
+
+    np.testing.assert_allclose(result, expected, rtol=1e-6, atol=1e-6)
+
+
 @pytest.mark.parametrize(
     ["corner", "intensity", "expected_corner"],
     [
@@ -3556,6 +3577,51 @@ class TestSolarizeLutVectorized:
         result = fpixel.solarize(img, threshold)
         assert result.shape == img.shape
         assert result.dtype == np.uint8
+
+
+class TestPosterizeBitwise:
+    @pytest.mark.parametrize("bits", [1, 3, 4, 7])
+    def test_scalar_bits_uint8(self, bits):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (16, 16, 3), dtype=np.uint8)
+        mask = ~np.uint8(2 ** (8 - bits) - 1)
+
+        result = fpixel.posterize(img, bits)
+
+        np.testing.assert_array_equal(result, img & mask)
+
+    def test_scalar_bits_float32(self):
+        rng = np.random.default_rng(137)
+        img_uint8 = rng.integers(0, 256, (16, 16, 3), dtype=np.uint8)
+        img_float32 = to_float(img_uint8)
+        mask = ~np.uint8(2 ** (8 - 4) - 1)
+
+        result = fpixel.posterize(img_float32, 4)
+
+        np.testing.assert_allclose(result, to_float(img_uint8 & mask), atol=1 / 255)
+
+    def test_per_channel_bits_uint8(self):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (16, 16, 3), dtype=np.uint8)
+        bits = [3, 4, 5]
+        masks = np.array([~np.uint8(2 ** (8 - channel_bits) - 1) for channel_bits in bits], dtype=np.uint8)
+
+        result = fpixel.posterize(img, bits)
+
+        np.testing.assert_array_equal(result, img & masks)
+
+    def test_per_channel_bits_batch_uint8(self):
+        rng = np.random.default_rng(137)
+        images = rng.integers(0, 256, (2, 16, 16, 3), dtype=np.uint8)
+        bits = [3, 4, 5]
+        expected = np.empty_like(images)
+        for channel_idx, channel_bits in enumerate(bits):
+            mask = ~np.uint8(2 ** (8 - channel_bits) - 1)
+            np.bitwise_and(images[..., channel_idx], mask, out=expected[..., channel_idx])
+
+        result = fpixel.posterize(images, bits)
+
+        np.testing.assert_array_equal(result, expected)
 
 
 class TestToGrayDesaturationUint8FastPath:

@@ -2153,6 +2153,20 @@ def test_create_corner_illumination_gradient_matches_distance_transform(corner, 
     np.testing.assert_allclose(result, expected, rtol=1e-6, atol=1e-6)
 
 
+def test_create_corner_illumination_gradient_zero_intensity_returns_ones():
+    height, width = 13, 17
+    expected = np.ones((height, width), dtype=np.float32)
+
+    results = [fpixel.create_corner_illumination_gradient(height, width, 0.0, corner) for corner in range(4)]
+
+    for result in results:
+        assert result.shape == (height, width)
+        assert result.dtype == np.float32
+        np.testing.assert_array_equal(result, expected)
+    for result in results[1:]:
+        np.testing.assert_array_equal(result, results[0])
+
+
 @pytest.mark.parametrize(
     ["corner", "intensity", "expected_corner"],
     [

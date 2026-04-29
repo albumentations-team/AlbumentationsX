@@ -241,6 +241,28 @@ def create_corner_illumination_gradient(
     intensity: float,
     corner: Literal[0, 1, 2, 3],
 ) -> np.ndarray:
+    """Create float32 (H, W) corner illumination map for multiply_by_array
+    using Euclidean distance from a selected corner with diagonal scaling.
+
+    The map follows `1 + scale * distance`, where `distance` is the Euclidean distance from each pixel
+    to the selected image corner and `scale` combines `intensity` with a diagonal-based normalization
+    (numerically aligned with the previous `cv2.distanceTransform` implementation).
+
+    Args:
+        height (int): Output height `H`.
+        width (int): Output width `W`.
+        intensity (float): Signed strength. `0` returns an all-ones map (no effect). Positive values
+            increase multipliers with distance from the selected corner (typical vignette-style corner
+            darkening when applied via `multiply_by_array`). Negative values invert the radial scaling
+            (relative brightening toward the corner vs. the image edges), matching the prior corner
+            illumination behavior.
+        corner (Literal[0, 1, 2, 3]): Corner that anchors the distance field: `0` top-left, `1`
+            top-right, `2` bottom-right, `3` bottom-left.
+
+    Returns:
+        np.ndarray: Float32 array with shape `(height, width)`.
+
+    """
     if intensity == 0:
         return np.ones((height, width), dtype=np.float32)
 

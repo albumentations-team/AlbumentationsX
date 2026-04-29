@@ -162,7 +162,7 @@ def solarize(img: ImageType, threshold: float) -> ImageType:
 @clipped
 def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]]) -> ImageType:
     """Reduce bit depth by keeping only the highest N bits per channel. bits: 1-7 or list per
-    channel; LUT-based. uint8 I/O, clipped.
+    channel; implemented via bitwise masking on uint8. uint8 I/O, clipped.
 
     Args:
         img (ImageType): Input image. Can be single or multi-channel.

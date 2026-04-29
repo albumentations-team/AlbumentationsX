@@ -3578,6 +3578,18 @@ class TestToGrayDesaturationUint8FastPath:
         expected = (255 + 0) // 2
         assert result[0, 0] == expected
 
+    @pytest.mark.parametrize("shape", [(2, 16, 16, 3), (2, 4, 16, 16, 3)])
+    def test_uint8_batch_and_volume_match_reference(self, shape):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, shape, dtype=np.uint8)
+
+        ch_max = np.max(img, axis=-1).astype(np.uint16)
+        ch_min = np.min(img, axis=-1).astype(np.uint16)
+        expected = ((ch_max + ch_min) >> 1).astype(np.uint8)
+
+        result = fpixel.to_gray_desaturation(img)
+        np.testing.assert_array_equal(result, expected)
+
 
 class TestToGrayDesaturationNonUint8:
     """Verify non-uint8 desaturation paths remain correct."""

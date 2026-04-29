@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
+    NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
     PCA,
     ImageType,
@@ -926,6 +927,10 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
     if img.dtype == np.uint8:
         if img.shape[-1] == 1:
             return img[..., 0]
+        if img.ndim > NUM_MULTI_CHANNEL_DIMENSIONS:
+            ch_max = np.max(img, axis=-1).astype(np.uint16)
+            ch_min = np.min(img, axis=-1).astype(np.uint16)
+            return ((ch_max + ch_min) >> 1).astype(np.uint8)
         channels = cv2.split(img)
         ch_max = channels[0]
         ch_min = channels[0]

@@ -125,9 +125,11 @@ def pixel_dropout(
             fill_values[...] = drop_values
         else:
             fill_values = drop_values
+        fill_values = np.ascontiguousarray(fill_values)
         cv_mask = drop_mask[..., 0] if drop_mask.ndim == image.ndim and drop_mask.shape[-1] == 1 else drop_mask
+        cv_mask = np.ascontiguousarray(cv_mask.astype(np.uint8) * 255)
         result = image.copy()
-        cv2.copyTo(fill_values, cv_mask.astype(np.uint8) * 255, result)
+        cv2.copyTo(fill_values, cv_mask, result)
         return result
     return np.where(drop_mask, drop_values, image)
 

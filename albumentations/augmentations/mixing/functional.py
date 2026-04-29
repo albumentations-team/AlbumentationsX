@@ -160,12 +160,12 @@ def compute_instance_visibility(
         np.ndarray: (N,) array of visibility ratios in [0, 1]. 1.0 = fully visible, 0.0 = fully occluded.
 
     """
-    opaque_region = (paste_mask > 0).astype(np.uint8)
+    binary_masks = np.ascontiguousarray(existing_masks > 0, dtype=np.uint8)
+    opaque_region = np.ascontiguousarray(paste_mask > 0, dtype=np.uint8)
     overlap = np.empty_like(opaque_region)
     visibility = np.empty(existing_masks.shape[0], dtype=np.float64)
 
-    for mask_idx, mask in enumerate(existing_masks):
-        instance_mask = (mask > 0).astype(np.uint8)
+    for mask_idx, instance_mask in enumerate(binary_masks):
         original_area = cv2.countNonZero(instance_mask)
         if original_area == 0:
             visibility[mask_idx] = 1.0

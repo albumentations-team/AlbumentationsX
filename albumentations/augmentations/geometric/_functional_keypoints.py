@@ -31,6 +31,8 @@ from ._functional_shared import (
     warn,
 )
 
+CV2_DISTANCE_MAP_MAX_KEYPOINTS = 32
+
 
 @handle_empty_array("keypoints")
 @angle_2pi_range
@@ -291,13 +293,22 @@ def to_distance_maps(
     if len(keypoints) == 0:
         return np.zeros((height, width, 0), dtype=np.float32)
 
+    # Convert keypoints to numpy array
+    keypoints_array = np.array(keypoints)
+    if len(keypoints_array) > CV2_DISTANCE_MAP_MAX_KEYPOINTS:
+        yy, xx = np.mgrid[:height, :width]
+        distances = np.sqrt(
+            (xx[..., np.newaxis] - keypoints_array[:, 0]) ** 2 + (yy[..., np.newaxis] - keypoints_array[:, 1]) ** 2,
+        )
+
+        if inverted:
+            return (1 / (distances + 1)).astype(np.float32)
+        return distances.astype(np.float32)
+
     # Create coordinate grids
     yy, xx = np.mgrid[:height, :width]
     xx = xx.astype(np.float32)
     yy = yy.astype(np.float32)
-
-    # Convert keypoints to numpy array
-    keypoints_array = np.array(keypoints)
 
     # Compute distances for all keypoints with OpenCV's fused sqrt(dx^2 + dy^2).
     distances = np.empty((height, width, len(keypoints_array)), dtype=np.float32)

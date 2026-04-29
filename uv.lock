@@ -24,7 +24,7 @@ wheels = [
 
 [[package]]
 name = "albumentationsx"
-version = "2.3.0"
+version = "2.2.4"
 source = { editable = "." }
 dependencies = [
     { name = "albucore" },

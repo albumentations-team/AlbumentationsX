@@ -12,12 +12,14 @@ from ._functional_noise import (
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
+    MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     ImageType,
     ImageUInt8,
     add,
     add_array,
     add_weighted,
+    apply_multichannel_lut,
     clip,
     clipped,
     cv2,
@@ -461,13 +463,10 @@ def _auto_contrast_single_channel(
 ) -> ImageUInt8:
     mask = None if ignore is None else (img != ignore)
     hist = cv2.calcHist([img], [0], mask, [256], [0, max_value]).ravel()
-    lo, hi = get_histogram_bounds(hist, cutoff)
-    if hi <= lo:
+    lut = _create_auto_contrast_lut(hist, cutoff, ignore, method, max_value)
+    if lut is None:
         return img.copy()
 
-    lut = create_contrast_lut(hist, lo, hi, max_value, method)
-    if ignore is not None:
-        lut[ignore] = ignore
     return sz_lut(img, lut, inplace=False)
 
 
@@ -498,14 +497,10 @@ def _auto_contrast_multichannel_lut(
     for channel_idx in range(get_num_channels(img)):
         channel = img[..., channel_idx]
         hist = cv2.calcHist([channel], [0], None, [256], [0, max_value]).ravel()
-        lo, hi = get_histogram_bounds(hist, cutoff)
-        if hi <= lo:
-            luts.append(np.arange(256, dtype=np.uint8))
-            continue
-        luts.append(create_contrast_lut(hist, lo, hi, max_value, method))
+        lut = _create_auto_contrast_lut(hist, cutoff, None, method, max_value)
+        luts.append(np.arange(256, dtype=np.uint8) if lut is None else lut)
 
-    lut = np.stack(luts, axis=1).reshape(256, 1, get_num_channels(img))
-    return cv2.LUT(img, lut)
+    return apply_multichannel_lut(img, np.stack(luts), get_num_channels(img))
 
 
 def _auto_contrast_multichannel_hist(
@@ -534,17 +529,29 @@ def _auto_contrast_multichannel_hist(
         if hist is None:
             continue
 
-        lo, hi = get_histogram_bounds(hist, cutoff)
-        if hi <= lo:
+        lut = _create_auto_contrast_lut(hist, cutoff, ignore, method, max_value)
+        if lut is None:
             continue
-
-        lut = create_contrast_lut(hist, lo, hi, max_value, method)
-        if ignore is not None:
-            lut[ignore] = ignore
-
         result[..., channel_idx] = sz_lut(channel, lut)
 
     return result
+
+
+def _create_auto_contrast_lut(
+    hist: np.ndarray,
+    cutoff: float,
+    ignore: int | None,
+    method: Literal["cdf", "pil"],
+    max_value: int,
+) -> np.ndarray | None:
+    lo, hi = get_histogram_bounds(hist, cutoff)
+    if hi <= lo:
+        return None
+
+    lut = create_contrast_lut(hist, lo, hi, max_value, method)
+    if ignore is not None:
+        lut[ignore] = ignore
+    return lut
 
 
 def _should_use_auto_contrast_multichannel_lut(
@@ -553,7 +560,11 @@ def _should_use_auto_contrast_multichannel_lut(
     method: Literal["cdf", "pil"],
     num_channels: int,
 ) -> bool:
-    return method == "cdf" and ignore is None and (num_channels > 3 or img.shape[0] * img.shape[1] >= 512 * 512)
+    return (
+        method == "cdf"
+        and ignore is None
+        and (num_channels > 3 or img.shape[0] * img.shape[1] >= MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS)
+    )
 
 
 @uint8_io

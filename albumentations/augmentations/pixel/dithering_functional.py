@@ -6,6 +6,10 @@ from typing import Any, cast
 import numpy as np
 from albucore import float32_io, sz_lut
 
+from albumentations.augmentations.pixel._functional_shared import (
+    MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS,
+    MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS,
+)
 from albumentations.augmentations.pixel.functional import to_gray_average, to_gray_weighted_average
 from albumentations.core.type_definitions import ImageFloat32, ImageType, ImageUInt8
 
@@ -393,7 +397,9 @@ def _floyd_steinberg_binary_uint8(img: ImageUInt8) -> ImageUInt8:
 
 def _should_vectorize_ordered_dither(height: int, width: int, num_channels: int) -> bool:
     num_pixels = height * width
-    return (num_channels > 3 and num_pixels >= 512 * 512) or num_pixels >= 1024 * 1024
+    return (
+        num_channels > 3 and num_pixels >= MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS
+    ) or num_pixels >= MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS
 
 
 def ordered_dither_uint8(
@@ -425,7 +431,6 @@ def ordered_dither_uint8(
     if n_colors == 2:
         return ((img > tiled[:, :, np.newaxis]) * 255).astype(np.uint8)
     # Multi-level: Create LUT once outside channel loop
-    result = np.zeros_like(img)
     levels = np.linspace(0, 255, n_colors).astype(np.uint8)
 
     lut = levels[np.minimum(np.arange(256) * n_colors // 256, n_colors - 1)]
@@ -436,6 +441,7 @@ def ordered_dither_uint8(
         np.clip(dithered, 0, 255, out=dithered)
         return sz_lut(dithered.astype(np.uint8), lut, inplace=False)
 
+    result = np.zeros_like(img)
     for channel_idx in range(img.shape[2]):
         channel = img[:, :, channel_idx]
         # Add dither pattern and quantize

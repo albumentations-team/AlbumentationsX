@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+import albumentations.augmentations.pixel.dithering_functional as dither_functional
 from albumentations.augmentations.pixel.dithering_functional import (
     apply_dithering,
     error_diffusion_dither,
@@ -16,6 +17,25 @@ from albumentations.augmentations.pixel.dithering_functional import (
 
 class TestDitheringFunctional:
     """Test dithering functional implementations."""
+
+    @staticmethod
+    def _assert_uint8_binary_floyd_steinberg_matches_reference(img: np.ndarray) -> None:
+        result = apply_dithering(
+            img,
+            method="error_diffusion",
+            n_colors=2,
+            color_mode="per_channel",
+            error_diffusion_algorithm="floyd_steinberg",
+            serpentine=False,
+        )
+        expected = error_diffusion_dither(
+            img.astype(np.float32) / 255.0,
+            n_colors=2,
+            algorithm="floyd_steinberg",
+            serpentine=False,
+        )
+
+        np.testing.assert_array_equal(result, (expected * 255).astype(np.uint8))
 
     def test_quantize_value(self):
         """Test value quantization."""
@@ -87,6 +107,18 @@ class TestDitheringFunctional:
             result = ordered_dither(img, n_colors=2, matrix_size=size)
             np.testing.assert_equal(result.shape, img.shape)
 
+    def test_ordered_dither_uint8_vectorized_path_matches_channel_loop(self, monkeypatch):
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (17, 19, 5), dtype=np.uint8)
+
+        monkeypatch.setattr(dither_functional, "_should_vectorize_ordered_dither", lambda *_args: False)
+        expected = dither_functional.ordered_dither_uint8(img, n_colors=5, matrix_size=4)
+
+        monkeypatch.setattr(dither_functional, "_should_vectorize_ordered_dither", lambda *_args: True)
+        result = dither_functional.ordered_dither_uint8(img, n_colors=5, matrix_size=4)
+
+        np.testing.assert_array_equal(result, expected)
+
     def test_error_diffusion_dither(self):
         """Test error diffusion dithering."""
         # Create gradient image
@@ -120,22 +152,27 @@ class TestDitheringFunctional:
         rng = np.random.default_rng(137)
         img = rng.integers(0, 256, (16, 16, 1), dtype=np.uint8)
 
-        result = apply_dithering(
-            img,
-            method="error_diffusion",
-            n_colors=2,
-            color_mode="per_channel",
-            error_diffusion_algorithm="floyd_steinberg",
-            serpentine=False,
-        )
-        expected = error_diffusion_dither(
-            img.astype(np.float32) / 255.0,
-            n_colors=2,
-            algorithm="floyd_steinberg",
-            serpentine=False,
-        )
+        self._assert_uint8_binary_floyd_steinberg_matches_reference(img)
 
-        np.testing.assert_array_equal(result, (expected * 255).astype(np.uint8))
+    @pytest.mark.parametrize(
+        ("shape", "value"),
+        [
+            ((8, 8, 1), 0),
+            ((8, 8, 1), 255),
+            ((1, 16, 1), 0),
+            ((1, 16, 1), 255),
+            ((16, 1, 1), 0),
+            ((16, 1, 1), 255),
+        ],
+    )
+    def test_uint8_binary_floyd_steinberg_edge_cases_match_float32_reference(
+        self,
+        shape: tuple[int, int, int],
+        value: int,
+    ):
+        img = np.full(shape, value, dtype=np.uint8)
+
+        self._assert_uint8_binary_floyd_steinberg_matches_reference(img)
 
     def test_apply_dithering_grayscale_mode(self):
         """Test dithering with grayscale conversion."""

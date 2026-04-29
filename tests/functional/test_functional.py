@@ -439,11 +439,15 @@ def test_equalize_rgb():
     assert np.all(img_cv == fpixel.equalize(img, mode="cv", by_channels=False))
 
 
-def test_equalize_multichannel():
+@pytest.mark.parametrize("shape", [(64, 64, 5), (1024, 1024, 3)])
+def test_equalize_multichannel(shape):
     rng = np.random.default_rng(137)
-    img = rng.integers(0, 256, (64, 64, 5), dtype=np.uint8)
+    img = rng.integers(0, 256, shape, dtype=np.uint8)
 
-    expected = np.stack([cv2.equalizeHist(img[..., channel_idx]) for channel_idx in range(img.shape[2])], axis=-1)
+    expected = np.stack(
+        [cv2.equalizeHist(img[..., channel_idx]) for channel_idx in range(img.shape[2])],
+        axis=-1,
+    )
 
     np.testing.assert_array_equal(fpixel.equalize(img, mode="cv"), expected)
 
@@ -1271,6 +1275,13 @@ def test_auto_contrast(img, expected):
         assert not np.all(
             result == img,
         ), "The output should change for non-constant input."
+
+
+def test_auto_contrast_pil_zero_cutoff_single_channel_fast_path():
+    img = np.array([[10, 20], [30, 40]], dtype=np.uint8)[..., np.newaxis]
+    expected = np.array([[0, 85], [170, 255]], dtype=np.uint8)[..., np.newaxis]
+
+    np.testing.assert_array_equal(fpixel.auto_contrast(img, cutoff=0, ignore=None, method="pil"), expected)
 
 
 def test_auto_contrast_multichannel_cdf_matches_per_channel():

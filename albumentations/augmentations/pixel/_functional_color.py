@@ -7,12 +7,14 @@ from typing import Any, Literal
 
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
+    MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
     PCA,
     ImageType,
     add_array,
     add_constant,
+    apply_multichannel_lut,
     clip,
     clipped,
     cv2,
@@ -228,25 +230,27 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
         return cv2.equalizeHist(img)
 
     histogram = cv2.calcHist([img], [0], mask, [256], (0, 256)).ravel()
-
-    # Find the first non-zero index with a numpy operation
-    i = np.flatnonzero(histogram)[0] if np.any(histogram) else 255
-
-    total = reduce_sum(histogram)
-
-    # Safe division for equalize: handle edge case of uniform histograms
-    # If histogram is uniform (denominator == 0), return image unchanged
-    denominator = total - histogram[i]
-    if denominator == 0:
-        # Uniform histogram - no equalization needed
+    lut = _create_equalize_cv_lut(histogram)
+    if lut is None:
         return img
 
-    scale = 255.0 / denominator
-    # Optimize cumulative sum and scale to generate LUT
-    cumsum_histogram = np.cumsum(histogram)
-    lut = np.clip(((cumsum_histogram - cumsum_histogram[i]) * scale).round(), 0, 255).astype(np.uint8)
-
     return sz_lut(img, lut, inplace=True)
+
+
+def _create_equalize_cv_lut(histogram: np.ndarray) -> np.ndarray | None:
+    nonzero = np.flatnonzero(histogram)
+    if len(nonzero) == 0:
+        return np.arange(256, dtype=np.uint8)
+
+    first_nonzero = nonzero[0]
+    total = reduce_sum(histogram)
+    denominator = total - histogram[first_nonzero]
+    if denominator == 0:
+        return None
+
+    scale = 255.0 / denominator
+    cumsum_histogram = np.cumsum(histogram)
+    return np.clip(((cumsum_histogram - cumsum_histogram[first_nonzero]) * scale).round(), 0, 255).astype(np.uint8)
 
 
 def _equalize_cv_multichannel_lut(img: ImageType) -> ImageType:
@@ -257,29 +261,10 @@ def _equalize_cv_multichannel_lut(img: ImageType) -> ImageType:
     for channel_idx in range(get_num_channels(img)):
         channel = img[..., channel_idx]
         histogram = cv2.calcHist([channel], [0], None, [256], (0, 256)).ravel()
-        nonzero = np.flatnonzero(histogram)
-        if len(nonzero) == 0:
-            luts.append(np.arange(256, dtype=np.uint8))
-            continue
+        lut = _create_equalize_cv_lut(histogram)
+        luts.append(np.arange(256, dtype=np.uint8) if lut is None else lut)
 
-        first_nonzero = nonzero[0]
-        total = reduce_sum(histogram)
-        denominator = total - histogram[first_nonzero]
-        if denominator == 0:
-            luts.append(np.arange(256, dtype=np.uint8))
-            continue
-
-        scale = 255.0 / denominator
-        cumsum_histogram = np.cumsum(histogram)
-        lut = np.clip(
-            ((cumsum_histogram - cumsum_histogram[first_nonzero]) * scale).round(),
-            0,
-            255,
-        ).astype(np.uint8)
-        luts.append(lut)
-
-    lut = np.stack(luts, axis=1).reshape(256, 1, get_num_channels(img))
-    return cv2.LUT(img, lut)
+    return apply_multichannel_lut(img, np.stack(luts), get_num_channels(img))
 
 
 def _check_preconditions(
@@ -368,7 +353,7 @@ def equalize(
         return function(img, _handle_mask(mask))
 
     if mask is None and by_channels and mode == "cv" and is_rgb_image(img):
-        if img.shape[0] * img.shape[1] >= 1024 * 1024:
+        if img.shape[0] * img.shape[1] >= MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS:
             return _equalize_cv_multichannel_lut(img)
         channels = cv2.split(img)
         return cv2.merge([cv2.equalizeHist(channel) for channel in channels])
@@ -416,17 +401,6 @@ def evaluate_bez(
     return (3 * one_minus_t**2 * t * low_y + 3 * one_minus_t * t**2 * high_y + t**3) * 255
 
 
-def _apply_multichannel_lut(img: ImageType, luts: np.ndarray, num_channels: int) -> ImageType:
-    """Apply channel-specific uint8 LUTs in one OpenCV pass for images,
-    batches, and volumes while preserving the original shape and channel order.
-    """
-    lut = np.ascontiguousarray(luts.T.reshape(256, 1, num_channels))
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        return cv2.LUT(img, lut)
-
-    return cv2.LUT(img.reshape(-1, 1, num_channels), lut).reshape(img.shape)
-
-
 @uint8_io
 def move_tone_curve(
     img: ImageType,
@@ -459,7 +433,7 @@ def move_tone_curve(
             np.uint8,
             inplace=False,
         )
-        return _apply_multichannel_lut(img, luts, num_channels)
+        return apply_multichannel_lut(img, luts, num_channels)
 
     raise TypeError(
         f"low_y and high_y must both be of type float or np.ndarray. Got {type(low_y)} and {type(high_y)}",

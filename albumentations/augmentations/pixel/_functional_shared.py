@@ -58,9 +58,26 @@ from albumentations.core.type_definitions import (
     ImageUInt8,
 )
 
+MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS = 512 * 512
+MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS = 1024 * 1024
+
+
+def apply_multichannel_lut(img: ImageType, luts: np.ndarray, num_channels: int) -> ImageType:
+    """Apply channel-specific uint8 LUTs in one OpenCV pass for images, batches, and volumes while
+    preserving original shape and channel order.
+    """
+    lut = np.ascontiguousarray(luts.T.reshape(256, 1, num_channels))
+    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
+        return cv2.LUT(img, lut)
+
+    return cv2.LUT(img.reshape(-1, 1, num_channels), lut).reshape(img.shape)
+
+
 __all__ = [
     "MAX_VALUES_BY_DTYPE",
     "MONO_CHANNEL_DIMENSIONS",
+    "MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS",
+    "MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS",
     "NUM_MULTI_CHANNEL_DIMENSIONS",
     "NUM_RGB_CHANNELS",
     "PCA",
@@ -74,6 +91,7 @@ __all__ = [
     "add_constant",
     "add_vector",
     "add_weighted",
+    "apply_multichannel_lut",
     "clip",
     "clipped",
     "cv2",

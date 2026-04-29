@@ -270,6 +270,33 @@ def test_mode_filter_constant_image_float32_passes_through() -> None:
     np.testing.assert_allclose(result, image, atol=1.0 / 255)
 
 
+@pytest.mark.parametrize("kernel_size", [3, 5])
+def test_mode_filter_matches_naive_mode_with_smallest_tie(kernel_size: int) -> None:
+    image = np.array(
+        [
+            [[3, 7], [1, 7], [3, 9], [1, 9]],
+            [[2, 7], [2, 8], [3, 9], [1, 9]],
+            [[4, 6], [2, 8], [4, 8], [4, 9]],
+            [[4, 6], [5, 6], [5, 8], [4, 9]],
+        ],
+        dtype=np.uint8,
+    )
+    pad = kernel_size // 2
+    padded = np.pad(image, ((pad, pad), (pad, pad), (0, 0)), mode="reflect")
+    expected = np.empty_like(image)
+    for row in range(image.shape[0]):
+        for col in range(image.shape[1]):
+            for channel in range(image.shape[2]):
+                window = padded[row : row + kernel_size, col : col + kernel_size, channel]
+                values, counts = np.unique(window, return_counts=True)
+                expected[row, col, channel] = values[np.argmax(counts)]
+
+    transform = A.Compose([A.ModeFilter(kernel_range=(kernel_size, kernel_size), p=1.0)])
+    result = transform(image=image)["image"]
+
+    np.testing.assert_array_equal(result, expected)
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize("num_channels", [1, 3, 5])
 @pytest.mark.parametrize("kernel_size", [3, 5, 7])

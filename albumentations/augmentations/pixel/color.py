@@ -2017,6 +2017,23 @@ PLANKIAN_JITTER_CONST = {
 }
 
 
+def _generate_resized_plasma(
+    target_shape: tuple[int, int],
+    plasma_size: int,
+    roughness: float,
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    plasma_shape = (min(target_shape[0], plasma_size), min(target_shape[1], plasma_size))
+    plasma = fpixel.generate_plasma_pattern(
+        target_shape=plasma_shape,
+        roughness=roughness,
+        random_generator=random_generator,
+    )
+    if plasma_shape == target_shape:
+        return plasma
+    return albucore.resize(plasma, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_LINEAR)
+
+
 class PlanckianJitter(ImageOnlyTransform):
     """Simulate color temperature variation via Planckian locus jitter. mode and magnitude
     control the shift. Good for robustness to different light sources.
@@ -2500,9 +2517,9 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
 
         self.applied_config = {"brightness_range": brightness, "contrast_range": contrast}
 
-        # Generate plasma pattern
-        plasma = fpixel.generate_plasma_pattern(
+        plasma = _generate_resized_plasma(
             target_shape=shape[:2],
+            plasma_size=self.plasma_size,
             roughness=self.roughness,
             random_generator=self.random_generator,
         )
@@ -2637,6 +2654,7 @@ class PlasmaShadow(ImageOnlyTransform):
 
     class InitSchema(BaseTransformInitSchema):
         shadow_intensity_range: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1))]
+        plasma_size: int = Field(ge=1)
         roughness: float = Field(gt=0)
 
     def __init__(
@@ -2663,9 +2681,9 @@ class PlasmaShadow(ImageOnlyTransform):
 
         self.applied_config = {"shadow_intensity_range": intensity}
 
-        # Generate plasma pattern
-        plasma = fpixel.generate_plasma_pattern(
+        plasma = _generate_resized_plasma(
             target_shape=shape[:2],
+            plasma_size=self.plasma_size,
             roughness=self.roughness,
             random_generator=self.random_generator,
         )
@@ -2819,7 +2837,8 @@ class Illumination(ImageOnlyTransform):
 
     Note:
         - The transform preserves image range and dtype
-        - Effects are applied multiplicatively to preserve texture
+        - Linear mode adds a signed gradient, matching Kornia's RandomLinearIllumination behavior
+        - Corner and gaussian modes apply multiplicative masks to preserve texture
         - Can be combined with other transforms for complex lighting scenarios
         - Useful for training models to be robust to lighting variations
 
@@ -2939,6 +2958,12 @@ class Illumination(ImageOnlyTransform):
             params,
         )
         gradient = gradient[..., np.newaxis]
+
+        if self.mode == "linear":
+            return self._apply_to_batch_same_shape(
+                images,
+                lambda image: albucore.add_array(image, gradient),
+            )
 
         return self._apply_to_batch_same_shape(images, lambda image: albucore.multiply_by_array(image, gradient))
 

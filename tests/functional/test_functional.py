@@ -1964,72 +1964,72 @@ def test_get_histogram_bounds_numerical_stability():
         # Test horizontal gradient (0 degrees)
         (
             np.array([[100, 100], [100, 100]], dtype=np.uint8),
-            0.2,  # ±20% change
+            0.2,
             0,
-            np.array([[80, 120], [80, 120]], dtype=np.uint8),  # Updated
+            np.array([[100, 151], [100, 151]], dtype=np.uint8),
         ),
         # Test vertical gradient (90 degrees)
         (
             np.array([[100, 100], [100, 100]], dtype=np.uint8),
-            0.2,  # ±20% change
+            0.2,
             90,
-            np.array([[80, 80], [120, 120]], dtype=np.uint8),  # Updated
+            np.array([[100, 100], [151, 151]], dtype=np.uint8),
         ),
         # Test RGB image
         (
             np.array([[[100, 150, 200], [100, 150, 200]]], dtype=np.uint8),
-            0.1,  # ±10% change
+            0.1,
             0,
-            np.array([[[90, 135, 180], [110, 165, 220]]], dtype=np.uint8),  # Updated
+            np.array([[[100, 150, 200], [126, 176, 226]]], dtype=np.uint8),
         ),
         # Test float32 image
         (
             np.array([[0.5, 0.5]], dtype=np.float32),
-            0.2,  # ±20% change
+            0.2,
             0,
-            np.array([[0.4, 0.6]], dtype=np.float32),  # Updated
+            np.array([[0.5, 0.7]], dtype=np.float32),
         ),
         # Test negative intensity
         (
             np.array([[100, 100]], dtype=np.uint8),
-            -0.2,  # ±20% change (inverted)
+            -0.2,
             0,
-            np.array([[120, 80]], dtype=np.uint8),  # Updated
+            np.array([[100, 49]], dtype=np.uint8),
         ),
         # Test 45 degree angle
         (
             np.array([[100, 100], [100, 100]], dtype=np.uint8),
-            0.2,  # ±20% change
+            0.2,
             45,
-            np.array([[80, 100], [100, 120]], dtype=np.uint8),
+            np.array([[100, 126], [126, 151]], dtype=np.uint8),
         ),
         # Test minimal intensity
         (
             np.array([[100, 100]], dtype=np.uint8),
-            0.01,  # ±1% change
+            0.01,
             0,
-            np.array([[99, 101]], dtype=np.uint8),  # Correct
+            np.array([[100, 103]], dtype=np.uint8),
         ),
         # Test small intensity
         (
             np.array([[100, 100]], dtype=np.uint8),
-            0.05,  # ±5% change
+            0.05,
             0,
-            np.array([[95, 105]], dtype=np.uint8),  # Correct
+            np.array([[100, 113]], dtype=np.uint8),
         ),
         # Test medium intensity
         (
             np.array([[100, 100]], dtype=np.uint8),
-            0.15,  # ±15% change
+            0.15,
             0,
-            np.array([[85, 115]], dtype=np.uint8),  # Correct
+            np.array([[100, 138]], dtype=np.uint8),
         ),
         # Test diagonal with small intensity
         (
             np.array([[100, 100], [100, 100]], dtype=np.uint8),
-            0.05,  # ±5% change
+            0.05,
             45,
-            np.array([[95, 100], [100, 105]], dtype=np.uint8),
+            np.array([[100, 106], [106, 113]], dtype=np.uint8),
         ),
     ],
 )
@@ -2102,8 +2102,8 @@ def test_apply_linear_illumination_symmetry():
     result1 = fpixel.apply_linear_illumination(img.copy(), intensity=0.2, angle=0)
     result2 = fpixel.apply_linear_illumination(img.copy(), intensity=0.2, angle=180)
 
-    # Check if the patterns are inversions of each other
-    np.testing.assert_allclose(result1 + result2, 200, rtol=1e-5, atol=1)
+    # Opposite ramps sum to one full signed-intensity offset.
+    np.testing.assert_allclose(result1 + result2, 251, rtol=1e-5, atol=1)
 
 
 @pytest.mark.parametrize(

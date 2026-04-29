@@ -486,6 +486,8 @@ def error_diffusion_dither(
     result = img.copy()
     height, width = img.shape[:2]
     num_channels = img.shape[2]
+    is_binary = n_colors == 2
+    max_level = n_colors - 1
 
     # Process each channel independently
     for channel_idx in range(num_channels):
@@ -506,7 +508,7 @@ def error_diffusion_dither(
                 old_val = channel[row_idx, col_idx]
 
                 # Quantize
-                new_val = quantize_value(old_val, n_colors)
+                new_val = (1.0 if old_val >= 0.5 else 0.0) if is_binary else round(old_val * max_level) / max_level
                 channel[row_idx, col_idx] = new_val
 
                 # Calculate error

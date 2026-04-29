@@ -432,6 +432,17 @@ def test_equalize():
     assert np.all(aug(image=img, test=mask)["image"] == fpixel.equalize(img, mask=mask))
 
 
+@pytest.mark.parametrize("mode", ["linear", "corner", "gaussian"])
+def test_illumination_explicit_grayscale_channel(mode):
+    image = np.full((32, 32, 1), 137, dtype=np.uint8)
+    transform = A.Compose([A.Illumination(mode=mode, intensity_range=(0.1, 0.1), p=1)])
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+
+
 def test_crop_non_empty_mask():
     def _test_crop(mask, crop, aug, n=1):
         for _ in range(n):
@@ -604,7 +615,7 @@ def test_mask_dropout():
 
 
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
-def test_unsharp_mask_float_uint8_diff_less_than_two(val_uint8):
+def test_unsharp_mask_float_uint8_diff_less_than_three(val_uint8):
     x_uint8 = np.zeros((5, 5, 3)).astype(np.uint8)
     x_uint8[2, 2] = val_uint8
 
@@ -621,8 +632,8 @@ def test_unsharp_mask_float_uint8_diff_less_than_two(val_uint8):
     # Before comparison, rescale the usm_float32 to [0, 255]
     diff = np.abs(usm_uint8 - usm_float32 * 255)
 
-    # The difference between the results of float32 and uint8 will be at most 2.
-    assert np.all(diff <= 2.0), f"Max difference: {diff.max()}"
+    # The fast uint8 OpenCV path can differ slightly from float32 due to integer rounding.
+    assert np.all(diff <= 3.0), f"Max difference: {diff.max()}"
 
 
 @pytest.mark.parametrize(

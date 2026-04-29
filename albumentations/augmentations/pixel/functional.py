@@ -9,6 +9,7 @@ the core functionality for manipulating image data during the augmentation proce
 import math
 import random
 from collections.abc import Sequence
+from functools import lru_cache
 from typing import Any, Literal
 from warnings import warn
 
@@ -44,7 +45,6 @@ from albucore import (
     restore_xhwc_channel,
     std,
     sz_lut,
-    to_float,
     uint8_io,
 )
 
@@ -363,6 +363,10 @@ def equalize(
 
     if is_grayscale_image(img):
         return function(img, _handle_mask(mask))
+
+    if mask is None and by_channels and mode == "cv" and is_rgb_image(img):
+        channels = cv2.split(img)
+        return cv2.merge([cv2.equalizeHist(channel) for channel in channels])
 
     if not by_channels:
         result_img = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
@@ -2313,52 +2317,10 @@ def unsharp_mask_images(
     Returns:
         np.ndarray: Batch of unsharp masked images with same shape and dtype as input.
 
-    Note: we intentionally avoid @float32_io/@clipped decorators here.
-        Those decorators convert the entire batch at once, which is ~2x slower for uint8
-        than per-image conversion due to poor cache locality on large 4D arrays.
-
     """
-    input_dtype = images.dtype
-    need_conversion = input_dtype != np.float32
-    num_channels = images.shape[-1] if images.ndim > 3 else 0
-    ksize_tuple = (ksize, ksize)
-    threshold_f = threshold / 255.0
-
     result = np.empty_like(images)
-
-    # Single-image float32 working buffer for uint8 path
-    buf: np.ndarray = np.empty(images.shape[1:], dtype=np.float32) if need_conversion else result
-
     for i in range(images.shape[0]):
-        if need_conversion:
-            image = to_float(images[i])
-            dst = buf if num_channels != 1 else buf[:, :, 0]
-        else:
-            image = images[i]
-            dst = result[i] if num_channels != 1 else result[i, :, :, 0]
-
-        cv2.subtract(image, cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma), dst=dst)
-
-        mask = np.abs(dst)
-        cv2.threshold(mask, threshold_f, 1.0, cv2.THRESH_BINARY, dst=mask)
-
-        cv2.scaleAdd(dst, alpha, image, dst=dst)
-        np.clip(dst, 0, 1, out=dst)
-
-        cv2.GaussianBlur(mask, ksize_tuple, sigmaX=sigma, dst=mask)
-
-        # Blend: image + mask * (sharp - image), all in-place
-        cv2.subtract(dst, image, dst=dst)
-        cv2.multiply(dst, mask, dst=dst)
-        cv2.add(dst, image, dst=dst)
-
-        if need_conversion:
-            np.clip(buf, 0, 1, out=buf)
-            result[i] = from_float(buf, target_dtype=input_dtype)
-
-    if not need_conversion:
-        np.clip(result, 0, 1, out=result)
-
+        result[i] = unsharp_mask(images[i], ksize, sigma, alpha, threshold)
     return result
 
 
@@ -2369,10 +2331,8 @@ def unsharp_mask(
     alpha: float,
     threshold: int,
 ) -> np.ndarray:
-    """Apply unsharp mask to a single image. Sharpen via blur-subtract-add;
-    backward-compatible wrapper around unsharp_mask_images.
-
-    Backward-compatible wrapper around unsharp_mask_images for a single image.
+    """Apply unsharp mask to a single image using one blur, weighted residual sharpening,
+    and threshold-gated replacement for faster Pillow-style sharpening.
 
     Args:
         image (np.ndarray): Single image, shape (H, W, C) or (H, W).
@@ -2385,7 +2345,24 @@ def unsharp_mask(
         np.ndarray: Unsharp masked image with same shape and dtype as input.
 
     """
-    return unsharp_mask_images(np.expand_dims(image, axis=0), ksize, sigma, alpha, threshold)[0]
+    if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 1:
+        return unsharp_mask(image[..., 0], ksize, sigma, alpha, threshold)[..., np.newaxis]
+
+    ksize_tuple = (ksize, ksize)
+    blurred = cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma)
+
+    sharpened = cv2.addWeighted(image, 1.0 + alpha, blurred, -alpha, 0)
+    if image.dtype == np.float32:
+        np.clip(sharpened, 0, 1, out=sharpened)
+
+    if threshold <= 0:
+        return sharpened
+
+    diff = cv2.absdiff(image, blurred)
+    threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
+    mask = diff > threshold_value
+
+    return np.where(mask, sharpened, image).astype(image.dtype, copy=False)
 
 
 @preserve_channel_dim
@@ -2605,6 +2582,34 @@ PLANCKIAN_COEFFS: dict[str, dict[int, list[float]]] = {
 }
 
 
+@lru_cache(maxsize=128)
+def _get_planckian_coeffs(
+    mode: Literal["blackbody", "cied"],
+    temperature: int,
+) -> tuple[float, float]:
+    min_temp = min(PLANCKIAN_COEFFS[mode].keys())
+    max_temp = max(PLANCKIAN_COEFFS[mode].keys())
+    temperature = int(np.clip(temperature, min_temp, max_temp))
+
+    step = 500
+    t_left = max((temperature // step) * step, min_temp)
+    t_right = min((temperature // step + 1) * step, max_temp)
+
+    if t_left == t_right:
+        coeffs = PLANCKIAN_COEFFS[mode][t_left]
+    else:
+        w_right = (temperature - t_left) / (t_right - t_left)
+        w_left = 1 - w_right
+        left_coeffs = PLANCKIAN_COEFFS[mode][t_left]
+        right_coeffs = PLANCKIAN_COEFFS[mode][t_right]
+        coeffs = [
+            w_left * left_coeff + w_right * right_coeff
+            for left_coeff, right_coeff in zip(left_coeffs, right_coeffs, strict=True)
+        ]
+
+    return coeffs[0] / coeffs[1], coeffs[2] / coeffs[1]
+
+
 @clipped
 def planckian_jitter(
     img: ImageType,
@@ -2627,42 +2632,16 @@ def planckian_jitter(
 
     """
     img = img.copy()
-    # Get the min and max temperatures for the given mode
-    min_temp = min(PLANCKIAN_COEFFS[mode].keys())
-    max_temp = max(PLANCKIAN_COEFFS[mode].keys())
-
-    # Clamp the temperature to the available range
-    temperature = np.clip(temperature, min_temp, max_temp)
-
-    # Linearly interpolate between 2 closest temperatures
-    step = 500
-    t_left = max(
-        (temperature // step) * step,
-        min_temp,
-    )  # Ensure t_left doesn't go below min_temp
-    t_right = min(
-        (temperature // step + 1) * step,
-        max_temp,
-    )  # Ensure t_right doesn't exceed max_temp
-
-    # Handle the case where temperature is at or near min_temp or max_temp
-    if t_left == t_right:
-        coeffs = np.array(PLANCKIAN_COEFFS[mode][t_left])
-    else:
-        w_right = (temperature - t_left) / (t_right - t_left)
-        w_left = 1 - w_right
-        coeffs = w_left * np.array(PLANCKIAN_COEFFS[mode][t_left]) + w_right * np.array(
-            PLANCKIAN_COEFFS[mode][t_right],
-        )
+    red_multiplier, blue_multiplier = _get_planckian_coeffs(mode, temperature)
 
     img[..., 0] = multiply_by_constant(
         img[..., 0],
-        coeffs[0] / coeffs[1],
+        red_multiplier,
         inplace=True,
     )
     img[..., 2] = multiply_by_constant(
         img[..., 2],
-        coeffs[2] / coeffs[1],
+        blue_multiplier,
         inplace=True,
     )
 
@@ -3551,14 +3530,10 @@ def create_illumination_gradient(
     The returned gradient does NOT have a channel dimension.
     """
     intensity = params["intensity"]
-    abs_intensity = abs(intensity)
 
     if mode == "linear":
         gradient = create_directional_gradient(height, width, params["angle"])
-        if intensity < 0:
-            cv2.subtract(1, gradient, dst=gradient)
-        cv2.multiply(gradient, 2 * abs_intensity, dst=gradient)
-        cv2.add(gradient, 1 - abs_intensity, dst=gradient)
+        cv2.multiply(gradient, intensity, dst=gradient)
         return gradient
 
     if mode == "corner":
@@ -3604,7 +3579,7 @@ def create_illumination_gradient(
 
 @float32_io
 def apply_linear_illumination(img: ImageType, intensity: float, angle: float) -> ImageType:
-    """Apply linear illumination gradient to the image. Multiplies by gradient; intensity and angle
+    """Apply linear illumination gradient to the image. Adds a signed gradient; intensity and angle
     control direction and strength. float32 I/O.
 
     Args:
@@ -3617,22 +3592,16 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
 
     """
     height, width = img.shape[:2]
-    abs_intensity = abs(intensity)
-
-    # Create gradient and handle negative intensity in one step
     gradient = create_directional_gradient(height, width, angle)
-
-    if intensity < 0:
-        cv2.subtract(1, gradient, dst=gradient)
-
-    cv2.multiply(gradient, 2 * abs_intensity, dst=gradient)
-    cv2.add(gradient, 1 - abs_intensity, dst=gradient)
+    cv2.multiply(gradient, intensity, dst=gradient)
 
     # Add channel dimension if needed
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
         gradient = gradient[..., np.newaxis]
 
-    return multiply_by_array(img, gradient)
+    result = img + gradient
+    np.clip(result, 0, 1, out=result)
+    return result
 
 
 @clipped
@@ -3682,7 +3651,8 @@ def apply_corner_illumination(
     cv2.add(pattern, 1, dst=pattern)
 
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        pattern = cv2.merge([pattern] * img.shape[2])
+        num_channels = img.shape[2]
+        pattern = pattern[..., np.newaxis] if num_channels == 1 else cv2.merge([pattern] * num_channels)
 
     return multiply_by_array(img, pattern)
 
@@ -3736,9 +3706,29 @@ def apply_gaussian_illumination(
     cv2.add(x, 1, dst=x)
 
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        x = cv2.merge([x] * img.shape[2])
+        num_channels = img.shape[2]
+        x = x[..., np.newaxis] if num_channels == 1 else cv2.merge([x] * num_channels)
 
     return multiply_by_array(img, x)
+
+
+def _auto_contrast_single_channel(
+    img: ImageUInt8,
+    cutoff: float,
+    ignore: int | None,
+    method: Literal["cdf", "pil"],
+    max_value: int,
+) -> ImageUInt8:
+    mask = None if ignore is None else (img != ignore)
+    hist = cv2.calcHist([img], [0], mask, [256], [0, max_value]).ravel()
+    lo, hi = get_histogram_bounds(hist, cutoff)
+    if hi <= lo:
+        return img.copy()
+
+    lut = create_contrast_lut(hist, lo, hi, max_value, method)
+    if ignore is not None:
+        lut[ignore] = ignore
+    return sz_lut(img, lut, inplace=False)
 
 
 @uint8_io
@@ -3762,26 +3752,31 @@ def auto_contrast(
 
     """
     result = img.copy()
-    num_channels = img.shape[-1]
+    num_channels = get_num_channels(img)
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
 
-    # Pre-compute histograms using cv2.calcHist - much faster than np.histogram
+    if img.ndim == MONO_CHANNEL_DIMENSIONS:
+        return _auto_contrast_single_channel(img, cutoff, ignore, method, max_value)
+
     channels = cv2.split(img)
-    hists: list[np.ndarray] = []
-    for i, channel in enumerate(channels):
-        if ignore is not None and i == ignore:
+    hists: list[np.ndarray | None] = []
+    for channel_idx, channel in enumerate(channels):
+        if ignore is not None and channel_idx == ignore:
             hists.append(None)
             continue
         mask = None if ignore is None else (channel != ignore)
         hist = cv2.calcHist([channel], [0], mask, [256], [0, max_value])
         hists.append(hist.ravel())
 
-    for i in range(num_channels):
-        if ignore is not None and i == ignore:
+    for channel_idx in range(num_channels):
+        if ignore is not None and channel_idx == ignore:
             continue
 
-        hist = hists[i]
-        channel = channels[i]
+        hist = hists[channel_idx]
+        if hist is None:
+            continue
+
+        channel = channels[channel_idx]
 
         lo, hi = get_histogram_bounds(hist, cutoff)
         if hi <= lo:
@@ -3791,7 +3786,7 @@ def auto_contrast(
         if ignore is not None:
             lut[ignore] = ignore
 
-        result[..., i] = sz_lut(channel, lut)
+        result[..., channel_idx] = sz_lut(channel, lut)
 
     return result
 

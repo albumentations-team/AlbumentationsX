@@ -1097,16 +1097,18 @@ class ThinPlateSpline(BaseDistortion):
 
         weights, affine = fgeometric.compute_tps_weights(src_points, dst_points)
 
-        x, y = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
-        points = np.stack([x.ravel(), y.ravel()], axis=1)
+        points = np.empty((height * width, 2), dtype=np.float32)
+        points[:, 0] = np.tile(np.arange(width, dtype=np.float32) / width, height)
+        points[:, 1] = np.repeat(np.arange(height, dtype=np.float32) / height, width)
 
         transformed = fgeometric.tps_transform(
-            points / [width, height],
+            points,
             src_points,
             weights,
             affine,
         )
-        transformed *= [width, height]
+        transformed[:, 0] *= width
+        transformed[:, 1] *= height
 
         map_x = transformed[:, 0].reshape(height, width).astype(np.float32)
         map_y = transformed[:, 1].reshape(height, width).astype(np.float32)

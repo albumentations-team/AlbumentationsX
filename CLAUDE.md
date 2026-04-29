@@ -100,13 +100,30 @@ def __init__(self, brightness: float | tuple[float, float] = 0.2):
 
 ### Performance Requirements (Priority Order)
 
-1. **cv2.LUT for lookup operations** - fastest for pixel-wise transformations
-2. **cv2 operations over numpy** - generally faster for image processing
-3. **Vectorized numpy over loops** - eliminate Python loops where possible
-4. **In-place operations** - reduce memory allocations and unnecessary copies
-5. **Cache computations** in `get_params` or `get_params_dependent_on_data`
-6. **Remove dead code** - unused code impacts performance and maintainability
-7. Apply decorators `@uint8_io` or `@float32_io` for type consistency
+1. **cv2.LUT / sz_lut for true lookup operations** - fastest for most uint8 pixel-wise mappings
+2. **Direct bitwise operations for bit masks** - faster than LUTs for operations like posterization
+3. **cv2 operations over numpy when benchmarked faster** - generally faster for image processing, but not automatic
+4. **Vectorized numpy over loops** - eliminate Python loops where possible
+5. **In-place operations** - reduce memory allocations and unnecessary copies
+6. **Cache computations** in `get_params` or `get_params_dependent_on_data`
+7. **Remove dead code** - unused code impacts performance and maintainability
+8. Apply decorators `@uint8_io` or `@float32_io` for type consistency
+
+#### Performance Decision Rules
+
+- **Do not blindly replace NumPy with cv2**. Benchmark the exact shape/dtype/channel matrix.
+- **LUTs are not always best**. For operations that are literally bit masks, prefer direct bitwise operations
+  such as `img & np.uint8(mask)`.
+- **OpenCV bitwise is situational**. Use `cv2.bitwise_and` when both operands are dense contiguous arrays and
+  `dst=` can reuse output. Avoid allocating a full mask only to call OpenCV; scalar NumPy bitwise often wins.
+- **Per-channel broadcasting can be slow**. For multichannel bit masks, benchmark broadcasted `img & masks`
+  against a preallocated per-channel loop.
+- **Tiny transforms may be dispatch-bound**. For crop/flip/invert-style operations, profile Compose/transform
+  overhead before optimizing the pixel kernel.
+- **Avoid `cv2.distanceTransform` for single-source Euclidean distance fields**. Direct coordinate math with
+  `np.arange(..., dtype=np.float32)` and `cv2.sqrt(..., dst=...)` can be faster and simpler.
+- **Sparse multi-channel replacement can favor copy + assignment**. Benchmark threshold-dependent mask paths;
+  nested `np.where` is not automatically faster.
 
 ### Batch Optimization (`apply_to_images`)
 
@@ -258,7 +275,10 @@ Examples:
 ### Performance Anti-patterns
 
 - Not using cv2.LUT / `sz_lut` for lookup-based transformations
-- Using numpy when cv2 equivalent exists and is faster
+- Using numpy when cv2 equivalent exists and is benchmarked faster
+- Using `sz_lut` for simple bit-mask operations where direct bitwise is faster
+- Allocating full-size masks just to call `cv2.bitwise_*` when scalar NumPy bitwise would do
+- Using `cv2.distanceTransform` for a single-source Euclidean distance field
 - Using Python loops instead of vectorized numpy operations
 - Creating unnecessary array copies instead of in-place operations
 - Repeated array allocations in tight loops

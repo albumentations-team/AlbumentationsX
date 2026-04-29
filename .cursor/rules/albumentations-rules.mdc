@@ -18,6 +18,9 @@ alwaysApply: true
   `(H, W, C)`, `(N, H, W, C)`, `(D, H, W, C)`, or `(N, D, H, W, C)`
 - Grayscale in Compose is `(H, W, 1)`, not `(H, W)`; do not add 2D grayscale compatibility branches to
   transform `apply_*` methods or functional kernels used by Compose
+- For performance work, benchmark before choosing `cv2`, `sz_lut`, or NumPy. Direct bitwise operations can beat
+  LUTs for true bit masks, scalar NumPy bitwise can beat OpenCV, and tiny transforms may be dominated by dispatch
+  overhead rather than pixel kernels.
 
 ## Complete Documentation
 

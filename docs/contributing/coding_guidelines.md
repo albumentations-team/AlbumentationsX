@@ -754,6 +754,17 @@ Python `for y in range(h): for x in range(w):` loops are ~100x slower than vecto
 
 Any function `f(pixel) -> pixel` on uint8 data should build a 256-entry LUT and apply it via `sz_lut(img, lut, inplace=...)`. This is orders of magnitude faster than per-pixel numpy.
 
+Exception: if the operation is literally a bit mask, direct bitwise operations can be faster than LUTs.
+
+```python
+# Fast for posterization-style bit masks
+mask = ~np.uint8(2 ** (8 - num_bits) - 1)
+result = img & mask
+```
+
+For multichannel bit masks, benchmark broadcasted `img & masks` against a preallocated per-channel loop. Broadcasting
+small per-channel masks can create slow strided operations.
+
 ### 3. Vectorize LUT and Array Construction
 
 Replace Python list comprehensions with numpy vectorized equivalents:
@@ -801,7 +812,20 @@ result = img + alpha * (img - blurred)
 result = add_weighted(img, 1.0 + alpha, blurred, -alpha)
 ```
 
-### 7. Preallocate Outside Loops
+### 7. Choose OpenCV vs NumPy by Benchmark
+
+OpenCV is often faster for image-sized dense operations, but not automatically. Benchmark the exact dtype, shape, and
+channel matrix before switching.
+
+- Use scalar NumPy bitwise, for example `img & np.uint8(mask)`, when the operation has a scalar mask.
+- Use `cv2.bitwise_*` only when both operands are dense contiguous arrays and `dst=` can reuse output.
+- Do not allocate a full image-sized mask only to call OpenCV; that allocation often loses.
+- Avoid `cv2.distanceTransform` for a single-source Euclidean distance field. Direct coordinate math with
+  `np.arange(..., dtype=np.float32)` and `cv2.sqrt(..., dst=...)` is simpler and can be faster.
+- For sparse multi-channel replacement, copy plus masked assignment can beat nested `np.where`; benchmark the
+  density threshold.
+
+### 8. Preallocate Outside Loops
 
 Move `np.zeros` / `np.empty` calls outside loops and reset with `arr[:] = 0`:
 
@@ -818,14 +842,14 @@ for item in items:
     cv2.fillPoly(mask, ...)
 ```
 
-### 8. Skip Redundant Work in Hot Paths
+### 9. Skip Redundant Work in Hot Paths
 
 - Guard `np.ascontiguousarray` with `if not arr.flags["C_CONTIGUOUS"]`
 - Use `first_result[np.newaxis]` instead of `np.array([first_result])` for batch-of-one
 - Precompute loop-invariant expressions (e.g., `inv_sq = 1.0 / (step * step)`)
 - Use `np.where(mask)` instead of `np.argwhere(mask)` — returns tuple of 1D arrays instead of 2D index array
 
-### 9. Vectorize Random Number Generation
+### 10. Vectorize Random Number Generation
 
 Replace per-element Python RNG loops with single numpy calls:
 

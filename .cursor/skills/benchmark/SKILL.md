@@ -26,6 +26,10 @@ Always benchmark all 9 combinations:
 Skip channel counts the transform explicitly doesn't support. Always include the channel axis: grayscale inputs are
 `(H, W, 1)`, not `(H, W)`.
 
+If the optimization changes dtype conversion or a `@uint8_io` / `@float32_io` wrapped function, benchmark the hot dtype
+and add correctness tests for the other supported dtype. For example, a uint8-only speedup in a `@uint8_io` function
+still needs a float32 regression test that verifies wrapper round-tripping.
+
 ## Template: Isolated Function
 
 ```python
@@ -154,9 +158,11 @@ for batch_size in BATCH_SIZES:
 
 - Run on the **same machine**, back-to-back, same conditions
 - Use at least **100 iterations** for fast functions; fewer for slow ones (aim for >1s total)
-- Test **both uint8 and float32** if the change affects dtype handling
+- Test **both uint8 and float32** if the change affects dtype handling. If benchmarking only the hot dtype, add
+  correctness tests for the other dtype.
 - A **>5% regression** on any combination requires justification or rework
 - If adding a new transform, benchmark against the equivalent naive numpy implementation
-- For batch optimizations, compare 1-channel vs 3-channel to verify speedup holds across channel counts
+- For batch optimizations, compare 1-channel, 3-channel RGB, and 5-channel multichannel inputs to verify speedup
+  holds across channel counts
 - Keep channel-last shapes throughout: images `(H,W,C)`, image batches `(N,H,W,C)`, volumes `(D,H,W,C)`,
   volume batches `(N,D,H,W,C)`

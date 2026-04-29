@@ -99,58 +99,68 @@ class TestTelemetryClient:
 
     def test_rate_limiting(self):
         """Test that rate limiting prevents too frequent sends."""
-        client = TelemetryClient()
-        # Enable client for this test
-        client.enable()
-        client.reset()  # Clear state
+        original_telemetry = settings.get("telemetry", True)
+        settings.update(telemetry=True)
+        try:
+            client = TelemetryClient()
+            # Enable client for this test
+            client.enable()
+            client.reset()  # Clear state
 
-        # First event should go through
-        event1 = {
-            "pipeline_hash": "hash1",
-            "transforms": ["RandomCrop"],
-        }
-        client.track_compose_init(event1, telemetry=True)
-        first_time = client.last_send_time
-        assert first_time > 0
+            # First event should go through
+            event1 = {
+                "pipeline_hash": "hash1",
+                "transforms": ["RandomCrop"],
+            }
+            client.track_compose_init(event1, telemetry=True)
+            first_time = client.last_send_time
+            assert first_time > 0
 
-        # Second event within rate limit should be skipped
-        time.sleep(0.1)  # Small delay
-        event2 = {
-            "pipeline_hash": "hash2",
-            "transforms": ["HorizontalFlip"],
-        }
-        client.track_compose_init(event2, telemetry=True)
-        assert client.last_send_time == first_time  # Time shouldn't update
+            # Second event within rate limit should be skipped
+            time.sleep(0.1)  # Small delay
+            event2 = {
+                "pipeline_hash": "hash2",
+                "transforms": ["HorizontalFlip"],
+            }
+            client.track_compose_init(event2, telemetry=True)
+            assert client.last_send_time == first_time  # Time shouldn't update
 
-        # Wait for rate limit to expire
-        client.last_send_time = 0  # Force expire
-        client.track_compose_init(event2, telemetry=True)
-        assert client.last_send_time > first_time
+            # Wait for rate limit to expire
+            client.last_send_time = 0  # Force expire
+            client.track_compose_init(event2, telemetry=True)
+            assert client.last_send_time > first_time
+        finally:
+            settings.update(telemetry=original_telemetry)
 
     def test_deduplication(self):
         """Test that duplicate pipelines are not sent twice."""
-        client = TelemetryClient()
-        # Enable client for this test
-        client.enable()
-        client.reset()  # Clear state
+        original_telemetry = settings.get("telemetry", True)
+        settings.update(telemetry=True)
+        try:
+            client = TelemetryClient()
+            # Enable client for this test
+            client.enable()
+            client.reset()  # Clear state
 
-        # First pipeline should be tracked
-        event1 = {
-            "pipeline_hash": "same_hash",
-            "transforms": ["RandomCrop", "HorizontalFlip"],
-        }
-        client.track_compose_init(event1, telemetry=True)
-        assert "same_hash" in client.sent_pipelines
+            # First pipeline should be tracked
+            event1 = {
+                "pipeline_hash": "same_hash",
+                "transforms": ["RandomCrop", "HorizontalFlip"],
+            }
+            client.track_compose_init(event1, telemetry=True)
+            assert "same_hash" in client.sent_pipelines
 
-        # Same pipeline hash should be skipped
-        client.last_send_time = 0  # Bypass rate limit
-        event2 = {
-            "pipeline_hash": "same_hash",
-            "transforms": ["RandomCrop", "HorizontalFlip"],
-        }
-        old_time = client.last_send_time
-        client.track_compose_init(event2, telemetry=True)
-        assert client.last_send_time == old_time  # Should not update
+            # Same pipeline hash should be skipped
+            client.last_send_time = 0  # Bypass rate limit
+            event2 = {
+                "pipeline_hash": "same_hash",
+                "transforms": ["RandomCrop", "HorizontalFlip"],
+            }
+            old_time = client.last_send_time
+            client.track_compose_init(event2, telemetry=True)
+            assert client.last_send_time == old_time  # Should not update
+        finally:
+            settings.update(telemetry=original_telemetry)
 
     def test_track_compose_init_when_disabled_globally(self):
         """Test that tracking is skipped when telemetry is disabled globally."""

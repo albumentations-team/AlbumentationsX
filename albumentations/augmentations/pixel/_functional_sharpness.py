@@ -84,9 +84,14 @@ def unsharp_mask(
 
     diff = cv2.absdiff(image, blurred)
     threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
-    mask = diff > threshold_value
+    if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] not in {1, 3, 4}:
+        mask = diff > threshold_value
+        return np.where(mask, sharpened, image).astype(image.dtype, copy=False)
 
-    return np.where(mask, sharpened, image).astype(image.dtype, copy=False)
+    mask = cv2.compare(diff, threshold_value, cv2.CMP_GT)
+    result = image.copy()
+    cv2.copyTo(sharpened, mask, result)
+    return result
 
 
 @preserve_channel_dim
@@ -114,6 +119,16 @@ def pixel_dropout(
             drop_mask = drop_mask[None, ...]
     elif drop_mask.ndim == image.ndim - 1:
         drop_mask = drop_mask[..., None]
+    if image.ndim <= NUM_MULTI_CHANNEL_DIMENSIONS:
+        if drop_values.shape != image.shape:
+            fill_values = np.empty_like(image)
+            fill_values[...] = drop_values
+        else:
+            fill_values = drop_values
+        cv_mask = drop_mask[..., 0] if drop_mask.ndim == image.ndim and drop_mask.shape[-1] == 1 else drop_mask
+        result = image.copy()
+        cv2.copyTo(fill_values, cv_mask.astype(np.uint8) * 255, result)
+        return result
     return np.where(drop_mask, drop_values, image)
 
 

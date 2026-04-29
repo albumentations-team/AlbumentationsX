@@ -160,15 +160,22 @@ def compute_instance_visibility(
         np.ndarray: (N,) array of visibility ratios in [0, 1]. 1.0 = fully visible, 0.0 = fully occluded.
 
     """
-    opaque_region = paste_mask > 0
+    opaque_region = (paste_mask > 0).astype(np.uint8)
+    overlap = np.empty_like(opaque_region)
+    visibility = np.empty(existing_masks.shape[0], dtype=np.float64)
 
-    original_areas = np.sum(existing_masks > 0, axis=(1, 2)).astype(np.float64)
-    occluded_areas = np.sum((existing_masks > 0) & opaque_region[np.newaxis], axis=(1, 2)).astype(np.float64)
+    for mask_idx, mask in enumerate(existing_masks):
+        instance_mask = (mask > 0).astype(np.uint8)
+        original_area = cv2.countNonZero(instance_mask)
+        if original_area == 0:
+            visibility[mask_idx] = 1.0
+            continue
 
-    remaining_areas = original_areas - occluded_areas
+        cv2.bitwise_and(instance_mask, opaque_region, dst=overlap)
+        occluded_area = cv2.countNonZero(overlap)
+        visibility[mask_idx] = (original_area - occluded_area) / original_area
 
-    safe_areas = np.where(original_areas > 0, original_areas, 1.0)
-    return np.where(original_areas > 0, remaining_areas / safe_areas, 1.0)
+    return visibility
 
 
 def calculate_mosaic_center_point(

@@ -112,7 +112,7 @@ def generate_displacement_fields(
             dtype=np.float32,
         )
         # Normalize inplace
-        max_abs = np.abs(fields, out=np.empty_like(fields)).max()
+        max_abs = cv2.norm(fields.reshape(-1, fields.shape[-1]), cv2.NORM_INF)
         if max_abs > 1e-6:
             fields /= max_abs
     else:  # uniform is already normalized to [-1, 1]

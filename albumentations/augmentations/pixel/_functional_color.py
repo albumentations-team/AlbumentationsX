@@ -924,9 +924,16 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
 
     """
     if img.dtype == np.uint8:
-        ch_max = np.max(img, axis=-1).astype(np.uint16)
-        ch_min = np.min(img, axis=-1).astype(np.uint16)
-        return ((ch_max + ch_min) >> 1).astype(np.uint8)
+        if img.shape[-1] == 1:
+            return img[..., 0]
+        channels = cv2.split(img)
+        ch_max = channels[0]
+        ch_min = channels[0]
+        for channel in channels[1:]:
+            ch_max = cv2.max(ch_max, channel)
+            ch_min = cv2.min(ch_min, channel)
+        channel_sum = cv2.add(ch_max, ch_min, dtype=cv2.CV_16U)
+        return (channel_sum >> 1).astype(np.uint8)
     float_image = img.astype(np.float32)
     return (np.max(float_image, axis=-1) + np.min(float_image, axis=-1)) * 0.5
 

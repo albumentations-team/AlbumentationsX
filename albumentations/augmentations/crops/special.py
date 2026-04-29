@@ -12,6 +12,7 @@ from ._transforms_shared import (
     Field,
     ImageType,
     check_range_bounds,
+    cv2,
     fcrops,
     model_validator,
     nondecreasing,
@@ -197,7 +198,8 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         if mask.any():
             # Find non-zero regions in mask
             mask_sum = reduce_sum(mask, axis=-1) if mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else mask
-            non_zero_yx = np.argwhere(mask_sum)
+            non_zero_xy = cv2.findNonZero((mask_sum > 0).astype(np.uint8))
+            non_zero_yx = non_zero_xy[:, 0, ::-1]
             y, x = self.py_random.choice(non_zero_yx)
 
             # Calculate crop coordinates centered around chosen point

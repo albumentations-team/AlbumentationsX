@@ -30,9 +30,12 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
 
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
-    pixel_matrix = img.reshape(-1, 3).astype(np.float32)
-    pixel_matrix = np.maximum(pixel_matrix / max_value, eps)
-    return -np.log(pixel_matrix)
+    pixel_matrix = np.ascontiguousarray(img.reshape(-1, 3)).astype(np.float32, copy=True)
+    cv2.multiply(pixel_matrix, 1.0 / max_value, dst=pixel_matrix)
+    cv2.max(pixel_matrix, eps, dst=pixel_matrix)
+    cv2.log(pixel_matrix, dst=pixel_matrix)
+    cv2.multiply(pixel_matrix, -1.0, dst=pixel_matrix)
+    return pixel_matrix
 
 
 def normalize_vectors(vectors: np.ndarray) -> np.ndarray:

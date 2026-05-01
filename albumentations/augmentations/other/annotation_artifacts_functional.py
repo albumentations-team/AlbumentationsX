@@ -26,7 +26,7 @@ def _normalize_color(color: tuple[int, ...], num_channels: int) -> tuple[int, ..
     if len(color) >= num_channels:
         return color[:num_channels]
 
-    return (*color, *([0] * (num_channels - len(color))))
+    return (*color, *([color[-1]] * (num_channels - len(color))))
 
 
 def _draw_channelwise(

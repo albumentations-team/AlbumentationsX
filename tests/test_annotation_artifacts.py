@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.augmentations.other import annotation_artifacts_functional as fannotation
 from tests.helpers import TestDataFactory
 
 
@@ -64,6 +65,47 @@ def test_annotation_artifacts_tiny_images_do_not_fail(shape: tuple[int, int, int
 
     assert result.shape == image.shape
     assert result.dtype == image.dtype
+
+
+def test_annotation_artifacts_white_color_affects_extra_channels() -> None:
+    image = np.zeros((16, 16, 5), dtype=np.uint8)
+    artifacts = [
+        {
+            "type": "line",
+            "start": (1, 8),
+            "end": (14, 8),
+            "color": (255, 255, 255),
+            "thickness": 1,
+            "style": "solid",
+        },
+    ]
+
+    result = fannotation.draw_annotation_artifacts(image, artifacts)
+
+    assert np.any(result[..., 3] > 0)
+    assert np.any(result[..., 4] > 0)
+
+
+def test_annotation_artifacts_line_length_range_controls_lines() -> None:
+    image = np.full((100, 100, 3), 137, dtype=np.uint8)
+    transform = A.AnnotationArtifacts(
+        element_types=("line",),
+        element_probabilities=(1.0,),
+        count_range=(10, 10),
+        line_length_ratio_range=(0.25, 0.25),
+        p=1,
+    )
+    transform.set_random_seed(137)
+
+    artifacts = transform.get_params_dependent_on_data({"shape": image.shape}, {"image": image})["artifacts"]
+    lengths = np.array(
+        [
+            int(np.hypot(artifact["end"][0] - artifact["start"][0], artifact["end"][1] - artifact["start"][1]))
+            for artifact in artifacts
+        ],
+    )
+
+    np.testing.assert_array_equal(lengths, np.full(10, 25))
 
 
 @pytest.mark.parametrize(

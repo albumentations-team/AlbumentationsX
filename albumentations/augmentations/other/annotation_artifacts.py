@@ -326,15 +326,22 @@ class AnnotationArtifacts(ImageOnlyTransform):
     def _generate_line_artifact(self, image_height: int, image_width: int) -> dict[str, Any]:
         margin = self._sample_margin(image_height, image_width)
         is_vertical = self.py_random.choice([True, False])
+        line_length = self._sample_line_length(image_height, image_width, margin, is_vertical)
 
         if is_vertical:
+            min_row = margin
+            max_row = max(margin, image_height - 1 - margin)
+            start_row = self.py_random.randint(min_row, max_row - line_length)
             line_col = self.py_random.randint(margin, max(margin, image_width - 1 - margin))
-            start = (line_col, margin)
-            end = (line_col, max(margin, image_height - 1 - margin))
+            start = (line_col, start_row)
+            end = (line_col, start_row + line_length)
         else:
+            min_col = margin
+            max_col = max(margin, image_width - 1 - margin)
+            start_col = self.py_random.randint(min_col, max_col - line_length)
             line_row = self.py_random.randint(margin, max(margin, image_height - 1 - margin))
-            start = (margin, line_row)
-            end = (max(margin, image_width - 1 - margin), line_row)
+            start = (start_col, line_row)
+            end = (start_col + line_length, line_row)
 
         return {
             "type": "line",
@@ -344,6 +351,17 @@ class AnnotationArtifacts(ImageOnlyTransform):
             "thickness": self.py_random.randint(*self.thickness_range),
             "style": self._sample_line_style(),
         }
+
+    def _sample_line_length(
+        self,
+        image_height: int,
+        image_width: int,
+        margin: int,
+        is_vertical: bool,
+    ) -> int:
+        max_length = max(0, (image_height if is_vertical else image_width) - 1 - (2 * margin))
+        sampled_length = round(self.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width))
+        return min(max_length, max(1, sampled_length))
 
     def _generate_arrow_artifact(self, image_height: int, image_width: int) -> dict[str, Any]:
         start = self._sample_arrow_start(image_height, image_width)

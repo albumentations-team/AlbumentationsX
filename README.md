@@ -183,6 +183,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 
 - [AdditiveNoise](https://explore.albumentations.ai/transform/AdditiveNoise)
 - [AdvancedBlur](https://explore.albumentations.ai/transform/AdvancedBlur)
+- [AnnotationArtifacts](https://explore.albumentations.ai/transform/AnnotationArtifacts)
 - [AtmosphericFog](https://explore.albumentations.ai/transform/AtmosphericFog)
 - [AutoContrast](https://explore.albumentations.ai/transform/AutoContrast)
 - [Blur](https://explore.albumentations.ai/transform/Blur)

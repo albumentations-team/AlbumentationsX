@@ -15,6 +15,7 @@ from .geometric.rotate import *
 from .geometric.transforms import *
 from .mixing.domain_adaptation import *
 from .mixing.transforms import *
+from .other.annotation_artifacts import *
 from .other.lambda_transform import *
 from .other.type_transform import *
 from .pixel.channel import *

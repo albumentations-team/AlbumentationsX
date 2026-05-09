@@ -50,7 +50,9 @@ The **first paragraph** is the useful short description: an elevator pitch that 
 ## 3. Examples
 
 - **Every transform** and important public function must have an **Examples** section.
-- Follow the pattern from CLAUDE.md and add-transform skill: sample image, mask, bboxes, keypoints, Compose with params, and a call showing the result. Use `>>>` for doctest-style blocks.
+- Follow the pattern from `docs/contributing/ai_assistant_guidelines.md` and the add-transform skill: sample
+  image, mask, bboxes, keypoints, Compose with params, and a call showing the result. Use `>>>` for doctest-style
+  blocks.
 - For non-transform APIs, include a minimal runnable example that shows typical usage.
 
 ## 4. Math where possible

@@ -1,4 +1,5 @@
 ---
+name: release-notes
 description: Generate release notes for AlbumentationsX. Use when the user asks to prepare, draft, or write release notes for a new version (e.g. "prepare release notes for 2.x.y", "draft release X").
 ---
 

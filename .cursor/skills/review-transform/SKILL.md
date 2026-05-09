@@ -1,6 +1,6 @@
 ---
 name: review-transform
-description: Run the full CLAUDE.md review checklist against a transform. Use when the user asks to review, audit, or check a transform for correctness, performance, or API consistency.
+description: Run the full shared AI assistant review checklist against a transform. Use when the user asks to review, audit, or check a transform for correctness, performance, or API consistency.
 ---
 
 # Review Transform

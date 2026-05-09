@@ -1,3 +1,8 @@
+---
+name: mixing-transforms
+description: Policy for AlbumentationsX transforms that combine multiple images or objects. Use when implementing, reviewing, or using Mosaic, CopyAndPaste, OverlayElements, HistogramMatching, PixelDistributionAdaptation, or other mixing transforms.
+---
+
 # Mixing Transforms Policy
 
 Apply this skill when implementing, reviewing, or using transforms that combine data from multiple

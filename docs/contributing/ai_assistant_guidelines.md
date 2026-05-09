@@ -1,0 +1,373 @@
+# AI Assistant Review Guidelines for AlbumentationsX
+
+> **Note**: This is a quick reference guide. For comprehensive details, see:
+>
+> **Contributing & Coding:**
+>
+> - `docs/contributing/coding_guidelines.md` - Complete coding standards and best practices
+> - `docs/contributing/environment_setup.md` - Development environment setup
+> - `CONTRIBUTING.md` - Contribution process and getting started
+> - `.github/workflows/` - Automated PR review criteria and checks
+>
+> **Design Documents:**
+>
+> - `docs/design/bounding_boxes.md` - **Complete bounding box processing guide (HBB/OBB, clipping, clamping, filtering)**
+> - `docs/design/dithering.md` - Dithering transform design
+> - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
+> - `docs/design/mosaic.md` - Mosaic transform technical specification
+>
+> **Important**: Do NOT create summary documents like `.cursor/rules/<topic>.mdc` for every fix.
+> These are only created for significant architectural changes or complex features that need design documentation.
+> Regular bug fixes and improvements should be documented in commit messages and PR descriptions only.
+
+## Project Overview
+
+AlbumentationsX is a high-performance computer vision augmentation library. We prioritize performance, type safety, consistency, and clean code.
+
+## Critical Quick Checks
+
+### Type Hints
+
+- All functions must have complete type hints
+- `ImageType` = `ImageUInt8 | ImageFloat32` (from `albumentations.core.type_definitions`)
+- Prefer `ImageType` for image/mask parameters and return types, and `VolumeType` for volume/mask3d parameters
+  and return types, in transform `apply*` methods and most functional image-processing kernels; both share the
+  same underlying dtype constraints.
+- Prefer `np.ndarray` for bbox and keypoint arrays.
+- Existing modules may still type image/mask helper utilities as `np.ndarray`; follow local conventions unless the
+  change is explicitly migrating that API to `ImageType`.
+
+### Bbox Type Detection
+
+- **NEVER** auto-detect bbox type (HBB vs OBB) from the number of columns
+- Reason: Users can attach additional label fields (e.g., `[x_min, y_min, x_max, y_max, class_id, track_id]` for HBB)
+- Bbox type information comes from `BboxParams.bbox_type` in the transform's processors
+- Functional layer functions should be bbox-type agnostic when possible (simple coordinate shifts work for both)
+- **NEVER** use default values for `bbox_type` (e.g. `bbox_type: Literal["hbb", "obb"] = "hbb"`); require explicit passing so fallbacks to hbb are easy to debug
+- **OBB corner-based invariance**: Never use `cv2.minAreaRect`'s raw `(w, h, angle)` output. Always use `cv2.boxPoints(rect)` to get corners, then `polygons_to_obb` (or `_corners_to_obb_params` for single-box) to derive our canonical OBB. This ensures OpenCV-version-invariant behavior.
+- **For complete details**, see `docs/design/bounding_boxes.md`
+
+### Transform Standards
+
+- **NO** "Random" prefix in new transform names
+- Parameter ranges use `_range` suffix (e.g., `brightness_range` not `brightness_limit`)
+- Use `fill` not `fill_value`, `fill_mask` not `fill_mask_value`
+- Use `border_mode` not `mode` or `pad_mode`
+- InitSchema classes must NOT have default values (except discriminator fields for Pydantic unions)
+- Default test values should be 137, not 42
+- Prefer relative parameters (fractions of image size) over fixed pixel values
+
+### Image and Volume Shape Invariants
+
+- Within `Compose`, images and volumes are always channel-last with an explicit channel dimension.
+- Single images are `(H, W, C)`; grayscale is `(H, W, 1)`, not `(H, W)`.
+- Image batches are `(N, H, W, C)`, volumes are `(D, H, W, C)`, and volume batches are `(N, D, H, W, C)`.
+- Do not add functional-layer compatibility branches for 2D grayscale images when code is used through `Compose`.
+- Branching on `ndim` is appropriate to distinguish image, batch, volume, and volume batch paths, not to infer channels.
+
+### Validation Principles
+
+- **Compose-level checks**: All validation of transform compatibility (bbox_type, target support) happens at `Compose.__init__()` time
+- **Transform-level checks**: All validation of transform constructor parameters happens at transform `__init__()` time (via InitSchema)
+- **Exception**: Reference data validation may happen at runtime
+- **NO runtime checks** for compatibility in `apply_*` methods or functional layer - fail fast at pipeline creation
+
+### Dead Code Detection
+
+- **Flag as critical**: Unused methods, classes that are never called
+- **Flag as important**: Unused imports, variables
+- Dead code wastes maintenance effort and confuses developers
+
+### Line Length
+
+- Max line length is **120 characters** (enforced by ruff `E501`).
+- **Never** add `E501` to `pyproject.toml` ignores or use `# noqa: E501`.
+- Long lines must be split at a word/operator boundary. Docstrings can wrap — Google format allows multi-line short descriptions.
+
+### Code Complexity
+
+- Ruff enforces McCabe complexity (`C901`, limit 10) and branch count (`PLR0912`, limit 12).
+- **Never** suppress with `# noqa: C901`, `# noqa: PLR0912`, or raise the limits in `pyproject.toml`.
+- **Fix**: Extract private helper methods — a function over the limit is doing too many things.
+
+### Code Patterns
+
+```python
+# CORRECT - Always use ranges
+def __init__(self, brightness_range: tuple[float, float] = (-0.2, 0.2)):
+    self.brightness_range = brightness_range
+
+# INCORRECT - Don't use Union types for parameters
+def __init__(self, brightness: float | tuple[float, float] = 0.2):
+    self.brightness = brightness
+```
+
+### Performance Requirements (Priority Order)
+
+1. **cv2.LUT / sz_lut for true lookup operations** - fastest for most uint8 pixel-wise mappings
+2. **Direct bitwise operations for bit masks** - faster than LUTs for operations like posterization
+3. **cv2 operations over numpy when benchmarked faster** - generally faster for image processing, but not automatic
+4. **Vectorized numpy over loops** - eliminate Python loops where possible
+5. **In-place operations** - reduce memory allocations and unnecessary copies
+6. **Cache computations** in `get_params` or `get_params_dependent_on_data`
+7. **Remove dead code** - unused code impacts performance and maintainability
+8. Apply decorators `@uint8_io` or `@float32_io` for type consistency
+
+#### Performance Decision Rules
+
+- **Do not blindly replace NumPy with cv2**. Benchmark the exact shape/dtype/channel matrix.
+- **LUTs are not always best**. For operations that are literally bit masks, prefer direct bitwise operations
+  such as `img & np.uint8(mask)`.
+- **OpenCV bitwise is situational**. Use `cv2.bitwise_and` when both operands are dense contiguous arrays and
+  `dst=` can reuse output. Avoid allocating a full mask only to call OpenCV; scalar NumPy bitwise often wins.
+- **Per-channel broadcasting can be slow**. For multichannel bit masks, benchmark broadcasted `img & masks`
+  against a preallocated per-channel loop.
+- **Tiny transforms may be dispatch-bound**. For crop/flip/invert-style operations, profile Compose/transform
+  overhead before optimizing the pixel kernel.
+- **Avoid `cv2.distanceTransform` for single-source Euclidean distance fields**. Direct coordinate math with
+  `np.arange(..., dtype=np.float32)` and `cv2.sqrt(..., dst=...)` can be faster and simpler.
+- **Sparse multi-channel replacement can favor copy + assignment**. Benchmark threshold-dependent mask paths;
+  nested `np.where` is not automatically faster.
+
+### Batch Optimization (`apply_to_images`)
+
+Inside `Compose`, image batches are normalized to `(N, H, W, C)`, including grayscale as `(N, H, W, 1)`.
+When optimizing `apply_to_images` for Compose-routed transforms, do not add redundant `ndim == 4` checks.
+Direct calls to the public `apply_to_images` method may still pass raw grayscale batches as `(N, H, W)`.
+
+#### Patterns (in order of impact)
+
+1. **Pre-compute expensive setup once** — kernels, LUTs, gradient maps computed per-batch instead of per-image:
+
+```python
+def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    kernel = create_kernel(params["size"])  # computed once for the whole batch
+    return self._apply_to_batch(images, lambda img: convolve(img, kernel))
+```
+
+2. **Direct 4D indexing** for simple array operations instead of per-image loops:
+
+```python
+def apply_to_images(self, images: ImageType, channels_to_drop: list[int], **params: Any) -> ImageType:
+    result = images.copy()
+    result[:, :, :, channels_to_drop] = self.fill  # vectorized over N
+    return result
+```
+
+3. **Pre-allocated loop** — `np.empty_like` + enumerate avoids per-call allocation:
+
+```python
+def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    result = np.empty_like(images)
+    for i, image in enumerate(images):
+        result[i] = self.apply(image, **params)
+    return result
+```
+
+> **DO NOT** reshape `(N,H,W,1)` to `(H,W,N)` to call cv2 once — benchmarks show this is 2–4× **slower** because: (1) the transpose creates non-contiguous memory requiring a copy, and (2) cv2 processes channels sequentially, so N-channel is not N× faster than 1-channel.
+
+### Random Number Generation
+
+- Use `self.py_random` for simple random operations (faster)
+- Use `self.random_generator` only when numpy arrays are needed
+- **NEVER** use `np.random` or `random` module directly
+- All random operations in `get_params` or `get_params_dependent_on_data`, NOT in `apply_xxx` methods
+
+### Testing
+
+- All new transforms need comprehensive tests
+- Use `pytest.mark.parametrize` for parameterized tests
+- Test edge cases and different data types (uint8, float32)
+- Test with various number of channels
+- Use `np.testing` functions instead of plain `assert`
+- **NEVER** create temporary test files - add permanent tests to test suite
+
+#### Test Helper Utilities (tests/helpers/)
+
+Use the helper modules to simplify test code and ensure consistency:
+
+- **TestDataFactory** (`tests/helpers/data.py`): Create reproducible test data
+  ```python
+  from tests.helpers import TestDataFactory
+
+  # Create image with independent RNG (doesn't affect global state)
+  image = TestDataFactory.create_image((100, 100, 3), dtype=np.uint8, seed=137)
+  mask = TestDataFactory.create_mask((100, 100), seed=138)
+  ```
+
+- **TransformTestHelper** (`tests/helpers/transforms.py`): Transform categorization and metadata
+  ```python
+  from tests.helpers import TransformTestHelper
+
+  # Check if transform is RGB-only
+  if TransformTestHelper.is_rgb_only(A.ChannelDropout):
+      pytest.skip("RGB-only transform")
+
+  # Prepare test data with required metadata (overlay_metadata, mosaic_metadata, etc.)
+  data = TransformTestHelper.prepare_test_data(augmentation_cls, image, mask=mask)
+
+  # Safe param copying to avoid mutation
+  params = TransformTestHelper.safe_copy_params(params)
+  ```
+
+- **ComposeBuilder** (`tests/helpers/compose.py`): Fluent API for creating Compose instances
+  ```python
+  from tests.helpers import ComposeBuilder
+
+  aug = ComposeBuilder([A.HorizontalFlip(p=1)]).with_seed(137).with_strict(True).build()
+  ```
+
+#### Test Isolation and Determinism
+
+- **Use independent RNGs**: Avoid global `np.random.seed()` in tests - use `np.random.default_rng(seed)` instead
+- **Fixture independence**: Module-scoped fixtures should use `_make_rng()` helper from conftest
+- **No side effects**: Tests must not mutate shared parameters (use `safe_copy_params()` or `copy.deepcopy()`)
+- **Immutable params**: Test parameters from `get_*_transforms()` are wrapped in `FrozenParams` to prevent accidental mutation
+  ```python
+  from tests.utils import get_dual_transforms
+  import copy
+
+  # FrozenParams prevents mutation
+  for aug_cls, params in get_dual_transforms():
+      # params["new_key"] = value  # Would raise RuntimeError
+
+      # Use deepcopy to get a mutable copy
+      params = copy.deepcopy(params)
+      params["mask_interpolation"] = cv2.INTER_NEAREST  # OK now
+      aug = aug_cls(**params)
+  ```
+- **Hypothesis integration**: Use `@given` decorators for property-based testing
+- **Interpolation choice**: Use `INTER_AREA` for downscaling tests (avoids rounding issues in batch processing)
+
+### Documentation Requirements
+
+Every transform MUST have a comprehensive Examples section in docstring:
+
+```python
+"""
+Examples:
+    >>> import numpy as np
+    >>> import albumentations as A
+    >>> # Prepare sample data
+    >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+    >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
+    >>> bboxes = np.array([[10, 10, 50, 50]], dtype=np.float32)
+    >>> bbox_labels = [1]
+    >>> keypoints = np.array([[20, 30]], dtype=np.float32)
+    >>> keypoint_labels = [0]
+    >>>
+    >>> # Define transform (use tuples for ranges)
+    >>> transform = A.Compose([
+    ...     A.YourTransform(param_range=(0.1, 0.3), p=1.0)
+    ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+    ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
+    >>>
+    >>> # Apply and get all results
+    >>> transformed = transform(
+    ...     image=image,
+    ...     mask=mask,
+    ...     bboxes=bboxes,
+    ...     bbox_labels=bbox_labels,
+    ...     keypoints=keypoints,
+    ...     keypoint_labels=keypoint_labels
+    ... )
+    >>> transformed_image = transformed['image']
+    >>> transformed_mask = transformed['mask']
+"""
+```
+
+## Common Issues to Flag
+
+### Performance Anti-patterns
+
+- Not using cv2.LUT / `sz_lut` for lookup-based transformations
+- Using numpy when cv2 equivalent exists and is benchmarked faster
+- Using `sz_lut` for simple bit-mask operations where direct bitwise is faster
+- Allocating full-size masks just to call `cv2.bitwise_*` when scalar NumPy bitwise would do
+- Using `cv2.distanceTransform` for a single-source Euclidean distance field
+- Using Python loops instead of vectorized numpy operations
+- Creating unnecessary array copies instead of in-place operations
+- Repeated array allocations in tight loops
+- Dead code and unused imports
+- Missing custom `apply_to_images` when expensive setup can be shared across a batch
+- Redundant `ndim == 4` checks on images (they're always 4D in batch context)
+- Reshaping `(N,H,W,1)` to `(H,W,N)` for cv2 — transpose creates non-contiguous memory, cv2 doesn't parallelize channels, net result is slower
+- `np.clip(expr, lo, hi)` without `out=` — allocates a temporary; use `np.clip(arr, lo, hi, out=arr)` when the input can be mutated
+- `np.arange(n)` / `np.linspace(a, b, n)` without `dtype=np.float32` — defaults to float64, wastes memory and FLOPS
+- List comprehensions to build LUTs — use `np.where` / `np.minimum` / vectorized indexing instead
+- `np.argwhere(mask)` in loops — use `np.where(mask)` (returns 1D tuple, avoids 2D allocation)
+- `np.dstack([arr] * n)` — use `arr[:, :, np.newaxis]` + broadcasting for zero-copy
+- `np.array([single_result])` for batch-of-one — use `result[np.newaxis]` (view, no copy)
+- Python RNG loops (`[random.uniform(...) for _ in range(n)]`) — use `np.random.Generator.uniform(..., size=n)`
+- `np.ascontiguousarray` without checking `flags["C_CONTIGUOUS"]` first — skip if already contiguous
+
+### Memory Issues
+
+- Large temporary arrays that could be avoided
+- Not using in-place operations where safe (`np.clip`, `np.multiply`, `np.add` all support `out=`)
+- Unnecessary array copies (check for `.copy()` that can be eliminated)
+- `np.zeros` inside loops that could be preallocated once and reset with `arr[:] = 0`
+
+### Type Safety
+
+- Missing type hints
+- Incorrect numpy dtype handling
+- Unsafe type conversions
+
+### API Consistency
+
+- Parameters not following naming conventions
+- Missing InitSchema validation
+- Inconsistent with similar transforms
+- Not supporting arbitrary channels when possible
+- Fixed pixel values instead of relative parameters
+
+### Code Quality
+
+- Dead code (unused methods, classes, imports)
+- Default values in InitSchema classes
+- Default arguments in `apply_xxx` methods
+- Using wrong center calculation (`center()` vs `center_bbox()`)
+
+## Review Priority
+
+1. **Correctness**: Mathematical/logical errors, bugs
+2. **Security**: Potential security vulnerabilities
+3. **Dead Code**: Unused methods, classes (critical to remove)
+4. **Performance**: Bottlenecks and inefficiencies
+5. **Type Safety**: Proper typing and validation
+6. **API Design**: Consistency with library patterns
+7. **Documentation**: Clear examples and explanations
+8. **Code Quality**: Unused imports, style improvements
+
+## Severity Classification
+
+When reporting issues, use these severity levels:
+
+- 🔴 **Critical**: Must fix (bugs, security, dead code, memory leaks)
+- 🟡 **Important**: Should fix (performance, code quality, unused imports)
+- 🟢 **Suggestion**: Nice to have (style, minor optimizations)
+
+## Benchmarking Suggestions
+
+For performance-critical changes, suggest benchmarking:
+
+```python
+# Simple timing comparison
+import timeit
+import numpy as np
+
+img = np.random.randint(0, 256, (1000, 1000, 3), dtype=np.uint8)
+
+old_time = timeit.timeit(lambda: old_implementation(img), number=100)
+new_time = timeit.timeit(lambda: new_implementation(img), number=100)
+
+print(f"Old: {old_time:.4f}s, New: {new_time:.4f}s")
+print(f"Speedup: {old_time/new_time:.2f}x")
+```
+
+## What NOT to Suggest
+
+- Creating temporary test files (add permanent tests instead)
+- Renaming existing transforms (breaks backward compatibility)
+- Changing existing parameter names (breaks backward compatibility)

@@ -103,13 +103,25 @@ def upscale_distortion_maps(
     if (map_height, map_width) == (height, width):
         return map_x, map_y
 
-    scale_y = map_height / height
-    scale_x = map_width / width
+    y_coords, x_coords = np.meshgrid(
+        np.arange(map_height, dtype=np.float32),
+        np.arange(map_width, dtype=np.float32),
+        indexing="ij",
+    )
+    dx = map_x - x_coords
+    dy = map_y - y_coords
 
-    map_x = cv2.resize(map_x, (width, height), interpolation=interpolation)
-    map_y = cv2.resize(map_y, (width, height), interpolation=interpolation)
+    scale_y = 1 if height == 1 or map_height == 1 else (map_height - 1) / (height - 1)
+    scale_x = 1 if width == 1 or map_width == 1 else (map_width - 1) / (width - 1)
+    dx = cv2.resize(dx, (width, height), interpolation=interpolation) / scale_x
+    dy = cv2.resize(dy, (width, height), interpolation=interpolation) / scale_y
 
-    return map_x / scale_x, map_y / scale_y
+    y_coords, x_coords = np.meshgrid(
+        np.arange(height, dtype=np.float32),
+        np.arange(width, dtype=np.float32),
+        indexing="ij",
+    )
+    return x_coords + dx, y_coords + dy
 
 
 def generate_displacement_fields(

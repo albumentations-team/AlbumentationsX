@@ -257,9 +257,11 @@ class BaseDistortion(DualTransform):
         self.applied_config["map_resolution_range"] = map_resolution
 
         height, width = image_shape
+        min_height = min(2, height)
+        min_width = min(2, width)
         scaled_shape = (
-            max(1, int(height * map_resolution)),
-            max(1, int(width * map_resolution)),
+            max(min_height, int(height * map_resolution)),
+            max(min_width, int(width * map_resolution)),
         )
         return map_resolution, scaled_shape
 
@@ -794,6 +796,15 @@ class OpticalDistortion(BaseDistortion):
 
         self.applied_config["distort_range"] = k
 
+        if k == 0:
+            height, width = image_shape
+            map_y, map_x = np.meshgrid(
+                np.arange(height, dtype=np.float32),
+                np.arange(width, dtype=np.float32),
+                indexing="ij",
+            )
+            return {"map_x": map_x, "map_y": map_y}
+
         if self.mode == "camera":
             map_x, map_y = fgeometric.get_camera_matrix_distortion_maps(
                 scaled_shape,
@@ -948,6 +959,15 @@ class GridDistortion(BaseDistortion):
         # (steps are stored as 1+sample, so subtract 1 to get the raw distortion values).
         all_steps = np.array(steps_x + steps_y) - 1.0
         self.applied_config["distort_range"] = (float(all_steps.min()), float(all_steps.max()))
+
+        if np.all(all_steps == 0):
+            height, width = image_shape
+            map_y, map_x = np.meshgrid(
+                np.arange(height, dtype=np.float32),
+                np.arange(width, dtype=np.float32),
+                indexing="ij",
+            )
+            return {"map_x": map_x, "map_y": map_y}
 
         if self.normalized:
             normalized_params = fgeometric.normalize_grid_distortion_steps(

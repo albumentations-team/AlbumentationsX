@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.augmentations.geometric import functional as fgeometric
 
 DISTORTION_TRANSFORMS = [
     pytest.param(A.ElasticTransform, {"alpha": 2, "sigma": 20}, id="ElasticTransform"),
@@ -17,6 +18,13 @@ DISTORTION_TRANSFORMS = [
         id="WaterRefraction",
     ),
     pytest.param(A.PixelSpread, {"radius": 3}, id="PixelSpread"),
+]
+
+NOOP_DISTORTION_TRANSFORMS = [
+    pytest.param(A.ElasticTransform, {"alpha": 0, "sigma": 20}, id="ElasticTransform"),
+    pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (0, 0)}, id="GridDistortion"),
+    pytest.param(A.OpticalDistortion, {"distort_range": (0, 0)}, id="OpticalDistortion"),
+    pytest.param(A.WaterRefraction, {"amplitude_range": (0, 0)}, id="WaterRefraction"),
 ]
 
 
@@ -72,6 +80,40 @@ def test_low_map_resolution_returns_full_size_maps_for_tiny_images(transform_cls
     assert result["map_y"].shape == image.shape[:2]
     assert result["map_x"].dtype == np.float32
     assert result["map_y"].dtype == np.float32
+
+
+def test_upscale_distortion_maps_preserves_identity_map():
+    height, width = 13, 17
+    map_height, map_width = 4, 5
+    y_coords, x_coords = np.meshgrid(
+        np.arange(map_height, dtype=np.float32),
+        np.arange(map_width, dtype=np.float32),
+        indexing="ij",
+    )
+
+    map_x, map_y = fgeometric.upscale_distortion_maps(x_coords, y_coords, (height, width))
+
+    expected_y, expected_x = np.meshgrid(
+        np.arange(height, dtype=np.float32),
+        np.arange(width, dtype=np.float32),
+        indexing="ij",
+    )
+    np.testing.assert_array_equal(map_x, expected_x)
+    np.testing.assert_array_equal(map_y, expected_y)
+
+
+@pytest.mark.parametrize(("transform_cls", "params"), NOOP_DISTORTION_TRANSFORMS)
+def test_noop_distortion_stays_noop_with_low_map_resolution(transform_cls, params):
+    image = _make_image()
+    transform = A.Compose(
+        [transform_cls(**params, map_resolution_range=(0.25, 0.25), p=1.0)],
+        seed=137,
+        strict=True,
+    )
+
+    result = transform(image=image)
+
+    np.testing.assert_array_equal(result["image"], image)
 
 
 @pytest.mark.parametrize(("transform_cls", "params"), DISTORTION_TRANSFORMS)

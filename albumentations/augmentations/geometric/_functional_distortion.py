@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Literal
 
 from ._functional_shared import (
-    albucore_resize,
     cv2,
     math,
     np,
@@ -107,8 +106,8 @@ def upscale_distortion_maps(
     scale_y = map_height / height
     scale_x = map_width / width
 
-    map_x = albucore_resize(map_x[:, :, np.newaxis], (width, height), interpolation=interpolation)[:, :, 0]
-    map_y = albucore_resize(map_y[:, :, np.newaxis], (width, height), interpolation=interpolation)[:, :, 0]
+    map_x = cv2.resize(map_x, (width, height), interpolation=interpolation)
+    map_y = cv2.resize(map_y, (width, height), interpolation=interpolation)
 
     return map_x / scale_x, map_y / scale_y
 

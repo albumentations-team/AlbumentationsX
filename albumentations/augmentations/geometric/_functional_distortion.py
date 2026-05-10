@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from ._functional_shared import (
+    albucore_resize,
     cv2,
     math,
     np,
@@ -72,6 +73,44 @@ def generate_inverse_distortion_map(
             best_dist[ny_upd, nx_upd] = dist_upd
 
     return inv_map_x, inv_map_y
+
+
+def upscale_distortion_maps(
+    map_x: np.ndarray,
+    map_y: np.ndarray,
+    target_shape: tuple[int, int],
+    interpolation: int = cv2.INTER_LINEAR,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Upscale coarse distortion coordinate maps to full image size and rescale coordinates,
+    enabling faster map generation while preserving full-resolution remapping.
+
+    Distortion transforms can generate coordinate maps at reduced resolution, then upscale
+    them before remapping full-resolution targets to trade geometric precision for speed.
+
+    Args:
+        map_x (np.ndarray): X-coordinate map generated at the lower resolution.
+        map_y (np.ndarray): Y-coordinate map generated at the lower resolution.
+        target_shape (tuple[int, int]): Target image shape as `(height, width)`.
+        interpolation (int): OpenCV interpolation flag used for resizing the maps.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: Upscaled `map_x` and `map_y` with coordinates
+            adjusted for the target shape.
+
+    """
+    height, width = target_shape
+    map_height, map_width = map_x.shape[:2]
+
+    if (map_height, map_width) == (height, width):
+        return map_x, map_y
+
+    scale_y = map_height / height
+    scale_x = map_width / width
+
+    map_x = albucore_resize(map_x[:, :, np.newaxis], (width, height), interpolation=interpolation)[:, :, 0]
+    map_y = albucore_resize(map_y[:, :, np.newaxis], (width, height), interpolation=interpolation)[:, :, 0]
+
+    return map_x / scale_x, map_y / scale_y
 
 
 def generate_displacement_fields(
@@ -562,4 +601,5 @@ __all__ = [
     "get_camera_matrix_distortion_maps",
     "get_fisheye_distortion_maps",
     "tps_transform",
+    "upscale_distortion_maps",
 ]

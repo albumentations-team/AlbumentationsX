@@ -89,6 +89,10 @@ class BaseDistortion(DualTransform):
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
             Default: "mask"
+        map_resolution_range (tuple[float, float]): Range for sampling the distortion map resolution
+            relative to the target size. Values must be in (0, 1], where 1.0 uses full-resolution
+            maps and lower values generate smaller maps that are upscaled before remapping.
+            Default: (1.0, 1.0).
         p (float): Probability of applying the transform.
 
     Targets:
@@ -199,6 +203,11 @@ class BaseDistortion(DualTransform):
         ]
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
+        map_resolution_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
 
     def __init__(
         self,
@@ -227,6 +236,7 @@ class BaseDistortion(DualTransform):
         ] = cv2.BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
     ):
         super().__init__(p=p)
         self.interpolation = interpolation
@@ -235,6 +245,31 @@ class BaseDistortion(DualTransform):
         self.border_mode = border_mode
         self.fill = fill
         self.fill_mask = fill_mask
+        self.map_resolution_range = map_resolution_range
+
+    def _get_map_resolution_and_shape(self, image_shape: tuple[int, int]) -> tuple[float, tuple[int, int]]:
+        min_resolution, max_resolution = self.map_resolution_range
+        map_resolution = (
+            min_resolution
+            if min_resolution == max_resolution
+            else self.py_random.uniform(min_resolution, max_resolution)
+        )
+        self.applied_config["map_resolution_range"] = map_resolution
+
+        height, width = image_shape
+        scaled_shape = (
+            max(1, int(height * map_resolution)),
+            max(1, int(width * map_resolution)),
+        )
+        return map_resolution, scaled_shape
+
+    def _maybe_upscale_maps(
+        self,
+        map_x: np.ndarray,
+        map_y: np.ndarray,
+        image_shape: tuple[int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        return fgeometric.upscale_distortion_maps(map_x, map_y, image_shape, self.interpolation)
 
     def apply(
         self,
@@ -347,7 +382,9 @@ class ElasticTransform(BaseDistortion):
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
             Default: "mask"
-
+        map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
+            relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
+            them, trading precision for speed. Default: (1.0, 1.0).
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
@@ -417,6 +454,7 @@ class ElasticTransform(BaseDistortion):
         ] = cv2.BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
         p: float = 0.5,
     ):
         super().__init__(
@@ -427,6 +465,7 @@ class ElasticTransform(BaseDistortion):
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
         )
         self.alpha = alpha
         self.sigma = sigma
@@ -439,13 +478,15 @@ class ElasticTransform(BaseDistortion):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+        image_shape = params["shape"][:2]
+        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        scaled_height, scaled_width = scaled_shape
         kernel_size = (17, 17) if self.approximate else (0, 0)
 
         dx, dy = fgeometric.generate_displacement_fields(
-            (height, width),
-            self.alpha,
-            self.sigma,
+            scaled_shape,
+            self.alpha * map_resolution,
+            self.sigma * map_resolution,
             same_dxdy=self.same_dxdy,
             kernel_size=kernel_size,
             random_generator=self.random_generator,
@@ -453,12 +494,13 @@ class ElasticTransform(BaseDistortion):
         )
 
         y_coords, x_coords = np.meshgrid(
-            np.arange(height, dtype=np.float32),
-            np.arange(width, dtype=np.float32),
+            np.arange(scaled_height, dtype=np.float32),
+            np.arange(scaled_width, dtype=np.float32),
             indexing="ij",
         )
         map_x = (x_coords + dx).astype(np.float32)
         map_y = (y_coords + dy).astype(np.float32)
+        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {
             "map_x": map_x,
@@ -498,6 +540,9 @@ class PiecewiseAffine(BaseDistortion):
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
             Default: "mask"
+        map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
+            relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
+            them, trading precision for speed. Default: (1.0, 1.0).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -573,6 +618,7 @@ class PiecewiseAffine(BaseDistortion):
         ] = cv2.BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
     ):
         super().__init__(
             p=p,
@@ -582,6 +628,7 @@ class PiecewiseAffine(BaseDistortion):
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
         )
 
         self.scale_range = scale_range
@@ -595,24 +642,24 @@ class PiecewiseAffine(BaseDistortion):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
 
         nb_rows = np.clip(self.py_random.randint(*self.nb_rows_range), 2, None)
         nb_cols = np.clip(self.py_random.randint(*self.nb_cols_range), 2, None)
         scale = self.py_random.uniform(*self.scale_range)
 
-        self.applied_config = {
-            "scale_range": scale,
-            "nb_rows_range": int(nb_rows),
-            "nb_cols_range": int(nb_cols),
-        }
+        self.applied_config["scale_range"] = scale
+        self.applied_config["nb_rows_range"] = int(nb_rows)
+        self.applied_config["nb_cols_range"] = int(nb_cols)
 
         map_x, map_y = fgeometric.create_piecewise_affine_maps(
-            image_shape=image_shape,
+            image_shape=scaled_shape,
             grid=(nb_rows, nb_cols),
             scale=scale,
             absolute_scale=self.absolute_scale,
             random_generator=self.random_generator,
         )
+        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {"map_x": map_x, "map_y": map_y}
 
@@ -652,6 +699,9 @@ class OpticalDistortion(BaseDistortion):
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
             Default: "mask"
+        map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
+            relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
+            them, trading precision for speed. Default: (1.0, 1.0).
 
         p (float): Probability of applying the transform. Default: 0.5.
 
@@ -717,6 +767,7 @@ class OpticalDistortion(BaseDistortion):
         ] = cv2.BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
     ):
         super().__init__(
             interpolation=interpolation,
@@ -726,6 +777,7 @@ class OpticalDistortion(BaseDistortion):
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
         )
         self.distort_range = distort_range
         self.mode = mode
@@ -736,21 +788,23 @@ class OpticalDistortion(BaseDistortion):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
 
         k = self.py_random.uniform(*self.distort_range)
 
-        self.applied_config = {"distort_range": k}
+        self.applied_config["distort_range"] = k
 
         if self.mode == "camera":
             map_x, map_y = fgeometric.get_camera_matrix_distortion_maps(
-                image_shape,
+                scaled_shape,
                 k,
             )
         else:
             map_x, map_y = fgeometric.get_fisheye_distortion_maps(
-                image_shape,
+                scaled_shape,
                 k,
             )
+        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {"map_x": map_x, "map_y": map_y}
 
@@ -783,6 +837,9 @@ class GridDistortion(BaseDistortion):
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
             Default: "mask"
+        map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
+            relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
+            them, trading precision for speed. Default: (1.0, 1.0).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -859,6 +916,7 @@ class GridDistortion(BaseDistortion):
         ] = cv2.BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
     ):
         super().__init__(
             interpolation=interpolation,
@@ -868,6 +926,7 @@ class GridDistortion(BaseDistortion):
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
         )
         self.num_steps = num_steps
         self.distort_range = distort_range
@@ -879,6 +938,7 @@ class GridDistortion(BaseDistortion):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
 
         steps_x = (1 + self.random_generator.uniform(*self.distort_range, size=self.num_steps + 1)).tolist()
         steps_y = (1 + self.random_generator.uniform(*self.distort_range, size=self.num_steps + 1)).tolist()
@@ -890,7 +950,7 @@ class GridDistortion(BaseDistortion):
 
         if self.normalized:
             normalized_params = fgeometric.normalize_grid_distortion_steps(
-                image_shape,
+                scaled_shape,
                 self.num_steps,
                 steps_x,
                 steps_y,
@@ -901,11 +961,12 @@ class GridDistortion(BaseDistortion):
             )
 
         map_x, map_y = fgeometric.generate_grid(
-            image_shape,
+            scaled_shape,
             steps_x,
             steps_y,
             self.num_steps,
         )
+        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {"map_x": map_x, "map_y": map_y}
 
@@ -956,6 +1017,9 @@ class ThinPlateSpline(BaseDistortion):
               less accurate for large distortions. Recommended for large images or many keypoints.
             - "direct": Uses inverse mapping. More accurate for large distortions but slower.
             Default: "mask"
+        map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
+            relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
+            them, trading precision for speed. Default: (1.0, 1.0).
 
         p (float): Probability of applying the transform. Default: 0.5
 
@@ -1064,6 +1128,7 @@ class ThinPlateSpline(BaseDistortion):
         ] = cv2.BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
     ):
         super().__init__(
             interpolation=interpolation,
@@ -1073,6 +1138,7 @@ class ThinPlateSpline(BaseDistortion):
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
         )
         self.scale_range = scale_range
         self.num_control_points = num_control_points
@@ -1083,12 +1149,15 @@ class ThinPlateSpline(BaseDistortion):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         height, width = params["shape"][:2]
+        image_shape = (height, width)
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        scaled_height, scaled_width = scaled_shape
 
         src_points = fgeometric.generate_control_points(self.num_control_points)
 
         scale = self.py_random.uniform(*self.scale_range) / 10
 
-        self.applied_config = {"scale_range": scale * 10}
+        self.applied_config["scale_range"] = scale * 10
         dst_points = src_points + self.random_generator.normal(
             0,
             scale,
@@ -1097,9 +1166,9 @@ class ThinPlateSpline(BaseDistortion):
 
         weights, affine = fgeometric.compute_tps_weights(src_points, dst_points)
 
-        points = np.empty((height * width, 2), dtype=np.float32)
-        points[:, 0] = np.tile(np.arange(width, dtype=np.float32) / width, height)
-        points[:, 1] = np.repeat(np.arange(height, dtype=np.float32) / height, width)
+        points = np.empty((scaled_height * scaled_width, 2), dtype=np.float32)
+        points[:, 0] = np.tile(np.arange(scaled_width, dtype=np.float32) / scaled_width, scaled_height)
+        points[:, 1] = np.repeat(np.arange(scaled_height, dtype=np.float32) / scaled_height, scaled_width)
 
         transformed = fgeometric.tps_transform(
             points,
@@ -1107,11 +1176,12 @@ class ThinPlateSpline(BaseDistortion):
             weights,
             affine,
         )
-        transformed[:, 0] *= width
-        transformed[:, 1] *= height
+        transformed[:, 0] *= scaled_width
+        transformed[:, 1] *= scaled_height
 
-        map_x = transformed[:, 0].reshape(height, width).astype(np.float32)
-        map_y = transformed[:, 1].reshape(height, width).astype(np.float32)
+        map_x = transformed[:, 0].reshape(scaled_height, scaled_width).astype(np.float32)
+        map_y = transformed[:, 1].reshape(scaled_height, scaled_width).astype(np.float32)
+        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {
             "map_x": map_x,
@@ -1138,6 +1208,9 @@ class WaterRefraction(BaseDistortion):
         border_mode (int): OpenCV border mode. Default: cv2.BORDER_REFLECT_101.
         fill (float | tuple): Fill value for constant border. Default: 0.
         fill_mask (float | tuple): Fill value for mask borders. Default: 0.
+        map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
+            relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
+            them, trading precision for speed. Default: (1.0, 1.0).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -1211,6 +1284,7 @@ class WaterRefraction(BaseDistortion):
         ] = cv2.BORDER_REFLECT_101,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
         p: float = 0.5,
     ):
         super().__init__(
@@ -1220,6 +1294,7 @@ class WaterRefraction(BaseDistortion):
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
             p=p,
         )
         self.amplitude_range = amplitude_range
@@ -1232,29 +1307,29 @@ class WaterRefraction(BaseDistortion):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        height, width = image_shape
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        scaled_height, scaled_width = scaled_shape
 
-        img_size = min(height, width)
+        img_size = min(scaled_height, scaled_width)
         amplitude_frac = self.py_random.uniform(*self.amplitude_range)
         wavelength_frac = self.py_random.uniform(*self.wavelength_range)
         num_waves = self.py_random.randint(*self.num_waves_range)
 
-        self.applied_config = {
-            "amplitude_range": amplitude_frac,
-            "wavelength_range": wavelength_frac,
-            "num_waves_range": num_waves,
-        }
+        self.applied_config["amplitude_range"] = amplitude_frac
+        self.applied_config["wavelength_range"] = wavelength_frac
+        self.applied_config["num_waves_range"] = num_waves
 
         amplitude = amplitude_frac * img_size
         wavelength = wavelength_frac * img_size
 
         map_x, map_y = fpixel.generate_water_displacement_maps(
-            image_shape,
+            scaled_shape,
             amplitude,
             wavelength,
             num_waves,
             self.random_generator,
         )
+        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {
             "map_x": map_x,
@@ -1294,6 +1369,9 @@ class PixelSpread(BaseDistortion):
             `cv2.BORDER_CONSTANT`. Default: 0.
         fill_mask (float | tuple[float, ...]): Fill value for masks under constant border.
             Default: 0.
+        map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
+            relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
+            them, trading precision for speed. Default: (1.0, 1.0).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -1366,6 +1444,7 @@ class PixelSpread(BaseDistortion):
         ] = cv2.BORDER_REFLECT_101,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
         p: float = 0.5,
     ):
         super().__init__(
@@ -1375,6 +1454,7 @@ class PixelSpread(BaseDistortion):
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
+            map_resolution_range=map_resolution_range,
             p=p,
         )
         self.radius = radius
@@ -1384,20 +1464,24 @@ class PixelSpread(BaseDistortion):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+        image_shape = params["shape"][:2]
+        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        scaled_height, scaled_width = scaled_shape
 
         row_coords, col_coords = np.meshgrid(
-            np.arange(height, dtype=np.float32),
-            np.arange(width, dtype=np.float32),
+            np.arange(scaled_height, dtype=np.float32),
+            np.arange(scaled_width, dtype=np.float32),
             indexing="ij",
         )
+        scaled_radius = round(self.radius * map_resolution)
         offsets = self.random_generator.integers(
-            -self.radius,
-            self.radius + 1,
-            size=(height, width, 2),
+            -scaled_radius,
+            scaled_radius + 1,
+            size=(scaled_height, scaled_width, 2),
             dtype=np.int32,
         )
         map_y = (row_coords + offsets[..., 0]).astype(np.float32)
         map_x = (col_coords + offsets[..., 1]).astype(np.float32)
+        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {"map_x": map_x, "map_y": map_y}

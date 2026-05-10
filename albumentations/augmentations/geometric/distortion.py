@@ -939,9 +939,10 @@ class GridDistortion(BaseDistortion):
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        num_steps = min(self.num_steps, *scaled_shape)
 
-        steps_x = (1 + self.random_generator.uniform(*self.distort_range, size=self.num_steps + 1)).tolist()
-        steps_y = (1 + self.random_generator.uniform(*self.distort_range, size=self.num_steps + 1)).tolist()
+        steps_x = (1 + self.random_generator.uniform(*self.distort_range, size=num_steps + 1)).tolist()
+        steps_y = (1 + self.random_generator.uniform(*self.distort_range, size=num_steps + 1)).tolist()
 
         # distort_range is per-cell uniform bounds; record realized (min, max) of sampled distortions
         # (steps are stored as 1+sample, so subtract 1 to get the raw distortion values).
@@ -951,7 +952,7 @@ class GridDistortion(BaseDistortion):
         if self.normalized:
             normalized_params = fgeometric.normalize_grid_distortion_steps(
                 scaled_shape,
-                self.num_steps,
+                num_steps,
                 steps_x,
                 steps_y,
             )
@@ -964,7 +965,7 @@ class GridDistortion(BaseDistortion):
             scaled_shape,
             steps_x,
             steps_y,
-            self.num_steps,
+            num_steps,
         )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
@@ -1473,7 +1474,7 @@ class PixelSpread(BaseDistortion):
             np.arange(scaled_width, dtype=np.float32),
             indexing="ij",
         )
-        scaled_radius = round(self.radius * map_resolution)
+        scaled_radius = max(1, round(self.radius * map_resolution))
         offsets = self.random_generator.integers(
             -scaled_radius,
             scaled_radius + 1,

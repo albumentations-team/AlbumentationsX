@@ -60,6 +60,21 @@ def test_low_map_resolution_returns_full_size_maps(transform_cls, params):
 
 
 @pytest.mark.parametrize(("transform_cls", "params"), DISTORTION_TRANSFORMS)
+@pytest.mark.parametrize("shape", [(2, 3, 3), (1, 1, 3)])
+def test_low_map_resolution_returns_full_size_maps_for_tiny_images(transform_cls, params, shape):
+    image = _make_image(shape)
+    transform = transform_cls(**params, map_resolution_range=(0.25, 0.25), p=1.0)
+    transform.set_random_seed(137)
+
+    result = transform.get_params_dependent_on_data({"shape": image.shape}, {"image": image})
+
+    assert result["map_x"].shape == image.shape[:2]
+    assert result["map_y"].shape == image.shape[:2]
+    assert result["map_x"].dtype == np.float32
+    assert result["map_y"].dtype == np.float32
+
+
+@pytest.mark.parametrize(("transform_cls", "params"), DISTORTION_TRANSFORMS)
 def test_map_resolution_range_records_sampled_scalar(transform_cls, params):
     image = _make_image()
     transform = transform_cls(**params, map_resolution_range=(0.25, 0.75), p=1.0)

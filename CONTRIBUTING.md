@@ -47,7 +47,7 @@ We've organized our contribution guidelines into focused documents:
 
 ## Contributor License Agreement
 
-Before we can accept your contribution, you must sign our [Contributor License Agreement (CLA)](CLA.md). This is a one-time process that ensures we can use your contributions in both versions of AlbumentationsX:
+Before we can accept your contribution, you must sign our [Contributor License Agreement (CLA)](https://github.com/albumentations-team/AlbumentationsX/blob/main/CLA.md). This is a one-time process that ensures we can use your contributions in both versions of AlbumentationsX:
 
 - **Open-source version** (AGPL-3.0 License)
 - **Commercial version** (for enterprise customers)

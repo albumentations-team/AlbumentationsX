@@ -1088,6 +1088,11 @@ class DualTransform(BasicTransform):
         """
         result = keypoints.copy()
         label_col_start = 5  # After [x, y, z, angle, scale]
+        instance_id_col_idx = None
+        if "_kp_instance_id" in label_fields:
+            candidate_col_idx = label_col_start + label_fields.index("_kp_instance_id")
+            if candidate_col_idx < keypoints.shape[1]:
+                instance_id_col_idx = candidate_col_idx
 
         # For each label field with mapping, perform row swapping
         for i, label_field in enumerate(label_fields):
@@ -1096,7 +1101,7 @@ class DualTransform(BasicTransform):
                 if col_idx < keypoints.shape[1]:
                     mapping = field_mappings[label_field]
                     if mapping:  # Only process if mapping is not empty
-                        result = self._apply_single_field_mapping(result, col_idx, mapping)
+                        result = self._apply_single_field_mapping(result, col_idx, mapping, instance_id_col_idx)
                         # Only apply mapping for the first label field that has mappings
                         break
 
@@ -1107,6 +1112,7 @@ class DualTransform(BasicTransform):
         keypoints: np.ndarray,
         col_idx: int,
         mapping: dict[int, int],
+        instance_id_col_idx: int | None = None,
     ) -> np.ndarray:
         """Apply label mapping to a single label column. Swaps rows for paired labels or updates
         unpaired; used internally by _swap_keypoint_rows_by_labels.
@@ -1115,11 +1121,23 @@ class DualTransform(BasicTransform):
             keypoints (np.ndarray): Keypoints array
             col_idx (int): Column index of the label field
             mapping (dict[int, int]): Label swap mapping
+            instance_id_col_idx (int | None): Optional column that keeps bound instance ids. When provided,
+                row swaps are constrained to each instance-id group.
 
         Returns:
             np.ndarray: Keypoints array with rows swapped
 
         """
+        if instance_id_col_idx is not None:
+            for instance_id in np.unique(keypoints[:, instance_id_col_idx]):
+                instance_indices = np.where(keypoints[:, instance_id_col_idx] == instance_id)[0]
+                keypoints[instance_indices] = self._apply_single_field_mapping(
+                    keypoints[instance_indices].copy(),
+                    col_idx,
+                    mapping,
+                )
+            return keypoints
+
         col_data = keypoints[:, col_idx].astype(int)
         processed_labels = set()
 

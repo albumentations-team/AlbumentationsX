@@ -354,6 +354,49 @@ class TestKeypoints:
         result = transform(image=image, instances=instances)
         assert result["instances"][0]["keypoint_labels"]["name"] == ["right_eye", "left_eye"]
 
+    def test_label_mapping_does_not_swap_keypoints_between_instances(self) -> None:
+        transform = A.Compose(
+            [A.HorizontalFlip(p=1)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            keypoint_params=A.KeypointParams(
+                coord_format="xy",
+                label_fields=["name"],
+                label_mapping={
+                    "HorizontalFlip": {
+                        "name": {
+                            "left_eye": "right_eye",
+                            "right_eye": "left_eye",
+                        },
+                    },
+                },
+            ),
+            instance_binding=["masks", "bboxes", "keypoints"],
+        )
+
+        image = _make_image()
+        instances = [
+            {
+                "mask": _make_mask(region=(10, 30, 10, 30)),
+                "bbox": np.array([10, 10, 30, 30], dtype=np.float32),
+                "keypoints": np.array([[20.0, 20.0]], dtype=np.float32),
+                "keypoint_labels": {"name": ["left_eye"]},
+            },
+            {
+                "mask": _make_mask(region=(60, 80, 60, 80)),
+                "bbox": np.array([60, 60, 80, 80], dtype=np.float32),
+                "keypoints": np.array([[70.0, 70.0]], dtype=np.float32),
+                "keypoint_labels": {"name": ["right_eye"]},
+            },
+        ]
+
+        result = transform(image=image, instances=instances)
+
+        assert len(result["instances"]) == 2
+        assert result["instances"][0]["keypoint_labels"]["name"] == ["right_eye"]
+        assert result["instances"][1]["keypoint_labels"]["name"] == ["left_eye"]
+        np.testing.assert_allclose(result["instances"][0]["keypoints"][:, :2], np.array([[79.0, 20.0]]))
+        np.testing.assert_allclose(result["instances"][1]["keypoints"][:, :2], np.array([[29.0, 70.0]]))
+
 
 class TestOverlappingLabelNames:
     def test_same_label_name_bbox_and_keypoint(self) -> None:

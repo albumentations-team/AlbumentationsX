@@ -1146,10 +1146,31 @@ class Compose(BaseCompose, HubMixin):
         user_fields = list(kp_params.label_fields or [])
         internal_fields = [f"_ibl_kp_{f}" for f in user_fields]
         self._kp_label_map = dict(zip(internal_fields, user_fields, strict=True))
+        user_to_internal = {user_name: internal_name for internal_name, user_name in self._kp_label_map.items()}
+        kp_params.label_mapping = self._remap_label_mapping_fields(kp_params.label_mapping, user_to_internal)
         internal_fields.append(_KP_INSTANCE_ID)
         kp_params.label_fields = internal_fields
         kp_params.remove_invisible = False
         kp_params.check_each_transform = False
+
+    @staticmethod
+    def _remap_label_mapping_fields(
+        label_mapping: dict[str, dict[str, dict[Any, Any]]] | None,
+        field_map: dict[str, str],
+    ) -> dict[str, dict[str, dict[Any, Any]]]:
+        """Return a label_mapping copy with label-field keys renamed through field_map while preserving
+        transform-specific mappings for each configured transform.
+
+        Instance binding temporarily rewrites user keypoint label fields such as "name" to
+        internal fields such as "_ibl_kp_name". The public label_mapping should still use the
+        user field names, so Compose translates them when entering and leaving the bound path.
+        """
+        if not label_mapping:
+            return {}
+        return {
+            transform_name: {field_map.get(field_name, field_name): mapping for field_name, mapping in fields.items()}
+            for transform_name, fields in label_mapping.items()
+        }
 
     def _set_processors_for_transforms(self, transforms: TransformsSeqType) -> None:
         for transform in transforms:
@@ -2078,6 +2099,11 @@ class Compose(BaseCompose, HubMixin):
         if label_fields:
             user_fields = [label_map.get(f, f) for f in label_fields if f not in _INSTANCE_ID_FERRY_KEYS]
             params_dict = {**params_dict, "label_fields": user_fields}
+        if params_dict.get("label_mapping"):
+            params_dict = {
+                **params_dict,
+                "label_mapping": self._remap_label_mapping_fields(params_dict["label_mapping"], label_map),
+            }
         return params_dict
 
     def to_dict_private(self) -> dict[str, Any]:
@@ -2286,7 +2312,7 @@ class Compose(BaseCompose, HubMixin):
                     remove_invisible=kp.remove_invisible,
                     angle_in_degrees=kp.angle_in_degrees,
                     check_each_transform=kp.check_each_transform,
-                    label_mapping=kp.label_mapping or None,
+                    label_mapping=self._remap_label_mapping_fields(kp.label_mapping, self._kp_label_map) or None,
                 )
             else:
                 kp_params = kp

@@ -25,6 +25,8 @@ from albumentations.augmentations.pixel._functional_color import grayscale_to_mu
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import ImageType
 
+FillValueLiteral = Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
+
 __all__ = [
     "calculate_grid_dimensions",
     "channel_dropout",
@@ -180,11 +182,14 @@ def grayscale_holes(img: ImageType, holes: np.ndarray) -> ImageType:
     result = img.copy()
     num_channels = get_num_channels(result)
 
-    if holes.size == 0 or num_channels == 1:
+    if holes.size == 0:
         return result
 
-    if num_channels != 3:
-        raise TypeError("Grayscale hole dropout expects 1- or 3-channel images.")
+    if num_channels not in {1, 3}:
+        raise TypeError("Grayscale hole dropout expects 1 or 3 channel images.")
+
+    if num_channels == 1:
+        return result
 
     for x_min, y_min, x_max, y_max in holes:
         patch = result[y_min:y_max, x_min:x_max]
@@ -212,11 +217,11 @@ def fill_volume_holes_with_grayscale(volume: ImageType, holes: np.ndarray) -> Im
         return volume
 
     num_channels = volume.shape[3]
+    if num_channels not in {1, 3}:
+        raise TypeError("Grayscale hole dropout expects 1 or 3 channel images.")
+
     if num_channels == 1:
         return volume
-
-    if num_channels != 3:
-        raise TypeError("Grayscale hole dropout expects 1- or 3-channel images.")
 
     result = volume.copy()
     for x_min, y_min, x_max, y_max in holes:
@@ -248,11 +253,14 @@ def fill_volumes_holes_with_grayscale(images: ImageType, holes: np.ndarray) -> I
 
     """
     num_channels = get_num_channels(images)
-    if holes.size == 0 or num_channels == 1:
+    if holes.size == 0:
         return images
 
-    if num_channels != 3:
-        raise TypeError("Grayscale hole dropout expects 1- or 3-channel images.")
+    if num_channels not in {1, 3}:
+        raise TypeError("Grayscale hole dropout expects 1 or 3 channel images.")
+
+    if num_channels == 1:
+        return images
 
     if images.ndim == 5:
         flattened = images.reshape(-1, *images.shape[2:])
@@ -385,7 +393,7 @@ def fill_volumes_holes_with_random(
 def cutout(
     img: ImageType,
     holes: np.ndarray,
-    fill: float | tuple[float, ...] | str,
+    fill: float | tuple[float, ...] | FillValueLiteral,
     random_generator: np.random.Generator,
 ) -> ImageType:
     """Apply cutout: cut rectangular holes and fill. holes: [x1,y1,x2,y2]; fill: constant, 'random',
@@ -394,7 +402,7 @@ def cutout(
     Args:
         img (ImageType): The image to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (float | tuple[float, ...] | str):
+        fill (float | tuple[float, ...] | FillValueLiteral):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
@@ -443,7 +451,7 @@ def cutout(
 def cutout_on_volume(
     volume: ImageType,
     holes: np.ndarray,
-    fill: float | tuple[float, ...] | str,
+    fill: float | tuple[float, ...] | FillValueLiteral,
     random_generator: np.random.Generator,
 ) -> ImageType:
     """Apply cutout to volume (D,H,W,C): cut holes and fill. fill: constant, 'random', 'random_uniform',
@@ -452,7 +460,7 @@ def cutout_on_volume(
     Args:
         volume (ImageType): The volume to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (float | tuple[float, ...] | str):
+        fill (float | tuple[float, ...] | FillValueLiteral):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
@@ -508,7 +516,7 @@ def cutout_on_volume(
 def cutout_on_volumes(
     volumes: np.ndarray,
     holes: np.ndarray,
-    fill: float | tuple[float, ...] | str,
+    fill: float | tuple[float, ...] | FillValueLiteral,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
     """Apply cutout to batch of volumes (N,D,H,W,C): cut holes and fill. fill: constant, 'random',
@@ -517,7 +525,7 @@ def cutout_on_volumes(
     Args:
         volumes (np.ndarray): The image to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (float | tuple[float, ...] | str):
+        fill (float | tuple[float, ...] | FillValueLiteral):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels

@@ -209,11 +209,11 @@ def fill_volume_holes_with_grayscale(volume: ImageType, holes: np.ndarray) -> Im
 
     """
     if volume.ndim == 3 or holes.size == 0:
-        return volume.copy()
+        return volume
 
     num_channels = volume.shape[3]
     if num_channels == 1:
-        return volume.copy()
+        return volume
 
     if num_channels != 3:
         raise TypeError("Grayscale hole dropout expects 1- or 3-channel images.")
@@ -249,7 +249,7 @@ def fill_volumes_holes_with_grayscale(images: ImageType, holes: np.ndarray) -> I
     """
     num_channels = get_num_channels(images)
     if holes.size == 0 or num_channels == 1:
-        return images.copy()
+        return images
 
     if num_channels != 3:
         raise TypeError("Grayscale hole dropout expects 1- or 3-channel images.")

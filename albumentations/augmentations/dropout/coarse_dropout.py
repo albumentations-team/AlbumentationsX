@@ -231,7 +231,7 @@ class Erasing(BaseDropout):
     Note:
         - If sampled parameters are invalid for the current image geometry, no erasing is performed.
         - The actual erased area and aspect ratio are randomly sampled within the specified ranges for each
-            application.
+          application.
         - When using inpainting methods, only grayscale or RGB images are supported.
         - When using `fill="grayscale"`, `fill_mask` must be None.
 
@@ -328,7 +328,10 @@ class Erasing(BaseDropout):
         max_valid_area = min(max_area, max_area_h, max_area_w)
 
         if max_valid_area < min_area:
-            return {"holes": np.empty((0, 4), dtype=np.int32)}
+            return {
+                "holes": np.empty((0, 4), dtype=np.int32),
+                "seed": self.random_generator.integers(0, 2**32 - 1),
+            }
 
         erase_area = self.py_random.uniform(min_area, max_valid_area)
 
@@ -336,7 +339,10 @@ class Erasing(BaseDropout):
         min_r = max(r_min, erase_area / (height * height))
 
         if min_r > max_r:
-            return {"holes": np.empty((0, 4), dtype=np.int32)}
+            return {
+                "holes": np.empty((0, 4), dtype=np.int32),
+                "seed": self.random_generator.integers(0, 2**32 - 1),
+            }
 
         aspect_ratio = self.py_random.uniform(min_r, max_r)
 

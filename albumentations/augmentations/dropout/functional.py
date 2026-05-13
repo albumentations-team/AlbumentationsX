@@ -21,7 +21,7 @@ from albucore import (
 )
 
 from albumentations.augmentations.geometric.functional import split_uniform_grid
-from albumentations.augmentations.pixel._functional_color import grayscale_to_multichannel, to_gray_weighted_average
+from albumentations.augmentations.pixel.functional import grayscale_to_multichannel, to_gray_weighted_average
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import ImageType
 
@@ -31,6 +31,7 @@ __all__ = [
     "calculate_grid_dimensions",
     "channel_dropout",
     "cutout",
+    "fill_holes_with_grayscale",
     "fill_volume_holes_with_grayscale",
     "fill_volumes_holes_with_grayscale",
     "filter_bboxes_by_holes",
@@ -38,7 +39,6 @@ __all__ = [
     "generate_grid_holes",
     "generate_grid_mask_holes",
     "generate_random_fill",
-    "grayscale_holes",
     "mask_to_rects",
 ]
 
@@ -164,7 +164,7 @@ def fill_holes_with_value(img: ImageType, holes: np.ndarray, fill: np.ndarray) -
     return img
 
 
-def grayscale_holes(img: ImageType, holes: np.ndarray) -> ImageType:
+def fill_holes_with_grayscale(img: ImageType, holes: np.ndarray) -> ImageType:
     """Convert selected rectangular holes to grayscale while preserving the input array shape,
     dtype, and channel layout expected by dropout transforms.
 
@@ -176,26 +176,25 @@ def grayscale_holes(img: ImageType, holes: np.ndarray) -> ImageType:
         ImageType: Image with grayscale-converted holes.
 
     Raises:
-        TypeError: If image has channels other than 1 or 3.
+        ValueError: If image has channels other than 1 or 3.
 
     """
-    result = img.copy()
-    num_channels = get_num_channels(result)
+    num_channels = get_num_channels(img)
 
     if holes.size == 0:
-        return result
+        return img
 
     if num_channels not in {1, 3}:
-        raise TypeError("Grayscale hole dropout expects 1 or 3 channel images.")
+        raise ValueError("Grayscale fill works only for 1 or 3 channel images")
 
     if num_channels == 1:
-        return result
+        return img
 
     for x_min, y_min, x_max, y_max in holes:
-        patch = result[y_min:y_max, x_min:x_max]
-        result[y_min:y_max, x_min:x_max] = grayscale_to_multichannel(to_gray_weighted_average(patch), 3)
+        patch = img[y_min:y_max, x_min:x_max]
+        img[y_min:y_max, x_min:x_max] = grayscale_to_multichannel(to_gray_weighted_average(patch), 3)
 
-    return result
+    return img
 
 
 def fill_volume_holes_with_grayscale(volume: ImageType, holes: np.ndarray) -> ImageType:
@@ -210,7 +209,7 @@ def fill_volume_holes_with_grayscale(volume: ImageType, holes: np.ndarray) -> Im
         ImageType: Volume with grayscale-converted holes.
 
     Raises:
-        TypeError: If volume has channels other than 1 or 3.
+        ValueError: If volume has channels other than 1 or 3.
 
     """
     if volume.ndim == 3 or holes.size == 0:
@@ -218,22 +217,21 @@ def fill_volume_holes_with_grayscale(volume: ImageType, holes: np.ndarray) -> Im
 
     num_channels = volume.shape[3]
     if num_channels not in {1, 3}:
-        raise TypeError("Grayscale hole dropout expects 1 or 3 channel images.")
+        raise ValueError("Grayscale fill works only for 1 or 3 channel images")
 
     if num_channels == 1:
         return volume
 
-    result = volume.copy()
     for x_min, y_min, x_max, y_max in holes:
-        patch_batch = result[:, y_min:y_max, x_min:x_max]
-        result[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
+        patch_batch = volume[:, y_min:y_max, x_min:x_max]
+        volume[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
             to_gray_weighted_average(patch_batch),
             3,
         )
-    return result
+    return volume
 
 
-def fill_volumes_holes_with_grayscale(images: ImageType, holes: np.ndarray) -> ImageType:
+def fill_volumes_holes_with_grayscale(volumes: ImageType, holes: np.ndarray) -> ImageType:
     """Convert shared rectangular holes to grayscale across an image batch while preserving
     batch shape, per-image dtype, and channel layout used by Compose.
 
@@ -241,40 +239,39 @@ def fill_volumes_holes_with_grayscale(images: ImageType, holes: np.ndarray) -> I
     4-D slice rather than image-by-image, avoiding repeated Python-loop overhead.
 
     Args:
-        images (ImageType): Batch of images with shape (N, H, W, C) or
-            batch of volumes with shape (N, D, H, W, C).
+        volumes (ImageType): Batch of volumes with shape (N, D, H, W, C) or
+            batch of images with shape (N, H, W, C).
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates.
 
     Returns:
         ImageType: Batch with grayscale-converted holes.
 
     Raises:
-        TypeError: If images have channels other than 1 or 3.
+        ValueError: If images have channels other than 1 or 3.
 
     """
-    num_channels = get_num_channels(images)
+    num_channels = get_num_channels(volumes)
     if holes.size == 0:
-        return images
+        return volumes
 
     if num_channels not in {1, 3}:
-        raise TypeError("Grayscale hole dropout expects 1 or 3 channel images.")
+        raise ValueError("Grayscale fill works only for 1 or 3 channel images")
 
     if num_channels == 1:
-        return images
+        return volumes
 
-    if images.ndim == 5:
-        flattened = images.reshape(-1, *images.shape[2:])
+    if volumes.ndim == 5:
+        flattened = volumes.reshape(-1, *volumes.shape[2:])
         result = fill_volumes_holes_with_grayscale(flattened, holes)
-        return result.reshape(images.shape)
+        return result.reshape(volumes.shape)
 
-    result = images.copy()
     for x_min, y_min, x_max, y_max in holes:
-        patch_batch = result[:, y_min:y_max, x_min:x_max]
-        result[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
+        patch_batch = volumes[:, y_min:y_max, x_min:x_max]
+        volumes[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
             to_gray_weighted_average(patch_batch),
             3,
         )
-    return result
+    return volumes
 
 
 def fill_volume_holes_with_value(volume: ImageType, holes: np.ndarray, fill: np.ndarray) -> ImageType:
@@ -427,7 +424,7 @@ def cutout(
         if fill == "random_uniform":
             return fill_holes_with_random(img, holes, random_generator, uniform=True)
         if fill == "grayscale":
-            return grayscale_holes(img, holes)
+            return fill_holes_with_grayscale(img, holes)
         raise ValueError(f"Unsupported string fill: {fill}")
 
     # Convert numeric fill values to numpy array

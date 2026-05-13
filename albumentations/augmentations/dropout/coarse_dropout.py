@@ -1,8 +1,10 @@
-"""Implementation of coarse dropout and erasing augmentations.
+"""Implementation of coarse dropout and random erasing augmentations.
 
-This module provides several coarse region corruption transforms, including random rectangular dropout,
-object-constrained dropout, and random erasing. These augmentations help models become more robust to
-occlusion, missing evidence, and over-reliance on local color cues.
+This module provides several variations of coarse dropout augmentations, which drop out
+rectangular regions from images. It includes CoarseDropout for randomly placed dropouts,
+ConstrainedCoarseDropout for dropping out regions based on masks or bounding boxes,
+and Erasing for random erasing augmentation. These techniques help models become more
+robust to occlusions and varying object completeness.
 """
 
 from typing import Annotated, Any, Literal
@@ -287,11 +289,25 @@ class Erasing(BaseDropout):
         height, width = params["shape"][:2]
         total_area = height * width
 
+        # Calculate maximum valid area based on dimensions and aspect ratio
         max_area = total_area * self.scale[1]
         min_area = total_area * self.scale[0]
 
+        # For each aspect ratio r, the maximum area is constrained by:
+        # h = sqrt(A/r) ≤ H and w = sqrt(A*r) ≤ W
+        # Therefore: A ≤ min(r*H², W²/r)
         r_min, r_max = self.ratio
-        max_valid_area = min(max_area, r_min * height * height, width * width / r_max)
+
+        def area_constraint_h(r: float) -> float:
+            return r * height * height
+
+        def area_constraint_w(r: float) -> float:
+            return width * width / r
+
+        # Find maximum valid area considering aspect ratio constraints
+        max_area_h = min(area_constraint_h(r_min), area_constraint_h(r_max))
+        max_area_w = min(area_constraint_w(r_min), area_constraint_w(r_max))
+        max_valid_area = min(max_area, max_area_h, max_area_w)
 
         if max_valid_area < min_area:
             return {"holes": np.empty((0, 4), dtype=np.int32)}

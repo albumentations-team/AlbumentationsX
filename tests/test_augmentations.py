@@ -13,7 +13,7 @@ from tests.conftest import (
     SQUARE_MULTI_UINT8_IMAGE,
     SQUARE_UINT8_IMAGE,
 )
-from tests.helpers import TransformTestHelper
+from tests.helpers import TestDataFactory, TransformTestHelper
 
 from .aug_definitions import transforms2metadata_key
 from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms, set_seed
@@ -1284,6 +1284,122 @@ def test_pixel_dropout_mismatched_tuple_dimensions(drop_value, channels, expecte
         # Multi-channel - check each channel
         for channel_idx in range(channels):
             assert np.all(result[:, :, channel_idx] == expected_values[channel_idx])
+
+
+def test_erasing_grayscale_fill_converts_only_sampled_patch():
+    image = TestDataFactory.create_image((64, 64, 3), dtype=np.uint8, seed=137)
+
+    transform = A.Erasing(
+        scale=(0.2, 0.2),
+        ratio=(1.0, 1.0),
+        fill="grayscale",
+        p=1.0,
+    )
+    transform.set_random_seed(137)
+
+    result = transform(image=image)["image"]
+    holes = transform.params["holes"]
+
+    assert holes.shape == (1, 4)
+    x_min, y_min, x_max, y_max = holes[0]
+
+    outside_mask = np.ones(image.shape[:2], dtype=bool)
+    outside_mask[y_min:y_max, x_min:x_max] = False
+
+    np.testing.assert_array_equal(result[outside_mask], image[outside_mask])
+
+    hole_patch = result[y_min:y_max, x_min:x_max]
+    np.testing.assert_array_equal(hole_patch[..., 0], hole_patch[..., 1])
+    np.testing.assert_array_equal(hole_patch[..., 1], hole_patch[..., 2])
+
+
+def test_erasing_grayscale_fill_rejects_non_rgb_multichannel():
+    image = TestDataFactory.create_image((32, 32, 4), dtype=np.uint8, seed=137)
+
+    transform = A.Erasing(
+        scale=(0.2, 0.2),
+        ratio=(1.0, 1.0),
+        fill="grayscale",
+        p=1.0,
+    )
+
+    with pytest.raises(ValueError, match="1 or 3 channel"):
+        transform(image=image)
+
+
+def test_erasing_grayscale_fill_requires_fill_mask_none():
+    with pytest.raises(ValueError, match="fill_mask must be None"):
+        A.Erasing(
+            scale=(0.2, 0.2),
+            ratio=(1.0, 1.0),
+            fill="grayscale",
+            fill_mask=0,
+            p=1.0,
+        )
+
+
+def test_erasing_grayscale_fill_on_volume():
+    volume = TestDataFactory.create_volume((4, 64, 64, 3), dtype=np.uint8, seed=137)
+
+    transform = A.Erasing(
+        scale=(0.2, 0.2),
+        ratio=(1.0, 1.0),
+        fill="grayscale",
+        p=1.0,
+    )
+    transform.set_random_seed(137)
+
+    result = transform(volume=volume)["volume"]
+    holes = transform.params["holes"]
+
+    assert holes.shape == (1, 4)
+    x_min, y_min, x_max, y_max = holes[0]
+
+    result_outside = result.copy()
+    volume_outside = volume.copy()
+    result_outside[:, y_min:y_max, x_min:x_max, :] = 0
+    volume_outside[:, y_min:y_max, x_min:x_max, :] = 0
+
+    np.testing.assert_array_equal(result_outside, volume_outside)
+
+    hole_patch = result[:, y_min:y_max, x_min:x_max, :]
+    np.testing.assert_array_equal(hole_patch[..., 0], hole_patch[..., 1])
+    np.testing.assert_array_equal(hole_patch[..., 1], hole_patch[..., 2])
+
+
+def test_erasing_grayscale_fill_on_volumes():
+    volumes = np.stack(
+        [
+            TestDataFactory.create_volume((4, 64, 64, 3), dtype=np.uint8, seed=137),
+            TestDataFactory.create_volume((4, 64, 64, 3), dtype=np.uint8, seed=138),
+        ],
+        axis=0,
+    )
+
+    transform = A.Erasing(
+        scale=(0.2, 0.2),
+        ratio=(1.0, 1.0),
+        fill="grayscale",
+        p=1.0,
+    )
+    transform.set_random_seed(137)
+
+    result = transform(volumes=volumes)["volumes"]
+    holes = transform.params["holes"]
+
+    assert holes.shape == (1, 4)
+    x_min, y_min, x_max, y_max = holes[0]
+
+    result_outside = result.copy()
+    volumes_outside = volumes.copy()
+    result_outside[:, :, y_min:y_max, x_min:x_max, :] = 0
+    volumes_outside[:, :, y_min:y_max, x_min:x_max, :] = 0
+
+    np.testing.assert_array_equal(result_outside, volumes_outside)
+
+    hole_patch = result[:, :, y_min:y_max, x_min:x_max, :]
+    np.testing.assert_array_equal(hole_patch[..., 0], hole_patch[..., 1])
+    np.testing.assert_array_equal(hole_patch[..., 1], hole_patch[..., 2])
 
 
 def test_salt_and_pepper_noise():

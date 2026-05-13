@@ -37,7 +37,7 @@ class BaseDropout(DualTransform):
     including applying cutouts to images and masks.
 
     Args:
-        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | str):
             Value to fill dropped regions.
         fill_mask (tuple[float, ...] | float | None): Value to fill
             dropped regions in the mask. If None, the mask is not modified.
@@ -112,16 +112,22 @@ class BaseDropout(DualTransform):
     _targets: tuple[Targets, ...] | Targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]
+        fill: (
+            tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
+        )
         fill_mask: tuple[float, ...] | float | None
 
     def __init__(
         self,
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
+        fill: tuple[float, ...]
+        | float
+        | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"],
         fill_mask: tuple[float, ...] | float | None,
         p: float,
     ):
         super().__init__(p=p)
+        if fill == "grayscale" and fill_mask is not None:
+            raise ValueError("fill_mask must be None when fill='grayscale'")
         self.fill = fill  # type: ignore[assignment]
         self.fill_mask = fill_mask
 
@@ -132,6 +138,10 @@ class BaseDropout(DualTransform):
             num_channels = get_num_channels(img)
             if num_channels not in {1, 3}:
                 raise ValueError("Inpainting works only for 1 or 3 channel images")
+        if self.fill == "grayscale":
+            num_channels = get_num_channels(img)
+            if num_channels not in {1, 3}:
+                raise ValueError("Grayscale fill works only for 1 or 3 channel images")
         return cutout(img, holes, self.fill, np.random.default_rng(seed))
 
     def apply_to_images(self, images: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
@@ -141,6 +151,10 @@ class BaseDropout(DualTransform):
             num_channels = images.shape[3] if images.ndim == 4 else 1
             if num_channels not in {1, 3}:
                 raise ValueError("Inpainting works only for 1 or 3 channel images")
+        if self.fill == "grayscale":
+            num_channels = images.shape[3] if images.ndim == 4 else 1
+            if num_channels not in {1, 3}:
+                raise ValueError("Grayscale fill works only for 1 or 3 channel images")
         # Images (N, H, W, C) have the same structure as volumes (D, H, W, C)
         return cutout_on_volume(images, holes, self.fill, np.random.default_rng(seed))
 
@@ -156,6 +170,10 @@ class BaseDropout(DualTransform):
             num_channels = volumes.shape[4] if volumes.ndim == 5 else 1
             if num_channels not in {1, 3}:
                 raise ValueError("Inpainting works only for 1 or 3 channel images")
+        if self.fill == "grayscale":
+            num_channels = volumes.shape[4] if volumes.ndim == 5 else 1
+            if num_channels not in {1, 3}:
+                raise ValueError("Grayscale fill works only for 1 or 3 channel images")
         return cutout_on_volumes(volumes, holes, self.fill, np.random.default_rng(seed))
 
     def apply_to_mask3d(self, mask: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:

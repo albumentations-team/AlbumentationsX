@@ -286,6 +286,24 @@ class Erasing(BaseDropout):
         self.ratio = ratio
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        """Calculate erasing parameters (box position and size) from image shape and ratio ranges.
+        Direct derivation; used by Erasing get_params_dependent_on_data.
+
+        Given:
+        - Image dimensions (H, W)
+        - Target area (A)
+        - Aspect ratio (r = w/h)
+
+        We know:
+        - h * w = A (area equation)
+        - w = r * h (aspect ratio equation)
+
+        Therefore:
+        - h * (r * h) = A
+        - h² = A/r
+        - h = sqrt(A/r)
+        - w = r * sqrt(A/r) = sqrt(A*r)
+        """
         height, width = params["shape"][:2]
         total_area = height * width
 

@@ -18,7 +18,7 @@ IGNORED_CLASSES = {
 
 
 def make_augmentation_docs_link(cls) -> str:
-    return f"[{cls.__name__}](https://explore.albumentations.ai/transform/{cls.__name__})"
+    return f"[{cls.__name__}](https://albumentations.ai/explore/transform/{cls.__name__}/)"
 
 
 def parse_args() -> argparse.Namespace:

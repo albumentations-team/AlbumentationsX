@@ -21,7 +21,7 @@ from albucore import (
 )
 
 from albumentations.augmentations.geometric.functional import split_uniform_grid
-from albumentations.augmentations.pixel.functional import grayscale_to_multichannel, to_gray_weighted_average
+from albumentations.augmentations.pixel.functional import grayscale_to_multichannel, to_gray_average
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import ImageType
 
@@ -175,24 +175,18 @@ def fill_holes_with_grayscale(img: ImageType, holes: np.ndarray) -> ImageType:
     Returns:
         ImageType: Image with grayscale-converted holes.
 
-    Raises:
-        ValueError: If image has channels other than 1 or 3.
-
     """
     num_channels = get_num_channels(img)
 
     if holes.size == 0:
         return img
 
-    if num_channels not in {1, 3}:
-        raise ValueError("Grayscale fill works only for 1 or 3 channel images")
-
     if num_channels == 1:
         return img
 
     for x_min, y_min, x_max, y_max in holes:
         patch = img[y_min:y_max, x_min:x_max]
-        img[y_min:y_max, x_min:x_max] = grayscale_to_multichannel(to_gray_weighted_average(patch), 3)
+        img[y_min:y_max, x_min:x_max] = grayscale_to_multichannel(to_gray_average(patch), num_channels)
 
     return img
 
@@ -208,25 +202,19 @@ def fill_volume_holes_with_grayscale(volume: ImageType, holes: np.ndarray) -> Im
     Returns:
         ImageType: Volume with grayscale-converted holes.
 
-    Raises:
-        ValueError: If volume has channels other than 1 or 3.
-
     """
     if volume.ndim == 3 or holes.size == 0:
         return volume
 
     num_channels = volume.shape[3]
-    if num_channels not in {1, 3}:
-        raise ValueError("Grayscale fill works only for 1 or 3 channel images")
-
     if num_channels == 1:
         return volume
 
     for x_min, y_min, x_max, y_max in holes:
         patch_batch = volume[:, y_min:y_max, x_min:x_max]
         volume[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
-            to_gray_weighted_average(patch_batch),
-            3,
+            to_gray_average(patch_batch),
+            num_channels,
         )
     return volume
 
@@ -246,16 +234,10 @@ def fill_volumes_holes_with_grayscale(volumes: ImageType, holes: np.ndarray) -> 
     Returns:
         ImageType: Batch with grayscale-converted holes.
 
-    Raises:
-        ValueError: If images have channels other than 1 or 3.
-
     """
     num_channels = get_num_channels(volumes)
     if holes.size == 0:
         return volumes
-
-    if num_channels not in {1, 3}:
-        raise ValueError("Grayscale fill works only for 1 or 3 channel images")
 
     if num_channels == 1:
         return volumes
@@ -268,8 +250,8 @@ def fill_volumes_holes_with_grayscale(volumes: ImageType, holes: np.ndarray) -> 
     for x_min, y_min, x_max, y_max in holes:
         patch_batch = volumes[:, y_min:y_max, x_min:x_max]
         volumes[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
-            to_gray_weighted_average(patch_batch),
-            3,
+            to_gray_average(patch_batch),
+            num_channels,
         )
     return volumes
 

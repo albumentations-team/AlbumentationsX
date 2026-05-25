@@ -335,8 +335,15 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
                             all_param_names.add(name)
                 except (ValueError, TypeError):
                     continue
-            cls._valid_applied_config_keys_cache = frozenset(all_param_names - {"self", "strict"})
-        return cls._valid_applied_config_keys_cache  # type: ignore[return-value]
+            valid_keys = frozenset(all_param_names - {"self", "strict"})
+            cls._valid_applied_config_keys_cache = valid_keys
+            return valid_keys
+
+        cached_keys = cls._valid_applied_config_keys_cache
+        if cached_keys is None:
+            msg = f"Valid applied config key cache was not initialized for {cls.__name__}"
+            raise RuntimeError(msg)
+        return cached_keys
 
     def _build_applied_config(self) -> None:
         """Assemble the final applied_config by merging all constructor defaults with sampled overrides,
@@ -1398,7 +1405,8 @@ class CustomTransformsApplyMixin:
 
     def _set_keys(self) -> None:
         # Build _key2func from self.targets using base class
-        super()._set_keys()  # type: ignore[misc]
+        base_set_keys = cast("Callable[[Any], None]", BasicTransform.__dict__["_set_keys"])
+        base_set_keys(self)
 
         # Search apply_to_<X> functions defined within the child class
         for name, method in inspect.getmembers(self, predicate=inspect.ismethod):

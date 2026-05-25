@@ -72,7 +72,10 @@ class Lambda(NoOp):
         super().__init__(p=p)
 
         self.name = name
-        self.custom_apply_fns = dict.fromkeys(("image", "mask", "keypoints", "bboxes"), fpixel.noop)
+        self.custom_apply_fns: dict[str, Callable[..., Any]] = dict.fromkeys(
+            ("image", "mask", "keypoints", "bboxes"),
+            fpixel.noop,
+        )
         for target_name, custom_apply_fn in {
             "image": image,
             "mask": mask,
@@ -133,7 +136,7 @@ class Lambda(NoOp):
             str: The string representation of the Lambda transform.
 
         """
-        state = {"name": self.name}
-        state.update(self.custom_apply_fns.items())  # type: ignore[arg-type]
+        state: dict[str, Any] = {"name": self.name}
+        state.update(self.custom_apply_fns)
         state.update(self.get_base_init_args())
         return f"{self.__class__.__name__}({format_args(state)})"

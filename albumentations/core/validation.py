@@ -140,7 +140,8 @@ class ValidatedTransformMeta(type):
                     warn(message, stacklevel=2)
 
             # Preserve the original signature and docstring
-            custom_init.__signature__ = original_sig  # type: ignore[attr-defined]
+            custom_init_with_signature: Any = custom_init
+            custom_init_with_signature.__signature__ = original_sig
             custom_init.__doc__ = original_init.__doc__
 
             dct["__init__"] = custom_init

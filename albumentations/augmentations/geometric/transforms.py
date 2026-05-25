@@ -968,9 +968,13 @@ class ShiftScaleRotate(Affine):
         fill_mask: tuple[float, ...] | float = 0,
         p: float = 0.5,
     ):
+        translate_percent = {
+            "x": shift_range if shift_range_x is None else shift_range_x,
+            "y": shift_range if shift_range_y is None else shift_range_y,
+        }
         super().__init__(
             scale=scale_range,
-            translate_percent={"x": shift_range_x, "y": shift_range_y},  # type: ignore[dict-item]
+            translate_percent=translate_percent,
             rotate=rotate_range,
             shear=(0, 0),
             interpolation=interpolation,

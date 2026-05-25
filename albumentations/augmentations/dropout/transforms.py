@@ -6,13 +6,14 @@ PixelDropout. These transforms randomly remove or modify pixels, channels, or re
 in images, which can help models become more robust to occlusions and missing information.
 """
 
-from typing import Any, ClassVar, Literal, cast
+from typing import Any, ClassVar, cast
 
 import numpy as np
 from pydantic import Field
 
 from albumentations.augmentations.dropout import functional as fdropout
 from albumentations.augmentations.dropout.functional import (
+    FillValueLiteral,
     cutout,
     cutout_on_volume,
     cutout_on_volumes,
@@ -27,9 +28,11 @@ from albumentations.core.type_definitions import ALL_TARGETS, ImageType, Targets
 
 __all__ = ["PixelDropout"]
 
+DropoutFillValue = tuple[float, ...] | float | FillValueLiteral
+
 
 class BaseDropoutInitSchema(BaseTransformInitSchema):
-    fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
+    fill: DropoutFillValue
     fill_mask: tuple[float, ...] | float | None
 
 
@@ -119,9 +122,7 @@ class BaseDropout(DualTransform):
 
     def __init__(
         self,
-        fill: tuple[float, ...]
-        | float
-        | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"],
+        fill: DropoutFillValue,
         fill_mask: tuple[float, ...] | float | None,
         p: float,
     ):

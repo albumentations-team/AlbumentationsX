@@ -1,54 +1,6 @@
 {
   "errors": [
     {
-      "line": 158,
-      "column": 20,
-      "stop_line": 158,
-      "stop_column": 88,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 208,
-      "column": 20,
-      "stop_line": 208,
-      "stop_column": 109,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 222,
-      "column": 20,
-      "stop_line": 222,
-      "stop_column": 115,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 828,
-      "column": 16,
-      "stop_line": 828,
-      "stop_column": 22,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
       "line": 176,
       "column": 31,
       "stop_line": 176,
@@ -238,78 +190,6 @@
       "name": "no-matching-overload",
       "description": "No matching overload found for function `cv2.subtract` called with arguments: (Unknown, float, dst=ndarray[tuple[int, int], dtype[floating[_32Bit]]])\n  Possible overloads:\n  (src1: MatLike, src2: MatLike, dst: Mat | ndarray[Any, dtype[floating | integer]] | None = ..., mask: Mat | ndarray[Any, dtype[floating | integer]] | None = ..., dtype: int = ...) -> MatLike [closest match]\n  (src1: UMat, src2: UMat, dst: UMat | None = ..., mask: UMat | None = ..., dtype: int = ...) -> UMat",
       "concise_description": "No matching overload found for function `cv2.subtract` called with arguments: (Unknown, float, dst=ndarray[tuple[int, int], dtype[floating[_32Bit]]])",
-      "severity": "error"
-    },
-    {
-      "line": 353,
-      "column": 20,
-      "stop_line": 353,
-      "stop_column": 93,
-      "path": "albumentations/augmentations/geometric/flip.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 373,
-      "column": 20,
-      "stop_line": 373,
-      "stop_column": 118,
-      "path": "albumentations/augmentations/geometric/flip.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 380,
-      "column": 20,
-      "stop_line": 383,
-      "stop_column": 14,
-      "path": "albumentations/augmentations/geometric/flip.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 512,
-      "column": 24,
-      "stop_line": 512,
-      "stop_column": 97,
-      "path": "albumentations/augmentations/geometric/flip.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 558,
-      "column": 24,
-      "stop_line": 561,
-      "stop_column": 18,
-      "path": "albumentations/augmentations/geometric/flip.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 577,
-      "column": 24,
-      "stop_line": 580,
-      "stop_column": 18,
-      "path": "albumentations/augmentations/geometric/flip.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "severity": "error"
     },
     {

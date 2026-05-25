@@ -23,7 +23,7 @@ different data modalities.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 from albucore import hflip, vflip
@@ -350,7 +350,7 @@ class Transpose(DualTransform):
         if mask.size == 0:
             # Transpose swaps H and W
             # Assume mask shape is (H, W, C) -> (W, H, C)
-            return np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype)
+            return cast("ImageType", np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype))
         return self.apply(mask, **params)
 
     def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
@@ -370,16 +370,22 @@ class Transpose(DualTransform):
         if mask3d.size == 0:
             # Transpose swaps H and W
             # Assume mask3d shape is (D, H, W, C) -> (D, W, H, C)
-            return np.empty((mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]), dtype=mask3d.dtype)
+            return cast(
+                "VolumeType",
+                np.empty((mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]), dtype=mask3d.dtype),
+            )
         return self.apply_to_images(mask3d, **params)
 
     def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
         if masks3d.size == 0:
             # Transpose swaps H and W
             # Assume masks3d shape is (N, D, H, W, C) -> (N, D, W, H, C)
-            return np.empty(
-                (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
-                dtype=masks3d.dtype,
+            return cast(
+                "VolumeType",
+                np.empty(
+                    (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
+                    dtype=masks3d.dtype,
+                ),
             )
         return self.apply_to_volumes(masks3d, **params)
 
@@ -509,7 +515,7 @@ class D4(DualTransform):
             # Assume mask shape is (H, W, C)
             if group_element in {"r90", "r270", "t", "hvt"}:
                 # These swap H and W: (H, W, C) -> (W, H, C)
-                return np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype)
+                return cast("ImageType", np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype))
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return mask
         return self.apply(mask, group_element)
@@ -555,9 +561,12 @@ class D4(DualTransform):
             # Assume mask3d shape is (D, H, W, C)
             if group_element in {"r90", "r270", "t", "hvt"}:
                 # These swap H and W: (D, H, W, C) -> (D, W, H, C)
-                return np.empty(
-                    (mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]),
-                    dtype=mask3d.dtype,
+                return cast(
+                    "VolumeType",
+                    np.empty(
+                        (mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]),
+                        dtype=mask3d.dtype,
+                    ),
                 )
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return mask3d
@@ -574,9 +583,12 @@ class D4(DualTransform):
             # Assume masks3d shape is (N, D, H, W, C)
             if group_element in {"r90", "r270", "t", "hvt"}:
                 # These swap H and W: (N, D, H, W, C) -> (N, D, W, H, C)
-                return np.empty(
-                    (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
-                    dtype=masks3d.dtype,
+                return cast(
+                    "VolumeType",
+                    np.empty(
+                        (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
+                        dtype=masks3d.dtype,
+                    ),
                 )
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return masks3d

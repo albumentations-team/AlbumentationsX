@@ -155,7 +155,7 @@ class BaseCrop(DualTransform):
             # Assume mask shape is (H, W, C)
             crop_height = crop_coords[3] - crop_coords[1]
             crop_width = crop_coords[2] - crop_coords[0]
-            return np.empty((crop_height, crop_width, mask.shape[2]), dtype=mask.dtype)
+            return cast("ImageType", np.empty((crop_height, crop_width, mask.shape[2]), dtype=mask.dtype))
         return self.apply(mask, crop_coords, **params)
 
     def apply_to_masks(
@@ -205,7 +205,10 @@ class BaseCrop(DualTransform):
             # Assume mask3d shape is (D, H, W, C)
             crop_height = crop_coords[3] - crop_coords[1]
             crop_width = crop_coords[2] - crop_coords[0]
-            return np.empty((mask3d.shape[0], crop_height, crop_width, mask3d.shape[3]), dtype=mask3d.dtype)
+            return cast(
+                "VolumeType",
+                np.empty((mask3d.shape[0], crop_height, crop_width, mask3d.shape[3]), dtype=mask3d.dtype),
+            )
         return self.apply_to_images(mask3d, crop_coords, **params)
 
     def apply_to_masks3d(
@@ -219,7 +222,10 @@ class BaseCrop(DualTransform):
             # Assume masks3d shape is (N, D, H, W, C)
             crop_height = crop_coords[3] - crop_coords[1]
             crop_width = crop_coords[2] - crop_coords[0]
-            return np.empty((0, masks3d.shape[1], crop_height, crop_width, masks3d.shape[4]), dtype=masks3d.dtype)
+            return cast(
+                "VolumeType",
+                np.empty((0, masks3d.shape[1], crop_height, crop_width, masks3d.shape[4]), dtype=masks3d.dtype),
+            )
         return self.apply_to_volumes(masks3d, crop_coords, **params)
 
     @staticmethod
@@ -825,7 +831,7 @@ class _BaseRandomSizedCrop(DualTransform):
         result = np.empty((images.shape[0], self.size[0], self.size[1], crop.shape[-1]), dtype=crop.dtype)
         for i in range(images.shape[0]):
             result[i] = fgeometric.resize(crop[i], self.size, interpolation)
-        return result
+        return cast("ImageType", result)
 
     def apply_to_mask3d(
         self,

@@ -26,7 +26,7 @@ from typing_extensions import Protocol
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.utils import PCA
-from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS, ImageFloat32, ImageType
+from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS, ImageType
 
 __all__ = [
     "adapt_pixel_distribution",
@@ -428,8 +428,8 @@ def adapt_pixel_distribution(
     original_dtype = img.dtype
 
     if original_dtype == np.float32:
-        img = from_float(cast("ImageFloat32", img), np.dtype(np.uint8))
-        ref = from_float(cast("ImageFloat32", ref), np.dtype(np.uint8))
+        img = from_float(cast("np.ndarray", img), np.dtype(np.uint8))
+        ref = from_float(cast("np.ndarray", ref), np.dtype(np.uint8))
 
     transformer = {"pca": PCA, "standard": StandardScaler, "minmax": MinMaxScaler}[transform_type]()
     adapter = DomainAdapter(transformer=transformer, ref_img=ref)
@@ -620,7 +620,7 @@ def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
 
     """
     if reference.dtype != np.uint8:
-        reference = from_float(cast("ImageFloat32", reference), np.dtype(np.uint8))
+        reference = from_float(cast("np.ndarray", reference), np.dtype(np.uint8))
 
     matched = np.empty(image.shape, dtype=np.uint8)
 

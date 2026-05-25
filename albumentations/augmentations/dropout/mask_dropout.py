@@ -172,7 +172,7 @@ class MaskDropout(DualTransform):
         if self.fill in {"inpaint_telea", "inpaint_ns"}:
             dropout_mask = dropout_mask.astype(np.uint8)
             _, _, width, height = cv2.boundingRect(dropout_mask)
-            radius = min(3, max(width, height) // 2)
+            radius = max(1, min(3, max(width, height) // 2))
             inpaint_method = cv2.INPAINT_TELEA if self.fill == "inpaint_telea" else cv2.INPAINT_NS
             return cast("ImageType", cv2.inpaint(img, dropout_mask, radius, inpaint_method))
 

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from collections.abc import Callable
+from typing import Literal, cast
 
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
@@ -13,6 +14,8 @@ from ._functional_shared import (
     np,
     reduce_sum,
 )
+
+_Cv2InPlaceOp = Callable[..., np.ndarray]
 
 
 def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
@@ -31,8 +34,8 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
     pixel_matrix = np.ascontiguousarray(img.reshape(-1, 3)).astype(np.float32, copy=True)
-    multiply = cast("Any", cv2.multiply)
-    max_op = cast("Any", cv2.max)
+    multiply = cast("_Cv2InPlaceOp", cv2.multiply)
+    max_op = cast("_Cv2InPlaceOp", cv2.max)
     multiply(pixel_matrix, 1.0 / max_value, dst=pixel_matrix)
     max_op(pixel_matrix, eps, dst=pixel_matrix)
     cv2.log(pixel_matrix, dst=pixel_matrix)

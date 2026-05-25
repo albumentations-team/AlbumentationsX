@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from collections.abc import Callable
+from typing import Literal, cast
 
 from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
@@ -16,6 +17,8 @@ from ._functional_shared import (
     remap,
     uint8_io,
 )
+
+_Cv2Compare = Callable[..., np.ndarray]
 
 
 def unsharp_mask_images(
@@ -88,8 +91,8 @@ def unsharp_mask(
         mask = diff > threshold_value
         return np.where(mask, sharpened, image).astype(image.dtype, copy=False)
 
-    compare = cast("Any", cv2.compare)
-    mask = cast("np.ndarray", compare(diff, threshold_value, cv2.CMP_GT))
+    compare = cast("_Cv2Compare", cv2.compare)
+    mask = compare(diff, threshold_value, cv2.CMP_GT)
     result = image.copy()
     cv2.copyTo(sharpened, mask, result)
     return result

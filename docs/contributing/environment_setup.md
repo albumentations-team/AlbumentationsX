@@ -57,10 +57,22 @@ Pre-commit hooks help maintain code quality by automatically checking your chang
 uv run pre-commit install
 ```
 
+If you used the pip fallback with an activated virtual environment, run:
+
+```bash
+pre-commit install
+```
+
 1. (Optional) Run hooks manually on all files:
 
 ```bash
 uv run pre-commit run --all-files
+```
+
+With the pip fallback:
+
+```bash
+pre-commit run --all-files
 ```
 
 ## Verifying Your Setup
@@ -73,10 +85,22 @@ Ensure everything is set up correctly by running the test suite:
 uv run pytest
 ```
 
+With the pip fallback:
+
+```bash
+pytest
+```
+
 For a faster local gate before handing work off, run:
 
 ```bash
 uv run python tools/quality_gate.py fast
+```
+
+With the pip fallback:
+
+```bash
+python tools/quality_gate.py fast
 ```
 
 ### Common Issues and Solutions

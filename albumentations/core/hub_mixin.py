@@ -6,13 +6,11 @@ import functools
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
+from albumentations.core.serialization import Serializable
 from albumentations.core.serialization import load as load_transform
 from albumentations.core.serialization import save as save_transform
-
-if TYPE_CHECKING:
-    from albumentations.core.serialization import Serializable
 
 try:
     from huggingface_hub import HfApi, hf_hub_download
@@ -90,7 +88,9 @@ class HubMixin:
         save_path = save_directory / filename
 
         # save transforms
-        save_transform(cast("Serializable", self), save_path, data_format="json")
+        if not isinstance(self, Serializable):
+            raise TypeError("HubMixin can only save Serializable transforms")
+        save_transform(self, save_path, data_format="json")
 
         return save_path
 

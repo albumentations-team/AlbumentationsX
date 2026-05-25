@@ -35,6 +35,10 @@ jobs:
         python-version: ${{ matrix.python-version }}
         activate-environment: true
 
+    - name: Install all dependencies
+      run: |
+        uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+
     - name: Install PyTorch
       run: |
         if [ "${{ matrix.operating-system }}" = "macos-latest" ]; then
@@ -43,10 +47,6 @@ jobs:
           uv pip install torch==2.10.0+cpu torchvision==0.25.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu
         fi
       shell: bash
-
-    - name: Install all dependencies
-      run: |
-        uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
 
     - name: Verify uv.lock is up-to-date
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'

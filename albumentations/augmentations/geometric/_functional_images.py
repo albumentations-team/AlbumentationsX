@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from operator import index
-from typing import Any, Literal, cast
-
-from albumentations.core.type_definitions import ImageFloat32
+from typing import Literal, Protocol, cast
 
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
@@ -51,6 +49,22 @@ ROT90_180_FACTOR = 2
 ROT90_270_FACTOR = 3
 
 C4_GROUP_ELEMENT_TO_K: dict[str, int] = {"e": 0, "r90": 1, "r180": 2, "r270": 3}
+
+_PadArray = Callable[..., np.ndarray]
+
+
+class _VipsImage(Protocol):
+    def resize(self, scale: float, *, vscale: float, kernel: object) -> _VipsImage:
+        """Return a resized pyvips image using the selected scale, vertical scale, and interpolation
+        kernel for the optional backend.
+        """
+        ...
+
+    def numpy(self) -> np.ndarray:
+        """Return image data as a NumPy array so the optional pyvips backend can rejoin the shared
+        image array pipeline cleanly after resize.
+        """
+        ...
 
 
 @lru_cache(maxsize=1)
@@ -131,7 +145,7 @@ def resize_pyvips(
     target_height, target_width = target_shape
     original_dtype = img.dtype
 
-    img_vips = pyvips.Image.new_from_array(img)
+    img_vips = cast("_VipsImage", pyvips.Image.new_from_array(img))
 
     scale_x = target_width / width
     scale_y = target_height / height
@@ -145,8 +159,7 @@ def resize_pyvips(
     if interpolation_method is None:
         raise ValueError(f"Unsupported interpolation method: {interpolation}")
 
-    resize = cast("Any", img_vips.resize)
-    resized_img_vips = resize(
+    resized_img_vips = img_vips.resize(
         scale_x,
         vscale=scale_y,
         kernel=interpolation_method,
@@ -181,7 +194,7 @@ def resize_pil(
     # PIL doesn't support float32 RGB images, convert to uint8 if needed
     needs_conversion = img.dtype == np.float32
     if needs_conversion:
-        img = from_float(cast("ImageFloat32", img), target_dtype=np.dtype(np.uint8))
+        img = from_float(cast("np.ndarray", img), target_dtype=np.dtype(np.uint8))
 
     # Map cv2 interpolation constants to PIL.Image.Resampling constants
     cv2_to_pil_interpolation = {
@@ -933,7 +946,7 @@ def pad_images_with_params(
     else:
         kwargs = {}
 
-    pad_array = cast("Any", np.pad)
+    pad_array = cast("_PadArray", np.pad)
     images = cast("ImageType", pad_array(images, pad_width=pad_width, mode=mode, **kwargs))
     if no_channel_dim:
         images = images[..., 0]

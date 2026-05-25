@@ -5,7 +5,6 @@ rendering text onto images. Includes functions for word manipulation, text drawi
 and handling text regions in images.
 """
 
-import importlib.util
 import random
 from typing import TYPE_CHECKING, Any
 
@@ -21,9 +20,6 @@ from albumentations.core.type_definitions import PAIR, ImageType
 
 if TYPE_CHECKING:
     from PIL.Image import Image as PILImage
-
-# Optional dependencies
-_PIL_AVAILABLE = importlib.util.find_spec("PIL") is not None
 
 
 def delete_random_words(words: list[str], num_words: int, py_random: random.Random) -> str:

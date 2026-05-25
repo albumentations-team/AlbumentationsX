@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from ._functional_distortion import (
     generate_inverse_distortion_map,
@@ -315,9 +315,10 @@ def to_distance_maps(
     dx = np.empty((height, width), dtype=np.float32)
     dy = np.empty_like(dx)
     magnitude = np.empty_like(dx)
+    subtract = cast("Any", cv2.subtract)
     for keypoint_idx, (x, y, *_) in enumerate(keypoints_array):
-        cv2.subtract(xx, float(x), dst=dx)
-        cv2.subtract(yy, float(y), dst=dy)
+        subtract(xx, float(x), dst=dx)
+        subtract(yy, float(y), dst=dy)
         cv2.magnitude(dx, dy, magnitude)
         distances[..., keypoint_idx] = magnitude
 

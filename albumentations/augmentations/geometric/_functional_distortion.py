@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 from ._functional_shared import (
     cv2,
@@ -399,7 +399,8 @@ def compute_pairwise_distances(
     p2_squared = np.asarray(reduce_sum(cv2.multiply(points2, points2), axis=1))[None, :]
 
     # Compute dot product
-    dot_product = cv2.gemm(points1, points2.T, 1, None, 0)
+    empty_matrix = np.empty((0,), dtype=np.float32)
+    dot_product = cast("np.ndarray", cv2.gemm(points1, points2.T, 1.0, empty_matrix, 0.0))
 
     return p1_squared + p2_squared - 2 * dot_product
 
@@ -489,8 +490,9 @@ def tps_transform(
     affine_terms[:, 1:] = target_points
 
     # Matrix multiplications with consistent float32 type
-    nonlinear_part = cv2.gemm(kernel_matrix, nonlinear_weights, 1, None, 0)
-    affine_part = cv2.gemm(affine_terms, affine_weights, 1, None, 0)
+    empty_matrix = np.empty((0,), dtype=np.float32)
+    nonlinear_part = cast("np.ndarray", cv2.gemm(kernel_matrix, nonlinear_weights, 1.0, empty_matrix, 0.0))
+    affine_part = cast("np.ndarray", cv2.gemm(affine_terms, affine_weights, 1.0, empty_matrix, 0.0))
 
     return nonlinear_part + affine_part
 
@@ -519,14 +521,16 @@ def get_camera_matrix_distortion_maps(
         dtype=np.float32,
     )
     distortion = np.array([k, k, 0, 0, 0], dtype=np.float32)
-    return cv2.initUndistortRectifyMap(
+    empty_matrix = np.empty((0,), dtype=np.float32)
+    map_x, map_y = cv2.initUndistortRectifyMap(
         camera_matrix,
         distortion,
         None,
-        None,
+        empty_matrix,
         (width, height),
         cv2.CV_32FC1,
     )
+    return cast("np.ndarray", map_x), cast("np.ndarray", map_y)
 
 
 def get_fisheye_distortion_maps(

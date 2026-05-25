@@ -817,7 +817,7 @@ class GaussianBlur(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.separable_convolve(img, kernel=kernel)
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, float]:
+    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, np.ndarray]:
         sigma = self.py_random.uniform(*self.sigma_range)
         ksize = self.py_random.randint(*self.blur_range)
         self.applied_config = {"sigma_range": sigma, "blur_range": ksize}

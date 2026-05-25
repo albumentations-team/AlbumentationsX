@@ -165,11 +165,11 @@ class RandomSnow(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, np.ndarray | None]:
+    ) -> dict[str, float | np.ndarray | None]:
         image_shape = params["shape"][:2]
         snow_point = self.py_random.uniform(*self.snow_point_range)
 
-        result = {
+        result: dict[str, float | np.ndarray | None] = {
             "snow_point": snow_point,
             "snow_texture": None,
             "sparkle_mask": None,
@@ -1123,7 +1123,7 @@ class RandomShadow(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, list[np.ndarray]]:
+    ) -> dict[str, list[np.ndarray] | np.ndarray]:
         metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 

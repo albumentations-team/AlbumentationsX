@@ -135,7 +135,7 @@ class XYMasking(BaseDropout):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, np.ndarray]:
+    ) -> dict[str, int | np.ndarray]:
         image_shape = params["shape"][:2]
 
         height, width = image_shape
@@ -155,7 +155,7 @@ class XYMasking(BaseDropout):
             "mask_y_length_range": self.mask_y_length_range,
         }
 
-        return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}
+        return {"holes": holes, "seed": int(self.random_generator.integers(0, 2**32 - 1))}
 
     def _generate_mask_size(self, mask_length: tuple[int, int]) -> int:
         return self.py_random.randint(*mask_length)

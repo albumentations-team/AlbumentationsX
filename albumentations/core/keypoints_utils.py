@@ -8,7 +8,7 @@ xy, yx, and those with additional angle or size information.
 
 import math
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -318,7 +318,7 @@ class KeypointsProcessor(DataProcessor[KeypointParams]):
         """Convert one label field mapping to encoded ints (private). Uses metadata.encoder;
         warns if labels not in encoder. Call from convert_label_mappings_to_encoded.
         """
-        encoded_mapping = {}
+        encoded_mapping: dict[int, int] = {}
 
         if metadata.encoder is not None:
             # Convert string mapping to encoded integers
@@ -360,7 +360,7 @@ class KeypointsProcessor(DataProcessor[KeypointParams]):
                 )
         else:
             # Numerical labels, use mapping as-is
-            encoded_mapping |= mapping
+            encoded_mapping.update(cast("dict[int, int]", mapping))
 
         return encoded_mapping
 

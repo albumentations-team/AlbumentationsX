@@ -130,7 +130,7 @@ class GaussNoise(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, float]:
+    ) -> dict[str, np.ndarray]:
         metadata = self.get_image_data(data)
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
         shape = (metadata["height"], metadata["width"], metadata["num_channels"])

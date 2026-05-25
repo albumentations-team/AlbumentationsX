@@ -1417,7 +1417,7 @@ class GridShuffle3D(Transform3D):
         self,
         keypoints: np.ndarray,
         tiles: np.ndarray,
-        mapping: np.ndarray,
+        mapping: list[int],
         **params: Any,
     ) -> np.ndarray:
         return f3d.swap_tiles_on_keypoints_3d(keypoints, tiles, mapping)
@@ -1426,7 +1426,7 @@ class GridShuffle3D(Transform3D):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray | list[int]]:
         # Get volume shape directly from data
         if "volume" in data:
             volume_shape = data["volume"].shape[:3]  # Get (D, H, W) from volume

@@ -912,6 +912,7 @@ class CropAndPad(DualTransform):
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         height, width = params["shape"][:2]
+        percent_params: list[float] | None = None
 
         if self.px is not None:
             new_params = self._get_px_params()
@@ -952,6 +953,8 @@ class CropAndPad(DualTransform):
         if self.px is not None:
             applied_config["px"] = tuple(new_params)
         else:
+            if percent_params is None:
+                raise RuntimeError("percent_params must be initialized when px is not set")
             applied_config["percent"] = tuple(percent_params)
         if sampled_fill is not None:
             applied_config["fill"] = sampled_fill

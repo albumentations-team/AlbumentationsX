@@ -969,6 +969,8 @@ class HEStain(ImageOnlyTransform):
             image = data["volume"][0]
         elif "volumes" in data:
             image = data["volumes"][0][0]
+        else:
+            raise RuntimeError("Expected image, images, volume, or volumes data for stain augmentation")
 
         stain_matrix = self._get_stain_matrix(image)
 

@@ -11,6 +11,7 @@ __all__ = list(
     _overlay_all + _copy_paste_all + _mosaic_all,
 )
 
+_obj: object | None = None
 for _name in __all__:
     _obj = globals().get(_name)
     if isinstance(_obj, type):

@@ -484,7 +484,11 @@ class LongestMaxSize(MaxSizeTransform):
             elif max_h is not None:
                 scale = max_h / img_h
             else:
+                if max_w is None:
+                    raise RuntimeError("max_w must be initialized when max_h is not set")
                 scale = max_w / img_w
+        else:
+            raise RuntimeError("Either max_size or max_size_hw must be set")
 
         return {"scale": scale}
 
@@ -598,7 +602,11 @@ class SmallestMaxSize(MaxSizeTransform):
             elif max_h is not None:
                 scale = max_h / img_h
             else:
+                if max_w is None:
+                    raise RuntimeError("max_w must be initialized when max_h is not set")
                 scale = max_w / img_w
+        else:
+            raise RuntimeError("Either max_size or max_size_hw must be set")
 
         return {"scale": scale}
 

@@ -64,6 +64,7 @@ __all__ = [
     "Vignetting",
 ]
 
+_obj: object | None = None
 for _name in __all__:
     _obj = globals().get(_name)
     if isinstance(_obj, type):

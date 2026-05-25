@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal, cast
 
 from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
@@ -82,13 +82,14 @@ def unsharp_mask(
     if threshold <= 0:
         return sharpened
 
-    diff = cv2.absdiff(image, blurred)
+    diff = cast("np.ndarray", cv2.absdiff(image, blurred))
     threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
     if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] not in {1, 3, 4}:
         mask = diff > threshold_value
         return np.where(mask, sharpened, image).astype(image.dtype, copy=False)
 
-    mask = cv2.compare(diff, threshold_value, cv2.CMP_GT)
+    compare = cast("Any", cv2.compare)
+    mask = cast("np.ndarray", compare(diff, threshold_value, cv2.CMP_GT))
     result = image.copy()
     cv2.copyTo(sharpened, mask, result)
     return result
@@ -364,7 +365,7 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: Convolved image.
 
     """
-    img = np.array(img, copy=True, order="C")
+    img = cast("ImageType", np.array(img, copy=True, order="C"))
     cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img)
     return img
 
@@ -385,7 +386,7 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: Convolved image.
 
     """
-    img = np.array(img, copy=True, order="C")
+    img = cast("ImageType", np.array(img, copy=True, order="C"))
     cv2.sepFilter2D(img, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=img)
     return img
 

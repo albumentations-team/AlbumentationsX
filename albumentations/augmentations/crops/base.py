@@ -1,6 +1,6 @@
 """Base crop transform classes and shared crop schemas."""
 
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal, cast
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -768,7 +768,7 @@ class _BaseRandomSizedCrop(DualTransform):
         **params: Any,
     ) -> ImageType:
         crop = fcrops.crop(img, *crop_coords)
-        interpolation = self._get_interpolation_for_resize(crop.shape[:2], "image")
+        interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[:2]), "image")
         return fgeometric.resize(crop, self.size, interpolation)
 
     def apply_to_mask(
@@ -778,7 +778,7 @@ class _BaseRandomSizedCrop(DualTransform):
         **params: Any,
     ) -> ImageType:
         crop = fcrops.crop(mask, *crop_coords)
-        interpolation = self._get_interpolation_for_resize(crop.shape[:2], "mask")
+        interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[:2]), "mask")
         return fgeometric.resize(crop, self.size, interpolation)
 
     def apply_to_bboxes(
@@ -819,7 +819,7 @@ class _BaseRandomSizedCrop(DualTransform):
         crop = fcrops.volume_crop_yx(images, *crop_coords)
 
         # Get interpolation method based on crop dimensions
-        interpolation = self._get_interpolation_for_resize(crop.shape[1:3], "image")
+        interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[1:3]), "image")
 
         # Then resize the smaller cropped volume using the selected interpolation
         result = np.empty((images.shape[0], self.size[0], self.size[1], crop.shape[-1]), dtype=crop.dtype)

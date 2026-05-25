@@ -85,54 +85,6 @@
       "severity": "error"
     },
     {
-      "line": 417,
-      "column": 23,
-      "stop_line": 417,
-      "stop_column": 37,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "concise_description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "severity": "error"
-    },
-    {
-      "line": 771,
-      "column": 60,
-      "stop_line": 771,
-      "stop_column": 74,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `tuple[int, ...]` is not assignable to parameter `crop_shape` with type `tuple[int, int]` in function `_BaseRandomSizedCrop._get_interpolation_for_resize`",
-      "concise_description": "Argument `tuple[int, ...]` is not assignable to parameter `crop_shape` with type `tuple[int, int]` in function `_BaseRandomSizedCrop._get_interpolation_for_resize`",
-      "severity": "error"
-    },
-    {
-      "line": 781,
-      "column": 60,
-      "stop_line": 781,
-      "stop_column": 74,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `tuple[int, ...]` is not assignable to parameter `crop_shape` with type `tuple[int, int]` in function `_BaseRandomSizedCrop._get_interpolation_for_resize`",
-      "concise_description": "Argument `tuple[int, ...]` is not assignable to parameter `crop_shape` with type `tuple[int, int]` in function `_BaseRandomSizedCrop._get_interpolation_for_resize`",
-      "severity": "error"
-    },
-    {
-      "line": 822,
-      "column": 60,
-      "stop_line": 822,
-      "stop_column": 75,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `tuple[int, ...]` is not assignable to parameter `crop_shape` with type `tuple[int, int]` in function `_BaseRandomSizedCrop._get_interpolation_for_resize`",
-      "concise_description": "Argument `tuple[int, ...]` is not assignable to parameter `crop_shape` with type `tuple[int, int]` in function `_BaseRandomSizedCrop._get_interpolation_for_resize`",
-      "severity": "error"
-    },
-    {
       "line": 828,
       "column": 16,
       "stop_line": 828,
@@ -142,66 +94,6 @@
       "name": "bad-return",
       "description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 564,
-      "column": 23,
-      "stop_line": 564,
-      "stop_column": 37,
-      "path": "albumentations/augmentations/crops/basic.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "concise_description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "severity": "error"
-    },
-    {
-      "line": 825,
-      "column": 13,
-      "stop_line": 825,
-      "stop_column": 24,
-      "path": "albumentations/augmentations/crops/basic.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `Sequence[int]` is not assignable to parameter `crop_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
-      "concise_description": "Argument `Sequence[int]` is not assignable to parameter `crop_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
-      "severity": "error"
-    },
-    {
-      "line": 826,
-      "column": 13,
-      "stop_line": 826,
-      "stop_column": 23,
-      "path": "albumentations/augmentations/crops/basic.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `Sequence[int]` is not assignable to parameter `pad_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
-      "concise_description": "Argument `Sequence[int]` is not assignable to parameter `pad_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
-      "severity": "error"
-    },
-    {
-      "line": 844,
-      "column": 13,
-      "stop_line": 844,
-      "stop_column": 24,
-      "path": "albumentations/augmentations/crops/basic.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `Sequence[int]` is not assignable to parameter `crop_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
-      "concise_description": "Argument `Sequence[int]` is not assignable to parameter `crop_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
-      "severity": "error"
-    },
-    {
-      "line": 845,
-      "column": 13,
-      "stop_line": 845,
-      "stop_column": 23,
-      "path": "albumentations/augmentations/crops/basic.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `Sequence[int]` is not assignable to parameter `pad_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
-      "concise_description": "Argument `Sequence[int]` is not assignable to parameter `pad_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
       "severity": "error"
     },
     {
@@ -385,9 +277,9 @@
       "severity": "error"
     },
     {
-      "line": 88,
+      "line": 89,
       "column": 12,
-      "stop_line": 88,
+      "stop_line": 89,
       "stop_column": 31,
       "path": "albumentations/augmentations/geometric/_functional_grid.py",
       "code": -2,
@@ -397,9 +289,9 @@
       "severity": "error"
     },
     {
-      "line": 342,
+      "line": 343,
       "column": 16,
-      "stop_line": 342,
+      "stop_line": 343,
       "stop_column": 20,
       "path": "albumentations/augmentations/geometric/_functional_grid.py",
       "code": -2,
@@ -670,30 +562,6 @@
       "name": "bad-return",
       "description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 576,
-      "column": 23,
-      "stop_line": 576,
-      "stop_column": 37,
-      "path": "albumentations/augmentations/geometric/pad.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "concise_description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "severity": "error"
-    },
-    {
-      "line": 982,
-      "column": 23,
-      "stop_line": 982,
-      "stop_column": 37,
-      "path": "albumentations/augmentations/geometric/resize.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "concise_description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
       "severity": "error"
     },
     {

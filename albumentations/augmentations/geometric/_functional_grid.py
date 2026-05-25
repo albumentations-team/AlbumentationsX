@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from random import Random
 from typing import Literal
 
 from ._functional_shared import (
@@ -463,7 +464,7 @@ def adjust_padding_by_position(
     w_left: int,
     w_right: int,
     position: Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"],
-    py_random: np.random.RandomState,
+    py_random: Random,
 ) -> tuple[int, int, int, int]:
     """Adjust padding (h_top, h_bottom, w_left, w_right) by position: center,
     top_left, top_right, bottom_*, or random. py_random for random. For PadIfNeeded.

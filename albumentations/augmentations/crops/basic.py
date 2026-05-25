@@ -815,8 +815,8 @@ class CropAndPad(DualTransform):
     def apply(
         self,
         img: ImageType,
-        crop_params: Sequence[int],
-        pad_params: Sequence[int],
+        crop_params: tuple[int, int, int, int] | None,
+        pad_params: tuple[int, int, int, int] | None,
         fill: tuple[float, ...] | float,
         **params: Any,
     ) -> ImageType:
@@ -834,8 +834,8 @@ class CropAndPad(DualTransform):
     def apply_to_mask(
         self,
         mask: ImageType,
-        crop_params: Sequence[int],
-        pad_params: Sequence[int],
+        crop_params: tuple[int, int, int, int] | None,
+        pad_params: tuple[int, int, int, int] | None,
         fill_mask: tuple[float, ...] | float,
         **params: Any,
     ) -> ImageType:
@@ -853,8 +853,8 @@ class CropAndPad(DualTransform):
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,
-        crop_params: tuple[int, int, int, int],
-        pad_params: tuple[int, int, int, int],
+        crop_params: tuple[int, int, int, int] | None,
+        pad_params: tuple[int, int, int, int] | None,
         result_shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
@@ -863,8 +863,8 @@ class CropAndPad(DualTransform):
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
-        crop_params: tuple[int, int, int, int],
-        pad_params: tuple[int, int, int, int],
+        crop_params: tuple[int, int, int, int] | None,
+        pad_params: tuple[int, int, int, int] | None,
         result_shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
@@ -963,8 +963,8 @@ class CropAndPad(DualTransform):
         self.applied_config = applied_config
 
         return {
-            "crop_params": crop_params or None,
-            "pad_params": pad_params or None,
+            "crop_params": tuple(crop_params) if crop_params else None,
+            "pad_params": tuple(pad_params) if pad_params else None,
             "fill": sampled_fill,
             "fill_mask": sampled_fill_mask,
             "result_shape": (result_rows, result_cols),

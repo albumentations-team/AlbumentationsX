@@ -4,8 +4,9 @@ This guide will help you set up your development environment for contributing to
 
 ## Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - Git
+- [uv](https://docs.astral.sh/uv/)
 - A GitHub account
 
 ## Step-by-Step Setup
@@ -20,65 +21,46 @@ git clone https://github.com/YOUR_USERNAME/AlbumentationsX.git
 cd AlbumentationsX
 ```
 
-### 2. Create a Virtual Environment
+### 2. Install Dependencies With uv
 
-Choose the appropriate commands for your operating system:
+Create a local virtual environment and install the project plus development tools:
 
-#### Linux / macOS
+```bash
+uv sync --group dev
+```
+
+This is the canonical setup path for contributors and coding agents. It installs the same toolchain used by CI,
+including Ruff, mypy, pytest, pre-commit, and advisory security/type-analysis tools.
+
+#### pip fallback
+
+If you cannot use uv, create and activate a virtual environment manually, then install the project and development
+requirements:
 
 ```bash
 python3 -m venv env
 source env/bin/activate
-```
-
-#### Windows (cmd.exe)
-
-```bash
-python -m venv env
-env\Scripts\activate.bat
-```
-
-#### Windows (PowerShell)
-
-```bash
-python -m venv env
-env\Scripts\activate.ps1
-```
-
-### 3. Install Dependencies
-
-1. Install the project in editable mode:
-
-```bash
 pip install -e .
-```
-
-1. Install development dependencies:
-
-```bash
 pip install -r requirements-dev.txt
 ```
 
-### 4. Set Up Pre-commit Hooks
+On Windows, activate the environment with `env\Scripts\activate.bat` for cmd.exe or `env\Scripts\activate.ps1` for
+PowerShell.
+
+### 3. Set Up Pre-commit Hooks
 
 Pre-commit hooks help maintain code quality by automatically checking your changes before each commit.
-
-1. Install pre-commit:
-
-```bash
-pip install pre-commit
-```
 
 1. Set up the hooks:
 
 ```bash
-pre-commit install
+uv run pre-commit install
 ```
 
 1. (Optional) Run hooks manually on all files:
 
 ```bash
-pre-commit run --files $(find albumentations -type f)
+uv run pre-commit run --all-files
 ```
 
 ## Verifying Your Setup
@@ -88,7 +70,13 @@ pre-commit run --files $(find albumentations -type f)
 Ensure everything is set up correctly by running the test suite:
 
 ```bash
-pytest
+uv run pytest
+```
+
+For a faster local gate before handing work off, run:
+
+```bash
+uv run python tools/quality_gate.py fast
 ```
 
 ### Common Issues and Solutions

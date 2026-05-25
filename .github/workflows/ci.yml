@@ -13,6 +13,9 @@ on:
       - '**.md'
       - 'benchmark/**'
 
+permissions:
+  contents: read
+
 jobs:
   test_and_lint:
     name: Test and lint
@@ -43,16 +46,14 @@ jobs:
 
     - name: Install all dependencies
       run: |
-        uv pip install wheel
-        uv pip install .  # project first so albucore etc. from pyproject.toml
-        uv pip install -r requirements-dev.txt
+        uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
 
     - name: Verify uv.lock is up-to-date
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'
       run: uv lock --check
 
     - name: Run PyTest with coverage
-      run: pytest -n auto --cov=albumentations --cov-branch --cov-report=xml
+      run: uv run pytest -n auto --cov=albumentations --cov-branch --cov-report=xml
 
     - name: Upload coverage reports to Codecov
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'
@@ -64,7 +65,7 @@ jobs:
         fail_ci_if_error: true
 
   check_code_formatting_types:
-    name: Check code formatting with ruff and mypy
+    name: Check repository hooks with ruff and mypy
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -81,11 +82,9 @@ jobs:
         activate-environment: true
 
     - name: Install all requirements
-      run: |
-        uv pip install .  # project first so albucore etc. from pyproject.toml
-        uv pip install -r requirements-dev.txt
+      run: uv sync --locked --group dev --inexact
 
     - name: Run checks
-      run: pre-commit run --files $(find albumentations -type f)
+      run: uv run pre-commit run --all-files
     - name: check-defaults-in-apply
-      run: python -m tools.check_defaults
+      run: uv run python -m tools.check_defaults

@@ -21,6 +21,8 @@ always_apply: true
 - For performance work, benchmark before choosing `cv2`, `sz_lut`, or NumPy. Direct bitwise operations can beat
   LUTs for true bit masks, scalar NumPy bitwise can beat OpenCV, and tiny transforms may be dominated by dispatch
   overhead rather than pixel kernels.
+- After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
+  complete when the environment can support it.
 
 ## Complete Documentation
 

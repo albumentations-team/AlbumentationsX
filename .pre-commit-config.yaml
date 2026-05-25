@@ -22,6 +22,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
+        exclude: ^pyrefly-baseline\.json$
       - id: check-ast
       - id: check-builtin-literals
       - id: check-case-conflict
@@ -143,7 +144,6 @@ repos:
       - id: python-check-mock-methods
       - id: python-use-type-annotations
       - id: python-check-blanket-noqa
-      - id: python-use-type-annotations
       - id: text-unicode-replacement-char
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.2

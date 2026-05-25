@@ -3,8 +3,11 @@ deepdiff>=8.0.1
 eval-type-backport
 google-docstring-parser>=0.0.9
 hypothesis>=6.0.0
+mypy>=2.0.0
 opencv-python-headless>=4.13.0.92
+pip-audit
 pre_commit>=4.5.1
+pyrefly
 pytest>=9.0.2
 pytest-randomly>=3.15.0
 pytest-xdist>=3.6.0
@@ -12,6 +15,7 @@ pytest_cov>=5.0.0
 pytest_mock>=3.14.0
 pytz
 requests>=2.31.0
+ruff>=0.15.12
 scikit-image
 scikit-learn
 tomli>=2.0.1
@@ -19,3 +23,4 @@ torch>=2.10.0
 torchvision>=0.25.0
 types-PyYAML
 types-setuptools
+zizmor

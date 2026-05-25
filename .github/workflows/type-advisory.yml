@@ -1,0 +1,33 @@
+name: Type Advisory
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "22 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  pyrefly:
+    name: Pyrefly advisory
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+    - name: Install uv and set Python version
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        python-version: "3.10"
+        activate-environment: true
+    - name: Install dependencies
+      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+    - name: Run Pyrefly
+      run: uv run pyrefly check --output-format=github

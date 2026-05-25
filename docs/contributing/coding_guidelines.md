@@ -48,7 +48,13 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 - The hooks will run automatically on `git commit`. To run manually:
 
   ```bash
-  pre-commit run --files $(find albumentations -type f)
+  uv run pre-commit run --all-files
+  ```
+
+- Before handing off Python changes, run the fast local quality gate:
+
+  ```bash
+  uv run python tools/quality_gate.py fast
   ```
 
 ### Python Version and Type Hints

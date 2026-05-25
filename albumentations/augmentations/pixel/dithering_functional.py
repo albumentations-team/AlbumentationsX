@@ -605,7 +605,7 @@ def _apply_dithering_to_grayscale(
     # Expand back to original number of channels (handle both 2D and 3D cases)
     if dithered.ndim == 2:
         dithered = dithered[:, :, np.newaxis]
-    return np.repeat(dithered, original_channels, axis=2)
+    return cast("ImageType", np.repeat(dithered, original_channels, axis=2))
 
 
 def _apply_single_dithering_method(
@@ -619,14 +619,14 @@ def _apply_single_dithering_method(
     """
     # Choose optimized uint8 versions when possible
     if img.dtype == np.uint8 and method == "ordered":
-        return ordered_dither_uint8(img, n_colors, kwargs.get("matrix_size", 4))
+        return ordered_dither_uint8(cast("ImageUInt8", img), n_colors, kwargs.get("matrix_size", 4))
     if img.dtype == np.uint8 and method == "random":
         random_generator = kwargs.get("random_generator")
         if random_generator is None:
             msg = "random_generator is required for random dithering method"
             raise ValueError(msg)
         return random_dither_uint8(
-            img,
+            cast("ImageUInt8", img),
             n_colors,
             kwargs.get("noise_range", (-0.5, 0.5)),
             random_generator,
@@ -639,22 +639,23 @@ def _apply_single_dithering_method(
         and not kwargs.get("serpentine", False)
         and img.shape[2] == 1
     ):
-        return _floyd_steinberg_binary_uint8(img)
+        return _floyd_steinberg_binary_uint8(cast("ImageUInt8", img))
 
     # Use float32 versions
+    float_img = cast("ImageFloat32", img)
     if method == "random":
         random_generator = kwargs.get("random_generator")
         if random_generator is None:
             msg = "random_generator is required for random dithering method"
             raise ValueError(msg)
         return random_dither(
-            img,
+            float_img,
             n_colors,
             kwargs.get("noise_range", (-0.5, 0.5)),
             random_generator,
         )
     if method == "ordered":
-        return ordered_dither(img, n_colors, kwargs.get("matrix_size", 4))
+        return ordered_dither(float_img, n_colors, kwargs.get("matrix_size", 4))
     if method == "error_diffusion":
         return error_diffusion_dither(
             img,

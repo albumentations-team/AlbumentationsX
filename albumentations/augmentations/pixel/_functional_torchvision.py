@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import cast
 
 from ._functional_color import (
     grayscale_to_multichannel,
@@ -111,16 +112,16 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
 
 
 @preserve_channel_dim
-def adjust_brightness_torchvision(img: ImageType, factor: np.ndarray) -> ImageType:
-    """Adjust brightness by multiplying pixels by factor. Torchvision-compatible; uint8 and float32.
-    factor scalar or per-channel array.
+def adjust_brightness_torchvision(img: ImageType, factor: float) -> ImageType:
+    """Adjust brightness by multiplying pixels by a scalar factor, matching TorchVision behavior for uint8 and
+    float32 images without changing shape.
 
     This function adjusts the brightness of an image by multiplying each pixel value by a factor.
     The brightness is adjusted by multiplying the image by the factor.
 
     Args:
         img (ImageType): Input image as a numpy array.
-        factor (np.ndarray): The factor to adjust the brightness by.
+        factor (float): The factor to adjust the brightness by.
 
     Returns:
         ImageType: The adjusted image.
@@ -153,12 +154,13 @@ def adjust_contrast_torchvision(img: ImageType, factor: float) -> ImageType:
     if factor == 1:
         return img
 
-    img_mean = mean(img) if is_grayscale_image(img) else mean(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+    gray_img = img if is_grayscale_image(img) else cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+    img_mean = float(mean(gray_img))
 
     if factor == 0:
         if img.dtype != np.float32:
             img_mean = int(img_mean + 0.5)
-        return np.full_like(img, img_mean, dtype=img.dtype)
+        return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
 
     return multiply_add(img, factor, img_mean * (1 - factor), inplace=False)
 
@@ -195,13 +197,13 @@ def adjust_saturation_torchvision(
 
 
 def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    img = cast("ImageUInt8", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
 
     lut = np.arange(0, 256, dtype=np.int16)
     lut = np.mod(lut + 180 * factor, 180).astype(np.uint8)
     img[..., 0] = sz_lut(img[..., 0], lut, inplace=False)
 
-    return cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+    return cast("ImageUInt8", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
 
 def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
@@ -222,11 +224,11 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
         return img
 
     if img.dtype == np.uint8:
-        return _adjust_hue_torchvision_uint8(img, factor)
+        return _adjust_hue_torchvision_uint8(cast("ImageUInt8", img), factor)
 
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
     img[..., 0] = np.mod(img[..., 0] + factor * 360, 360)
-    return cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+    return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
 
 def apply_brightness_contrast_torchvision(

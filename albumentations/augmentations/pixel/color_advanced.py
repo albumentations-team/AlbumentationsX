@@ -932,7 +932,10 @@ class HEStain(ImageOnlyTransform):
             return fpixel.STAIN_MATRICES[random_preset]
         # vahadane or macenko
         self.stain_extractor.fit(img)
-        return self.stain_extractor.stain_matrix_target
+        stain_matrix = self.stain_extractor.stain_matrix_target
+        if stain_matrix is None:
+            raise RuntimeError("Stain extractor did not produce a stain matrix.")
+        return stain_matrix
 
     def apply(
         self,

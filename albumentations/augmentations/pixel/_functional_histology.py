@@ -77,7 +77,7 @@ class StainNormalizer:
     """
 
     def __init__(self) -> None:
-        self.stain_matrix_target = None
+        self.stain_matrix_target: np.ndarray | None = None
 
     def fit(self, img: ImageType) -> None:
         """Fit the stain normalizer to a reference image. Learns stain matrix from img; call transform

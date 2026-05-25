@@ -104,7 +104,7 @@ def add_snow_bleach(
     image_hls[:, :, 1] = lightness_channel
 
     # Convert back to RGB
-    return cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB)
+    return cast("ImageType", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
 
 
 def generate_snow_textures(
@@ -232,12 +232,12 @@ def add_snow_texture(
     )
 
     # Convert back to RGB
-    img_with_snow = cv2.cvtColor(img_with_snow.astype(np.uint8), cv2.COLOR_HSV2RGB)
+    img_with_snow = cast("ImageType", cv2.cvtColor(img_with_snow.astype(np.uint8), cv2.COLOR_HSV2RGB))
 
     # Add some sparkle effects for snow glitter
     img_with_snow[sparkle_mask] = [max_value, max_value, max_value]
 
-    return img_with_snow
+    return cast("ImageType", img_with_snow)
 
 
 @uint8_io
@@ -288,7 +288,7 @@ def add_rain(
 
     cv2.polylines(
         rain_layer,
-        lines.astype(np.int32),
+        [line.astype(np.int32) for line in lines],
         False,
         drop_color,
         drop_width,
@@ -381,7 +381,7 @@ def add_fog(
     if blur_size % 2 == 0:
         blur_size += 1
 
-    result = cv2.GaussianBlur(result, (blur_size, blur_size), 0)
+    result = cast("ImageType", cv2.GaussianBlur(result, (blur_size, blur_size), 0))
 
     return clip(result, np.dtype(np.uint8), inplace=True)
 
@@ -676,7 +676,7 @@ def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
         min_y, max_y, min_x, max_x, sat = gravel
         image_hls[min_y:max_y, min_x:max_x, 1] = sat
 
-    return cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB)
+    return cast("ImageType", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
 
 
 @float32_io
@@ -747,12 +747,15 @@ def get_rain_params(
     _, dist = cv2.threshold(dist, 20, 20, cv2.THRESH_TRUNC)
 
     # Use separate blur operations for better drop formation
-    dist = cv2.GaussianBlur(
-        dist,
-        ksize=(3, 3),
-        sigmaX=1,  # Add slight sigma for smoother drops
-        sigmaY=1,
-        borderType=cv2.BORDER_REPLICATE,
+    dist = cast(
+        "ImageType",
+        cv2.GaussianBlur(
+            dist,
+            ksize=(3, 3),
+            sigmaX=1,  # Add slight sigma for smoother drops
+            sigmaY=1,
+            borderType=cv2.BORDER_REPLICATE,
+        ),
     )
     dist = clip(dist, np.dtype(np.uint8), inplace=True)
 

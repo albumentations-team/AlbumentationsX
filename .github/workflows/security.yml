@@ -32,7 +32,7 @@ jobs:
         --format requirements-txt
         --output-file runtime-requirements.txt
     - name: Run pip-audit
-      run: uv tool run --from pip-audit pip-audit --requirement runtime-requirements.txt --no-deps
+      run: uv tool run --from pip-audit pip-audit --requirement runtime-requirements.txt --no-deps --disable-pip
 
   workflow_audit:
     name: GitHub Actions hardening audit

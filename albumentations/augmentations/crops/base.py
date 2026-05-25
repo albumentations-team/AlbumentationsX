@@ -1,6 +1,6 @@
 """Base crop transform classes and shared crop schemas."""
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -718,6 +718,8 @@ class _BaseRandomSizedCrop(DualTransform):
         interpolation: FullInterpolationType
         mask_interpolation: FullInterpolationType
         area_for_downscale: Literal["image", "image_mask"] | None
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

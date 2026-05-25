@@ -5,7 +5,7 @@ ISO, multiplicative, shot, salt-and-pepper, additive, and film grain noise.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, TypeAlias
+from typing import Annotated, Any, ClassVar, Literal, TypeAlias
 
 import cv2
 import numpy as np
@@ -674,6 +674,8 @@ class AdditiveNoise(ImageOnlyTransform):
             self.noise_params = validated_params.model_dump()
 
             return self
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

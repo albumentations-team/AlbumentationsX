@@ -13,7 +13,7 @@ and properly handle all target types including images, masks, bounding boxes, an
 """
 
 from numbers import Real
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 import cv2
 import numpy as np
@@ -181,6 +181,8 @@ class Pad(DualTransform):
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
         border_mode: BorderModeType
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

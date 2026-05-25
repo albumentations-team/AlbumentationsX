@@ -7,7 +7,7 @@ such as spatial dimensions, apply dropout effects, and perform symmetry operatio
 interface and implements specific 3D augmentation logic.
 """
 
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
 from pydantic import AfterValidator, field_validator, model_validator
@@ -531,6 +531,8 @@ class BaseCropAndPad3D(Transform3D):
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
         pad_position: Literal["center", "random"]
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

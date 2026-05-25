@@ -5,7 +5,7 @@ and other grid-like data representations where masking in specific directions (t
 can improve model robustness and generalization.
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 import numpy as np
 from pydantic import model_validator
@@ -97,6 +97,8 @@ class XYMasking(BaseDropout):
                 raise ValueError(msg)
 
             return self
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

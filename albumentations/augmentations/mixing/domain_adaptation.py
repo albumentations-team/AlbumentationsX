@@ -7,7 +7,7 @@ like histograms, frequency spectra, or overall pixel distributions.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 import cv2
 import numpy as np
@@ -149,6 +149,8 @@ class BaseDomainAdaptation(ImageOnlyTransform):
 
     class InitSchema(BaseDomainAdaptationInitSchema):
         pass
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

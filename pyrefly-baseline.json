@@ -37,33 +37,9 @@
       "severity": "error"
     },
     {
-      "line": 373,
-      "column": 11,
-      "stop_line": 373,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `MotionBlur.InitSchema` overrides parent class `Blur` in an inconsistent manner\n  `MotionBlur.InitSchema` has type `type[MotionBlur.InitSchema]`, which is not assignable to `type[Blur.InitSchema]`, the type of `Blur.InitSchema`",
-      "concise_description": "Class member `MotionBlur.InitSchema` overrides parent class `Blur` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 400,
-      "column": 9,
-      "stop_line": 400,
-      "stop_column": 14,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `MotionBlur.apply` overrides parent class `Blur` in an inconsistent manner\n  `MotionBlur.apply` has type `(self: MotionBlur, img: ImageType, kernel: ndarray[Unknown, Unknown], **params: Any) -> ImageType`, which is not assignable to `(self: MotionBlur, img: ImageType, kernel: int, **params: Any) -> ImageType`, the type of `Blur.apply`\n  Signature mismatch:\n  expected: def apply(self: MotionBlur, img: ImageType, kernel: int, **params: Any) -> ImageType: ...\n                                                                ^^^ parameters\n  found:    def apply(self: MotionBlur, img: ImageType, kernel: ndarray[Unknown, Unknown], **params: Any) -> ImageType: ...\n                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^ parameters",
-      "concise_description": "Class member `MotionBlur.apply` overrides parent class `Blur` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 820,
+      "line": 824,
       "column": 16,
-      "stop_line": 820,
+      "stop_line": 824,
       "stop_column": 73,
       "path": "albumentations/augmentations/blur/transforms.py",
       "code": -2,
@@ -121,9 +97,9 @@
       "severity": "error"
     },
     {
-      "line": 769,
+      "line": 771,
       "column": 60,
-      "stop_line": 769,
+      "stop_line": 771,
       "stop_column": 74,
       "path": "albumentations/augmentations/crops/base.py",
       "code": -2,
@@ -133,9 +109,9 @@
       "severity": "error"
     },
     {
-      "line": 779,
+      "line": 781,
       "column": 60,
-      "stop_line": 779,
+      "stop_line": 781,
       "stop_column": 74,
       "path": "albumentations/augmentations/crops/base.py",
       "code": -2,
@@ -145,9 +121,9 @@
       "severity": "error"
     },
     {
-      "line": 820,
+      "line": 822,
       "column": 60,
-      "stop_line": 820,
+      "stop_line": 822,
       "stop_column": 75,
       "path": "albumentations/augmentations/crops/base.py",
       "code": -2,
@@ -157,9 +133,9 @@
       "severity": "error"
     },
     {
-      "line": 826,
+      "line": 828,
       "column": 16,
-      "stop_line": 826,
+      "stop_line": 828,
       "stop_column": 22,
       "path": "albumentations/augmentations/crops/base.py",
       "code": -2,
@@ -226,42 +202,6 @@
       "name": "bad-argument-type",
       "description": "Argument `Sequence[int]` is not assignable to parameter `pad_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
       "concise_description": "Argument `Sequence[int]` is not assignable to parameter `pad_params` with type `tuple[int, int, int, int] | None` in function `albumentations.augmentations.crops.functional.crop_and_pad`",
-      "severity": "error"
-    },
-    {
-      "line": 333,
-      "column": 11,
-      "stop_line": 333,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/bbox_safe.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomSizedBBoxSafeCrop.InitSchema` overrides parent class `BBoxSafeRandomCrop` in an inconsistent manner\n  `RandomSizedBBoxSafeCrop.InitSchema` has type `type[RandomSizedBBoxSafeCrop.InitSchema]`, which is not assignable to `type[BBoxSafeRandomCrop.InitSchema]`, the type of `BBoxSafeRandomCrop.InitSchema`",
-      "concise_description": "Class member `RandomSizedBBoxSafeCrop.InitSchema` overrides parent class `BBoxSafeRandomCrop` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 125,
-      "column": 11,
-      "stop_line": 125,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/sized.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomSizedCrop.InitSchema` overrides parent class `_BaseRandomSizedCrop` in an inconsistent manner\n  `RandomSizedCrop.InitSchema` has type `type[RandomSizedCrop.InitSchema]`, which is not assignable to `type[_BaseRandomSizedCrop.InitSchema]`, the type of `_BaseRandomSizedCrop.InitSchema`",
-      "concise_description": "Class member `RandomSizedCrop.InitSchema` overrides parent class `_BaseRandomSizedCrop` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 292,
-      "column": 11,
-      "stop_line": 292,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/sized.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomResizedCrop.InitSchema` overrides parent class `_BaseRandomSizedCrop` in an inconsistent manner\n  `RandomResizedCrop.InitSchema` has type `type[RandomResizedCrop.InitSchema]`, which is not assignable to `type[_BaseRandomSizedCrop.InitSchema]`, the type of `_BaseRandomSizedCrop.InitSchema`",
-      "concise_description": "Class member `RandomResizedCrop.InitSchema` overrides parent class `_BaseRandomSizedCrop` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -349,9 +289,9 @@
       "severity": "error"
     },
     {
-      "line": 336,
+      "line": 338,
       "column": 59,
-      "stop_line": 336,
+      "stop_line": 338,
       "stop_column": 75,
       "path": "albumentations/augmentations/dropout/transforms.py",
       "code": -2,
@@ -361,21 +301,9 @@
       "severity": "error"
     },
     {
-      "line": 68,
-      "column": 11,
-      "stop_line": 68,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/dropout/xy_masking.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `XYMasking.InitSchema` overrides parent class `BaseDropout` in an inconsistent manner\n  `XYMasking.InitSchema` has type `type[XYMasking.InitSchema]`, which is not assignable to `type[BaseDropout.InitSchema]`, the type of `BaseDropout.InitSchema`",
-      "concise_description": "Class member `XYMasking.InitSchema` overrides parent class `BaseDropout` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 156,
+      "line": 158,
       "column": 16,
-      "stop_line": 156,
+      "stop_line": 158,
       "stop_column": 86,
       "path": "albumentations/augmentations/dropout/xy_masking.py",
       "code": -2,
@@ -745,21 +673,9 @@
       "severity": "error"
     },
     {
-      "line": 503,
-      "column": 11,
-      "stop_line": 503,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/pad.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `PadIfNeeded.InitSchema` overrides parent class `Pad` in an inconsistent manner\n  `PadIfNeeded.InitSchema` has type `type[PadIfNeeded.InitSchema]`, which is not assignable to `type[Pad.InitSchema]`, the type of `Pad.InitSchema`",
-      "concise_description": "Class member `PadIfNeeded.InitSchema` overrides parent class `Pad` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 574,
+      "line": 576,
       "column": 23,
-      "stop_line": 574,
+      "stop_line": 576,
       "stop_column": 37,
       "path": "albumentations/augmentations/geometric/pad.py",
       "code": -2,
@@ -790,18 +706,6 @@
       "name": "bad-override-mutable-attribute",
       "description": "Class member `InitSchema.fill_mask` overrides parent class `RotateInitSchema` in an inconsistent manner\n  `InitSchema.fill_mask` has type `float | tuple[float, ...]`, which is not consistent with `float | tuple[float, ...] | None` in `RotateInitSchema.fill_mask` (the type of read-write attributes cannot be changed)",
       "concise_description": "Class member `InitSchema.fill_mask` overrides parent class `RotateInitSchema` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 647,
-      "column": 11,
-      "stop_line": 647,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/rotate.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `SafeRotate.InitSchema` overrides parent class `Affine` in an inconsistent manner\n  `SafeRotate.InitSchema` has type `type[SafeRotate.InitSchema]`, which is not assignable to `type[Affine.InitSchema]`, the type of `Affine.InitSchema`",
-      "concise_description": "Class member `SafeRotate.InitSchema` overrides parent class `Affine` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -853,9 +757,9 @@
       "severity": "error"
     },
     {
-      "line": 629,
+      "line": 631,
       "column": 16,
-      "stop_line": 629,
+      "stop_line": 631,
       "stop_column": 22,
       "path": "albumentations/augmentations/geometric/transforms.py",
       "code": -2,
@@ -865,21 +769,9 @@
       "severity": "error"
     },
     {
-      "line": 912,
-      "column": 11,
-      "stop_line": 912,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ShiftScaleRotate.InitSchema` overrides parent class `Affine` in an inconsistent manner\n  `ShiftScaleRotate.InitSchema` has type `type[ShiftScaleRotate.InitSchema]`, which is not assignable to `type[Affine.InitSchema]`, the type of `Affine.InitSchema`",
-      "concise_description": "Class member `ShiftScaleRotate.InitSchema` overrides parent class `Affine` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1369,
+      "line": 1371,
       "column": 13,
-      "stop_line": 1369,
+      "stop_line": 1371,
       "stop_column": 20,
       "path": "albumentations/augmentations/geometric/transforms.py",
       "code": -2,
@@ -889,9 +781,9 @@
       "severity": "error"
     },
     {
-      "line": 1416,
+      "line": 1418,
       "column": 16,
-      "stop_line": 1416,
+      "stop_line": 1418,
       "stop_column": 61,
       "path": "albumentations/augmentations/geometric/transforms.py",
       "code": -2,
@@ -901,9 +793,9 @@
       "severity": "error"
     },
     {
-      "line": 1521,
+      "line": 1523,
       "column": 43,
-      "stop_line": 1521,
+      "stop_line": 1523,
       "stop_column": 49,
       "path": "albumentations/augmentations/geometric/transforms.py",
       "code": -2,
@@ -913,9 +805,9 @@
       "severity": "error"
     },
     {
-      "line": 1535,
+      "line": 1537,
       "column": 13,
-      "stop_line": 1535,
+      "stop_line": 1537,
       "stop_column": 19,
       "path": "albumentations/augmentations/geometric/transforms.py",
       "code": -2,
@@ -925,51 +817,15 @@
       "severity": "error"
     },
     {
-      "line": 1551,
+      "line": 1553,
       "column": 16,
-      "stop_line": 1553,
+      "stop_line": 1555,
       "stop_column": 10,
       "path": "albumentations/augmentations/geometric/transforms.py",
       "code": -2,
       "name": "bad-return",
       "description": "Returned type `dict[str, MatLike]` is not assignable to declared return type `dict[str, float]`",
       "concise_description": "Returned type `dict[str, MatLike]` is not assignable to declared return type `dict[str, float]`",
-      "severity": "error"
-    },
-    {
-      "line": 286,
-      "column": 11,
-      "stop_line": 286,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/mixing/domain_adaptation.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `HistogramMatching.InitSchema` overrides parent class `BaseDomainAdaptation` in an inconsistent manner\n  `HistogramMatching.InitSchema` has type `type[HistogramMatching.InitSchema]`, which is not assignable to `type[BaseDomainAdaptation.InitSchema]`, the type of `BaseDomainAdaptation.InitSchema`",
-      "concise_description": "Class member `HistogramMatching.InitSchema` overrides parent class `BaseDomainAdaptation` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 463,
-      "column": 11,
-      "stop_line": 463,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/mixing/domain_adaptation.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `FDA.InitSchema` overrides parent class `BaseDomainAdaptation` in an inconsistent manner\n  `FDA.InitSchema` has type `type[FDA.InitSchema]`, which is not assignable to `type[BaseDomainAdaptation.InitSchema]`, the type of `BaseDomainAdaptation.InitSchema`",
-      "concise_description": "Class member `FDA.InitSchema` overrides parent class `BaseDomainAdaptation` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 650,
-      "column": 11,
-      "stop_line": 650,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/mixing/domain_adaptation.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `PixelDistributionAdaptation.InitSchema` overrides parent class `BaseDomainAdaptation` in an inconsistent manner\n  `PixelDistributionAdaptation.InitSchema` has type `type[PixelDistributionAdaptation.InitSchema]`, which is not assignable to `type[BaseDomainAdaptation.InitSchema]`, the type of `BaseDomainAdaptation.InitSchema`",
-      "concise_description": "Class member `PixelDistributionAdaptation.InitSchema` overrides parent class `BaseDomainAdaptation` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -2377,18 +2233,6 @@
       "severity": "error"
     },
     {
-      "line": 197,
-      "column": 11,
-      "stop_line": 197,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/channel.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ChannelSwap.InitSchema` overrides parent class `ChannelShuffle` in an inconsistent manner\n  `ChannelSwap.InitSchema` has type `type[ChannelSwap.InitSchema]`, which is not assignable to `type[ChannelShuffle.InitSchema]`, the type of `ChannelShuffle.InitSchema`",
-      "concise_description": "Class member `ChannelSwap.InitSchema` overrides parent class `ChannelShuffle` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 191,
       "column": 65,
       "stop_line": 191,
@@ -2398,18 +2242,6 @@
       "name": "bad-argument-type",
       "description": "Argument `float` is not assignable to parameter `factor` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.pixel._functional_torchvision.adjust_brightness_torchvision`",
       "concise_description": "Argument `float` is not assignable to parameter `factor` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.pixel._functional_torchvision.adjust_brightness_torchvision`",
-      "severity": "error"
-    },
-    {
-      "line": 667,
-      "column": 11,
-      "stop_line": 667,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_advanced.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RGBShift.InitSchema` overrides parent class `AdditiveNoise` in an inconsistent manner\n  `RGBShift.InitSchema` has type `type[RGBShift.InitSchema]`, which is not assignable to `type[AdditiveNoise.InitSchema]`, the type of `AdditiveNoise.InitSchema`",
-      "concise_description": "Class member `RGBShift.InitSchema` overrides parent class `AdditiveNoise` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -2797,30 +2629,6 @@
       "severity": "error"
     },
     {
-      "line": 131,
-      "column": 11,
-      "stop_line": 131,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/spectrogram/transform.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `TimeMasking.InitSchema` overrides parent class `XYMasking` in an inconsistent manner\n  `TimeMasking.InitSchema` has type `type[TimeMasking.InitSchema]`, which is not assignable to `type[XYMasking.InitSchema]`, the type of `XYMasking.InitSchema`",
-      "concise_description": "Class member `TimeMasking.InitSchema` overrides parent class `XYMasking` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 207,
-      "column": 11,
-      "stop_line": 207,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/spectrogram/transform.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `FrequencyMasking.InitSchema` overrides parent class `XYMasking` in an inconsistent manner\n  `FrequencyMasking.InitSchema` has type `type[FrequencyMasking.InitSchema]`, which is not assignable to `type[XYMasking.InitSchema]`, the type of `XYMasking.InitSchema`",
-      "concise_description": "Class member `FrequencyMasking.InitSchema` overrides parent class `XYMasking` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 187,
       "column": 66,
       "stop_line": 187,
@@ -2845,33 +2653,9 @@
       "severity": "error"
     },
     {
-      "line": 795,
-      "column": 11,
-      "stop_line": 795,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/transforms3d/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `CenterCrop3D.InitSchema` overrides parent class `BaseCropAndPad3D` in an inconsistent manner\n  `CenterCrop3D.InitSchema` has type `type[CenterCrop3D.InitSchema]`, which is not assignable to `type[BaseCropAndPad3D.InitSchema]`, the type of `BaseCropAndPad3D.InitSchema`",
-      "concise_description": "Class member `CenterCrop3D.InitSchema` overrides parent class `BaseCropAndPad3D` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 939,
-      "column": 11,
-      "stop_line": 939,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/transforms3d/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomCrop3D.InitSchema` overrides parent class `BaseCropAndPad3D` in an inconsistent manner\n  `RandomCrop3D.InitSchema` has type `type[RandomCrop3D.InitSchema]`, which is not assignable to `type[BaseCropAndPad3D.InitSchema]`, the type of `BaseCropAndPad3D.InitSchema`",
-      "concise_description": "Class member `RandomCrop3D.InitSchema` overrides parent class `BaseCropAndPad3D` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1447,
+      "line": 1449,
       "column": 16,
-      "stop_line": 1447,
+      "stop_line": 1449,
       "stop_column": 61,
       "path": "albumentations/augmentations/transforms3d/transforms.py",
       "code": -2,

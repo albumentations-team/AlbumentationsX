@@ -2,7 +2,7 @@
 defocus, zoom). Each transform documents its parameters and behavior in Args and Examples.
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 import numpy as np
 from albucore import median_blur, reduce_sum
@@ -137,6 +137,8 @@ class Blur(ImageOnlyTransform):
 
     class InitSchema(BlurInitSchema):
         pass
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,
@@ -397,7 +399,9 @@ class MotionBlur(Blur):
         self.angle_range = angle_range
         self.direction_range = direction_range
 
-    def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
+    def apply(self, img: ImageType, kernel: int | np.ndarray, **params: Any) -> ImageType:
+        if isinstance(kernel, int):
+            return fblur.box_blur(img, kernel)
         return fpixel.convolve(img, kernel=kernel)
 
     def get_params(self) -> dict[str, Any]:

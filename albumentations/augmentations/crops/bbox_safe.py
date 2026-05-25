@@ -1,6 +1,6 @@
 """Bounding-box-aware safe crop transforms."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -133,6 +133,8 @@ class BBoxSafeRandomCrop(BaseCrop):
             ge=0.0,
             le=1.0,
         )
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(self, erosion_rate: float = 0.0, p: float = 1.0):
         super().__init__(p=p)

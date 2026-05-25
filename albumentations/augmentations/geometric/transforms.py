@@ -6,7 +6,7 @@ transformations like grid shuffling and thin plate splines.
 """
 
 import random
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, ClassVar, Literal, cast
 from warnings import warn
 
 import cv2
@@ -554,6 +554,8 @@ class Affine(DualTransform):
                 y = tuple(val.get("y", default))  # type: ignore[arg-type]
                 return {"x": x, "y": y}  # type: ignore[dict-item]
             return {"x": tuple(val), "y": tuple(val)}  # type: ignore[dict-item]
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

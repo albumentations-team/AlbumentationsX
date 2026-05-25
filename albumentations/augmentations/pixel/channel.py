@@ -4,7 +4,7 @@ Transforms that reorder or permute image channels.
 """
 
 import warnings
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import field_validator
 
@@ -88,6 +88,8 @@ class ChannelShuffle(ImageOnlyTransform):
                 msg = f"channel_order must be a permutation of range({len(v)}), got {v}"
                 raise ValueError(msg)
             return v
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

@@ -6,7 +6,7 @@ PixelDropout. These transforms randomly remove or modify pixels, channels, or re
 in images, which can help models become more robust to occlusions and missing information.
 """
 
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
 from pydantic import Field
@@ -115,6 +115,8 @@ class BaseDropout(DualTransform):
             tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
         )
         fill_mask: tuple[float, ...] | float | None
+
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
     def __init__(
         self,

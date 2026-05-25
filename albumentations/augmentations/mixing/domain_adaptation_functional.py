@@ -26,7 +26,7 @@ from typing_extensions import Protocol
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.utils import PCA
-from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS, ImageType
+from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS, ImageFloat32, ImageType
 
 __all__ = [
     "adapt_pixel_distribution",
@@ -256,13 +256,12 @@ class TransformerInterface(Protocol):
         ...
 
     @abc.abstractmethod
-    def fit(self, x: np.ndarray, y: np.ndarray | None = None) -> Any:
-        """Fit the transformer to the data (e.g. pixel samples). Optional y unused. Subclasses
-        may return self or None; callers do not consume the return value.
+    def fit(self, x: np.ndarray) -> Any:
+        """Fit the transformer to the data (e.g. pixel samples). Subclasses may return self or
+        None; callers do not consume the return value.
 
         Args:
             x (np.ndarray): The data to fit to.
-            y (np.ndarray | None): Optional target data (not used in most implementations).
 
         Returns:
             Any: Transformer-specific fit result.
@@ -271,13 +270,12 @@ class TransformerInterface(Protocol):
         ...
 
     @abc.abstractmethod
-    def transform(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
-        """Transform data using the fitted model. Same shape as input; optional y is unused.
-        Abstract protocol method; subclasses implement the actual transformation.
+    def transform(self, x: np.ndarray) -> np.ndarray:
+        """Transform data using the fitted model. Same shape as input. Abstract protocol method;
+        subclasses implement the actual transformation.
 
         Args:
             x (np.ndarray): The data to transform.
-            y (np.ndarray | None): Optional target data (not used in most implementations).
 
         Returns:
             np.ndarray: The transformed data.
@@ -310,7 +308,7 @@ class DomainAdapter:
             ImageType: The image in the target color space, or the original image if no conversion is specified.
 
         """
-        return img if self.color_in is None else cv2.cvtColor(img, self.color_in)
+        return img if self.color_in is None else cast("ImageType", cv2.cvtColor(img, self.color_in))
 
     def from_colorspace(self, img: ImageType) -> ImageType:
         """Convert image back from target color space to original (e.g. after PCA). Uses
@@ -326,7 +324,7 @@ class DomainAdapter:
         """
         if self.color_out is None:
             return img
-        return cv2.cvtColor(clip(img, np.dtype(np.uint8), inplace=True), self.color_out)
+        return cast("ImageType", cv2.cvtColor(clip(img, np.dtype(np.uint8), inplace=True), self.color_out))
 
     def flatten(self, img: ImageType) -> np.ndarray:
         """Flatten image to (n_pixels, n_channels): target colorspace, to float, reshape. For
@@ -421,8 +419,8 @@ def adapt_pixel_distribution(
         raise ValueError("Input image and reference image must have the same number of channels.")
 
     if img_num_channels == 1:
-        img = np.squeeze(img)
-        ref = np.squeeze(ref)
+        img = cast("ImageType", np.squeeze(img))
+        ref = cast("ImageType", np.squeeze(ref))
 
     if img.shape != ref.shape:
         ref = fgeometric.resize(ref, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_AREA)
@@ -430,8 +428,8 @@ def adapt_pixel_distribution(
     original_dtype = img.dtype
 
     if original_dtype == np.float32:
-        img = from_float(img, np.dtype(np.uint8))
-        ref = from_float(ref, np.dtype(np.uint8))
+        img = from_float(cast("ImageFloat32", img), np.dtype(np.uint8))
+        ref = from_float(cast("ImageFloat32", ref), np.dtype(np.uint8))
 
     transformer = {"pca": PCA, "standard": StandardScaler, "minmax": MinMaxScaler}[transform_type]()
     adapter = DomainAdapter(transformer=transformer, ref_img=ref)
@@ -622,7 +620,7 @@ def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
 
     """
     if reference.dtype != np.uint8:
-        reference = from_float(reference, np.dtype(np.uint8))
+        reference = from_float(cast("ImageFloat32", reference), np.dtype(np.uint8))
 
     matched = np.empty(image.shape, dtype=np.uint8)
 

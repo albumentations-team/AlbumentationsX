@@ -16,6 +16,7 @@ FAST_CHECKS: tuple[Command, ...] = (
     ("ruff", "format", "--check", "albumentations", "tests", "tools"),
     ("ruff", "check", "albumentations", "tests", "tools", "--no-fix"),
     ("pre-commit", "run", "mypy", "--all-files"),
+    ("pyrefly", "check", "--output-format=omit-errors"),
     ("pytest", "-q", "tests/test_core.py::test_compose"),
 )
 

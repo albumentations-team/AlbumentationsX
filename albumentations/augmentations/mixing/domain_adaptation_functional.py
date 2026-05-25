@@ -326,7 +326,7 @@ class DomainAdapter:
         """
         if self.color_out is None:
             return img
-        return cv2.cvtColor(clip(img, np.uint8, inplace=True), self.color_out)
+        return cv2.cvtColor(clip(img, np.dtype(np.uint8), inplace=True), self.color_out)
 
     def flatten(self, img: ImageType) -> np.ndarray:
         """Flatten image to (n_pixels, n_channels): target colorspace, to float, reshape. For
@@ -357,7 +357,7 @@ class DomainAdapter:
                 or (height, width, n_channels) for color images.
 
         """
-        pixels = clip(pixels, np.uint8, inplace=True)
+        pixels = clip(pixels, np.dtype(np.uint8), inplace=True)
         if self.num_channels == 1:
             return self.from_colorspace(pixels.reshape(height, width))
         return self.from_colorspace(pixels.reshape(height, width, self.num_channels))
@@ -430,8 +430,8 @@ def adapt_pixel_distribution(
     original_dtype = img.dtype
 
     if original_dtype == np.float32:
-        img = from_float(img, np.uint8)
-        ref = from_float(ref, np.uint8)
+        img = from_float(img, np.dtype(np.uint8))
+        ref = from_float(ref, np.dtype(np.uint8))
 
     transformer = {"pca": PCA, "standard": StandardScaler, "minmax": MinMaxScaler}[transform_type]()
     adapter = DomainAdapter(transformer=transformer, ref_img=ref)
@@ -622,7 +622,7 @@ def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
 
     """
     if reference.dtype != np.uint8:
-        reference = from_float(reference, np.uint8)
+        reference = from_float(reference, np.dtype(np.uint8))
 
     matched = np.empty(image.shape, dtype=np.uint8)
 

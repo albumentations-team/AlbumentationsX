@@ -98,7 +98,7 @@ def add_snow_bleach(
     lightness_channel[mask] *= brightness_coeff
 
     # Clip the lightness values in place
-    lightness_channel = clip(lightness_channel, np.uint8, inplace=True)
+    lightness_channel = clip(lightness_channel, np.dtype(np.uint8), inplace=True)
 
     # Update the lightness channel in the original image
     image_hls[:, :, 1] = lightness_channel
@@ -383,7 +383,7 @@ def add_fog(
 
     result = cv2.GaussianBlur(result, (blur_size, blur_size), 0)
 
-    return clip(result, np.uint8, inplace=True)
+    return clip(result, np.dtype(np.uint8), inplace=True)
 
 
 @uint8_io
@@ -644,7 +644,7 @@ def add_shadow(
         darkness = 1 - shadow_intensity
         img_shadowed[shadowed_indices] = clip(
             img_shadowed[shadowed_indices] * darkness,
-            np.uint8,
+            np.dtype(np.uint8),
             inplace=True,
         )
 
@@ -739,7 +739,7 @@ def get_rain_params(
         dict[str, Any]: Parameters for the rain effect.
 
     """
-    liquid_layer = clip(liquid_layer * 255, np.uint8, inplace=False)
+    liquid_layer = clip(liquid_layer * 255, np.dtype(np.uint8), inplace=False)
 
     # Generate distance transform with more defined edges
     dist = 255 - cv2.Canny(liquid_layer, 50, 150)
@@ -754,7 +754,7 @@ def get_rain_params(
         sigmaY=1,
         borderType=cv2.BORDER_REPLICATE,
     )
-    dist = clip(dist, np.uint8, inplace=True)
+    dist = clip(dist, np.dtype(np.uint8), inplace=True)
 
     dist = dist[..., np.newaxis]
 

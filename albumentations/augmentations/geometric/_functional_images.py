@@ -178,7 +178,7 @@ def resize_pil(
     # PIL doesn't support float32 RGB images, convert to uint8 if needed
     needs_conversion = img.dtype == np.float32
     if needs_conversion:
-        img = from_float(img, target_dtype=np.uint8)
+        img = from_float(img, target_dtype=np.dtype(np.uint8))
 
     # Map cv2 interpolation constants to PIL.Image.Resampling constants
     cv2_to_pil_interpolation = {

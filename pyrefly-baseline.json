@@ -313,18 +313,6 @@
       "severity": "error"
     },
     {
-      "line": 181,
-      "column": 44,
-      "stop_line": 181,
-      "stop_column": 52,
-      "path": "albumentations/augmentations/geometric/_functional_images.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
-      "severity": "error"
-    },
-    {
       "line": 382,
       "column": 34,
       "stop_line": 382,
@@ -712,36 +700,12 @@
       "line": 329,
       "column": 16,
       "stop_line": 329,
-      "stop_column": 79,
+      "stop_column": 89,
       "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
       "code": -2,
       "name": "bad-return",
       "description": "Returned type `Mat | ndarray[Any, dtype[floating | integer]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "Returned type `Mat | ndarray[Any, dtype[floating | integer]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 329,
-      "column": 39,
-      "stop_line": 329,
-      "stop_column": 47,
-      "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "severity": "error"
-    },
-    {
-      "line": 360,
-      "column": 31,
-      "stop_line": 360,
-      "stop_column": 39,
-      "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
       "severity": "error"
     },
     {
@@ -781,30 +745,6 @@
       "severity": "error"
     },
     {
-      "line": 433,
-      "column": 31,
-      "stop_line": 433,
-      "stop_column": 39,
-      "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
-      "severity": "error"
-    },
-    {
-      "line": 434,
-      "column": 31,
-      "stop_line": 434,
-      "stop_column": 39,
-      "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
-      "severity": "error"
-    },
-    {
       "line": 437,
       "column": 41,
       "stop_line": 437,
@@ -838,18 +778,6 @@
       "name": "bad-argument-type",
       "description": "Argument `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]` is not assignable to parameter `img` with type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]]` in function `albucore.convert.from_float`",
       "concise_description": "Argument `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]` is not assignable to parameter `img` with type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]]` in function `albucore.convert.from_float`",
-      "severity": "error"
-    },
-    {
-      "line": 625,
-      "column": 43,
-      "stop_line": 625,
-      "stop_column": 51,
-      "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
       "severity": "error"
     },
     {
@@ -1081,18 +1009,6 @@
       "severity": "error"
     },
     {
-      "line": 427,
-      "column": 58,
-      "stop_line": 427,
-      "stop_column": 66,
-      "path": "albumentations/augmentations/pixel/_functional_color.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "severity": "error"
-    },
-    {
       "line": 428,
       "column": 28,
       "stop_line": 428,
@@ -1102,18 +1018,6 @@
       "name": "bad-argument-type",
       "description": "Argument `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]` is not assignable to parameter `lut` with type `ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]` in function `albucore.lut.sz_lut`",
       "concise_description": "Argument `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]` is not assignable to parameter `lut` with type `ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]` in function `albucore.lut.sz_lut`",
-      "severity": "error"
-    },
-    {
-      "line": 433,
-      "column": 13,
-      "stop_line": 433,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/_functional_color.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
       "severity": "error"
     },
     {
@@ -1945,18 +1849,6 @@
       "severity": "error"
     },
     {
-      "line": 101,
-      "column": 49,
-      "stop_line": 101,
-      "stop_column": 57,
-      "path": "albumentations/augmentations/pixel/_functional_weather.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "severity": "error"
-    },
-    {
       "line": 107,
       "column": 12,
       "stop_line": 107,
@@ -2029,30 +1921,6 @@
       "severity": "error"
     },
     {
-      "line": 386,
-      "column": 25,
-      "stop_line": 386,
-      "stop_column": 33,
-      "path": "albumentations/augmentations/pixel/_functional_weather.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "severity": "error"
-    },
-    {
-      "line": 647,
-      "column": 13,
-      "stop_line": 647,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/_functional_weather.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "severity": "error"
-    },
-    {
       "line": 679,
       "column": 12,
       "stop_line": 679,
@@ -2065,18 +1933,6 @@
       "severity": "error"
     },
     {
-      "line": 742,
-      "column": 45,
-      "stop_line": 742,
-      "stop_column": 53,
-      "path": "albumentations/augmentations/pixel/_functional_weather.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "severity": "error"
-    },
-    {
       "line": 757,
       "column": 17,
       "stop_line": 757,
@@ -2086,18 +1942,6 @@
       "name": "bad-argument-type",
       "description": "Argument `Mat | ndarray[Any, dtype[floating | integer]]` is not assignable to parameter `img` with type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]` in function `albucore.utils.clip`",
       "concise_description": "Argument `Mat | ndarray[Any, dtype[floating | integer]]` is not assignable to parameter `img` with type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]` in function `albucore.utils.clip`",
-      "severity": "error"
-    },
-    {
-      "line": 757,
-      "column": 23,
-      "stop_line": 757,
-      "stop_column": 31,
-      "path": "albumentations/augmentations/pixel/_functional_weather.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
-      "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `dtype` with type `dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]` in function `albucore.utils.clip`",
       "severity": "error"
     },
     {

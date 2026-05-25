@@ -424,13 +424,13 @@ def move_tone_curve(
 
     """
     if np.isscalar(low_y) and np.isscalar(high_y):
-        lut = clip(np.rint(evaluate_bez(low_y, high_y)), np.uint8, inplace=False)
+        lut = clip(np.rint(evaluate_bez(low_y, high_y)), np.dtype(np.uint8), inplace=False)
         return sz_lut(img, lut, inplace=False)
 
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
         luts = clip(
             np.rint(evaluate_bez(low_y, high_y).T),
-            np.uint8,
+            np.dtype(np.uint8),
             inplace=False,
         )
         return apply_multichannel_lut(img, luts, num_channels)

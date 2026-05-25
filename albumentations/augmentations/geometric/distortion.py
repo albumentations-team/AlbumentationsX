@@ -27,7 +27,6 @@ target types.
 
 from typing import Annotated, Any, Literal
 
-import cv2
 import numpy as np
 from albucore import remap
 from pydantic import (
@@ -53,7 +52,13 @@ from albumentations.core.transforms_interface import (
 )
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
+    CV2_BORDER_CONSTANT,
+    CV2_BORDER_REFLECT_101,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
+    BorderModeType,
     ImageType,
+    InterpolationType,
     VolumeType,
 )
 
@@ -185,22 +190,10 @@ class BaseDistortion(DualTransform):
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
-        interpolation: Literal[cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
+        interpolation: InterpolationType
+        mask_interpolation: InterpolationType
         keypoint_remapping_method: Literal["direct", "mask"]
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ]
+        border_mode: BorderModeType
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
         map_resolution_range: Annotated[
@@ -211,29 +204,11 @@ class BaseDistortion(DualTransform):
 
     def __init__(
         self,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ],
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ],
+        interpolation: InterpolationType,
+        mask_interpolation: InterpolationType,
         keypoint_remapping_method: Literal["direct", "mask"],
         p: float,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         map_resolution_range: tuple[float, float] = (1.0, 1.0),
@@ -429,31 +404,13 @@ class ElasticTransform(BaseDistortion):
         self,
         alpha: float = 1,
         sigma: float = 50,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
         approximate: bool = False,
         same_dxdy: bool = False,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         noise_distribution: Literal["gaussian", "uniform"] = "gaussian",
         keypoint_remapping_method: Literal["direct", "mask"] = "mask",
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         map_resolution_range: tuple[float, float] = (1.0, 1.0),
@@ -594,30 +551,12 @@ class PiecewiseAffine(BaseDistortion):
         scale_range: tuple[float, float] = (0.03, 0.05),
         nb_rows_range: tuple[int, int] = (4, 4),
         nb_cols_range: tuple[int, int] = (4, 4),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         absolute_scale: bool = False,
         keypoint_remapping_method: Literal["direct", "mask"] = "mask",
         p: float = 0.5,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         map_resolution_range: tuple[float, float] = (1.0, 1.0),
@@ -743,30 +682,12 @@ class OpticalDistortion(BaseDistortion):
     def __init__(
         self,
         distort_range: tuple[float, float] = (-0.05, 0.05),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         mode: Literal["camera", "fisheye"] = "camera",
         keypoint_remapping_method: Literal["direct", "mask"] = "mask",
         p: float = 0.5,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         map_resolution_range: tuple[float, float] = (1.0, 1.0),
@@ -901,30 +822,12 @@ class GridDistortion(BaseDistortion):
         self,
         num_steps: int = 5,
         distort_range: tuple[float, float] = (-0.3, 0.3),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
         normalized: bool = True,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         keypoint_remapping_method: Literal["direct", "mask"] = "mask",
         p: float = 0.5,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         map_resolution_range: tuple[float, float] = (1.0, 1.0),
@@ -1124,29 +1027,11 @@ class ThinPlateSpline(BaseDistortion):
         self,
         scale_range: tuple[float, float] = (0.2, 0.4),
         num_control_points: int = 4,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         keypoint_remapping_method: Literal["direct", "mask"] = "mask",
         p: float = 0.5,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         map_resolution_range: tuple[float, float] = (1.0, 1.0),
@@ -1281,28 +1166,10 @@ class WaterRefraction(BaseDistortion):
         amplitude_range: tuple[float, float] = (0.01, 0.05),
         wavelength_range: tuple[float, float] = (0.05, 0.2),
         num_waves_range: tuple[int, int] = (3, 7),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         keypoint_remapping_method: Literal["direct", "mask"] = "mask",
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_REFLECT_101,
+        border_mode: BorderModeType = CV2_BORDER_REFLECT_101,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         map_resolution_range: tuple[float, float] = (1.0, 1.0),
@@ -1441,28 +1308,10 @@ class PixelSpread(BaseDistortion):
     def __init__(
         self,
         radius: int = 2,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        interpolation: InterpolationType = CV2_INTER_NEAREST,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         keypoint_remapping_method: Literal["direct", "mask"] = "mask",
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_REFLECT_101,
+        border_mode: BorderModeType = CV2_BORDER_REFLECT_101,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         map_resolution_range: tuple[float, float] = (1.0, 1.0),

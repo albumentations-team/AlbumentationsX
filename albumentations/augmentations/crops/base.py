@@ -4,9 +4,13 @@ from typing import Annotated, Any, Literal
 
 from ._transforms_shared import (
     ALL_TARGETS,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
     AfterValidator,
     BaseTransformInitSchema,
+    BorderModeType,
     DualTransform,
+    FullInterpolationType,
     ImageType,
     StackedMasks4D,
     VolumeType,
@@ -365,13 +369,7 @@ class BaseCropAndPad(BaseCrop):
 
     class InitSchema(BaseTransformInitSchema):
         pad_if_needed: bool
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ]
+        border_mode: BorderModeType
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
         pad_position: Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]
@@ -379,13 +377,7 @@ class BaseCropAndPad(BaseCrop):
     def __init__(
         self,
         pad_if_needed: bool,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ],
+        border_mode: BorderModeType,
         fill: tuple[float, ...] | float,
         fill_mask: tuple[float, ...] | float,
         pad_position: Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"],
@@ -723,47 +715,15 @@ class _BaseRandomSizedCrop(DualTransform):
     """
 
     class InitSchema(BaseRandomSizedCropInitSchema):
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
         area_for_downscale: Literal["image", "image_mask"] | None
 
     def __init__(
         self,
         size: tuple[int, int],
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1.0,
     ):

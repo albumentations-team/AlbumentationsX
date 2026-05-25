@@ -35,7 +35,17 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS, ImageType, StackedMasks4D, VolumeType
+from albumentations.core.type_definitions import (
+    ALL_TARGETS,
+    CV2_BORDER_CONSTANT,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
+    BorderModeType,
+    ImageType,
+    InterpolationType,
+    StackedMasks4D,
+    VolumeType,
+)
 
 from . import functional as fgeometric
 
@@ -156,56 +166,20 @@ class Perspective(DualTransform):
         ]
         keep_size: bool
         fit_output: bool
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
+        interpolation: InterpolationType
+        mask_interpolation: InterpolationType
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ]
+        border_mode: BorderModeType
 
     def __init__(
         self,
         scale: tuple[float, float] = (0.05, 0.1),
         keep_size: bool = True,
         fit_output: bool = False,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         p: float = 0.5,
@@ -510,30 +484,12 @@ class Affine(DualTransform):
         translate_px: tuple[int, int] | dict[str, tuple[int, int]] | None
         rotate: tuple[float, float]
         shear: tuple[float, float] | dict[str, tuple[float, float]]
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
+        interpolation: InterpolationType
+        mask_interpolation: InterpolationType
 
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float | None
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ]
+        border_mode: BorderModeType
 
         fit_output: bool
         keep_ratio: bool
@@ -606,31 +562,13 @@ class Affine(DualTransform):
         translate_px: tuple[int, int] | dict[str, tuple[int, int]] | None = None,
         rotate: tuple[float, float] = (0.0, 0.0),
         shear: tuple[float, float] | dict[str, tuple[float, float]] = (0.0, 0.0),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         fit_output: bool = False,
         keep_ratio: bool = True,
         rotate_method: Literal["largest_box", "ellipse"] = "largest_box",
         balanced_scale: bool = False,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
@@ -975,21 +913,9 @@ class ShiftScaleRotate(Affine):
         shift_range: tuple[float, float]
         scale_range: tuple[float, float]
         rotate_range: tuple[float, float]
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
+        interpolation: InterpolationType
 
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ]
+        border_mode: BorderModeType
 
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
@@ -997,13 +923,7 @@ class ShiftScaleRotate(Affine):
         shift_range_x: tuple[float, float] | None
         shift_range_y: tuple[float, float] | None
         rotate_method: Literal["largest_box", "ellipse"]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
+        mask_interpolation: InterpolationType
 
         @model_validator(mode="after")
         def _check_shift_range(self) -> Self:
@@ -1034,30 +954,12 @@ class ShiftScaleRotate(Affine):
         shift_range: tuple[float, float] = (-0.0625, 0.0625),
         scale_range: tuple[float, float] = (-0.1, 0.1),
         rotate_range: tuple[float, float] = (-45, 45),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         shift_range_x: tuple[float, float] | None = None,
         shift_range_y: tuple[float, float] | None = None,
         rotate_method: Literal["largest_box", "ellipse"] = "largest_box",
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         p: float = 0.5,
@@ -1225,39 +1127,15 @@ class GridElasticDeform(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         num_grid_xy: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
         magnitude: int = Field(gt=0)
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ]
+        interpolation: InterpolationType
+        mask_interpolation: InterpolationType
 
     def __init__(
         self,
         num_grid_xy: tuple[int, int],
         magnitude: int,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         p: float = 1.0,
     ):
         super().__init__(p=p)

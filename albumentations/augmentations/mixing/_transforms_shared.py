@@ -29,9 +29,19 @@ from albumentations.core.keypoints_utils import (
 )
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import LENGTH_RAW_BBOX, ImageType, StackedMasks4D, Targets
+from albumentations.core.type_definitions import (
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
+    LENGTH_RAW_BBOX,
+    FullInterpolationType,
+    ImageType,
+    StackedMasks4D,
+    Targets,
+)
 
 __all__ = [
+    "CV2_INTER_LINEAR",
+    "CV2_INTER_NEAREST",
     "LENGTH_RAW_BBOX",
     "_BBOX_INSTANCE_ID",
     "_KP_INSTANCE_ID",
@@ -43,6 +53,7 @@ __all__ = [
     "ClassVar",
     "DualTransform",
     "Field",
+    "FullInterpolationType",
     "ImageType",
     "KeypointsProcessor",
     "Literal",

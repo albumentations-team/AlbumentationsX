@@ -4,11 +4,13 @@ from typing import Annotated, Any, Literal
 
 from ._transforms_shared import (
     ALL_TARGETS,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
     AfterValidator,
     BaseTransformInitSchema,
     Field,
+    FullInterpolationType,
     check_range_bounds,
-    cv2,
     fcrops,
     math,
     nondecreasing,
@@ -121,24 +123,8 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
         min_max_height: Annotated[
             tuple[int, int],
             AfterValidator(check_range_bounds(1, None)),
@@ -153,24 +139,8 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
         min_max_height: tuple[int, int],
         size: tuple[int, int],
         w2h_ratio: float = 1.0,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1.0,
     ):
@@ -327,24 +297,8 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
             AfterValidator(nondecreasing),
         ]
         size: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
         area_for_downscale: Literal["image", "image_mask"] | None
 
     def __init__(
@@ -352,24 +306,8 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         size: tuple[int, int],
         scale: tuple[float, float] = (0.08, 1.0),
         ratio: tuple[float, float] = (0.75, 1.3333333333333333),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1.0,
     ):

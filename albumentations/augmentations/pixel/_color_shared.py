@@ -31,14 +31,17 @@ from albumentations.core.transforms_interface import (
     ImageOnlyTransform,
 )
 from albumentations.core.type_definitions import (
+    CV2_INTER_LINEAR,
     NUM_RGB_CHANNELS,
     PAIR,
     SEVEN,
+    FullInterpolationType,
     ImageType,
     VolumeType,
 )
 
 __all__ = [
+    "CV2_INTER_LINEAR",
     "MAX_VALUES_BY_DTYPE",
     "NUM_RGB_CHANNELS",
     "PAIR",
@@ -50,6 +53,7 @@ __all__ = [
     "BaseTransformInitSchema",
     "Callable",
     "Field",
+    "FullInterpolationType",
     "ImageOnlyTransform",
     "ImageType",
     "Literal",

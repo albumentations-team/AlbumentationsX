@@ -9,7 +9,6 @@ import math
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
-import cv2
 import numpy as np
 from albucore import (
     normalize,
@@ -33,7 +32,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType, VolumeType
+from albumentations.core.type_definitions import CV2_INTER_LINEAR, FullInterpolationType, ImageType, VolumeType
 
 __all__ = [
     "Dithering",
@@ -737,30 +736,14 @@ class Superpixels(ImageOnlyTransform):
             AfterValidator(check_range_bounds(1)),
         ]
         max_size: int | None = Field(ge=1)
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
 
     def __init__(
         self,
         p_replace_range: tuple[float, float] = (0, 0.1),
         n_segments_range: tuple[int, int] = (100, 100),
         max_size: int | None = 128,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
         p: float = 0.5,
     ):
         super().__init__(p=p)

@@ -5,8 +5,6 @@ Includes transforms for 90-degree rotations and arbitrary angle rotations with v
 border handling options.
 """
 
-from __future__ import annotations
-
 import math
 from typing import Any, Literal
 
@@ -23,7 +21,12 @@ from albumentations.core.transforms_interface import (
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
     C4_INVERSE,
+    CV2_BORDER_CONSTANT,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
+    BorderModeType,
     ImageType,
+    InterpolationType,
     VolumeType,
     c4_group_elements,
 )
@@ -217,7 +220,7 @@ class RandomRotate90(DualTransform):
     ) -> VolumeType:
         return self.apply_to_volumes(masks3d, group_element, **params)
 
-    def inverse(self) -> RandomRotate90:
+    def inverse(self) -> "RandomRotate90":
         """Return a new RandomRotate90 with the inverse group element to undo this transform. Use
         after inference in TTA to restore predictions to original orientation.
 
@@ -235,23 +238,11 @@ class RandomRotate90(DualTransform):
 class RotateInitSchema(BaseTransformInitSchema):
     angle_range: tuple[float, float]
 
-    interpolation: Literal[cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
+    interpolation: InterpolationType
 
-    mask_interpolation: Literal[
-        cv2.INTER_NEAREST,
-        cv2.INTER_LINEAR,
-        cv2.INTER_CUBIC,
-        cv2.INTER_AREA,
-        cv2.INTER_LANCZOS4,
-    ]
+    mask_interpolation: InterpolationType
 
-    border_mode: Literal[
-        cv2.BORDER_CONSTANT,
-        cv2.BORDER_REPLICATE,
-        cv2.BORDER_REFLECT,
-        cv2.BORDER_WRAP,
-        cv2.BORDER_REFLECT_101,
-    ]
+    border_mode: BorderModeType
 
     fill: tuple[float, ...] | float
     fill_mask: tuple[float, ...] | float | None
@@ -357,29 +348,11 @@ class Rotate(DualTransform):
     def __init__(
         self,
         angle_range: tuple[float, float] = (-90, 90),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         rotate_method: Literal["largest_box", "ellipse"] = "largest_box",
         crop_border: bool = False,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         p: float = 0.5,
@@ -677,28 +650,10 @@ class SafeRotate(Affine):
     def __init__(
         self,
         angle_range: tuple[float, float] = (-90, 90),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_LINEAR,
-        border_mode: Literal[
-            cv2.BORDER_CONSTANT,
-            cv2.BORDER_REPLICATE,
-            cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP,
-            cv2.BORDER_REFLECT_101,
-        ] = cv2.BORDER_CONSTANT,
+        interpolation: InterpolationType = CV2_INTER_LINEAR,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         rotate_method: Literal["largest_box", "ellipse"] = "largest_box",
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-        ] = cv2.INTER_NEAREST,
+        mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,

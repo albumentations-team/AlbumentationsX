@@ -7,16 +7,18 @@ from typing_extensions import Self
 from ._transforms_shared import (
     _BBOX_INSTANCE_ID,
     _KP_INSTANCE_ID,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
     AfterValidator,
     BaseTransformInitSchema,
     BboxProcessor,
     DualTransform,
+    FullInterpolationType,
     ImageType,
     KeypointsProcessor,
     StackedMasks4D,
     Targets,
     check_range_bounds,
-    cv2,
     deepcopy,
     filter_bboxes_with_mask,
     fmixing,
@@ -24,6 +26,10 @@ from ._transforms_shared import (
     nondecreasing,
     np,
 )
+
+
+def _as_full_interpolation_type(interpolation: int) -> FullInterpolationType:
+    return cast("FullInterpolationType", interpolation)
 
 
 class Mosaic(DualTransform):
@@ -225,24 +231,8 @@ class Mosaic(DualTransform):
             AfterValidator(check_range_bounds(0, 1)),
             AfterValidator(nondecreasing),
         ]
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
         fit_mode: Literal["cover", "contain"]
@@ -263,24 +253,8 @@ class Mosaic(DualTransform):
         cell_shape: tuple[int, int] = (512, 512),
         center_range: tuple[float, float] = (0.3, 0.7),
         fit_mode: Literal["cover", "contain"] = "cover",
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         metadata_key: str = "mosaic_metadata",
@@ -398,8 +372,8 @@ class Mosaic(DualTransform):
             fill=self.fill,
             fill_mask=self.fill_mask if self.fill_mask is not None else self.fill,
             fit_mode=self.fit_mode,
-            interpolation=self.interpolation,
-            mask_interpolation=self.mask_interpolation,
+            interpolation=_as_full_interpolation_type(self.interpolation),
+            mask_interpolation=_as_full_interpolation_type(self.mask_interpolation),
         )
 
         if "bboxes" in data or "keypoints" in data or "masks" in data:

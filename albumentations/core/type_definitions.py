@@ -30,6 +30,24 @@ ImageType: TypeAlias = ImageUInt8 | ImageFloat32
 # VolumeType is same as ImageType (volumes are also uint8/float32)
 VolumeType: TypeAlias = ImageType
 
+# OpenCV exposes these constants as module-level ints. Literal aliases and typed constants use the
+# corresponding values so static checkers can validate transform configuration domains.
+CV2_INTER_NEAREST: Literal[0] = 0
+CV2_INTER_LINEAR: Literal[1] = 1
+CV2_INTER_CUBIC: Literal[2] = 2
+CV2_INTER_AREA: Literal[3] = 3
+CV2_INTER_LANCZOS4: Literal[4] = 4
+CV2_INTER_LINEAR_EXACT: Literal[5] = 5
+CV2_INTER_NEAREST_EXACT: Literal[6] = 6
+CV2_BORDER_CONSTANT: Literal[0] = 0
+CV2_BORDER_REPLICATE: Literal[1] = 1
+CV2_BORDER_REFLECT: Literal[2] = 2
+CV2_BORDER_WRAP: Literal[3] = 3
+CV2_BORDER_REFLECT_101: Literal[4] = 4
+InterpolationType: TypeAlias = Literal[0, 1, 2, 3, 4]
+FullInterpolationType: TypeAlias = Literal[0, 1, 2, 3, 4, 5, 6]
+BorderModeType: TypeAlias = Literal[0, 1, 2, 3, 4]
+
 d4_group_elements = ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]
 
 # C4: cyclic subgroup of D4 (rotations only). RandomRotate90 uses these.

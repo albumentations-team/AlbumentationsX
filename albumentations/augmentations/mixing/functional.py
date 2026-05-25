@@ -26,6 +26,7 @@ from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.type_definitions import (
     NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS,
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
+    FullInterpolationType,
 )
 
 
@@ -682,8 +683,8 @@ def _mosaic_cell_geometry_compose(
     fill: float | tuple[float, ...],
     fill_mask: float | tuple[float, ...],
     fit_mode: Literal["cover", "contain"],
-    interpolation: int,
-    mask_interpolation: int,
+    interpolation: FullInterpolationType,
+    mask_interpolation: FullInterpolationType,
     cell_position: Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"],
     *,
     with_bbox_params: bool,
@@ -748,8 +749,8 @@ def process_cell_geometry(
     fill: float | tuple[float, ...],
     fill_mask: float | tuple[float, ...],
     fit_mode: Literal["cover", "contain"],
-    interpolation: int,
-    mask_interpolation: int,
+    interpolation: FullInterpolationType,
+    mask_interpolation: FullInterpolationType,
     cell_position: Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"],
 ) -> ProcessedMosaicItem:
     """Pad and/or crop one item to target_shape. PadIfNeeded and Crop with fit_mode and
@@ -1138,24 +1139,8 @@ def process_all_mosaic_geometries(
     fill: float | tuple[float, ...],
     fill_mask: float | tuple[float, ...],
     fit_mode: Literal["cover", "contain"],
-    interpolation: Literal[
-        cv2.INTER_NEAREST,
-        cv2.INTER_NEAREST_EXACT,
-        cv2.INTER_LINEAR,
-        cv2.INTER_CUBIC,
-        cv2.INTER_AREA,
-        cv2.INTER_LANCZOS4,
-        cv2.INTER_LINEAR_EXACT,
-    ],
-    mask_interpolation: Literal[
-        cv2.INTER_NEAREST,
-        cv2.INTER_NEAREST_EXACT,
-        cv2.INTER_LINEAR,
-        cv2.INTER_CUBIC,
-        cv2.INTER_AREA,
-        cv2.INTER_LANCZOS4,
-        cv2.INTER_LINEAR_EXACT,
-    ],
+    interpolation: FullInterpolationType,
+    mask_interpolation: FullInterpolationType,
 ) -> dict[tuple[int, int, int, int], ProcessedMosaicItem]:
     """Crop/pad every assigned cell via process_cell_geometry. Returns placement ->
     ProcessedMosaicItem (bbox/keypoint coords not yet shifted).
@@ -1173,8 +1158,8 @@ def process_all_mosaic_geometries(
         fill (float | tuple[float, ...]): Fill value for image padding.
         fill_mask (float | tuple[float, ...]): Fill value for mask padding.
         fit_mode (Literal['cover', 'contain']): Fit mode for the mosaic.
-        interpolation (Literal[cv2.INTER_NEAREST, cv2.INTER_NEAREST_EXACT, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4, cv2.INTER_LINEAR_EXACT]): Interpolation for image.
-        mask_interpolation (Literal[cv2.INTER_NEAREST, cv2.INTER_NEAREST_EXACT, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4, cv2.INTER_LINEAR_EXACT]): Interpolation for mask.
+        interpolation (FullInterpolationType): Interpolation for image.
+        mask_interpolation (FullInterpolationType): Interpolation for mask.
 
     Returns:
         dict[tuple[int, int, int, int], ProcessedMosaicItem]: Dictionary mapping final placement

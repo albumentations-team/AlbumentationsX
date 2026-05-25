@@ -1,13 +1,15 @@
 """Bounding-box-aware safe crop transforms."""
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from ._transforms_shared import (
     ALL_TARGETS,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
     BaseTransformInitSchema,
     Field,
+    FullInterpolationType,
     ImageType,
-    cv2,
     denormalize_bboxes,
     fcrops,
     fgeometric,
@@ -335,48 +337,16 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
             ge=0.0,
             le=1.0,
         )
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
 
     def __init__(
         self,
         height: int,
         width: int,
         erosion_rate: float = 0.0,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         p: float = 1.0,
     ):
         super().__init__(erosion_rate=erosion_rate, p=p)

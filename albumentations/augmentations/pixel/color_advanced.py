@@ -5,16 +5,17 @@ from typing import Annotated, Any, Literal, cast
 from typing_extensions import Self
 
 from ._color_shared import (
+    CV2_INTER_LINEAR,
     AdditiveNoise,
     AfterValidator,
     BaseTransformInitSchema,
     Field,
+    FullInterpolationType,
     ImageOnlyTransform,
     ImageType,
     VolumeType,
     batch_transform,
     check_range_bounds,
-    cv2,
     fpixel,
     is_grayscale_image,
     is_rgb_image,
@@ -271,30 +272,14 @@ class ChromaticAberration(ImageOnlyTransform):
         primary_distortion_range: tuple[float, float]
         secondary_distortion_range: tuple[float, float]
         mode: Literal["green_purple", "red_blue", "random"]
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
 
     def __init__(
         self,
         primary_distortion_range: tuple[float, float] = (-0.02, 0.02),
         secondary_distortion_range: tuple[float, float] = (-0.05, 0.05),
         mode: Literal["green_purple", "red_blue", "random"] = "green_purple",
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
         p: float = 0.5,
     ):
         super().__init__(p=p)

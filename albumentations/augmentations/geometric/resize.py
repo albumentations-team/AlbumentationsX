@@ -14,7 +14,13 @@ from typing_extensions import Self
 
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ALL_TARGETS, ImageType
+from albumentations.core.type_definitions import (
+    ALL_TARGETS,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
+    FullInterpolationType,
+    ImageType,
+)
 
 from . import functional as fgeometric
 
@@ -127,46 +133,14 @@ class RandomScale(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         scale_range: tuple[float, float]
         area_for_downscale: Literal["image", "image_mask"] | None
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
 
     def __init__(
         self,
         scale_range: tuple[float, float] = (-0.1, 0.1),
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 0.5,
     ):
@@ -327,24 +301,8 @@ class MaxSizeTransform(DualTransform):
         max_size: int | Sequence[int] | None
         max_size_hw: tuple[int | None, int | None] | None
         area_for_downscale: Literal["image", "image_mask"] | None
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
 
         @model_validator(mode="after")
         def _validate_size_parameters(self) -> Self:
@@ -358,24 +316,8 @@ class MaxSizeTransform(DualTransform):
         self,
         max_size: int | Sequence[int] | None = None,
         max_size_hw: tuple[int | None, int | None] | None = None,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1,
     ):
@@ -757,47 +699,15 @@ class Resize(DualTransform):
         height: int = Field(ge=1)
         width: int = Field(ge=1)
         area_for_downscale: Literal["image", "image_mask"] | None
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
 
     def __init__(
         self,
         height: int,
         width: int,
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1,
     ):
@@ -913,24 +823,8 @@ class LetterBox(DualTransform):
 
     class InitSchema(BaseTransformInitSchema):
         size: tuple[int, int]
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ]
+        interpolation: FullInterpolationType
+        mask_interpolation: FullInterpolationType
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
         position: Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]
@@ -938,24 +832,8 @@ class LetterBox(DualTransform):
     def __init__(
         self,
         size: tuple[int, int],
-        interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_LINEAR,
-        mask_interpolation: Literal[
-            cv2.INTER_NEAREST,
-            cv2.INTER_NEAREST_EXACT,
-            cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC,
-            cv2.INTER_AREA,
-            cv2.INTER_LANCZOS4,
-            cv2.INTER_LINEAR_EXACT,
-        ] = cv2.INTER_NEAREST,
+        interpolation: FullInterpolationType = CV2_INTER_LINEAR,
+        mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         fill: tuple[float, ...] | float = 114,
         fill_mask: tuple[float, ...] | float = 0,
         position: Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"] = "center",

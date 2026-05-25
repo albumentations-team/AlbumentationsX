@@ -5,7 +5,6 @@ Transforms that simulate image compression artifacts and resolution loss.
 
 from typing import Annotated, Any, Literal
 
-import cv2
 from pydantic import BaseModel
 from pydantic.functional_validators import AfterValidator
 
@@ -18,7 +17,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType
+from albumentations.core.type_definitions import CV2_INTER_NEAREST, FullInterpolationType, ImageType
 
 __all__ = [
     "Downscale",
@@ -124,25 +123,9 @@ class ImageCompression(ImageOnlyTransform):
 
 
 class InterpolationPydantic(BaseModel):
-    upscale: Literal[
-        cv2.INTER_NEAREST,
-        cv2.INTER_NEAREST_EXACT,
-        cv2.INTER_LINEAR,
-        cv2.INTER_CUBIC,
-        cv2.INTER_AREA,
-        cv2.INTER_LANCZOS4,
-        cv2.INTER_LINEAR_EXACT,
-    ]
+    upscale: FullInterpolationType
 
-    downscale: Literal[
-        cv2.INTER_NEAREST,
-        cv2.INTER_NEAREST_EXACT,
-        cv2.INTER_LINEAR,
-        cv2.INTER_CUBIC,
-        cv2.INTER_AREA,
-        cv2.INTER_LANCZOS4,
-        cv2.INTER_LINEAR_EXACT,
-    ]
+    downscale: FullInterpolationType
 
 
 class Downscale(ImageOnlyTransform):
@@ -203,15 +186,7 @@ class Downscale(ImageOnlyTransform):
     class InitSchema(BaseTransformInitSchema):
         interpolation_pair: dict[
             Literal["downscale", "upscale"],
-            Literal[
-                cv2.INTER_NEAREST,
-                cv2.INTER_NEAREST_EXACT,
-                cv2.INTER_LINEAR,
-                cv2.INTER_CUBIC,
-                cv2.INTER_AREA,
-                cv2.INTER_LANCZOS4,
-                cv2.INTER_LINEAR_EXACT,
-            ],
+            FullInterpolationType,
         ]
         scale_range: Annotated[
             tuple[float, float],
@@ -224,16 +199,8 @@ class Downscale(ImageOnlyTransform):
         scale_range: tuple[float, float] = (0.25, 0.25),
         interpolation_pair: dict[
             Literal["downscale", "upscale"],
-            Literal[
-                cv2.INTER_NEAREST,
-                cv2.INTER_NEAREST_EXACT,
-                cv2.INTER_LINEAR,
-                cv2.INTER_CUBIC,
-                cv2.INTER_AREA,
-                cv2.INTER_LANCZOS4,
-                cv2.INTER_LINEAR_EXACT,
-            ],
-        ] = {"upscale": cv2.INTER_NEAREST, "downscale": cv2.INTER_NEAREST},
+            FullInterpolationType,
+        ] = {"upscale": CV2_INTER_NEAREST, "downscale": CV2_INTER_NEAREST},
         p: float = 0.5,
     ):
         super().__init__(p=p)

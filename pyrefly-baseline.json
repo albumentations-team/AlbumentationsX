@@ -4417,42 +4417,6 @@
       "severity": "error"
     },
     {
-      "line": 118,
-      "column": 48,
-      "stop_line": 118,
-      "stop_column": 53,
-      "path": "albumentations/augmentations/text/functional.py",
-      "code": -2,
-      "name": "not-a-type",
-      "description": "Expected a type form, got instance of `Module[PIL.Image]`",
-      "concise_description": "Expected a type form, got instance of `Module[PIL.Image]`",
-      "severity": "error"
-    },
-    {
-      "line": 136,
-      "column": 40,
-      "stop_line": 136,
-      "stop_column": 45,
-      "path": "albumentations/augmentations/text/functional.py",
-      "code": -2,
-      "name": "not-a-type",
-      "description": "Expected a type form, got instance of `Module[PIL.Image]`",
-      "concise_description": "Expected a type form, got instance of `Module[PIL.Image]`",
-      "severity": "error"
-    },
-    {
-      "line": 136,
-      "column": 89,
-      "stop_line": 136,
-      "stop_column": 94,
-      "path": "albumentations/augmentations/text/functional.py",
-      "code": -2,
-      "name": "not-a-type",
-      "description": "Expected a type form, got instance of `Module[PIL.Image]`",
-      "concise_description": "Expected a type form, got instance of `Module[PIL.Image]`",
-      "severity": "error"
-    },
-    {
       "line": 76,
       "column": 11,
       "stop_line": 76,
@@ -4573,18 +4537,6 @@
       "severity": "error"
     },
     {
-      "line": 92,
-      "column": 9,
-      "stop_line": 92,
-      "stop_column": 40,
-      "path": "albumentations/core/analytics/collectors.py",
-      "code": -2,
-      "name": "missing-import",
-      "description": "Cannot find module `IPython`\n  Looked in these locations (from config in `/Users/vladimiriglovikov/workspace/AlbumentationsX/pyproject.toml`):\n  Import root (inferred from project layout): \"/Users/vladimiriglovikov/workspace/AlbumentationsX\"\n  Site package path queried from interpreter: [\"/Users/vladimiriglovikov/workspace/AlbumentationsX/.venv/lib/python3.10/site-packages\", \"/Users/vladimiriglovikov/workspace/AlbumentationsX\"]",
-      "concise_description": "Cannot find module `IPython`",
-      "severity": "error"
-    },
-    {
       "line": 332,
       "column": 5,
       "stop_line": 332,
@@ -4666,18 +4618,6 @@
       "name": "missing-attribute",
       "description": "Object of class `BasicTransform` has no attribute `mask_interpolation`",
       "concise_description": "Object of class `BasicTransform` has no attribute `mask_interpolation`",
-      "severity": "error"
-    },
-    {
-      "line": 750,
-      "column": 75,
-      "stop_line": 750,
-      "stop_column": 89,
-      "path": "albumentations/core/composition.py",
-      "code": -2,
-      "name": "not-a-type",
-      "description": "Expected a type form, got instance of `NotImplementedType`",
-      "concise_description": "Expected a type form, got instance of `NotImplementedType`",
       "severity": "error"
     },
     {

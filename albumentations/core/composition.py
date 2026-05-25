@@ -747,7 +747,7 @@ class BaseCompose(Serializable):
         """
         return self._combine_transforms(other, prepend=True)
 
-    def __sub__(self, other: type[BasicTransform]) -> "BaseCompose | type[NotImplemented]":
+    def __sub__(self, other: type[BasicTransform]) -> "BaseCompose | types.NotImplementedType":
         """Remove transform by class type. Removes first matching; returns new instance.
         Use - (e.g. compose - A.HorizontalFlip). Returns NotImplemented for other types.
 
@@ -757,7 +757,7 @@ class BaseCompose(Serializable):
             other (type[BasicTransform]): Transform class to remove (e.g., A.HorizontalFlip)
 
         Returns:
-            BaseCompose | type[NotImplemented]: New compose instance with transform removed, or NotImplemented.
+            BaseCompose | types.NotImplementedType: New compose instance with transform removed, or NotImplemented.
 
         Raises:
             ValueError: If no transform of that type is found in the compose

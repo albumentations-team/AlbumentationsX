@@ -1,6 +1,7 @@
 """Data collectors for telemetry."""
 
 import functools
+import importlib
 import os
 import platform
 import subprocess
@@ -89,12 +90,14 @@ def _check_jupyter() -> bool:
     Checks get_ipython() shell class name. Distinguishes notebook from CLI.
     """
     try:
-        from IPython import get_ipython
-
+        ipython_module = importlib.import_module("IPython")
+        get_ipython = getattr(ipython_module, "get_ipython", None)
+        if not callable(get_ipython):
+            return False
         ipython = get_ipython()
         if ipython is None:
             return False
-    except (ImportError, NameError):
+    except ImportError:
         return False
     else:
         return ipython.__class__.__name__ in ["ZMQInteractiveShell", "TerminalInteractiveShell"]

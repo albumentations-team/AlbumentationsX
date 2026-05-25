@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from ._functional_noise import (
     DIAMOND_KERNEL,
@@ -34,6 +34,21 @@ from ._functional_shared import (
     sz_lut,
     uint8_io,
 )
+
+
+def _normalize_minmax_float32(src: np.ndarray) -> np.ndarray:
+    dst = np.empty(src.shape, dtype=np.float32)
+    return cast("np.ndarray", cv2.normalize(src, dst, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F))
+
+
+def _multiply_scalar_inplace(dst: np.ndarray, value: float) -> None:
+    multiply_op = cast("Any", cv2.multiply)
+    multiply_op(dst, value, dst=dst)
+
+
+def _add_scalar_inplace(dst: np.ndarray, value: float) -> None:
+    add_op = cast("Any", cv2.add)
+    add_op(dst, value, dst=dst)
 
 
 def generate_plasma_pattern(
@@ -80,7 +95,7 @@ def generate_plasma_pattern(
         expanded_grid += (square_interpolation + all_noise) * square_mask
 
         # Normalize after each step to prevent value drift
-        return cv2.normalize(expanded_grid, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        return _normalize_minmax_float32(expanded_grid)
 
     # Pre-compute noise scales
     max_dimension = max(target_shape)
@@ -96,7 +111,7 @@ def generate_plasma_pattern(
         plasma_grid = one_diamond_square_step(plasma_grid, noise_scale)
 
     return np.clip(
-        cv2.normalize(plasma_grid[: target_shape[0], : target_shape[1]], None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F),
+        _normalize_minmax_float32(plasma_grid[: target_shape[0], : target_shape[1]]),
         0,
         1,
     )
@@ -179,7 +194,7 @@ def apply_plasma_shadow(
         scaled_pattern = scaled_pattern[..., np.newaxis]
 
     # Single multiply operation
-    return img * (1 - scaled_pattern)
+    return cast("ImageType", img * (1 - scaled_pattern))
 
 
 def create_directional_gradient(height: int, width: int, angle: float) -> np.ndarray:
@@ -223,13 +238,13 @@ def create_directional_gradient(height: int, width: int, angle: float) -> np.nda
         y = np.linspace(0, 1, height, dtype=np.float32)[:, None]  # Vertical
 
         if angle == 45:  # Bottom-left to top-right
-            return cv2.normalize(x + y, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+            return _normalize_minmax_float32(x + y)
         if angle == 135:  # Bottom-right to top-left
-            return cv2.normalize((1 - x) + y, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+            return _normalize_minmax_float32((1 - x) + y)
         if angle == 225:  # Top-right to bottom-left
-            return cv2.normalize((1 - x) + (1 - y), None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+            return _normalize_minmax_float32((1 - x) + (1 - y))
         # angle == 315:  # Top-left to bottom-right
-        return cv2.normalize(x + (1 - y), None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        return _normalize_minmax_float32(x + (1 - y))
 
     # General case for arbitrary angles using broadcasting
     y = np.linspace(0, 1, height, dtype=np.float32)[:, None]  # Column vector
@@ -239,8 +254,8 @@ def create_directional_gradient(height: int, width: int, angle: float) -> np.nda
     cos_a = math.cos(angle_rad)
     sin_a = math.sin(angle_rad)
 
-    cv2.multiply(x, cos_a, dst=x)
-    cv2.multiply(y, sin_a, dst=y)
+    _multiply_scalar_inplace(x, cos_a)
+    _multiply_scalar_inplace(y, sin_a)
 
     return x + y
 
@@ -284,8 +299,8 @@ def create_corner_illumination_gradient(
 
     pattern = x * x + y * y
     cv2.sqrt(pattern, dst=pattern)
-    cv2.multiply(pattern, -intensity / math.sqrt(height * height + width * width), dst=pattern)
-    cv2.add(pattern, 1, dst=pattern)
+    _multiply_scalar_inplace(pattern, -intensity / math.sqrt(height * height + width * width))
+    _add_scalar_inplace(pattern, 1.0)
     return pattern
 
 
@@ -305,7 +320,7 @@ def create_illumination_gradient(
 
     if mode == "linear":
         gradient = create_directional_gradient(height, width, params["angle"])
-        cv2.multiply(gradient, intensity, dst=gradient)
+        _multiply_scalar_inplace(gradient, intensity)
         return gradient
 
     if mode == "corner":
@@ -327,10 +342,10 @@ def create_illumination_gradient(
     cv2.multiply(x, x, dst=x)
     cv2.multiply(y, y, dst=y)
     x = x + y
-    cv2.multiply(x, -1 / sigma2, dst=x)
+    _multiply_scalar_inplace(x, -1 / sigma2)
     cv2.exp(x, dst=x)
-    cv2.multiply(x, intensity, dst=x)
-    cv2.add(x, 1, dst=x)
+    _multiply_scalar_inplace(x, intensity)
+    _add_scalar_inplace(x, 1.0)
     return x
 
 
@@ -350,14 +365,14 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
     """
     height, width = img.shape[:2]
     gradient = create_directional_gradient(height, width, angle)
-    cv2.multiply(gradient, intensity, dst=gradient)
+    _multiply_scalar_inplace(gradient, intensity)
 
     # Add channel dimension if needed
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
         num_channels = img.shape[2]
         if num_channels > 1:
             gradient = cv2.merge([gradient] * num_channels)
-            result = cv2.add(img, gradient)
+            result = cast("ImageType", cv2.add(img, gradient))
             np.clip(result, 0, 1, out=result)
             return result
         gradient = gradient[..., np.newaxis]
@@ -440,12 +455,12 @@ def apply_gaussian_illumination(
     x = x + y
 
     # Calculate gaussian directly into x array
-    cv2.multiply(x, -1 / sigma2, dst=x)
+    _multiply_scalar_inplace(x, -1 / sigma2)
     cv2.exp(x, dst=x)
 
     # Scale by intensity
-    cv2.multiply(x, intensity, dst=x)
-    cv2.add(x, 1, dst=x)
+    _multiply_scalar_inplace(x, intensity)
+    _add_scalar_inplace(x, 1.0)
 
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
         num_channels = img.shape[2]
@@ -500,7 +515,7 @@ def _auto_contrast_multichannel_lut(
         lut = _create_auto_contrast_lut(hist, cutoff, None, method, max_value)
         luts.append(np.arange(256, dtype=np.uint8) if lut is None else lut)
 
-    return apply_multichannel_lut(img, np.stack(luts), get_num_channels(img))
+    return cast("ImageUInt8", apply_multichannel_lut(img, np.stack(luts), get_num_channels(img)))
 
 
 def _auto_contrast_multichannel_hist(
@@ -588,7 +603,8 @@ def auto_contrast(
 
     """
     num_channels = get_num_channels(img)
-    max_value = MAX_VALUES_BY_DTYPE[img.dtype]
+    img = cast("ImageUInt8", img)
+    max_value = int(MAX_VALUES_BY_DTYPE[img.dtype])
 
     if method == "pil" and cutoff == 0 and ignore is None and num_channels == 1:
         return _auto_contrast_pil_zero_cutoff(img, max_value)
@@ -991,7 +1007,7 @@ def apply_halftone(
         ImageType: Image with halftone effect applied.
 
     """
-    img = np.ascontiguousarray(img)
+    img = cast("ImageType", np.ascontiguousarray(img))
     height, width = img.shape[:2]
     num_channels = img.shape[-1]
 

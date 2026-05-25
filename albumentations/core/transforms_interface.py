@@ -11,7 +11,7 @@ import inspect
 import random
 from collections.abc import Callable, Sequence
 from copy import deepcopy
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from warnings import warn
 
 import cv2
@@ -985,7 +985,10 @@ class DualTransform(BasicTransform):
         """
         if masks.size == 0:
             return masks
-        return self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, *args, **params))
+        return cast(
+            "StackedMasks4D",
+            self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, *args, **params)),
+        )
 
     @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:

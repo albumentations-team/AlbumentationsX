@@ -6,7 +6,7 @@ transformations like grid shuffling and thin plate splines.
 """
 
 import random
-from typing import Annotated, Any, ClassVar, Literal, cast
+from typing import Annotated, Any, ClassVar, Literal, TypeVar, cast
 from warnings import warn
 
 import cv2
@@ -60,6 +60,7 @@ __all__ = [
 
 NUM_PADS_XY = 2
 NUM_PADS_ALL_SIDES = 4
+RangeValueT = TypeVar("RangeValueT", int, float)
 
 
 class Perspective(DualTransform):
@@ -522,9 +523,9 @@ class Affine(DualTransform):
 
             if self.translate_px is not None:
                 self.translate_px = self._handle_dict_arg(
-                    self.translate_px,  # type: ignore[arg-type]
+                    self.translate_px,
                     "translate_px",
-                )  # type: ignore[assignment]
+                )
 
             return self
 
@@ -541,19 +542,19 @@ class Affine(DualTransform):
 
         @staticmethod
         def _handle_dict_arg(
-            val: tuple[float, float] | dict[str, tuple[float, float]],
+            val: tuple[RangeValueT, RangeValueT] | dict[str, tuple[RangeValueT, RangeValueT]],
             name: str | None,
-        ) -> dict[str, tuple[float, float]]:
+        ) -> dict[str, tuple[RangeValueT, RangeValueT]]:
             if isinstance(val, dict):
                 if "x" not in val and "y" not in val:
                     raise ValueError(
                         f'Expected {name} dictionary to contain at least key "x" or key "y". Found neither of them.',
                     )
-                default = val.get("x", val.get("y"))
-                x = tuple(val.get("x", default))  # type: ignore[arg-type]
-                y = tuple(val.get("y", default))  # type: ignore[arg-type]
-                return {"x": x, "y": y}  # type: ignore[dict-item]
-            return {"x": tuple(val), "y": tuple(val)}  # type: ignore[dict-item]
+                default = val["x"] if "x" in val else val["y"]
+                x = val.get("x", default)
+                y = val.get("y", default)
+                return {"x": x, "y": y}
+            return {"x": val, "y": val}
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
 
@@ -628,7 +629,7 @@ class Affine(DualTransform):
                 border_value=self.fill,
                 dsize=(width, height),
             )
-        return result
+        return cast("ImageType", result)
 
     def apply_to_mask(
         self,

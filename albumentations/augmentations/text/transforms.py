@@ -184,7 +184,8 @@ class TextImage(ImageOnlyTransform):
                 "ImageFont from PIL is required to use TextImage transform. Install it with `pip install Pillow`.",
             ) from err
         check_bboxes(np.array([bbox]))
-        denormalized_bbox = denormalize_bboxes(np.array([bbox]), image.shape[:2])[0]
+        image_shape = (image.shape[0], image.shape[1])
+        denormalized_bbox = denormalize_bboxes(np.array([bbox]), image_shape)[0]
 
         x_min, y_min, x_max, y_max = (int(x) for x in denormalized_bbox[:4])
         bbox_height = y_max - y_min

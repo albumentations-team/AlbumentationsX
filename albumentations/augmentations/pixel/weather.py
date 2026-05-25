@@ -286,7 +286,7 @@ class RandomGravel(ImageOnlyTransform):
     def generate_gravel_patch(
         self,
         rectangular_roi: tuple[int, int, int, int],
-    ) -> ImageType:
+    ) -> np.ndarray:
         """Generate gravel (x,y) coordinates inside rectangular_roi (x_min,y_min,x_max,y_max).
         Returns (N, 2) array for RandomGravel overlay.
 
@@ -295,7 +295,7 @@ class RandomGravel(ImageOnlyTransform):
                 particles will be generated, specified as (x_min, y_min, x_max, y_max) in pixel coordinates.
 
         Returns:
-            ImageType: An array of gravel particles with shape (count, 2), where count is the number of particles.
+            np.ndarray: An array of gravel particles with shape (count, 2), where count is the number of particles.
             Each row contains the (x, y) coordinates of a gravel particle.
 
         """

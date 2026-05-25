@@ -7,12 +7,12 @@ specifically designed for 3D data.
 """
 
 import random
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
 
 from albumentations.augmentations.utils import handle_empty_array
-from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType
+from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
 
 
 def adjust_padding_by_position3d(
@@ -59,15 +59,15 @@ def adjust_padding_by_position3d(
 
 
 def pad_3d_with_params(
-    volume: ImageType,
+    volume: VolumeType,
     padding: tuple[int, int, int, int, int, int],
     value: tuple[float, ...] | float,
-) -> ImageType:
+) -> VolumeType:
     """Pad 3D volume. padding (d_front, d_back, h_top, h_bottom, w_left, w_right); value: fill.
     (D,H,W) or (D,H,W,C). Used by Pad3D and PadIfNeeded3D.
 
     Args:
-        volume (ImageType): Input volume with shape (depth, height, width) or (depth, height, width, channels)
+        volume (VolumeType): Input volume with shape (depth, height, width) or (depth, height, width, channels)
         padding (tuple[int, int, int, int, int, int]): Padding values in format:
             (depth_front, depth_back, height_top, height_bottom, width_left, width_right)
             where:
@@ -77,7 +77,7 @@ def pad_3d_with_params(
         value (tuple[float, ...] | float): Value to fill the padding
 
     Returns:
-        ImageType: Padded volume with same number of dimensions as input
+        VolumeType: Padded volume with same number of dimensions as input
 
     Note:
         The padding order matches the volume dimensions (depth, height, width).
@@ -102,11 +102,14 @@ def pad_3d_with_params(
     if volume.ndim == NUM_VOLUME_DIMENSIONS:
         pad_width.append((0, 0))  # no padding for channels
 
-    return np.pad(
-        volume,
-        pad_width=pad_width,
-        mode="constant",
-        constant_values=value,
+    return cast(
+        "VolumeType",
+        np.pad(
+            volume,
+            pad_width=pad_width,
+            mode="constant",
+            constant_values=value,
+        ),
     )
 
 

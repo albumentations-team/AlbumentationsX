@@ -421,30 +421,6 @@
       "severity": "error"
     },
     {
-      "line": 524,
-      "column": 37,
-      "stop_line": 527,
-      "stop_column": 18,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-assignment",
-      "description": "`dict[str, tuple[float, float]]` is not assignable to attribute `translate_px` with type `dict[str, tuple[int, int]] | tuple[int, int] | None`",
-      "concise_description": "`dict[str, tuple[float, float]]` is not assignable to attribute `translate_px` with type `dict[str, tuple[int, int]] | tuple[int, int] | None`",
-      "severity": "error"
-    },
-    {
-      "line": 631,
-      "column": 16,
-      "stop_line": 631,
-      "stop_column": 22,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
       "line": 313,
       "column": 16,
       "stop_line": 313,
@@ -1621,42 +1597,6 @@
       "severity": "error"
     },
     {
-      "line": 308,
-      "column": 16,
-      "stop_line": 308,
-      "stop_column": 23,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, ...], dtype[signedinteger[_64Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, ...], dtype[signedinteger[_64Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 187,
-      "column": 66,
-      "stop_line": 187,
-      "stop_column": 81,
-      "path": "albumentations/augmentations/text/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `tuple[int, ...]` is not assignable to parameter `shape` with type `tuple[int, int]` in function `albumentations.core.bbox_utils.denormalize_bboxes`",
-      "concise_description": "Argument `tuple[int, ...]` is not assignable to parameter `shape` with type `tuple[int, int]` in function `albumentations.core.bbox_utils.denormalize_bboxes`",
-      "severity": "error"
-    },
-    {
-      "line": 105,
-      "column": 12,
-      "stop_line": 110,
-      "stop_column": 6,
-      "path": "albumentations/augmentations/transforms3d/functional.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "concise_description": "Returned type `ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
       "line": 205,
       "column": 63,
       "stop_line": 205,
@@ -1702,18 +1642,6 @@
       "name": "no-matching-overload",
       "description": "No matching overload found for function `huggingface_hub.file_download.hf_hub_download` called with arguments: (repo_id=str, filename=Unknown, revision=str | None, cache_dir=Path | str | None, force_download=bool, proxies=dict[str, str] | None, token=bool | str | None, local_files_only=bool)\n  Possible overloads:\n  (repo_id: str, filename: str, *, subfolder: str | None = None, repo_type: str | None = None, revision: str | None = None, library_name: str | None = None, library_version: str | None = None, cache_dir: Path | str | None = None, local_dir: Path | str | None = None, user_agent: dict[Unknown, Unknown] | str | None = None, force_download: bool = False, etag_timeout: float = 10, token: bool | str | None = None, local_files_only: bool = False, headers: dict[str, str] | None = None, endpoint: str | None = None, tqdm_class: type[tqdm_asyncio[Unknown]] | None = None, dry_run: Literal[False] = False) -> str [closest match]\n  (repo_id: str, filename: str, *, subfolder: str | None = None, repo_type: str | None = None, revision: str | None = None, library_name: str | None = None, library_version: str | None = None, cache_dir: Path | str | None = None, local_dir: Path | str | None = None, user_agent: dict[Unknown, Unknown] | str | None = None, force_download: bool = False, etag_timeout: float = 10, token: bool | str | None = None, local_files_only: bool = False, headers: dict[str, str] | None = None, endpoint: str | None = None, tqdm_class: type[tqdm_asyncio[Unknown]] | None = None, dry_run: Literal[True] = True) -> DryRunFileInfo\n  (repo_id: str, filename: str, *, subfolder: str | None = None, repo_type: str | None = None, revision: str | None = None, library_name: str | None = None, library_version: str | None = None, cache_dir: Path | str | None = None, local_dir: Path | str | None = None, user_agent: dict[Unknown, Unknown] | str | None = None, force_download: bool = False, etag_timeout: float = 10, token: bool | str | None = None, local_files_only: bool = False, headers: dict[str, str] | None = None, endpoint: str | None = None, tqdm_class: type[tqdm_asyncio[Unknown]] | None = None, dry_run: bool = False) -> DryRunFileInfo | str",
       "concise_description": "No matching overload found for function `huggingface_hub.file_download.hf_hub_download` called with arguments: (repo_id=str, filename=Unknown, revision=str | None, cache_dir=Path | str | None, force_download=bool, proxies=dict[str, str] | None, token=bool | str | None, local_files_only=bool)",
-      "severity": "error"
-    },
-    {
-      "line": 988,
-      "column": 16,
-      "stop_line": 988,
-      "stop_column": 99,
-      "path": "albumentations/core/transforms_interface.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `ndarray[Unknown, Unknown]` is not assignable to declared return type `StackedMasks4D`",
-      "concise_description": "Returned type `ndarray[Unknown, Unknown]` is not assignable to declared return type `StackedMasks4D`",
       "severity": "error"
     },
     {

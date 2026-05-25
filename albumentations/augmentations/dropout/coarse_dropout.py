@@ -14,7 +14,7 @@ import numpy as np
 from pydantic import AfterValidator
 
 import albumentations.augmentations.dropout.functional as fdropout
-from albumentations.augmentations.dropout.transforms import BaseDropout
+from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema
 from albumentations.core.bbox_utils import denormalize_bboxes
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 
@@ -99,7 +99,7 @@ class CoarseDropout(BaseDropout):
 
     """
 
-    class InitSchema(BaseDropout.InitSchema):
+    class InitSchema(BaseDropoutInitSchema):
         num_holes_range: Annotated[
             tuple[int, int],
             AfterValidator(check_range_bounds(1, None)),
@@ -258,7 +258,7 @@ class Erasing(BaseDropout):
 
     """
 
-    class InitSchema(BaseDropout.InitSchema):
+    class InitSchema(BaseDropoutInitSchema):
         scale: Annotated[
             tuple[float, float],
             AfterValidator(nondecreasing),
@@ -470,7 +470,7 @@ class ConstrainedCoarseDropout(BaseDropout):
 
     """
 
-    class InitSchema(BaseDropout.InitSchema):
+    class InitSchema(BaseDropoutInitSchema):
         num_holes_range: Annotated[
             tuple[int, int],
             AfterValidator(check_range_bounds(1, None)),

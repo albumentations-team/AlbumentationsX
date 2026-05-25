@@ -33,6 +33,13 @@ __all__ = [
 NUM_DIMENSIONS = 3
 
 
+class _BaseCropAndPad3DInitSchema(BaseTransformInitSchema):
+    pad_if_needed: bool
+    fill: tuple[float, ...] | float
+    fill_mask: tuple[float, ...] | float
+    pad_position: Literal["center", "random"]
+
+
 class BasePad3D(Transform3D):
     """Base class for 3D padding transforms. Common logic for volumes, masks, keypoints; fill, fill_mask.
     Subclasses implement get_params_dependent_on_data.
@@ -109,7 +116,7 @@ class BasePad3D(Transform3D):
 
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
 
-    class InitSchema(Transform3D.InitSchema):
+    class InitSchema(BaseTransformInitSchema):
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
 
@@ -526,13 +533,7 @@ class BaseCropAndPad3D(Transform3D):
 
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
 
-    class InitSchema(Transform3D.InitSchema):
-        pad_if_needed: bool
-        fill: tuple[float, ...] | float
-        fill_mask: tuple[float, ...] | float
-        pad_position: Literal["center", "random"]
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BaseCropAndPad3DInitSchema
 
     def __init__(
         self,
@@ -1068,7 +1069,7 @@ class CoarseDropout3D(Transform3D):
 
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
 
-    class InitSchema(Transform3D.InitSchema):
+    class InitSchema(BaseTransformInitSchema):
         num_holes_range: Annotated[
             tuple[int, int],
             AfterValidator(check_range_bounds(0, None)),

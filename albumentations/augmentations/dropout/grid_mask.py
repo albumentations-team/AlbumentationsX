@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal
 from pydantic import AfterValidator
 
 from albumentations.augmentations.dropout import functional as fdropout
-from albumentations.augmentations.dropout.transforms import BaseDropout
+from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 
 __all__ = ["GridMask"]
@@ -61,7 +61,7 @@ class GridMask(BaseDropout):
 
     """
 
-    class InitSchema(BaseDropout.InitSchema):
+    class InitSchema(BaseDropoutInitSchema):
         num_grid_range: Annotated[
             tuple[int, int],
             AfterValidator(check_range_bounds(2, None)),

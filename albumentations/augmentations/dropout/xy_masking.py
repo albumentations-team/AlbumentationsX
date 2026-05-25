@@ -22,6 +22,40 @@ from albumentations.core.transforms_interface import BaseTransformInitSchema
 __all__ = ["XYMasking"]
 
 
+class _XYMaskingInitSchema(BaseTransformInitSchema):
+    num_masks_x_range: Annotated[
+        tuple[int, int],
+        AfterValidator(check_range_bounds(0)),
+        AfterValidator(nondecreasing),
+    ]
+    num_masks_y_range: Annotated[
+        tuple[int, int],
+        AfterValidator(check_range_bounds(0)),
+        AfterValidator(nondecreasing),
+    ]
+    mask_x_length_range: Annotated[
+        tuple[int, int],
+        AfterValidator(check_range_bounds(0)),
+        AfterValidator(nondecreasing),
+    ]
+    mask_y_length_range: Annotated[
+        tuple[int, int],
+        AfterValidator(check_range_bounds(0)),
+        AfterValidator(nondecreasing),
+    ]
+
+    fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]
+    fill_mask: tuple[float, ...] | float | None
+
+    @model_validator(mode="after")
+    def _check_mask_length(self) -> Self:
+        if self.mask_x_length_range[1] <= 0 and self.mask_y_length_range[1] <= 0:
+            msg = "At least one of `mask_x_length_range` or `mask_y_length_range` must have a positive max value."
+            raise ValueError(msg)
+
+        return self
+
+
 class XYMasking(BaseDropout):
     """Apply horizontal or vertical masking strips to simulate occlusion.
     Useful for spectrograms (spectral/frequency masking).
@@ -65,40 +99,7 @@ class XYMasking(BaseDropout):
 
     """
 
-    class InitSchema(BaseTransformInitSchema):
-        num_masks_x_range: Annotated[
-            tuple[int, int],
-            AfterValidator(check_range_bounds(0)),
-            AfterValidator(nondecreasing),
-        ]
-        num_masks_y_range: Annotated[
-            tuple[int, int],
-            AfterValidator(check_range_bounds(0)),
-            AfterValidator(nondecreasing),
-        ]
-        mask_x_length_range: Annotated[
-            tuple[int, int],
-            AfterValidator(check_range_bounds(0)),
-            AfterValidator(nondecreasing),
-        ]
-        mask_y_length_range: Annotated[
-            tuple[int, int],
-            AfterValidator(check_range_bounds(0)),
-            AfterValidator(nondecreasing),
-        ]
-
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]
-        fill_mask: tuple[float, ...] | float | None
-
-        @model_validator(mode="after")
-        def _check_mask_length(self) -> Self:
-            if self.mask_x_length_range[1] <= 0 and self.mask_y_length_range[1] <= 0:
-                msg = "At least one of `mask_x_length_range` or `mask_y_length_range` must have a positive max value."
-                raise ValueError(msg)
-
-            return self
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _XYMaskingInitSchema
 
     def __init__(
         self,

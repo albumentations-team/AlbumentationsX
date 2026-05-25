@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal
 from pydantic import AfterValidator, Field
 
 import albumentations.augmentations.dropout.functional as fdropout
-from albumentations.augmentations.dropout.transforms import BaseDropout
+from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 
 __all__ = ["GridDropout"]
@@ -102,7 +102,7 @@ class GridDropout(BaseDropout):
 
     """
 
-    class InitSchema(BaseDropout.InitSchema):
+    class InitSchema(BaseDropoutInitSchema):
         ratio: float = Field(gt=0, le=1)
 
         random_offset: bool

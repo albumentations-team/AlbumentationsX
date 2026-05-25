@@ -22,6 +22,13 @@ from .base import (
 )
 
 
+class _BBoxSafeRandomCropInitSchema(BaseTransformInitSchema):
+    erosion_rate: float = Field(
+        ge=0.0,
+        le=1.0,
+    )
+
+
 class BBoxSafeRandomCrop(BaseCrop):
     """Random crop that keeps all bboxes inside (erosion_rate). Use when losing any object
     is unacceptable. For at least one bbox use AtLeastOneBBoxRandomCrop.
@@ -128,13 +135,7 @@ class BBoxSafeRandomCrop(BaseCrop):
 
     _targets = ALL_TARGETS
 
-    class InitSchema(BaseTransformInitSchema):
-        erosion_rate: float = Field(
-            ge=0.0,
-            le=1.0,
-        )
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BBoxSafeRandomCropInitSchema
 
     def __init__(self, erosion_rate: float = 0.0, p: float = 1.0):
         super().__init__(p=p)
@@ -520,7 +521,7 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
 
     _targets = ALL_TARGETS
 
-    class InitSchema(BaseCrop.InitSchema):
+    class InitSchema(BaseTransformInitSchema):
         height: Annotated[int, Field(ge=1)]
         width: Annotated[int, Field(ge=1)]
         erosion_factor: Annotated[float, Field(ge=0.0, le=1.0)]

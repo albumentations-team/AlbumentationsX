@@ -138,7 +138,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
 
     """
 
-    class InitSchema(BaseCrop.InitSchema):
+    class InitSchema(BaseTransformInitSchema):
         ignore_values: list[int] | None
         ignore_channels: list[int] | None
         height: Annotated[int, Field(ge=1)]

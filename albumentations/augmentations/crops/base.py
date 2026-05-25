@@ -606,6 +606,12 @@ class BaseRandomSizedCropInitSchema(BaseTransformInitSchema):
     size: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
 
 
+class _BaseRandomSizedCropInitSchema(BaseRandomSizedCropInitSchema):
+    interpolation: FullInterpolationType
+    mask_interpolation: FullInterpolationType
+    area_for_downscale: Literal["image", "image_mask"] | None
+
+
 class _BaseRandomSizedCrop(DualTransform):
     """Abstract base for random crop then resize to fixed size. Subclasses pick crop region;
     output shape (height, width). Bboxes and keypoints scaled with the crop.
@@ -720,12 +726,7 @@ class _BaseRandomSizedCrop(DualTransform):
 
     """
 
-    class InitSchema(BaseRandomSizedCropInitSchema):
-        interpolation: FullInterpolationType
-        mask_interpolation: FullInterpolationType
-        area_for_downscale: Literal["image", "image_mask"] | None
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BaseRandomSizedCropInitSchema
 
     def __init__(
         self,

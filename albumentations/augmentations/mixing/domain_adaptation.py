@@ -41,6 +41,10 @@ class BaseDomainAdaptationInitSchema(BaseTransformInitSchema):
     metadata_key: str
 
 
+class _BaseDomainAdaptationTransformInitSchema(BaseDomainAdaptationInitSchema):
+    pass
+
+
 class BaseDomainAdaptation(ImageOnlyTransform):
     """Base for domain adaptation: modify source to match target via reference data in
     metadata_key. Subclasses implement apply and get_params_dependent_on_data.
@@ -147,10 +151,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
 
     """
 
-    class InitSchema(BaseDomainAdaptationInitSchema):
-        pass
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BaseDomainAdaptationTransformInitSchema
 
     def __init__(
         self,

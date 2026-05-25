@@ -44,6 +44,13 @@ NUM_PADS_XY = 2
 NUM_PADS_ALL_SIDES = 4
 
 
+class _PadInitSchema(BaseTransformInitSchema):
+    padding: int | tuple[int, int] | tuple[int, int, int, int]
+    fill: tuple[float, ...] | float
+    fill_mask: tuple[float, ...] | float
+    border_mode: BorderModeType
+
+
 class Pad(DualTransform):
     """Pad image sides by a number of pixels (all sides, x/y, or per-side). Params: padding, fill,
     fill_mask, border_mode. Supports image, mask, bboxes, keypoints.
@@ -176,13 +183,7 @@ class Pad(DualTransform):
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
-    class InitSchema(BaseTransformInitSchema):
-        padding: int | tuple[int, int] | tuple[int, int, int, int]
-        fill: tuple[float, ...] | float
-        fill_mask: tuple[float, ...] | float
-        border_mode: BorderModeType
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _PadInitSchema
 
     def __init__(
         self,

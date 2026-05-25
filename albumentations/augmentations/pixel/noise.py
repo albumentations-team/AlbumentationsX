@@ -543,6 +543,52 @@ NoiseParams: TypeAlias = Annotated[
 ]
 
 
+class _AdditiveNoiseInitSchema(BaseTransformInitSchema):
+    noise_type: Literal["uniform", "gaussian", "laplace", "beta"]
+    spatial_mode: Literal["constant", "per_pixel", "shared"]
+    noise_params: dict[str, Any] | None
+
+    @model_validator(mode="after")
+    def _validate_noise_params(self) -> Self:
+        # Default parameters for each noise type
+        default_params: dict[str, dict[str, Any]] = {
+            "uniform": {
+                "ranges": [(-0.1, 0.1)],  # Single channel by default
+            },
+            "gaussian": {"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)},
+            "laplace": {"mean_range": (0.0, 0.0), "scale_range": (0.05, 0.15)},
+            "beta": {
+                "alpha_range": (0.5, 1.5),
+                "beta_range": (0.5, 1.5),
+                "scale_range": (0.1, 0.3),
+            },
+        }
+
+        # Use default params if none provided
+        params_dict: dict[str, Any] = (
+            self.noise_params if self.noise_params is not None else default_params[self.noise_type]
+        )
+
+        # Add noise_type to params if not present
+        params_dict = {**params_dict, "noise_type": self.noise_type}
+
+        # Convert dict to appropriate NoiseParams object and validate
+        params_class: Any = {
+            "uniform": UniformParams,
+            "gaussian": GaussianParams,
+            "laplace": LaplaceParams,
+            "beta": BetaParams,
+        }[self.noise_type]
+
+        # Validate using the appropriate NoiseParams class
+        validated_params = params_class(**params_dict)
+
+        # Store the validated parameters as a dict
+        self.noise_params = validated_params.model_dump()
+
+        return self
+
+
 class AdditiveNoise(ImageOnlyTransform):
     """Random noise to channels: uniform, gaussian, laplace, or beta. spatial_mode: constant,
     per_pixel, or shared. Params depend on noise_type.
@@ -632,52 +678,7 @@ class AdditiveNoise(ImageOnlyTransform):
 
     """
 
-    class InitSchema(BaseTransformInitSchema):
-        noise_type: Literal["uniform", "gaussian", "laplace", "beta"]
-        spatial_mode: Literal["constant", "per_pixel", "shared"]
-        noise_params: dict[str, Any] | None
-
-        @model_validator(mode="after")
-        def _validate_noise_params(self) -> Self:
-            # Default parameters for each noise type
-            default_params: dict[str, dict[str, Any]] = {
-                "uniform": {
-                    "ranges": [(-0.1, 0.1)],  # Single channel by default
-                },
-                "gaussian": {"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)},
-                "laplace": {"mean_range": (0.0, 0.0), "scale_range": (0.05, 0.15)},
-                "beta": {
-                    "alpha_range": (0.5, 1.5),
-                    "beta_range": (0.5, 1.5),
-                    "scale_range": (0.1, 0.3),
-                },
-            }
-
-            # Use default params if none provided
-            params_dict: dict[str, Any] = (
-                self.noise_params if self.noise_params is not None else default_params[self.noise_type]
-            )
-
-            # Add noise_type to params if not present
-            params_dict = {**params_dict, "noise_type": self.noise_type}
-
-            # Convert dict to appropriate NoiseParams object and validate
-            params_class: Any = {
-                "uniform": UniformParams,
-                "gaussian": GaussianParams,
-                "laplace": LaplaceParams,
-                "beta": BetaParams,
-            }[self.noise_type]
-
-            # Validate using the appropriate NoiseParams class
-            validated_params = params_class(**params_dict)
-
-            # Store the validated parameters as a dict
-            self.noise_params = validated_params.model_dump()
-
-            return self
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _AdditiveNoiseInitSchema
 
     def __init__(
         self,

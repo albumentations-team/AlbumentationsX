@@ -28,6 +28,11 @@ from albumentations.core.type_definitions import ALL_TARGETS, ImageType, Targets
 __all__ = ["PixelDropout"]
 
 
+class BaseDropoutInitSchema(BaseTransformInitSchema):
+    fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
+    fill_mask: tuple[float, ...] | float | None
+
+
 class BaseDropout(DualTransform):
     """Base class for dropout-style transforms. Shared cutout, fill, fill_mask; subclasses implement
     get_params_dependent_on_data and hole generation.
@@ -110,13 +115,7 @@ class BaseDropout(DualTransform):
 
     _targets: tuple[Targets, ...] | Targets = ALL_TARGETS
 
-    class InitSchema(BaseTransformInitSchema):
-        fill: (
-            tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
-        )
-        fill_mask: tuple[float, ...] | float | None
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = BaseDropoutInitSchema
 
     def __init__(
         self,

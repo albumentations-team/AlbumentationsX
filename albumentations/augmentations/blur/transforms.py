@@ -54,6 +54,10 @@ class BlurInitSchema(BaseTransformInitSchema):
         return fblur.process_blur_range(value, info, min_value=3)
 
 
+class _BlurTransformInitSchema(BlurInitSchema):
+    pass
+
+
 class Blur(ImageOnlyTransform):
     """Average pixels over a random square kernel (box filter). Fast, soft blur; kernel size
     from blur_range. Good for mild smoothing or augmentation variety.
@@ -135,10 +139,7 @@ class Blur(ImageOnlyTransform):
 
     """
 
-    class InitSchema(BlurInitSchema):
-        pass
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BlurTransformInitSchema
 
     def __init__(
         self,

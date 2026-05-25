@@ -324,6 +324,84 @@ class Perspective(DualTransform):
         }
 
 
+class _AffineInitSchema(BaseTransformInitSchema):
+    scale: tuple[float, float] | dict[str, tuple[float, float]]
+    translate_percent: tuple[float, float] | dict[str, tuple[float, float]] | None
+    translate_px: tuple[int, int] | dict[str, tuple[int, int]] | None
+    rotate: tuple[float, float]
+    shear: tuple[float, float] | dict[str, tuple[float, float]]
+    interpolation: InterpolationType
+    mask_interpolation: InterpolationType
+
+    fill: tuple[float, ...] | float
+    fill_mask: tuple[float, ...] | float | None
+    border_mode: BorderModeType
+
+    fit_output: bool
+    keep_ratio: bool
+    rotate_method: Literal["largest_box", "ellipse"]
+    balanced_scale: bool
+
+    @field_validator("shear", "scale")
+    @classmethod
+    def _expand_shear_scale(
+        cls,
+        value: tuple[float, float] | dict[str, tuple[float, float]],
+        info: ValidationInfo,
+    ) -> dict[str, tuple[float, float]]:
+        return cls._handle_dict_arg(value, info.field_name)
+
+    @model_validator(mode="after")
+    def _handle_translate(self) -> Self:
+        if self.translate_percent is None and self.translate_px is None:
+            self.translate_px = (0, 0)
+
+        if self.translate_percent is not None and self.translate_px is not None:
+            msg = "Expected either translate_percent or translate_px to be provided, but both were provided."
+            raise ValueError(msg)
+
+        if self.translate_percent is not None:
+            self.translate_percent = self._handle_dict_arg(
+                self.translate_percent,
+                "translate_percent",
+            )
+
+        if self.translate_px is not None:
+            self.translate_px = self._handle_dict_arg(
+                self.translate_px,
+                "translate_px",
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def _validate_keep_ratio_scale_compatibility(self) -> Self:
+        """Validate that when keep_ratio is True, x and y scale ranges are identical. Prevents
+        inconsistent Affine scale config; raises ValueError if scale x and y differ.
+        """
+        if self.keep_ratio and isinstance(self.scale, dict) and self.scale["x"] != self.scale["y"]:
+            raise ValueError(
+                f"When keep_ratio is True, the x and y scale range should be identical. got {self.scale}",
+            )
+        return self
+
+    @staticmethod
+    def _handle_dict_arg(
+        val: tuple[RangeValueT, RangeValueT] | dict[str, tuple[RangeValueT, RangeValueT]],
+        name: str | None,
+    ) -> dict[str, tuple[RangeValueT, RangeValueT]]:
+        if isinstance(val, dict):
+            if "x" not in val and "y" not in val:
+                raise ValueError(
+                    f'Expected {name} dictionary to contain at least key "x" or key "y". Found neither of them.',
+                )
+            default = val["x"] if "x" in val else val["y"]
+            x = val.get("x", default)
+            y = val.get("y", default)
+            return {"x": x, "y": y}
+        return {"x": val, "y": val}
+
+
 class Affine(DualTransform):
     """Apply affine transformations: translation, rotation, scale, shear. Params: scale, translate,
     rotate, shear, interpolation, fill.
@@ -479,84 +557,7 @@ class Affine(DualTransform):
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
-    class InitSchema(BaseTransformInitSchema):
-        scale: tuple[float, float] | dict[str, tuple[float, float]]
-        translate_percent: tuple[float, float] | dict[str, tuple[float, float]] | None
-        translate_px: tuple[int, int] | dict[str, tuple[int, int]] | None
-        rotate: tuple[float, float]
-        shear: tuple[float, float] | dict[str, tuple[float, float]]
-        interpolation: InterpolationType
-        mask_interpolation: InterpolationType
-
-        fill: tuple[float, ...] | float
-        fill_mask: tuple[float, ...] | float | None
-        border_mode: BorderModeType
-
-        fit_output: bool
-        keep_ratio: bool
-        rotate_method: Literal["largest_box", "ellipse"]
-        balanced_scale: bool
-
-        @field_validator("shear", "scale")
-        @classmethod
-        def _expand_shear_scale(
-            cls,
-            value: tuple[float, float] | dict[str, tuple[float, float]],
-            info: ValidationInfo,
-        ) -> dict[str, tuple[float, float]]:
-            return cls._handle_dict_arg(value, info.field_name)
-
-        @model_validator(mode="after")
-        def _handle_translate(self) -> Self:
-            if self.translate_percent is None and self.translate_px is None:
-                self.translate_px = (0, 0)
-
-            if self.translate_percent is not None and self.translate_px is not None:
-                msg = "Expected either translate_percent or translate_px to be provided, but both were provided."
-                raise ValueError(msg)
-
-            if self.translate_percent is not None:
-                self.translate_percent = self._handle_dict_arg(
-                    self.translate_percent,
-                    "translate_percent",
-                )
-
-            if self.translate_px is not None:
-                self.translate_px = self._handle_dict_arg(
-                    self.translate_px,
-                    "translate_px",
-                )
-
-            return self
-
-        @model_validator(mode="after")
-        def _validate_keep_ratio_scale_compatibility(self) -> Self:
-            """Validate that when keep_ratio is True, x and y scale ranges are identical. Prevents
-            inconsistent Affine scale config; raises ValueError if scale x and y differ.
-            """
-            if self.keep_ratio and isinstance(self.scale, dict) and self.scale["x"] != self.scale["y"]:
-                raise ValueError(
-                    f"When keep_ratio is True, the x and y scale range should be identical. got {self.scale}",
-                )
-            return self
-
-        @staticmethod
-        def _handle_dict_arg(
-            val: tuple[RangeValueT, RangeValueT] | dict[str, tuple[RangeValueT, RangeValueT]],
-            name: str | None,
-        ) -> dict[str, tuple[RangeValueT, RangeValueT]]:
-            if isinstance(val, dict):
-                if "x" not in val and "y" not in val:
-                    raise ValueError(
-                        f'Expected {name} dictionary to contain at least key "x" or key "y". Found neither of them.',
-                    )
-                default = val["x"] if "x" in val else val["y"]
-                x = val.get("x", default)
-                y = val.get("y", default)
-                return {"x": x, "y": y}
-            return {"x": val, "y": val}
-
-    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+    InitSchema: ClassVar[type[BaseTransformInitSchema]] = _AffineInitSchema
 
     def __init__(
         self,

@@ -51,8 +51,7 @@ When creating a new design document:
 
 3. Add a reference to the new document in:
    - This README
-   - `AGENTS.md` (under Design Documents section)
-   - `.codex/rules/albumentations-rules.md` (if relevant for Codex)
+   - `.codex/rules/albumentations-rules.md` (if relevant for Codex-facing guidance)
 
 4. Keep documents up-to-date as implementation evolves
 

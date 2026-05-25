@@ -445,33 +445,9 @@
       "severity": "error"
     },
     {
-      "line": 201,
-      "column": 43,
-      "stop_line": 201,
-      "stop_column": 64,
-      "path": "albumentations/augmentations/crops/special.py",
-      "code": -2,
-      "name": "missing-attribute",
-      "description": "Object of class `bool` has no attribute `astype`",
-      "concise_description": "Object of class `bool` has no attribute `astype`",
-      "severity": "error"
-    },
-    {
-      "line": 201,
-      "column": 44,
-      "stop_line": 201,
-      "stop_column": 56,
-      "path": "albumentations/augmentations/crops/special.py",
-      "code": -2,
-      "name": "unsupported-operation",
-      "description": "`>` is not supported between `generic` and `Literal[0]`\n  Argument `generic` is not assignable to parameter `value` with type `int` in function `int.__lt__`",
-      "concise_description": "`>` is not supported between `generic` and `Literal[0]`",
-      "severity": "error"
-    },
-    {
-      "line": 249,
+      "line": 250,
       "column": 11,
-      "stop_line": 249,
+      "stop_line": 250,
       "stop_column": 21,
       "path": "albumentations/augmentations/crops/special.py",
       "code": -2,
@@ -481,9 +457,9 @@
       "severity": "error"
     },
     {
-      "line": 389,
+      "line": 390,
       "column": 11,
-      "stop_line": 389,
+      "stop_line": 390,
       "stop_column": 21,
       "path": "albumentations/augmentations/crops/special.py",
       "code": -2,
@@ -829,21 +805,9 @@
       "severity": "error"
     },
     {
-      "line": 145,
-      "column": 24,
-      "stop_line": 145,
-      "stop_column": 39,
-      "path": "albumentations/augmentations/geometric/_functional_images.py",
-      "code": -2,
-      "name": "not-callable",
-      "description": "Expected a callable, got `float`",
-      "concise_description": "Expected a callable, got `float`",
-      "severity": "error"
-    },
-    {
-      "line": 180,
+      "line": 181,
       "column": 26,
-      "stop_line": 180,
+      "stop_line": 181,
       "stop_column": 29,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -853,9 +817,9 @@
       "severity": "error"
     },
     {
-      "line": 180,
+      "line": 181,
       "column": 44,
-      "stop_line": 180,
+      "stop_line": 181,
       "stop_column": 52,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -865,9 +829,9 @@
       "severity": "error"
     },
     {
-      "line": 381,
+      "line": 382,
       "column": 34,
-      "stop_line": 381,
+      "stop_line": 382,
       "stop_column": 44,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -877,9 +841,9 @@
       "severity": "error"
     },
     {
-      "line": 394,
+      "line": 395,
       "column": 26,
-      "stop_line": 394,
+      "stop_line": 395,
       "stop_column": 36,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -889,9 +853,9 @@
       "severity": "error"
     },
     {
-      "line": 636,
+      "line": 637,
       "column": 16,
-      "stop_line": 636,
+      "stop_line": 637,
       "stop_column": 66,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -901,9 +865,9 @@
       "severity": "error"
     },
     {
-      "line": 735,
+      "line": 736,
       "column": 16,
-      "stop_line": 735,
+      "stop_line": 736,
       "stop_column": 66,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -913,9 +877,9 @@
       "severity": "error"
     },
     {
-      "line": 737,
+      "line": 738,
       "column": 12,
-      "stop_line": 737,
+      "stop_line": 738,
       "stop_column": 38,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -925,9 +889,9 @@
       "severity": "error"
     },
     {
-      "line": 760,
+      "line": 761,
       "column": 12,
-      "stop_line": 760,
+      "stop_line": 761,
       "stop_column": 56,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -937,9 +901,9 @@
       "severity": "error"
     },
     {
-      "line": 932,
+      "line": 933,
       "column": 20,
-      "stop_line": 932,
+      "stop_line": 933,
       "stop_column": 70,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -949,9 +913,9 @@
       "severity": "error"
     },
     {
-      "line": 1048,
+      "line": 1049,
       "column": 27,
-      "stop_line": 1048,
+      "stop_line": 1049,
       "stop_column": 58,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -961,9 +925,9 @@
       "severity": "error"
     },
     {
-      "line": 1331,
+      "line": 1332,
       "column": 12,
-      "stop_line": 1331,
+      "stop_line": 1332,
       "stop_column": 48,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -973,9 +937,9 @@
       "severity": "error"
     },
     {
-      "line": 1349,
+      "line": 1350,
       "column": 12,
-      "stop_line": 1349,
+      "stop_line": 1350,
       "stop_column": 49,
       "path": "albumentations/augmentations/geometric/_functional_images.py",
       "code": -2,
@@ -1378,30 +1342,6 @@
       "name": "bad-return",
       "description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 814,
-      "column": 37,
-      "stop_line": 814,
-      "stop_column": 40,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-index",
-      "description": "Cannot index into `dict[Never, Never]`\n  Argument `Literal['x']` is not assignable to parameter `key` with type `Never` in function `dict.__getitem__`",
-      "concise_description": "Cannot index into `dict[Never, Never]`",
-      "severity": "error"
-    },
-    {
-      "line": 814,
-      "column": 71,
-      "stop_line": 814,
-      "stop_column": 74,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-index",
-      "description": "Cannot index into `dict[Never, Never]`\n  Argument `Literal['y']` is not assignable to parameter `key` with type `Never` in function `dict.__getitem__`",
-      "concise_description": "Cannot index into `dict[Never, Never]`",
       "severity": "error"
     },
     {
@@ -1834,30 +1774,6 @@
       "name": "bad-override",
       "description": "Class member `Mosaic.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `Mosaic.InitSchema` has type `type[Mosaic.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
       "concise_description": "Class member `Mosaic.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 404,
-      "column": 48,
-      "stop_line": 404,
-      "stop_column": 102,
-      "path": "albumentations/augmentations/mixing/mosaic.py",
-      "code": -2,
-      "name": "bad-typed-dict-key",
-      "description": "`tuple[int, int, int]` is not assignable to TypedDict key `target_masks_shape` with type `dict[tuple[int, int, int, int], ProcessedMosaicItem] | list[int]`",
-      "concise_description": "`tuple[int, int, int]` is not assignable to TypedDict key `target_masks_shape` with type `dict[tuple[int, int, int, int], ProcessedMosaicItem] | list[int]`",
-      "severity": "error"
-    },
-    {
-      "line": 406,
-      "column": 48,
-      "stop_line": 406,
-      "stop_column": 81,
-      "path": "albumentations/augmentations/mixing/mosaic.py",
-      "code": -2,
-      "name": "bad-typed-dict-key",
-      "description": "`tuple[int, ...]` is not assignable to TypedDict key `target_masks_shape` with type `dict[tuple[int, int, int, int], ProcessedMosaicItem] | list[int]`",
-      "concise_description": "`tuple[int, ...]` is not assignable to TypedDict key `target_masks_shape` with type `dict[tuple[int, int, int, int], ProcessedMosaicItem] | list[int]`",
       "severity": "error"
     },
     {
@@ -2344,12 +2260,12 @@
       "line": 992,
       "column": 12,
       "stop_line": 992,
-      "stop_column": 37,
+      "stop_column": 60,
       "path": "albumentations/augmentations/pixel/_functional_color.py",
       "code": -2,
-      "name": "missing-attribute",
-      "description": "Object of class `float` has no attribute `astype`",
-      "concise_description": "Object of class `float` has no attribute `astype`",
+      "name": "bad-return",
+      "description": "Returned type `ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
+      "concise_description": "Returned type `ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "severity": "error"
     },
     {
@@ -2821,18 +2737,6 @@
       "severity": "error"
     },
     {
-      "line": 969,
-      "column": 21,
-      "stop_line": 969,
-      "stop_column": 37,
-      "path": "albumentations/augmentations/pixel/_functional_illumination.py",
-      "code": -2,
-      "name": "missing-attribute",
-      "description": "Object of class `float` has no attribute `astype`",
-      "concise_description": "Object of class `float` has no attribute `astype`",
-      "severity": "error"
-    },
-    {
       "line": 994,
       "column": 11,
       "stop_line": 994,
@@ -2842,30 +2746,6 @@
       "name": "bad-assignment",
       "description": "`ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to variable `img` with type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "`ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to variable `img` with type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 999,
-      "column": 9,
-      "stop_line": 999,
-      "stop_column": 34,
-      "path": "albumentations/augmentations/pixel/_functional_illumination.py",
-      "code": -2,
-      "name": "missing-attribute",
-      "description": "Object of class `float` has no attribute `astype`",
-      "concise_description": "Object of class `float` has no attribute `astype`",
-      "severity": "error"
-    },
-    {
-      "line": 1019,
-      "column": 29,
-      "stop_line": 1019,
-      "stop_column": 80,
-      "path": "albumentations/augmentations/pixel/_functional_illumination.py",
-      "code": -2,
-      "name": "missing-attribute",
-      "description": "Object of class `float` has no attribute `astype`",
-      "concise_description": "Object of class `float` has no attribute `astype`",
       "severity": "error"
     },
     {
@@ -3817,57 +3697,9 @@
       "severity": "error"
     },
     {
-      "line": 484,
-      "column": 5,
-      "stop_line": 484,
-      "stop_column": 15,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override-mutable-attribute",
-      "description": "Class member `UniformParams.noise_type` overrides parent class `NoiseParamsBase` in an inconsistent manner\n  `UniformParams.noise_type` has type `Literal['uniform']`, which is not consistent with `str` in `NoiseParamsBase.noise_type` (the type of read-write attributes cannot be changed)",
-      "concise_description": "Class member `UniformParams.noise_type` overrides parent class `NoiseParamsBase` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 502,
-      "column": 5,
-      "stop_line": 502,
-      "stop_column": 15,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override-mutable-attribute",
-      "description": "Class member `GaussianParams.noise_type` overrides parent class `NoiseParamsBase` in an inconsistent manner\n  `GaussianParams.noise_type` has type `Literal['gaussian']`, which is not consistent with `str` in `NoiseParamsBase.noise_type` (the type of read-write attributes cannot be changed)",
-      "concise_description": "Class member `GaussianParams.noise_type` overrides parent class `NoiseParamsBase` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 514,
-      "column": 5,
-      "stop_line": 514,
-      "stop_column": 15,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override-mutable-attribute",
-      "description": "Class member `LaplaceParams.noise_type` overrides parent class `NoiseParamsBase` in an inconsistent manner\n  `LaplaceParams.noise_type` has type `Literal['laplace']`, which is not consistent with `str` in `NoiseParamsBase.noise_type` (the type of read-write attributes cannot be changed)",
-      "concise_description": "Class member `LaplaceParams.noise_type` overrides parent class `NoiseParamsBase` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 526,
-      "column": 5,
-      "stop_line": 526,
-      "stop_column": 15,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override-mutable-attribute",
-      "description": "Class member `BetaParams.noise_type` overrides parent class `NoiseParamsBase` in an inconsistent manner\n  `BetaParams.noise_type` has type `Literal['beta']`, which is not consistent with `str` in `NoiseParamsBase.noise_type` (the type of read-write attributes cannot be changed)",
-      "concise_description": "Class member `BetaParams.noise_type` overrides parent class `NoiseParamsBase` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 636,
+      "line": 635,
       "column": 11,
-      "stop_line": 636,
+      "stop_line": 635,
       "stop_column": 21,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3877,9 +3709,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3889,9 +3721,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3901,9 +3733,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3913,9 +3745,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3925,9 +3757,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3937,9 +3769,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3949,9 +3781,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3961,9 +3793,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3973,9 +3805,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3985,9 +3817,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -3997,9 +3829,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -4009,9 +3841,9 @@
       "severity": "error"
     },
     {
-      "line": 672,
+      "line": 671,
       "column": 45,
-      "stop_line": 672,
+      "stop_line": 671,
       "stop_column": 58,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -4021,9 +3853,9 @@
       "severity": "error"
     },
     {
-      "line": 816,
+      "line": 815,
       "column": 11,
-      "stop_line": 816,
+      "stop_line": 815,
       "stop_column": 21,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -4033,9 +3865,9 @@
       "severity": "error"
     },
     {
-      "line": 929,
+      "line": 928,
       "column": 11,
-      "stop_line": 929,
+      "stop_line": 928,
       "stop_column": 21,
       "path": "albumentations/augmentations/pixel/noise.py",
       "code": -2,
@@ -4537,21 +4369,9 @@
       "severity": "error"
     },
     {
-      "line": 332,
-      "column": 5,
-      "stop_line": 332,
-      "stop_column": 11,
-      "path": "albumentations/core/bbox_utils.py",
-      "code": -2,
-      "name": "bad-override-mutable-attribute",
-      "description": "Class member `BboxProcessor.params` overrides parent class `DataProcessor` in an inconsistent manner\n  `BboxProcessor.params` has type `BboxParams`, which is not consistent with `Params` in `DataProcessor.params` (the type of read-write attributes cannot be changed)",
-      "concise_description": "Class member `BboxProcessor.params` overrides parent class `DataProcessor` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1417,
+      "line": 1414,
       "column": 27,
-      "stop_line": 1417,
+      "stop_line": 1414,
       "stop_column": 45,
       "path": "albumentations/core/bbox_utils.py",
       "code": -2,
@@ -4561,9 +4381,9 @@
       "severity": "error"
     },
     {
-      "line": 1418,
+      "line": 1415,
       "column": 27,
-      "stop_line": 1418,
+      "stop_line": 1415,
       "stop_column": 45,
       "path": "albumentations/core/bbox_utils.py",
       "code": -2,
@@ -4573,9 +4393,9 @@
       "severity": "error"
     },
     {
-      "line": 1419,
+      "line": 1416,
       "column": 27,
-      "stop_line": 1419,
+      "stop_line": 1416,
       "stop_column": 46,
       "path": "albumentations/core/bbox_utils.py",
       "code": -2,
@@ -4585,9 +4405,9 @@
       "severity": "error"
     },
     {
-      "line": 1420,
+      "line": 1417,
       "column": 27,
-      "stop_line": 1420,
+      "stop_line": 1417,
       "stop_column": 46,
       "path": "albumentations/core/bbox_utils.py",
       "code": -2,
@@ -4609,18 +4429,6 @@
       "severity": "error"
     },
     {
-      "line": 333,
-      "column": 21,
-      "stop_line": 333,
-      "stop_column": 49,
-      "path": "albumentations/core/composition.py",
-      "code": -2,
-      "name": "missing-attribute",
-      "description": "Object of class `BasicTransform` has no attribute `mask_interpolation`",
-      "concise_description": "Object of class `BasicTransform` has no attribute `mask_interpolation`",
-      "severity": "error"
-    },
-    {
       "line": 222,
       "column": 42,
       "stop_line": 231,
@@ -4633,33 +4441,9 @@
       "severity": "error"
     },
     {
-      "line": 236,
-      "column": 33,
-      "stop_line": 236,
-      "stop_column": 81,
-      "path": "albumentations/core/hub_mixin.py",
-      "code": -2,
-      "name": "missing-argument",
-      "description": "Missing argument `response` in function `huggingface_hub.errors.HfHubHTTPError.__init__`",
-      "concise_description": "Missing argument `response` in function `huggingface_hub.errors.HfHubHTTPError.__init__`",
-      "severity": "error"
-    },
-    {
-      "line": 216,
-      "column": 5,
-      "stop_line": 216,
-      "stop_column": 11,
-      "path": "albumentations/core/keypoints_utils.py",
-      "code": -2,
-      "name": "bad-override-mutable-attribute",
-      "description": "Class member `KeypointsProcessor.params` overrides parent class `DataProcessor` in an inconsistent manner\n  `KeypointsProcessor.params` has type `KeypointParams`, which is not consistent with `Params` in `DataProcessor.params` (the type of read-write attributes cannot be changed)",
-      "concise_description": "Class member `KeypointsProcessor.params` overrides parent class `DataProcessor` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 368,
+      "line": 365,
       "column": 16,
-      "stop_line": 368,
+      "stop_line": 365,
       "stop_column": 31,
       "path": "albumentations/core/keypoints_utils.py",
       "code": -2,

@@ -233,7 +233,7 @@ class BaseCompose(Serializable):
     """
 
     _transforms_dict: dict[int, BasicTransform] | None = None
-    check_each_transform: tuple[DataProcessor, ...] | None = None
+    check_each_transform: tuple[DataProcessor[Any], ...] | None = None
     main_compose: bool = True
 
     def __init__(
@@ -330,7 +330,7 @@ class BaseCompose(Serializable):
         for transform in transforms:
             if isinstance(transform, BasicTransform):
                 if hasattr(transform, "mask_interpolation") and self.mask_interpolation is not None:
-                    transform.mask_interpolation = self.mask_interpolation
+                    cast("Any", transform).mask_interpolation = self.mask_interpolation
             elif isinstance(transform, BaseCompose):
                 transform.set_mask_interpolation(self.mask_interpolation)
 

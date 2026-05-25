@@ -198,7 +198,7 @@ class KeypointParams(Params):
         return np.array([], dtype=np.float32).reshape(0, len(self.coord_format))
 
 
-class KeypointsProcessor(DataProcessor):
+class KeypointsProcessor(DataProcessor[KeypointParams]):
     """DataProcessor for keypoints: conversion, validation, filtering. Uses KeypointParams
     and label_mapping. Compose uses this when keypoint_params is set.
 
@@ -212,8 +212,6 @@ class KeypointsProcessor(DataProcessor):
         additional_targets (dict[str, str] | None): Dictionary mapping additional target names to their types.
 
     """
-
-    params: KeypointParams
 
     def __init__(self, params: KeypointParams, additional_targets: dict[str, str] | None = None):
         super().__init__(params, additional_targets)
@@ -259,7 +257,6 @@ class KeypointsProcessor(DataProcessor):
             np.ndarray: Filtered keypoints
 
         """
-        self.params: KeypointParams
         return filter_keypoints(data, shape, remove_invisible=self.params.remove_invisible)
 
     def check(self, data: np.ndarray, shape: tuple[int, int] | tuple[int, int, int]) -> None:

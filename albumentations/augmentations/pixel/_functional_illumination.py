@@ -966,7 +966,7 @@ def apply_film_grain(
 
     max_val = MAX_VALUES_BY_DTYPE[img.dtype]
 
-    inv_lum = 1.0 - luminance.astype(np.float32) / max_val if img.dtype == np.uint8 else 1.0 - luminance
+    inv_lum = 1.0 - np.asarray(luminance).astype(np.float32) / max_val if img.dtype == np.uint8 else 1.0 - luminance
 
     modulated = (grain * inv_lum * intensity * max_val).astype(np.float32)
 
@@ -996,7 +996,7 @@ def apply_halftone(
     num_channels = img.shape[-1]
 
     luminance = (
-        mean(img, axis=-1).astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
+        np.asarray(mean(img, axis=-1)).astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
         if num_channels > 1
         else img[..., 0].astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
     )
@@ -1016,7 +1016,7 @@ def apply_halftone(
                 radius = max(1, int(dot_size * 0.5 * cell_lum))
 
                 cell = img[y_start:y_end, x_start:x_end]
-                avg_color = mean(cell.reshape(-1, num_channels), axis=0).astype(img.dtype)
+                avg_color = np.asarray(mean(cell.reshape(-1, num_channels), axis=0)).astype(img.dtype)
 
                 # Cell-local mask: avoids O(N_cells * H * W) allocation
                 local_cx = cell_w // 2

@@ -233,7 +233,7 @@ class HubMixin:
             return cls._from_pretrained(save_directory=directory, filename=filename)
 
         except HfHubHTTPError as e:
-            raise HfHubHTTPError(f"{filename} not found on the HuggingFace Hub") from e
+            raise HfHubHTTPError(f"{filename} not found on the HuggingFace Hub", response=e.response) from e
 
     @require_huggingface_hub
     def push_to_hub(

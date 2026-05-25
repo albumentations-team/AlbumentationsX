@@ -9,7 +9,7 @@ the transformation pipeline.
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 import numpy as np
 
@@ -317,7 +317,10 @@ class Params(Serializable, ABC):
         return {"coord_format": self.coord_format, "label_fields": self.label_fields}
 
 
-class DataProcessor(ABC):
+ParamsT = TypeVar("ParamsT", bound=Params)
+
+
+class DataProcessor(ABC, Generic[ParamsT]):
     """Abstract base for data processors: convert, validate, filter. Subclasses: BboxProcessor,
     KeypointsProcessor. Uses Params.
 
@@ -330,7 +333,7 @@ class DataProcessor(ABC):
 
     """
 
-    def __init__(self, params: Params, additional_targets: dict[str, str] | None = None):
+    def __init__(self, params: ParamsT, additional_targets: dict[str, str] | None = None):
         self.params = params
         self.data_fields = [self.default_data_name]
         self.label_manager = LabelManager()

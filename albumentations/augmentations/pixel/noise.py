@@ -477,7 +477,6 @@ class NoiseParamsBase(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    noise_type: str
 
 
 class UniformParams(NoiseParamsBase):

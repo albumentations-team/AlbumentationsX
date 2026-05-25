@@ -989,7 +989,7 @@ def to_gray_average(img: ImageType) -> ImageType:
         any
 
     """
-    return mean(img, axis=-1).astype(img.dtype)
+    return np.asarray(mean(img, axis=-1)).astype(img.dtype)
 
 
 def to_gray_max(img: ImageType) -> ImageType:

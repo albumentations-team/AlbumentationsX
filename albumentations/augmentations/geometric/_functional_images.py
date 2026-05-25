@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
@@ -142,7 +142,8 @@ def resize_pyvips(
     if interpolation_method is None:
         raise ValueError(f"Unsupported interpolation method: {interpolation}")
 
-    resized_img_vips = img_vips.resize(
+    resize = cast("Any", img_vips.resize)
+    resized_img_vips = resize(
         scale_x,
         vscale=scale_y,
         kernel=interpolation_method,

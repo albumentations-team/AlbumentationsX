@@ -581,8 +581,8 @@ class Affine(DualTransform):
         self.fill_mask = fill_mask
         self.border_mode = border_mode
         self.scale = cast("dict[str, tuple[float, float]]", scale)
-        self.translate_percent = cast("dict[str, tuple[float, float]]", translate_percent)
-        self.translate_px = cast("dict[str, tuple[int, int]]", translate_px)
+        self.translate_percent = cast("dict[str, tuple[float, float]] | None", translate_percent)
+        self.translate_px = cast("dict[str, tuple[int, int]] | None", translate_px)
         self.rotate = rotate
         self.fit_output = fit_output
         self.shear = cast("dict[str, tuple[float, float]]", shear)

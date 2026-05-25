@@ -394,7 +394,10 @@ class Mosaic(DualTransform):
                 kp_proc if isinstance(kp_proc, KeypointsProcessor) else None,
             )
 
-        result = {"processed_cells": processed_cells, "target_shape": self._get_target_shape(data["image"].shape)}
+        result: dict[str, Any] = {
+            "processed_cells": processed_cells,
+            "target_shape": self._get_target_shape(data["image"].shape),
+        }
         if "mask" in data:
             result["target_mask_shape"] = self._get_target_shape(data["mask"].shape)
         if "masks" in data:

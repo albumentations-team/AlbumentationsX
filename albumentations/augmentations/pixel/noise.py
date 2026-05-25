@@ -640,7 +640,7 @@ class AdditiveNoise(ImageOnlyTransform):
         @model_validator(mode="after")
         def _validate_noise_params(self) -> Self:
             # Default parameters for each noise type
-            default_params = {
+            default_params: dict[str, dict[str, Any]] = {
                 "uniform": {
                     "ranges": [(-0.1, 0.1)],  # Single channel by default
                 },
@@ -654,13 +654,15 @@ class AdditiveNoise(ImageOnlyTransform):
             }
 
             # Use default params if none provided
-            params_dict = self.noise_params if self.noise_params is not None else default_params[self.noise_type]
+            params_dict: dict[str, Any] = (
+                self.noise_params if self.noise_params is not None else default_params[self.noise_type]
+            )
 
             # Add noise_type to params if not present
-            params_dict = {**params_dict, "noise_type": self.noise_type}  # type: ignore[dict-item]
+            params_dict = {**params_dict, "noise_type": self.noise_type}
 
             # Convert dict to appropriate NoiseParams object and validate
-            params_class = {
+            params_class: Any = {
                 "uniform": UniformParams,
                 "gaussian": GaussianParams,
                 "laplace": LaplaceParams,

@@ -1,6 +1,6 @@
 """Grayscale, RGB conversion, colorization, sepia, and PCA color transforms."""
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from ._color_shared import (
     NUM_RGB_CHANNELS,
@@ -272,7 +272,7 @@ class ToRGB(ImageOnlyTransform):
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         if is_rgb_image(img):
             warnings.warn("The image is already an RGB.", stacklevel=2)
-            return np.ascontiguousarray(img)
+            return cast("ImageType", np.ascontiguousarray(img))
         if not is_grayscale_image(img):
             msg = "ToRGB transformation expects images with the number of channels equal to 1."
             raise TypeError(msg)

@@ -6,7 +6,7 @@ are useful for preprocessing before neural network input (ToFloat) and for conve
 network outputs back to standard image formats (FromFloat).
 """
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 from albucore import (
@@ -158,10 +158,10 @@ class FromFloat(ImageOnlyTransform):
         self.max_value = max_value
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
-        return from_float(img, np.dtype(self.dtype), self.max_value)
+        return from_float(cast("ImageFloat32", img), np.dtype(self.dtype), self.max_value)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return from_float(images, np.dtype(self.dtype), self.max_value)
+        return from_float(cast("ImageFloat32", images), np.dtype(self.dtype), self.max_value)
 
     def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
         return self.apply_to_images(volumes, **params)

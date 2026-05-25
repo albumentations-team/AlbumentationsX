@@ -197,7 +197,7 @@ class HubMixin:
                 If True, avoid downloading the file and return the path to the local cached file if it exists.
 
         """
-        filename = cls._CONFIG_FILE_NAME_TEMPLATE.format(key)
+        filename: str = cls._CONFIG_FILE_NAME_TEMPLATE.format(key)
         directory_or_repo_id = Path(directory_or_repo_id)
         transform = None
 
@@ -218,6 +218,11 @@ class HubMixin:
             return transform
 
         # download the file from the Hub
+        if proxies is not None:
+            logger.warning(
+                "`proxies` is not supported by this huggingface_hub version; configure proxies via environment.",
+            )
+
         try:
             config_file = hf_hub_download(
                 repo_id=str(directory_or_repo_id).replace("\\", "/"),
@@ -225,7 +230,6 @@ class HubMixin:
                 revision=revision,
                 cache_dir=cache_dir,
                 force_download=force_download,
-                proxies=proxies,
                 token=token,
                 local_files_only=local_files_only,
             )

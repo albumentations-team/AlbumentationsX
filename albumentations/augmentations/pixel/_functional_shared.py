@@ -6,7 +6,7 @@ import math
 import random
 from collections.abc import Sequence
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from warnings import warn
 
 import cv2
@@ -68,9 +68,9 @@ def apply_multichannel_lut(img: ImageType, luts: np.ndarray, num_channels: int) 
     """
     lut = np.ascontiguousarray(luts.T.reshape(256, 1, num_channels))
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        return cv2.LUT(img, lut)
+        return cast("ImageType", cv2.LUT(img, lut))
 
-    return cv2.LUT(img.reshape(-1, 1, num_channels), lut).reshape(img.shape)
+    return cast("ImageType", cv2.LUT(img.reshape(-1, 1, num_channels), lut).reshape(img.shape))
 
 
 __all__ = [

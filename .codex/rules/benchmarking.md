@@ -1,7 +1,7 @@
 ---
 description: Benchmarking requirements for performance-sensitive changes
-globs: albumentations/**/*.py
-alwaysApply: false
+applies_to: albumentations/**/*.py
+always_apply: false
 ---
 
 # Benchmarking Requirements

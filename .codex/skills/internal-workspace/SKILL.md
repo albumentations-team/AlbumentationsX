@@ -10,7 +10,7 @@ description: Use the repo `_internal/` directory for anything that must not be c
 1. **Put non-repo files under `_internal/`** — not in `tools/`, project root, or `tests/` unless they are
    permanent, reviewed project assets.
 2. **Applies to**: temporary scripts, screenshot/debug exports, large downloaded data, personal benchmark
-   runs, WIP notebooks, Cursor/agent scratch output, anything you would otherwise `.gitignore` ad hoc at
+   runs, WIP notebooks, agent scratch output, anything you would otherwise `.gitignore` ad hoc at
    repo root.
 3. **Do not commit** contents of `_internal/` except `_internal/.gitkeep` (the directory is in
    `.gitignore` via `_internal/*` with an exception for `.gitkeep`).

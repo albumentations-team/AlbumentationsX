@@ -1,7 +1,7 @@
 ---
 description: Testing conventions for transform tests
-globs: tests/**/*.py
-alwaysApply: false
+applies_to: tests/**/*.py
+always_apply: false
 ---
 
 # Testing Conventions

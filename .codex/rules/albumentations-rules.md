@@ -1,7 +1,7 @@
 ---
 description: Quick reference rules for AlbumentationsX
-globs:
-alwaysApply: true
+applies_to: all files
+always_apply: true
 ---
 
 # AlbumentationsX Quick Rules

@@ -16,7 +16,7 @@
 > - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 > - `docs/design/mosaic.md` - Mosaic transform technical specification
 >
-> **Important**: Do NOT create summary documents like `.cursor/rules/<topic>.mdc` for every fix.
+> **Important**: Do NOT create summary documents like `.codex/rules/<topic>.md` for every fix.
 > These are only created for significant architectural changes or complex features that need design documentation.
 > Regular bug fixes and improvements should be documented in commit messages and PR descriptions only.
 

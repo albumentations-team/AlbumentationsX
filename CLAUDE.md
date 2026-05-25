@@ -1,6 +1,5 @@
 # Claude Instructions for AlbumentationsX
 
-Read and follow `docs/contributing/ai_assistant_guidelines.md`.
+Read and follow `AGENTS.md` and `docs/contributing/ai_assistant_guidelines.md`.
 
-Cursor and Codex skills are kept in the same shared skill tree. Cursor reads `.cursor/skills`; Codex
-reads `.codex/skills`.
+Project AI rules and skills are maintained under `.codex/`.

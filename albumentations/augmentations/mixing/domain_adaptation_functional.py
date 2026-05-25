@@ -256,16 +256,16 @@ class TransformerInterface(Protocol):
         ...
 
     @abc.abstractmethod
-    def fit(self, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
-        """Fit the transformer to the data (e.g. pixel samples). Optional y unused; returns self.
-        Subclasses implement; call before transform.
+    def fit(self, x: np.ndarray, y: np.ndarray | None = None) -> Any:
+        """Fit the transformer to the data (e.g. pixel samples). Optional y unused. Subclasses
+        may return self or None; callers do not consume the return value.
 
         Args:
             x (np.ndarray): The data to fit to.
             y (np.ndarray | None): Optional target data (not used in most implementations).
 
         Returns:
-            np.ndarray: The fitted transformer instance.
+            Any: Transformer-specific fit result.
 
         """
         ...
@@ -425,7 +425,7 @@ def adapt_pixel_distribution(
         ref = np.squeeze(ref)
 
     if img.shape != ref.shape:
-        ref = fgeometric.resize(ref, img.shape[:2], cv2.INTER_AREA)
+        ref = fgeometric.resize(ref, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_AREA)
 
     original_dtype = img.dtype
 
@@ -590,7 +590,7 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
     """
     # Resize reference image only if necessary
     if img.shape[:2] != reference_image.shape[:2]:
-        reference_image = fgeometric.resize(reference_image, img.shape[:2], cv2.INTER_LINEAR)
+        reference_image = fgeometric.resize(reference_image, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_LINEAR)
 
     reference_image = reference_image.reshape(img.shape)
 

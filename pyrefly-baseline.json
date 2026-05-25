@@ -529,18 +529,6 @@
       "severity": "error"
     },
     {
-      "line": 428,
-      "column": 38,
-      "stop_line": 428,
-      "stop_column": 51,
-      "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `tuple[int, ...]` is not assignable to parameter `target_shape` with type `tuple[int, int]` in function `albumentations.augmentations.geometric._functional_images.resize`",
-      "concise_description": "Argument `tuple[int, ...]` is not assignable to parameter `target_shape` with type `tuple[int, int]` in function `albumentations.augmentations.geometric._functional_images.resize`",
-      "severity": "error"
-    },
-    {
       "line": 433,
       "column": 26,
       "stop_line": 433,
@@ -560,20 +548,8 @@
       "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
       "code": -2,
       "name": "bad-argument-type",
-      "description": "Argument `MinMaxScaler | PCA | StandardScaler` is not assignable to parameter `transformer` with type `TransformerInterface` in function `DomainAdapter.__init__`\n  `MinMaxScaler.fit` has type `(self: MinMaxScaler, x: ndarray[Unknown, Unknown]) -> None`, which is not assignable to `(self: MinMaxScaler, x: ndarray[Unknown, Unknown], y: ndarray[Unknown, Unknown] | None = None) -> ndarray[Unknown, Unknown]`, the type of `TransformerInterface.fit`",
+      "description": "Argument `MinMaxScaler | PCA | StandardScaler` is not assignable to parameter `transformer` with type `TransformerInterface` in function `DomainAdapter.__init__`\n  `MinMaxScaler.fit` has type `(self: MinMaxScaler, x: ndarray[Unknown, Unknown]) -> None`, which is not assignable to `(self: MinMaxScaler, x: ndarray[Unknown, Unknown], y: ndarray[Unknown, Unknown] | None = None) -> Any`, the type of `TransformerInterface.fit`",
       "concise_description": "Argument `MinMaxScaler | PCA | StandardScaler` is not assignable to parameter `transformer` with type `TransformerInterface` in function `DomainAdapter.__init__`",
-      "severity": "error"
-    },
-    {
-      "line": 593,
-      "column": 62,
-      "stop_line": 593,
-      "stop_column": 75,
-      "path": "albumentations/augmentations/mixing/domain_adaptation_functional.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `tuple[int, ...]` is not assignable to parameter `target_shape` with type `tuple[int, int]` in function `albumentations.augmentations.geometric._functional_images.resize`",
-      "concise_description": "Argument `tuple[int, ...]` is not assignable to parameter `target_shape` with type `tuple[int, int]` in function `albumentations.augmentations.geometric._functional_images.resize`",
       "severity": "error"
     },
     {

@@ -107,7 +107,7 @@ def generate_random_fill(
     """
     max_value = MAX_VALUES_BY_DTYPE[dtype]
     if np.issubdtype(dtype, np.integer):
-        return random_generator.integers(0, max_value + 1, size=shape, dtype=dtype)
+        return random_generator.integers(0, int(max_value) + 1, size=shape, dtype=dtype)
     if np.issubdtype(dtype, np.floating):
         return random_generator.uniform(0, max_value, size=shape).astype(dtype)
     raise ValueError(f"Unsupported dtype: {dtype}")
@@ -743,7 +743,7 @@ def calculate_grid_dimensions(
     if unit_size_range is not None:
         if unit_size_range[1] > min(image_shape[:2]):
             raise ValueError("Grid size limits must be within the shortest image edge.")
-        unit_size = random_generator.integers(unit_size_range[0], unit_size_range[1] + 1)
+        unit_size = int(random_generator.integers(unit_size_range[0], unit_size_range[1] + 1))
         return unit_size, unit_size
 
     if holes_number_xy:

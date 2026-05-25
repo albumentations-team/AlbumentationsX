@@ -212,7 +212,7 @@ def order_stains_combined(stain_colors: np.ndarray) -> tuple[int, int]:
     # Low angle and high red ratio indicates Eosin
     scores = angles * blue_ratio - red_ratio
 
-    hematoxylin_idx = np.argmax(scores)
+    hematoxylin_idx = int(np.argmax(scores))
     eosin_idx = 1 - hematoxylin_idx
 
     return hematoxylin_idx, eosin_idx

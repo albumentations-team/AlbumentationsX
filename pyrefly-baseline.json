@@ -85,18 +85,6 @@
       "severity": "error"
     },
     {
-      "line": 110,
-      "column": 41,
-      "stop_line": 110,
-      "stop_column": 84,
-      "path": "albumentations/augmentations/dropout/functional.py",
-      "code": -2,
-      "name": "no-matching-overload",
-      "description": "No matching overload found for function `numpy.random._generator.Generator.integers` called with arguments: (Literal[0], float, size=tuple[int, ...], dtype=dtype[Unknown])\n  Possible overloads:\n  (low: int, high: int | None = None, size: None = None, dtype: Literal['<i8', '=i8', '>i8', 'i8', 'int64', '|i8'] | _SupportsDType[dtype[signedinteger[_64Bit]]] | dtype[signedinteger[_64Bit]] | type[signedinteger[_64Bit]] = ..., endpoint: bool = False) -> signedinteger[_64Bit]\n  (low: int, high: int | None = None, size: None = None, *, dtype: type[bool], endpoint: bool = False) -> bool\n  (low: int, high: int | None = None, size: None = None, *, dtype: type[int], endpoint: bool = False) -> int\n  (low: int, high: int | None = None, size: None = None, *, dtype: Literal['<?', '<b1', '=?', '=b1', '>?', '>b1', '?', 'b1', 'bool', 'bool_', '|?', '|b1'] | _SupportsDType[dtype[numpy.bool]] | dtype[numpy.bool] | type[numpy.bool], endpoint: builtins.bool = False) -> numpy.bool\n  (low: int, high: int | None = None, size: None = None, *, dtype: _DTypeLike, endpoint: bool = False) -> _IntegerT\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, dtype: Literal['<i8', '=i8', '>i8', 'i8', 'int64', '|i8'] | _SupportsDType[dtype[signedinteger[_64Bit]]] | dtype[signedinteger[_64Bit]] | type[signedinteger[_64Bit]] = ..., endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[signedinteger[_64Bit]]] [closest match]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _DTypeLikeBool, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[numpy.bool]]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _DTypeLike, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[_IntegerT]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _Int8Codes, endpoint: bool = False) -> signedinteger[_8Bit]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _Int8Codes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[signedinteger[_8Bit]]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _UInt8Codes, endpoint: bool = False) -> unsignedinteger[_8Bit]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _UInt8Codes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _Int16Codes, endpoint: bool = False) -> signedinteger[_16Bit]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _Int16Codes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[signedinteger[_16Bit]]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _UInt16Codes, endpoint: bool = False) -> unsignedinteger[_16Bit]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _UInt16Codes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[unsignedinteger[_16Bit]]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _Int32Codes, endpoint: bool = False) -> signedinteger[_32Bit]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _Int32Codes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[signedinteger[_32Bit]]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _UInt32Codes, endpoint: bool = False) -> unsignedinteger[_32Bit]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _UInt32Codes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[unsignedinteger[_32Bit]]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _UInt64Codes, endpoint: bool = False) -> unsignedinteger[_64Bit]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _UInt64Codes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[unsignedinteger[_64Bit]]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _IntPCodes, endpoint: bool = False) -> signedinteger[_NBitIntP]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _IntPCodes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[signedinteger[_NBitIntP]]]\n  (low: int, high: int | None = None, size: None = None, *, dtype: _UIntPCodes, endpoint: bool = False) -> unsignedinteger[_NBitIntP]\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, *, dtype: _UIntPCodes, endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[unsignedinteger[_NBitIntP]]]\n  (low: int, high: int | None = None, size: None = None, dtype: DTypeLike = ..., endpoint: bool = False) -> Any\n  (low: _ArrayLikeInt_co, high: _NestedSequence[builtins.bool | int] | _NestedSequence[_SupportsArray[dtype[numpy.bool] | dtype[integer]]] | _SupportsArray[dtype[numpy.bool] | dtype[integer]] | builtins.bool | int | None = None, size: Sequence[SupportsIndex] | SupportsIndex | None = None, dtype: DTypeLike = ..., endpoint: builtins.bool = False) -> ndarray[tuple[int, ...], dtype[Any]]",
-      "concise_description": "No matching overload found for function `numpy.random._generator.Generator.integers` called with arguments: (Literal[0], float, size=tuple[int, ...], dtype=dtype[Unknown])",
-      "severity": "error"
-    },
-    {
       "line": 147,
       "column": 16,
       "stop_line": 147,
@@ -130,18 +118,6 @@
       "name": "bad-return",
       "description": "Returned type `ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "Returned type `ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 747,
-      "column": 16,
-      "stop_line": 747,
-      "stop_column": 36,
-      "path": "albumentations/augmentations/dropout/functional.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `tuple[signedinteger[_64Bit], signedinteger[_64Bit]]` is not assignable to declared return type `tuple[int, int]`",
-      "concise_description": "Returned type `tuple[signedinteger[_64Bit], signedinteger[_64Bit]]` is not assignable to declared return type `tuple[int, int]`",
       "severity": "error"
     },
     {
@@ -1033,18 +1009,6 @@
       "severity": "error"
     },
     {
-      "line": 218,
-      "column": 12,
-      "stop_line": 218,
-      "stop_column": 38,
-      "path": "albumentations/augmentations/pixel/_functional_histology.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `tuple[signedinteger[_NBitIntP], signedinteger[_NBitIntP]]` is not assignable to declared return type `tuple[int, int]`",
-      "concise_description": "Returned type `tuple[signedinteger[_NBitIntP], signedinteger[_NBitIntP]]` is not assignable to declared return type `tuple[int, int]`",
-      "severity": "error"
-    },
-    {
       "line": 326,
       "column": 44,
       "stop_line": 330,
@@ -1417,18 +1381,6 @@
       "severity": "error"
     },
     {
-      "line": 244,
-      "column": 20,
-      "stop_line": 244,
-      "stop_column": 28,
-      "path": "albumentations/augmentations/pixel/_functional_noise.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `signedinteger[_64Bit]` is not assignable to parameter `seed` with type `int` in function `cv2.setRNGSeed`",
-      "concise_description": "Argument `signedinteger[_64Bit]` is not assignable to parameter `seed` with type `int` in function `cv2.setRNGSeed`",
-      "severity": "error"
-    },
-    {
       "line": 503,
       "column": 43,
       "stop_line": 503,
@@ -1597,18 +1549,6 @@
       "severity": "error"
     },
     {
-      "line": 372,
-      "column": 29,
-      "stop_line": 372,
-      "stop_column": 43,
-      "path": "albumentations/augmentations/pixel/_functional_torchvision.py",
-      "code": -2,
-      "name": "bad-assignment",
-      "description": "`float | floating | ndarray[Unknown, Unknown]` is not assignable to variable `value` with type `float | int`",
-      "concise_description": "`float | floating | ndarray[Unknown, Unknown]` is not assignable to variable `value` with type `float | int`",
-      "severity": "error"
-    },
-    {
       "line": 107,
       "column": 12,
       "stop_line": 107,
@@ -1654,18 +1594,6 @@
       "name": "no-matching-overload",
       "description": "No matching overload found for function `cv2.multiply` called with arguments: (ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]], float, dst=ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]], dtype=int)\n  Possible overloads:\n  (src1: MatLike, src2: MatLike, dst: Mat | ndarray[Any, dtype[floating | integer]] | None = ..., scale: float = ..., dtype: int = ...) -> MatLike [closest match]\n  (src1: UMat, src2: UMat, dst: UMat | None = ..., scale: float = ..., dtype: int = ...) -> UMat",
       "concise_description": "No matching overload found for function `cv2.multiply` called with arguments: (ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]], float, dst=ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]], dtype=int)",
-      "severity": "error"
-    },
-    {
-      "line": 332,
-      "column": 12,
-      "stop_line": 332,
-      "stop_column": 97,
-      "path": "albumentations/augmentations/pixel/_functional_weather.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `list[signedinteger[_64Bit]]` is not assignable to declared return type `list[int]`",
-      "concise_description": "Returned type `list[signedinteger[_64Bit]]` is not assignable to declared return type `list[int]`",
       "severity": "error"
     },
     {
@@ -1750,18 +1678,6 @@
       "name": "bad-argument-type",
       "description": "Argument `float` is not assignable to parameter `factor` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.pixel._functional_torchvision.adjust_brightness_torchvision`",
       "concise_description": "Argument `float` is not assignable to parameter `factor` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.pixel._functional_torchvision.adjust_brightness_torchvision`",
-      "severity": "error"
-    },
-    {
-      "line": 768,
-      "column": 16,
-      "stop_line": 768,
-      "stop_column": 80,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-assignment",
-      "description": "`float | float64 | floating | ndarray[tuple[int, ...], dtype[float64]]` is not assignable to variable `beta` with type `float`",
-      "concise_description": "`float | float64 | floating | ndarray[tuple[int, ...], dtype[float64]]` is not assignable to variable `beta` with type `float`",
       "severity": "error"
     },
     {

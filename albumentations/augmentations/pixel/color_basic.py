@@ -765,7 +765,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
     ) -> ImageType:
         max_value = MAX_VALUES_BY_DTYPE[img.dtype]
         # Scale beta according to brightness_by_max setting
-        beta = beta * max_value if self.brightness_by_max else beta * mean(img)
+        beta = beta * max_value if self.brightness_by_max else beta * float(mean(img))
 
         if self.ensure_safe_output:
             alpha, beta = fpixel.get_safe_brightness_contrast_params(

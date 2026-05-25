@@ -240,7 +240,7 @@ def generate_spatial_noise(
     if params is None:
         return np.zeros(shape, dtype=np.float32)
 
-    cv2_seed = random_generator.integers(0, 2**16)
+    cv2_seed = int(random_generator.integers(0, 2**16))
     cv2.setRNGSeed(cv2_seed)
 
     if spatial_mode == "shared":

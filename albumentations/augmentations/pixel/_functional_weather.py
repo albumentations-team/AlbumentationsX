@@ -329,7 +329,7 @@ def get_fog_particle_radiuses(
     max_fog_radius = max(2, int(min(height, width) * 0.1 * fog_intensity))
     min_radius = max(1, max_fog_radius // 2)
 
-    return [random_generator.integers(min_radius, max_fog_radius) for _ in range(num_particles)]
+    return [int(random_generator.integers(min_radius, max_fog_radius)) for _ in range(num_particles)]
 
 
 @uint8_io

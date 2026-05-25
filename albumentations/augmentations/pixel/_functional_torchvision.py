@@ -359,7 +359,7 @@ def superpixels(
             # replace_samples then does not have enough values, so we just start over with the first one again.
             if replace_samples[idx % len(replace_samples)]:
                 mask = segments == label
-                mean_intensity = mean(image_sp_c[mask])
+                mean_intensity = float(mean(image_sp_c[mask]))
 
                 if image_sp_c.dtype.kind in ["i", "u", "b"]:
                     # After rounding the value can end up slightly outside of the value_range. Hence, we need to clip.

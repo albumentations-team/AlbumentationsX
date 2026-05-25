@@ -381,8 +381,8 @@ class Sharpen(ImageOnlyTransform):
 
     @staticmethod
     def __generate_sharpening_matrix(
-        alpha: np.ndarray,
-        lightness: np.ndarray,
+        alpha: float,
+        lightness: float,
     ) -> np.ndarray:
         matrix_nochange = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
         matrix_effect = np.array(
@@ -417,6 +417,9 @@ class Sharpen(ImageOnlyTransform):
         **params: Any,
     ) -> ImageType:
         if self.method == "kernel":
+            if sharpening_matrix is None:
+                msg = "sharpening_matrix must be initialized when method is 'kernel'"
+                raise RuntimeError(msg)
             return fpixel.convolve(img, sharpening_matrix)
         return fpixel.sharpen_gaussian(img, alpha, self.kernel_size, self.sigma)
 
@@ -493,8 +496,8 @@ class Emboss(ImageOnlyTransform):
 
     @staticmethod
     def __generate_emboss_matrix(
-        alpha_sample: np.ndarray,
-        strength_sample: np.ndarray,
+        alpha_sample: float,
+        strength_sample: float,
     ) -> np.ndarray:
         matrix_nochange = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
         matrix_effect = np.array(

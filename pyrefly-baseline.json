@@ -2101,66 +2101,6 @@
       "severity": "error"
     },
     {
-      "line": 404,
-      "column": 21,
-      "stop_line": 404,
-      "stop_column": 26,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float` is not assignable to parameter `alpha` with type `ndarray[Unknown, Unknown]` in function `Sharpen.__generate_sharpening_matrix`",
-      "concise_description": "Argument `float` is not assignable to parameter `alpha` with type `ndarray[Unknown, Unknown]` in function `Sharpen.__generate_sharpening_matrix`",
-      "severity": "error"
-    },
-    {
-      "line": 405,
-      "column": 21,
-      "stop_line": 405,
-      "stop_column": 30,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float` is not assignable to parameter `lightness` with type `ndarray[Unknown, Unknown]` in function `Sharpen.__generate_sharpening_matrix`",
-      "concise_description": "Argument `float` is not assignable to parameter `lightness` with type `ndarray[Unknown, Unknown]` in function `Sharpen.__generate_sharpening_matrix`",
-      "severity": "error"
-    },
-    {
-      "line": 420,
-      "column": 41,
-      "stop_line": 420,
-      "stop_column": 58,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `ndarray[Unknown, Unknown] | None` is not assignable to parameter `kernel` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.pixel._functional_sharpness.convolve`",
-      "concise_description": "Argument `ndarray[Unknown, Unknown] | None` is not assignable to parameter `kernel` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.pixel._functional_sharpness.convolve`",
-      "severity": "error"
-    },
-    {
-      "line": 514,
-      "column": 26,
-      "stop_line": 514,
-      "stop_column": 31,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float` is not assignable to parameter `alpha_sample` with type `ndarray[Unknown, Unknown]` in function `Emboss.__generate_emboss_matrix`",
-      "concise_description": "Argument `float` is not assignable to parameter `alpha_sample` with type `ndarray[Unknown, Unknown]` in function `Emboss.__generate_emboss_matrix`",
-      "severity": "error"
-    },
-    {
-      "line": 515,
-      "column": 29,
-      "stop_line": 515,
-      "stop_column": 37,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float` is not assignable to parameter `strength_sample` with type `ndarray[Unknown, Unknown]` in function `Emboss.__generate_emboss_matrix`",
-      "concise_description": "Argument `float` is not assignable to parameter `strength_sample` with type `ndarray[Unknown, Unknown]` in function `Emboss.__generate_emboss_matrix`",
-      "severity": "error"
-    },
-    {
       "line": 188,
       "column": 16,
       "stop_line": 188,

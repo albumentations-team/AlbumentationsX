@@ -30,7 +30,7 @@ uv sync --group dev
 ```
 
 This is the canonical setup path for contributors and coding agents. It installs the same toolchain used by CI,
-including Ruff, mypy, pytest, pre-commit, and advisory security/type-analysis tools.
+including Ruff, mypy, Pyrefly, pytest, pre-commit, and security tooling.
 
 #### pip fallback
 

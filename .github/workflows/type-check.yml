@@ -1,4 +1,4 @@
-name: Type Advisory
+name: Type Check
 
 on:
   pull_request:
@@ -15,9 +15,8 @@ permissions:
 
 jobs:
   pyrefly:
-    name: Pyrefly advisory
+    name: Pyrefly
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
     - name: Checkout
       uses: actions/checkout@v6
@@ -28,6 +27,6 @@ jobs:
         python-version: "3.10"
         activate-environment: true
     - name: Install dependencies
-      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+      run: uv sync --locked --group dev --inexact
     - name: Run Pyrefly
       run: uv run pyrefly check --output-format=github

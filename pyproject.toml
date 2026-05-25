@@ -376,7 +376,6 @@ warn_unused_ignores = true
 
 [tool.pyrefly]
 python-version = "3.10"
-baseline = "pyrefly-baseline.json"
 project-includes = ["albumentations"]
 project-excludes = [
   "**/__pycache__",

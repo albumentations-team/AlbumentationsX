@@ -10,6 +10,7 @@ from ._functional_color import (
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     ImageType,
+    ImageUInt8,
     add,
     add_weighted,
     clip,
@@ -275,7 +276,7 @@ def add_rain(
     if not rain_drops.size:
         return img.copy()
 
-    img = img.copy()
+    img = cast("ImageUInt8", img.copy())
 
     # Pre-allocate rain layer
     rain_layer = np.zeros_like(img, dtype=np.uint8)
@@ -301,7 +302,8 @@ def add_rain(
     cv2.add(img, rain_layer, dst=img)
 
     if brightness_coefficient != 1.0:
-        cv2.multiply(img, brightness_coefficient, dst=img, dtype=cv2.CV_8U)
+        multiply = cast("Any", cv2.multiply)
+        multiply(img, brightness_coefficient, dst=img, dtype=cv2.CV_8U)
 
     return img
 

@@ -169,6 +169,14 @@ class PCA:
         self.components_: np.ndarray | None = None
         self.explained_variance_: np.ndarray | None = None
 
+    def _require_fitted(self) -> tuple[np.ndarray, np.ndarray]:
+        if self.mean is None or self.components_ is None:
+            raise ValueError(
+                "This PCA instance is not fitted yet. "
+                "Call 'fit' with appropriate arguments before using this estimator.",
+            )
+        return self.mean, self.components_
+
     def fit(self, x: np.ndarray) -> None:
         """Fit the PCA model to the input data (mean, components, explained variance). Call
         before transform or inverse_transform. Uses OpenCV PCACompute2.
@@ -202,9 +210,11 @@ class PCA:
         if self.n_components is None:
             self.n_components = min(n_samples, n_features)
 
-        self.mean, eigenvectors, eigenvalues = cv2.PCACompute2(x, mean=None, maxComponents=self.n_components)
-        self.components_ = eigenvectors
-        self.explained_variance_ = eigenvalues.flatten()
+        mean = np.empty((0,), dtype=np.float64)
+        computed_mean, eigenvectors, eigenvalues = cv2.PCACompute2(x, mean=mean, maxComponents=self.n_components)
+        self.mean = cast("np.ndarray", computed_mean)
+        self.components_ = cast("np.ndarray", eigenvectors)
+        self.explained_variance_ = cast("np.ndarray", eigenvalues).flatten()
 
     def transform(self, x: np.ndarray) -> np.ndarray:
         """Project data onto the principal components (fit must be called first). Centers data
@@ -238,13 +248,9 @@ class PCA:
             >>> print(transformed.shape)  # (20, 3)
 
         """
-        if self.components_ is None:
-            raise ValueError(
-                "This PCA instance is not fitted yet. "
-                "Call 'fit' with appropriate arguments before using this estimator.",
-            )
+        mean, components = self._require_fitted()
         x = x.astype(np.float64, copy=False)  # avoid unnecessary copy if already float64
-        return cv2.PCAProject(x, self.mean, self.components_)
+        return cast("np.ndarray", cv2.PCAProject(x, mean, components))
 
     def fit_transform(self, x: np.ndarray) -> np.ndarray:
         """Fit the PCA model and transform the data in one step. Equivalent to fit(x) then
@@ -311,12 +317,8 @@ class PCA:
             >>> # Note: reconstructed ≈ data (approximate due to dimensionality reduction)
 
         """
-        if self.components_ is None:
-            raise ValueError(
-                "This PCA instance is not fitted yet. "
-                "Call 'fit' with appropriate arguments before using this estimator.",
-            )
-        return cv2.PCABackProject(x, self.mean, self.components_)
+        mean, components = self._require_fitted()
+        return cast("np.ndarray", cv2.PCABackProject(x, mean, components))
 
     def explained_variance_ratio(self) -> np.ndarray:
         """Return fraction of total variance explained by each component (shape (n_components,),

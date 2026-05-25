@@ -614,6 +614,20 @@ def test_mask_dropout():
     assert np.all(result["mask"] == 0)
 
 
+@pytest.mark.parametrize("fill", ["inpaint_telea", "inpaint_ns"])
+def test_mask_dropout_inpaint_fill(fill):
+    img = np.full((20, 20, 3), 137, dtype=np.uint8)
+    mask = np.zeros((20, 20, 1), dtype=np.int64)
+    mask[5:15, 5:15] = 1
+
+    aug = A.MaskDropout(max_objects_range=(1, 1), fill=fill, fill_mask=0, p=1)
+    result = aug(image=img, mask=mask)
+
+    assert result["image"].shape == img.shape
+    assert result["image"].dtype == img.dtype
+    assert np.all(result["mask"] == 0)
+
+
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
 def test_unsharp_mask_float_uint8_diff_less_than_three(val_uint8):
     x_uint8 = np.zeros((5, 5, 3)).astype(np.uint8)

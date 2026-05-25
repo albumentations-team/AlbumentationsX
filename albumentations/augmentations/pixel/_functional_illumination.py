@@ -86,7 +86,7 @@ def generate_plasma_pattern(
     max_dimension = max(target_shape)
     power_of_two_size = 2 ** np.ceil(np.log2(max_dimension - 1)) + 1
     total_steps = int(np.log2(power_of_two_size - 1) - 1)
-    noise_scales = np.float32([roughness**i for i in range(total_steps)])
+    noise_scales = np.asarray([roughness**i for i in range(total_steps)], dtype=np.float32)
 
     # Initialize with small random grid
     plasma_grid = random_generator.uniform(-1, 1, (3, 3)).astype(np.float32)
@@ -1039,7 +1039,9 @@ def apply_halftone(
 
                 cell = img[y_start:y_end, x_start:x_end]
                 if num_channels > 1:
-                    color: tuple[int, ...] | int = tuple(int(v) for v in mean(cell.reshape(-1, num_channels), axis=0))
+                    color: tuple[int, ...] | int = tuple(
+                        int(v) for v in np.asarray(mean(cell.reshape(-1, num_channels), axis=0))
+                    )
                 else:
                     color = int(mean(cell))
 

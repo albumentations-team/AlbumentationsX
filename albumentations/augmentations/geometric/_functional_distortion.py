@@ -396,7 +396,7 @@ def compute_pairwise_distances(
 
     # Compute squared terms
     p1_squared = reduce_sum(cv2.multiply(points1, points1), axis=1, keepdims=True)
-    p2_squared = reduce_sum(cv2.multiply(points2, points2), axis=1)[None, :]
+    p2_squared = np.asarray(reduce_sum(cv2.multiply(points2, points2), axis=1))[None, :]
 
     # Compute dot product
     dot_product = cv2.gemm(points1, points2.T, 1, None, 0)

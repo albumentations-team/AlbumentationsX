@@ -7,7 +7,7 @@ and pixel distribution matching with various normalization techniques.
 
 import abc
 from copy import deepcopy
-from typing import Literal
+from typing import Any, Literal, cast
 
 import cv2
 import numpy as np
@@ -361,20 +361,22 @@ class DomainAdapter:
         return self.from_colorspace(pixels.reshape(height, width, self.num_channels))
 
     @staticmethod
-    def _pca_sign(x: np.ndarray) -> np.ndarray:
-        return np.sign(np.trace(x.components_))
+    def _pca_sign(x: Any) -> np.ndarray:
+        return np.sign(np.trace(cast("np.ndarray", x.components_)))
 
     def __call__(self, image: ImageType) -> ImageType:
         height, width = image.shape[:2]
         pixels = self.flatten(image)
         self.source_transformer.fit(pixels)
 
+        target_transformer = cast("Any", self.target_transformer)
+        source_transformer = cast("Any", self.source_transformer)
         if (
-            hasattr(self.target_transformer, "components_")
-            and hasattr(self.source_transformer, "components_")
-            and self._pca_sign(self.target_transformer) != self._pca_sign(self.source_transformer)
+            hasattr(target_transformer, "components_")
+            and hasattr(source_transformer, "components_")
+            and self._pca_sign(target_transformer) != self._pca_sign(source_transformer)
         ):
-            self.target_transformer.components_ *= -1
+            target_transformer.components_ *= -1
 
         representation = self.source_transformer.transform(pixels)
         result = self.target_transformer.inverse_transform(representation)

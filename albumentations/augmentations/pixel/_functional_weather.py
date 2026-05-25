@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ._functional_color import (
     equalize,
@@ -26,6 +26,8 @@ from ._functional_shared import (
 from ._functional_sharpness import (
     convolve,
 )
+
+_maybe_process_in_chunks = cast("Any", maybe_process_in_chunks)
 
 
 @uint8_io
@@ -386,7 +388,7 @@ def add_fog(
 
 @uint8_io
 @preserve_channel_dim
-@maybe_process_in_chunks
+@_maybe_process_in_chunks
 def add_sun_flare_overlay(
     img: ImageType,
     flare_center: tuple[float, float],

@@ -1410,7 +1410,7 @@ def bboxes_to_mask(
 
     # Fill each bbox in its channel
     for idx, box in enumerate(bboxes):
-        x_min, y_min, x_max, y_max = map(round, box[:4])
+        x_min, y_min, x_max, y_max = (round(float(value)) for value in np.asarray(box[:4]))
         x_min = max(0, min(width - 1, x_min))
         x_max = max(0, min(width - 1, x_max))
         y_min = max(0, min(height - 1, y_min))

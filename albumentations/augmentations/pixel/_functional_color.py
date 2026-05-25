@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
@@ -12,6 +12,7 @@ from ._functional_shared import (
     NUM_RGB_CHANNELS,
     PCA,
     ImageType,
+    ImageUInt8,
     add_array,
     add_constant,
     apply_multichannel_lut,
@@ -75,10 +76,10 @@ def shift_hsv(
                 "Set them to 0 or use RGB image",
                 stacklevel=2,
             )
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_GRAY2RGB))
 
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-    hue, sat, val = cv2.split(img)
+    img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
+    hue, sat, val = (cast("ImageType", channel) for channel in cv2.split(img))
 
     if hue_shift != 0:
         lut_hue = np.arange(0, 256, dtype=np.int16)
@@ -99,10 +100,10 @@ def shift_hsv(
     if val_shift != 0:
         val = add_constant(val, val_shift, inplace=True)
 
-    img = cv2.merge((hue, sat, val))
-    img = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+    img = cast("ImageType", cv2.merge((hue, sat, val)))
+    img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
-    return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if is_gray else img
+    return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)) if is_gray else img
 
 
 def shift_hsv_images(
@@ -151,13 +152,14 @@ def solarize(img: ImageType, threshold: float) -> ImageType:
     max_val = MAX_VALUES_BY_DTYPE[dtype]
 
     if dtype == np.uint8:
+        uint8_img = cast("ImageUInt8", img)
         indices = np.arange(int(max_val) + 1, dtype=dtype)
         thresh_val = threshold * max_val
-        lut = np.where(indices >= thresh_val, max_val - indices, indices).astype(dtype)
+        lut = cast("ImageUInt8", np.where(indices >= thresh_val, max_val - indices, indices).astype(dtype))
         prev_shape = img.shape
-        img = sz_lut(img, lut, inplace=False)
-        return img if len(prev_shape) == img.ndim else np.expand_dims(img, -1)
-    return np.where(img >= threshold, max_val - img, img)
+        result = sz_lut(uint8_img, lut, inplace=False)
+        return result if len(prev_shape) == result.ndim else cast("ImageType", np.expand_dims(result, -1))
+    return cast("ImageType", np.where(img >= threshold, max_val - img, img))
 
 
 @uint8_io
@@ -196,17 +198,18 @@ def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[
 
     """
     bits_array = np.asarray(bits, dtype=np.uint8)
+    uint8_img = cast("ImageUInt8", img)
 
     if bits_array.ndim == 0 or bits_array.size == 1:
         mask = ~np.uint8(2 ** (8 - int(bits_array.item())) - 1)
-        return img & mask
+        return cast("ImageType", uint8_img & mask)
 
-    result_img = np.empty_like(img)
+    result_img = np.empty_like(uint8_img)
     for i, channel_bits in enumerate(bits_array):
         mask = ~np.uint8(2 ** (8 - int(channel_bits)) - 1)
-        np.bitwise_and(img[..., i], mask, out=result_img[..., i])
+        np.bitwise_and(uint8_img[..., i], mask, out=result_img[..., i])
 
-    return result_img
+    return cast("ImageType", result_img)
 
 
 def _equalize_pil(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
@@ -216,18 +219,18 @@ def _equalize_pil(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if len(h) <= 1:
         return img.copy()
 
-    step = reduce_sum(h[:-1]) // 255
+    step = int(reduce_sum(h[:-1])) // 255
     if not step:
         return img.copy()
 
     lut = np.minimum((np.cumsum(histogram) + step // 2) // step, 255).astype(np.uint8)
 
-    return sz_lut(img, lut, inplace=True)
+    return sz_lut(cast("ImageUInt8", img), lut, inplace=True)
 
 
 def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if mask is None:
-        return cv2.equalizeHist(img)
+        return cast("ImageType", cv2.equalizeHist(img))
 
     histogram = cv2.calcHist([img], [0], mask, [256], (0, 256)).ravel()
     lut = _create_equalize_cv_lut(histogram)
@@ -356,15 +359,15 @@ def equalize(
         if img.shape[0] * img.shape[1] >= MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS:
             return _equalize_cv_multichannel_lut(img)
         channels = cv2.split(img)
-        return cv2.merge([cv2.equalizeHist(channel) for channel in channels])
+        return cast("ImageType", cv2.merge([cv2.equalizeHist(channel) for channel in channels]))
 
     if mask is None and by_channels and mode == "cv" and get_num_channels(img) > NUM_RGB_CHANNELS:
         return _equalize_cv_multichannel_lut(img)
 
     if not by_channels:
-        result_img = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
-        result_img[..., 0] = function(result_img[..., 0], _handle_mask(mask))
-        return cv2.cvtColor(result_img, cv2.COLOR_YCrCb2RGB)
+        result_img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb))
+        result_img[..., 0] = function(cast("ImageType", result_img[..., 0]), _handle_mask(mask))
+        return cast("ImageType", cv2.cvtColor(result_img, cv2.COLOR_YCrCb2RGB))
 
     result_img = np.empty_like(img)
     for i in range(get_num_channels(img)):
@@ -424,14 +427,22 @@ def move_tone_curve(
 
     """
     if np.isscalar(low_y) and np.isscalar(high_y):
-        lut = clip(np.rint(evaluate_bez(low_y, high_y)), np.dtype(np.uint8), inplace=False)
-        return sz_lut(img, lut, inplace=False)
+        low_y_scalar = cast("Any", low_y)
+        high_y_scalar = cast("Any", high_y)
+        lut = cast(
+            "ImageUInt8",
+            clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8), inplace=False),
+        )
+        return sz_lut(cast("ImageUInt8", img), lut, inplace=False)
 
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
-        luts = clip(
-            np.rint(evaluate_bez(low_y, high_y).T),
-            np.dtype(np.uint8),
-            inplace=False,
+        luts = cast(
+            "ImageUInt8",
+            clip(
+                np.rint(evaluate_bez(low_y, high_y).T),
+                np.dtype(np.uint8),
+                inplace=False,
+            ),
         )
         return apply_multichannel_lut(img, luts, num_channels)
 
@@ -464,15 +475,15 @@ def linear_transformation_rgb(
 
     """
     if img.ndim == 3:
-        return cv2.transform(img, transformation_matrix)
+        return cast("ImageType", cv2.transform(img, transformation_matrix))
     if img.ndim == 4:
         transformed, original_shape = reshape_xhwc_channel(img)
-        transformed = cv2.transform(transformed, transformation_matrix)
-        return restore_xhwc_channel(transformed, original_shape)
+        transformed = cast("ImageType", cv2.transform(transformed, transformation_matrix))
+        return cast("ImageType", restore_xhwc_channel(transformed, original_shape))
     if img.ndim == 5:
         transformed, original_shape = reshape_ndhwc_channel(img)
-        transformed = cv2.transform(transformed, transformation_matrix)
-        return restore_ndhwc_channel(transformed, original_shape)
+        transformed = cast("ImageType", cv2.transform(transformed, transformation_matrix))
+        return cast("ImageType", restore_ndhwc_channel(transformed, original_shape))
     raise ValueError(f"Expected input shape (H, W, 3), (B, H, W, 3), (B, D, H, W, 3), got {img.shape}")
 
 
@@ -518,12 +529,12 @@ def clahe(
     clahe_mat = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
 
     if is_grayscale_image(img):
-        return clahe_mat.apply(img)
+        return cast("ImageType", clahe_mat.apply(img))
 
-    img_lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+    img_lab = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB))
     img_lab[:, :, 0] = clahe_mat.apply(img_lab[:, :, 0])
 
-    return cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB)
+    return cast("ImageType", cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB))
 
 
 @uint8_io
@@ -552,18 +563,20 @@ def image_compression(
     # Prepare to encode and decode
     def encode_decode(src_img: ImageType, read_mode: int) -> np.ndarray:
         _, encoded_img = cv2.imencode(image_type, src_img, (int(quality_flag), quality))
-        return cv2.imdecode(encoded_img, read_mode)
+        return cast("np.ndarray", cv2.imdecode(encoded_img, read_mode))
 
     if num_channels == 1:
         # Grayscale image
         decoded = encode_decode(img, cv2.IMREAD_GRAYSCALE)
-        return decoded[..., np.newaxis]  # Add channel dimension back
+        return cast("ImageType", decoded[..., np.newaxis])  # Add channel dimension back
 
     if num_channels in (2, NUM_RGB_CHANNELS):
         # 2 channels: pad to 3, or 3 (RGB) channels
-        padded_img = np.pad(img, ((0, 0), (0, 0), (0, 1)), mode="constant") if num_channels == 2 else img
+        padded_img = (
+            cast("ImageType", np.pad(img, ((0, 0), (0, 0), (0, 1)), mode="constant")) if num_channels == 2 else img
+        )
         decoded_bgr = encode_decode(padded_img, cv2.IMREAD_UNCHANGED)
-        return decoded_bgr[..., :num_channels]  # Return only the required number of channels
+        return cast("ImageType", decoded_bgr[..., :num_channels])  # Return only the required number of channels
 
     # More than 3 channels
     bgr = img[..., :NUM_RGB_CHANNELS]
@@ -573,7 +586,7 @@ def image_compression(
     extra_channels = [
         encode_decode(img[..., i], cv2.IMREAD_GRAYSCALE)[..., np.newaxis] for i in range(NUM_RGB_CHANNELS, num_channels)
     ]
-    return np.dstack([decoded_bgr, *extra_channels])
+    return cast("ImageType", np.dstack([decoded_bgr, *extra_channels]))
 
 
 def invert(img: ImageType) -> ImageType:
@@ -610,13 +623,13 @@ def channel_shuffle(img: ImageType, channels_shuffled: list[int]) -> ImageType:
         ImageType: The shuffled image.
 
     """
-    img = np.ascontiguousarray(img)
+    img = cast("ImageType", np.ascontiguousarray(img))
     output = np.empty(img.shape, dtype=img.dtype)
     from_to = []
     for i, j in enumerate(channels_shuffled):
         from_to.extend([j, i])  # Use [src, dst]
     cv2.mixChannels([img], [output], from_to)
-    return output
+    return cast("ImageType", output)
 
 
 def volume_channel_shuffle(volume: np.ndarray, channels_shuffled: Sequence[int]) -> np.ndarray:
@@ -700,7 +713,7 @@ def iso_noise(
         3
 
     """
-    hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
+    hls = cast("ImageType", cv2.cvtColor(image, cv2.COLOR_RGB2HLS))
     _, stddev = cv2.meanStdDev(hls)
 
     luminance_noise = random_generator.poisson(
@@ -715,11 +728,11 @@ def iso_noise(
 
     hls[..., 0] += color_noise
     hls[..., 1] = add_array(
-        hls[..., 1],
-        luminance_noise * intensity * (1.0 - hls[..., 1]),
+        cast("ImageType", hls[..., 1]),
+        cast("ImageType", (luminance_noise * intensity * (1.0 - hls[..., 1])).astype(np.float32, copy=False)),
     )
 
-    return cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
+    return cast("np.ndarray", cv2.cvtColor(hls, cv2.COLOR_HLS2RGB))
 
 
 @float32_io
@@ -811,22 +824,22 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
 
     """
     if img.ndim == 3:
-        return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
     if img.ndim == 4:
         im, original_shape = reshape_xhwc_channel(img)
-        im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
+        im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2GRAY))
 
         new_shape = (*original_shape[:-1], 1)
 
-        return restore_xhwc_channel(im, new_shape)
+        return cast("ImageType", restore_xhwc_channel(im, new_shape))
 
     if img.ndim == 5:
         img, original_shape = reshape_ndhwc_channel(img)
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
 
         new_shape = (*original_shape[:-1], 1)
 
-        return restore_ndhwc_channel(img, new_shape)
+        return cast("ImageType", restore_ndhwc_channel(img, new_shape))
 
     raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 
@@ -900,22 +913,22 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
 
     """
     if img.ndim == 3:
-        return cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0]
+        return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0])
     if img.ndim == 4:
         im, original_shape = reshape_xhwc_channel(img)
-        im = cv2.cvtColor(im, cv2.COLOR_RGB2LAB)[..., 0]
+        im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2LAB)[..., 0])
 
         new_shape = (*original_shape[:-1], 1)
 
-        return restore_xhwc_channel(im, new_shape)
+        return cast("ImageType", restore_xhwc_channel(im, new_shape))
 
     if img.ndim == 5:
         img, original_shape = reshape_ndhwc_channel(img)
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0]
+        img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0])
 
         new_shape = (*original_shape[:-1], 1)
 
-        return restore_ndhwc_channel(img, new_shape)
+        return cast("ImageType", restore_ndhwc_channel(img, new_shape))
 
     raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 
@@ -951,7 +964,7 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         for channel in channels[1:]:
             ch_max = cv2.max(ch_max, channel)
             ch_min = cv2.min(ch_min, channel)
-        channel_sum = cv2.add(ch_max, ch_min, dtype=cv2.CV_16U)
+        channel_sum = cast("np.ndarray", cv2.add(ch_max, ch_min, dtype=cv2.CV_16U))
         return (channel_sum >> 1).astype(np.uint8)
     float_image = img.astype(np.float32)
     return (np.max(float_image, axis=-1) + np.min(float_image, axis=-1)) * 0.5
@@ -989,7 +1002,7 @@ def to_gray_average(img: ImageType) -> ImageType:
         any
 
     """
-    return np.asarray(mean(img, axis=-1)).astype(img.dtype)
+    return cast("ImageType", np.asarray(mean(img, axis=-1)).astype(img.dtype))
 
 
 def to_gray_max(img: ImageType) -> ImageType:
@@ -1225,7 +1238,7 @@ def colorize(
         lut_cv = lut_uint8.reshape(1, 256, 3)
         if gray.ndim == 2:
             gray_3ch = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-            return cv2.LUT(gray_3ch, lut_cv)
+            return cast("ImageType", cv2.LUT(gray_3ch, lut_cv))
         # Batched / volumetric: gray has a leading axis (N or D). Loop in Python over the
         # leading axis but keep the per-frame work in cv2 — far cheaper than 4D fancy indexing.
         out = np.empty((*gray.shape, 3), dtype=np.uint8)

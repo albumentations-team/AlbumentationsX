@@ -1,6 +1,6 @@
 # Codex Instructions for AlbumentationsX
 
-Read and follow `docs/contributing/ai_assistant_guidelines.md`.
+Read and follow `docs/contributing/codex_guidelines.md`.
 
 Read the always-on Codex rule file `.codex/rules/albumentations-rules.md`. For scoped work, also read:
 

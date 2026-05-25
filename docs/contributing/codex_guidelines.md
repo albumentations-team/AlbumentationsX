@@ -1,4 +1,4 @@
-# AI Assistant Review Guidelines for AlbumentationsX
+# Codex Review Guidelines for AlbumentationsX
 
 > **Note**: This is a quick reference guide. For comprehensive details, see:
 >

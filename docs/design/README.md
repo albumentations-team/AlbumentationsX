@@ -52,7 +52,7 @@ When creating a new design document:
 3. Add a reference to the new document in:
    - This README
    - `AGENTS.md` (under Design Documents section)
-   - `.codex/rules/albumentations-rules.md` (if relevant for AI assistants)
+   - `.codex/rules/albumentations-rules.md` (if relevant for Codex)
 
 4. Keep documents up-to-date as implementation evolves
 
@@ -61,4 +61,4 @@ When creating a new design document:
 - [Coding Guidelines](../contributing/coding_guidelines.md) - Code standards and best practices
 - [Environment Setup](../contributing/environment_setup.md) - Development environment
 - [Contributing Guide](../../CONTRIBUTING.md) - Contribution process
-- [AGENTS.md](../../AGENTS.md) - AI assistant guidelines
+- [AGENTS.md](../../AGENTS.md) - Codex guidelines

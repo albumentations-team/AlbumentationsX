@@ -30,8 +30,8 @@ See these documents for comprehensive guidelines:
 - `docs/contributing/coding_guidelines.md` - Complete coding standards and best practices
 - `docs/contributing/environment_setup.md` - Development environment setup
 - `CONTRIBUTING.md` - Contribution process overview
-- `docs/contributing/ai_assistant_guidelines.md` - Code review guidelines for AI assistants
-- `AGENTS.md` / `CLAUDE.md` - Platform entrypoints that point to the shared guidelines
+- `docs/contributing/codex_guidelines.md` - Code review guidelines for Codex
+- `AGENTS.md` - Codex entrypoint that points to the shared guidelines
 
 ### Design Documents
 - `docs/design/dithering.md` - Dithering transform design

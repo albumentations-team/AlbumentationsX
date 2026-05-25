@@ -1,5 +1,7 @@
 """Compatibility facade for pixel functional helpers."""
 
+from typing import TYPE_CHECKING
+
 from ._functional_color import *
 from ._functional_color import __all__ as __functional_color_all
 from ._functional_histology import *
@@ -17,13 +19,16 @@ from ._functional_torchvision import __all__ as __functional_torchvision_all
 from ._functional_weather import *
 from ._functional_weather import __all__ as __functional_weather_all
 
-__all__ = list(
-    __functional_shared_all
-    + __functional_color_all
-    + __functional_weather_all
-    + __functional_torchvision_all
-    + __functional_sharpness_all
-    + __functional_noise_all
-    + __functional_illumination_all
-    + __functional_histology_all,
-)
+if TYPE_CHECKING:
+    __all__: list[str]
+else:
+    __all__ = list(
+        __functional_shared_all
+        + __functional_color_all
+        + __functional_weather_all
+        + __functional_torchvision_all
+        + __functional_sharpness_all
+        + __functional_noise_all
+        + __functional_illumination_all
+        + __functional_histology_all,
+    )

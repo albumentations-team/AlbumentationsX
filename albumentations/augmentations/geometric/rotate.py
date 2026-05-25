@@ -343,7 +343,7 @@ class Rotate(DualTransform):
         crop_border: bool
 
         fill: tuple[float, ...] | float
-        fill_mask: tuple[float, ...] | float
+        fill_mask: tuple[float, ...] | float | None
 
     def __init__(
         self,
@@ -354,7 +354,7 @@ class Rotate(DualTransform):
         crop_border: bool = False,
         mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         fill: tuple[float, ...] | float = 0,
-        fill_mask: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float | None = 0,
         p: float = 0.5,
     ):
         super().__init__(p=p)

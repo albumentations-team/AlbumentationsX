@@ -600,7 +600,14 @@ class PiecewiseAffine(BaseDistortion):
             absolute_scale=self.absolute_scale,
             random_generator=self.random_generator,
         )
-        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
+        if map_x is None or map_y is None:
+            map_y, map_x = np.meshgrid(
+                np.arange(image_shape[0], dtype=np.float32),
+                np.arange(image_shape[1], dtype=np.float32),
+                indexing="ij",
+            )
+        else:
+            map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {"map_x": map_x, "map_y": map_y}
 

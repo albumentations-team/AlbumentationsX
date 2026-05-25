@@ -313,30 +313,6 @@
       "severity": "error"
     },
     {
-      "line": 603,
-      "column": 49,
-      "stop_line": 603,
-      "stop_column": 54,
-      "path": "albumentations/augmentations/geometric/distortion.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `ndarray[Unknown, Unknown] | None` is not assignable to parameter `map_x` with type `ndarray[Unknown, Unknown]` in function `BaseDistortion._maybe_upscale_maps`",
-      "concise_description": "Argument `ndarray[Unknown, Unknown] | None` is not assignable to parameter `map_x` with type `ndarray[Unknown, Unknown]` in function `BaseDistortion._maybe_upscale_maps`",
-      "severity": "error"
-    },
-    {
-      "line": 603,
-      "column": 56,
-      "stop_line": 603,
-      "stop_column": 61,
-      "path": "albumentations/augmentations/geometric/distortion.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `ndarray[Unknown, Unknown] | None` is not assignable to parameter `map_y` with type `ndarray[Unknown, Unknown]` in function `BaseDistortion._maybe_upscale_maps`",
-      "concise_description": "Argument `ndarray[Unknown, Unknown] | None` is not assignable to parameter `map_y` with type `ndarray[Unknown, Unknown]` in function `BaseDistortion._maybe_upscale_maps`",
-      "severity": "error"
-    },
-    {
       "line": 353,
       "column": 20,
       "stop_line": 353,
@@ -406,18 +382,6 @@
       "name": "bad-return",
       "description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "Returned type `ndarray[tuple[int, int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 346,
-      "column": 9,
-      "stop_line": 346,
-      "stop_column": 18,
-      "path": "albumentations/augmentations/geometric/rotate.py",
-      "code": -2,
-      "name": "bad-override-mutable-attribute",
-      "description": "Class member `InitSchema.fill_mask` overrides parent class `RotateInitSchema` in an inconsistent manner\n  `InitSchema.fill_mask` has type `float | tuple[float, ...]`, which is not consistent with `float | tuple[float, ...] | None` in `RotateInitSchema.fill_mask` (the type of read-write attributes cannot be changed)",
-      "concise_description": "Class member `InitSchema.fill_mask` overrides parent class `RotateInitSchema` in an inconsistent manner",
       "severity": "error"
     },
     {

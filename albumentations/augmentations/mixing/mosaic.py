@@ -593,7 +593,7 @@ class Mosaic(DualTransform):
         mosaic_survival: dict[str, Any] | None,
         **params: Any,
     ) -> StackedMasks4D:
-        canvas_hw = (int(target_masks_shape[1]), int(target_masks_shape[2]))
+        canvas_hw = (target_masks_shape[1], target_masks_shape[2])
         assembled = fmixing.assemble_mosaic_instance_masks_stack(
             processed_cells=processed_cells,
             canvas_hw=canvas_hw,

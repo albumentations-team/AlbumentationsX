@@ -1253,7 +1253,7 @@ class AdvancedBlur(ImageOnlyTransform):
         @field_validator("beta_range")
         @classmethod
         def _check_beta_range(cls, value: tuple[float, float]) -> tuple[float, float]:
-            result = (float(value[0]), float(value[1]))
+            result = (value[0], value[1])
             if not (result[0] < 1.0 < result[1]):
                 raise ValueError(f"Beta range should include 1.0, got {result}")
             return result

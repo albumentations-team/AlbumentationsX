@@ -2,6 +2,7 @@
 
 import base64
 import json
+import urllib.error
 import urllib.request
 from datetime import datetime
 from typing import Any

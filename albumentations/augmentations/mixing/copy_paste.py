@@ -305,7 +305,7 @@ class CopyAndPaste(DualTransform):
 
         candidates: list[int] = []
         if n_instances is not None and n_instances > 0:
-            candidates.append(int(n_instances) - 1)
+            candidates.append(n_instances - 1)
         if bbox_id_col.size > 0:
             candidates.append(int(bbox_id_col.max()))
         next_paste = (max(candidates) + 1) if candidates else 0
@@ -1393,11 +1393,11 @@ class CopyAndPaste(DualTransform):
         new_idx = 0
         if paste_surviving_ids_ordered:
             for old in paste_surviving_ids_ordered:
-                old_to_new[int(old)] = new_idx
+                old_to_new[old] = new_idx
                 new_idx += 1
         if paste_instance_ids:
             for old in paste_instance_ids:
-                old_to_new[int(old)] = new_idx
+                old_to_new[old] = new_idx
                 new_idx += 1
 
         kp_old = keypoints[:, id_col].astype(np.int64, copy=False)

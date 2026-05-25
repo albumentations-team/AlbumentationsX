@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from operator import index
 from typing import Any, Literal, cast
 
 from albumentations.core.type_definitions import ImageFloat32
@@ -636,14 +637,14 @@ def transpose(img: ImageType) -> ImageType:
     num_channels = img.shape[-1]
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and num_channels in {1, 3, 4}:
         result = cast("ImageType", cv2.transpose(img if num_channels != 1 else img[..., 0]))
-        return cast("ImageType", result[..., None]) if num_channels == 1 else result
+        return result[..., None] if num_channels == 1 else result
 
     # Generate the new axes order
     new_axes = list(range(img.ndim))
     new_axes[0], new_axes[1] = 1, 0  # Swap the first two dimensions
 
     # Transpose the array using the new axes order
-    return cast("ImageType", img.transpose(new_axes))
+    return img.transpose(new_axes)
 
 
 D4_TRANSFORMATIONS = {
@@ -735,7 +736,7 @@ def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) ->
 
         cv2_input = img if num_channels != 1 else img[..., 0]
         result = cast("ImageType", cv2.rotate(cv2_input, rotate_code))
-        return cast("ImageType", result[..., None]) if num_channels == 1 else result
+        return result[..., None] if num_channels == 1 else result
 
     return cast("ImageType", np.rot90(img, rot90_count))
 
@@ -864,12 +865,12 @@ def pad_with_params(
             value = (float(value),) * min(num_channels, 4)
         elif isinstance(value, (tuple, list)) and len(value) < num_channels:
             # Extend to match channels; use scalar for >4ch to avoid albucore chunked path
-            val_list = [float(v) for v in value]
+            val_list = list(value)
             if num_channels <= 4:
                 last = val_list[-1] if val_list else 0.0
                 value = tuple(val_list) + (last,) * (num_channels - len(val_list))
             else:
-                value = (float(val_list[0]),) * 4
+                value = (val_list[0],) * 4
 
     return albucore_copy_make_border(
         img,
@@ -1186,9 +1187,9 @@ def compute_affine_warp_output_shape(
     out_width = maxc - minc + 1
 
     output_shape_tuple: tuple[int, ...] = (
-        (int(out_height), int(out_width), int(input_shape[2]))
+        (index(out_height), index(out_width), input_shape[2])
         if len(input_shape) == NUM_MULTI_CHANNEL_DIMENSIONS
-        else (int(out_height), int(out_width))
+        else (index(out_height), index(out_width))
     )
 
     # fit output image in new shape

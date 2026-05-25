@@ -1105,7 +1105,7 @@ def apply_lens_flare(
         length = max(height, width)
         x2 = int(fx + dx * length)
         y2 = int(fy + dy * length)
-        cv2.line(flare_layer, (fx, fy), (x2, y2), float(starburst_intensity), 1, lineType=cv2.LINE_AA)
+        cv2.line(flare_layer, (fx, fy), (x2, y2), starburst_intensity, 1, lineType=cv2.LINE_AA)
 
     if bloom_radius > 0:
         ksize = bloom_radius * 2 + 1

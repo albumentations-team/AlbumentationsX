@@ -201,7 +201,7 @@ def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[
     uint8_img = cast("ImageUInt8", img)
 
     if bits_array.ndim == 0 or bits_array.size == 1:
-        mask = ~np.uint8(2 ** (8 - int(bits_array.item())) - 1)
+        mask = ~np.uint8(2 ** (8 - bits_array.item()) - 1)
         return cast("ImageType", uint8_img & mask)
 
     result_img = np.empty_like(uint8_img)
@@ -366,7 +366,7 @@ def equalize(
 
     if not by_channels:
         result_img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb))
-        result_img[..., 0] = function(cast("ImageType", result_img[..., 0]), _handle_mask(mask))
+        result_img[..., 0] = function(result_img[..., 0], _handle_mask(mask))
         return cast("ImageType", cv2.cvtColor(result_img, cv2.COLOR_YCrCb2RGB))
 
     result_img = np.empty_like(img)
@@ -562,7 +562,7 @@ def image_compression(
 
     # Prepare to encode and decode
     def encode_decode(src_img: ImageType, read_mode: int) -> np.ndarray:
-        _, encoded_img = cv2.imencode(image_type, src_img, (int(quality_flag), quality))
+        _, encoded_img = cv2.imencode(image_type, src_img, (quality_flag, quality))
         return cast("np.ndarray", cv2.imdecode(encoded_img, read_mode))
 
     if num_channels == 1:
@@ -728,7 +728,7 @@ def iso_noise(
 
     hls[..., 0] += color_noise
     hls[..., 1] = add_array(
-        cast("ImageType", hls[..., 1]),
+        hls[..., 1],
         cast("ImageType", (luminance_noise * intensity * (1.0 - hls[..., 1])).astype(np.float32, copy=False)),
     )
 

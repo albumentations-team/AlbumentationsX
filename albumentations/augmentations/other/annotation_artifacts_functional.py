@@ -35,13 +35,13 @@ def _draw_channelwise(
     draw_fn: Callable[[np.ndarray, int], None],
 ) -> None:
     if image.ndim == 2:
-        draw_fn(image, int(color[0]))
+        draw_fn(image, color[0])
         return
 
     channel_colors = _normalize_color(color, image.shape[2])
     for channel_index, channel_color in enumerate(channel_colors):
         channel = np.ascontiguousarray(image[..., channel_index])
-        draw_fn(channel, int(channel_color))
+        draw_fn(channel, channel_color)
         image[..., channel_index] = channel
 
 

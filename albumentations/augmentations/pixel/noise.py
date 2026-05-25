@@ -493,7 +493,7 @@ class UniformParams(NoiseParamsBase):
             min_val, max_val = range_values
             if not (-1 <= min_val <= max_val <= 1):
                 raise ValueError("Range values must be in [-1, 1] and min <= max")
-            result.append((float(min_val), float(max_val)))
+            result.append((min_val, max_val))
         return result
 
 

@@ -238,7 +238,7 @@ def add_snow_texture(
     # Add some sparkle effects for snow glitter
     img_with_snow[sparkle_mask] = [max_value, max_value, max_value]
 
-    return cast("ImageType", img_with_snow)
+    return img_with_snow
 
 
 @uint8_io
@@ -379,7 +379,7 @@ def add_fog(
         cv2.addWeighted(overlay, alpha, result, 1 - alpha, 0, dst=result)
 
     # Final subtle blur
-    blur_size = max(3, int(min(img.shape[:2]) // 30))
+    blur_size = max(3, min(img.shape[:2]) // 30)
     if blur_size % 2 == 0:
         blur_size += 1
 

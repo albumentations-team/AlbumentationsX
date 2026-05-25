@@ -807,8 +807,8 @@ class Affine(DualTransform):
         height, width = image_shape[:2]
         if self.translate_px is not None:
             return {
-                "x": self.py_random.randint(int(self.translate_px["x"][0]), int(self.translate_px["x"][1])),
-                "y": self.py_random.randint(int(self.translate_px["y"][0]), int(self.translate_px["y"][1])),
+                "x": self.py_random.randint(self.translate_px["x"][0], self.translate_px["x"][1]),
+                "y": self.py_random.randint(self.translate_px["y"][0], self.translate_px["y"][1]),
             }
         if self.translate_percent is not None:
             translate = {key: self.py_random.uniform(*value) for key, value in self.translate_percent.items()}

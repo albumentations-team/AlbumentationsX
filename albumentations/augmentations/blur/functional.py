@@ -253,7 +253,7 @@ def process_blur_range(value: tuple[int, int], info: ValidationInfo, min_value: 
     if not isinstance(value, Sequence) or len(value) != 2:
         raise ValueError("blur range must be a tuple of exactly 2 ints")
 
-    result = (int(value[0]), int(value[1]))
+    result = (value[0], value[1])
     result = _ensure_min_value(result, min_value, info.field_name)
     result = _ensure_odd_values(result, info.field_name)
 

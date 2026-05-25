@@ -1374,7 +1374,7 @@ class Spatter(ImageOnlyTransform):
             scale=std,
         )
         # Convert sigma to kernel size (must be odd)
-        ksize = int(2 * round(3 * sigma) + 1)  # 3 sigma rule, rounded to nearest odd
+        ksize = 2 * round(3 * sigma) + 1  # 3 sigma rule, rounded to nearest odd
         cv2.GaussianBlur(
             src=liquid_layer,
             dst=liquid_layer,  # in-place operation
@@ -1527,10 +1527,10 @@ class AtmosphericFog(ImageOnlyTransform):
             max_dist = np.sqrt(cy**2 + cx**2)
             depth_map = (dist / max_dist).astype(np.float32)
 
-        max_val = float(albucore.MAX_VALUES_BY_DTYPE[np.uint8])
+        max_val = albucore.MAX_VALUES_BY_DTYPE[np.uint8]
         image_data = self.get_image_data(data)
         img_dtype = image_data["dtype"]
-        actual_max = float(albucore.MAX_VALUES_BY_DTYPE[img_dtype])
+        actual_max = albucore.MAX_VALUES_BY_DTYPE[img_dtype]
         fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)
 
         self.applied_config = {"density_range": density}

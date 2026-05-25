@@ -1,6 +1,6 @@
 """Advanced color jitter, channel shift, aberration, stain, and photometric transforms."""
 
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, TypedDict, cast
 
 from typing_extensions import Self
 
@@ -26,6 +26,14 @@ from ._color_shared import (
 )
 
 ColorRange = tuple[tuple[int, int, int], tuple[int, int, int]]
+
+
+class PlanckianJitterConst(TypedDict):
+    MAX_TEMP: int
+    MIN_BLACKBODY_TEMP: int
+    MIN_CIED_TEMP: int
+    WHITE_TEMP: int
+    SAMPLING_TEMP_PROB: float
 
 
 class ColorJitter(ImageOnlyTransform):
@@ -373,7 +381,7 @@ class ChromaticAberration(ImageOnlyTransform):
         return b
 
 
-PLANKIAN_JITTER_CONST = {
+PLANKIAN_JITTER_CONST: PlanckianJitterConst = {
     "MAX_TEMP": max(
         *fpixel.PLANCKIAN_COEFFS["blackbody"].keys(),
         *fpixel.PLANCKIAN_COEFFS["cied"].keys(),
@@ -480,17 +488,17 @@ class PlanckianJitter(ImageOnlyTransform):
 
         @model_validator(mode="after")
         def _validate_temperature(self) -> Self:
-            max_temp = int(PLANKIAN_JITTER_CONST["MAX_TEMP"])
+            max_temp = PLANKIAN_JITTER_CONST["MAX_TEMP"]
 
             if self.temperature_range is None:
                 if self.mode == "blackbody":
                     self.temperature_range = (
-                        int(PLANKIAN_JITTER_CONST["MIN_BLACKBODY_TEMP"]),
+                        PLANKIAN_JITTER_CONST["MIN_BLACKBODY_TEMP"],
                         max_temp,
                     )
                 elif self.mode == "cied":
                     self.temperature_range = (
-                        int(PLANKIAN_JITTER_CONST["MIN_CIED_TEMP"]),
+                        PLANKIAN_JITTER_CONST["MIN_CIED_TEMP"],
                         max_temp,
                     )
             else:

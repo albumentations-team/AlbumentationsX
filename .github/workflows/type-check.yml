@@ -29,4 +29,4 @@ jobs:
     - name: Install dependencies
       run: uv sync --locked --group dev --inexact
     - name: Run Pyrefly
-      run: uv run pyrefly check --output-format=github
+      run: uv run pyrefly check --output-format=github --error unnecessary-type-conversion --error implicit-import --error redundant-cast

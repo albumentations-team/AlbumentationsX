@@ -1997,7 +1997,7 @@ class Compose(BaseCompose, HubMixin):
         kp_ids: np.ndarray,
     ) -> dict[str, Any]:
         inst: dict[str, Any] = {}
-        self._repack_mask_into(inst, data, binding, int(mask_row_idx))
+        self._repack_mask_into(inst, data, binding, mask_row_idx)
         self._repack_bbox_into(inst, data, binding, bbox_row_idx)
         self._repack_keypoints_into(inst, data, binding, kp_group_id, kp_ids)
         self._repack_bbox_labels_into(inst, data, bbox_row_idx)

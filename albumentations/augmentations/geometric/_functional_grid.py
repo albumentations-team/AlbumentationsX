@@ -69,8 +69,8 @@ def generate_grid(
     prev = 0.0
     for idx, step in enumerate(steps_x):
         x = idx * x_step
-        start = int(x)
-        end = min(int(x) + x_step, width)
+        start = x
+        end = min(x + x_step, width)
         cur = prev + x_step * step
         xx[start:end] = np.linspace(prev, cur, end - start)
         prev = cur
@@ -80,8 +80,8 @@ def generate_grid(
     prev = 0.0
     for idx, step in enumerate(steps_y):
         y = idx * y_step
-        start = int(y)
-        end = min(int(y) + y_step, height)
+        start = y
+        end = min(y + y_step, height)
         cur = prev + y_step * step
         yy[start:end] = np.linspace(prev, cur, end - start)
         prev = cur

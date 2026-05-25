@@ -96,6 +96,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
     class InitSchema(BaseTransformInitSchema):
         pass
 
+    InitSchema: ClassVar[type[BaseTransformInitSchema]]  # type: ignore[no-redef]
+
     _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
 
     def __init__(self, p: float = 0.5):

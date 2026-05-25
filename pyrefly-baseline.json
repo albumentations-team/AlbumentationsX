@@ -37,18 +37,6 @@
       "severity": "error"
     },
     {
-      "line": 138,
-      "column": 11,
-      "stop_line": 138,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Blur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Blur.InitSchema` has type `type[Blur.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Blur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 373,
       "column": 11,
       "stop_line": 373,
@@ -73,30 +61,6 @@
       "severity": "error"
     },
     {
-      "line": 620,
-      "column": 11,
-      "stop_line": 620,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ModeFilter.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ModeFilter.InitSchema` has type `type[ModeFilter.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ModeFilter.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 786,
-      "column": 11,
-      "stop_line": 786,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `GaussianBlur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `GaussianBlur.InitSchema` has type `type[GaussianBlur.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `GaussianBlur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 820,
       "column": 16,
       "stop_line": 820,
@@ -106,54 +70,6 @@
       "name": "bad-return",
       "description": "Returned type `dict[str, ndarray[Unknown, Unknown]]` is not assignable to declared return type `dict[str, float]`",
       "concise_description": "Returned type `dict[str, ndarray[Unknown, Unknown]]` is not assignable to declared return type `dict[str, float]`",
-      "severity": "error"
-    },
-    {
-      "line": 967,
-      "column": 11,
-      "stop_line": 967,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `GlassBlur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `GlassBlur.InitSchema` has type `type[GlassBlur.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `GlassBlur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1226,
-      "column": 11,
-      "stop_line": 1226,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `AdvancedBlur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `AdvancedBlur.InitSchema` has type `type[AdvancedBlur.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `AdvancedBlur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1446,
-      "column": 11,
-      "stop_line": 1446,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Defocus.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Defocus.InitSchema` has type `type[Defocus.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Defocus.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1575,
-      "column": 11,
-      "stop_line": 1575,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/blur/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ZoomBlur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ZoomBlur.InitSchema` has type `type[ZoomBlur.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ZoomBlur.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -193,18 +109,6 @@
       "severity": "error"
     },
     {
-      "line": 370,
-      "column": 11,
-      "stop_line": 370,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `BaseCropAndPad.InitSchema` overrides parent class `BaseCrop` in an inconsistent manner\n  `BaseCropAndPad.InitSchema` has type `type[BaseCropAndPad.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `BaseCrop.InitSchema`",
-      "concise_description": "Class member `BaseCropAndPad.InitSchema` overrides parent class `BaseCrop` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 417,
       "column": 23,
       "stop_line": 417,
@@ -214,18 +118,6 @@
       "name": "bad-argument-type",
       "description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
       "concise_description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "severity": "error"
-    },
-    {
-      "line": 717,
-      "column": 11,
-      "stop_line": 717,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/base.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `_BaseRandomSizedCrop.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `_BaseRandomSizedCrop.InitSchema` has type `type[_BaseRandomSizedCrop.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `_BaseRandomSizedCrop.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -289,18 +181,6 @@
       "severity": "error"
     },
     {
-      "line": 765,
-      "column": 11,
-      "stop_line": 765,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `CropAndPad.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `CropAndPad.InitSchema` has type `type[CropAndPad.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `CropAndPad.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 825,
       "column": 13,
       "stop_line": 825,
@@ -349,18 +229,6 @@
       "severity": "error"
     },
     {
-      "line": 131,
-      "column": 11,
-      "stop_line": 131,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/bbox_safe.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `BBoxSafeRandomCrop.InitSchema` overrides parent class `BaseCrop` in an inconsistent manner\n  `BBoxSafeRandomCrop.InitSchema` has type `type[BBoxSafeRandomCrop.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `BaseCrop.InitSchema`",
-      "concise_description": "Class member `BBoxSafeRandomCrop.InitSchema` overrides parent class `BaseCrop` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 333,
       "column": 11,
       "stop_line": 333,
@@ -394,42 +262,6 @@
       "name": "bad-override",
       "description": "Class member `RandomResizedCrop.InitSchema` overrides parent class `_BaseRandomSizedCrop` in an inconsistent manner\n  `RandomResizedCrop.InitSchema` has type `type[RandomResizedCrop.InitSchema]`, which is not assignable to `type[_BaseRandomSizedCrop.InitSchema]`, the type of `_BaseRandomSizedCrop.InitSchema`",
       "concise_description": "Class member `RandomResizedCrop.InitSchema` overrides parent class `_BaseRandomSizedCrop` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 250,
-      "column": 11,
-      "stop_line": 250,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/special.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomCropNearBBox.InitSchema` overrides parent class `BaseCrop` in an inconsistent manner\n  `RandomCropNearBBox.InitSchema` has type `type[RandomCropNearBBox.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `BaseCrop.InitSchema`",
-      "concise_description": "Class member `RandomCropNearBBox.InitSchema` overrides parent class `BaseCrop` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 390,
-      "column": 11,
-      "stop_line": 390,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/crops/special.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomCropFromBorders.InitSchema` overrides parent class `BaseCrop` in an inconsistent manner\n  `RandomCropFromBorders.InitSchema` has type `type[RandomCropFromBorders.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `BaseCrop.InitSchema`",
-      "concise_description": "Class member `RandomCropFromBorders.InitSchema` overrides parent class `BaseCrop` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 80,
-      "column": 11,
-      "stop_line": 80,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/dropout/channel_dropout.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ChannelDropout.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ChannelDropout.InitSchema` has type `type[ChannelDropout.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ChannelDropout.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -505,18 +337,6 @@
       "severity": "error"
     },
     {
-      "line": 121,
-      "column": 11,
-      "stop_line": 121,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/dropout/mask_dropout.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `MaskDropout.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `MaskDropout.InitSchema` has type `type[MaskDropout.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `MaskDropout.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 176,
       "column": 31,
       "stop_line": 176,
@@ -526,30 +346,6 @@
       "name": "no-matching-overload",
       "description": "No matching overload found for function `cv2.inpaint` called with arguments: (ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]], ndarray[Unknown, dtype[unsignedinteger[_8Bit]]], int, Literal['inpaint_ns', 'inpaint_telea'])\n  Possible overloads:\n  (src: MatLike, inpaintMask: MatLike, inpaintRadius: float, flags: int, dst: Mat | ndarray[Any, dtype[floating | integer]] | None = ...) -> MatLike [closest match]\n  (src: UMat, inpaintMask: UMat, inpaintRadius: float, flags: int, dst: UMat | None = ...) -> UMat",
       "concise_description": "No matching overload found for function `cv2.inpaint` called with arguments: (ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]], ndarray[Unknown, dtype[unsignedinteger[_8Bit]]], int, Literal['inpaint_ns', 'inpaint_telea'])",
-      "severity": "error"
-    },
-    {
-      "line": 113,
-      "column": 11,
-      "stop_line": 113,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/dropout/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `BaseDropout.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `BaseDropout.InitSchema` has type `type[BaseDropout.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `BaseDropout.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 285,
-      "column": 11,
-      "stop_line": 285,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/dropout/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `PixelDropout.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `PixelDropout.InitSchema` has type `type[PixelDropout.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `PixelDropout.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -853,18 +649,6 @@
       "severity": "error"
     },
     {
-      "line": 192,
-      "column": 11,
-      "stop_line": 192,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/distortion.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `BaseDistortion.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `BaseDistortion.InitSchema` has type `type[BaseDistortion.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `BaseDistortion.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 603,
       "column": 49,
       "stop_line": 603,
@@ -925,18 +709,6 @@
       "severity": "error"
     },
     {
-      "line": 465,
-      "column": 11,
-      "stop_line": 465,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/flip.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `D4.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `D4.InitSchema` has type `type[D4.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `D4.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 512,
       "column": 24,
       "stop_line": 512,
@@ -973,18 +745,6 @@
       "severity": "error"
     },
     {
-      "line": 179,
-      "column": 11,
-      "stop_line": 179,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/pad.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Pad.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `Pad.InitSchema` has type `type[Pad.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `Pad.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 503,
       "column": 11,
       "stop_line": 503,
@@ -1009,54 +769,6 @@
       "severity": "error"
     },
     {
-      "line": 133,
-      "column": 11,
-      "stop_line": 133,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/resize.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomScale.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `RandomScale.InitSchema` has type `type[RandomScale.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `RandomScale.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 300,
-      "column": 11,
-      "stop_line": 300,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/resize.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `MaxSizeTransform.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `MaxSizeTransform.InitSchema` has type `type[MaxSizeTransform.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `MaxSizeTransform.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 706,
-      "column": 11,
-      "stop_line": 706,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/resize.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Resize.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `Resize.InitSchema` has type `type[Resize.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `Resize.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 832,
-      "column": 11,
-      "stop_line": 832,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/resize.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `LetterBox.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `LetterBox.InitSchema` has type `type[LetterBox.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `LetterBox.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 982,
       "column": 23,
       "stop_line": 982,
@@ -1066,30 +778,6 @@
       "name": "bad-argument-type",
       "description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
       "concise_description": "Argument `Random` is not assignable to parameter `py_random` with type `RandomState` in function `albumentations.augmentations.geometric._functional_grid.adjust_padding_by_position`",
-      "severity": "error"
-    },
-    {
-      "line": 148,
-      "column": 11,
-      "stop_line": 148,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/rotate.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomRotate90.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `RandomRotate90.InitSchema` has type `type[RandomRotate90.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `RandomRotate90.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 341,
-      "column": 11,
-      "stop_line": 341,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/rotate.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Rotate.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `Rotate.InitSchema` has type `type[Rotate.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `Rotate.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -1114,18 +802,6 @@
       "name": "bad-override",
       "description": "Class member `SafeRotate.InitSchema` overrides parent class `Affine` in an inconsistent manner\n  `SafeRotate.InitSchema` has type `type[SafeRotate.InitSchema]`, which is not assignable to `type[Affine.InitSchema]`, the type of `Affine.InitSchema`",
       "concise_description": "Class member `SafeRotate.InitSchema` overrides parent class `Affine` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 161,
-      "column": 11,
-      "stop_line": 161,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Perspective.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `Perspective.InitSchema` has type `type[Perspective.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `Perspective.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -1165,18 +841,6 @@
       "severity": "error"
     },
     {
-      "line": 481,
-      "column": 11,
-      "stop_line": 481,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Affine.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `Affine.InitSchema` has type `type[Affine.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `Affine.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 524,
       "column": 37,
       "stop_line": 527,
@@ -1213,30 +877,6 @@
       "severity": "error"
     },
     {
-      "line": 1127,
-      "column": 11,
-      "stop_line": 1127,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `GridElasticDeform.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `GridElasticDeform.InitSchema` has type `type[GridElasticDeform.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `GridElasticDeform.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1331,
-      "column": 11,
-      "stop_line": 1331,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomGridShuffle.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `RandomGridShuffle.InitSchema` has type `type[RandomGridShuffle.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `RandomGridShuffle.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 1369,
       "column": 13,
       "stop_line": 1369,
@@ -1258,18 +898,6 @@
       "name": "bad-return",
       "description": "Returned type `dict[str, list[int] | ndarray[Unknown, Unknown]]` is not assignable to declared return type `dict[str, ndarray[Unknown, Unknown]]`",
       "concise_description": "Returned type `dict[str, list[int] | ndarray[Unknown, Unknown]]` is not assignable to declared return type `dict[str, ndarray[Unknown, Unknown]]`",
-      "severity": "error"
-    },
-    {
-      "line": 1497,
-      "column": 11,
-      "stop_line": 1497,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Morphological.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `Morphological.InitSchema` has type `type[Morphological.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `Morphological.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -1306,30 +934,6 @@
       "name": "bad-return",
       "description": "Returned type `dict[str, MatLike]` is not assignable to declared return type `dict[str, float]`",
       "concise_description": "Returned type `dict[str, MatLike]` is not assignable to declared return type `dict[str, float]`",
-      "severity": "error"
-    },
-    {
-      "line": 174,
-      "column": 11,
-      "stop_line": 174,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/mixing/copy_paste.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `CopyAndPaste.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `CopyAndPaste.InitSchema` has type `type[CopyAndPaste.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `CopyAndPaste.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 150,
-      "column": 11,
-      "stop_line": 150,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/mixing/domain_adaptation.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `BaseDomainAdaptation.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `BaseDomainAdaptation.InitSchema` has type `type[BaseDomainAdaptation.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `BaseDomainAdaptation.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -1522,66 +1126,6 @@
       "name": "bad-argument-type",
       "description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
       "concise_description": "Argument `TypeAlias[uint8, type[unsignedinteger[_8Bit]]]` is not assignable to parameter `target_dtype` with type `dtype[Unknown]` in function `albucore.convert.from_float`",
-      "severity": "error"
-    },
-    {
-      "line": 218,
-      "column": 11,
-      "stop_line": 218,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/mixing/mosaic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Mosaic.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `Mosaic.InitSchema` has type `type[Mosaic.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `Mosaic.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 126,
-      "column": 11,
-      "stop_line": 126,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/mixing/overlay.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `OverlayElements.InitSchema` overrides parent class `DualTransform` in an inconsistent manner\n  `OverlayElements.InitSchema` has type `type[OverlayElements.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `DualTransform.InitSchema`",
-      "concise_description": "Class member `OverlayElements.InitSchema` overrides parent class `DualTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 117,
-      "column": 11,
-      "stop_line": 117,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/other/annotation_artifacts.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `AnnotationArtifacts.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `AnnotationArtifacts.InitSchema` has type `type[AnnotationArtifacts.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `AnnotationArtifacts.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 81,
-      "column": 11,
-      "stop_line": 81,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/other/type_transform.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ToFloat.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ToFloat.InitSchema` has type `type[ToFloat.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ToFloat.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 139,
-      "column": 11,
-      "stop_line": 139,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/other/type_transform.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `FromFloat.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `FromFloat.InitSchema` has type `type[FromFloat.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `FromFloat.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -2833,18 +2377,6 @@
       "severity": "error"
     },
     {
-      "line": 70,
-      "column": 11,
-      "stop_line": 70,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/channel.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ChannelShuffle.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ChannelShuffle.InitSchema` has type `type[ChannelShuffle.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ChannelShuffle.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 197,
       "column": 11,
       "stop_line": 197,
@@ -2854,18 +2386,6 @@
       "name": "bad-override",
       "description": "Class member `ChannelSwap.InitSchema` overrides parent class `ChannelShuffle` in an inconsistent manner\n  `ChannelSwap.InitSchema` has type `type[ChannelSwap.InitSchema]`, which is not assignable to `type[ChannelShuffle.InitSchema]`, the type of `ChannelShuffle.InitSchema`",
       "concise_description": "Class member `ChannelSwap.InitSchema` overrides parent class `ChannelShuffle` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 93,
-      "column": 11,
-      "stop_line": 93,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_advanced.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ColorJitter.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ColorJitter.InitSchema` has type `type[ColorJitter.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ColorJitter.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -2881,30 +2401,6 @@
       "severity": "error"
     },
     {
-      "line": 271,
-      "column": 11,
-      "stop_line": 271,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_advanced.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ChromaticAberration.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ChromaticAberration.InitSchema` has type `type[ChromaticAberration.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ChromaticAberration.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 476,
-      "column": 11,
-      "stop_line": 476,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_advanced.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `PlanckianJitter.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `PlanckianJitter.InitSchema` has type `type[PlanckianJitter.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `PlanckianJitter.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 667,
       "column": 11,
       "stop_line": 667,
@@ -2917,18 +2413,6 @@
       "severity": "error"
     },
     {
-      "line": 845,
-      "column": 11,
-      "stop_line": 845,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_advanced.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `HEStain.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `HEStain.InitSchema` has type `type[HEStain.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `HEStain.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 935,
       "column": 16,
       "stop_line": 935,
@@ -2938,18 +2422,6 @@
       "name": "bad-return",
       "description": "Returned type `Unknown | None` is not assignable to declared return type `ndarray[Unknown, Unknown]`",
       "concise_description": "Returned type `Unknown | None` is not assignable to declared return type `ndarray[Unknown, Unknown]`",
-      "severity": "error"
-    },
-    {
-      "line": 1080,
-      "column": 11,
-      "stop_line": 1080,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_advanced.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `PhotoMetricDistort.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `PhotoMetricDistort.InitSchema` has type `type[PhotoMetricDistort.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `PhotoMetricDistort.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -2977,78 +2449,6 @@
       "severity": "error"
     },
     {
-      "line": 92,
-      "column": 11,
-      "stop_line": 92,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomToneCurve.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomToneCurve.InitSchema` has type `type[RandomToneCurve.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomToneCurve.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 233,
-      "column": 11,
-      "stop_line": 233,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `HueSaturationValue.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `HueSaturationValue.InitSchema` has type `type[HueSaturationValue.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `HueSaturationValue.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 362,
-      "column": 11,
-      "stop_line": 362,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Solarize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Solarize.InitSchema` has type `type[Solarize.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Solarize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 457,
-      "column": 11,
-      "stop_line": 457,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Posterize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Posterize.InitSchema` has type `type[Posterize.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Posterize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 594,
-      "column": 11,
-      "stop_line": 594,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Equalize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Equalize.InitSchema` has type `type[Equalize.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Equalize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 739,
-      "column": 11,
-      "stop_line": 739,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomBrightnessContrast.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomBrightnessContrast.InitSchema` has type `type[RandomBrightnessContrast.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomBrightnessContrast.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 768,
       "column": 16,
       "stop_line": 768,
@@ -3061,66 +2461,6 @@
       "severity": "error"
     },
     {
-      "line": 857,
-      "column": 11,
-      "stop_line": 857,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `CLAHE.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `CLAHE.InitSchema` has type `type[CLAHE.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `CLAHE.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 961,
-      "column": 11,
-      "stop_line": 961,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomGamma.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomGamma.InitSchema` has type `type[RandomGamma.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomGamma.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1048,
-      "column": 11,
-      "stop_line": 1048,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_basic.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `AutoContrast.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `AutoContrast.InitSchema` has type `type[AutoContrast.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `AutoContrast.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 157,
-      "column": 11,
-      "stop_line": 157,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_gray.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ToGray.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ToGray.InitSchema` has type `type[ToGray.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ToGray.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 260,
-      "column": 11,
-      "stop_line": 260,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_gray.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ToRGB.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ToRGB.InitSchema` has type `type[ToRGB.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ToRGB.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 275,
       "column": 20,
       "stop_line": 275,
@@ -3130,102 +2470,6 @@
       "name": "bad-return",
       "description": "Returned type `ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "Returned type `ndarray[tuple[int, ...], dtype[floating[_32Bit] | unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 376,
-      "column": 11,
-      "stop_line": 376,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_gray.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Colorize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Colorize.InitSchema` has type `type[Colorize.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Colorize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 600,
-      "column": 11,
-      "stop_line": 600,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_gray.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `FancyPCA.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `FancyPCA.InitSchema` has type `type[FancyPCA.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `FancyPCA.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 150,
-      "column": 11,
-      "stop_line": 150,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_lighting.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `PlasmaBrightnessContrast.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `PlasmaBrightnessContrast.InitSchema` has type `type[PlasmaBrightnessContrast.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `PlasmaBrightnessContrast.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 324,
-      "column": 11,
-      "stop_line": 324,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_lighting.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `PlasmaShadow.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `PlasmaShadow.InitSchema` has type `type[PlasmaShadow.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `PlasmaShadow.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 516,
-      "column": 11,
-      "stop_line": 516,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_lighting.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Illumination.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Illumination.InitSchema` has type `type[Illumination.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Illumination.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 681,
-      "column": 11,
-      "stop_line": 681,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/color_lighting.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Vignetting.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Vignetting.InitSchema` has type `type[Vignetting.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Vignetting.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 84,
-      "column": 11,
-      "stop_line": 84,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/compression.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ImageCompression.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ImageCompression.InitSchema` has type `type[ImageCompression.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ImageCompression.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 186,
-      "column": 11,
-      "stop_line": 186,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/compression.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Downscale.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Downscale.InitSchema` has type `type[Downscale.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Downscale.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -3301,18 +2545,6 @@
       "severity": "error"
     },
     {
-      "line": 90,
-      "column": 11,
-      "stop_line": 90,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `GaussNoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `GaussNoise.InitSchema` has type `type[GaussNoise.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `GaussNoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 151,
       "column": 16,
       "stop_line": 151,
@@ -3322,54 +2554,6 @@
       "name": "bad-return",
       "description": "Returned type `dict[str, ndarray[Unknown, Unknown]]` is not assignable to declared return type `dict[str, float]`",
       "concise_description": "Returned type `dict[str, ndarray[Unknown, Unknown]]` is not assignable to declared return type `dict[str, float]`",
-      "severity": "error"
-    },
-    {
-      "line": 204,
-      "column": 11,
-      "stop_line": 204,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ISONoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ISONoise.InitSchema` has type `type[ISONoise.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ISONoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 329,
-      "column": 11,
-      "stop_line": 329,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `MultiplicativeNoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `MultiplicativeNoise.InitSchema` has type `type[MultiplicativeNoise.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `MultiplicativeNoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 441,
-      "column": 11,
-      "stop_line": 441,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `ShotNoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `ShotNoise.InitSchema` has type `type[ShotNoise.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `ShotNoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 635,
-      "column": 11,
-      "stop_line": 635,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `AdditiveNoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `AdditiveNoise.InitSchema` has type `type[AdditiveNoise.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `AdditiveNoise.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -3517,54 +2701,6 @@
       "severity": "error"
     },
     {
-      "line": 815,
-      "column": 11,
-      "stop_line": 815,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `SaltAndPepper.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `SaltAndPepper.InitSchema` has type `type[SaltAndPepper.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `SaltAndPepper.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 928,
-      "column": 11,
-      "stop_line": 928,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/noise.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `FilmGrain.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `FilmGrain.InitSchema` has type `type[FilmGrain.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `FilmGrain.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 119,
-      "column": 11,
-      "stop_line": 119,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Normalize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Normalize.InitSchema` has type `type[Normalize.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Normalize.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 354,
-      "column": 11,
-      "stop_line": 354,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Sharpen.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Sharpen.InitSchema` has type `type[Sharpen.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Sharpen.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 404,
       "column": 21,
       "stop_line": 404,
@@ -3601,18 +2737,6 @@
       "severity": "error"
     },
     {
-      "line": 480,
-      "column": 11,
-      "stop_line": 480,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Emboss.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Emboss.InitSchema` has type `type[Emboss.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Emboss.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 514,
       "column": 26,
       "stop_line": 514,
@@ -3637,102 +2761,6 @@
       "severity": "error"
     },
     {
-      "line": 604,
-      "column": 11,
-      "stop_line": 604,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Enhance.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Enhance.InitSchema` has type `type[Enhance.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Enhance.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 732,
-      "column": 11,
-      "stop_line": 732,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Superpixels.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Superpixels.InitSchema` has type `type[Superpixels.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Superpixels.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 865,
-      "column": 11,
-      "stop_line": 865,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RingingOvershoot.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RingingOvershoot.InitSchema` has type `type[RingingOvershoot.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RingingOvershoot.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 978,
-      "column": 11,
-      "stop_line": 978,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `UnsharpMask.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `UnsharpMask.InitSchema` has type `type[UnsharpMask.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `UnsharpMask.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1195,
-      "column": 11,
-      "stop_line": 1195,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Dithering.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Dithering.InitSchema` has type `type[Dithering.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Dithering.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1309,
-      "column": 11,
-      "stop_line": 1309,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Halftone.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Halftone.InitSchema` has type `type[Halftone.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Halftone.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1402,
-      "column": 11,
-      "stop_line": 1402,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `LensFlare.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `LensFlare.InitSchema` has type `type[LensFlare.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `LensFlare.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 118,
-      "column": 11,
-      "stop_line": 118,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomSnow.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomSnow.InitSchema` has type `type[RandomSnow.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomSnow.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 188,
       "column": 16,
       "stop_line": 188,
@@ -3742,18 +2770,6 @@
       "name": "bad-return",
       "description": "Returned type `dict[str, float | ndarray[Unknown, Unknown] | Unknown | None]` is not assignable to declared return type `dict[str, ndarray[Unknown, Unknown] | None]`",
       "concise_description": "Returned type `dict[str, float | ndarray[Unknown, Unknown] | Unknown | None]` is not assignable to declared return type `dict[str, ndarray[Unknown, Unknown] | None]`",
-      "severity": "error"
-    },
-    {
-      "line": 265,
-      "column": 11,
-      "stop_line": 265,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomGravel.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomGravel.InitSchema` has type `type[RandomGravel.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomGravel.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -3769,54 +2785,6 @@
       "severity": "error"
     },
     {
-      "line": 450,
-      "column": 11,
-      "stop_line": 450,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomRain.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomRain.InitSchema` has type `type[RandomRain.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomRain.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 625,
-      "column": 11,
-      "stop_line": 625,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomFog.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomFog.InitSchema` has type `type[RandomFog.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomFog.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 853,
-      "column": 11,
-      "stop_line": 853,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomSunFlare.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomSunFlare.InitSchema` has type `type[RandomSunFlare.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomSunFlare.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1074,
-      "column": 11,
-      "stop_line": 1074,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `RandomShadow.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `RandomShadow.InitSchema` has type `type[RandomShadow.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `RandomShadow.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
       "line": 1171,
       "column": 16,
       "stop_line": 1171,
@@ -3826,42 +2794,6 @@
       "name": "bad-return",
       "description": "Returned type `dict[str, list[ndarray[tuple[int, ...], dtype[signedinteger[_64Bit]]]] | ndarray[tuple[int, ...], dtype[float64]]]` is not assignable to declared return type `dict[str, list[ndarray[Unknown, Unknown]]]`",
       "concise_description": "Returned type `dict[str, list[ndarray[tuple[int, ...], dtype[signedinteger[_64Bit]]]] | ndarray[tuple[int, ...], dtype[float64]]]` is not assignable to declared return type `dict[str, list[ndarray[Unknown, Unknown]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 1280,
-      "column": 11,
-      "stop_line": 1280,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `Spatter.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `Spatter.InitSchema` has type `type[Spatter.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `Spatter.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1473,
-      "column": 11,
-      "stop_line": 1473,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/pixel/weather.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `AtmosphericFog.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `AtmosphericFog.InitSchema` has type `type[AtmosphericFog.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `AtmosphericFog.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 65,
-      "column": 11,
-      "stop_line": 65,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/spectrogram/transform.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `TimeReverse.InitSchema` overrides parent class `HorizontalFlip` in an inconsistent manner\n  `TimeReverse.InitSchema` has type `type[TimeReverse.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `HorizontalFlip.InitSchema`",
-      "concise_description": "Class member `TimeReverse.InitSchema` overrides parent class `HorizontalFlip` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -3886,18 +2818,6 @@
       "name": "bad-override",
       "description": "Class member `FrequencyMasking.InitSchema` overrides parent class `XYMasking` in an inconsistent manner\n  `FrequencyMasking.InitSchema` has type `type[FrequencyMasking.InitSchema]`, which is not assignable to `type[XYMasking.InitSchema]`, the type of `XYMasking.InitSchema`",
       "concise_description": "Class member `FrequencyMasking.InitSchema` overrides parent class `XYMasking` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 76,
-      "column": 11,
-      "stop_line": 76,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/text/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `TextImage.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner\n  `TextImage.InitSchema` has type `type[TextImage.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `ImageOnlyTransform.InitSchema`",
-      "concise_description": "Class member `TextImage.InitSchema` overrides parent class `ImageOnlyTransform` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -3946,18 +2866,6 @@
       "name": "bad-override",
       "description": "Class member `RandomCrop3D.InitSchema` overrides parent class `BaseCropAndPad3D` in an inconsistent manner\n  `RandomCrop3D.InitSchema` has type `type[RandomCrop3D.InitSchema]`, which is not assignable to `type[BaseCropAndPad3D.InitSchema]`, the type of `BaseCropAndPad3D.InitSchema`",
       "concise_description": "Class member `RandomCrop3D.InitSchema` overrides parent class `BaseCropAndPad3D` in an inconsistent manner",
-      "severity": "error"
-    },
-    {
-      "line": 1392,
-      "column": 11,
-      "stop_line": 1392,
-      "stop_column": 21,
-      "path": "albumentations/augmentations/transforms3d/transforms.py",
-      "code": -2,
-      "name": "bad-override",
-      "description": "Class member `GridShuffle3D.InitSchema` overrides parent class `Transform3D` in an inconsistent manner\n  `GridShuffle3D.InitSchema` has type `type[GridShuffle3D.InitSchema]`, which is not assignable to `type[BasicTransform.InitSchema]`, the type of `Transform3D.InitSchema`",
-      "concise_description": "Class member `GridShuffle3D.InitSchema` overrides parent class `Transform3D` in an inconsistent manner",
       "severity": "error"
     },
     {
@@ -4033,9 +2941,9 @@
       "severity": "error"
     },
     {
-      "line": 986,
+      "line": 988,
       "column": 16,
-      "stop_line": 986,
+      "stop_line": 988,
       "stop_column": 99,
       "path": "albumentations/core/transforms_interface.py",
       "code": -2,

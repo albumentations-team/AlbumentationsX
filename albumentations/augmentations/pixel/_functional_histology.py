@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal, cast
 
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
@@ -31,10 +31,12 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
     pixel_matrix = np.ascontiguousarray(img.reshape(-1, 3)).astype(np.float32, copy=True)
-    cv2.multiply(pixel_matrix, 1.0 / max_value, dst=pixel_matrix)
-    cv2.max(pixel_matrix, eps, dst=pixel_matrix)
+    multiply = cast("Any", cv2.multiply)
+    max_op = cast("Any", cv2.max)
+    multiply(pixel_matrix, 1.0 / max_value, dst=pixel_matrix)
+    max_op(pixel_matrix, eps, dst=pixel_matrix)
     cv2.log(pixel_matrix, dst=pixel_matrix)
-    cv2.multiply(pixel_matrix, -1.0, dst=pixel_matrix)
+    multiply(pixel_matrix, -1.0, dst=pixel_matrix)
     return pixel_matrix
 
 
@@ -204,8 +206,9 @@ def order_stains_combined(stain_colors: np.ndarray) -> tuple[int, int]:
     angles = np.mod(np.arctan2(stain_colors[:, 1], stain_colors[:, 0]), np.pi)
 
     # Calculate spectral ratios (Ruifrok)
-    blue_ratio = stain_colors[:, 2] / (reduce_sum(stain_colors, axis=1) + 1e-6)
-    red_ratio = stain_colors[:, 0] / (reduce_sum(stain_colors, axis=1) + 1e-6)
+    stain_sums = np.asarray(reduce_sum(stain_colors, axis=1), dtype=np.float32) + 1e-6
+    blue_ratio = stain_colors[:, 2] / stain_sums
+    red_ratio = stain_colors[:, 0] / stain_sums
 
     # Combine scores
     # High angle and high blue ratio indicates Hematoxylin
@@ -323,11 +326,15 @@ class MacenkoNormalizer(StainNormalizer):
 
         # Step 3: Compute covariance matrix
         tissue_density = np.ascontiguousarray(tissue_density, dtype=np.float32)
-        od_covariance = cv2.calcCovarMatrix(
-            tissue_density,
-            None,
-            cv2.COVAR_NORMAL | cv2.COVAR_ROWS | cv2.COVAR_SCALE,
-        )[0]
+        covariance_mean = np.empty((0,), dtype=np.float32)
+        od_covariance = cast(
+            "np.ndarray",
+            cv2.calcCovarMatrix(
+                tissue_density,
+                covariance_mean,
+                cv2.COVAR_NORMAL | cv2.COVAR_ROWS | cv2.COVAR_SCALE,
+            )[0],
+        )
 
         # Step 4: Get principal components
         eigenvalues, eigenvectors = cv2.eigen(od_covariance)[1:]
@@ -373,19 +380,26 @@ class MacenkoNormalizer(StainNormalizer):
 
         # Ensure both matrices have the same data type for cv2.gemm
         principal_eigenvectors_t = np.ascontiguousarray(principal_eigenvectors.T, dtype=np.float32)
-        stain_vectors = cv2.gemm(
-            angle_to_vector,
-            principal_eigenvectors_t,
-            1,
-            None,
-            0,
+        empty_matrix = np.empty((0,), dtype=np.float32)
+        stain_vectors = cast(
+            "np.ndarray",
+            cv2.gemm(
+                angle_to_vector,
+                principal_eigenvectors_t,
+                1.0,
+                empty_matrix,
+                0.0,
+            ),
         )
 
         # Step 8: Ensure non-negativity by taking absolute values
         stain_vectors = np.abs(stain_vectors)
 
         # Step 9: Normalize vectors to unit length
-        stain_vectors = stain_vectors / np.sqrt(reduce_sum(stain_vectors**2, axis=1, keepdims=True) + epsilon)
+        stain_norms = np.sqrt(
+            np.asarray(reduce_sum(stain_vectors**2, axis=1, keepdims=True), dtype=np.float32) + epsilon,
+        )
+        stain_vectors = stain_vectors / stain_norms
 
         # Step 10: Order vectors as [hematoxylin, eosin]
         self.stain_matrix_target = stain_vectors if stain_vectors[0, 0] > stain_vectors[1, 0] else stain_vectors[::-1]

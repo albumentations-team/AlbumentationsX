@@ -329,7 +329,7 @@ class PixelDropout(DualTransform):
         self,
         mask: ImageType,
         mask_drop_mask: np.ndarray,
-        mask_drop_values: float | np.ndarray,
+        mask_drop_values: np.ndarray,
         **params: Any,
     ) -> ImageType:
         if self.mask_drop_value is None:

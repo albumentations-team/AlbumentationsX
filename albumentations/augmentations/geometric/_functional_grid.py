@@ -86,7 +86,8 @@ def generate_grid(
         yy[start:end] = np.linspace(prev, cur, end - start)
         prev = cur
 
-    return np.meshgrid(xx, yy)
+    map_x, map_y = np.meshgrid(xx, yy)
+    return map_x, map_y
 
 
 def normalize_grid_distortion_steps(
@@ -332,7 +333,7 @@ def compute_perspective_params(
         dim2: np.ndarray,
         min_size: int = 2,
     ) -> float:
-        size = np.sqrt(reduce_sum((dim1 - dim2) ** 2))
+        size = float(np.sqrt(reduce_sum((dim1 - dim2) ** 2)))
         if size < min_size:
             step_size = (min_size - size) / 2
             dim1[dim1 > dim2] += step_size

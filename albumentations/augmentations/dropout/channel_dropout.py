@@ -92,15 +92,15 @@ class ChannelDropout(ImageOnlyTransform):
         self.channel_drop_range = channel_drop_range
         self.fill = fill
 
-    def apply(self, img: ImageType, channels_to_drop: list[int], **params: Any) -> ImageType:
+    def apply(self, img: ImageType, channels_to_drop: tuple[int, ...], **params: Any) -> ImageType:
         return channel_dropout(img, channels_to_drop, self.fill)
 
-    def apply_to_images(self, images: ImageType, channels_to_drop: list[int], **params: Any) -> ImageType:
+    def apply_to_images(self, images: ImageType, channels_to_drop: tuple[int, ...], **params: Any) -> ImageType:
         result = images.copy()
         result[:, :, :, channels_to_drop] = self.fill
         return result
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, list[int]]:
+    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, tuple[int, ...]]:
         metadata = self.get_image_data(data)
         num_channels = metadata["num_channels"]
         if num_channels == 1:
@@ -111,7 +111,7 @@ class ChannelDropout(ImageOnlyTransform):
             msg = "Can not drop all channels in ChannelDropout."
             raise ValueError(msg)
         num_drop_channels = self.py_random.randint(*self.channel_drop_range)
-        channels_to_drop = self.py_random.sample(range(num_channels), k=num_drop_channels)
+        channels_to_drop = tuple(self.py_random.sample(range(num_channels), k=num_drop_channels))
 
         self.applied_config = {
             "channel_drop_range": num_drop_channels,

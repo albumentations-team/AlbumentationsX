@@ -1027,7 +1027,7 @@ def bboxes_grid_shuffle(
     extra_bbox_data = []  # Store additional bbox data for each component
 
     for idx, mask in enumerate(masks):
-        original_area = reduce_sum(mask)  # Get original mask area
+        original_area = float(reduce_sum(mask))  # Get original mask area
 
         # Shuffle the mask
         shuffled_mask = swap_tiles_on_image(mask, tiles, mapping)
@@ -1042,7 +1042,7 @@ def bboxes_grid_shuffle(
             component_mask = (components == comp_idx).astype(np.uint8)
 
             # Calculate area and visibility ratio
-            component_area = reduce_sum(component_mask)
+            component_area = float(reduce_sum(component_mask))
             # Check if component meets minimum requirements
             if is_valid_component(
                 component_area,

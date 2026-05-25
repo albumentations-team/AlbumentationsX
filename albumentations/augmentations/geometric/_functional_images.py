@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Literal, cast
 
+from albumentations.core.type_definitions import ImageFloat32
+
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
@@ -178,7 +180,7 @@ def resize_pil(
     # PIL doesn't support float32 RGB images, convert to uint8 if needed
     needs_conversion = img.dtype == np.float32
     if needs_conversion:
-        img = from_float(img, target_dtype=np.dtype(np.uint8))
+        img = from_float(cast("ImageFloat32", img), target_dtype=np.dtype(np.uint8))
 
     # Map cv2 interpolation constants to PIL.Image.Resampling constants
     cv2_to_pil_interpolation = {
@@ -633,15 +635,15 @@ def transpose(img: ImageType) -> ImageType:
     """
     num_channels = img.shape[-1]
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and num_channels in {1, 3, 4}:
-        result = cv2.transpose(img if num_channels != 1 else img[..., 0])
-        return result[..., None] if num_channels == 1 else result
+        result = cast("ImageType", cv2.transpose(img if num_channels != 1 else img[..., 0]))
+        return cast("ImageType", result[..., None]) if num_channels == 1 else result
 
     # Generate the new axes order
     new_axes = list(range(img.ndim))
     new_axes[0], new_axes[1] = 1, 0  # Swap the first two dimensions
 
     # Transpose the array using the new axes order
-    return img.transpose(new_axes)
+    return cast("ImageType", img.transpose(new_axes))
 
 
 D4_TRANSFORMATIONS = {
@@ -732,10 +734,10 @@ def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) ->
             rotate_code = cv2.ROTATE_90_CLOCKWISE
 
         cv2_input = img if num_channels != 1 else img[..., 0]
-        result = cv2.rotate(cv2_input, rotate_code)
-        return result[..., None] if num_channels == 1 else result
+        result = cast("ImageType", cv2.rotate(cv2_input, rotate_code))
+        return cast("ImageType", result[..., None]) if num_channels == 1 else result
 
-    return np.rot90(img, rot90_count)
+    return cast("ImageType", np.rot90(img, rot90_count))
 
 
 def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
@@ -758,7 +760,7 @@ def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "
 
     """
     rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
-    return np.rot90(images, k=rot90_count, axes=(1, 2))
+    return cast("ImageType", np.rot90(images, k=rot90_count, axes=(1, 2)))
 
 
 @preserve_channel_dim
@@ -930,7 +932,8 @@ def pad_images_with_params(
     else:
         kwargs = {}
 
-    images = np.pad(images, pad_width=pad_width, mode=mode, **kwargs)
+    pad_array = cast("Any", np.pad)
+    images = cast("ImageType", pad_array(images, pad_width=pad_width, mode=mode, **kwargs))
     if no_channel_dim:
         images = images[..., 0]
 
@@ -1046,7 +1049,7 @@ def distort_image(
         )
 
         mask[:] = 0
-        cv2.fillConvexPoly(mask, np.int32(dst_quad), 255)
+        cv2.fillConvexPoly(mask, dst_quad.astype(np.int32), 255)
 
         distorted_image = cv2.copyTo(warped, mask, distorted_image)
 
@@ -1329,7 +1332,7 @@ def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: The eroded image.
 
     """
-    return cv2.erode(img, kernel, iterations=1)
+    return cast("ImageType", cv2.erode(img, kernel, iterations=1))
 
 
 @preserve_channel_dim
@@ -1347,7 +1350,7 @@ def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: The dilated image.
 
     """
-    return cv2.dilate(img, kernel, iterations=1)
+    return cast("ImageType", cv2.dilate(img, kernel, iterations=1))
 
 
 def morphology(

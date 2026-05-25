@@ -132,10 +132,10 @@ def normalize_grid_distortion_steps(
     ty = height / math.floor(height / num_steps)
     x_steps_arr = np.array(x_steps, dtype=np.float32)
     y_steps_arr = np.array(y_steps, dtype=np.float32)
-    x_steps = x_steps_arr * (tx / reduce_sum(x_steps_arr))
-    y_steps = y_steps_arr * (ty / reduce_sum(y_steps_arr))
+    normalized_x_steps = x_steps_arr * (tx / float(reduce_sum(x_steps_arr)))
+    normalized_y_steps = y_steps_arr * (ty / float(reduce_sum(y_steps_arr)))
 
-    return {"steps_x": x_steps, "steps_y": y_steps}
+    return {"steps_x": normalized_x_steps, "steps_y": normalized_y_steps}
 
 
 def almost_equal_intervals(n: int, parts: int) -> np.ndarray:

@@ -188,7 +188,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
             masks = data["masks"]
             mask = self._preprocess_mask(np.copy(masks[0]))
             for m in masks[1:]:
-                mask |= self._preprocess_mask(m)
+                mask = np.logical_or(mask, self._preprocess_mask(m))
         else:
             msg = "Can not find mask for CropNonEmptyMaskIfExists"
             raise RuntimeError(msg)

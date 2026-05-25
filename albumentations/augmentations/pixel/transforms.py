@@ -156,11 +156,15 @@ class Normalize(ImageOnlyTransform):
     ):
         super().__init__(p=p)
         self.mean = mean
-        self.mean_np = np.array(mean, dtype=np.float32) * max_pixel_value
         self.std = std
-        self.denominator = np.reciprocal(
-            np.array(std, dtype=np.float32) * max_pixel_value,
-        )
+        if mean is not None and std is not None and max_pixel_value is not None:
+            self.mean_np = np.array(mean, dtype=np.float32) * max_pixel_value
+            self.denominator = np.reciprocal(
+                np.array(std, dtype=np.float32) * max_pixel_value,
+            )
+        else:
+            self.mean_np = np.array([], dtype=np.float32)
+            self.denominator = np.array([], dtype=np.float32)
         self.max_pixel_value = max_pixel_value
         self.normalization = normalization
 

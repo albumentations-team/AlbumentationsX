@@ -406,7 +406,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         """Apply transforms with parameters. Dispatches each target (image, mask, bboxes, etc.) to
         the corresponding apply_* method.
         """
-        res = {}
+        res: dict[str, Any] = {}
         for key, arg in kwargs.items():
             if key in self._key2func and arg is not None:
                 # Handle empty lists for mask-like keys

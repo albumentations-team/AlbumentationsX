@@ -191,7 +191,9 @@ class StandardScaler(BaseScaler):
             When variance is zero for a feature, the scale is set to 1 to avoid division by zero.
 
         """
-        self.mean, self.scale = mean_std(x, axis=0, eps=0)
+        mean, scale = mean_std(x, axis=0, eps=0)
+        self.mean = np.asarray(mean)
+        self.scale = np.asarray(scale)
         # Handle case where std is zero
         self.scale[self.scale == 0] = 1
 

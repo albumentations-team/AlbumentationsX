@@ -104,7 +104,7 @@ def _wrap_scalars_for_replay(cls: type, config: dict[str, Any]) -> dict[str, Any
     that expect ranges (e.g. blur_range=5 becomes (5,5)) to skip symmetric expansion.
     """
     range_params = _get_range_param_names(cls)
-    result = {}
+    result: dict[str, Any] = {}
     for key, value in config.items():
         if key in range_params and not isinstance(value, (tuple, list)):
             result[key] = (value, value)

@@ -424,7 +424,7 @@ class MotionBlur(Blur):
             random_state=self.py_random,
         )
 
-        return {"kernel": kernel.astype(np.float32) / reduce_sum(kernel)}
+        return {"kernel": kernel.astype(np.float32) / float(reduce_sum(kernel))}
 
 
 class MedianBlur(Blur):

@@ -517,7 +517,7 @@ class Rotate(DualTransform):
 
         if self.crop_border:
             height, width = params["shape"][:2]
-            out_params = self._rotated_rect_with_max_area(height, width, angle)
+            out_params: dict[str, Any] = self._rotated_rect_with_max_area(height, width, angle)
         else:
             out_params = {"x_min": -1, "x_max": -1, "y_min": -1, "y_max": -1}
 

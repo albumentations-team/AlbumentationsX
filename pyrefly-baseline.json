@@ -241,30 +241,6 @@
       "severity": "error"
     },
     {
-      "line": 382,
-      "column": 34,
-      "stop_line": 382,
-      "stop_column": 44,
-      "path": "albumentations/augmentations/geometric/_functional_images.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float | list[float] | ndarray[Unknown, Unknown]` is not assignable to parameter `border_value` with type `float | ndarray[Unknown, Unknown] | tuple[float, ...] | None` in function `albucore.geometric.warp_perspective`",
-      "concise_description": "Argument `float | list[float] | ndarray[Unknown, Unknown]` is not assignable to parameter `border_value` with type `float | ndarray[Unknown, Unknown] | tuple[float, ...] | None` in function `albucore.geometric.warp_perspective`",
-      "severity": "error"
-    },
-    {
-      "line": 395,
-      "column": 26,
-      "stop_line": 395,
-      "stop_column": 36,
-      "path": "albumentations/augmentations/geometric/_functional_images.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float | list[float] | ndarray[Unknown, Unknown]` is not assignable to parameter `border_value` with type `float | ndarray[Unknown, Unknown] | tuple[float, ...] | None` in function `albucore.geometric.warp_perspective`",
-      "concise_description": "Argument `float | list[float] | ndarray[Unknown, Unknown]` is not assignable to parameter `border_value` with type `float | ndarray[Unknown, Unknown] | tuple[float, ...] | None` in function `albucore.geometric.warp_perspective`",
-      "severity": "error"
-    },
-    {
       "line": 637,
       "column": 16,
       "stop_line": 637,
@@ -493,42 +469,6 @@
       "severity": "error"
     },
     {
-      "line": 210,
-      "column": 13,
-      "stop_line": 210,
-      "stop_column": 22,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float | tuple[float, ...]` is not assignable to parameter `border_val` with type `float | list[float] | ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_images.perspective`",
-      "concise_description": "Argument `float | tuple[float, ...]` is not assignable to parameter `border_val` with type `float | list[float] | ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_images.perspective`",
-      "severity": "error"
-    },
-    {
-      "line": 229,
-      "column": 13,
-      "stop_line": 229,
-      "stop_column": 22,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float | tuple[float, ...]` is not assignable to parameter `border_val` with type `float | list[float] | ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_images.perspective_images`",
-      "concise_description": "Argument `float | tuple[float, ...]` is not assignable to parameter `border_val` with type `float | list[float] | ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_images.perspective_images`",
-      "severity": "error"
-    },
-    {
-      "line": 248,
-      "column": 13,
-      "stop_line": 248,
-      "stop_column": 27,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `float | tuple[float, ...] | None` is not assignable to parameter `border_val` with type `float | list[float] | ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_images.perspective`",
-      "concise_description": "Argument `float | tuple[float, ...] | None` is not assignable to parameter `border_val` with type `float | list[float] | ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_images.perspective`",
-      "severity": "error"
-    },
-    {
       "line": 524,
       "column": 37,
       "stop_line": 527,
@@ -550,66 +490,6 @@
       "name": "bad-return",
       "description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
       "concise_description": "Returned type `ndarray[tuple[int, int, int, int], dtype[floating[_32Bit]] | dtype[unsignedinteger[_8Bit]]]` is not assignable to declared return type `ndarray[tuple[int, ...], dtype[floating[_32Bit]]] | ndarray[tuple[int, ...], dtype[unsignedinteger[_8Bit]]]`",
-      "severity": "error"
-    },
-    {
-      "line": 1371,
-      "column": 13,
-      "stop_line": 1371,
-      "stop_column": 20,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `ndarray[Unknown, Unknown]` is not assignable to parameter `mapping` with type `list[int]` in function `albumentations.augmentations.geometric._functional_bboxes.bboxes_grid_shuffle`",
-      "concise_description": "Argument `ndarray[Unknown, Unknown]` is not assignable to parameter `mapping` with type `list[int]` in function `albumentations.augmentations.geometric._functional_bboxes.bboxes_grid_shuffle`",
-      "severity": "error"
-    },
-    {
-      "line": 1418,
-      "column": 16,
-      "stop_line": 1418,
-      "stop_column": 61,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `dict[str, list[int] | ndarray[Unknown, Unknown]]` is not assignable to declared return type `dict[str, ndarray[Unknown, Unknown]]`",
-      "concise_description": "Returned type `dict[str, list[int] | ndarray[Unknown, Unknown]]` is not assignable to declared return type `dict[str, ndarray[Unknown, Unknown]]`",
-      "severity": "error"
-    },
-    {
-      "line": 1523,
-      "column": 43,
-      "stop_line": 1523,
-      "stop_column": 49,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `tuple[int, int]` is not assignable to parameter `kernel` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_images.morphology`",
-      "concise_description": "Argument `tuple[int, int]` is not assignable to parameter `kernel` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_images.morphology`",
-      "severity": "error"
-    },
-    {
-      "line": 1537,
-      "column": 13,
-      "stop_line": 1537,
-      "stop_column": 19,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-argument-type",
-      "description": "Argument `tuple[int, int]` is not assignable to parameter `kernel` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_bboxes.bboxes_morphology`",
-      "concise_description": "Argument `tuple[int, int]` is not assignable to parameter `kernel` with type `ndarray[Unknown, Unknown]` in function `albumentations.augmentations.geometric._functional_bboxes.bboxes_morphology`",
-      "severity": "error"
-    },
-    {
-      "line": 1553,
-      "column": 16,
-      "stop_line": 1555,
-      "stop_column": 10,
-      "path": "albumentations/augmentations/geometric/transforms.py",
-      "code": -2,
-      "name": "bad-return",
-      "description": "Returned type `dict[str, MatLike]` is not assignable to declared return type `dict[str, float]`",
-      "concise_description": "Returned type `dict[str, MatLike]` is not assignable to declared return type `dict[str, float]`",
       "severity": "error"
     },
     {

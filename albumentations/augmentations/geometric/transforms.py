@@ -1356,7 +1356,7 @@ class RandomGridShuffle(DualTransform):
         self,
         bboxes: np.ndarray,
         tiles: np.ndarray,
-        mapping: np.ndarray,
+        mapping: list[int],
         **params: Any,
     ) -> np.ndarray:
         image_shape = params["shape"][:2]
@@ -1380,7 +1380,7 @@ class RandomGridShuffle(DualTransform):
         self,
         keypoints: np.ndarray,
         tiles: np.ndarray,
-        mapping: np.ndarray,
+        mapping: list[int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.swap_tiles_on_keypoints(keypoints, tiles, mapping)
@@ -1401,7 +1401,7 @@ class RandomGridShuffle(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray | list[int]]:
         image_shape = params["shape"][:2]
 
         original_tiles = fgeometric.split_uniform_grid(
@@ -1517,7 +1517,7 @@ class Morphological(DualTransform):
     def apply(
         self,
         img: ImageType,
-        kernel: tuple[int, int],
+        kernel: np.ndarray,
         **params: Any,
     ) -> ImageType:
         return fgeometric.morphology(img, kernel, self.operation)
@@ -1525,7 +1525,7 @@ class Morphological(DualTransform):
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,
-        kernel: tuple[int, int],
+        kernel: np.ndarray,
         **params: Any,
     ) -> np.ndarray:
         image_shape = params["shape"]
@@ -1549,7 +1549,7 @@ class Morphological(DualTransform):
     ) -> np.ndarray:
         return keypoints
 
-    def get_params(self) -> dict[str, float]:
+    def get_params(self) -> dict[str, np.ndarray]:
         return {
             "kernel": cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.scale),
         }

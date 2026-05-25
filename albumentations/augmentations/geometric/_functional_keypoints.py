@@ -928,7 +928,7 @@ def flip_keypoints(
 def swap_tiles_on_keypoints(
     keypoints: np.ndarray,
     tiles: np.ndarray,
-    mapping: np.ndarray,
+    mapping: list[int],
 ) -> np.ndarray:
     """Reposition keypoints by tile swap mapping. tiles (M, 4), mapping (M,).
     Keypoints in tile i move to tile mapping[i]. For GridShuffle.
@@ -941,8 +941,8 @@ def swap_tiles_on_keypoints(
                                 Each row represents a keypoint's (x, y) coordinates.
         tiles (np.ndarray): A 2D numpy array of shape (M, 4) where M is the number of tiles.
                             Each row represents a tile's (start_y, start_x, end_y, end_x) coordinates.
-        mapping (np.ndarray): A 1D numpy array of shape (M,) where M is the number of tiles.
-                              Each element i contains the index of the tile that tile i should be swapped with.
+        mapping (list[int]): A list where each element i contains the index of the tile that tile i should be swapped
+            with.
 
     Returns:
         np.ndarray: A 2D numpy array of the same shape as the input keypoints, containing the new positions

@@ -277,7 +277,7 @@ def perspective(
     matrix: np.ndarray,
     max_width: int,
     max_height: int,
-    border_val: float | list[float] | np.ndarray,
+    border_val: float | tuple[float, ...] | np.ndarray | None,
     border_mode: int,
     keep_size: bool,
     interpolation: int,
@@ -293,7 +293,7 @@ def perspective(
         matrix (np.ndarray): 3x3 perspective transformation matrix.
         max_width (int): Maximum width of the output image if keep_size is False.
         max_height (int): Maximum height of the output image if keep_size is False.
-        border_val (float | list[float] | np.ndarray): Border value(s) to fill areas outside the transformed image.
+        border_val (float | tuple[float, ...] | np.ndarray | None): Border value(s) for transformed borders.
         border_mode (int): OpenCV border mode (e.g., cv2.BORDER_CONSTANT, cv2.BORDER_REFLECT).
         keep_size (bool): If True, maintain the original image dimensions.
         interpolation (int): Interpolation method for resampling (cv2 interpolation flag).
@@ -319,7 +319,7 @@ def perspective_images(
     matrix: np.ndarray,
     max_width: int,
     max_height: int,
-    border_val: float | list[float] | np.ndarray,
+    border_val: float | tuple[float, ...] | np.ndarray | None,
     border_mode: int,
     keep_size: bool,
     interpolation: int,
@@ -332,7 +332,7 @@ def perspective_images(
         matrix (np.ndarray): 3x3 perspective transformation matrix.
         max_width (int): Maximum width of the output image if keep_size is False.
         max_height (int): Maximum height of the output image if keep_size is False.
-        border_val (float | list[float] | np.ndarray): Border value(s) to fill areas outside the transformed image.
+        border_val (float | tuple[float, ...] | np.ndarray | None): Border value(s) for transformed borders.
         border_mode (int): OpenCV border mode (e.g., cv2.BORDER_CONSTANT).
         keep_size (bool): If True, maintain the original image dimensions.
         interpolation (int): Interpolation method for resampling (cv2 interpolation flag).
@@ -360,7 +360,7 @@ def perspective_images(
         flat = images if images.ndim == 3 else images[:, :, :, 0]  # (N,H,W)
         if height * width <= _stack_px:
             stacked = np.ascontiguousarray(flat.transpose(1, 2, 0))  # (H,W,N)
-            border_scalar = border_val[0] if isinstance(border_val, (list, np.ndarray)) else border_val
+            border_scalar = border_val[0] if isinstance(border_val, (tuple, np.ndarray)) else border_val
             warped = warp_perspective(
                 stacked,
                 adjusted_matrix,

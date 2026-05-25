@@ -205,7 +205,7 @@ class Erasing(BaseDropout):
         ratio (tuple[float, float]): Range for the aspect ratio (width/height) of the erased region.
             The actual ratio will be randomly sampled from (ratio[0], ratio[1]).
             Default: (0.3, 3.3)
-        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | str):
             Value used to fill the erased regions. Can be:
             - int or float: fills all channels with this value
             - tuple: fills each channel with corresponding value
@@ -213,6 +213,7 @@ class Erasing(BaseDropout):
             - "random_uniform": fills entire erased region with a single random color
             - "inpaint_telea": uses OpenCV Telea inpainting method
             - "inpaint_ns": uses OpenCV Navier-Stokes inpainting method
+            - "grayscale": converts erased regions to grayscale while preserving structure
             Default: 0
         fill_mask (tuple[float, float] | float | None): Value used to fill erased regions in the mask.
             If None, mask regions are not modified. Default: None
@@ -228,11 +229,11 @@ class Erasing(BaseDropout):
         hbb
 
     Note:
-        - The transform attempts to find valid erasing parameters up to 10 times.
-          If unsuccessful, no erasing is performed.
-        - The actual erased area and aspect ratio are randomly sampled within
-          the specified ranges for each application.
+        - If sampled parameters are invalid for the current image geometry, no erasing is performed.
+        - The actual erased area and aspect ratio are randomly sampled within the specified ranges for each
+          application.
         - When using inpainting methods, only grayscale or RGB images are supported.
+        - When using `fill="grayscale"`, `fill_mask` must be None.
 
     Examples:
         >>> import numpy as np
@@ -245,7 +246,7 @@ class Erasing(BaseDropout):
         >>> transform = A.Erasing(
         ...     scale=(0.1, 0.4),
         ...     ratio=(0.5, 2.0),
-        ...     fill_value="random_uniform",
+        ...     fill="random_uniform",
         ...     p=1.0
         ... )
         >>> transformed = transform(image=image)
@@ -273,7 +274,9 @@ class Erasing(BaseDropout):
         self,
         scale: tuple[float, float] = (0.02, 0.33),
         ratio: tuple[float, float] = (0.3, 3.3),
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"] = 0,
+        fill: tuple[float, ...]
+        | float
+        | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"] = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):
@@ -325,25 +328,27 @@ class Erasing(BaseDropout):
         max_valid_area = min(max_area, max_area_h, max_area_w)
 
         if max_valid_area < min_area:
-            return {"holes": np.array([], dtype=np.int32).reshape((0, 4))}
+            return {
+                "holes": np.empty((0, 4), dtype=np.int32),
+                "seed": self.random_generator.integers(0, 2**32 - 1),
+            }
 
-        # Sample valid area and aspect ratio
         erase_area = self.py_random.uniform(min_area, max_valid_area)
 
-        # Calculate valid aspect ratio range for this area
         max_r = min(r_max, width * width / erase_area)
         min_r = max(r_min, erase_area / (height * height))
 
         if min_r > max_r:
-            return {"holes": np.array([], dtype=np.int32).reshape((0, 4))}
+            return {
+                "holes": np.empty((0, 4), dtype=np.int32),
+                "seed": self.random_generator.integers(0, 2**32 - 1),
+            }
 
         aspect_ratio = self.py_random.uniform(min_r, max_r)
 
-        # Calculate dimensions
         h = round(np.sqrt(erase_area / aspect_ratio))
         w = round(np.sqrt(erase_area * aspect_ratio))
 
-        # Sample position
         top = self.py_random.randint(0, height - h)
         left = self.py_random.randint(0, width - w)
 
@@ -353,7 +358,6 @@ class Erasing(BaseDropout):
             "scale": erase_area / total_area,
             "ratio": aspect_ratio,
         }
-
         return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}
 
 

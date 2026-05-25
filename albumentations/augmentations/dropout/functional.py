@@ -21,13 +21,19 @@ from albucore import (
 )
 
 from albumentations.augmentations.geometric.functional import split_uniform_grid
+from albumentations.augmentations.pixel.functional import grayscale_to_multichannel, to_gray_average
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import ImageType
+
+FillValueLiteral = Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
 
 __all__ = [
     "calculate_grid_dimensions",
     "channel_dropout",
     "cutout",
+    "fill_holes_with_grayscale",
+    "fill_volume_holes_with_grayscale",
+    "fill_volumes_holes_with_grayscale",
     "filter_bboxes_by_holes",
     "filter_keypoints_in_holes",
     "generate_grid_holes",
@@ -158,6 +164,98 @@ def fill_holes_with_value(img: ImageType, holes: np.ndarray, fill: np.ndarray) -
     return img
 
 
+def fill_holes_with_grayscale(img: ImageType, holes: np.ndarray) -> ImageType:
+    """Convert selected rectangular holes to grayscale while preserving the input array shape,
+    dtype, and channel layout expected by dropout transforms.
+
+    Args:
+        img (ImageType): Input image.
+        holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates.
+
+    Returns:
+        ImageType: Image with grayscale-converted holes.
+
+    """
+    num_channels = get_num_channels(img)
+
+    if holes.size == 0:
+        return img
+
+    if num_channels == 1:
+        return img
+
+    for x_min, y_min, x_max, y_max in holes:
+        patch = img[y_min:y_max, x_min:x_max]
+        img[y_min:y_max, x_min:x_max] = grayscale_to_multichannel(to_gray_average(patch), num_channels)
+
+    return img
+
+
+def fill_volume_holes_with_grayscale(volume: ImageType, holes: np.ndarray) -> ImageType:
+    """Convert shared rectangular holes to grayscale across a single volume while preserving
+    volume shape, dtype, and channel layout.
+
+    Args:
+        volume (ImageType): Volume with shape (D, H, W, C) or (D, H, W).
+        holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates.
+
+    Returns:
+        ImageType: Volume with grayscale-converted holes.
+
+    """
+    if volume.ndim == 3 or holes.size == 0:
+        return volume
+
+    num_channels = volume.shape[3]
+    if num_channels == 1:
+        return volume
+
+    for x_min, y_min, x_max, y_max in holes:
+        patch_batch = volume[:, y_min:y_max, x_min:x_max]
+        volume[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
+            to_gray_average(patch_batch),
+            num_channels,
+        )
+    return volume
+
+
+def fill_volumes_holes_with_grayscale(volumes: ImageType, holes: np.ndarray) -> ImageType:
+    """Convert shared rectangular holes to grayscale across an image batch while preserving
+    batch shape, per-image dtype, and channel layout used by Compose.
+
+    All images share the same holes, so each hole's patch is processed as a single
+    4-D slice rather than image-by-image, avoiding repeated Python-loop overhead.
+
+    Args:
+        volumes (ImageType): Batch of volumes with shape (N, D, H, W, C) or
+            batch of images with shape (N, H, W, C).
+        holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates.
+
+    Returns:
+        ImageType: Batch with grayscale-converted holes.
+
+    """
+    num_channels = get_num_channels(volumes)
+    if holes.size == 0:
+        return volumes
+
+    if num_channels == 1:
+        return volumes
+
+    if volumes.ndim == 5:
+        flattened = volumes.reshape(-1, *volumes.shape[2:])
+        result = fill_volumes_holes_with_grayscale(flattened, holes)
+        return result.reshape(volumes.shape)
+
+    for x_min, y_min, x_max, y_max in holes:
+        patch_batch = volumes[:, y_min:y_max, x_min:x_max]
+        volumes[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
+            to_gray_average(patch_batch),
+            num_channels,
+        )
+    return volumes
+
+
 def fill_volume_holes_with_value(volume: ImageType, holes: np.ndarray, fill: np.ndarray) -> ImageType:
     """Fill rectangular holes in a volume (D,H,W,C) with constant value. holes: [x1,y1,x2,y2]; fill
     broadcast. Used by cutout_on_volume for numeric fill.
@@ -274,22 +372,23 @@ def fill_volumes_holes_with_random(
 def cutout(
     img: ImageType,
     holes: np.ndarray,
-    fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
+    fill: float | tuple[float, ...] | FillValueLiteral,
     random_generator: np.random.Generator,
 ) -> ImageType:
     """Apply cutout: cut rectangular holes and fill. holes: [x1,y1,x2,y2]; fill: constant, 'random',
-    'random_uniform', or inpaint_telea/inpaint_ns.
+    'random_uniform', inpaint_telea/inpaint_ns, or grayscale.
 
     Args:
         img (ImageType): The image to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | FillValueLiteral):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
             - "random": Different random values for each pixel
             - "random_uniform": Same random value for entire hole
             - "inpaint_telea"/"inpaint_ns": OpenCV inpainting methods
+            - "grayscale": Convert holes to grayscale while preserving image shape and dtype
         random_generator (np.random.Generator): Random number generator for random fills
 
     Raises:
@@ -306,6 +405,8 @@ def cutout(
             return fill_holes_with_random(img, holes, random_generator, uniform=False)
         if fill == "random_uniform":
             return fill_holes_with_random(img, holes, random_generator, uniform=True)
+        if fill == "grayscale":
+            return fill_holes_with_grayscale(img, holes)
         raise ValueError(f"Unsupported string fill: {fill}")
 
     # Convert numeric fill values to numpy array
@@ -329,22 +430,23 @@ def cutout(
 def cutout_on_volume(
     volume: ImageType,
     holes: np.ndarray,
-    fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
+    fill: float | tuple[float, ...] | FillValueLiteral,
     random_generator: np.random.Generator,
 ) -> ImageType:
     """Apply cutout to volume (D,H,W,C): cut holes and fill. fill: constant, 'random', 'random_uniform',
-    or inpaint. holes: [x1,y1,x2,y2].
+    inpaint, or grayscale. holes: [x1,y1,x2,y2].
 
     Args:
         volume (ImageType): The volume to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | FillValueLiteral):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
             - "random": Different random values for each pixel
             - "random_uniform": Same random value for entire hole, different values across images
             - "inpaint_telea"/"inpaint_ns": OpenCV inpainting methods
+            - "grayscale": Convert holes to grayscale while preserving image shape and dtype
         random_generator (np.random.Generator): Random number generator for random fills
 
     Raises:
@@ -366,6 +468,8 @@ def cutout_on_volume(
             return fill_volume_holes_with_random(volume, holes, random_generator, uniform=False)
         if fill == "random_uniform":
             return fill_volume_holes_with_random(volume, holes, random_generator, uniform=True)
+        if fill == "grayscale":
+            return fill_volume_holes_with_grayscale(volume, holes)
         raise ValueError(f"Unsupported string fill: {fill}")
 
     # Convert numeric fill values to numpy array
@@ -391,22 +495,23 @@ def cutout_on_volume(
 def cutout_on_volumes(
     volumes: np.ndarray,
     holes: np.ndarray,
-    fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
+    fill: float | tuple[float, ...] | FillValueLiteral,
     random_generator: np.random.Generator,
 ) -> np.ndarray:
     """Apply cutout to batch of volumes (N,D,H,W,C): cut holes and fill. fill: constant, 'random',
-    'random_uniform', or inpaint. holes: [x1,y1,x2,y2].
+    'random_uniform', inpaint, or grayscale. holes: [x1,y1,x2,y2].
 
     Args:
         volumes (np.ndarray): The image to augment
         holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | FillValueLiteral):
             Value to fill holes with. Can be:
             - number (int/float): Will be broadcast to all channels
             - sequence (tuple/list/ndarray): Must match number of channels
             - "random": Different random values for each pixel
             - "random_uniform": Same random value for entire hole, different values across images
             - "inpaint_telea"/"inpaint_ns": OpenCV inpainting methods
+            - "grayscale": Convert holes to grayscale while preserving image shape and dtype
         random_generator (np.random.Generator): Random number generator for random fills
 
     Raises:
@@ -430,6 +535,8 @@ def cutout_on_volumes(
             return fill_volumes_holes_with_random(volumes, holes, random_generator, uniform=False)
         if fill == "random_uniform":
             return fill_volumes_holes_with_random(volumes, holes, random_generator, uniform=True)
+        if fill == "grayscale":
+            return fill_volumes_holes_with_grayscale(volumes, holes)
         raise ValueError(f"Unsupported string fill: {fill}")
 
     # Convert numeric fill values to numpy array

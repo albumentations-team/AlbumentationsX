@@ -9,7 +9,6 @@ in images, which can help models become more robust to occlusions and missing in
 from typing import Any, Literal, cast
 
 import numpy as np
-from albucore import get_num_channels
 from pydantic import Field
 
 from albumentations.augmentations.dropout import functional as fdropout
@@ -37,7 +36,7 @@ class BaseDropout(DualTransform):
     including applying cutouts to images and masks.
 
     Args:
-        fill (tuple[float, ...] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | str):
             Value to fill dropped regions.
         fill_mask (tuple[float, ...] | float | None): Value to fill
             dropped regions in the mask. If None, the mask is not modified.
@@ -112,35 +111,44 @@ class BaseDropout(DualTransform):
     _targets: tuple[Targets, ...] | Targets = ALL_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]
+        fill: (
+            tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
+        )
         fill_mask: tuple[float, ...] | float | None
 
     def __init__(
         self,
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"],
+        fill: tuple[float, ...]
+        | float
+        | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"],
         fill_mask: tuple[float, ...] | float | None,
         p: float,
     ):
         super().__init__(p=p)
+        if fill == "grayscale" and fill_mask is not None:
+            raise ValueError("fill_mask must be None when fill='grayscale'")
         self.fill = fill  # type: ignore[assignment]
         self.fill_mask = fill_mask
+
+    def _validate_fill_channel_count(self, data: ImageType | VolumeType, channel_ndims: set[int]) -> None:
+        num_channels = data.shape[-1] if data.ndim in channel_ndims else 1
+
+        if self.fill in {"inpaint_telea", "inpaint_ns"} and num_channels not in {1, 3}:
+            raise ValueError("Inpainting works only for 1 or 3 channel images")
+
+        if self.fill == "grayscale" and num_channels not in {1, 3}:
+            raise ValueError("Grayscale fill works only for 1 or 3 channel images")
 
     def apply(self, img: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:
             return img
-        if self.fill in {"inpaint_telea", "inpaint_ns"}:
-            num_channels = get_num_channels(img)
-            if num_channels not in {1, 3}:
-                raise ValueError("Inpainting works only for 1 or 3 channel images")
+        self._validate_fill_channel_count(img, {2, 3})
         return cutout(img, holes, self.fill, np.random.default_rng(seed))
 
     def apply_to_images(self, images: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:
             return images
-        if self.fill in {"inpaint_telea", "inpaint_ns"}:
-            num_channels = images.shape[3] if images.ndim == 4 else 1
-            if num_channels not in {1, 3}:
-                raise ValueError("Inpainting works only for 1 or 3 channel images")
+        self._validate_fill_channel_count(images, {4})
         # Images (N, H, W, C) have the same structure as volumes (D, H, W, C)
         return cutout_on_volume(images, holes, self.fill, np.random.default_rng(seed))
 
@@ -152,10 +160,7 @@ class BaseDropout(DualTransform):
     def apply_to_volumes(self, volumes: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
         if holes.size == 0:
             return volumes
-        if self.fill in {"inpaint_telea", "inpaint_ns"}:
-            num_channels = volumes.shape[4] if volumes.ndim == 5 else 1
-            if num_channels not in {1, 3}:
-                raise ValueError("Inpainting works only for 1 or 3 channel images")
+        self._validate_fill_channel_count(volumes, {5})
         return cutout_on_volumes(volumes, holes, self.fill, np.random.default_rng(seed))
 
     def apply_to_mask3d(self, mask: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:

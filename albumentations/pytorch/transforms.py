@@ -25,7 +25,22 @@ from albumentations.core.type_definitions import (
 __all__ = ["ToTensor3D", "ToTensorV2"]
 
 
-class ToTensorV2(BasicTransform):
+class _TensorTransform(BasicTransform):
+    """Bridge for tensor-producing terminal transforms that keep public methods typed as torch.Tensor while isolating
+    the core array-return contract.
+    """
+
+    def apply(self, img: ImageType, *args: Any, **params: Any) -> Any:
+        raise NotImplementedError
+
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> Any:
+        raise NotImplementedError
+
+    def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> Any:
+        raise NotImplementedError
+
+
+class ToTensorV2(_TensorTransform):
     """Converts images/masks to PyTorch Tensors, inheriting from BasicTransform.
     For images:
         Converts `HWC` format to PyTorch `CHW` format
@@ -62,15 +77,16 @@ class ToTensorV2(BasicTransform):
             "masks": self.apply_to_masks,
         }
 
-    def apply(self, img: ImageType, **params: Any) -> torch.Tensor:
+    def apply(self, img: ImageType, *args: Any, **params: Any) -> torch.Tensor:
         if img.ndim not in {MONO_CHANNEL_DIMENSIONS, NUM_MULTI_CHANNEL_DIMENSIONS}:
             msg = "Albumentations only supports images in HW or HWC format"
             raise ValueError(msg)
 
+        image = img
         if img.ndim == MONO_CHANNEL_DIMENSIONS:
-            img = np.expand_dims(img, 2)
+            image = np.expand_dims(img, 2)
 
-        return torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1)))
+        return torch.from_numpy(np.ascontiguousarray(image.transpose(2, 0, 1)))
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> torch.Tensor:
         if self.transpose_mask and mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
@@ -83,11 +99,11 @@ class ToTensorV2(BasicTransform):
             arr = np.transpose(arr, (0, 3, 1, 2))  # -> (N, C, H, W)
         return torch.from_numpy(np.ascontiguousarray(arr))
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> torch.Tensor:
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> torch.Tensor:
         return torch.from_numpy(np.ascontiguousarray(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
 
 
-class ToTensor3D(BasicTransform):
+class ToTensor3D(_TensorTransform):
     """Convert 3D volumes and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
     For 3D medical imaging pipelines; p=1.0 by default.
 
@@ -131,7 +147,7 @@ class ToTensor3D(BasicTransform):
             "mask3d": self.apply_to_mask3d,
         }
 
-    def apply_to_volume(self, volume: VolumeType, **params: Any) -> torch.Tensor:
+    def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> torch.Tensor:
         if volume.ndim == NUM_VOLUME_DIMENSIONS:  # D,H,W,C
             return torch.from_numpy(np.ascontiguousarray(volume.transpose(3, 0, 1, 2)))
         if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:  # D,H,W

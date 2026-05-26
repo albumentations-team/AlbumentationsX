@@ -760,7 +760,7 @@ class BaseCompose(Serializable):
             BaseCompose | types.NotImplementedType: New compose instance with transform removed, or NotImplemented.
 
         Raises:
-            ArithmeticError: If no transform of that type is found in the compose
+            ValueError: If no transform of that type is found in the compose
 
         Note:
             If multiple transforms of the same type exist in the compose,
@@ -789,7 +789,7 @@ class BaseCompose(Serializable):
 
         # No matching transform found
         class_name = other.__name__
-        raise ArithmeticError(f"No transform of type {class_name} found in the compose pipeline")
+        raise ValueError(f"No transform of type {class_name} found in the compose pipeline")
 
     def _create_new_instance(self, new_transforms: TransformsSeqType) -> "BaseCompose":
         """Create new instance of same class with new transforms. Copies init params

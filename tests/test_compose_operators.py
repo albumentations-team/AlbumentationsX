@@ -319,11 +319,11 @@ def test_compose_subtract_by_class(sample_image, sample_mask):
 
 
 def test_compose_subtract_nonexistent_transform_raises_error():
-    """Test that subtracting a non-existent transform class raises ArithmeticError."""
+    """Test that subtracting a non-existent transform class raises ValueError."""
     compose = A.Compose([A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0)], p=1.0)
 
     # Test removing by class not in compose
-    with pytest.raises(ArithmeticError, match="No transform of type Blur found in the compose pipeline"):
+    with pytest.raises(ValueError, match="No transform of type Blur found in the compose pipeline"):
         compose - A.Blur
 
 

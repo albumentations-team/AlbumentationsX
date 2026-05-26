@@ -161,7 +161,7 @@ repos:
     hooks:
       - id: pyrefly
         name: Pyrefly type check
-        entry: uv run pyrefly check --output-format=github --error unnecessary-type-conversion --error implicit-import --error redundant-cast
+        entry: pyrefly check --output-format=github --error unnecessary-type-conversion --error implicit-import --error redundant-cast
         language: system
         pass_filenames: false
   - repo: https://github.com/ternaus/google-docstring-parser

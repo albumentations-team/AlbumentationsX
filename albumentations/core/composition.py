@@ -1296,9 +1296,6 @@ class Compose(BaseCompose, HubMixin):
         """Check and update random seed in worker context. Recalculates effective seed and
         propagates to all transforms for reproducibility.
         """
-        if not hasattr(self, "_base_seed") or self._base_seed is None:
-            return
-
         # Check if we're in a worker and need to update the seed
         try:
             import torch
@@ -1310,12 +1307,16 @@ class Compose(BaseCompose, HubMixin):
                 current_torch_seed = torch.initial_seed()
 
                 # Check if we've already synchronized for this seed
-                if hasattr(self, "_last_torch_seed") and self._last_torch_seed == current_torch_seed:
+                if self._last_torch_seed == current_torch_seed:
                     return
 
                 # Update the seed and mark as synchronized
                 self._last_torch_seed = current_torch_seed
-                effective_seed = self._get_effective_seed(self._base_seed)
+                if self._base_seed is not None:
+                    effective_seed = self._get_effective_seed(self._base_seed)
+                else:
+                    # No explicit seed: follow the worker seed so new epochs stay random.
+                    effective_seed = current_torch_seed % (2**32)
 
                 # Update our own random state
                 self.random_generator = np.random.default_rng(effective_seed)

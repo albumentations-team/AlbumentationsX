@@ -55,6 +55,7 @@ __all__ = [
 ]
 
 NUM_ONEOF_TRANSFORMS = 2
+_UINT32_MODULUS = 1 << 32
 
 _RANGE_PARAMS_CACHE: dict[type, frozenset[str]] = {}
 
@@ -862,8 +863,8 @@ class BaseCompose(Serializable):
             if worker_info is not None:
                 # We're in a DataLoader worker process
                 # Use torch.initial_seed() which is unique per worker and changes on respawn
-                torch_seed = torch.initial_seed() % (2**32)
-                return (base_seed + torch_seed) % (2**32)
+                torch_seed = torch.initial_seed() % _UINT32_MODULUS
+                return (base_seed + torch_seed) % _UINT32_MODULUS
         except (ImportError, AttributeError):
             # PyTorch not available or not in worker context
             pass
@@ -1316,7 +1317,7 @@ class Compose(BaseCompose, HubMixin):
                     effective_seed = self._get_effective_seed(self._base_seed)
                 else:
                     # No explicit seed: follow the worker seed so new epochs stay random.
-                    effective_seed = current_torch_seed % (2**32)
+                    effective_seed = current_torch_seed % _UINT32_MODULUS
 
                 # Update our own random state
                 self.random_generator = np.random.default_rng(effective_seed)

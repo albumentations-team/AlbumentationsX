@@ -28,6 +28,7 @@ from .analytics.telemetry import get_telemetry_client
 from .bbox_utils import BboxParams, BboxProcessor
 from .hub_mixin import HubMixin
 from .keypoints_utils import KeypointParams, KeypointsProcessor
+from .random_utils import _derive_effective_seed, _get_runtime_rng_context, _RuntimeRngContext
 from .serialization import (
     SERIALIZABLE_REGISTRY,
     Serializable,
@@ -55,7 +56,6 @@ __all__ = [
 ]
 
 NUM_ONEOF_TRANSFORMS = 2
-_UINT32_MODULUS = 1 << 32
 
 _RANGE_PARAMS_CACHE: dict[type, frozenset[str]] = {}
 
@@ -270,6 +270,9 @@ class BaseCompose(Serializable):
         self.processors: dict[str, BboxProcessor | KeypointsProcessor] = {}
         self._set_keys()
         self.set_mask_interpolation(mask_interpolation)
+        self._base_seed: int | None = None
+        self._manual_random_state = False
+        self._rng_context: _RuntimeRngContext | None = None
         self.set_random_seed(seed)
         self.save_applied_params = save_applied_params
 
@@ -286,6 +289,9 @@ class BaseCompose(Serializable):
         self,
         random_generator: np.random.Generator,
         py_random: random.Random,
+        *,
+        runtime_context: _RuntimeRngContext | None = None,
+        manual: bool = True,
     ) -> None:
         """Set random state directly from numpy and Python random generators. Propagates to all
         child transforms. Used for reproducibility.
@@ -293,15 +299,43 @@ class BaseCompose(Serializable):
         Args:
             random_generator (np.random.Generator): numpy random generator to use
             py_random (random.Random): python random generator to use
+            runtime_context (_RuntimeRngContext | None): DataLoader worker context for internal propagation.
+                User calls should leave this as None.
+            manual (bool): Whether this state came from explicit user control. Internal callers
+                set False so automatic worker synchronization can still refresh copied RNG state.
 
+        """
+        self._set_random_state(
+            random_generator,
+            py_random,
+            runtime_context=runtime_context,
+            manual=manual,
+        )
+
+    def _set_random_state(
+        self,
+        random_generator: np.random.Generator,
+        py_random: random.Random,
+        *,
+        runtime_context: _RuntimeRngContext | None,
+        manual: bool,
+    ) -> None:
+        """Set RNG objects and propagate the same runtime context to children so nested pipelines
+        share the parent RNG stream instead of reseeding independently.
         """
         self.random_generator = random_generator
         self.py_random = py_random
+        self._rng_context = runtime_context
+        self._manual_random_state = manual
 
-        # Propagate both random states to all transforms
         for transform in self.transforms:
             if isinstance(transform, (BasicTransform, BaseCompose)):
-                transform.set_random_state(random_generator, py_random)
+                transform.set_random_state(
+                    random_generator,
+                    py_random,
+                    runtime_context=runtime_context,
+                    manual=manual,
+                )
 
     def set_random_seed(self, seed: int | None) -> None:
         """Set random state from a single integer seed. Propagates to all child transforms.
@@ -311,17 +345,34 @@ class BaseCompose(Serializable):
             seed (int | None): Random seed to use
 
         """
-        # Store the original seed
         self.seed = seed
+        self._base_seed = seed
+        runtime_context = _get_runtime_rng_context(seed)
+        effective_seed = runtime_context.effective_seed if runtime_context else seed
+        self._set_random_state(
+            np.random.default_rng(effective_seed),
+            random.Random(effective_seed),
+            runtime_context=runtime_context,
+            manual=False,
+        )
 
-        # Use base seed directly (subclasses like Compose can override this)
-        self.random_generator = np.random.default_rng(seed)
-        self.py_random = random.Random(seed)
+    def _sync_runtime_random_state(self) -> None:
+        """Refresh copied RNG state inside PyTorch DataLoader workers unless the user explicitly
+        installed exact RNG objects through set_random_state.
+        """
+        if self._manual_random_state:
+            return
 
-        # Propagate seed to all transforms
-        for transform in self.transforms:
-            if isinstance(transform, (BasicTransform, BaseCompose)):
-                transform.set_random_seed(seed)
+        runtime_context = _get_runtime_rng_context(self._base_seed)
+        if runtime_context is None or runtime_context == self._rng_context:
+            return
+
+        self._set_random_state(
+            np.random.default_rng(runtime_context.effective_seed),
+            random.Random(runtime_context.effective_seed),
+            runtime_context=runtime_context,
+            manual=False,
+        )
 
     def set_mask_interpolation(self, mask_interpolation: int | None) -> None:
         """Set interpolation mode for mask resizing operations. Propagates recursively to all
@@ -820,7 +871,12 @@ class BaseCompose(Serializable):
 
         # Copy random state from original instance to new instance
         if hasattr(self, "random_generator") and hasattr(self, "py_random"):
-            new_instance.set_random_state(self.random_generator, self.py_random)
+            new_instance.set_random_state(
+                self.random_generator,
+                self.py_random,
+                runtime_context=self._rng_context,
+                manual=self._manual_random_state,
+            )
 
         return new_instance
 
@@ -841,6 +897,17 @@ class BaseCompose(Serializable):
             "p": self.p,
         }
 
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore pickled compose objects and clear runtime worker context so the first worker
+        call can resynchronize against the active DataLoader seed.
+        """
+        self.__dict__.update(state)
+        if not hasattr(self, "_base_seed"):
+            self._base_seed = getattr(self, "seed", None)
+        if not hasattr(self, "_manual_random_state"):
+            self._manual_random_state = False
+        self._rng_context = None
+
     def _get_effective_seed(self, base_seed: int | None) -> int | None:
         """Get effective seed considering worker context. In PyTorch DataLoader workers,
         combines base_seed with torch.initial_seed() for per-worker reproducibility.
@@ -852,24 +919,10 @@ class BaseCompose(Serializable):
             int | None: Effective seed after considering worker context
 
         """
-        if base_seed is None:
-            return base_seed
-
-        try:
-            import torch
-            import torch.utils.data
-
-            worker_info = torch.utils.data.get_worker_info()
-            if worker_info is not None:
-                # We're in a DataLoader worker process
-                # Use torch.initial_seed() which is unique per worker and changes on respawn
-                torch_seed = torch.initial_seed() % _UINT32_MODULUS
-                return (base_seed + torch_seed) % _UINT32_MODULUS
-        except (ImportError, AttributeError):
-            # PyTorch not available or not in worker context
-            pass
-
-        return base_seed
+        runtime_context = _get_runtime_rng_context(base_seed)
+        if runtime_context is None:
+            return _derive_effective_seed(base_seed, None)
+        return runtime_context.effective_seed
 
 
 class Compose(BaseCompose, HubMixin):
@@ -990,12 +1043,11 @@ class Compose(BaseCompose, HubMixin):
         # warning and falls back to legacy permissive behavior — kept for one minor version
         # so users with custom transforms that drop mask rows can opt out while migrating.
         self._strict_instance_invariant = strict_instance_invariant
-        self._base_seed = seed
         super().__init__(
             transforms=transforms,
             p=p,
             mask_interpolation=mask_interpolation,
-            seed=self._get_effective_seed(seed),
+            seed=seed,
             save_applied_params=save_applied_params,
         )
 
@@ -1025,7 +1077,6 @@ class Compose(BaseCompose, HubMixin):
         self.save_applied_params = save_applied_params
         self._images_was_list = False
         self._masks_was_list = False
-        self._last_torch_seed: int | None = None
 
         # Telemetry runs after nested composes so main_compose=False is already set on them.
         self._maybe_send_telemetry(telemetry)
@@ -1222,8 +1273,7 @@ class Compose(BaseCompose, HubMixin):
             KeyError: If positional arguments are provided.
 
         """
-        # Check and sync worker seed if needed
-        self._check_worker_seed()
+        self._sync_runtime_random_state()
 
         if args:
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
@@ -1294,88 +1344,10 @@ class Compose(BaseCompose, HubMixin):
         return Compose(transforms, p=1.0)
 
     def _check_worker_seed(self) -> None:
-        """Check and update random seed in worker context. Recalculates effective seed and
-        propagates to all transforms for reproducibility.
+        """Backward-compatible alias for runtime worker RNG synchronization kept for private
+        callers that still reach the old worker-seed method name.
         """
-        # Check if we're in a worker and need to update the seed
-        try:
-            import torch
-            import torch.utils.data
-
-            worker_info = torch.utils.data.get_worker_info()
-            if worker_info is not None:
-                # Get the current torch initial seed
-                current_torch_seed = torch.initial_seed()
-
-                # Check if we've already synchronized for this seed
-                if self._last_torch_seed == current_torch_seed:
-                    return
-
-                # Update the seed and mark as synchronized
-                self._last_torch_seed = current_torch_seed
-                if self._base_seed is not None:
-                    effective_seed = self._get_effective_seed(self._base_seed)
-                else:
-                    # No explicit seed: follow the worker seed so new epochs stay random.
-                    effective_seed = current_torch_seed % _UINT32_MODULUS
-
-                # Update our own random state
-                self.random_generator = np.random.default_rng(effective_seed)
-                self.py_random = random.Random(effective_seed)
-
-                # Propagate to all transforms
-                for transform in self.transforms:
-                    if hasattr(transform, "set_random_state"):
-                        transform.set_random_state(self.random_generator, self.py_random)
-                    elif hasattr(transform, "set_random_seed"):
-                        # For transforms that don't have set_random_state, use set_random_seed
-                        transform.set_random_seed(effective_seed)
-        except (ImportError, AttributeError):
-            pass
-
-    def __setstate__(self, state: dict[str, Any]) -> None:
-        """Set state from unpickling and handle worker seed. Resets _last_torch_seed and
-        recalculates effective seed so worker sync runs again after unpickling.
-        """
-        self.__dict__.update(state)
-        # If we have a base seed, recalculate effective seed in worker context
-        if hasattr(self, "_base_seed") and self._base_seed is not None:
-            # Reset _last_torch_seed to ensure worker-seed sync runs after unpickling
-            self._last_torch_seed = None
-            # Recalculate effective seed in worker context
-            self.set_random_seed(self._base_seed)
-        elif hasattr(self, "seed") and self.seed is not None:
-            # For backward compatibility, if no base seed but seed exists
-            self._base_seed = self.seed
-            self._last_torch_seed = None
-            self.set_random_seed(self.seed)
-
-    def set_random_seed(self, seed: int | None) -> None:
-        """Override for worker-aware seed. Stores _base_seed, computes effective seed via
-        _get_effective_seed and propagates to all transforms.
-
-        Args:
-            seed (int | None): Random seed to use
-
-        """
-        # Store the original base seed
-        self._base_seed = seed
-        self.seed = seed
-
-        # Get effective seed considering worker context
-        effective_seed = self._get_effective_seed(seed)
-
-        # Initialize random generators with effective seed
-        self.random_generator = np.random.default_rng(effective_seed)
-        self.py_random = random.Random(effective_seed)
-
-        # Propagate to all transforms
-        for transform in self.transforms:
-            if hasattr(transform, "set_random_state"):
-                transform.set_random_state(self.random_generator, self.py_random)
-            elif hasattr(transform, "set_random_seed"):
-                # For transforms that don't have set_random_state, use set_random_seed
-                transform.set_random_seed(effective_seed)
+        self._sync_runtime_random_state()
 
     def preprocess(self, data: Any) -> None:
         """Preprocess input data before applying transforms. Validates shapes (if
@@ -2374,6 +2346,8 @@ class OneOf(BaseCompose):
             KeyError: If positional arguments are provided.
 
         """
+        self._sync_runtime_random_state()
+
         if self.replay_mode:
             for t in self.transforms:
                 data = t(**data)
@@ -2469,6 +2443,8 @@ class SomeOf(BaseCompose):
             dict[str, Any]: Dictionary with transformed data.
 
         """
+        self._sync_runtime_random_state()
+
         if self.replay_mode:
             for t in self.transforms:
                 data = t(**data)
@@ -2592,6 +2568,8 @@ class OneOrOther(BaseCompose):
             dict[str, Any]: Dictionary with transformed data.
 
         """
+        self._sync_runtime_random_state()
+
         if self.replay_mode:
             for t in self.transforms:
                 data = t(**data)
@@ -2651,6 +2629,8 @@ class SelectiveChannelTransform(BaseCompose):
             dict[str, Any]: Dictionary with transformed data.
 
         """
+        self._sync_runtime_random_state()
+
         if force_apply or self.py_random.random() < self.p:
             image = data["image"]
 
@@ -2908,6 +2888,8 @@ class Sequential(BaseCompose):
             dict[str, Any]: Dictionary with transformed data.
 
         """
+        self._sync_runtime_random_state()
+
         if self.replay_mode or force_apply or self.py_random.random() < self.p:
             for t in self.transforms:
                 data = t(**data)

@@ -23,6 +23,7 @@ from albumentations.core.bbox_utils import BboxProcessor
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.validation import ValidatedTransformMeta
 
+from .random_utils import _derive_effective_seed, _get_runtime_rng_context, _RuntimeRngContext
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
 from .type_definitions import ALL_TARGETS, ImageType, StackedMasks4D, Targets, VolumeType
 from .utils import format_args
@@ -109,6 +110,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         self._set_keys()
         self.processors: dict[str, BboxProcessor | KeypointsProcessor] = {}
         self.seed: int | None = None
+        self._base_seed: int | None = None
+        self._manual_random_state = False
+        self._rng_context: _RuntimeRngContext | None = None
         self.set_random_seed(self.seed)
         self._strict = False  # Use private attribute
         self.invalid_args: list[str] = []  # Store invalid args found during init
@@ -156,6 +160,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         self,
         random_generator: np.random.Generator,
         py_random: random.Random,
+        *,
+        runtime_context: _RuntimeRngContext | None = None,
+        manual: bool = True,
     ) -> None:
         """Set random state directly from numpy and Python random generators. Used for
         reproducibility and replay. Called by Compose.
@@ -163,10 +170,34 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         Args:
             random_generator (np.random.Generator): numpy random generator to use
             py_random (random.Random): python random generator to use
+            runtime_context (_RuntimeRngContext | None): DataLoader worker context for internal propagation.
+                User calls should leave this as None.
+            manual (bool): Whether this state came from explicit user control. Internal callers
+                set False so automatic worker synchronization can still refresh copied RNG state.
 
+        """
+        self._set_random_state(
+            random_generator,
+            py_random,
+            runtime_context=runtime_context,
+            manual=manual,
+        )
+
+    def _set_random_state(
+        self,
+        random_generator: np.random.Generator,
+        py_random: random.Random,
+        *,
+        runtime_context: _RuntimeRngContext | None,
+        manual: bool,
+    ) -> None:
+        """Set RNG objects and record whether automatic worker synchronization may replace them
+        after DataLoader process boundaries copy parent RNG state.
         """
         self.random_generator = random_generator
         self.py_random = py_random
+        self._rng_context = runtime_context
+        self._manual_random_state = manual
 
     def set_random_seed(self, seed: int | None) -> None:
         """Set random state from a single integer seed. Initializes both numpy and Python random
@@ -177,8 +208,53 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         """
         self.seed = seed
-        self.random_generator = np.random.default_rng(seed)
-        self.py_random = random.Random(seed)
+        self._base_seed = seed
+        runtime_context = _get_runtime_rng_context(seed)
+        effective_seed = runtime_context.effective_seed if runtime_context else seed
+        self._set_random_state(
+            np.random.default_rng(effective_seed),
+            random.Random(effective_seed),
+            runtime_context=runtime_context,
+            manual=False,
+        )
+
+    def _sync_runtime_random_state(self) -> None:
+        """Refresh copied RNG state inside PyTorch DataLoader workers unless the user explicitly
+        installed exact RNG objects through set_random_state.
+        """
+        if self._manual_random_state:
+            return
+
+        runtime_context = _get_runtime_rng_context(self._base_seed)
+        if runtime_context is None or runtime_context == self._rng_context:
+            return
+
+        self._set_random_state(
+            np.random.default_rng(runtime_context.effective_seed),
+            random.Random(runtime_context.effective_seed),
+            runtime_context=runtime_context,
+            manual=False,
+        )
+
+    def _get_effective_seed(self, base_seed: int | None) -> int | None:
+        """Return the seed that would be used in the current runtime context while preserving
+        None outside DataLoader workers for unseeded transforms.
+        """
+        runtime_context = _get_runtime_rng_context(base_seed)
+        if runtime_context is None:
+            return _derive_effective_seed(base_seed, None)
+        return runtime_context.effective_seed
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore pickled transforms and clear runtime worker context so the first worker call
+        can resynchronize against the active DataLoader seed.
+        """
+        self.__dict__.update(state)
+        if not hasattr(self, "_base_seed"):
+            self._base_seed = getattr(self, "seed", None)
+        if not hasattr(self, "_manual_random_state"):
+            self._manual_random_state = False
+        self._rng_context = None
 
     def get_dict_with_id(self) -> dict[str, Any]:
         """Return a dictionary representation of the transform with its ID. Used for replay and
@@ -275,6 +351,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             if self.applied_in_replay:
                 return self.apply_with_params(self.params, **kwargs)
             return kwargs
+
+        self._sync_runtime_random_state()
 
         self.params = {}
         self.applied_config = {}

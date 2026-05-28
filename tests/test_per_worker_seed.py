@@ -1,12 +1,15 @@
 """Tests for worker-aware seed functionality in Compose."""
 
 import multiprocessing
+import pickle
+import random
 import sys
 
 import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.core.random_utils import _derive_effective_seed, _RuntimeRngContext
 
 try:
     import torch
@@ -69,6 +72,82 @@ if _TORCH_AVAILABLE:
                 augmented = self.transform(image=image)
                 image = augmented["image"]
             return float(np.sum(image))
+
+    class DropoutPositionDataset(torch.utils.data.Dataset):
+        """Dataset that exposes sampled dropout geometry for DataLoader RNG regression tests."""
+
+        def __init__(self, *, use_compose: bool, seed: int | None = None):
+            dropout = A.CoarseDropout(
+                num_holes_range=(1, 1),
+                hole_height_range=(0.25, 0.25),
+                hole_width_range=(0.25, 0.25),
+                fill=0,
+                p=1.0,
+            )
+            if use_compose:
+                self.transform = A.Compose([dropout], seed=seed)
+            else:
+                dropout.set_random_seed(seed)
+                self.transform = dropout
+            self.data = np.ones((64, 32, 32, 3), dtype=np.uint8) * 255
+
+        def __len__(self):
+            return len(self.data)
+
+        def __getitem__(self, idx):
+            result = self.transform(image=self.data[idx])
+            coords = np.argwhere(result["image"][:, :, 0] == 0)
+            y_min, x_min = coords.min(axis=0)
+            y_max, x_max = coords.max(axis=0) + 1
+            return torch.tensor([y_min, x_min, y_max, x_max], dtype=torch.int64)
+
+
+def _fork_worker_context() -> str:
+    if not _TORCH_AVAILABLE:
+        pytest.skip("PyTorch not available")
+    if sys.platform == "win32":
+        pytest.skip("fork multiprocessing context is not available on Windows")
+    if "fork" not in torch.multiprocessing.get_all_start_methods():
+        pytest.skip("fork multiprocessing context is not available")
+    return "fork"
+
+
+def _first_batches_across_epochs(
+    dataset: "torch.utils.data.Dataset",
+    *,
+    generator_seed: int = 137,
+    num_workers: int = 4,
+    epochs: int = 3,
+    persistent_workers: bool = False,
+) -> list[list[list[int]]]:
+    generator = torch.Generator()
+    generator.manual_seed(generator_seed)
+    loader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=16,
+        shuffle=False,
+        num_workers=num_workers,
+        persistent_workers=persistent_workers,
+        generator=generator,
+        multiprocessing_context=_fork_worker_context(),
+    )
+
+    first_batches = []
+    if persistent_workers:
+        for _epoch in range(epochs):
+            for batch_index, batch in enumerate(loader):
+                if batch_index == 0:
+                    first_batches.append(batch.tolist())
+        return first_batches
+
+    for _epoch in range(epochs):
+        first_batches.append(next(iter(loader)).tolist())
+    return first_batches
+
+
+def _assert_any_epoch_differs(first_batches: list[list[list[int]]]) -> None:
+    unique_batches = {tuple(tuple(position) for position in batch) for batch in first_batches}
+    assert len(unique_batches) > 1, f"All epochs produced identical dropout positions: {first_batches}"
 
 
 def test_worker_seed_without_torch():
@@ -189,6 +268,50 @@ def test_dataloader_epoch_diversity():
     )
 
 
+@pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
+def test_unseeded_compose_dataloader_respawns_use_new_worker_seed():
+    """Unseeded Compose should not replay identical dropout geometry when workers respawn."""
+    first_batches = _first_batches_across_epochs(DropoutPositionDataset(use_compose=True))
+
+    _assert_any_epoch_differs(first_batches)
+
+
+@pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
+def test_unseeded_direct_transform_dataloader_respawns_use_new_worker_seed():
+    """Direct BasicTransform usage should get the same worker RNG protection as Compose."""
+    first_batches = _first_batches_across_epochs(DropoutPositionDataset(use_compose=False))
+
+    _assert_any_epoch_differs(first_batches)
+
+
+@pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
+def test_seeded_compose_dataloader_reproducible_with_same_torch_generator_seed():
+    """Compose seed plus DataLoader generator seed should reproduce the worker-derived sequence."""
+    first_run = _first_batches_across_epochs(
+        DropoutPositionDataset(use_compose=True, seed=137),
+        generator_seed=138,
+    )
+    second_run = _first_batches_across_epochs(
+        DropoutPositionDataset(use_compose=True, seed=137),
+        generator_seed=138,
+    )
+
+    assert first_run == second_run
+
+
+@pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
+def test_persistent_workers_advance_rng_across_epochs():
+    """Persistent workers should keep advancing RNG instead of resetting to worker seed every call."""
+    first_batches = _first_batches_across_epochs(
+        DropoutPositionDataset(use_compose=True, seed=137),
+        generator_seed=139,
+        num_workers=2,
+        persistent_workers=True,
+    )
+
+    _assert_any_epoch_differs(first_batches)
+
+
 def test_compose_serialization():
     """Test that Compose serialization works properly."""
     # Test with worker-aware seed (always enabled)
@@ -206,6 +329,78 @@ def test_compose_serialization():
     transform2 = A.from_dict(serialized)
     assert hasattr(transform2, "seed")
     assert transform2.seed == 137
+
+
+def test_compose_serialization_preserves_base_seed_after_manual_random_state():
+    """Manual RNG state should not rewrite the user seed that serialization exposes."""
+    transform = A.Compose([A.HorizontalFlip(p=0.5)], seed=137)
+    transform.set_random_state(np.random.default_rng(138), random.Random(139))
+
+    serialized = transform.to_dict()
+
+    assert serialized["transform"]["seed"] == 137
+
+
+def test_derive_effective_seed():
+    """Effective seeds should cleanly separate user seed from worker seed."""
+    assert _derive_effective_seed(None, None) is None
+    assert _derive_effective_seed(137, None) == 137
+    assert _derive_effective_seed(None, 138) == 138
+    assert _derive_effective_seed(137, 138) == 275
+    assert _derive_effective_seed(2**32 - 1, 2) == 1
+
+
+def test_unpickled_compose_resets_runtime_context():
+    """Pickled Compose objects should re-sync against the worker context after unpickling."""
+    transform = A.Compose([A.HorizontalFlip(p=0.5)], seed=137)
+    transform._rng_context = _RuntimeRngContext(worker_seed=138, effective_seed=275)
+
+    restored = pickle.loads(pickle.dumps(transform))  # noqa: S301 - controlled round-trip in a test
+
+    assert restored.seed == 137
+    assert restored._base_seed == 137
+    assert restored._rng_context is None
+
+
+def test_unpickled_basic_transform_resets_runtime_context():
+    """Pickled direct transforms should re-sync against the worker context after unpickling."""
+    transform = A.CoarseDropout(p=1.0)
+    transform._rng_context = _RuntimeRngContext(worker_seed=138, effective_seed=138)
+
+    restored = pickle.loads(pickle.dumps(transform))  # noqa: S301 - controlled round-trip in a test
+
+    assert restored._base_seed is None
+    assert restored._rng_context is None
+
+
+def test_manual_compose_random_state_disables_worker_sync(monkeypatch):
+    """Explicit Compose RNG objects should stay under user control in worker contexts."""
+    transform = A.Compose([A.HorizontalFlip(p=0.5)], seed=137)
+    transform.set_random_state(np.random.default_rng(138), random.Random(139))
+    original_random_generator = transform.random_generator
+    monkeypatch.setattr(
+        "albumentations.core.composition._get_runtime_rng_context",
+        lambda _base_seed: _RuntimeRngContext(worker_seed=140, effective_seed=277),
+    )
+
+    transform._sync_runtime_random_state()
+
+    assert transform.random_generator is original_random_generator
+
+
+def test_manual_basic_transform_random_state_disables_worker_sync(monkeypatch):
+    """Explicit direct-transform RNG objects should stay under user control in worker contexts."""
+    transform = A.HorizontalFlip(p=0.5)
+    transform.set_random_state(np.random.default_rng(138), random.Random(139))
+    original_random_generator = transform.random_generator
+    monkeypatch.setattr(
+        "albumentations.core.transforms_interface._get_runtime_rng_context",
+        lambda _base_seed: _RuntimeRngContext(worker_seed=140, effective_seed=140),
+    )
+
+    transform._sync_runtime_random_state()
+
+    assert transform.random_generator is original_random_generator
 
 
 def test_effective_seed_calculation():

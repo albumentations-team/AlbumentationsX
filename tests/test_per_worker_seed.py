@@ -300,6 +300,23 @@ def test_seeded_compose_dataloader_reproducible_with_same_torch_generator_seed()
 
 
 @pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
+def test_seeded_compose_dataloader_seed_changes_child_random_params():
+    """Changing Compose seed should change child transform params under the same worker seeds."""
+    seed_137_batch = _first_batches_across_epochs(
+        DropoutPositionDataset(use_compose=True, seed=137),
+        generator_seed=140,
+        epochs=1,
+    )[0]
+    seed_138_batch = _first_batches_across_epochs(
+        DropoutPositionDataset(use_compose=True, seed=138),
+        generator_seed=140,
+        epochs=1,
+    )[0]
+
+    assert seed_137_batch != seed_138_batch
+
+
+@pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
 def test_persistent_workers_advance_rng_across_epochs():
     """Persistent workers should keep advancing RNG instead of resetting to worker seed every call."""
     first_batches = _first_batches_across_epochs(
@@ -386,6 +403,32 @@ def test_manual_compose_random_state_disables_worker_sync(monkeypatch):
     transform._sync_runtime_random_state()
 
     assert transform.random_generator is original_random_generator
+
+
+def test_child_transform_preserves_parent_seeded_runtime_context(monkeypatch):
+    """Child transforms should keep the parent Compose effective seed in the same worker."""
+
+    def runtime_context(base_seed: int | None) -> _RuntimeRngContext:
+        effective_seed = _derive_effective_seed(base_seed, 140)
+        assert effective_seed is not None
+        return _RuntimeRngContext(
+            worker_seed=140,
+            effective_seed=effective_seed,
+        )
+
+    monkeypatch.setattr("albumentations.core.composition._get_runtime_rng_context", runtime_context)
+    monkeypatch.setattr("albumentations.core.transforms_interface._get_runtime_rng_context", runtime_context)
+    transform = A.Compose([A.HorizontalFlip(p=1.0)], seed=137)
+    expected_context = _RuntimeRngContext(worker_seed=140, effective_seed=277)
+
+    transform._sync_runtime_random_state()
+    child_transform = transform.transforms[0]
+
+    assert child_transform._rng_context == expected_context
+
+    child_transform._sync_runtime_random_state()
+
+    assert child_transform._rng_context == expected_context
 
 
 def test_manual_basic_transform_random_state_disables_worker_sync(monkeypatch):

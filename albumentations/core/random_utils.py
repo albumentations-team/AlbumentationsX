@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 _UINT32_MODULUS: Final = 1 << 32
 
@@ -60,3 +60,29 @@ def _get_runtime_rng_context(base_seed: int | None) -> _RuntimeRngContext | None
         return None
 
     return _RuntimeRngContext(worker_seed=worker_seed, effective_seed=effective_seed)
+
+
+def _should_sync_runtime_rng(
+    *,
+    manual: bool,
+    current_context: _RuntimeRngContext | None,
+    runtime_context: _RuntimeRngContext | None,
+) -> bool:
+    """Return whether RNG state should be rebuilt for the active runtime context while preserving
+    parent-propagated effective seeds for children in the same worker.
+    """
+    if manual or runtime_context is None:
+        return False
+    if current_context is None:
+        return True
+    return current_context.worker_seed != runtime_context.worker_seed
+
+
+def _restore_runtime_rng_state(target: Any) -> None:
+    """Restore runtime RNG bookkeeping after unpickling so objects resynchronize against the
+    active DataLoader worker seed on their first post-unpickle call.
+    """
+    target_state = target.__dict__
+    target_state.setdefault("_base_seed", getattr(target, "seed", None))
+    target_state.setdefault("_manual_random_state", False)
+    target_state["_rng_context"] = None

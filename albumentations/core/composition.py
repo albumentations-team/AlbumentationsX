@@ -28,7 +28,13 @@ from .analytics.telemetry import get_telemetry_client
 from .bbox_utils import BboxParams, BboxProcessor
 from .hub_mixin import HubMixin
 from .keypoints_utils import KeypointParams, KeypointsProcessor
-from .random_utils import _derive_effective_seed, _get_runtime_rng_context, _RuntimeRngContext
+from .random_utils import (
+    _derive_effective_seed,
+    _get_runtime_rng_context,
+    _restore_runtime_rng_state,
+    _RuntimeRngContext,
+    _should_sync_runtime_rng,
+)
 from .serialization import (
     SERIALIZABLE_REGISTRY,
     Serializable,
@@ -360,11 +366,12 @@ class BaseCompose(Serializable):
         """Refresh copied RNG state inside PyTorch DataLoader workers unless the user explicitly
         installed exact RNG objects through set_random_state.
         """
-        if self._manual_random_state:
-            return
-
         runtime_context = _get_runtime_rng_context(self._base_seed)
-        if runtime_context is None or runtime_context == self._rng_context:
+        if runtime_context is None or not _should_sync_runtime_rng(
+            manual=self._manual_random_state,
+            current_context=self._rng_context,
+            runtime_context=runtime_context,
+        ):
             return
 
         self._set_random_state(
@@ -902,11 +909,7 @@ class BaseCompose(Serializable):
         call can resynchronize against the active DataLoader seed.
         """
         self.__dict__.update(state)
-        if not hasattr(self, "_base_seed"):
-            self._base_seed = getattr(self, "seed", None)
-        if not hasattr(self, "_manual_random_state"):
-            self._manual_random_state = False
-        self._rng_context = None
+        _restore_runtime_rng_state(self)
 
     def _get_effective_seed(self, base_seed: int | None) -> int | None:
         """Get effective seed considering worker context. In PyTorch DataLoader workers,

@@ -65,7 +65,7 @@ jobs:
         fail_ci_if_error: true
 
   check_code_formatting_types:
-    name: Check repository hooks with ruff and mypy
+    name: Check repository hooks
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true

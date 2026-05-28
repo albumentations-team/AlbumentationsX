@@ -51,6 +51,8 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
   uv run pre-commit run --all-files
   ```
 
+- Pyrefly runs through the official pre-commit hook in system mode, using the same `uv` environment as CI.
+
 - Before handing off Python changes, run the fast local quality gate:
 
   ```bash

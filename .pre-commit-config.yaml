@@ -126,7 +126,7 @@ repos:
         pass_filenames: false
         files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.12
+    rev: v0.15.14
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -150,20 +150,29 @@ repos:
       - id: codespell
         additional_dependencies: ["tomli"]
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.0.0
+    rev: v2.1.0
     hooks:
       - id: mypy
         files: ^albumentations/
         additional_dependencies: [ types-PyYAML, types-setuptools, pydantic>=2.9]
         args:
           [ --config-file=pyproject.toml ]
-  - repo: local
+  - repo: https://github.com/facebook/pyrefly-pre-commit
+    rev: 1.0.0
     hooks:
-      - id: pyrefly
+      - id: pyrefly-check
         name: Pyrefly type check
-        entry: pyrefly check --output-format=github --error unnecessary-type-conversion --error implicit-import --error redundant-cast
+        args:
+          - --output-format=github
+          - --error
+          - unnecessary-type-conversion
+          - --error
+          - implicit-import
+          - --error
+          - redundant-cast
         language: system
         pass_filenames: false
+        always_run: true
   - repo: https://github.com/ternaus/google-docstring-parser
     rev: 0.0.11
     hooks:

@@ -408,7 +408,8 @@ class ConstrainedCoarseDropout(BaseDropout):
             - "grayscale": converts dropped regions to grayscale while preserving channel count
             Default: 0
         fill_mask (tuple[float, float] | float | None): Value used to fill erased regions in the mask.
-            If None, mask regions are not modified. Default: None
+            If None, mask regions are not modified. Must be None when fill="grayscale".
+            Default: None
         p (float): Probability of applying the transform
         mask_indices (List[int], optional): List of class indices in segmentation mask to target.
             Only objects of these classes will be considered for hole placement.

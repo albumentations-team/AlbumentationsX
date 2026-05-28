@@ -30,7 +30,8 @@ class GridMask(BaseDropout):
             Default: (0, 0) (no rotation).
         fill (float | tuple | str): Fill value for dropped pixels. Use "grayscale" to convert dropped regions
             to grayscale while preserving channel count. Default: 0.
-        fill_mask (float | tuple | None): Fill value for mask. Default: None.
+        fill_mask (float | tuple | None): Fill value for mask. Must be None when fill="grayscale".
+            Default: None.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:

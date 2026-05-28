@@ -154,7 +154,7 @@ repos:
     hooks:
       - id: mypy
         files: ^albumentations/
-        additional_dependencies: [ types-PyYAML, types-setuptools, pydantic>=2.9]
+        additional_dependencies: [ types-PyYAML, types-setuptools, pydantic>=2.13.4]
         args:
           [ --config-file=pyproject.toml ]
   - repo: https://github.com/facebook/pyrefly-pre-commit
@@ -179,7 +179,7 @@ repos:
       - id: check-google-docstrings
         files: ^albumentations/
         exclude: ^build/
-        additional_dependencies: ["tomli>=2.0.0"]
+        additional_dependencies: ["tomli>=2.4.1"]
   - repo: https://github.com/frnmst/md-toc
     rev: 9.0.0  # or latest version
     hooks:

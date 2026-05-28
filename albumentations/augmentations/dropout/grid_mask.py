@@ -6,12 +6,12 @@ which drops rectangular cells within a grid. Based on the GridMask paper.
 Reference: https://arxiv.org/abs/2001.04086
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from pydantic import AfterValidator
 
 from albumentations.augmentations.dropout import functional as fdropout
-from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema
+from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema, DropoutFillValue
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 
 __all__ = ["GridMask"]
@@ -28,7 +28,8 @@ class GridMask(BaseDropout):
             of grid cell size. Default: (0.2, 0.5).
         rotation_range (tuple[float, float]): Range for grid rotation in radians.
             Default: (0, 0) (no rotation).
-        fill (float | tuple | str): Fill value for dropped pixels. Default: 0.
+        fill (float | tuple | str): Fill value for dropped pixels. Use "grayscale" to convert dropped regions
+            to grayscale while preserving channel count. Default: 0.
         fill_mask (float | tuple | None): Fill value for mask. Default: None.
         p (float): Probability of applying the transform. Default: 0.5.
 
@@ -82,7 +83,7 @@ class GridMask(BaseDropout):
         num_grid_range: tuple[int, int] = (3, 7),
         line_width_range: tuple[float, float] = (0.2, 0.5),
         rotation_range: tuple[float, float] = (0, 0),
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"] = 0,
+        fill: DropoutFillValue = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):

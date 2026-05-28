@@ -32,6 +32,7 @@ __all__ = [
     "channel_dropout",
     "cutout",
     "fill_holes_with_grayscale",
+    "fill_mask_with_grayscale",
     "fill_volume_holes_with_grayscale",
     "fill_volumes_holes_with_grayscale",
     "filter_bboxes_by_holes",
@@ -188,6 +189,29 @@ def fill_holes_with_grayscale(img: ImageType, holes: np.ndarray) -> ImageType:
         patch = img[y_min:y_max, x_min:x_max]
         img[y_min:y_max, x_min:x_max] = grayscale_to_multichannel(to_gray_average(patch), num_channels)
 
+    return img
+
+
+def fill_mask_with_grayscale(img: ImageType, dropout_mask: np.ndarray) -> ImageType:
+    """Convert masked image regions to grayscale while preserving shape, dtype, channel count,
+    and unmasked pixels for object-shaped dropout regions.
+
+    Args:
+        img (ImageType): Input image.
+        dropout_mask (np.ndarray): Boolean mask where True pixels are converted to grayscale.
+
+    Returns:
+        ImageType: Image with grayscale-converted masked pixels.
+
+    """
+    img = img.copy()
+    num_channels = get_num_channels(img)
+
+    if num_channels == 1:
+        return img
+
+    grayscale = grayscale_to_multichannel(to_gray_average(img), num_channels)
+    img[dropout_mask] = grayscale[dropout_mask]
     return img
 
 

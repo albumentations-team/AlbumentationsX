@@ -5,14 +5,14 @@ and other grid-like data representations where masking in specific directions (t
 can improve model robustness and generalization.
 """
 
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar
 
 import numpy as np
 from pydantic import model_validator
 from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
 
-from albumentations.augmentations.dropout.transforms import BaseDropout
+from albumentations.augmentations.dropout.transforms import BaseDropout, DropoutFillValue
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -44,7 +44,7 @@ class _XYMaskingInitSchema(BaseTransformInitSchema):
         AfterValidator(nondecreasing),
     ]
 
-    fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"]
+    fill: DropoutFillValue
     fill_mask: tuple[float, ...] | float | None
 
     @model_validator(mode="after")
@@ -72,7 +72,7 @@ class XYMasking(BaseDropout):
             axis. The length is randomly chosen within this range for each mask. Defaults to (0, 0).
         mask_y_length_range (tuple[int, int]): Range (min, max) of mask height along the Y (vertical)
             axis. The height is randomly chosen within this range for each mask. Defaults to (0, 0).
-        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | str):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
             - tuple: tuple of values for each channel
@@ -80,6 +80,7 @@ class XYMasking(BaseDropout):
             - 'random_uniform': each hole is filled with a single random color
             - 'inpaint_telea': uses OpenCV Telea inpainting method
             - 'inpaint_ns': uses OpenCV Navier-Stokes inpainting method
+            - 'grayscale': converts dropped regions to grayscale while preserving channel count
             Default: 0
         fill_mask (tuple[float, float] | float | None): Fill value for dropout regions in the mask.
             If None, mask regions corresponding to image dropouts are unchanged. Default: None
@@ -96,6 +97,7 @@ class XYMasking(BaseDropout):
 
     Note:
         Either `mask_x_length_range` or `mask_y_length_range` or both must have a positive max.
+        When using `fill="grayscale"`, `fill_mask` must be None.
 
     """
 
@@ -107,7 +109,7 @@ class XYMasking(BaseDropout):
         num_masks_y_range: tuple[int, int] = (0, 0),
         mask_x_length_range: tuple[int, int] = (0, 0),
         mask_y_length_range: tuple[int, int] = (0, 0),
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"] = 0,
+        fill: DropoutFillValue = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):

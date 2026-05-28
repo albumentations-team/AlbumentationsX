@@ -1286,6 +1286,136 @@ def test_pixel_dropout_mismatched_tuple_dimensions(drop_value, channels, expecte
             assert np.all(result[:, :, channel_idx] == expected_values[channel_idx])
 
 
+BASE_DROPOUT_GRAYSCALE_CASES = [
+    (
+        A.CoarseDropout,
+        {
+            "num_holes_range": (1, 1),
+            "hole_height_range": (8, 8),
+            "hole_width_range": (8, 8),
+        },
+        False,
+    ),
+    (
+        A.Erasing,
+        {
+            "scale": (0.2, 0.2),
+            "ratio": (1.0, 1.0),
+        },
+        False,
+    ),
+    (
+        A.GridDropout,
+        {
+            "ratio": 0.5,
+            "unit_size_range": (8, 8),
+            "random_offset": False,
+        },
+        False,
+    ),
+    (
+        A.GridMask,
+        {
+            "num_grid_range": (4, 4),
+            "line_width_range": (0.5, 0.5),
+            "rotation_range": (0, 0),
+        },
+        False,
+    ),
+    (
+        A.XYMasking,
+        {
+            "num_masks_x_range": (1, 1),
+            "mask_x_length_range": (8, 8),
+        },
+        False,
+    ),
+    (
+        A.ConstrainedCoarseDropout,
+        {
+            "num_holes_range": (1, 1),
+            "hole_height_range": (0.5, 0.5),
+            "hole_width_range": (0.5, 0.5),
+            "mask_indices": [1],
+        },
+        True,
+    ),
+]
+
+
+def _assert_grayscale_fill_holes(image: np.ndarray, result: np.ndarray, holes: np.ndarray) -> None:
+    assert holes.size > 0
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+
+    if image.shape[-1] == 1:
+        np.testing.assert_array_equal(result, image)
+        return
+
+    holes_mask = np.zeros(image.shape[:2], dtype=bool)
+    for x_min, y_min, x_max, y_max in holes:
+        holes_mask[y_min:y_max, x_min:x_max] = True
+        hole_patch = result[y_min:y_max, x_min:x_max]
+        np.testing.assert_array_equal(hole_patch, np.repeat(hole_patch[..., :1], image.shape[-1], axis=-1))
+
+    np.testing.assert_array_equal(result[~holes_mask], image[~holes_mask])
+
+
+def _assert_grayscale_fill_mask(image: np.ndarray, result: np.ndarray, dropout_mask: np.ndarray) -> None:
+    assert dropout_mask.any()
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+
+    if image.shape[-1] == 1:
+        np.testing.assert_array_equal(result, image)
+        return
+
+    np.testing.assert_array_equal(result[~dropout_mask], image[~dropout_mask])
+    dropped_pixels = result[dropout_mask]
+    np.testing.assert_array_equal(dropped_pixels, np.repeat(dropped_pixels[:, :1], image.shape[-1], axis=-1))
+
+
+def _create_grayscale_fill_test_image(channels: int, dtype: type) -> np.ndarray:
+    shape = (64, 64, channels)
+    if dtype == np.float32 and channels > 4:
+        return TestDataFactory.create_rng(seed=137).uniform(0, 1, shape).astype(np.float32)
+    return TestDataFactory.create_image(shape, dtype=dtype, seed=137)
+
+
+@pytest.mark.parametrize(("augmentation_cls", "params", "needs_mask"), BASE_DROPOUT_GRAYSCALE_CASES)
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_base_dropout_grayscale_fill_supports_any_channel_count(augmentation_cls, params, needs_mask, channels, dtype):
+    image = _create_grayscale_fill_test_image(channels, dtype)
+    data = {"image": image}
+    if needs_mask:
+        mask = np.zeros((64, 64, 1), dtype=np.uint8)
+        mask[16:48, 16:48] = 1
+        data["mask"] = mask
+
+    transform = augmentation_cls(**params, fill="grayscale", p=1.0)
+    pipeline = A.Compose([transform], seed=137, strict=True)
+
+    result = pipeline(**data)["image"]
+
+    _assert_grayscale_fill_holes(image, result, transform.params["holes"])
+
+
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_mask_dropout_grayscale_fill_supports_any_channel_count(channels, dtype):
+    image = _create_grayscale_fill_test_image(channels, dtype)
+    mask = np.zeros((64, 64, 1), dtype=np.uint8)
+    mask[16:48, 16:48] = 1
+
+    transform = A.MaskDropout(max_objects_range=(1, 1), fill="grayscale", fill_mask=0, p=1.0)
+    pipeline = A.Compose([transform], seed=137, strict=True)
+
+    result = pipeline(image=image, mask=mask)["image"]
+
+    _assert_grayscale_fill_mask(image, result, transform.params["dropout_mask"])
+
+
 def test_erasing_grayscale_fill_converts_only_sampled_patch():
     image = TestDataFactory.create_image((64, 64, 3), dtype=np.uint8, seed=137)
 
@@ -1313,20 +1443,6 @@ def test_erasing_grayscale_fill_converts_only_sampled_patch():
     np.testing.assert_array_equal(hole_patch[..., 1], hole_patch[..., 2])
 
 
-def test_erasing_grayscale_fill_rejects_non_rgb_multichannel():
-    image = TestDataFactory.create_image((32, 32, 4), dtype=np.uint8, seed=137)
-
-    transform = A.Erasing(
-        scale=(0.2, 0.2),
-        ratio=(1.0, 1.0),
-        fill="grayscale",
-        p=1.0,
-    )
-
-    with pytest.raises(ValueError, match="1 or 3 channel"):
-        transform(image=image)
-
-
 def test_erasing_grayscale_fill_requires_fill_mask_none():
     with pytest.raises(ValueError, match="fill_mask must be None"):
         A.Erasing(
@@ -1338,8 +1454,9 @@ def test_erasing_grayscale_fill_requires_fill_mask_none():
         )
 
 
-def test_erasing_grayscale_fill_on_volume():
-    volume = TestDataFactory.create_volume((4, 64, 64, 3), dtype=np.uint8, seed=137)
+@pytest.mark.parametrize("channels", [1, 3, 5])
+def test_erasing_grayscale_fill_on_volume(channels):
+    volume = TestDataFactory.create_volume((4, 64, 64, channels), dtype=np.uint8, seed=137)
 
     transform = A.Erasing(
         scale=(0.2, 0.2),
@@ -1355,6 +1472,10 @@ def test_erasing_grayscale_fill_on_volume():
     assert holes.shape == (1, 4)
     x_min, y_min, x_max, y_max = holes[0]
 
+    if channels == 1:
+        np.testing.assert_array_equal(result, volume)
+        return
+
     result_outside = result.copy()
     volume_outside = volume.copy()
     result_outside[:, y_min:y_max, x_min:x_max, :] = 0
@@ -1363,15 +1484,15 @@ def test_erasing_grayscale_fill_on_volume():
     np.testing.assert_array_equal(result_outside, volume_outside)
 
     hole_patch = result[:, y_min:y_max, x_min:x_max, :]
-    np.testing.assert_array_equal(hole_patch[..., 0], hole_patch[..., 1])
-    np.testing.assert_array_equal(hole_patch[..., 1], hole_patch[..., 2])
+    np.testing.assert_array_equal(hole_patch, np.repeat(hole_patch[..., :1], channels, axis=-1))
 
 
-def test_erasing_grayscale_fill_on_volumes():
+@pytest.mark.parametrize("channels", [1, 3, 5])
+def test_erasing_grayscale_fill_on_volumes(channels):
     volumes = np.stack(
         [
-            TestDataFactory.create_volume((4, 64, 64, 3), dtype=np.uint8, seed=137),
-            TestDataFactory.create_volume((4, 64, 64, 3), dtype=np.uint8, seed=138),
+            TestDataFactory.create_volume((4, 64, 64, channels), dtype=np.uint8, seed=137),
+            TestDataFactory.create_volume((4, 64, 64, channels), dtype=np.uint8, seed=138),
         ],
         axis=0,
     )
@@ -1390,6 +1511,10 @@ def test_erasing_grayscale_fill_on_volumes():
     assert holes.shape == (1, 4)
     x_min, y_min, x_max, y_max = holes[0]
 
+    if channels == 1:
+        np.testing.assert_array_equal(result, volumes)
+        return
+
     result_outside = result.copy()
     volumes_outside = volumes.copy()
     result_outside[:, :, y_min:y_max, x_min:x_max, :] = 0
@@ -1398,8 +1523,7 @@ def test_erasing_grayscale_fill_on_volumes():
     np.testing.assert_array_equal(result_outside, volumes_outside)
 
     hole_patch = result[:, :, y_min:y_max, x_min:x_max, :]
-    np.testing.assert_array_equal(hole_patch[..., 0], hole_patch[..., 1])
-    np.testing.assert_array_equal(hole_patch[..., 1], hole_patch[..., 2])
+    np.testing.assert_array_equal(hole_patch, np.repeat(hole_patch[..., :1], channels, axis=-1))
 
 
 def test_salt_and_pepper_noise():

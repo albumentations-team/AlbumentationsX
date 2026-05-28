@@ -7,14 +7,14 @@ and Erasing for random erasing augmentation. These techniques help models become
 robust to occlusions and varying object completeness.
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 from warnings import warn
 
 import numpy as np
 from pydantic import AfterValidator
 
 import albumentations.augmentations.dropout.functional as fdropout
-from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema
+from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema, DropoutFillValue
 from albumentations.core.bbox_utils import denormalize_bboxes
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 
@@ -37,7 +37,7 @@ class CoarseDropout(BaseDropout):
         hole_width_range (tuple[int, int] | tuple[float, float]): Range (min, max) for the width
             of dropout regions. If int, specifies absolute pixel values. If float,
             interpreted as a fraction of the image width. Default: (0.1, 0.2)
-        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | str):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
             - tuple: tuple of values for each channel
@@ -45,6 +45,7 @@ class CoarseDropout(BaseDropout):
             - 'random_uniform': each hole is filled with a single random color
             - 'inpaint_telea': uses OpenCV Telea inpainting method
             - 'inpaint_ns': uses OpenCV Navier-Stokes inpainting method
+            - 'grayscale': converts dropped regions to grayscale while preserving channel count
             Default: 0
         fill_mask (tuple[float, float] | float | None): Fill value for dropout regions in the mask.
             If None, mask regions corresponding to image dropouts are unchanged. Default: None
@@ -65,6 +66,7 @@ class CoarseDropout(BaseDropout):
         - When using float values for hole_height_range and hole_width_range, ensure they are between 0 and 1.
         - This implementation includes deprecation warnings for older parameter names (min_holes, max_holes, etc.).
         - Inpainting methods ('inpaint_telea', 'inpaint_ns') work only with grayscale or RGB images.
+        - When using `fill="grayscale"`, `fill_mask` must be None.
         - For 'random_uniform' fill, each hole gets a single random color, unlike 'random' where each pixel
             gets its own random value.
 
@@ -123,7 +125,7 @@ class CoarseDropout(BaseDropout):
         num_holes_range: tuple[int, int] = (1, 2),
         hole_height_range: tuple[float, float] | tuple[int, int] = (0.1, 0.2),
         hole_width_range: tuple[float, float] | tuple[int, int] = (0.1, 0.2),
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"] = 0,
+        fill: DropoutFillValue = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):
@@ -274,9 +276,7 @@ class Erasing(BaseDropout):
         self,
         scale: tuple[float, float] = (0.02, 0.33),
         ratio: tuple[float, float] = (0.3, 3.3),
-        fill: tuple[float, ...]
-        | float
-        | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"] = 0,
+        fill: DropoutFillValue = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):
@@ -397,7 +397,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             - For boxes: 20-40% of box height
             - For masks: 20-40% of sqrt(component area)
         hole_width_range (tuple[float, float]): Range for hole width, similar to height
-        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | str):
             Value used to fill the erased regions. Can be:
             - int or float: fills all channels with this value
             - tuple: fills each channel with corresponding value
@@ -405,6 +405,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             - "random_uniform": fills entire erased region with a single random color
             - "inpaint_telea": uses OpenCV Telea inpainting method
             - "inpaint_ns": uses OpenCV Navier-Stokes inpainting method
+            - "grayscale": converts dropped regions to grayscale while preserving channel count
             Default: 0
         fill_mask (tuple[float, float] | float | None): Value used to fill erased regions in the mask.
             If None, mask regions are not modified. Default: None
@@ -501,7 +502,7 @@ class ConstrainedCoarseDropout(BaseDropout):
         num_holes_range: tuple[int, int] = (1, 1),
         hole_height_range: tuple[float, float] = (0.1, 0.1),
         hole_width_range: tuple[float, float] = (0.1, 0.1),
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"] = 0,
+        fill: DropoutFillValue = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
         mask_indices: list[int] | None = None,

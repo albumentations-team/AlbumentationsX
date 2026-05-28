@@ -33,11 +33,12 @@ class MaskDropout(DualTransform):
     Args:
         max_objects_range (tuple[int, int]): Inclusive range `(min, max)` for the number of objects
             to dropout per image.
-        fill (float | Literal['inpaint_telea', 'inpaint_ns']): Value to fill dropped out regions in the image.
+        fill (float | str): Value to fill dropped out regions in the image.
             Can be one of:
             - float: Constant value to fill the regions (e.g., 0 for black, 255 for white)
             - "inpaint_telea": Use Telea inpainting algorithm (for 3-channel images only)
             - "inpaint_ns": Use Navier-Stokes inpainting algorithm (for 3-channel images only)
+            - "grayscale": Convert dropped regions to grayscale while preserving channel count
         fill_mask (float): Value to fill the dropped out regions in the mask.
         min_area (float): Minimum area (in pixels) of a bounding box that must remain visible after dropout to be kept.
             Only applicable if bounding box augmentation is enabled. Default: 0.0
@@ -124,13 +125,13 @@ class MaskDropout(DualTransform):
             AfterValidator(check_range_bounds(1)),
         ]
 
-        fill: float | Literal["inpaint_telea", "inpaint_ns"]
+        fill: float | Literal["inpaint_telea", "inpaint_ns", "grayscale"]
         fill_mask: float
 
     def __init__(
         self,
         max_objects_range: tuple[int, int] = (1, 1),
-        fill: float | Literal["inpaint_telea", "inpaint_ns"] = 0,
+        fill: float | Literal["inpaint_telea", "inpaint_ns", "grayscale"] = 0,
         fill_mask: float = 0,
         p: float = 0.5,
     ):
@@ -175,6 +176,9 @@ class MaskDropout(DualTransform):
             radius = max(1, min(3, max(width, height) // 2))
             inpaint_method = cv2.INPAINT_TELEA if self.fill == "inpaint_telea" else cv2.INPAINT_NS
             return cast("ImageType", cv2.inpaint(img, dropout_mask, radius, inpaint_method))
+
+        if self.fill == "grayscale":
+            return fdropout.fill_mask_with_grayscale(img, dropout_mask)
 
         img = img.copy()
 

@@ -6,12 +6,12 @@ grid dropout enforces a structured pattern of occlusions that can help models le
 relationships and context across the entire image space.
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from pydantic import AfterValidator, Field
 
 import albumentations.augmentations.dropout.functional as fdropout
-from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema
+from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema, DropoutFillValue
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 
 __all__ = ["GridDropout"]
@@ -36,7 +36,7 @@ class GridDropout(BaseDropout):
             Default: None. If provided, overrides unit_size_range.
         random_offset (bool): Whether to offset the grid randomly between 0 and (grid unit size - hole size).
             If True, entered shift_xy is ignored and set randomly. Default: True.
-        fill (tuple[float, float] | float | Literal['random', 'random_uniform', 'inpaint_telea', 'inpaint_ns']):
+        fill (float | tuple[float, ...] | str):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
             - tuple: tuple of values for each channel
@@ -44,6 +44,7 @@ class GridDropout(BaseDropout):
             - 'random_uniform': each hole is filled with a single random color
             - 'inpaint_telea': uses OpenCV Telea inpainting method
             - 'inpaint_ns': uses OpenCV Navier-Stokes inpainting method
+            - 'grayscale': converts dropped regions to grayscale while preserving channel count
             Default: 0
         fill_mask (tuple[float, float] | float | None): Value for the dropped pixels in mask.
             If None, the mask is not modified. Default: None.
@@ -64,6 +65,7 @@ class GridDropout(BaseDropout):
         - If both unit_size_range and holes_number_xy are None, the grid size is calculated based on the image size.
         - The actual number of dropped regions may differ slightly from holes_number_xy due to rounding.
         - Inpainting methods ('inpaint_telea', 'inpaint_ns') work only with grayscale or RGB images.
+        - When using `fill="grayscale"`, `fill_mask` must be None.
         - For 'random_uniform' fill, each grid cell gets a single random color, unlike 'random' where each pixel
             gets its own random value.
 
@@ -122,7 +124,7 @@ class GridDropout(BaseDropout):
         unit_size_range: tuple[int, int] | None = None,
         holes_number_xy: tuple[int, int] | None = None,
         shift_xy: tuple[int, int] = (0, 0),
-        fill: tuple[float, ...] | float | Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns"] = 0,
+        fill: DropoutFillValue = 0,
         fill_mask: tuple[float, ...] | float | None = None,
         p: float = 0.5,
     ):

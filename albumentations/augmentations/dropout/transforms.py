@@ -138,9 +138,6 @@ class BaseDropout(DualTransform):
         if self.fill in {"inpaint_telea", "inpaint_ns"} and num_channels not in {1, 3}:
             raise ValueError("Inpainting works only for 1 or 3 channel images")
 
-        if self.fill == "grayscale" and num_channels not in {1, 3}:
-            raise ValueError("Grayscale fill works only for 1 or 3 channel images")
-
     def apply(self, img: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:
             return img

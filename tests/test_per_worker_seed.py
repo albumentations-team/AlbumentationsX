@@ -107,6 +107,8 @@ def _fork_worker_context() -> str:
         pytest.skip("PyTorch not available")
     if sys.platform == "win32":
         pytest.skip("fork multiprocessing context is not available on Windows")
+    if sys.platform == "darwin":
+        pytest.skip("fork multiprocessing context is not supported for these tests on macOS")
     if "fork" not in torch.multiprocessing.get_all_start_methods():
         pytest.skip("fork multiprocessing context is not available")
     return "fork"

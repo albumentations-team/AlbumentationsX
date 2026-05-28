@@ -205,6 +205,7 @@ def fill_mask_with_grayscale(img: ImageType, dropout_mask: np.ndarray) -> ImageT
 
     """
     img = img.copy()
+    dropout_mask = dropout_mask.astype(bool, copy=False)
     num_channels = get_num_channels(img)
 
     if num_channels == 1:

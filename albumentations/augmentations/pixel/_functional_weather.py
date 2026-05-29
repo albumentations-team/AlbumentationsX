@@ -84,7 +84,7 @@ def add_snow_bleach(
         - Original implementation: https://github.com/UjjwalSaxena/Automold--Road-Augmentation-Library
 
     """
-    max_value = MAX_VALUES_BY_DTYPE[img.dtype]
+    max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
     # Precompute snow_point threshold
     snow_point = (snow_point * max_value / 2) + (max_value / 3)
@@ -191,7 +191,7 @@ def add_snow_texture(
         - HSV Color Space: https://en.wikipedia.org/wiki/HSL_and_HSV
 
     """
-    max_value = MAX_VALUES_BY_DTYPE[img.dtype]
+    max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
     # Convert to HSV for better color control
     img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV).astype(np.float32)
@@ -229,16 +229,12 @@ def add_snow_texture(
 
     img_with_snow = 0.85 * img_with_snow + (0.15 * snow_point) * blue_tint
     
-    # Clip S and V channels before converting back to RGB
-    if img.dtype == np.float32:
-        img_with_snow[:, :, 1] = np.clip(img_with_snow[:, :, 1], 0, 1.0)
-        img_with_snow[:, :, 2] = np.clip(img_with_snow[:, :, 2], 0, 1.0)
-    else:
-        img_with_snow[:, :, 1] = np.clip(img_with_snow[:, :, 1], 0, 255)
-        img_with_snow[:, :, 2] = np.clip(img_with_snow[:, :, 2], 0, 255)
+    # Clip S and V channels before converting back to RGB using max_value dynamically
+    img_with_snow[:, :, 1] = np.clip(img_with_snow[:, :, 1], 0, max_value)
+    img_with_snow[:, :, 2] = np.clip(img_with_snow[:, :, 2], 0, max_value)
 
-    # Convert back to RGB
-    img_with_snow = cast("ImageType", cv2.cvtColor(img_with_snow.astype(np.float32), cv2.COLOR_HSV2RGB).astype(img.dtype))
+    # Convert back to RGB - MUST be cast to original dtype before cvtColor to avoid OpenCV misinterpreting float ranges for uint8 inputs
+    img_with_snow = cast("ImageType", cv2.cvtColor(img_with_snow.astype(img.dtype), cv2.COLOR_HSV2RGB))
 
     # Add some sparkle effects for snow glitter
     img_with_snow[sparkle_mask] = [max_value, max_value, max_value]

@@ -228,13 +228,14 @@ def add_snow_texture(
     blue_tint = np.full_like(img_with_snow, blue_tint_value)
 
     img_with_snow = 0.85 * img_with_snow + (0.15 * snow_point) * blue_tint
-    
+
     # Clip H, S, and V channels before converting back to RGB using dynamic max bounds
     img_with_snow[:, :, 0] = np.clip(img_with_snow[:, :, 0], 0, hue_max)
     img_with_snow[:, :, 1] = np.clip(img_with_snow[:, :, 1], 0, max_value)
     img_with_snow[:, :, 2] = np.clip(img_with_snow[:, :, 2], 0, max_value)
 
-    # Convert back to RGB - MUST be cast to original dtype before cvtColor to avoid OpenCV misinterpreting float ranges for uint8 inputs
+    # Convert back to RGB - cast to original dtype before cvtColor
+    # to avoid OpenCV misinterpreting float ranges for uint8 inputs
     img_with_snow = cast("ImageType", cv2.cvtColor(img_with_snow.astype(img.dtype), cv2.COLOR_HSV2RGB))
 
     # Add some sparkle effects for snow glitter

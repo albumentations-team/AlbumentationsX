@@ -2368,6 +2368,7 @@ def test_letterbox_equivalent_to_longestmaxsize_padifneeded():
     cp_result = composed(image=image)["image"]
     np.testing.assert_array_equal(lb_result, cp_result)
 
+
 @pytest.mark.parametrize("method", ["bleach", "texture"])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 def test_random_snow_dtype_preservation(method, dtype):
@@ -2376,16 +2377,16 @@ def test_random_snow_dtype_preservation(method, dtype):
         img = np.random.rand(100, 100, 3).astype(np.float32)
     else:
         img = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        
+
     transform = A.RandomSnow(p=1.0, method=method)
     res = transform(image=img)["image"]
-    
+
     # Assert dtype is preserved
     assert res.dtype == dtype, f"Expected {dtype}, got {res.dtype}"
-    
+
     # Assert the image actually changed (non-uniform input ensures this won't spuriously fail)
     assert not np.array_equal(res, img), "Image was not modified by RandomSnow"
-    
+
     # Assert valid range
     if dtype == np.float32:
         assert res.min() >= 0.0

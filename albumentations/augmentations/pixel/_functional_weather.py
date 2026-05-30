@@ -217,19 +217,20 @@ def add_snow_texture(
     )
 
     # Blend snow with original image using numpy to allow broadcasting across channels
-    img_with_snow = img_hsv + snow_layer
+    # Only apply the snow intensity to the V (brightness) channel to preserve hue
+    img_with_snow = img_hsv.copy()
+    img_with_snow[:, :, 2] += snow_layer[:, :, 0]
 
     # Add a slight blue tint to simulate cool snow color
-    if img.dtype == np.uint8:
-        blue_tint_value = (108, 191, 255) # Approx (0.6*180, 0.75*255, 1.0*255)
-    else:
-        blue_tint_value = (216.0, 0.75, 1.0) # (0.6*360, 0.75, 1.0)
-    
+    hue_max = 180 if img.dtype == np.uint8 else 360
+    blue_tint_value = (0.6 * hue_max, 0.75 * max_value, 1.0 * max_value)
+
     blue_tint = np.full_like(img_with_snow, blue_tint_value)
 
     img_with_snow = 0.85 * img_with_snow + (0.15 * snow_point) * blue_tint
     
-    # Clip S and V channels before converting back to RGB using max_value dynamically
+    # Clip H, S, and V channels before converting back to RGB using dynamic max bounds
+    img_with_snow[:, :, 0] = np.clip(img_with_snow[:, :, 0], 0, hue_max)
     img_with_snow[:, :, 1] = np.clip(img_with_snow[:, :, 1], 0, max_value)
     img_with_snow[:, :, 2] = np.clip(img_with_snow[:, :, 2], 0, max_value)
 

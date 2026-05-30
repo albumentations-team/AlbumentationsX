@@ -140,7 +140,7 @@ def add_snow_texture(
     sparkle_mask: np.ndarray,
 ) -> ImageType:
     """Add snow effect: texture overlay, sparkle, depth gradient, blue tint. snow_point,
-    brightness_coeff; takes precomputed snow_texture and sparkle_mask. uint8 I/O.
+    brightness_coeff; takes precomputed snow_texture and sparkle_mask.
 
     This function simulates snowfall by applying multiple visual effects to the image,
     including brightness adjustment, snow texture overlay, depth simulation, and color tinting.

@@ -916,6 +916,7 @@ def test_pad_if_needed_position(params, image_shape):
             A.PhotoMetricDistort,
             A.Mosaic,
             A.Dithering,  # Error diffusion is sensitive to floating-point precision
+            A.RandomSnow,  # OpenCV HLS/HSV quantization differences
         },
     ),
 )

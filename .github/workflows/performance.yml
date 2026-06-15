@@ -20,13 +20,15 @@ permissions:
 
 jobs:
   asv_smoke:
-    name: ASV smoke benchmarks
+    name: ASV benchmark evidence
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 45
     steps:
     - name: Checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: 0
     - name: Install uv and Python 3.12
       uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       with:
@@ -39,13 +41,39 @@ jobs:
       run: >
         uv run python tools/collect_test_environment.py
         --output benchmark-evidence/environment-benchmark.json
-        --command "asv run --quick HEAD^!"
+        --command "asv continuous/run performance evidence"
     - name: Register ASV machine profile
       working-directory: benchmark
       run: uv tool run --from asv asv --config asv.conf.json machine --yes
-    - name: Run ASV quick benchmarks
+    - name: Check benchmark suite importability
       working-directory: benchmark
-      run: uv tool run --from asv asv --config asv.conf.json run --quick --show-stderr 'HEAD^!'
+      run: uv tool run --from asv asv --config asv.conf.json check
+    - name: Compare PR base and head benchmarks
+      if: github.event_name == 'pull_request'
+      working-directory: benchmark
+      run: |
+        set -o pipefail
+        uv tool run --from asv asv --config asv.conf.json continuous \
+          --factor 1.05 \
+          --split \
+          --show-stderr \
+          --attribute repeat=1 \
+          --attribute number=1 \
+          "${{ github.event.pull_request.base.sha }}" \
+          "${{ github.event.pull_request.head.sha }}" \
+          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous.txt"
+    - name: Run scheduled benchmark evidence
+      if: github.event_name != 'pull_request'
+      working-directory: benchmark
+      run: |
+        set -o pipefail
+        uv tool run --from asv asv --config asv.conf.json run \
+          --show-stderr \
+          --durations 20 \
+          --attribute repeat=1 \
+          --attribute number=1 \
+          'HEAD^!' \
+          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-run.txt"
     - name: Upload benchmark artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

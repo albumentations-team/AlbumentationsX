@@ -21,9 +21,25 @@ destabilizing contributor workflows.
   nightly/release workflows.
 - Manual release-candidate verification runs the full test suite across the
   supported OS/Python matrix with the release Hypothesis profile.
-- Performance smoke and ASV artifact generation.
+- Performance benchmark import checks, ASV base/head comparison on pull
+  requests that touch runtime or benchmark code, and scheduled ASV artifact
+  generation.
 - Security checks, including runtime dependency audit, GitHub Actions
   hardening audit, and OpenSSF Scorecard.
+
+## Performance Regression Policy
+
+The performance workflow is advisory on GitHub-hosted runners until scheduled
+data establishes reliable blocking thresholds. It still produces review
+evidence: pull requests that change transform hot paths, functional kernels,
+parameter generation, or core pipeline code compare the PR head against the PR
+base with ASV.
+
+Material slowdowns, initially interpreted as more than about 5% on a
+representative benchmark case, should be treated as release-relevant. The pull
+request should either recover the regression or document the reason the slower
+behavior is an intentional tradeoff, such as a correctness fix, broader target
+support, or lower memory use.
 
 ## Evidence Artifacts
 

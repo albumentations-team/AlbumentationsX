@@ -1,5 +1,7 @@
 # Benchmarks (feature requests, scripts, local runs)
 benchmarks/
+!benchmark/benchmarks/
+!benchmark/benchmarks/*.py
 
 # Created by .ignore support plugin (hsz.mobi)
 ### Python template

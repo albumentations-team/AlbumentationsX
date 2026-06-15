@@ -31,10 +31,12 @@ PACKAGE_NAMES = (
 
 
 def _package_versions() -> dict[str, str | None]:
-    installed = {
-        distribution.metadata["Name"].lower(): distribution.version
-        for distribution in importlib.metadata.distributions()
-    }
+    installed: dict[str, str] = {}
+    for distribution in importlib.metadata.distributions():
+        distribution_name = distribution.metadata.get("Name")
+        if isinstance(distribution_name, str):
+            installed[distribution_name.lower()] = distribution.version
+
     return {package_name: installed.get(package_name.lower()) for package_name in PACKAGE_NAMES}
 
 
@@ -44,6 +46,14 @@ def _opencv_runtime_version() -> str | None:
     except ImportError:
         return None
     return cv2.__version__
+
+
+def _albumentations_runtime_version() -> str | None:
+    try:
+        import albumentations
+    except ImportError:
+        return None
+    return albumentations.__version__
 
 
 def _git_commit() -> str | None:
@@ -74,6 +84,9 @@ def _file_sha256(path: Path) -> str | None:
 
 
 def collect_environment(command: str | None = None) -> dict[str, Any]:
+    package_versions = _package_versions()
+    package_versions["albumentations"] = _albumentations_runtime_version()
+
     return {
         "schema_version": 1,
         "command": command,
@@ -90,7 +103,7 @@ def collect_environment(command: str | None = None) -> dict[str, Any]:
             "github_runner_os": os.environ.get("RUNNER_OS"),
             "github_runner_image": os.environ.get("IMAGEOS"),
         },
-        "packages": _package_versions(),
+        "packages": package_versions,
         "opencv_runtime_version": _opencv_runtime_version(),
         "git_commit": _git_commit(),
         "uv_lock_sha256": _file_sha256(REPO_ROOT / "uv.lock"),

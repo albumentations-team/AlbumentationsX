@@ -30,6 +30,20 @@ INPUT_RECIPE = {
 }
 
 
+def _input_recipe_for_seed(seed: int) -> dict[str, Any]:
+    recipe = dict(INPUT_RECIPE)
+    recipe["seed"] = seed
+    return recipe
+
+
+def _recipe_shape(recipe: dict[str, Any], key: str) -> tuple[int, ...]:
+    return tuple(int(dimension) for dimension in recipe[key])
+
+
+def _recipe_dtype(recipe: dict[str, Any], key: str) -> type[np.generic]:
+    return np.dtype(str(recipe[key])).type
+
+
 def _array_digest(array: np.ndarray) -> str:
     contiguous = np.ascontiguousarray(array)
     return hashlib.sha256(contiguous.view(np.uint8)).hexdigest()
@@ -63,11 +77,21 @@ def _environment_metadata() -> dict[str, str | None]:
     }
 
 
-def _base_data(seed: int) -> dict[str, np.ndarray]:
+def _build_base_data(recipe: dict[str, Any]) -> dict[str, np.ndarray]:
+    seed = int(recipe["seed"])
+    mask = TestDataFactory.create_mask(_recipe_shape(recipe, "mask_shape"), seed=seed + 1)
     return {
-        "image": TestDataFactory.create_image((8, 10, 3), dtype=np.uint8, seed=seed),
-        "mask": TestDataFactory.create_mask((8, 10), seed=seed + 1),
+        "image": TestDataFactory.create_image(
+            _recipe_shape(recipe, "image_shape"),
+            dtype=_recipe_dtype(recipe, "image_dtype"),
+            seed=seed,
+        ),
+        "mask": mask.astype(_recipe_dtype(recipe, "mask_dtype"), copy=False),
     }
+
+
+def _base_data(seed: int) -> dict[str, np.ndarray]:
+    return _build_base_data(_input_recipe_for_seed(seed))
 
 
 def _run_contract(contract: TransformContract) -> dict[str, np.ndarray]:
@@ -91,7 +115,7 @@ def _manifest_entry(contract: TransformContract, outputs: dict[str, np.ndarray],
         "behavior_epoch": contract.behavior_epoch,
         "stability": contract.stability,
         "targets": list(contract.targets),
-        "input_recipe": INPUT_RECIPE,
+        "input_recipe": _input_recipe_for_seed(contract.seed),
         "vector_file": vector_file,
         "outputs": {target: _array_metadata(array) for target, array in outputs.items()},
         "environment": _environment_metadata(),

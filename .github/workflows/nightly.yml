@@ -31,6 +31,8 @@ jobs:
         albucore==0.1.6
         opencv-python-headless==4.13.0.92
         pytest
+    - name: Prepare nightly evidence directory
+      run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Collect lower-bound environment evidence
       run: >
         uv run python tools/collect_test_environment.py
@@ -71,6 +73,8 @@ jobs:
         activate-environment: true
     - name: Install dependencies
       run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+    - name: Prepare nightly evidence directory
+      run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Verify golden vectors
       run: uv run python tools/verify_regression_vectors.py --all
     - name: Run property and regression tests

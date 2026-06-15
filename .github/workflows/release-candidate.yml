@@ -31,6 +31,8 @@ jobs:
       run: |
         uv run python -m tools.ci_matrix check
         uv run python tools/verify_regression_vectors.py --all
+    - name: Prepare release candidate evidence directory
+      run: python -c "from pathlib import Path; Path('release-candidate-evidence').mkdir(exist_ok=True)"
     - name: Run release candidate tests
       run: >
         uv run pytest -q tests/regression tests/property

@@ -9,5 +9,6 @@
   "env_dir": ".asv/env",
   "results_dir": ".asv/results",
   "html_dir": ".asv/html",
+  "branches": ["HEAD"],
   "pythons": ["3.12"]
 }

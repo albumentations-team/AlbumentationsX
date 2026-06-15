@@ -7,21 +7,28 @@ dependency.
 
 from __future__ import annotations
 
-from benchmarks.common import (
-    CHANNELS,
-    DTYPES,
-    SIZES,
-    VOLUME_SIZES,
-    dtype_from_name,
-    make_batch,
-    make_image,
-    make_mask,
-    make_mask3d,
-    make_masks,
-    make_volume,
-)
+import importlib
+import sys
+from pathlib import Path
 
 import albumentations
+
+BENCHMARK_ROOT = Path(__file__).resolve().parents[1]
+if str(BENCHMARK_ROOT) not in sys.path:
+    sys.path.insert(0, str(BENCHMARK_ROOT))
+
+benchmark_common = importlib.import_module("benchmarks.common")
+CHANNELS = benchmark_common.CHANNELS
+DTYPES = benchmark_common.DTYPES
+SIZES = benchmark_common.SIZES
+VOLUME_SIZES = benchmark_common.VOLUME_SIZES
+dtype_from_name = benchmark_common.dtype_from_name
+make_batch = benchmark_common.make_batch
+make_image = benchmark_common.make_image
+make_mask = benchmark_common.make_mask
+make_mask3d = benchmark_common.make_mask3d
+make_masks = benchmark_common.make_masks
+make_volume = benchmark_common.make_volume
 
 IMAGE_CASES = tuple(
     f"{size_name}|{channels}|{dtype_name}" for size_name in SIZES for channels in CHANNELS for dtype_name in DTYPES

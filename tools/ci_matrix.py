@@ -378,6 +378,7 @@ def _check_security_workflow() -> list[str]:
             "results_file: scorecard-results.sarif",
             "results_format: sarif",
             "publish_results: true",
+            "github.ref == 'refs/heads/main'",
         ),
         "security gate",
     )

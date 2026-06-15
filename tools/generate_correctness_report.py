@@ -146,6 +146,39 @@ def _evidence_status(items: list[dict[str, Any]], name: str) -> str:
     return f"{name}: not provided in this evidence bundle"
 
 
+def _has_benchmark_summary(summaries: list[dict[str, Any]]) -> bool:
+    return any("asv_cases" in summary and "coverage_depth" in summary for summary in summaries)
+
+
+def _has_benchmark_detail(summaries: list[dict[str, Any]]) -> bool:
+    return any(summary.get("kind") == "benchmark-coverage-detail" for summary in summaries)
+
+
+def _validate_required_evidence(
+    environments: list[dict[str, Any]],
+    benchmark_summaries: list[dict[str, Any]],
+    security_summaries: list[dict[str, Any]],
+    *,
+    allow_missing_evidence: bool,
+) -> None:
+    if allow_missing_evidence:
+        return
+
+    missing: list[str] = []
+    if not environments:
+        missing.append("environment*.json")
+    if not _has_benchmark_summary(benchmark_summaries):
+        missing.append("benchmark coverage summary JSON")
+    if not _has_benchmark_detail(benchmark_summaries):
+        missing.append("benchmark coverage detail JSON")
+    if not security_summaries:
+        missing.append("security*.json")
+
+    if missing:
+        msg = "Missing required release evidence artifact(s): " + ", ".join(missing)
+        raise ValueError(msg)
+
+
 def _test_file_count() -> int:
     return len(list((REPO_ROOT / "tests").glob("**/test*.py")))
 
@@ -165,9 +198,12 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
     benchmark_summaries = _read_json_files(evidence_dir, "benchmark*.json")
     security_summaries = _read_json_files(evidence_dir, "security*.json")
 
-    if not allow_missing_evidence and not environments:
-        msg = "At least one environment*.json evidence artifact is required."
-        raise ValueError(msg)
+    _validate_required_evidence(
+        environments,
+        benchmark_summaries,
+        security_summaries,
+        allow_missing_evidence=allow_missing_evidence,
+    )
 
     version = _project_version()
     generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")

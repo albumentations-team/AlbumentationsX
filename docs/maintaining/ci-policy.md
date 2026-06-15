@@ -62,4 +62,5 @@ Each CI lane that runs tests should upload:
 
 Release reports are generated from these artifacts when available. Local dry
 runs may use `--allow-missing-evidence`, but release workflows should provide
-environment evidence.
+environment evidence, benchmark coverage summary/detail evidence, and security
+JSON evidence.

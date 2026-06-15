@@ -89,7 +89,9 @@ Each official release must publish:
    - installs the built wheel in a clean virtual environment together with `opencv-python-headless`
    - imports `albumentations` from outside the repository checkout
    - verifies lock freshness with `uv lock --check`
+   - collects benchmark coverage summary/detail evidence
    - exports locked runtime dependencies from `uv.lock`
+   - collects release security evidence from runtime dependency and workflow audits
    - generates a CycloneDX SBOM
    - generates the Correctness & Compatibility Report
    - computes `SHA256SUMS.txt`

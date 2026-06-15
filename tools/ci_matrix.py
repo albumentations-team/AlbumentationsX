@@ -43,6 +43,58 @@ TEST_GROUPS = (
 SUPPORT_POLICY = REPO_ROOT / "docs" / "maintaining" / "support-policy.md"
 REPORT_TEMPLATE = REPO_ROOT / "docs" / "maintaining" / "correctness-report-template.md"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+NIGHTLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "nightly.yml"
+PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "performance.yml"
+RELEASE_CANDIDATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-candidate.yml"
+SECURITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "security.yml"
+RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
+WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
+WORKFLOWS = (
+    CI_WORKFLOW,
+    NIGHTLY_WORKFLOW,
+    PERFORMANCE_WORKFLOW,
+    RELEASE_CANDIDATE_WORKFLOW,
+    SECURITY_WORKFLOW,
+    RELEASE_WORKFLOW,
+)
+
+LOWER_BOUND_REQUIREMENTS = (
+    "numpy==1.24.4",
+    "scipy==1.10.1",
+    "pydantic==2.12.4",
+    "albucore==0.1.6",
+)
+
+SUPPORT_POLICY_TABLE_ROWS = (
+    "| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |",
+    "| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |",
+    "| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |",
+    (
+        "| `locked-latest` | Tests the repository lockfile and normal contributor environment. | "
+        "Required PR and `main` CI |"
+    ),
+    (
+        "| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | "
+        "Nightly and release gate |"
+    ),
+    (
+        "| `optional-extras` | Smoke-tests extras such as `pillow`, `pytorch`, `text`, `hub`, "
+        "and OpenCV variants. | Advisory until stable |"
+    ),
+    (
+        "| `pre-release-probe` | Probes future Python or dependency releases when wheels are available. | "
+        "Scheduled advisory |"
+    ),
+)
+
+REPORT_TEMPLATE_ROWS = (
+    "| `ubuntu-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
+    "| `windows-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
+    "| `macos-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
+    "| `ubuntu-latest` | 3.10 | `declared-minimum` | `<result>` |",
+    "| `ubuntu-latest` | 3.14 | `optional-extras` | `<result>` |",
+    "| `ubuntu-latest` | `3.15-dev` | `pre-release-probe` | `<result>` |",
+)
 
 
 def _load_pyproject() -> dict[str, Any]:
@@ -66,6 +118,54 @@ def _read_text(path: Path) -> str:
         return ""
 
 
+def _workflow_files() -> tuple[Path, ...]:
+    return tuple(sorted(WORKFLOW_DIR.glob("*.yml")))
+
+
+def _workflow_yaml_issue(path: Path) -> str | None:
+    try:
+        _load_yaml(path)
+    except (OSError, TypeError, yaml.YAMLError) as error:
+        return f"{path} is not valid workflow YAML: {error}"
+    return None
+
+
+def _walk_values_for_key(data: Any, key: str) -> list[Any]:
+    values: list[Any] = []
+    if isinstance(data, dict):
+        for candidate_key, value in data.items():
+            if candidate_key == key:
+                values.append(value)
+            values.extend(_walk_values_for_key(value, key))
+    elif isinstance(data, list):
+        for value in data:
+            values.extend(_walk_values_for_key(value, key))
+    return values
+
+
+def _string_values(value: Any) -> set[str]:
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, list):
+        return {str(item) for item in value}
+    return set()
+
+
+def _workflow_python_versions(workflow: dict[str, Any]) -> set[str]:
+    versions: set[str] = set()
+    for value in _walk_values_for_key(workflow, "python-version"):
+        versions.update(item for item in _string_values(value) if re.fullmatch(r"3\.\d+|3\.\d+-dev", item))
+    return versions
+
+
+def _workflow_matrix_values(workflow: dict[str, Any], matrix_key: str) -> set[str]:
+    values: set[str] = set()
+    for matrix in _walk_values_for_key(workflow, "matrix"):
+        if isinstance(matrix, dict):
+            values.update(_string_values(matrix.get(matrix_key, [])))
+    return values
+
+
 def _python_classifiers(pyproject: dict[str, Any]) -> set[str]:
     project = pyproject.get("project", {})
     classifiers = project.get("classifiers", [])
@@ -84,41 +184,11 @@ def _python_classifiers(pyproject: dict[str, Any]) -> set[str]:
 
 
 def _ci_python_versions(workflow: dict[str, Any]) -> set[str]:
-    jobs = workflow.get("jobs", {})
-    if not isinstance(jobs, dict):
-        return set()
-
-    versions: set[str] = set()
-    for job in jobs.values():
-        if not isinstance(job, dict):
-            continue
-        strategy = job.get("strategy", {})
-        matrix = strategy.get("matrix", {}) if isinstance(strategy, dict) else {}
-        values = matrix.get("python-version", []) if isinstance(matrix, dict) else []
-        if isinstance(values, str):
-            versions.add(values)
-        elif isinstance(values, list):
-            versions.update(str(value) for value in values)
-    return versions
+    return _workflow_matrix_values(workflow, "python-version")
 
 
 def _ci_operating_systems(workflow: dict[str, Any]) -> set[str]:
-    jobs = workflow.get("jobs", {})
-    if not isinstance(jobs, dict):
-        return set()
-
-    operating_systems: set[str] = set()
-    for job in jobs.values():
-        if not isinstance(job, dict):
-            continue
-        strategy = job.get("strategy", {})
-        matrix = strategy.get("matrix", {}) if isinstance(strategy, dict) else {}
-        values = matrix.get("operating-system", []) if isinstance(matrix, dict) else []
-        if isinstance(values, str):
-            operating_systems.add(values)
-        elif isinstance(values, list):
-            operating_systems.update(str(value) for value in values)
-    return operating_systems
+    return _workflow_matrix_values(workflow, "operating-system")
 
 
 def _check_pyproject() -> list[str]:
@@ -157,6 +227,153 @@ def _check_ci_workflow() -> list[str]:
     return issues
 
 
+def _check_workflow_inventory() -> list[str]:
+    issues: list[str] = []
+    present = set(_workflow_files())
+    expected = set(WORKFLOWS)
+    missing = sorted(expected - present)
+    if missing:
+        issues.append("Missing expected workflow file(s): " + ", ".join(str(path) for path in missing))
+
+    for path in _workflow_files():
+        issue = _workflow_yaml_issue(path)
+        if issue is not None:
+            issues.append(issue)
+    return issues
+
+
+def _check_workflow_python_versions() -> list[str]:
+    allowed_versions = {*SUPPORTED_PYTHONS, PYTHON_PROBE}
+    issues: list[str] = []
+    for path in _workflow_files():
+        versions = _workflow_python_versions(_load_yaml(path))
+        unsupported = sorted(versions - allowed_versions)
+        if unsupported:
+            issues.append(f"{path} references unsupported Python version(s): {unsupported!r}")
+    return issues
+
+
+def _check_full_matrix_workflow(path: Path) -> list[str]:
+    workflow = _load_yaml(path)
+    issues: list[str] = []
+    versions = _workflow_matrix_values(workflow, "python-version")
+    operating_systems = _workflow_matrix_values(workflow, "operating-system")
+    missing_versions = set(SUPPORTED_PYTHONS) - versions
+    missing_oses = set(TIER_1_OSES) - operating_systems
+    if missing_versions:
+        issues.append(f"{path} full matrix is missing Python version(s): {sorted(missing_versions)!r}")
+    if missing_oses:
+        issues.append(f"{path} full matrix is missing operating system(s): {sorted(missing_oses)!r}")
+    return issues
+
+
+def _check_text_mentions(path: Path, required: tuple[str, ...], context: str) -> list[str]:
+    text = _read_text(path)
+    return [f"{path} does not include required {context}: {item}" for item in required if item not in text]
+
+
+def _check_nightly_workflow() -> list[str]:
+    issues = _check_text_mentions(NIGHTLY_WORKFLOW, LOWER_BOUND_REQUIREMENTS, "lower-bound dependency")
+    issues.extend(
+        _check_text_mentions(
+            NIGHTLY_WORKFLOW,
+            (
+                'python-version: "3.10"',
+                "--hypothesis-profile=ci-nightly",
+                "tools/verify_regression_vectors.py --all",
+                "tools/pytest_summary.py",
+                "environment-lower-bound.json",
+                "environment-property-regression.json",
+                "environment-optional-extras.json",
+            ),
+            "nightly evidence gate",
+        ),
+    )
+    return issues
+
+
+def _check_release_candidate_workflow() -> list[str]:
+    issues = _check_full_matrix_workflow(RELEASE_CANDIDATE_WORKFLOW)
+    issues.extend(
+        _check_text_mentions(
+            RELEASE_CANDIDATE_WORKFLOW,
+            (
+                "--hypothesis-profile=release",
+                "tools/verify_regression_vectors.py --all",
+                "tools.benchmark_coverage summary",
+                "tools.benchmark_coverage details",
+                "tools/pytest_summary.py",
+            ),
+            "release-candidate evidence gate",
+        ),
+    )
+    return issues
+
+
+def _check_performance_workflow() -> list[str]:
+    return _check_text_mentions(
+        PERFORMANCE_WORKFLOW,
+        (
+            "continue-on-error: true",
+            "tools.benchmark_coverage summary",
+            "tools.benchmark_coverage details",
+            "asv --config asv.conf.json check --verbose",
+            "tools/asv_summary.py",
+            "benchmark-coverage-detail.json",
+            "benchmark-evidence/",
+        ),
+        "performance evidence gate",
+    )
+
+
+def _check_security_workflow() -> list[str]:
+    return _check_text_mentions(
+        SECURITY_WORKFLOW,
+        (
+            "pip-audit",
+            "zizmor",
+            "ossf/scorecard-action",
+            "results_file: scorecard-results.json",
+            "results_format: json",
+            "publish_results: true",
+        ),
+        "security gate",
+    )
+
+
+def _check_release_workflow() -> list[str]:
+    return _check_text_mentions(
+        RELEASE_WORKFLOW,
+        (
+            "uv build",
+            "twine check",
+            "cyclonedx-py",
+            "tools/collect_test_environment.py",
+            "tools.benchmark_coverage summary",
+            "tools.benchmark_coverage details",
+            "tools/generate_correctness_report.py",
+            "SHA256SUMS.txt",
+            "softprops/action-gh-release",
+            "pypa/gh-action-pypi-publish",
+        ),
+        "release artifact gate",
+    )
+
+
+def _check_workflows() -> list[str]:
+    return [
+        *_check_workflow_inventory(),
+        *_check_workflow_python_versions(),
+        *_check_ci_workflow(),
+        *_check_full_matrix_workflow(RELEASE_CANDIDATE_WORKFLOW),
+        *_check_nightly_workflow(),
+        *_check_release_candidate_workflow(),
+        *_check_performance_workflow(),
+        *_check_security_workflow(),
+        *_check_release_workflow(),
+    ]
+
+
 def _check_python_mentions(text: str, path: Path) -> list[str]:
     return [f"{path} does not mention Python {version}" for version in SUPPORTED_PYTHONS if version not in text]
 
@@ -180,12 +397,14 @@ def _check_docs() -> list[str]:
     issues.extend(_check_required_mentions(support_policy, SUPPORT_POLICY, TIER_1_OSES, "operating system"))
     issues.extend(_check_required_mentions(support_policy, SUPPORT_POLICY, DEPENDENCY_SETS, "dependency set"))
     issues.extend(_check_required_mentions(report_template, REPORT_TEMPLATE, DEPENDENCY_SETS, "dependency set"))
+    issues.extend(_check_required_mentions(support_policy, SUPPORT_POLICY, SUPPORT_POLICY_TABLE_ROWS, "table row"))
+    issues.extend(_check_required_mentions(report_template, REPORT_TEMPLATE, REPORT_TEMPLATE_ROWS, "table row"))
 
     return issues
 
 
 def check() -> int:
-    issues = [*_check_pyproject(), *_check_ci_workflow(), *_check_docs()]
+    issues = [*_check_pyproject(), *_check_workflows(), *_check_docs()]
     if issues:
         print("CI matrix validation failed:")
         for issue in issues:

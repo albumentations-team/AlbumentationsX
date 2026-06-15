@@ -44,6 +44,12 @@ jobs:
         uv run python tools/collect_test_environment.py
         --output release-candidate-evidence/environment-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
         --command "release candidate verification"
+    - name: Summarize release candidate pytest results
+      if: always()
+      run: >
+        uv run python tools/pytest_summary.py
+        --junit release-candidate-evidence/junit.xml
+        --output release-candidate-evidence/pytest-summary-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
     - name: Collect benchmark coverage evidence
       if: always()
       run: |

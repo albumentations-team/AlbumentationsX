@@ -96,8 +96,31 @@ jobs:
         --output dist/evidence/environment-release.json
         --command "release workflow"
 
+    - name: Collect benchmark coverage evidence
+      run: |
+        uv run python -m tools.benchmark_coverage summary \
+          --output dist/evidence/benchmark-coverage-release.json
+        uv run python -m tools.benchmark_coverage details \
+          --output dist/evidence/benchmark-coverage-detail-release.json
+
     - name: Export locked runtime dependencies
       run: uv export --frozen --no-dev --format requirements-txt --output-file dist/runtime-requirements.txt
+
+    - name: Collect release security evidence
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        uv tool run --from pip-audit pip-audit \
+          --requirement dist/runtime-requirements.txt \
+          --no-deps \
+          --disable-pip \
+          --format=json \
+          --output dist/evidence/security-pip-audit.json
+        uv tool run --from zizmor zizmor \
+          --format=json \
+          --min-severity=medium \
+          --min-confidence=medium \
+          .github > dist/evidence/security-zizmor.json
 
     - name: Generate CycloneDX SBOM
       run: |

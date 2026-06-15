@@ -45,7 +45,14 @@ def _manifest_contract_issues(cases: list[dict[str, Any]], transform_name: str |
     return issues
 
 
-def _compare_array(case_id: str, target: str, expected: np.ndarray, actual: np.ndarray) -> list[str]:
+def _compare_array(
+    case_id: str,
+    target: str,
+    expected: np.ndarray,
+    actual: np.ndarray,
+    stability: str,
+    tolerance: float,
+) -> list[str]:
     issues: list[str] = []
     if expected.shape != actual.shape:
         issues.append(f"{case_id}:{target} shape mismatch: {actual.shape} != {expected.shape}")
@@ -54,10 +61,20 @@ def _compare_array(case_id: str, target: str, expected: np.ndarray, actual: np.n
     if issues:
         return issues
 
-    try:
-        np.testing.assert_array_equal(actual, expected)
-    except AssertionError as error:
-        issues.append(f"{case_id}:{target} values differ: {error}")
+    if stability in {"exact", "digest"} or target.endswith("_labels") or not np.issubdtype(expected.dtype, np.number):
+        try:
+            np.testing.assert_array_equal(actual, expected)
+        except AssertionError as error:
+            issues.append(f"{case_id}:{target} values differ: {error}")
+    elif stability == "tolerance":
+        try:
+            np.testing.assert_allclose(actual, expected, atol=tolerance, rtol=0)
+        except AssertionError as error:
+            issues.append(f"{case_id}:{target} values differ outside tolerance {tolerance}: {error}")
+    elif stability == "structural":
+        return issues
+    else:
+        issues.append(f"{case_id}:{target} has unsupported stability mode {stability!r}")
     return issues
 
 
@@ -70,15 +87,17 @@ def verify_case(case: dict[str, Any]) -> list[str]:
     contract = contract_by_name(str(case["transform"]))
     actual_outputs = _run_contract(contract)
     issues: list[str] = []
+    stability = str(case.get("stability", contract.stability))
+    tolerance = float(case.get("tolerance", contract.tolerance))
 
     with np.load(vector_path) as expected_outputs:
         for target in case["targets"]:
             expected = expected_outputs[target]
             actual = actual_outputs[target]
-            issues.extend(_compare_array(case_id, target, expected, actual))
+            issues.extend(_compare_array(case_id, target, expected, actual, stability, tolerance))
             metadata = _array_metadata(actual)
             expected_metadata = case.get("outputs", {}).get(target, {})
-            if metadata.get("sha256") != expected_metadata.get("sha256"):
+            if stability in {"exact", "digest"} and metadata.get("sha256") != expected_metadata.get("sha256"):
                 issues.append(f"{case_id}:{target} digest mismatch")
 
     return issues

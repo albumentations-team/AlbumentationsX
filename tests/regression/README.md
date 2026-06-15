@@ -10,6 +10,12 @@ annotation geometry tests, 3D tests, and property tests. They should be added
 when exact or structured output stability is important to review explicitly,
 not as a mechanical duplicate of every transform test.
 
+The initial sentinel set covers exact deterministic 2D geometry, a
+tolerance-based bbox/keypoint resize contract, and an exact 3D volume/mask3d
+crop contract. Each manifest case records the transform, params, seed, input
+recipe, environment, behavior epoch, targets, stability mode, tolerance, and
+output metadata.
+
 `tests/regression/transform_contracts.py` also tracks public transform coverage
 routes. A new public transform-like API should be covered by the established
 parameterized sweeps or assigned an explicit focused route; otherwise the
@@ -24,6 +30,7 @@ uv run python tools/verify_regression_vectors.py --all
 uv run pytest tests/regression
 ```
 
-Golden vectors use seeded `Compose` calls and synthetic inputs from
-`TestDataFactory`. New vectors must declare a stability mode: `exact`,
-`tolerance`, `digest`, or `structural`.
+Golden vectors use seeded `Compose` calls and generated synthetic inputs.
+Image/mask recipes use `TestDataFactory`; annotation and 3D recipes are kept
+small and explicit in the generator for reviewability. New vectors must declare
+a stability mode: `exact`, `tolerance`, `digest`, or `structural`.

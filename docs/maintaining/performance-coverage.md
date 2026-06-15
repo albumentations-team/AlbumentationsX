@@ -18,6 +18,8 @@ included in CI or release evidence.
 - Require every public transform to have benchmark accounting.
 - Record optional transforms explicitly with a reason instead of silently
   skipping them.
+- Record each transform's expected coverage contract and fail validation when
+  required layers are missing.
 
 The machine-readable source is `benchmark/benchmarks/catalog.py`. Validate it
 with:
@@ -48,6 +50,12 @@ through their canonical implementation and recorded with an `alias_coverage`
 layer in the per-transform detail artifact. The catalog smoke path still
 verifies that the public alias constructs and executes.
 
+`ToTensorV2` and `ToTensor3D` are not part of the default headless ASV suite.
+They are covered by the dedicated PyTorch ASV config,
+`benchmark/asv-pytorch.conf.json`, and appear in coverage details under the
+`pytorch_tensor` layer. They must not be treated as uncovered simply because
+the default ASV environment avoids torch.
+
 ### L2: Family Matrices
 
 Hot transform families must have richer matrix coverage than the catalog smoke
@@ -75,6 +83,8 @@ The current family matrix covers:
 - reference data: mixing, domain adaptation, overlay, copy-paste, mosaic, and
   text metadata transforms
 - volumetric data: public 3D transforms over volume size and dtype variants
+- optional tensor data: PyTorch tensor conversion paths for 2D and 3D terminal
+  transforms in the optional PyTorch ASV lane
 
 ### L3: Direct Functional Kernels
 
@@ -151,10 +161,14 @@ Pull requests:
 - advisory: ASV before/after comparison on GitHub-hosted runners when runtime
   or benchmark code changes; PR comparison is bounded to catalog smoke, core
   pipeline, and direct functional-kernel benchmarks to keep feedback timely
+- optional PyTorch ASV is not run on every pull request because installing
+  torch can dominate feedback time; it is run on `main`, scheduled, and manual
+  performance workflows
 
 Nightly and scheduled runs:
 
 - full ASV evidence on `main`
+- optional PyTorch tensor ASV evidence
 - environment JSON
 - benchmark coverage JSON
 - ASV result artifacts
@@ -183,6 +197,13 @@ uv tool run --from asv asv --config asv.conf.json continuous \
 Manual workflow runs may pass `bench_filter` to scope a comparison or leave it
 empty to compare the full suite.
 
+Optional PyTorch tensor benchmarks can be run locally with:
+
+```bash
+cd benchmark
+uv tool run --from asv asv --config asv-pytorch.conf.json run --quick --show-stderr
+```
+
 The raw ASV comparison text is the source artifact. The compact JSON summary
 used by release reports can be generated with:
 
@@ -200,13 +221,17 @@ following are true:
 - `uv run python -m tools.benchmark_coverage check` passes.
 - ASV importability passes for the benchmark suite.
 - Every public transform is either runnable in the catalog smoke layer or
-  explicitly accounted as optional.
+  explicitly accounted as optional with a dedicated benchmark lane.
+- Every transform's benchmark coverage contract is satisfied in
+  `benchmark-coverage-detail.json`.
 - The per-transform detail artifact is published and reviewed for smoke-only
   transforms.
 - Hot transform families have size/channel/dtype matrix coverage.
 - Direct functional kernels have non-empty coverage in each required group.
 - Annotation, reference-data, volumetric, batch, and memory paths are included
   in benchmark evidence.
+- Optional PyTorch tensor paths are included in scheduled or release-adjacent
+  benchmark evidence.
 - Release evidence compares the candidate against an appropriate baseline or
   documents why comparison evidence is unavailable.
 - Material runtime or memory regressions are either fixed or justified in

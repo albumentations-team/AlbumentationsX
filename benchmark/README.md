@@ -23,6 +23,14 @@ uv tool run --from asv asv --config asv.conf.json continuous \
   <candidate-ref>
 ```
 
+Optional PyTorch tensor transforms are benchmarked with a separate ASV config so
+the default headless suite stays importable without torch:
+
+```bash
+cd benchmark
+uv tool run --from asv asv --config asv-pytorch.conf.json run --quick --show-stderr
+```
+
 The GitHub performance workflow can also be run manually with
 `workflow_dispatch` inputs:
 
@@ -97,10 +105,10 @@ when a configured transform no longer exists, when a benchmark transform cannot
 be constructed, or when the representative smoke route no longer runs. The ASV
 suite includes `TimeCatalogTransformSmoke`, which executes one valid
 `Compose` path for every runnable public transform. Optional PyTorch tensor
-transforms are accounted separately because the default performance environment
-installs the headless package extras. The detail artifact records the coverage
-layers for each public transform and keeps smoke-only transforms visible for
-future benchmark hardening.
+transforms are accounted separately and benchmarked by the dedicated
+`asv-pytorch.conf.json` lane because the default performance environment
+installs only headless package extras. The detail artifact records the expected
+coverage contract and actual coverage layers for each public transform.
 
 Catalog smoke coverage is not the whole performance policy. It proves that
 every transform has at least one measured route. Hot families still need richer
@@ -128,6 +136,8 @@ The current ASV suite includes these production coverage layers:
 - Volumetric paths: all public 3D transforms over size and dtype variants.
 - Alias coverage: warning aliases mapped to their canonical benchmarked
   implementation while catalog smoke still validates public construction.
+- Optional PyTorch tensor paths: `ToTensorV2` and `ToTensor3D` in a separate
+  ASV environment with torch installed.
 - Direct functional kernels: shared geometry, annotation, pixel, blur/filter,
   and 3D kernels benchmarked outside `Compose` to identify whether changes come
   from raw kernels or pipeline overhead.

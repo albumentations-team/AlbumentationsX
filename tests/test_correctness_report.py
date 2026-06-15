@@ -26,11 +26,12 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
         tmp_path / "benchmark-coverage-local.json",
         {
             "asv_cases": 1,
-            "coverage_depth": {"deep_coverage_transforms": 1},
+            "coverage_depth": {"contract_failures": 0, "deep_coverage_transforms": 1},
             "direct_kernel_cases": {},
             "full_matrix_cases": {},
             "memory_benchmarks": 0,
             "public_transforms": 1,
+            "pytorch_tensor_benchmark_cases": 0,
         },
     )
     _write_json(
@@ -39,6 +40,7 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
             "kind": "benchmark-coverage-detail",
             "layer_counts": {},
             "summary": {
+                "contract_failures": 0,
                 "deep_coverage_transforms": 1,
                 "optional_transforms": 0,
                 "smoke_only_transforms": 0,
@@ -50,4 +52,5 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
     report = generate_report(tmp_path)
 
     assert "Benchmark coverage detail" in report
+    assert "0 coverage contract failure(s)" in report
     assert "Security summary: provided" in report

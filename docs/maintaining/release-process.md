@@ -35,7 +35,8 @@ Before a release is published, all of the following must be true:
    - property tests with the release profile
    - security workflow checks
    - performance workflow completed, including benchmark coverage detail
-     artifacts, with any material regressions documented
+     artifacts and optional PyTorch tensor benchmark evidence, with any
+     material regressions documented
 
 Performance coverage expectations and regression triage rules are maintained in
 `docs/maintaining/performance-coverage.md`.

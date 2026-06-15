@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "project": "albumentationsx-pytorch",
+  "project_url": "https://github.com/albumentations-team/AlbumentationsX",
+  "repo": "..",
+  "environment_type": "virtualenv",
+  "install_command": "python -m pip install {build_dir}[headless,pytorch]",
+  "benchmark_dir": "pytorch_benchmarks",
+  "env_dir": ".asv/pytorch-env",
+  "results_dir": ".asv/pytorch-results",
+  "html_dir": ".asv/pytorch-html",
+  "branches": ["HEAD"],
+  "pythons": ["3.12"]
+}

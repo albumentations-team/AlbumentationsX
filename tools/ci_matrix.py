@@ -318,9 +318,11 @@ def _check_performance_workflow() -> list[str]:
             "tools.benchmark_coverage summary",
             "tools.benchmark_coverage details",
             "asv --config asv.conf.json check --verbose",
+            "asv --config asv-pytorch.conf.json check --verbose",
             "tools/asv_summary.py",
             "benchmark-coverage-detail.json",
             "benchmark-evidence/",
+            "pytorch-benchmark-evidence/",
         ),
         "performance evidence gate",
     )

@@ -110,11 +110,13 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
                 f"{index}: {coverage_depth.get('deep_coverage_transforms', 0)} transform(s) with deep coverage, "
                 f"{coverage_depth.get('smoke_only_transforms', 0)} smoke-only transform(s), "
                 f"{coverage_depth.get('optional_transforms', 0)} optional transform(s); "
+                f"{coverage_depth.get('contract_failures', 0)} coverage contract failure(s); "
                 f"{layer_counts.get('alias_coverage', 0)} alias-covered, "
                 f"{layer_counts.get('family_matrix', 0)} family-matrix, "
                 f"{layer_counts.get('direct_kernel', 0)} direct-kernel, "
                 f"{layer_counts.get('target_matrix', 0)} target-matrix, "
-                f"{layer_counts.get('volumetric_matrix', 0)} volumetric-matrix transform(s)",
+                f"{layer_counts.get('volumetric_matrix', 0)} volumetric-matrix, "
+                f"{layer_counts.get('pytorch_tensor', 0)} PyTorch tensor transform(s)",
             )
             continue
         full_matrix_cases = summary.get("full_matrix_cases", {})
@@ -134,8 +136,10 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
             f"{full_matrix_count} full-matrix/reference/annotation/volumetric cases, "
             f"{direct_kernel_count} direct functional-kernel cases, "
             f"{summary.get('memory_benchmarks', 0)} memory benchmark(s), "
+            f"{summary.get('pytorch_tensor_benchmark_cases', 0)} PyTorch tensor benchmark case(s), "
             f"{summary.get('public_transforms', 0)} public transform(s) accounted, "
-            f"{coverage_depth.get('deep_coverage_transforms', 0)} transform(s) with deep coverage",
+            f"{coverage_depth.get('deep_coverage_transforms', 0)} transform(s) with deep coverage, "
+            f"{coverage_depth.get('contract_failures', 0)} coverage contract failure(s)",
         )
     return "\n".join(lines)
 

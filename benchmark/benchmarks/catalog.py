@@ -33,8 +33,8 @@ ABSTRACT_TRANSFORM_NAMES = frozenset(
 )
 
 OPTIONAL_BENCHMARK_TRANSFORMS = {
-    "ToTensor3D": "requires optional PyTorch dependency outside the headless ASV environment",
-    "ToTensorV2": "requires optional PyTorch dependency outside the headless ASV environment",
+    "ToTensor3D": "requires optional PyTorch dependency; covered by the dedicated PyTorch ASV lane",
+    "ToTensorV2": "requires optional PyTorch dependency; covered by the dedicated PyTorch ASV lane",
 }
 
 EXPECTED_INIT_WARNINGS = (

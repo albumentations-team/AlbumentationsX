@@ -7,6 +7,7 @@ import json
 import sys
 from collections import Counter
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -242,6 +243,31 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
     },
 )
 
+PYTORCH_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
+
+DEEP_COVERAGE_LAYERS = frozenset(
+    {
+        "alias_coverage",
+        "annotation_scaling",
+        "direct_kernel",
+        "family_matrix",
+        "memory",
+        "pytorch_tensor",
+        "reference_data",
+        "target_matrix",
+        "volumetric_matrix",
+    },
+)
+
+
+@dataclass(frozen=True)
+class CoverageExpectation:
+    """Machine-checkable benchmark coverage contract for one transform."""
+
+    required_layers: frozenset[str]
+    required_any_layers: tuple[frozenset[str], ...] = ()
+    reason: str = ""
+
 
 def _mapped_names(mapping: Mapping[str, str], names: Iterable[str]) -> set[str]:
     """Map benchmark aliases to public transform names."""
@@ -262,10 +288,64 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
         "direct_kernel": set(DIRECT_KERNEL_TRANSFORMS),
         "family_matrix": geometry_matrix | pixel_matrix,
         "memory": set(MEMORY_COVERED_TRANSFORMS),
+        "pytorch_tensor": set(PYTORCH_TENSOR_TRANSFORMS),
         "reference_data": reference_data,
         "target_matrix": special_targets,
         "volumetric_matrix": volumetric_matrix,
     }
+
+
+def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
+    """Return the expected benchmark coverage layers for a public transform."""
+    if name in PYTORCH_TENSOR_TRANSFORMS:
+        return CoverageExpectation(
+            required_layers=frozenset({"optional", "pytorch_tensor"}),
+            reason="optional PyTorch tensor transforms are benchmarked in the dedicated PyTorch ASV lane",
+        )
+    if name in ALIAS_COVERAGE_TRANSFORMS:
+        return CoverageExpectation(
+            required_layers=frozenset({"catalog_smoke", "alias_coverage"}),
+            reason="warning alias is covered by its canonical transform and still smoke-tested directly",
+        )
+    if route == "volume":
+        return CoverageExpectation(
+            required_layers=frozenset({"catalog_smoke", "volumetric_matrix"}),
+            reason="public 3D transforms require volumetric matrix coverage",
+        )
+    if route in {"metadata", "mixing", "text"}:
+        return CoverageExpectation(
+            required_layers=frozenset({"catalog_smoke", "reference_data"}),
+            reason="reference-data transforms require metadata-path coverage beyond smoke",
+        )
+    if route in {"bboxes", "crop_bbox", "mask"}:
+        return CoverageExpectation(
+            required_layers=frozenset({"catalog_smoke"}),
+            required_any_layers=(frozenset({"annotation_scaling", "target_matrix"}),),
+            reason="target-specialized transforms require annotation or special-target scaling coverage",
+        )
+    return CoverageExpectation(
+        required_layers=frozenset({"catalog_smoke"}),
+        required_any_layers=(DEEP_COVERAGE_LAYERS - {"pytorch_tensor"},),
+        reason="image transforms require at least one deep coverage layer beyond catalog smoke",
+    )
+
+
+def _format_any_layers(groups: tuple[frozenset[str], ...]) -> list[list[str]]:
+    """Format alternative layer requirements for JSON output."""
+    return [sorted(group) for group in groups]
+
+
+def _expectation_issues(name: str, layers: set[str], expectation: CoverageExpectation) -> list[str]:
+    """Return unmet coverage-contract messages for one transform."""
+    issues = [
+        f"missing required benchmark coverage layer '{layer}'" for layer in sorted(expectation.required_layers - layers)
+    ]
+    issues.extend(
+        f"expected at least one benchmark coverage layer from {', '.join(sorted(alternatives))}"
+        for alternatives in expectation.required_any_layers
+        if layers.isdisjoint(alternatives)
+    )
+    return issues
 
 
 def coverage_details() -> dict[str, Any]:
@@ -280,11 +360,21 @@ def coverage_details() -> dict[str, Any]:
             if name in transform_names:
                 layers.append(layer_name)
 
-        deep_layers = [layer for layer in layers if layer not in {"catalog_smoke", "optional"}]
+        layer_set = set(layers)
+        expectation = _coverage_expectation(name, spec.route)
+        contract_issues = _expectation_issues(name, layer_set, expectation)
+        deep_layers = [layer for layer in layers if layer in DEEP_COVERAGE_LAYERS]
         transforms.append(
             {
                 "benchmark": spec.benchmark,
                 "covered_by": ALIAS_COVERAGE_TRANSFORMS.get(name, ""),
+                "coverage_contract": {
+                    "issues": contract_issues,
+                    "reason": expectation.reason,
+                    "required_any_layers": _format_any_layers(expectation.required_any_layers),
+                    "required_layers": sorted(expectation.required_layers),
+                    "status": "ok" if not contract_issues else "missing",
+                },
                 "layers": layers,
                 "name": name,
                 "optional_reason": spec.reason,
@@ -307,17 +397,21 @@ def coverage_details() -> dict[str, Any]:
                 "volumetric_matrix",
                 "direct_kernel",
                 "memory",
+                "pytorch_tensor",
                 "optional",
             )
         },
     )
+    contract_failures = sorted(item["name"] for item in transforms if item["coverage_contract"]["issues"])
 
     return {
+        "contract_failures": contract_failures,
         "kind": "benchmark-coverage-detail",
         "layer_counts": dict(sorted(layer_counts.items())),
         "public_transforms": len(transforms),
         "smoke_only_transforms": smoke_only,
         "summary": {
+            "contract_failures": len(contract_failures),
             "deep_coverage_transforms": len(transforms) - len(smoke_only) - layer_counts["optional"],
             "optional_transforms": layer_counts["optional"],
             "smoke_only_transforms": len(smoke_only),
@@ -353,6 +447,7 @@ def _spec_summary() -> dict[str, Any]:
             "volumetric": len(FUNCTIONAL_3D_CASES),
         },
         "memory_benchmarks": len(MEMORY_BENCHMARKS),
+        "pytorch_tensor_benchmark_cases": len(PYTORCH_TENSOR_TRANSFORMS),
         "registered_specs": len(specs),
         "asv_cases": len(asv_case_ids()),
         "optional_cases": optional,
@@ -404,11 +499,19 @@ def _validate_coverage_layers(spec_names: set[str]) -> list[str]:
     return []
 
 
+def _validate_coverage_contracts() -> list[str]:
+    details = coverage_details()
+    return [
+        f"{item['name']}: {issue}" for item in details["transforms"] for issue in item["coverage_contract"]["issues"]
+    ]
+
+
 def _validate_registry() -> list[str]:
     specs = benchmark_specs()
     errors = _validate_public_registry(set(public_transform_names()), set(specs))
     errors.extend(_validate_transform_construction(specs))
     errors.extend(_validate_coverage_layers(set(specs)))
+    errors.extend(_validate_coverage_contracts())
     errors.extend(
         _validate_case_groups(
             {

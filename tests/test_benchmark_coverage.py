@@ -18,6 +18,8 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     assert (
         details["layer_counts"]["catalog_smoke"] + details["layer_counts"]["optional"] == details["public_transforms"]
     )
+    assert details["summary"]["contract_failures"] == 0
+    assert details["contract_failures"] == []
 
 
 def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
@@ -75,5 +77,7 @@ def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     to_tensor = _coverage_for("ToTensorV2")
 
     assert to_tensor["benchmark"] is False
-    assert to_tensor["layers"] == ["optional"]
+    assert to_tensor["layers"] == ["optional", "pytorch_tensor"]
+    assert to_tensor["coverage_contract"]["status"] == "ok"
+    assert to_tensor["coverage_contract"]["required_layers"] == ["optional", "pytorch_tensor"]
     assert "PyTorch" in str(to_tensor["optional_reason"])

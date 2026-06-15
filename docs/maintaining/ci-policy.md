@@ -24,8 +24,9 @@ destabilizing contributor workflows.
 - Performance benchmark import checks, catalog coverage validation, direct
   functional-kernel coverage validation, per-transform coverage-depth
   artifacts, ASV before/after comparison for performance-sensitive changes,
-  manual baseline/candidate comparison through `workflow_dispatch`, and
-  scheduled ASV artifact generation.
+  optional PyTorch tensor benchmark evidence, manual baseline/candidate
+  comparison through `workflow_dispatch`, and scheduled ASV artifact
+  generation.
 - Security checks, including runtime dependency audit, GitHub Actions
   hardening audit, and OpenSSF Scorecard.
 
@@ -40,6 +41,9 @@ or benchmark code, using a bounded catalog/core/direct-kernel comparison so the
 advisory lane stays timely. Release tasks, large branches, and local
 investigations can use the manual workflow inputs to compare an explicit
 `baseline_ref`, `candidate_ref`, and optional ASV `bench_filter`.
+The optional PyTorch tensor benchmark lane runs on `main`, scheduled, and
+manual performance workflows instead of every pull request because installing
+torch can dominate PR feedback time.
 
 Material slowdowns, initially interpreted as more than about 5% on a
 representative benchmark case, should be treated as release-relevant. The

@@ -35,6 +35,22 @@ def _suite_summaries(root: ET.Element) -> list[dict[str, Any]]:
 
 
 def summarize_junit(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "schema_version": 1,
+            "source": str(path),
+            "missing": True,
+            "totals": {
+                "tests": 0,
+                "failures": 0,
+                "errors": 1,
+                "skipped": 0,
+                "time": 0.0,
+                "passed": 0,
+            },
+            "suites": [],
+        }
+
     root = ET.parse(path).getroot()  # noqa: S314
     suites = _suite_summaries(root)
     totals = {

@@ -19,6 +19,8 @@ destabilizing contributor workflows.
 - Golden regression vectors.
 - Property tests with the `ci-fast` profile on PR and broader profiles in
   nightly/release workflows.
+- Manual release-candidate verification runs the full test suite across the
+  supported OS/Python matrix with the release Hypothesis profile.
 - Performance smoke and ASV artifact generation.
 - Security checks, including runtime dependency audit, GitHub Actions
   hardening audit, and OpenSSF Scorecard.

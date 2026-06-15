@@ -24,6 +24,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|\.github/workflows/|docs/maintaining/|tools/ci_matrix\.py)
+      - id: verify-regression-vectors
+        name: Verify regression vector contracts
+        entry: python -m tools.verify_regression_vectors --all
+        language: system
+        pass_filenames: false
+        files: ^(tests/regression/|tests/files/regression/|tools/(generate|verify)_regression_vectors\.py)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

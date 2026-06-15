@@ -35,7 +35,7 @@ jobs:
       run: python -c "from pathlib import Path; Path('release-candidate-evidence').mkdir(exist_ok=True)"
     - name: Run release candidate tests
       run: >
-        uv run pytest -q tests/regression tests/property
+        uv run pytest -n auto
         --hypothesis-profile=release
         --junitxml=release-candidate-evidence/junit.xml
     - name: Collect release candidate environment

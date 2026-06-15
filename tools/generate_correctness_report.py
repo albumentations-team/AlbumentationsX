@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from tests.regression.transform_contracts import coverage_summary
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 try:
@@ -89,6 +91,19 @@ def _evidence_status(items: list[dict[str, Any]], name: str) -> str:
     return f"{name}: not provided in this evidence bundle"
 
 
+def _test_file_count() -> int:
+    return len(list((REPO_ROOT / "tests").glob("**/test*.py")))
+
+
+def _regression_manifest_case_count() -> int:
+    manifest_path = REPO_ROOT / "tests" / "files" / "regression" / "manifest.json"
+    if not manifest_path.exists():
+        return 0
+    manifest = _read_json_file(manifest_path)
+    cases = manifest.get("cases", [])
+    return len(cases) if isinstance(cases, list) else 0
+
+
 def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bool = False) -> str:
     environments = _read_json_files(evidence_dir, "environment*.json")
     pytest_summaries = _read_json_files(evidence_dir, "pytest-summary*.json")
@@ -104,6 +119,13 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
     python_versions = ", ".join(SUPPORTED_PYTHONS)
     operating_systems = ", ".join(TIER_1_OSES)
     dependency_sets = ", ".join(DEPENDENCY_SETS)
+    transform_coverage = coverage_summary()
+    golden_case_count = _regression_manifest_case_count()
+    test_file_count = _test_file_count()
+    public_api_count = transform_coverage["public_transform_apis"]
+    covered_public_api_count = transform_coverage["covered_public_transform_apis"]
+    transform_sweep_count = transform_coverage["parameterized_transform_sweep"]
+    golden_contract_count = transform_coverage["golden_contracts"]
 
     return f"""# AlbumentationsX Correctness & Compatibility Report: {version}
 
@@ -128,11 +150,14 @@ Dependency sets tracked by the support policy: {dependency_sets}
 
 {_format_test_summary(pytest_summaries)}
 
-- Golden regression vectors: covered by `tests/regression`
-- Property-based invariant tests: covered by `tests/property`
-- Serialization and ReplayCompose checks: covered by regression and property suites
-- Bbox/keypoint/OBB checks: covered by existing tests plus regression/property suites
-- Volumetric checks: covered by existing 3D tests plus property suites
+- Test inventory: {test_file_count} `test*.py` files under `tests/`
+- Public transform-like API coverage routes: {covered_public_api_count} / {public_api_count}
+- Parameterized transform sweep coverage: {transform_sweep_count} runtime transforms
+- Golden regression vectors: {golden_case_count} manifest case(s) for {golden_contract_count} registered sentinel(s)
+- Property-based invariant tests: `tests/property` with CI/release Hypothesis profiles
+- Serialization and ReplayCompose checks: existing serialization tests plus regression/property suites
+- Bbox/keypoint/OBB checks: existing annotation/OBB tests plus regression/property suites
+- Volumetric checks: existing 3D tests plus property suites
 
 ## Guaranteed Contracts
 
@@ -145,6 +170,7 @@ Dependency sets tracked by the support policy: {dependency_sets}
 ## Known Limitations
 
 - Exact pixel values for selected OpenCV-backed interpolation paths may vary across dependency versions.
+- Golden vectors are compatibility sentinels, not a replacement for the full parameterized and functional suites.
 - Optional extras are smoke-tested, not exhaustively cross-product tested.
 - Performance artifacts from shared CI runners are treated as advisory unless release notes say otherwise.
 

@@ -13,7 +13,7 @@ try:
     from tools.generate_regression_vectors import REGRESSION_ROOT, VECTOR_DIR, _array_metadata, _run_contract
 except ModuleNotFoundError:  # pragma: no cover - direct script execution fallback
     from generate_regression_vectors import REGRESSION_ROOT, VECTOR_DIR, _array_metadata, _run_contract
-from tests.regression.transform_contracts import contract_by_name
+from tests.regression.transform_contracts import contract_by_name, registered_transform_names
 
 MANIFEST_PATH = REGRESSION_ROOT / "manifest.json"
 
@@ -30,6 +30,19 @@ def _selected_cases(transform_name: str | None) -> list[dict[str, Any]]:
     if transform_name is None:
         return list(cases)
     return [case for case in cases if case.get("transform") == transform_name]
+
+
+def _manifest_contract_issues(cases: list[dict[str, Any]], transform_name: str | None) -> list[str]:
+    manifest_names = {str(case.get("transform")) for case in cases}
+    if transform_name is not None:
+        return []
+
+    registered_names = registered_transform_names()
+    missing = sorted(registered_names - manifest_names)
+    extra = sorted(manifest_names - registered_names)
+    issues = [f"Registered regression contract has no manifest case: {name}" for name in missing]
+    issues.extend(f"Manifest case has no registered regression contract: {name}" for name in extra)
+    return issues
 
 
 def _compare_array(case_id: str, target: str, expected: np.ndarray, actual: np.ndarray) -> list[str]:
@@ -77,6 +90,7 @@ def verify_cases(transform_name: str | None = None) -> list[str]:
 
     issues: list[str] = []
     cases = _selected_cases(transform_name)
+    issues.extend(_manifest_contract_issues(cases, transform_name))
     if not cases:
         return [f"No regression cases selected for transform={transform_name!r}"]
 

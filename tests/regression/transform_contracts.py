@@ -1,4 +1,4 @@
-"""Regression contract registry for selected transform behavior."""
+"""Regression and coverage registry for public transform behavior."""
 
 from __future__ import annotations
 
@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import albumentations as A
-from tests.helpers.transforms import TransformTestHelper
-from tests.utils import get_all_valid_transforms
+from tests.utils import get_all_valid_transforms, get_transforms
 
 StabilityMode = Literal["exact", "tolerance", "digest", "structural"]
 
@@ -29,6 +28,30 @@ REGRESSION_CONTRACTS: tuple[TransformContract, ...] = (
     TransformContract("RandomRotate90", {}, ("image", "mask"), "exact"),
 )
 
+ABSTRACT_PUBLIC_APIS = frozenset(
+    {
+        "BasicTransform",
+        "DualTransform",
+        "ImageOnlyTransform",
+        "Transform3D",
+    },
+)
+COMPOSITION_PUBLIC_APIS = frozenset(
+    {
+        "BaseCompose",
+        "Compose",
+        "OneOf",
+        "OneOrOther",
+        "RandomOrder",
+        "ReplayCompose",
+        "SelectiveChannelTransform",
+        "Sequential",
+        "SomeOf",
+    },
+)
+PYTORCH_PUBLIC_APIS = frozenset({"ToTensor3D", "ToTensorV2"})
+CUSTOM_TRANSFORM_PUBLIC_APIS = frozenset({"Lambda"})
+
 
 def contract_by_name(transform_name: str) -> TransformContract:
     for contract in REGRESSION_CONTRACTS:
@@ -46,27 +69,63 @@ def registered_transform_names() -> set[str]:
     return {contract.name for contract in REGRESSION_CONTRACTS}
 
 
-def planned_transform_reasons() -> dict[str, str]:
+def transform_sweep_names() -> set[str]:
+    """Names exercised by the established parameterized transform sweeps."""
+    return {
+        transform.__name__
+        for transform, _ in get_transforms(
+            except_augmentations={
+                A.Lambda,
+            },
+        )
+    }
+
+
+def public_transform_coverage_routes() -> dict[str, str]:
+    """Return the primary test route for every public transform-like API.
+
+    This is intentionally not a golden-vector coverage map. AlbumentationsX has
+    mature parameterized tests that sweep transform construction, target routing,
+    dtype/shape behavior, serialization, and mask/annotation semantics. Golden
+    vectors are a small compatibility sentinel layer on top of those tests.
+    """
     reasons: dict[str, str] = {}
-    for transform in get_all_valid_transforms(use_cache=True):
-        transform_name = transform.__name__
-        if transform_name in registered_transform_names():
-            continue
-        if TransformTestHelper.requires_metadata(transform):
-            reasons[transform_name] = "planned structural coverage for metadata/reference-data transform"
-        elif TransformTestHelper.requires_special_setup(transform):
-            reasons[transform_name] = "planned special-input regression coverage"
-        elif TransformTestHelper.is_rgb_only(transform):
-            reasons[transform_name] = "planned RGB-only regression coverage"
-        elif issubclass(transform, A.Transform3D):
-            reasons[transform_name] = "planned volumetric regression coverage"
-        elif issubclass(transform, A.BaseCompose):
-            reasons[transform_name] = "covered through composition and serialization tests"
-        else:
-            reasons[transform_name] = "planned phase-2 or phase-3 regression coverage"
+
+    golden_names = registered_transform_names()
+    swept_names = transform_sweep_names()
+    for transform_name in public_transform_names():
+        if transform_name in golden_names and transform_name in swept_names:
+            reasons[transform_name] = "golden vector plus parameterized transform sweeps"
+        elif transform_name in golden_names:
+            reasons[transform_name] = "golden vector compatibility sentinel"
+        elif transform_name in swept_names:
+            reasons[transform_name] = "parameterized transform sweeps"
+        elif transform_name in COMPOSITION_PUBLIC_APIS:
+            reasons[transform_name] = "composition, operator, serialization, and replay tests"
+        elif transform_name in PYTORCH_PUBLIC_APIS:
+            reasons[transform_name] = "PyTorch target conversion tests"
+        elif transform_name in CUSTOM_TRANSFORM_PUBLIC_APIS:
+            reasons[transform_name] = "custom transform and serialization edge-case tests"
+        elif transform_name in ABSTRACT_PUBLIC_APIS:
+            reasons[transform_name] = "abstract public base API covered through subclasses and core tests"
     return reasons
 
 
 def unaccounted_public_transforms() -> set[str]:
-    accounted = registered_transform_names() | set(planned_transform_reasons())
+    accounted = set(public_transform_coverage_routes())
     return public_transform_names() - accounted
+
+
+def coverage_summary() -> dict[str, int]:
+    routes = public_transform_coverage_routes()
+    return {
+        "public_transform_apis": len(public_transform_names()),
+        "covered_public_transform_apis": len(routes),
+        "parameterized_transform_sweep": len(transform_sweep_names()),
+        "golden_contracts": len(registered_transform_names()),
+        "composition_public_apis": len(COMPOSITION_PUBLIC_APIS),
+        "pytorch_public_apis": len(PYTORCH_PUBLIC_APIS),
+        "custom_transform_public_apis": len(CUSTOM_TRANSFORM_PUBLIC_APIS),
+        "abstract_public_apis": len(ABSTRACT_PUBLIC_APIS),
+        "unaccounted_public_transform_apis": len(unaccounted_public_transforms()),
+    }

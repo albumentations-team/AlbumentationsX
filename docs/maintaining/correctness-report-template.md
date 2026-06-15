@@ -20,8 +20,10 @@ Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 
 ## Correctness Coverage
 
-- Unit tests: `<count/result>`
-- Golden regression vectors: `<count/result>`
+- Unit and functional tests: `<count/result>`
+- Public transform-like API coverage routes: `<covered>/<total>`
+- Parameterized transform sweep coverage: `<count/result>`
+- Golden regression vectors: `<manifest-count>/<registered-contract-count>/<result>`
 - Property-based invariant tests: `<profile/count/result>`
 - Serialization and ReplayCompose checks: `<result>`
 - Bbox/keypoint/OBB checks: `<result>`
@@ -39,6 +41,9 @@ Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 
 - Exact pixel values for selected OpenCV-backed interpolation paths may vary
   across upstream OpenCV versions.
+- Golden vectors are compatibility sentinels, not a replacement for the full
+  parameterized transform, functional, annotation, and serialization test
+  suites.
 - Optional extras are smoke-tested, not exhaustively cross-product tested.
 
 ## Performance

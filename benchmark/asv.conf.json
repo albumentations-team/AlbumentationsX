@@ -4,7 +4,7 @@
   "project_url": "https://github.com/albumentations-team/AlbumentationsX",
   "repo": "..",
   "environment_type": "virtualenv",
-  "install_command": "python -m pip install {build_dir}[headless]",
+  "install_command": "python -m pip install {build_dir}[headless,text]",
   "benchmark_dir": "benchmarks",
   "env_dir": ".asv/env",
   "results_dir": ".asv/results",

@@ -49,6 +49,36 @@ useful, image batches, representative volumetric transforms, and one
 reference-data transform smoke path. GitHub-hosted runner results are advisory
 until enough scheduled data exists to set reliable blocking thresholds.
 
+## Catalog Coverage
+
+The transform catalog has a machine-readable benchmark registry in
+`benchmark/benchmarks/catalog.py`. The registry discovers public
+`BasicTransform` subclasses exported by `albumentations`, assigns each transform
+to a valid benchmark route, and records explicit setup parameters for transforms
+that need non-default constructor arguments or auxiliary data.
+
+Run the coverage check with:
+
+```bash
+uv run python -m tools.benchmark_coverage check
+```
+
+The default ASV environment installs the `headless` and `text` extras so the
+suite can run OpenCV-backed transforms and `TextImage` without GUI packages.
+The check fails when a public transform is missing from coverage accounting,
+when a configured transform no longer exists, when a benchmark transform cannot
+be constructed, or when the representative smoke route no longer runs. The ASV
+suite includes `TimeCatalogTransformSmoke`, which executes one valid
+`Compose` path for every runnable public transform. Optional PyTorch tensor
+transforms are accounted separately because the default performance environment
+installs the headless package extras.
+
+Catalog smoke coverage is not the whole performance policy. It proves that
+every transform has at least one measured route. Hot families still need richer
+benchmarks over the standard image-size and channel matrix, annotation-heavy
+paths, volumetric paths, batch inputs, direct functional kernels, and selected
+memory checks.
+
 Any task that changes transform hot paths, functional kernels, parameter
 generation, or core pipeline code should include before/after benchmark
 evidence. This applies whether the change is reviewed as a pull request,

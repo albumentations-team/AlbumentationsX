@@ -30,6 +30,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(tests/regression/|tests/files/regression/|tools/(generate|verify)_regression_vectors\.py)
+      - id: check-benchmark-coverage
+        name: Check benchmark catalog coverage
+        entry: python -m tools.benchmark_coverage check
+        language: system
+        pass_filenames: false
+        files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|quality_gate)\.py)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

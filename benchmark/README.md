@@ -6,7 +6,8 @@ benchmarks are separate from unit tests and should not be imported by tests.
 ## Quick Run
 
 ```bash
-uv tool run --from asv asv --config "$(pwd)/benchmark/asv.conf.json" run --quick --show-stderr
+cd benchmark
+uv tool run --from asv asv --config asv.conf.json run --quick --show-stderr
 ```
 
 ## Matrix

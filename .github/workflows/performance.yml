@@ -41,9 +41,11 @@ jobs:
         --output benchmark-evidence/environment-benchmark.json
         --command "asv run --quick"
     - name: Register ASV machine profile
-      run: uv tool run --from asv asv --config "$GITHUB_WORKSPACE/benchmark/asv.conf.json" machine --yes
+      working-directory: benchmark
+      run: uv tool run --from asv asv --config asv.conf.json machine --yes
     - name: Run ASV quick benchmarks
-      run: uv tool run --from asv asv --config "$GITHUB_WORKSPACE/benchmark/asv.conf.json" run --quick --show-stderr
+      working-directory: benchmark
+      run: uv tool run --from asv asv --config asv.conf.json run --quick --show-stderr
     - name: Upload benchmark artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -51,6 +53,5 @@ jobs:
         name: benchmark-evidence
         path: |
           benchmark-evidence/
-          .asv/results/
           benchmark/.asv/results/
         if-no-files-found: ignore

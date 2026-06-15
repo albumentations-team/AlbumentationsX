@@ -58,6 +58,7 @@ jobs:
         --cov=albumentations
         --cov-branch
         --cov-report=xml
+        --hypothesis-profile=ci-fast
         --junitxml=ci-evidence/junit.xml
 
     - name: Collect test environment evidence
@@ -65,7 +66,7 @@ jobs:
       run: >
         uv run python tools/collect_test_environment.py
         --output ci-evidence/environment-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
-        --command "uv run pytest -n auto"
+        --command "uv run pytest -n auto --hypothesis-profile=ci-fast"
 
     - name: Summarize pytest results
       if: always()

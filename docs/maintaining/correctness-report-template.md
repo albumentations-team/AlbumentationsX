@@ -51,6 +51,8 @@ Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 | Area | Status |
 | --- | --- |
 | Catalog ASV smoke cases | `<count/result>` |
+| Deep per-transform coverage | `<count/result>` |
+| Smoke-only transforms | `<count/list or link>` |
 | Full-matrix geometry cases | `<count/result>` |
 | Full-matrix pixel cases | `<count/result>` |
 | Direct functional-kernel cases | `<count/result>` |

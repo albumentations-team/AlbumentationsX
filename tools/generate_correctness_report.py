@@ -102,6 +102,19 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
                 f"performance decreased: {status.get('performance_decreased', False)}",
             )
             continue
+        if summary.get("kind") == "benchmark-coverage-detail":
+            coverage_depth = summary.get("summary", {})
+            layer_counts = summary.get("layer_counts", {})
+            lines.append(
+                "- Benchmark coverage detail "
+                f"{index}: {coverage_depth.get('deep_coverage_transforms', 0)} transform(s) with deep coverage, "
+                f"{coverage_depth.get('smoke_only_transforms', 0)} smoke-only transform(s), "
+                f"{coverage_depth.get('optional_transforms', 0)} optional transform(s); "
+                f"{layer_counts.get('family_matrix', 0)} family-matrix, "
+                f"{layer_counts.get('direct_kernel', 0)} direct-kernel, "
+                f"{layer_counts.get('volumetric_matrix', 0)} volumetric-matrix transform(s)",
+            )
+            continue
         full_matrix_cases = summary.get("full_matrix_cases", {})
         if isinstance(full_matrix_cases, dict):
             full_matrix_count = sum(value for value in full_matrix_cases.values() if isinstance(value, int))
@@ -112,13 +125,15 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
             direct_kernel_count = sum(value for value in direct_kernel_cases.values() if isinstance(value, int))
         else:
             direct_kernel_count = 0
+        coverage_depth = summary.get("coverage_depth", {})
         lines.append(
             "- Benchmark summary "
             f"{index}: {summary.get('asv_cases', 0)} catalog ASV smoke cases, "
             f"{full_matrix_count} full-matrix/reference/annotation/volumetric cases, "
             f"{direct_kernel_count} direct functional-kernel cases, "
             f"{summary.get('memory_benchmarks', 0)} memory benchmark(s), "
-            f"{summary.get('public_transforms', 0)} public transform(s) accounted",
+            f"{summary.get('public_transforms', 0)} public transform(s) accounted, "
+            f"{coverage_depth.get('deep_coverage_transforms', 0)} transform(s) with deep coverage",
         )
     return "\n".join(lines)
 

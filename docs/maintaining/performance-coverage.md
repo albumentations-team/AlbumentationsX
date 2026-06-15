@@ -26,6 +26,12 @@ with:
 uv run python -m tools.benchmark_coverage check
 ```
 
+Inspect per-transform coverage depth with:
+
+```bash
+uv run python -m tools.benchmark_coverage details --output benchmark-coverage-detail.json
+```
+
 ### L1: Catalog Smoke
 
 - Run one valid `Compose` path for every runnable public transform.
@@ -76,7 +82,8 @@ covers:
 - 3D kernels such as crop, pad, cutout, cube symmetry, and tile swapping
 
 Direct-kernel coverage is summarized under `direct_kernel_cases` in the JSON
-output from `tools.benchmark_coverage`.
+output from `tools.benchmark_coverage`. Per-transform layer membership is
+published in the `benchmark-coverage-detail.json` evidence artifact.
 
 ### L4: Target Scaling
 
@@ -144,6 +151,7 @@ Nightly and scheduled runs:
 Release candidates:
 
 - benchmark coverage JSON
+- per-transform benchmark coverage detail JSON
 - ASV evidence
 - ASV comparison summary JSON when a baseline/candidate comparison is run
 - correctness report performance summary
@@ -182,6 +190,8 @@ following are true:
 - ASV importability passes for the benchmark suite.
 - Every public transform is either runnable in the catalog smoke layer or
   explicitly accounted as optional.
+- The per-transform detail artifact is published and reviewed for smoke-only
+  transforms.
 - Hot transform families have size/channel/dtype matrix coverage.
 - Direct functional kernels have non-empty coverage in each required group.
 - Annotation, reference-data, volumetric, batch, and memory paths are included

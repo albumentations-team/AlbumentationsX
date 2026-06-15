@@ -76,6 +76,12 @@ Emit the JSON summary that CI uploads with benchmark artifacts with:
 uv run python -m tools.benchmark_coverage summary --output benchmark-coverage.json
 ```
 
+Emit the per-transform detail artifact with:
+
+```bash
+uv run python -m tools.benchmark_coverage details --output benchmark-coverage-detail.json
+```
+
 Summarize ASV before/after comparison text for release reports with:
 
 ```bash
@@ -92,7 +98,9 @@ be constructed, or when the representative smoke route no longer runs. The ASV
 suite includes `TimeCatalogTransformSmoke`, which executes one valid
 `Compose` path for every runnable public transform. Optional PyTorch tensor
 transforms are accounted separately because the default performance environment
-installs the headless package extras.
+installs the headless package extras. The detail artifact records the coverage
+layers for each public transform and keeps smoke-only transforms visible for
+future benchmark hardening.
 
 Catalog smoke coverage is not the whole performance policy. It proves that
 every transform has at least one measured route. Hot families still need richer

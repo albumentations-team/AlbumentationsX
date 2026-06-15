@@ -22,9 +22,10 @@ destabilizing contributor workflows.
 - Manual release-candidate verification runs the full test suite across the
   supported OS/Python matrix with the release Hypothesis profile.
 - Performance benchmark import checks, catalog coverage validation, direct
-  functional-kernel coverage validation, ASV before/after comparison for
-  performance-sensitive changes, manual baseline/candidate comparison through
-  `workflow_dispatch`, and scheduled ASV artifact generation.
+  functional-kernel coverage validation, per-transform coverage-depth
+  artifacts, ASV before/after comparison for performance-sensitive changes,
+  manual baseline/candidate comparison through `workflow_dispatch`, and
+  scheduled ASV artifact generation.
 - Security checks, including runtime dependency audit, GitHub Actions
   hardening audit, and OpenSSF Scorecard.
 
@@ -56,7 +57,8 @@ Each CI lane that runs tests should upload:
 - environment JSON from `tools/collect_test_environment.py`;
 - JUnit XML from pytest where practical;
 - compact pytest summary JSON from `tools/pytest_summary.py`;
-- benchmark, ASV comparison, or security JSON where those checks run.
+- benchmark summary/detail, ASV comparison, or security JSON where those
+  checks run.
 
 Release reports are generated from these artifacts when available. Local dry
 runs may use `--allow-missing-evidence`, but release workflows should provide

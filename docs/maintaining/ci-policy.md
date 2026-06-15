@@ -28,7 +28,7 @@ destabilizing contributor workflows.
   comparison through `workflow_dispatch`, and scheduled ASV artifact
   generation.
 - Security checks, including runtime dependency audit, GitHub Actions
-  hardening audit, and OpenSSF Scorecard.
+  hardening audit, and OpenSSF Scorecard JSON/SARIF evidence.
 
 ## Performance Regression Policy
 

@@ -337,6 +337,8 @@ def _check_security_workflow() -> list[str]:
             "ossf/scorecard-action",
             "results_file: scorecard-results.json",
             "results_format: json",
+            "results_file: scorecard-results.sarif",
+            "results_format: sarif",
             "publish_results: true",
         ),
         "security gate",

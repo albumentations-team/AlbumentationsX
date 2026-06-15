@@ -53,6 +53,7 @@ The Correctness & Compatibility Report summarizes what CI tested for a release:
 - golden regression and property-test coverage
 - performance benchmark evidence
 - runtime dependency audit, workflow audit, and OpenSSF Scorecard status
+- OpenSSF Scorecard JSON and SARIF artifacts where the security workflow ran
 - SBOM, checksum, and PyPI provenance links
 
 The report is a transparency artifact. It describes tested guarantees and known

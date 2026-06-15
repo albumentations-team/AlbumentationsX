@@ -63,6 +63,12 @@ Run the coverage check with:
 uv run python -m tools.benchmark_coverage check
 ```
 
+Emit the JSON summary that CI uploads with benchmark artifacts with:
+
+```bash
+uv run python -m tools.benchmark_coverage summary --output benchmark-coverage.json
+```
+
 The default ASV environment installs the `headless` and `text` extras so the
 suite can run OpenCV-backed transforms and `TextImage` without GUI packages.
 The check fails when a public transform is missing from coverage accounting,
@@ -78,6 +84,24 @@ every transform has at least one measured route. Hot families still need richer
 benchmarks over the standard image-size and channel matrix, annotation-heavy
 paths, volumetric paths, batch inputs, direct functional kernels, and selected
 memory checks.
+
+The current ASV suite includes these production coverage layers:
+
+- Catalog smoke: one runnable `Compose` path for every public transform that
+  does not require optional PyTorch.
+- Full-matrix geometry: representative crop, resize, pad, symmetry, rotate,
+  affine, perspective, distortion, spline, and refraction transforms across
+  size, channel, and dtype matrices.
+- Full-matrix pixel: representative pointwise, LUT-like, blur/filter, noise,
+  normalization, dtype-conversion, color, compression, and superpixel
+  transforms across their supported size, channel, and dtype matrices.
+- Annotation scaling: HBB bboxes, OBB bboxes, keypoints, masks, label-field
+  routing, and bbox-safe crop paths at 10, 100, and 1000 annotations.
+- Reference-data paths: mixing, domain adaptation, overlay, copy-paste,
+  mosaic, and text metadata transforms.
+- Volumetric paths: all public 3D transforms over size and dtype variants.
+- Memory checks: allocation-heavy resize, affine, normalize, batch pipeline,
+  mosaic, copy-paste, and volume padding paths.
 
 Any task that changes transform hot paths, functional kernels, parameter
 generation, or core pipeline code should include before/after benchmark

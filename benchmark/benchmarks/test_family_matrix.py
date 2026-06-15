@@ -1,0 +1,371 @@
+"""Full-matrix family benchmarks for hot transform paths."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
+
+import albumentations
+from benchmarks.catalog import benchmark_specs
+from benchmarks.catalog import make_compose as make_catalog_compose
+from benchmarks.catalog import make_data as make_catalog_data
+from benchmarks.common import (
+    ANNOTATION_COUNTS,
+    CHANNELS,
+    DTYPES,
+    SIZES,
+    VOLUME_SIZES,
+    dtype_from_name,
+    make_batch,
+    make_hbb_bboxes,
+    make_image,
+    make_keypoints,
+    make_labels,
+    make_mask,
+    make_mask3d,
+    make_obb_bboxes,
+    make_volume,
+)
+
+Factory = Callable[[], object]
+
+GEOMETRY_TRANSFORMS: Mapping[str, Factory] = {
+    "horizontal_flip": lambda: albumentations.HorizontalFlip(p=1.0),
+    "transpose": lambda: albumentations.Transpose(p=1.0),
+    "d4": lambda: albumentations.D4(p=1.0),
+    "resize": lambda: albumentations.Resize(height=128, width=128, p=1.0),
+    "smallest_max_size": lambda: albumentations.SmallestMaxSize(max_size=160, p=1.0),
+    "longest_max_size": lambda: albumentations.LongestMaxSize(max_size=160, p=1.0),
+    "letterbox": lambda: albumentations.LetterBox(size=(160, 160), p=1.0),
+    "center_crop": lambda: albumentations.CenterCrop(height=128, width=128, p=1.0),
+    "random_crop": lambda: albumentations.RandomCrop(height=128, width=128, p=1.0),
+    "pad": lambda: albumentations.Pad(padding=16, p=1.0),
+    "pad_if_needed": lambda: albumentations.PadIfNeeded(min_height=1200, min_width=1200, p=1.0),
+    "affine": lambda: albumentations.Affine(scale=(1.05, 1.05), rotate=(3, 3), p=1.0),
+    "rotate": lambda: albumentations.Rotate(angle_range=(7, 7), p=1.0),
+    "safe_rotate": lambda: albumentations.SafeRotate(angle_range=(7, 7), p=1.0),
+    "perspective": lambda: albumentations.Perspective(scale=(0.05, 0.05), p=1.0),
+    "elastic": lambda: albumentations.ElasticTransform(alpha=1, sigma=30, p=1.0),
+    "grid_distortion": lambda: albumentations.GridDistortion(distort_range=(0.1, 0.1), p=1.0),
+    "optical_distortion": lambda: albumentations.OpticalDistortion(distort_range=(0.03, 0.03), p=1.0),
+    "grid_elastic": lambda: albumentations.GridElasticDeform(num_grid_xy=(4, 4), magnitude=4, p=1.0),
+    "thin_plate_spline": lambda: albumentations.ThinPlateSpline(scale_range=(0.2, 0.2), p=1.0),
+    "water_refraction": lambda: albumentations.WaterRefraction(
+        amplitude_range=(0.02, 0.02),
+        num_waves_range=(4, 4),
+        p=1.0,
+    ),
+}
+
+GEOMETRY_CHANNELS: Mapping[str, tuple[int, ...]] = {
+    "grid_elastic": (1, 3),
+}
+
+
+@dataclass(frozen=True)
+class PixelSpec:
+    """Pixel benchmark case metadata."""
+
+    factory: Factory
+    channels: tuple[int, ...] = CHANNELS
+    dtypes: tuple[str, ...] = tuple(DTYPES)
+
+
+PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
+    "random_brightness_contrast": PixelSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
+    "random_gamma": PixelSpec(lambda: albumentations.RandomGamma(p=1.0)),
+    "auto_contrast": PixelSpec(lambda: albumentations.AutoContrast(p=1.0), dtypes=("uint8",)),
+    "equalize": PixelSpec(lambda: albumentations.Equalize(p=1.0), channels=(1, 3), dtypes=("uint8",)),
+    "clahe": PixelSpec(lambda: albumentations.CLAHE(p=1.0), channels=(1, 3), dtypes=("uint8",)),
+    "hue_saturation_value": PixelSpec(lambda: albumentations.HueSaturationValue(p=1.0), channels=(3,)),
+    "rgb_shift": PixelSpec(lambda: albumentations.RGBShift(p=1.0), channels=(3,)),
+    "gaussian_blur": PixelSpec(lambda: albumentations.GaussianBlur(blur_range=(3, 3), p=1.0)),
+    "median_blur": PixelSpec(lambda: albumentations.MedianBlur(blur_range=(3, 3), p=1.0), dtypes=("uint8",)),
+    "motion_blur": PixelSpec(lambda: albumentations.MotionBlur(blur_range=(5, 5), p=1.0), dtypes=("uint8",)),
+    "gauss_noise": PixelSpec(lambda: albumentations.GaussNoise(p=1.0)),
+    "additive_noise": PixelSpec(lambda: albumentations.AdditiveNoise(p=1.0)),
+    "multiplicative_noise": PixelSpec(lambda: albumentations.MultiplicativeNoise(p=1.0)),
+    "shot_noise": PixelSpec(lambda: albumentations.ShotNoise(p=1.0), dtypes=("uint8",)),
+    "normalize": PixelSpec(lambda: albumentations.Normalize(p=1.0)),
+    "to_float": PixelSpec(lambda: albumentations.ToFloat(p=1.0), dtypes=("uint8",)),
+    "from_float": PixelSpec(lambda: albumentations.FromFloat(p=1.0), dtypes=("float32",)),
+    "to_gray": PixelSpec(lambda: albumentations.ToGray(p=1.0), channels=(3,)),
+    "to_rgb": PixelSpec(lambda: albumentations.ToRGB(p=1.0), channels=(1,), dtypes=("uint8",)),
+    "to_sepia": PixelSpec(lambda: albumentations.ToSepia(p=1.0), channels=(3,), dtypes=("uint8",)),
+    "image_compression": PixelSpec(lambda: albumentations.ImageCompression(p=1.0), channels=(3,), dtypes=("uint8",)),
+    "superpixels": PixelSpec(
+        lambda: albumentations.Superpixels(n_segments_range=(32, 32), max_size=128, p=1.0),
+        channels=(3,),
+        dtypes=("uint8",),
+    ),
+}
+
+ANNOTATION_TRANSFORMS: Mapping[str, Factory] = {
+    "hbb_horizontal_flip": lambda: albumentations.HorizontalFlip(p=1.0),
+    "hbb_affine": lambda: albumentations.Affine(scale=(1.05, 1.05), rotate=(3, 3), p=1.0),
+    "hbb_perspective": lambda: albumentations.Perspective(scale=(0.05, 0.05), p=1.0),
+    "hbb_safe_crop": lambda: albumentations.RandomSizedBBoxSafeCrop(height=192, width=192, p=1.0),
+    "obb_horizontal_flip": lambda: albumentations.HorizontalFlip(p=1.0),
+    "obb_resize": lambda: albumentations.Resize(height=384, width=512, p=1.0),
+    "obb_random_scale": lambda: albumentations.RandomScale(scale_range=(0.1, 0.1), p=1.0),
+}
+ANNOTATION_COUNTS_BY_TRANSFORM = {
+    "hbb_affine": (10, 100),
+    "hbb_perspective": (10, 100),
+}
+HBB_KEYPOINT_TRANSFORMS = frozenset(
+    {
+        "hbb_affine",
+        "hbb_horizontal_flip",
+        "hbb_perspective",
+    },
+)
+
+VOLUME_TRANSFORMS: Mapping[str, Factory] = {
+    "center_crop3d": lambda: albumentations.CenterCrop3D(size=(4, 48, 48), p=1.0),
+    "random_crop3d": lambda: albumentations.RandomCrop3D(size=(4, 48, 48), p=1.0),
+    "pad3d": lambda: albumentations.Pad3D(padding=(1, 2, 2), p=1.0),
+    "pad_if_needed3d": lambda: albumentations.PadIfNeeded3D(min_zyx=(18, 144, 144), p=1.0),
+    "coarse_dropout3d": lambda: albumentations.CoarseDropout3D(p=1.0),
+    "grid_shuffle3d": lambda: albumentations.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0),
+    "cubic_symmetry": lambda: albumentations.CubicSymmetry(p=1.0),
+}
+
+REFERENCE_TRANSFORMS = (
+    "CopyAndPaste",
+    "FDA",
+    "HistogramMatching",
+    "Mosaic",
+    "OverlayElements",
+    "PixelDistributionAdaptation",
+    "TextImage",
+)
+
+
+def _matrix_cases(
+    names: tuple[str, ...],
+    size_names: tuple[str, ...],
+    channels: tuple[int, ...],
+    dtype_names: tuple[str, ...],
+) -> tuple[str, ...]:
+    return tuple(
+        f"{name}|{size_name}|{channel_count}|{dtype_name}"
+        for name in names
+        for size_name in size_names
+        for channel_count in channels
+        for dtype_name in dtype_names
+    )
+
+
+def _parse_image_case(case_id: str) -> tuple[str, str, int, str]:
+    name, size_name, channels, dtype_name = case_id.split("|")
+    return name, size_name, int(channels), dtype_name
+
+
+def _pixel_cases() -> tuple[str, ...]:
+    cases: list[str] = []
+    for name, spec in PIXEL_TRANSFORMS.items():
+        cases.extend(_matrix_cases((name,), tuple(SIZES), spec.channels, spec.dtypes))
+    return tuple(cases)
+
+
+GEOMETRY_CASES = tuple(
+    case
+    for name in GEOMETRY_TRANSFORMS
+    for case in _matrix_cases(
+        (name,),
+        tuple(SIZES),
+        GEOMETRY_CHANNELS.get(name, CHANNELS),
+        tuple(DTYPES),
+    )
+)
+PIXEL_CASES = _pixel_cases()
+ANNOTATION_CASES = tuple(
+    f"{name}|{count}"
+    for name in ANNOTATION_TRANSFORMS
+    for count in ANNOTATION_COUNTS_BY_TRANSFORM.get(name, ANNOTATION_COUNTS)
+)
+VOLUME_CASES = tuple(
+    f"{name}|{size_name}|{dtype_name}"
+    for name in VOLUME_TRANSFORMS
+    for size_name in VOLUME_SIZES
+    for dtype_name in DTYPES
+)
+REFERENCE_CASES = tuple(
+    f"{name}|{size_name}"
+    for name in REFERENCE_TRANSFORMS
+    for size_name in ("small", "medium")
+    if not (name == "TextImage" and size_name == "medium")
+)
+
+
+class TimeGeometryFullMatrix:
+    """Benchmark hot geometric transforms over size, channel, and dtype matrices."""
+
+    params = (GEOMETRY_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, size_name, channels, dtype_name = _parse_image_case(case_id)
+        self.image = make_image(size_name, channels, dtype_from_name(dtype_name))
+        self.transform = albumentations.Compose([GEOMETRY_TRANSFORMS[name]()], seed=137, strict=True)
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(image=self.image)
+
+
+class TimePixelFullMatrix:
+    """Benchmark hot pixel transforms over valid size, channel, and dtype matrices."""
+
+    params = (PIXEL_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, size_name, channels, dtype_name = _parse_image_case(case_id)
+        self.image = make_image(size_name, channels, dtype_from_name(dtype_name))
+        self.transform = albumentations.Compose([PIXEL_TRANSFORMS[name].factory()], seed=137, strict=True)
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(image=self.image)
+
+
+class TimeAnnotationTargets:
+    """Benchmark annotation routing and scaling for HBB, OBB, and keypoints."""
+
+    params = (ANNOTATION_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, count_text = case_id.split("|")
+        count = int(count_text)
+        size_name = "large" if count >= 1000 else "medium" if count >= 100 else "small"
+        self.image = make_image(size_name, 3)
+        self.transform = self._make_transform(name)
+        if name.startswith("obb_"):
+            self.data = {
+                "bbox_labels": make_labels(count),
+                "bboxes": make_obb_bboxes(count),
+                "image": self.image,
+            }
+        else:
+            self.data = {
+                "bbox_labels": make_labels(count),
+                "bboxes": make_hbb_bboxes(size_name, count),
+                "image": self.image,
+                "mask": make_mask(size_name),
+            }
+            if name in HBB_KEYPOINT_TRANSFORMS:
+                self.data["keypoint_labels"] = make_labels(count)
+                self.data["keypoints"] = make_keypoints(size_name, count)
+
+    def _make_transform(self, name: str) -> albumentations.Compose:
+        kwargs = {"seed": 137, "strict": True}
+        if name.startswith("obb_"):
+            kwargs["bbox_params"] = albumentations.BboxParams(
+                coord_format="albumentations",
+                bbox_type="obb",
+                label_fields=["bbox_labels"],
+            )
+        else:
+            kwargs["bbox_params"] = albumentations.BboxParams(
+                coord_format="pascal_voc",
+                label_fields=["bbox_labels"],
+            )
+            if name in HBB_KEYPOINT_TRANSFORMS:
+                kwargs["keypoint_params"] = albumentations.KeypointParams(
+                    coord_format="xy",
+                    label_fields=["keypoint_labels"],
+                    label_mapping={},
+                    remove_invisible=False,
+                )
+        return albumentations.Compose([ANNOTATION_TRANSFORMS[name]()], **kwargs)
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
+
+
+class TimeReferenceDataFullMatrix:
+    """Benchmark metadata/reference-data transforms beyond the smoke path."""
+
+    params = (REFERENCE_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, size_name = case_id.split("|")
+        spec = replace(benchmark_specs()[name], size_name=size_name, channels=3)
+        self.transform = make_catalog_compose(spec)
+        self.data = make_catalog_data(spec)
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
+
+
+class TimeVolumetricFullMatrix:
+    """Benchmark all public 3D transforms over volume size and dtype."""
+
+    params = (VOLUME_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, size_name, dtype_name = case_id.split("|")
+        self.transform = albumentations.Compose([VOLUME_TRANSFORMS[name]()], seed=137, strict=True)
+        self.data = {
+            "mask3d": make_mask3d(size_name),
+            "volume": make_volume(size_name, 1, dtype_from_name(dtype_name)),
+        }
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
+
+
+class PeakMemoryHotPaths:
+    """Memory checks for allocation-heavy representative paths."""
+
+    def setup(self) -> None:
+        self.large_rgb = make_image("large", 3)
+        self.medium_rgb = make_image("medium", 3)
+        self.medium_batch = make_batch("medium", 3, batch_size=8)
+        self.resize = albumentations.Compose([albumentations.Resize(height=512, width=512, p=1.0)], strict=True)
+        self.affine = albumentations.Compose([albumentations.Affine(scale=(1.05, 1.05), p=1.0)], strict=True)
+        self.normalize = albumentations.Compose([albumentations.Normalize(p=1.0)], strict=True)
+        self.batch_pipeline = albumentations.Compose(
+            [
+                albumentations.HorizontalFlip(p=1.0),
+                albumentations.RandomBrightnessContrast(p=1.0),
+                albumentations.GaussianBlur(blur_range=(3, 3), p=1.0),
+            ],
+            seed=137,
+            strict=True,
+        )
+        mosaic_spec = benchmark_specs()["Mosaic"]
+        self.mosaic = make_catalog_compose(mosaic_spec)
+        self.mosaic_data = make_catalog_data(mosaic_spec)
+        copy_paste_spec = benchmark_specs()["CopyAndPaste"]
+        self.copy_paste = make_catalog_compose(copy_paste_spec)
+        self.copy_paste_data = make_catalog_data(copy_paste_spec)
+        self.volume_pad = albumentations.Compose(
+            [albumentations.PadIfNeeded3D(min_zyx=(18, 144, 144), p=1.0)],
+            strict=True,
+        )
+        self.volume_data = {"mask3d": make_mask3d("medium"), "volume": make_volume("medium")}
+
+    def peakmem_resize_large_rgb(self) -> None:
+        self.resize(image=self.large_rgb)
+
+    def peakmem_affine_large_rgb(self) -> None:
+        self.affine(image=self.large_rgb)
+
+    def peakmem_normalize_large_rgb(self) -> None:
+        self.normalize(image=self.large_rgb)
+
+    def peakmem_batch_pipeline_medium_rgb(self) -> None:
+        self.batch_pipeline(images=self.medium_batch)
+
+    def peakmem_mosaic_small_rgb(self) -> None:
+        self.mosaic(**self.mosaic_data)
+
+    def peakmem_copy_paste_small_rgb(self) -> None:
+        self.copy_paste(**self.copy_paste_data)
+
+    def peakmem_volume_pad_medium(self) -> None:
+        self.volume_pad(**self.volume_data)

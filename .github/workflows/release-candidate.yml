@@ -44,6 +44,11 @@ jobs:
         uv run python tools/collect_test_environment.py
         --output release-candidate-evidence/environment-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
         --command "release candidate verification"
+    - name: Collect benchmark coverage summary
+      if: always()
+      run: >
+        uv run python -m tools.benchmark_coverage summary
+        --output release-candidate-evidence/benchmark-coverage-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
     - name: Upload release candidate evidence
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

@@ -152,6 +152,7 @@ dev = [
   "mypy>=2.0.0",
   "opencv-python-headless>=4.13.0.92",
   "pip-audit",
+  "pillow",
   "pre-commit>=4.5.1",
   "pyrefly",
   "pyvips[binary]",

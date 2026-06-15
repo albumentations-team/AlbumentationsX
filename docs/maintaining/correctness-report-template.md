@@ -50,10 +50,14 @@ Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 
 | Area | Status |
 | --- | --- |
+| Catalog ASV smoke cases | `<count/result>` |
+| Full-matrix geometry cases | `<count/result>` |
+| Full-matrix pixel cases | `<count/result>` |
+| Annotation/reference/volumetric cases | `<count/result>` |
 | Core Compose overhead | `<status>` |
-| Geometric transforms | `<status>` |
-| Pixel transforms | `<status>` |
 | Memory checks | `<status>` |
+| Material runtime regressions | `<none/list with justification>` |
+| Material memory regressions | `<none/list with justification>` |
 
 ## Security And Release Integrity
 

@@ -22,6 +22,23 @@ from benchmarks.catalog import (  # noqa: E402
     make_data,
     public_transform_names,
 )
+from benchmarks.test_family_matrix import (  # noqa: E402
+    ANNOTATION_CASES,
+    GEOMETRY_CASES,
+    PIXEL_CASES,
+    REFERENCE_CASES,
+    VOLUME_CASES,
+)
+
+MEMORY_BENCHMARKS = (
+    "peakmem_affine_large_rgb",
+    "peakmem_batch_pipeline_medium_rgb",
+    "peakmem_copy_paste_small_rgb",
+    "peakmem_mosaic_small_rgb",
+    "peakmem_normalize_large_rgb",
+    "peakmem_resize_large_rgb",
+    "peakmem_volume_pad_medium",
+)
 
 
 def _spec_summary() -> dict[str, Any]:
@@ -30,7 +47,16 @@ def _spec_summary() -> dict[str, Any]:
     runnable = [spec.name for spec in specs.values() if spec.benchmark]
     optional = {spec.name: spec.reason for spec in specs.values() if not spec.benchmark}
     return {
+        "annotation_matrix_cases": len(ANNOTATION_CASES),
         "public_transforms": len(public_transform_names()),
+        "full_matrix_cases": {
+            "annotations": len(ANNOTATION_CASES),
+            "geometry": len(GEOMETRY_CASES),
+            "pixel": len(PIXEL_CASES),
+            "reference_data": len(REFERENCE_CASES),
+            "volumetric": len(VOLUME_CASES),
+        },
+        "memory_benchmarks": len(MEMORY_BENCHMARKS),
         "registered_specs": len(specs),
         "asv_cases": len(asv_case_ids()),
         "optional_cases": optional,
@@ -63,6 +89,16 @@ def _validate_registry() -> list[str]:
             instantiate_transform(spec)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{spec.name}: cannot instantiate benchmark transform: {exc}")
+    required_matrix_groups = {
+        "annotation": ANNOTATION_CASES,
+        "geometry": GEOMETRY_CASES,
+        "pixel": PIXEL_CASES,
+        "reference_data": REFERENCE_CASES,
+        "volumetric": VOLUME_CASES,
+    }
+    for group, cases in required_matrix_groups.items():
+        if not cases:
+            errors.append(f"Missing full-matrix benchmark cases for {group}")
     return errors
 
 
@@ -110,6 +146,18 @@ def check(*, run_smoke: bool, output: Path | None) -> int:
     return 0
 
 
+def summary(output: Path | None) -> int:
+    """Write or print benchmark coverage summary."""
+    data = _spec_summary()
+    text = json.dumps(data, indent=2, sort_keys=True) + "\n"
+    if output is None:
+        print(text, end="")
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text)
+    return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -124,6 +172,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="write a JSON coverage summary",
     )
+    summary_parser = subparsers.add_parser("summary", help="emit benchmark coverage JSON summary")
+    summary_parser.add_argument(
+        "--output",
+        type=Path,
+        help="write summary JSON to this path instead of stdout",
+    )
     return parser.parse_args()
 
 
@@ -131,6 +185,8 @@ def main() -> int:
     args = parse_args()
     if args.command == "check":
         return check(run_smoke=not args.no_smoke, output=args.output)
+    if args.command == "summary":
+        return summary(output=args.output)
     return 2
 
 

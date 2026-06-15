@@ -51,6 +51,10 @@ jobs:
         uv run --no-sync python tools/collect_test_environment.py
         --output benchmark-evidence/environment-benchmark.json
         --command "asv continuous/run performance evidence"
+    - name: Collect benchmark coverage summary
+      run: >
+        uv run --no-sync python -m tools.benchmark_coverage summary
+        --output benchmark-evidence/benchmark-coverage.json
     - name: Register ASV machine profile
       working-directory: benchmark
       run: uv tool run --from asv asv --config asv.conf.json machine --yes

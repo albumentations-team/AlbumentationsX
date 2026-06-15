@@ -85,6 +85,27 @@ def _format_environment_summary(environments: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
+    if not summaries:
+        return "- Benchmark summary artifacts: not provided in this evidence bundle"
+
+    lines = []
+    for index, summary in enumerate(summaries, start=1):
+        full_matrix_cases = summary.get("full_matrix_cases", {})
+        if isinstance(full_matrix_cases, dict):
+            full_matrix_count = sum(value for value in full_matrix_cases.values() if isinstance(value, int))
+        else:
+            full_matrix_count = 0
+        lines.append(
+            "- Benchmark summary "
+            f"{index}: {summary.get('asv_cases', 0)} catalog ASV smoke cases, "
+            f"{full_matrix_count} full-matrix/reference/annotation/volumetric cases, "
+            f"{summary.get('memory_benchmarks', 0)} memory benchmark(s), "
+            f"{summary.get('public_transforms', 0)} public transform(s) accounted",
+        )
+    return "\n".join(lines)
+
+
 def _evidence_status(items: list[dict[str, Any]], name: str) -> str:
     if items:
         return f"{name}: provided ({len(items)} artifact(s))"
@@ -176,7 +197,7 @@ Dependency sets tracked by the support policy: {dependency_sets}
 
 ## Performance
 
-- {_evidence_status(benchmark_summaries, "Benchmark summary")}
+{_format_benchmark_summary(benchmark_summaries)}
 
 ## Security And Release Integrity
 

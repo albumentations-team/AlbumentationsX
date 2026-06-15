@@ -39,13 +39,13 @@ jobs:
       run: >
         uv run python tools/collect_test_environment.py
         --output benchmark-evidence/environment-benchmark.json
-        --command "asv run --quick"
+        --command "asv run --quick HEAD^!"
     - name: Register ASV machine profile
       working-directory: benchmark
       run: uv tool run --from asv asv --config asv.conf.json machine --yes
     - name: Run ASV quick benchmarks
       working-directory: benchmark
-      run: uv tool run --from asv asv --config asv.conf.json run --quick --show-stderr
+      run: uv tool run --from asv asv --config asv.conf.json run --quick --show-stderr 'HEAD^!'
     - name: Upload benchmark artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

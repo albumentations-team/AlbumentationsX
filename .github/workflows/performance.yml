@@ -1,0 +1,56 @@
+name: Performance
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "albumentations/**"
+      - "benchmark/**"
+      - ".github/workflows/performance.yml"
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "43 4 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  asv_smoke:
+    name: ASV smoke benchmarks
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    - name: Install uv and Python 3.12
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: "3.12"
+        activate-environment: true
+    - name: Install dependencies
+      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+    - name: Collect benchmark environment evidence
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output benchmark-evidence/environment-benchmark.json
+        --command "asv run --quick"
+    - name: Register ASV machine profile
+      run: uv tool run --from asv asv --config "$GITHUB_WORKSPACE/benchmark/asv.conf.json" machine --yes
+    - name: Run ASV quick benchmarks
+      run: uv tool run --from asv asv --config "$GITHUB_WORKSPACE/benchmark/asv.conf.json" run --quick --show-stderr
+    - name: Upload benchmark artifacts
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: benchmark-evidence
+        path: |
+          benchmark-evidence/
+          .asv/results/
+          benchmark/.asv/results/
+        if-no-files-found: ignore

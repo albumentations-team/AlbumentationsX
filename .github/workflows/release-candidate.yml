@@ -1,0 +1,51 @@
+name: Release Candidate Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release_candidate:
+    name: Release candidate verification
+    runs-on: ${{ matrix.operating-system }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        operating-system: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    - name: Install uv and set Python version ${{ matrix.python-version }}
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: ${{ matrix.python-version }}
+        activate-environment: true
+    - name: Install dependencies
+      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+    - name: Verify matrix and regression vectors
+      run: |
+        uv run python -m tools.ci_matrix check
+        uv run python tools/verify_regression_vectors.py --all
+    - name: Run release candidate tests
+      run: >
+        uv run pytest -q tests/regression tests/property
+        --hypothesis-profile=release
+        --junitxml=release-candidate-evidence/junit.xml
+    - name: Collect release candidate environment
+      if: always()
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output release-candidate-evidence/environment-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --command "release candidate verification"
+    - name: Upload release candidate evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: release-candidate-${{ matrix.operating-system }}-${{ matrix.python-version }}
+        path: release-candidate-evidence/
+        if-no-files-found: ignore

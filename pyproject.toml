@@ -451,6 +451,8 @@ addopts = [
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "obb: tests for oriented bounding boxes",
+    "property: property-based invariant tests",
+    "regression: transform regression harness tests",
 ]
 filterwarnings = [
     "ignore::UserWarning",

@@ -103,6 +103,28 @@ With the pip fallback:
 python tools/quality_gate.py fast
 ```
 
+### Verification Infrastructure Commands
+
+The maintenance verification layer adds focused commands for CI, release, and
+support-policy changes:
+
+```bash
+uv run python -m tools.ci_matrix check
+uv run python tools/verify_regression_vectors.py --all
+uv run pytest -q tests/regression tests/property --hypothesis-profile=ci-fast
+uv run python tools/generate_correctness_report.py \
+  --allow-missing-evidence \
+  --output _internal/correctness-report-dry-run.md
+```
+
+Golden regression vectors are updated only by an explicit command:
+
+```bash
+uv run python tools/generate_regression_vectors.py --transform HorizontalFlip --epoch 2.4
+```
+
+Local dry-run reports and other one-off evidence belong under `_internal/`.
+
 ### Common Issues and Solutions
 
 #### Permission Errors

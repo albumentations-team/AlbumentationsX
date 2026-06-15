@@ -14,6 +14,7 @@ For each release, the following artifacts are official:
 - sdist in the GitHub Release assets
 - `SHA256SUMS.txt` in the GitHub Release assets
 - CycloneDX SBOM JSON in the GitHub Release assets
+- Correctness & Compatibility Report Markdown in the GitHub Release assets
 - matching wheel and sdist files published on PyPI
 
 ## Quick Verification
@@ -43,6 +44,20 @@ PyPI exposes attestation data through its integrity APIs and file details pages.
 3. Verify that the attested repository, workflow identity, and commit correspond to the expected AlbumentationsX release.
 4. Verify that the distribution hash matches the downloaded file.
 
+## Correctness Report Verification
+
+The Correctness & Compatibility Report summarizes what CI tested for a release:
+
+- supported Python and operating-system matrix
+- lower-bound dependency coverage
+- golden regression and property-test coverage
+- performance benchmark evidence
+- runtime dependency audit, workflow audit, and OpenSSF Scorecard status
+- SBOM, checksum, and PyPI provenance links
+
+The report is a transparency artifact. It describes tested guarantees and known
+limitations; it does not prove absence of bugs.
+
 ## What The Trust Root Is
 
 AlbumentationsX relies on ecosystem-standard trust roots instead of manual long-lived signing keys:
@@ -52,6 +67,11 @@ AlbumentationsX relies on ecosystem-standard trust roots instead of manual long-
 - PyPI-hosted provenance/attestations for published distribution files
 
 This means authenticity is anchored in the CI identity that built and published the release, not in a maintainer-managed GPG key.
+
+This posture is aligned with SLSA-style provenance principles: the source repository,
+workflow identity, artifact build path, PyPI provenance, SBOM, and checksum manifest
+are all published or linked for downstream verification. Provenance confirms build
+origin and artifact identity; it does not guarantee source-code correctness.
 
 ## SBOM Verification
 

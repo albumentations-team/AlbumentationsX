@@ -53,7 +53,34 @@ jobs:
       run: uv lock --check
 
     - name: Run PyTest with coverage
-      run: uv run pytest -n auto --cov=albumentations --cov-branch --cov-report=xml
+      run: >
+        uv run pytest -n auto
+        --cov=albumentations
+        --cov-branch
+        --cov-report=xml
+        --junitxml=ci-evidence/junit.xml
+
+    - name: Collect test environment evidence
+      if: always()
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output ci-evidence/environment-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --command "uv run pytest -n auto"
+
+    - name: Summarize pytest results
+      if: always()
+      run: >
+        uv run python tools/pytest_summary.py
+        --junit ci-evidence/junit.xml
+        --output ci-evidence/pytest-summary-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+
+    - name: Upload CI evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: ci-evidence-${{ matrix.operating-system }}-${{ matrix.python-version }}
+        path: ci-evidence/
+        if-no-files-found: ignore
 
     - name: Upload coverage reports to Codecov
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'
@@ -84,6 +111,8 @@ jobs:
     - name: Install all requirements
       run: uv sync --locked --group dev --inexact
 
+    - name: Check support matrix consistency
+      run: uv run python -m tools.ci_matrix check
     - name: Run checks
       run: uv run pre-commit run --all-files
     - name: check-defaults-in-apply

@@ -90,6 +90,12 @@ jobs:
     - name: Verify uv.lock is up-to-date
       run: uv lock --check
 
+    - name: Collect release environment evidence
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output dist/evidence/environment-release.json
+        --command "release workflow"
+
     - name: Export locked runtime dependencies
       run: uv export --frozen --no-dev --format requirements-txt --output-file dist/runtime-requirements.txt
 
@@ -99,11 +105,17 @@ jobs:
           --output-format JSON \
           --output-file "dist/${SBOM_FILENAME}"
 
+    - name: Generate correctness and compatibility report
+      run: >
+        uv run python tools/generate_correctness_report.py
+        --evidence-dir dist/evidence
+        --output "dist/albumentationsx-${PACKAGE_VERSION}-correctness-compatibility-report.md"
+
     - name: Generate checksums
       run: |
         (
           cd dist
-          sha256sum ./*.whl ./*.tar.gz ./*-sbom.cdx.json > SHA256SUMS.txt
+          sha256sum ./*.whl ./*.tar.gz ./*-sbom.cdx.json ./*-correctness-compatibility-report.md > SHA256SUMS.txt
         )
 
     - name: Upload distribution artifacts for PyPI
@@ -123,6 +135,7 @@ jobs:
           dist/*.whl
           dist/*.tar.gz
           dist/*-sbom.cdx.json
+          dist/*-correctness-compatibility-report.md
           dist/SHA256SUMS.txt
         if-no-files-found: error
 
@@ -133,6 +146,7 @@ jobs:
           dist/*.whl
           dist/*.tar.gz
           dist/*-sbom.cdx.json
+          dist/*-correctness-compatibility-report.md
           dist/SHA256SUMS.txt
         fail_on_unmatched_files: true
 

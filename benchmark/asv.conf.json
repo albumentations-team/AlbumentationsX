@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "project": "albumentationsx",
+  "project_url": "https://github.com/albumentations-team/AlbumentationsX",
+  "repo": "..",
+  "branches": ["main"],
+  "environment_type": "virtualenv",
+  "install_command": "python -m pip install {build_dir}[headless]",
+  "benchmark_dir": "benchmarks",
+  "env_dir": ".asv/env",
+  "results_dir": ".asv/results",
+  "html_dir": ".asv/html",
+  "pythons": ["3.12"]
+}

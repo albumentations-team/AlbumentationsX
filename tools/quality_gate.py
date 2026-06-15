@@ -15,6 +15,7 @@ Command = tuple[str, ...]
 FAST_CHECKS: tuple[Command, ...] = (
     ("ruff", "format", "--check", "albumentations", "tests", "tools"),
     ("ruff", "check", "albumentations", "tests", "tools", "--no-fix"),
+    ("python", "-m", "tools.ci_matrix", "check"),
     ("pre-commit", "run", "--all-files"),
     ("python", "-m", "tools.check_defaults"),
     ("pytest", "-q", "tests/test_core.py::test_compose"),

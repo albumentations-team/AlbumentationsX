@@ -18,6 +18,12 @@ repos:
         entry: uv lock --check
         language: system
         pass_filenames: false
+      - id: check-ci-matrix
+        name: Check CI support matrix consistency
+        entry: python -m tools.ci_matrix check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|\.github/workflows/|docs/maintaining/|tools/ci_matrix\.py)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

@@ -60,14 +60,20 @@ jobs:
     - name: Compare baseline and candidate benchmarks
       if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '')
       working-directory: benchmark
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
+        INPUT_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         set -o pipefail
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          BASELINE_REF="${{ github.event.pull_request.base.sha }}"
-          CANDIDATE_REF="${{ github.event.pull_request.head.sha }}"
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          BASELINE_REF="$PR_BASE_SHA"
+          CANDIDATE_REF="$PR_HEAD_SHA"
         else
-          BASELINE_REF="${{ inputs.baseline_ref }}"
-          CANDIDATE_REF="${{ inputs.candidate_ref }}"
+          BASELINE_REF="$INPUT_BASELINE_REF"
+          CANDIDATE_REF="$INPUT_CANDIDATE_REF"
           if [ -z "$CANDIDATE_REF" ]; then
             CANDIDATE_REF="HEAD"
           fi

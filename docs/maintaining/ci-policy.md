@@ -35,9 +35,10 @@ data establishes reliable blocking thresholds. It still produces review
 evidence: changes to transform hot paths, functional kernels, parameter
 generation, or core pipeline code should compare the changed state against a
 baseline with ASV. Pull requests do this automatically when they touch runtime
-or benchmark code. Release tasks, large branches, and local investigations can
-use the manual workflow inputs to compare an explicit `baseline_ref` and
-`candidate_ref`.
+or benchmark code, using a bounded catalog/core/direct-kernel comparison so the
+advisory lane stays timely. Release tasks, large branches, and local
+investigations can use the manual workflow inputs to compare an explicit
+`baseline_ref`, `candidate_ref`, and optional ASV `bench_filter`.
 
 Material slowdowns, initially interpreted as more than about 5% on a
 representative benchmark case, should be treated as release-relevant. The

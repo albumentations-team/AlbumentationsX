@@ -131,7 +131,8 @@ Pull requests:
 - required: benchmark coverage validation through `tools.benchmark_coverage`
 - required: ASV suite importability where the performance workflow runs
 - advisory: ASV before/after comparison on GitHub-hosted runners when runtime
-  or benchmark code changes
+  or benchmark code changes; PR comparison is bounded to catalog smoke, core
+  pipeline, and direct functional-kernel benchmarks to keep feedback timely
 
 Nightly and scheduled runs:
 
@@ -159,6 +160,9 @@ uv tool run --from asv asv --config asv.conf.json continuous \
   <baseline-ref> \
   <candidate-ref>
 ```
+
+Manual workflow runs may pass `bench_filter` to scope a comparison or leave it
+empty to compare the full suite.
 
 The raw ASV comparison text is the source artifact. The compact JSON summary
 used by release reports can be generated with:

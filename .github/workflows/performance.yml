@@ -23,6 +23,10 @@ on:
         description: "Optional git ref/SHA for the after candidate. Defaults to the selected workflow ref."
         required: false
         type: string
+      bench_filter:
+        description: "Optional ASV --bench regex for manual baseline/candidate comparisons. Leave empty for the full suite."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -68,6 +72,7 @@ jobs:
         EVENT_NAME: ${{ github.event_name }}
         INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
         INPUT_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+        INPUT_BENCH_FILTER: ${{ inputs.bench_filter }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
@@ -75,23 +80,29 @@ jobs:
         if [ "$EVENT_NAME" = "pull_request" ]; then
           BASELINE_REF="$PR_BASE_SHA"
           CANDIDATE_REF="$PR_HEAD_SHA"
+          BENCH_FILTER="TimeCatalogTransformSmoke|TimeCorePipeline|TimeFunctional"
         else
           BASELINE_REF="$INPUT_BASELINE_REF"
           CANDIDATE_REF="$INPUT_CANDIDATE_REF"
+          BENCH_FILTER="$INPUT_BENCH_FILTER"
           if [ -z "$CANDIDATE_REF" ]; then
             CANDIDATE_REF="HEAD"
           fi
         fi
         ASV_EXIT_CODE=0
-        uv tool run --from asv asv --config asv.conf.json continuous \
-          --factor 1.05 \
-          --split \
-          --show-stderr \
-          --attribute repeat=1 \
-          --attribute number=1 \
-          "$BASELINE_REF" \
-          "$CANDIDATE_REF" \
-          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
+        ASV_COMMAND=(
+          uv tool run --from asv asv --config asv.conf.json continuous
+          --factor 1.05
+          --split
+          --show-stderr
+          --attribute repeat=1
+          --attribute number=1
+        )
+        if [ -n "$BENCH_FILTER" ]; then
+          ASV_COMMAND+=(--bench "$BENCH_FILTER")
+        fi
+        ASV_COMMAND+=("$BASELINE_REF" "$CANDIDATE_REF")
+        "${ASV_COMMAND[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
         echo "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous-exit-code.txt"
         exit "$ASV_EXIT_CODE"
     - name: Summarize ASV comparison evidence

@@ -29,6 +29,12 @@ The GitHub performance workflow can also be run manually with
 - `baseline_ref`: git ref or SHA for the before state.
 - `candidate_ref`: git ref or SHA for the after state; defaults to the selected
   workflow ref when omitted.
+- `bench_filter`: optional ASV `--bench` regular expression for manual
+  baseline/candidate comparisons.
+
+Pull requests run a bounded comparison over catalog smoke, core pipeline, and
+direct functional-kernel benchmarks. Scheduled runs and manual comparisons with
+an empty `bench_filter` run the full suite.
 
 ## Matrix
 

@@ -3,7 +3,6 @@
   "project": "albumentationsx",
   "project_url": "https://github.com/albumentations-team/AlbumentationsX",
   "repo": "..",
-  "branches": ["main"],
   "environment_type": "virtualenv",
   "install_command": "python -m pip install {build_dir}[headless]",
   "benchmark_dir": "benchmarks",

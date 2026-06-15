@@ -13,13 +13,7 @@ BASELINE_PATTERNS = frozenset(
     },
 )
 
-FULL_SUITE_PATTERNS = frozenset({"PeakMemory", "Time"})
-
 PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
-    (
-        ("benchmark/",),
-        FULL_SUITE_PATTERNS,
-    ),
     (
         (
             "albumentations/core/composition.py",
@@ -133,9 +127,6 @@ def select_benchmark_patterns(changed_paths: list[str]) -> tuple[str, ...]:
         for prefixes, path_patterns in PATH_RULES:
             if _matches_prefix(path, prefixes):
                 patterns.update(path_patterns)
-
-    if "Time" in patterns:
-        patterns = set(FULL_SUITE_PATTERNS)
 
     return tuple(pattern for pattern in PATTERN_ORDER if pattern in patterns)
 

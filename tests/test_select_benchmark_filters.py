@@ -36,8 +36,12 @@ def test_select_benchmark_filters_add_memory_and_volume_paths_for_3d_changes() -
     assert "TimeVolumetricFullMatrix" in patterns
 
 
-def test_select_benchmark_filters_runs_full_suite_for_benchmark_changes() -> None:
-    assert select_benchmark_patterns(["benchmark/benchmarks/test_family_matrix.py"]) == ("Time", "PeakMemory")
+def test_select_benchmark_filters_keeps_benchmark_infrastructure_changes_bounded() -> None:
+    assert select_benchmark_patterns(["benchmark/benchmarks/test_family_matrix.py"]) == (
+        "TimeCatalogTransformSmoke",
+        "TimeCorePipeline",
+        "TimeFunctional",
+    )
 
 
 def test_select_benchmark_filters_returns_asv_regex() -> None:

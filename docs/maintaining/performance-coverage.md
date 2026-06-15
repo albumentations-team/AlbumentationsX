@@ -164,6 +164,8 @@ Pull requests:
   or benchmark code changes; PR comparison starts with catalog smoke, core
   pipeline, and direct functional-kernel benchmarks, then adds changed-family
   matrix benchmarks through `tools/select_benchmark_filters.py`
+- benchmark infrastructure changes rely on ASV importability and benchmark
+  coverage validation in PR; full-suite comparison remains scheduled or manual
 - selected PR benchmark filter and changed-file evidence are uploaded with
   benchmark artifacts when a comparison runs
 - optional PyTorch ASV is not run on every pull request because installing

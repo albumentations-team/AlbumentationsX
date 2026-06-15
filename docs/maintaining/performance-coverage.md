@@ -43,6 +43,11 @@ uv run python -m tools.benchmark_coverage details --output benchmark-coverage-de
 This layer catches public catalog drift and verifies that every runnable
 transform has at least one measured user-facing route.
 
+Alias transforms that intentionally warn at construction are benchmarked
+through their canonical implementation and recorded with an `alias_coverage`
+layer in the per-transform detail artifact. The catalog smoke path still
+verifies that the public alias constructs and executes.
+
 ### L2: Family Matrices
 
 Hot transform families must have richer matrix coverage than the catalog smoke
@@ -61,6 +66,12 @@ The current family matrix covers:
 - pixel: pointwise, LUT-like, blur/filter, noise, normalization,
   dtype-conversion, color, compression, and superpixel paths
 - annotations: HBB, OBB, keypoints, masks, label fields, and bbox-safe crops
+- special targets: bbox-safe crops, near-bbox crop metadata, constrained
+  dropout, non-empty-mask crop, and mask dropout over size/channel/dtype
+  variants
+- alias coverage: warning aliases such as `ShiftScaleRotate`,
+  `TimeReverse`, `TimeMasking`, and `FrequencyMasking` mapped to their
+  canonical benchmarked transforms
 - reference data: mixing, domain adaptation, overlay, copy-paste, mosaic, and
   text metadata transforms
 - volumetric data: public 3D transforms over volume size and dtype variants

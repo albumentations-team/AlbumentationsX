@@ -43,6 +43,34 @@ def test_benchmark_coverage_details_map_expanded_pixel_matrix_to_public_transfor
     assert "family_matrix" in random_rain["layers"]
 
 
+def test_benchmark_coverage_details_map_crop_and_dropout_matrix_to_public_transforms() -> None:
+    random_resized_crop = _coverage_for("RandomResizedCrop")
+    channel_dropout = _coverage_for("ChannelDropout")
+
+    assert random_resized_crop["smoke_only"] is False
+    assert channel_dropout["smoke_only"] is False
+    assert "family_matrix" in random_resized_crop["layers"]
+    assert "family_matrix" in channel_dropout["layers"]
+
+
+def test_benchmark_coverage_details_map_special_target_matrix_to_public_transforms() -> None:
+    bbox_safe_crop = _coverage_for("BBoxSafeRandomCrop")
+    mask_dropout = _coverage_for("MaskDropout")
+
+    assert bbox_safe_crop["smoke_only"] is False
+    assert mask_dropout["smoke_only"] is False
+    assert "target_matrix" in bbox_safe_crop["layers"]
+    assert "target_matrix" in mask_dropout["layers"]
+
+
+def test_benchmark_coverage_details_explain_warning_aliases() -> None:
+    shift_scale_rotate = _coverage_for("ShiftScaleRotate")
+
+    assert shift_scale_rotate["smoke_only"] is False
+    assert shift_scale_rotate["covered_by"] == "Affine"
+    assert "alias_coverage" in shift_scale_rotate["layers"]
+
+
 def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     to_tensor = _coverage_for("ToTensorV2")
 

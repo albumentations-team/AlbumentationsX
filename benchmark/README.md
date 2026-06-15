@@ -120,9 +120,14 @@ The current ASV suite includes these production coverage layers:
   transforms across their supported size, channel, and dtype matrices.
 - Annotation scaling: HBB bboxes, OBB bboxes, keypoints, masks, label-field
   routing, and bbox-safe crop paths at 10, 100, and 1000 annotations.
+- Special target matrix: bbox-safe crops, near-bbox crop metadata,
+  constrained dropout, non-empty-mask crop, and mask dropout over
+  size/channel/dtype variants.
 - Reference-data paths: mixing, domain adaptation, overlay, copy-paste,
   mosaic, and text metadata transforms.
 - Volumetric paths: all public 3D transforms over size and dtype variants.
+- Alias coverage: warning aliases mapped to their canonical benchmarked
+  implementation while catalog smoke still validates public construction.
 - Direct functional kernels: shared geometry, annotation, pixel, blur/filter,
   and 3D kernels benchmarked outside `Compose` to identify whether changes come
   from raw kernels or pipeline overhead.

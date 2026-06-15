@@ -53,8 +53,10 @@ Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 | Catalog ASV smoke cases | `<count/result>` |
 | Deep per-transform coverage | `<count/result>` |
 | Smoke-only transforms | `<count/list or link>` |
+| Alias-covered transforms | `<count/list or link>` |
 | Full-matrix geometry cases | `<count/result>` |
 | Full-matrix pixel cases | `<count/result>` |
+| Special target matrix cases | `<count/result>` |
 | Direct functional-kernel cases | `<count/result>` |
 | Annotation/reference/volumetric cases | `<count/result>` |
 | Core Compose overhead | `<status>` |

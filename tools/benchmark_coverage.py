@@ -32,6 +32,8 @@ from benchmarks.test_family_matrix import (  # noqa: E402
     PIXEL_TRANSFORMS,
     REFERENCE_CASES,
     REFERENCE_TRANSFORMS,
+    SPECIAL_TARGET_CASES,
+    SPECIAL_TARGET_TRANSFORMS,
     VOLUME_CASES,
     VOLUME_TRANSFORMS,
 )
@@ -46,6 +48,8 @@ from benchmarks.test_functional_kernels import (  # noqa: E402
 GEOMETRY_ALIAS_TO_TRANSFORM = {
     "affine": "Affine",
     "center_crop": "CenterCrop",
+    "crop": "Crop",
+    "crop_and_pad": "CropAndPad",
     "d4": "D4",
     "elastic": "ElasticTransform",
     "grid_distortion": "GridDistortion",
@@ -57,11 +61,20 @@ GEOMETRY_ALIAS_TO_TRANSFORM = {
     "pad": "Pad",
     "pad_if_needed": "PadIfNeeded",
     "perspective": "Perspective",
+    "piecewise_affine": "PiecewiseAffine",
+    "pixel_spread": "PixelSpread",
+    "morphological": "Morphological",
     "random_crop": "RandomCrop",
+    "random_crop_from_borders": "RandomCropFromBorders",
+    "random_grid_shuffle": "RandomGridShuffle",
+    "random_resized_crop": "RandomResizedCrop",
+    "random_rotate90": "RandomRotate90",
+    "random_sized_crop": "RandomSizedCrop",
     "resize": "Resize",
     "rotate": "Rotate",
     "safe_rotate": "SafeRotate",
     "smallest_max_size": "SmallestMaxSize",
+    "square_symmetry": "SquareSymmetry",
     "thin_plate_spline": "ThinPlateSpline",
     "transpose": "Transpose",
     "water_refraction": "WaterRefraction",
@@ -70,18 +83,25 @@ GEOMETRY_ALIAS_TO_TRANSFORM = {
 PIXEL_ALIAS_TO_TRANSFORM = {
     "additive_noise": "AdditiveNoise",
     "advanced_blur": "AdvancedBlur",
+    "annotation_artifacts": "AnnotationArtifacts",
     "atmospheric_fog": "AtmosphericFog",
     "auto_contrast": "AutoContrast",
     "clahe": "CLAHE",
+    "channel_dropout": "ChannelDropout",
+    "channel_swap": "ChannelSwap",
     "chromatic_aberration": "ChromaticAberration",
     "color_jitter": "ColorJitter",
     "colorize": "Colorize",
+    "coarse_dropout": "CoarseDropout",
     "dithering": "Dithering",
     "downscale": "Downscale",
     "emboss": "Emboss",
     "enhance": "Enhance",
+    "erasing": "Erasing",
     "fancy_pca": "FancyPCA",
     "film_grain": "FilmGrain",
+    "grid_dropout": "GridDropout",
+    "grid_mask": "GridMask",
     "equalize": "Equalize",
     "from_float": "FromFloat",
     "gauss_noise": "GaussNoise",
@@ -93,9 +113,12 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "illumination": "Illumination",
     "invert_img": "InvertImg",
     "iso_noise": "ISONoise",
+    "lambda": "Lambda",
+    "lens_flare": "LensFlare",
     "median_blur": "MedianBlur",
     "motion_blur": "MotionBlur",
     "multiplicative_noise": "MultiplicativeNoise",
+    "noop": "NoOp",
     "normalize": "Normalize",
     "photometric_distort": "PhotoMetricDistort",
     "planckian_jitter": "PlanckianJitter",
@@ -123,6 +146,14 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "to_sepia": "ToSepia",
     "unsharp_mask": "UnsharpMask",
     "vignetting": "Vignetting",
+    "xy_masking": "XYMasking",
+}
+
+ALIAS_COVERAGE_TRANSFORMS = {
+    "FrequencyMasking": "XYMasking",
+    "ShiftScaleRotate": "Affine",
+    "TimeMasking": "XYMasking",
+    "TimeReverse": "HorizontalFlip",
 }
 
 ANNOTATION_ALIAS_TO_TRANSFORM = {
@@ -133,6 +164,15 @@ ANNOTATION_ALIAS_TO_TRANSFORM = {
     "obb_horizontal_flip": "HorizontalFlip",
     "obb_random_scale": "RandomScale",
     "obb_resize": "Resize",
+}
+
+SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
+    "at_least_one_bbox_random_crop": "AtLeastOneBBoxRandomCrop",
+    "bbox_safe_random_crop": "BBoxSafeRandomCrop",
+    "constrained_coarse_dropout": "ConstrainedCoarseDropout",
+    "crop_non_empty_mask_if_exists": "CropNonEmptyMaskIfExists",
+    "mask_dropout": "MaskDropout",
+    "random_crop_near_bbox": "RandomCropNearBBox",
 }
 
 VOLUME_ALIAS_TO_TRANSFORM = {
@@ -213,14 +253,17 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
     pixel_matrix = _mapped_names(PIXEL_ALIAS_TO_TRANSFORM, PIXEL_TRANSFORMS)
     annotation_scaling = _mapped_names(ANNOTATION_ALIAS_TO_TRANSFORM, ANNOTATION_TRANSFORMS)
     reference_data = set(REFERENCE_TRANSFORMS)
+    special_targets = _mapped_names(SPECIAL_TARGET_ALIAS_TO_TRANSFORM, SPECIAL_TARGET_TRANSFORMS)
     volumetric_matrix = _mapped_names(VOLUME_ALIAS_TO_TRANSFORM, VOLUME_TRANSFORMS)
 
     return {
+        "alias_coverage": set(ALIAS_COVERAGE_TRANSFORMS),
         "annotation_scaling": annotation_scaling,
         "direct_kernel": set(DIRECT_KERNEL_TRANSFORMS),
         "family_matrix": geometry_matrix | pixel_matrix,
         "memory": set(MEMORY_COVERED_TRANSFORMS),
         "reference_data": reference_data,
+        "target_matrix": special_targets,
         "volumetric_matrix": volumetric_matrix,
     }
 
@@ -241,6 +284,7 @@ def coverage_details() -> dict[str, Any]:
         transforms.append(
             {
                 "benchmark": spec.benchmark,
+                "covered_by": ALIAS_COVERAGE_TRANSFORMS.get(name, ""),
                 "layers": layers,
                 "name": name,
                 "optional_reason": spec.reason,
@@ -257,7 +301,14 @@ def coverage_details() -> dict[str, Any]:
     layer_counts.update(
         {
             layer_name: sum(1 for item in transforms if layer_name in item["layers"])
-            for layer_name in ("volumetric_matrix", "direct_kernel", "memory", "optional")
+            for layer_name in (
+                "alias_coverage",
+                "target_matrix",
+                "volumetric_matrix",
+                "direct_kernel",
+                "memory",
+                "optional",
+            )
         },
     )
 
@@ -291,6 +342,7 @@ def _spec_summary() -> dict[str, Any]:
             "geometry": len(GEOMETRY_CASES),
             "pixel": len(PIXEL_CASES),
             "reference_data": len(REFERENCE_CASES),
+            "special_targets": len(SPECIAL_TARGET_CASES),
             "volumetric": len(VOLUME_CASES),
         },
         "direct_kernel_cases": {
@@ -364,6 +416,7 @@ def _validate_registry() -> list[str]:
                 "geometry": GEOMETRY_CASES,
                 "pixel": PIXEL_CASES,
                 "reference_data": REFERENCE_CASES,
+                "special_targets": SPECIAL_TARGET_CASES,
                 "volumetric": VOLUME_CASES,
             },
             "Missing full-matrix benchmark cases for {group}",

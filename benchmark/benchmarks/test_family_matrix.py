@@ -38,7 +38,18 @@ GEOMETRY_TRANSFORMS: Mapping[str, Factory] = {
     "longest_max_size": lambda: albumentations.LongestMaxSize(max_size=160, p=1.0),
     "letterbox": lambda: albumentations.LetterBox(size=(160, 160), p=1.0),
     "center_crop": lambda: albumentations.CenterCrop(height=128, width=128, p=1.0),
+    "crop": lambda: albumentations.Crop(x_max=128, y_max=128, p=1.0),
+    "crop_and_pad": lambda: albumentations.CropAndPad(px=8, p=1.0),
     "random_crop": lambda: albumentations.RandomCrop(height=128, width=128, p=1.0),
+    "random_crop_from_borders": lambda: albumentations.RandomCropFromBorders(p=1.0),
+    "random_resized_crop": lambda: albumentations.RandomResizedCrop(size=(128, 128), scale=(0.8, 1.0), p=1.0),
+    "random_rotate90": lambda: albumentations.RandomRotate90(p=1.0),
+    "random_sized_crop": lambda: albumentations.RandomSizedCrop(
+        min_max_height=(128, 192),
+        size=(128, 128),
+        p=1.0,
+    ),
+    "square_symmetry": lambda: albumentations.SquareSymmetry(p=1.0),
     "pad": lambda: albumentations.Pad(padding=16, p=1.0),
     "pad_if_needed": lambda: albumentations.PadIfNeeded(min_height=1200, min_width=1200, p=1.0),
     "affine": lambda: albumentations.Affine(scale=(1.05, 1.05), rotate=(3, 3), p=1.0),
@@ -49,7 +60,11 @@ GEOMETRY_TRANSFORMS: Mapping[str, Factory] = {
     "grid_distortion": lambda: albumentations.GridDistortion(distort_range=(0.1, 0.1), p=1.0),
     "optical_distortion": lambda: albumentations.OpticalDistortion(distort_range=(0.03, 0.03), p=1.0),
     "grid_elastic": lambda: albumentations.GridElasticDeform(num_grid_xy=(4, 4), magnitude=4, p=1.0),
+    "random_grid_shuffle": lambda: albumentations.RandomGridShuffle(p=1.0),
     "thin_plate_spline": lambda: albumentations.ThinPlateSpline(scale_range=(0.2, 0.2), p=1.0),
+    "piecewise_affine": lambda: albumentations.PiecewiseAffine(p=1.0),
+    "pixel_spread": lambda: albumentations.PixelSpread(p=1.0),
+    "morphological": lambda: albumentations.Morphological(p=1.0),
     "water_refraction": lambda: albumentations.WaterRefraction(
         amplitude_range=(0.02, 0.02),
         num_waves_range=(4, 4),
@@ -74,6 +89,7 @@ class PixelSpec:
 
 PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "advanced_blur": PixelSpec(lambda: albumentations.AdvancedBlur(p=1.0)),
+    "annotation_artifacts": PixelSpec(lambda: albumentations.AnnotationArtifacts(p=1.0)),
     "atmospheric_fog": PixelSpec(lambda: albumentations.AtmosphericFog(p=1.0)),
     "random_brightness_contrast": PixelSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
     "random_gamma": PixelSpec(lambda: albumentations.RandomGamma(p=1.0)),
@@ -81,14 +97,20 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "equalize": PixelSpec(lambda: albumentations.Equalize(p=1.0), channels=(1, 3), dtypes=("uint8",)),
     "clahe": PixelSpec(lambda: albumentations.CLAHE(p=1.0), channels=(1, 3), dtypes=("uint8",)),
     "chromatic_aberration": PixelSpec(lambda: albumentations.ChromaticAberration(p=1.0), channels=(3,)),
+    "channel_dropout": PixelSpec(lambda: albumentations.ChannelDropout(p=1.0), channels=(3, 5)),
+    "channel_swap": PixelSpec(lambda: albumentations.ChannelSwap(p=1.0), channels=(3,)),
     "color_jitter": PixelSpec(lambda: albumentations.ColorJitter(p=1.0), channels=(1, 3)),
     "colorize": PixelSpec(lambda: albumentations.Colorize(p=1.0), channels=(1,)),
+    "coarse_dropout": PixelSpec(lambda: albumentations.CoarseDropout(p=1.0)),
     "dithering": PixelSpec(lambda: albumentations.Dithering(p=1.0)),
     "downscale": PixelSpec(lambda: albumentations.Downscale(p=1.0)),
     "emboss": PixelSpec(lambda: albumentations.Emboss(p=1.0)),
     "enhance": PixelSpec(lambda: albumentations.Enhance(p=1.0)),
+    "erasing": PixelSpec(lambda: albumentations.Erasing(p=1.0)),
     "fancy_pca": PixelSpec(lambda: albumentations.FancyPCA(p=1.0), channels=(3,)),
     "film_grain": PixelSpec(lambda: albumentations.FilmGrain(p=1.0)),
+    "grid_dropout": PixelSpec(lambda: albumentations.GridDropout(p=1.0)),
+    "grid_mask": PixelSpec(lambda: albumentations.GridMask(p=1.0)),
     "hue_saturation_value": PixelSpec(lambda: albumentations.HueSaturationValue(p=1.0), channels=(3,)),
     "rgb_shift": PixelSpec(lambda: albumentations.RGBShift(p=1.0), channels=(3,)),
     "he_stain": PixelSpec(lambda: albumentations.HEStain(p=1.0), channels=(3,)),
@@ -97,11 +119,14 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "median_blur": PixelSpec(lambda: albumentations.MedianBlur(blur_range=(3, 3), p=1.0), dtypes=("uint8",)),
     "motion_blur": PixelSpec(lambda: albumentations.MotionBlur(blur_range=(5, 5), p=1.0), dtypes=("uint8",)),
     "iso_noise": PixelSpec(lambda: albumentations.ISONoise(p=1.0), channels=(3,)),
+    "lambda": PixelSpec(lambda: albumentations.Lambda(p=1.0)),
+    "lens_flare": PixelSpec(lambda: albumentations.LensFlare(p=1.0), channels=(3,)),
     "illumination": PixelSpec(lambda: albumentations.Illumination(p=1.0)),
     "invert_img": PixelSpec(lambda: albumentations.InvertImg(p=1.0)),
     "gauss_noise": PixelSpec(lambda: albumentations.GaussNoise(p=1.0)),
     "additive_noise": PixelSpec(lambda: albumentations.AdditiveNoise(p=1.0)),
     "multiplicative_noise": PixelSpec(lambda: albumentations.MultiplicativeNoise(p=1.0)),
+    "noop": PixelSpec(lambda: albumentations.NoOp(p=1.0)),
     "shot_noise": PixelSpec(lambda: albumentations.ShotNoise(p=1.0), dtypes=("uint8",)),
     "normalize": PixelSpec(lambda: albumentations.Normalize(p=1.0)),
     "photometric_distort": PixelSpec(lambda: albumentations.PhotoMetricDistort(p=1.0), channels=(1, 3)),
@@ -132,6 +157,15 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     ),
     "unsharp_mask": PixelSpec(lambda: albumentations.UnsharpMask(p=1.0)),
     "vignetting": PixelSpec(lambda: albumentations.Vignetting(p=1.0)),
+    "xy_masking": PixelSpec(
+        lambda: albumentations.XYMasking(
+            mask_x_length_range=(12, 12),
+            mask_y_length_range=(12, 12),
+            num_masks_x_range=(1, 1),
+            num_masks_y_range=(1, 1),
+            p=1.0,
+        ),
+    ),
 }
 
 ANNOTATION_TRANSFORMS: Mapping[str, Factory] = {
@@ -143,6 +177,48 @@ ANNOTATION_TRANSFORMS: Mapping[str, Factory] = {
     "obb_resize": lambda: albumentations.Resize(height=384, width=512, p=1.0),
     "obb_random_scale": lambda: albumentations.RandomScale(scale_range=(0.1, 0.1), p=1.0),
 }
+SPECIAL_TARGET_TRANSFORMS: Mapping[str, Factory] = {
+    "at_least_one_bbox_random_crop": lambda: albumentations.Compose(
+        [albumentations.AtLeastOneBBoxRandomCrop(height=96, width=96, p=1.0)],
+        bbox_params=albumentations.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        seed=137,
+        strict=True,
+    ),
+    "bbox_safe_random_crop": lambda: albumentations.Compose(
+        [albumentations.BBoxSafeRandomCrop(p=1.0)],
+        bbox_params=albumentations.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        seed=137,
+        strict=True,
+    ),
+    "constrained_coarse_dropout": lambda: albumentations.Compose(
+        [albumentations.ConstrainedCoarseDropout(mask_indices=[1], p=1.0)],
+        seed=137,
+        strict=True,
+    ),
+    "crop_non_empty_mask_if_exists": lambda: albumentations.Compose(
+        [albumentations.CropNonEmptyMaskIfExists(height=96, width=96, p=1.0)],
+        seed=137,
+        strict=True,
+    ),
+    "mask_dropout": lambda: albumentations.Compose(
+        [albumentations.MaskDropout(p=1.0)],
+        seed=137,
+        strict=True,
+    ),
+    "random_crop_near_bbox": lambda: albumentations.Compose(
+        [albumentations.RandomCropNearBBox(p=1.0)],
+        bbox_params=albumentations.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        seed=137,
+        strict=True,
+    ),
+}
+BBOX_SPECIAL_TARGET_TRANSFORMS = frozenset(
+    {
+        "at_least_one_bbox_random_crop",
+        "bbox_safe_random_crop",
+        "random_crop_near_bbox",
+    },
+)
 ANNOTATION_COUNTS_BY_TRANSFORM = {
     "hbb_affine": (10, 100),
     "hbb_perspective": (10, 100),
@@ -214,6 +290,12 @@ GEOMETRY_CASES = tuple(
     )
 )
 PIXEL_CASES = _pixel_cases()
+SPECIAL_TARGET_CASES = _matrix_cases(
+    tuple(SPECIAL_TARGET_TRANSFORMS),
+    tuple(SIZES),
+    CHANNELS,
+    tuple(DTYPES),
+)
 ANNOTATION_CASES = tuple(
     f"{name}|{count}"
     for name in ANNOTATION_TRANSFORMS
@@ -313,6 +395,34 @@ class TimeAnnotationTargets:
                     remove_invisible=False,
                 )
         return albumentations.Compose([ANNOTATION_TRANSFORMS[name]()], **kwargs)
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
+
+
+class TimeSpecialTargetMatrix:
+    """Benchmark transforms that require bbox, mask, or crop metadata targets."""
+
+    params = (SPECIAL_TARGET_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, size_name, channels, dtype_name = _parse_image_case(case_id)
+        self.transform = SPECIAL_TARGET_TRANSFORMS[name]()
+        self.data = self._make_data(name, size_name, channels, dtype_name)
+
+    def _make_data(self, name: str, size_name: str, channels: int, dtype_name: str) -> dict[str, object]:
+        data: dict[str, object] = {
+            "image": make_image(size_name, channels, dtype_from_name(dtype_name)),
+            "mask": make_mask(size_name),
+        }
+        if name in BBOX_SPECIAL_TARGET_TRANSFORMS:
+            data["bboxes"] = make_hbb_bboxes(size_name, 10)
+            data["bbox_labels"] = make_labels(10)
+        if name == "random_crop_near_bbox":
+            height, width = SIZES[size_name]
+            data["cropping_bbox"] = [width // 5, height // 5, width * 4 // 5, height * 4 // 5]
+        return data
 
     def time_transform(self, case_id: str) -> None:
         self.transform(**self.data)

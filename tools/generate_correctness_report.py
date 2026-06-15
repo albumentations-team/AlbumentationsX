@@ -110,8 +110,10 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
                 f"{index}: {coverage_depth.get('deep_coverage_transforms', 0)} transform(s) with deep coverage, "
                 f"{coverage_depth.get('smoke_only_transforms', 0)} smoke-only transform(s), "
                 f"{coverage_depth.get('optional_transforms', 0)} optional transform(s); "
+                f"{layer_counts.get('alias_coverage', 0)} alias-covered, "
                 f"{layer_counts.get('family_matrix', 0)} family-matrix, "
                 f"{layer_counts.get('direct_kernel', 0)} direct-kernel, "
+                f"{layer_counts.get('target_matrix', 0)} target-matrix, "
                 f"{layer_counts.get('volumetric_matrix', 0)} volumetric-matrix transform(s)",
             )
             continue

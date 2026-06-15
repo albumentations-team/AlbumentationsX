@@ -17,8 +17,9 @@ which limitations are known.
    label integrity, volume semantics, and serialization behavior.
 5. Known limitations: dependency-sensitive exactness, advisory optional-extra
    coverage, and platform caveats.
-6. Performance summary: benchmark status, coverage-contract status, optional
-   PyTorch tensor benchmark evidence, and memory observations.
+6. Performance summary: benchmark status, coverage-contract status,
+   performance-budget status, optional PyTorch tensor benchmark evidence, ASV
+   comparison triage where available, and memory observations.
 7. Security posture: runtime audit, workflow audit, OpenSSF Scorecard, CodeQL
    status, SBOM, checksums, and PyPI provenance.
 8. Reproducibility details: CI runs, lockfile hash, environment artifacts, and
@@ -36,6 +37,6 @@ uv run python tools/generate_correctness_report.py \
 ```
 
 Release workflows should omit `--allow-missing-evidence` and provide at least
-one environment JSON artifact, benchmark coverage summary/detail JSON, and
-security JSON evidence. Local dry runs may use `--allow-missing-evidence` when
-those artifacts are not available.
+one environment JSON artifact, benchmark coverage summary/detail JSON,
+benchmark performance-budget JSON, and security JSON evidence. Local dry runs
+may use `--allow-missing-evidence` when those artifacts are not available.

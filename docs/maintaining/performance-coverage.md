@@ -34,6 +34,12 @@ Inspect per-transform coverage depth with:
 uv run python -m tools.benchmark_coverage details --output benchmark-coverage-detail.json
 ```
 
+Validate coverage policy and benchmark stability classes with:
+
+```bash
+uv run python -m tools.performance_budget check
+```
+
 ### L1: Catalog Smoke
 
 - Run one valid `Compose` path for every runnable public transform.
@@ -154,6 +160,29 @@ Accepted slowdowns should have a maintainer-visible reason, such as a
 correctness fix, broader dtype/channel/target support, lower memory use,
 security hardening, or simpler behavior that removes a known maintenance risk.
 
+ASV comparison summaries are classified by `tools/performance_budget.py` into
+machine-readable budget evidence:
+
+- `ok`: coverage contracts pass and no regression triage is required
+- `triage_required`: at least one benchmark changed beyond the warning budget
+  or an unclassified benchmark changed
+- `release_blocked`: a stable release-critical benchmark regressed beyond the
+  blocking budget or benchmark coverage contracts failed
+- `missing_comparison`: a strict release check required before/after evidence
+  but no ASV comparison summary was provided
+
+Initial benchmark classes:
+
+- stable release-blocking classes: core pipeline, geometry/pixel/volumetric
+  matrices, annotation/special-target scaling, and direct functional kernels
+- advisory classes: catalog smoke, reference-data matrices, legacy
+  representative benchmarks, optional PyTorch tensor benchmarks, and
+  peak-memory checks
+
+Advisory does not mean optional. It means the evidence must be reviewed, but
+shared-runner noise or optional dependency setup should not automatically block
+a release until scheduled history proves the benchmark is stable enough.
+
 ## CI And Release Evidence
 
 Pull requests:
@@ -168,6 +197,8 @@ Pull requests:
   coverage validation in PR; full-suite comparison remains scheduled or manual
 - selected PR benchmark filter and changed-file evidence are uploaded with
   benchmark artifacts when a comparison runs
+- performance-budget evidence classifies coverage status, benchmark stability,
+  triage items, and release-blocking regressions
 - optional PyTorch ASV is not run on every pull request because installing
   torch can dominate feedback time; it is run on `main`, scheduled, and manual
   performance workflows
@@ -184,6 +215,7 @@ Release candidates:
 
 - benchmark coverage JSON
 - per-transform benchmark coverage detail JSON
+- performance-budget JSON
 - ASV evidence
 - ASV comparison summary JSON when a baseline/candidate comparison is run
 - correctness report performance summary
@@ -220,6 +252,16 @@ uv run python tools/asv_summary.py \
   --output benchmark-evidence/benchmark-asv-summary.json
 ```
 
+Classify the comparison against the release budget with:
+
+```bash
+uv run python tools/performance_budget.py summarize \
+  --coverage-summary benchmark-evidence/benchmark-coverage.json \
+  --coverage-detail benchmark-evidence/benchmark-coverage-detail.json \
+  --asv-summary benchmark-evidence/benchmark-asv-summary.json \
+  --output benchmark-evidence/benchmark-performance-budget.json
+```
+
 ## Acceptance Criteria
 
 The project can claim catalog-wide performance coverage when all of the
@@ -240,6 +282,8 @@ following are true:
   in benchmark evidence.
 - Optional PyTorch tensor paths are included in scheduled or release-adjacent
   benchmark evidence.
+- Performance-budget evidence is published and has no coverage-contract
+  failures.
 - Release evidence compares the candidate against an appropriate baseline or
   documents why comparison evidence is unavailable.
 - Material runtime or memory regressions are either fixed or justified in

@@ -98,6 +98,16 @@ uv run python tools/asv_summary.py \
   --output benchmark-evidence/benchmark-asv-summary.json
 ```
 
+Classify coverage and comparison evidence against the performance budget with:
+
+```bash
+uv run python tools/performance_budget.py summarize \
+  --coverage-summary benchmark-evidence/benchmark-coverage.json \
+  --coverage-detail benchmark-evidence/benchmark-coverage-detail.json \
+  --asv-summary benchmark-evidence/benchmark-asv-summary.json \
+  --output benchmark-evidence/benchmark-performance-budget.json
+```
+
 The default ASV environment installs the `headless` and `text` extras so the
 suite can run OpenCV-backed transforms and `TextImage` without GUI packages.
 The check fails when a public transform is missing from coverage accounting,
@@ -152,4 +162,6 @@ A material slowdown, initially treated as more than about 5% on a
 representative case, needs either a code change to recover the regression or a
 clear maintainer-visible reason why the tradeoff is intentional.
 The raw ASV comparison text remains the authoritative artifact; the JSON
-summary is a compact index for release reports and quick review.
+summary is a compact index for release reports and quick review. The
+performance-budget JSON is the policy artifact that distinguishes advisory
+triage from stable release-blocking regressions.

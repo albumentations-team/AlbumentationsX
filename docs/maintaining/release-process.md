@@ -34,9 +34,9 @@ Before a release is published, all of the following must be true:
    - golden regression vector verification
    - property tests with the release profile
    - security workflow checks
-   - performance workflow completed, including benchmark coverage detail
-     artifacts and optional PyTorch tensor benchmark evidence, with any
-     material regressions documented
+   - performance workflow completed, including benchmark coverage detail,
+     performance-budget artifacts, and optional PyTorch tensor benchmark
+     evidence, with any material regressions documented
 
 Performance coverage expectations and regression triage rules are maintained in
 `docs/maintaining/performance-coverage.md`.
@@ -91,6 +91,8 @@ Each official release must publish:
    - imports `albumentations` from outside the repository checkout
    - verifies lock freshness with `uv lock --check`
    - collects benchmark coverage summary/detail evidence
+   - classifies benchmark coverage and available ASV comparison evidence
+     through `tools/performance_budget.py`
    - exports locked runtime dependencies from `uv.lock`
    - collects release security evidence from runtime dependency and workflow audits
    - generates a CycloneDX SBOM

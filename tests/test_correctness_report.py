@@ -47,10 +47,28 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
             },
         },
     )
+    _write_json(
+        tmp_path / "benchmark-performance-budget-local.json",
+        {
+            "coverage": {
+                "contract_failures": 0,
+                "public_transforms": 1,
+                "smoke_only_transforms": 0,
+            },
+            "comparison": {
+                "provided": False,
+                "release_blockers": [],
+                "triage_items": [],
+            },
+            "kind": "performance-budget",
+            "status": "ok",
+        },
+    )
     _write_json(tmp_path / "security-local.json", {})
 
     report = generate_report(tmp_path)
 
     assert "Benchmark coverage detail" in report
+    assert "Performance budget" in report
     assert "0 coverage contract failure(s)" in report
     assert "Security summary: provided" in report

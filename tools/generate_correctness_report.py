@@ -91,6 +91,20 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
 
     lines = []
     for index, summary in enumerate(summaries, start=1):
+        if summary.get("kind") == "performance-budget":
+            comparison = summary.get("comparison", {})
+            coverage = summary.get("coverage", {})
+            lines.append(
+                "- Performance budget "
+                f"{index}: status {summary.get('status', 'unknown')}; "
+                f"{len(comparison.get('release_blockers', []))} release-blocking regression(s), "
+                f"{len(comparison.get('triage_items', []))} triage item(s), "
+                f"comparison provided: {comparison.get('provided', False)}; "
+                f"{coverage.get('public_transforms', 0)} public transform(s), "
+                f"{coverage.get('smoke_only_transforms', 0)} smoke-only transform(s), "
+                f"{coverage.get('contract_failures', 0)} coverage contract failure(s)",
+            )
+            continue
         if summary.get("kind") == "asv-comparison":
             totals = summary.get("totals", {})
             status = summary.get("status", {})
@@ -158,6 +172,10 @@ def _has_benchmark_detail(summaries: list[dict[str, Any]]) -> bool:
     return any(summary.get("kind") == "benchmark-coverage-detail" for summary in summaries)
 
 
+def _has_performance_budget(summaries: list[dict[str, Any]]) -> bool:
+    return any(summary.get("kind") == "performance-budget" for summary in summaries)
+
+
 def _validate_required_evidence(
     environments: list[dict[str, Any]],
     benchmark_summaries: list[dict[str, Any]],
@@ -175,6 +193,8 @@ def _validate_required_evidence(
         missing.append("benchmark coverage summary JSON")
     if not _has_benchmark_detail(benchmark_summaries):
         missing.append("benchmark coverage detail JSON")
+    if not _has_performance_budget(benchmark_summaries):
+        missing.append("benchmark performance budget JSON")
     if not security_summaries:
         missing.append("security*.json")
 

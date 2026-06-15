@@ -132,6 +132,19 @@ jobs:
             --output benchmark-evidence/benchmark-asv-summary.json \
             --allow-missing
         fi
+    - name: Classify performance budget evidence
+      if: always()
+      run: |
+        BUDGET_COMMAND=(
+          uv run --no-sync python tools/performance_budget.py summarize
+          --coverage-summary benchmark-evidence/benchmark-coverage.json
+          --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
+          --output benchmark-evidence/benchmark-performance-budget.json
+        )
+        if [ -f benchmark-evidence/benchmark-asv-summary.json ]; then
+          BUDGET_COMMAND+=(--asv-summary benchmark-evidence/benchmark-asv-summary.json)
+        fi
+        "${BUDGET_COMMAND[@]}"
     - name: Run scheduled benchmark evidence
       if: >
         github.event_name == 'push' ||

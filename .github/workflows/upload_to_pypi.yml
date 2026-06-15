@@ -103,6 +103,10 @@ jobs:
           --output dist/evidence/benchmark-coverage-release.json
         uv run python -m tools.benchmark_coverage details \
           --output dist/evidence/benchmark-coverage-detail-release.json
+        uv run python tools/performance_budget.py summarize \
+          --coverage-summary dist/evidence/benchmark-coverage-release.json \
+          --coverage-detail dist/evidence/benchmark-coverage-detail-release.json \
+          --output dist/evidence/benchmark-performance-budget-release.json
 
     - name: Export locked runtime dependencies
       run: uv export --frozen --no-dev --format requirements-txt --output-file dist/runtime-requirements.txt

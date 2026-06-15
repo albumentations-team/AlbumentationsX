@@ -17,6 +17,7 @@ FAST_CHECKS: tuple[Command, ...] = (
     ("ruff", "check", "albumentations", "benchmark", "tests", "tools", "--no-fix"),
     ("python", "-m", "tools.ci_matrix", "check"),
     ("python", "-m", "tools.benchmark_coverage", "check"),
+    ("python", "-m", "tools.performance_budget", "check"),
     ("python", "-m", "tools.verify_regression_vectors", "--all"),
     ("pre-commit", "run", "--all-files"),
     ("python", "-m", "tools.check_defaults"),

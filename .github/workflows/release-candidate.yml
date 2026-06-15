@@ -57,6 +57,13 @@ jobs:
           --output release-candidate-evidence/benchmark-coverage-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
         uv run python -m tools.benchmark_coverage details \
           --output release-candidate-evidence/benchmark-coverage-detail-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+    - name: Classify performance budget evidence
+      if: always()
+      run: >
+        uv run python tools/performance_budget.py summarize
+        --coverage-summary release-candidate-evidence/benchmark-coverage-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --coverage-detail release-candidate-evidence/benchmark-coverage-detail-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --output release-candidate-evidence/benchmark-performance-budget-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
     - name: Upload release candidate evidence
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

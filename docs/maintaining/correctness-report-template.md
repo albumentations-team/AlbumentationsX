@@ -57,6 +57,7 @@ Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 | Annotation/reference/volumetric cases | `<count/result>` |
 | Core Compose overhead | `<status>` |
 | Memory checks | `<status>` |
+| ASV comparison summary | `<status/link>` |
 | Material runtime regressions | `<none/list with justification>` |
 | Material memory regressions | `<none/list with justification>` |
 

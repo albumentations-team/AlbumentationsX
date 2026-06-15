@@ -91,6 +91,17 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
 
     lines = []
     for index, summary in enumerate(summaries, start=1):
+        if summary.get("kind") == "asv-comparison":
+            totals = summary.get("totals", {})
+            status = summary.get("status", {})
+            lines.append(
+                "- ASV comparison "
+                f"{index}: {totals.get('regressions', 0)} regression(s), "
+                f"{totals.get('improvements', 0)} improvement(s), "
+                f"ASV exit code {summary.get('asv_exit_code')}, "
+                f"performance decreased: {status.get('performance_decreased', False)}",
+            )
+            continue
         full_matrix_cases = summary.get("full_matrix_cases", {})
         if isinstance(full_matrix_cases, dict):
             full_matrix_count = sum(value for value in full_matrix_cases.values() if isinstance(value, int))

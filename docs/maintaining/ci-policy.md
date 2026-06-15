@@ -55,7 +55,7 @@ Each CI lane that runs tests should upload:
 - environment JSON from `tools/collect_test_environment.py`;
 - JUnit XML from pytest where practical;
 - compact pytest summary JSON from `tools/pytest_summary.py`;
-- benchmark or security JSON where those checks run.
+- benchmark, ASV comparison, or security JSON where those checks run.
 
 Release reports are generated from these artifacts when available. Local dry
 runs may use `--allow-missing-evidence`, but release workflows should provide

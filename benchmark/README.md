@@ -70,6 +70,14 @@ Emit the JSON summary that CI uploads with benchmark artifacts with:
 uv run python -m tools.benchmark_coverage summary --output benchmark-coverage.json
 ```
 
+Summarize ASV before/after comparison text for release reports with:
+
+```bash
+uv run python tools/asv_summary.py \
+  --input benchmark-evidence/asv-continuous.txt \
+  --output benchmark-evidence/benchmark-asv-summary.json
+```
+
 The default ASV environment installs the `headless` and `text` extras so the
 suite can run OpenCV-backed transforms and `TextImage` without GUI packages.
 The check fails when a public transform is missing from coverage accounting,
@@ -114,3 +122,5 @@ prepared as a release task, or checked locally before merging a larger branch.
 A material slowdown, initially treated as more than about 5% on a
 representative case, needs either a code change to recover the regression or a
 clear maintainer-visible reason why the tradeoff is intentional.
+The raw ASV comparison text remains the authoritative artifact; the JSON
+summary is a compact index for release reports and quick review.

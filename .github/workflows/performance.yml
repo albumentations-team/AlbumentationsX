@@ -82,6 +82,7 @@ jobs:
             CANDIDATE_REF="HEAD"
           fi
         fi
+        ASV_EXIT_CODE=0
         uv tool run --from asv asv --config asv.conf.json continuous \
           --factor 1.05 \
           --split \
@@ -90,7 +91,27 @@ jobs:
           --attribute number=1 \
           "$BASELINE_REF" \
           "$CANDIDATE_REF" \
-          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous.txt"
+          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
+        echo "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous-exit-code.txt"
+        exit "$ASV_EXIT_CODE"
+    - name: Summarize ASV comparison evidence
+      if: >
+        always() &&
+        (github.event_name == 'pull_request' ||
+        (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != ''))
+      run: |
+        ASV_EXIT_CODE="$(cat benchmark-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
+        if [ -n "$ASV_EXIT_CODE" ]; then
+          uv run --no-sync python tools/asv_summary.py \
+            --input benchmark-evidence/asv-continuous.txt \
+            --output benchmark-evidence/benchmark-asv-summary.json \
+            --asv-exit-code "$ASV_EXIT_CODE"
+        else
+          uv run --no-sync python tools/asv_summary.py \
+            --input benchmark-evidence/asv-continuous.txt \
+            --output benchmark-evidence/benchmark-asv-summary.json \
+            --allow-missing
+        fi
     - name: Run scheduled benchmark evidence
       if: >
         github.event_name == 'push' ||

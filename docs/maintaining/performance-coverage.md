@@ -144,6 +144,7 @@ Release candidates:
 
 - benchmark coverage JSON
 - ASV evidence
+- ASV comparison summary JSON when a baseline/candidate comparison is run
 - correctness report performance summary
 - documented triage for material regressions
 
@@ -157,6 +158,15 @@ uv tool run --from asv asv --config asv.conf.json continuous \
   --show-stderr \
   <baseline-ref> \
   <candidate-ref>
+```
+
+The raw ASV comparison text is the source artifact. The compact JSON summary
+used by release reports can be generated with:
+
+```bash
+uv run python tools/asv_summary.py \
+  --input benchmark-evidence/asv-continuous.txt \
+  --output benchmark-evidence/benchmark-asv-summary.json
 ```
 
 ## Acceptance Criteria

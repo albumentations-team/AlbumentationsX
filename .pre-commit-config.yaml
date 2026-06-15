@@ -35,7 +35,7 @@ repos:
         entry: python -m tools.benchmark_coverage check
         language: system
         pass_filenames: false
-        files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|quality_gate)\.py)
+        files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|performance_budget|quality_gate)\.py)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

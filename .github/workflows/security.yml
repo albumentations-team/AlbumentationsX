@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
   schedule:
     - cron: "37 3 * * 1"
 
@@ -29,13 +30,28 @@ jobs:
         enable-cache: true
         python-version: "3.11"
         activate-environment: true
+    - name: Prepare security evidence directory
+      run: python -c "from pathlib import Path; Path('security-evidence').mkdir(exist_ok=True)"
     - name: Export locked runtime dependencies
       run: >
         uv export --frozen --no-dev --no-emit-project
         --format requirements-txt
         --output-file runtime-requirements.txt
     - name: Run pip-audit
-      run: uv tool run --from pip-audit pip-audit --requirement runtime-requirements.txt --no-deps --disable-pip
+      run: >
+        uv tool run --from pip-audit pip-audit
+        --requirement runtime-requirements.txt
+        --no-deps
+        --disable-pip
+        --format=json
+        --output security-evidence/security-pip-audit.json
+    - name: Upload dependency audit evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: dependency-audit-evidence
+        path: security-evidence/
+        if-no-files-found: ignore
 
   workflow_audit:
     name: GitHub Actions hardening audit
@@ -50,6 +66,8 @@ jobs:
         enable-cache: true
         python-version: "3.11"
         activate-environment: true
+    - name: Prepare security evidence directory
+      run: python -c "from pathlib import Path; Path('security-evidence').mkdir(exist_ok=True)"
     - name: Run zizmor
       env:
         GH_TOKEN: ${{ github.token }}
@@ -59,6 +77,23 @@ jobs:
         --min-severity=medium
         --min-confidence=medium
         .github
+    - name: Collect zizmor JSON evidence
+      if: always()
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: >
+        uv tool run --from zizmor zizmor
+        --format=json
+        --min-severity=medium
+        --min-confidence=medium
+        .github > security-evidence/security-zizmor.json
+    - name: Upload workflow audit evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: workflow-audit-evidence
+        path: security-evidence/
+        if-no-files-found: ignore
 
   scorecard:
     name: OpenSSF Scorecard

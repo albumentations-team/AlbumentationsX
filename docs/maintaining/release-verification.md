@@ -54,7 +54,8 @@ The Correctness & Compatibility Report summarizes what CI tested for a release:
 - performance benchmark evidence
 - performance-budget status for coverage contracts and regression triage
 - runtime dependency audit, workflow audit, and OpenSSF Scorecard status
-- OpenSSF Scorecard JSON and SARIF artifacts where the security workflow ran
+- pip-audit, zizmor, Scorecard JSON, and Scorecard SARIF artifacts where the
+  corresponding workflows ran
 - SBOM, checksum, and PyPI provenance links
 
 The report is a transparency artifact. It describes tested guarantees and known

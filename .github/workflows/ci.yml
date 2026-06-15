@@ -20,6 +20,7 @@ jobs:
   test_and_lint:
     name: Test and lint
     runs-on: ${{ matrix.operating-system }}
+    timeout-minutes: 45
     strategy:
       matrix:
         operating-system: [ubuntu-latest, windows-latest, macos-latest]
@@ -101,6 +102,7 @@ jobs:
   check_code_formatting_types:
     name: Check repository hooks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: true
       matrix:

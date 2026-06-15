@@ -45,6 +45,18 @@ def test_benchmark_coverage_details_map_expanded_pixel_matrix_to_public_transfor
     assert "family_matrix" in random_rain["layers"]
 
 
+def test_benchmark_coverage_details_require_family_matrix_for_image_transforms() -> None:
+    details = coverage_details()
+
+    missing_family_matrix = [
+        item["name"]
+        for item in details["transforms"]
+        if item["route"] == "image" and "alias_coverage" not in item["layers"] and "family_matrix" not in item["layers"]
+    ]
+
+    assert missing_family_matrix == []
+
+
 def test_benchmark_coverage_details_map_crop_and_dropout_matrix_to_public_transforms() -> None:
     random_resized_crop = _coverage_for("RandomResizedCrop")
     channel_dropout = _coverage_for("ChannelDropout")

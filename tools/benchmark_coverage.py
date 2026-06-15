@@ -70,6 +70,7 @@ GEOMETRY_ALIAS_TO_TRANSFORM = {
     "random_grid_shuffle": "RandomGridShuffle",
     "random_resized_crop": "RandomResizedCrop",
     "random_rotate90": "RandomRotate90",
+    "random_scale": "RandomScale",
     "random_sized_crop": "RandomSizedCrop",
     "resize": "Resize",
     "rotate": "Rotate",
@@ -78,6 +79,7 @@ GEOMETRY_ALIAS_TO_TRANSFORM = {
     "square_symmetry": "SquareSymmetry",
     "thin_plate_spline": "ThinPlateSpline",
     "transpose": "Transpose",
+    "vertical_flip": "VerticalFlip",
     "water_refraction": "WaterRefraction",
 }
 
@@ -87,8 +89,10 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "annotation_artifacts": "AnnotationArtifacts",
     "atmospheric_fog": "AtmosphericFog",
     "auto_contrast": "AutoContrast",
+    "blur": "Blur",
     "clahe": "CLAHE",
     "channel_dropout": "ChannelDropout",
+    "channel_shuffle": "ChannelShuffle",
     "channel_swap": "ChannelSwap",
     "chromatic_aberration": "ChromaticAberration",
     "color_jitter": "ColorJitter",
@@ -101,12 +105,14 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "erasing": "Erasing",
     "fancy_pca": "FancyPCA",
     "film_grain": "FilmGrain",
+    "defocus": "Defocus",
     "grid_dropout": "GridDropout",
     "grid_mask": "GridMask",
     "equalize": "Equalize",
     "from_float": "FromFloat",
     "gauss_noise": "GaussNoise",
     "gaussian_blur": "GaussianBlur",
+    "glass_blur": "GlassBlur",
     "halftone": "Halftone",
     "he_stain": "HEStain",
     "hue_saturation_value": "HueSaturationValue",
@@ -117,11 +123,13 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "lambda": "Lambda",
     "lens_flare": "LensFlare",
     "median_blur": "MedianBlur",
+    "mode_filter": "ModeFilter",
     "motion_blur": "MotionBlur",
     "multiplicative_noise": "MultiplicativeNoise",
     "noop": "NoOp",
     "normalize": "Normalize",
     "photometric_distort": "PhotoMetricDistort",
+    "pixel_dropout": "PixelDropout",
     "planckian_jitter": "PlanckianJitter",
     "plasma_brightness_contrast": "PlasmaBrightnessContrast",
     "plasma_shadow": "PlasmaShadow",
@@ -139,6 +147,8 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "salt_and_pepper": "SaltAndPepper",
     "sharpen": "Sharpen",
     "shot_noise": "ShotNoise",
+    "posterize": "Posterize",
+    "solarize": "Solarize",
     "spatter": "Spatter",
     "superpixels": "Superpixels",
     "to_float": "ToFloat",
@@ -148,6 +158,7 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "unsharp_mask": "UnsharpMask",
     "vignetting": "Vignetting",
     "xy_masking": "XYMasking",
+    "zoom_blur": "ZoomBlur",
 }
 
 ALIAS_COVERAGE_TRANSFORMS = {
@@ -324,9 +335,8 @@ def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
             reason="target-specialized transforms require annotation or special-target scaling coverage",
         )
     return CoverageExpectation(
-        required_layers=frozenset({"catalog_smoke"}),
-        required_any_layers=(DEEP_COVERAGE_LAYERS - {"pytorch_tensor"},),
-        reason="image transforms require at least one deep coverage layer beyond catalog smoke",
+        required_layers=frozenset({"catalog_smoke", "family_matrix"}),
+        reason="image transforms require transform-level size/channel/dtype matrix coverage",
     )
 
 

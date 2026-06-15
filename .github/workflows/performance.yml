@@ -82,7 +82,11 @@ jobs:
         if [ "$EVENT_NAME" = "pull_request" ]; then
           BASELINE_REF="$PR_BASE_SHA"
           CANDIDATE_REF="$PR_HEAD_SHA"
-          BENCH_FILTER="TimeCatalogTransformSmoke|TimeCorePipeline|TimeFunctional"
+          git diff --name-only "$BASELINE_REF" "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/benchmark-evidence/changed-files.txt"
+          BENCH_FILTER="$(
+            uv run --no-sync python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" \
+              --changed-files "$GITHUB_WORKSPACE/benchmark-evidence/changed-files.txt"
+          )"
         else
           BASELINE_REF="$INPUT_BASELINE_REF"
           CANDIDATE_REF="$INPUT_CANDIDATE_REF"
@@ -91,6 +95,7 @@ jobs:
             CANDIDATE_REF="HEAD"
           fi
         fi
+        echo "$BENCH_FILTER" > "$GITHUB_WORKSPACE/benchmark-evidence/benchmark-filter.txt"
         ASV_EXIT_CODE=0
         ASV_COMMAND=(
           uv tool run --from asv asv --config asv.conf.json continuous

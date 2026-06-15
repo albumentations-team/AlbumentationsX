@@ -7,6 +7,7 @@ on:
 jobs:
   build_release_artifacts:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
     steps:
@@ -175,6 +176,7 @@ jobs:
 
   publish_to_pypi:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: build_release_artifacts
     environment: pypi
     permissions:

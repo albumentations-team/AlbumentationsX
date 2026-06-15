@@ -58,8 +58,10 @@ the default ASV environment avoids torch.
 
 ### L2: Family Matrices
 
-Hot transform families must have richer matrix coverage than the catalog smoke
-path:
+Normal image transforms must have transform-level matrix coverage beyond the
+catalog smoke path. Direct functional-kernel coverage is useful diagnostic
+evidence, but it does not replace user-facing `Compose` coverage for public
+transforms.
 
 - image sizes: `256x256`, `512x512`, `1024x1024`
 - channels: `1`, `3`, `5` where supported
@@ -70,7 +72,7 @@ path:
 The current family matrix covers:
 
 - geometry: crop, resize, pad, symmetry, rotate, affine, perspective,
-  distortions, spline, and refraction paths
+  distortions, spline, scale, and refraction paths
 - pixel: pointwise, LUT-like, blur/filter, noise, normalization,
   dtype-conversion, color, compression, and superpixel paths
 - annotations: HBB, OBB, keypoints, masks, label fields, and bbox-safe crops
@@ -159,8 +161,11 @@ Pull requests:
 - required: benchmark coverage validation through `tools.benchmark_coverage`
 - required: ASV suite importability where the performance workflow runs
 - advisory: ASV before/after comparison on GitHub-hosted runners when runtime
-  or benchmark code changes; PR comparison is bounded to catalog smoke, core
-  pipeline, and direct functional-kernel benchmarks to keep feedback timely
+  or benchmark code changes; PR comparison starts with catalog smoke, core
+  pipeline, and direct functional-kernel benchmarks, then adds changed-family
+  matrix benchmarks through `tools/select_benchmark_filters.py`
+- selected PR benchmark filter and changed-file evidence are uploaded with
+  benchmark artifacts when a comparison runs
 - optional PyTorch ASV is not run on every pull request because installing
   torch can dominate feedback time; it is run on `main`, scheduled, and manual
   performance workflows
@@ -224,9 +229,10 @@ following are true:
   explicitly accounted as optional with a dedicated benchmark lane.
 - Every transform's benchmark coverage contract is satisfied in
   `benchmark-coverage-detail.json`.
-- The per-transform detail artifact is published and reviewed for smoke-only
-  transforms.
-- Hot transform families have size/channel/dtype matrix coverage.
+- The per-transform detail artifact is published and has zero smoke-only
+  runnable transforms.
+- Every normal image transform has transform-level size/channel/dtype matrix
+  coverage unless it is an explicitly documented alias.
 - Direct functional kernels have non-empty coverage in each required group.
 - Annotation, reference-data, volumetric, batch, and memory paths are included
   in benchmark evidence.

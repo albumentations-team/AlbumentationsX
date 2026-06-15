@@ -57,6 +57,7 @@ WORKFLOWS = (
     SECURITY_WORKFLOW,
     RELEASE_WORKFLOW,
 )
+MAX_WORKFLOW_TIMEOUT_MINUTES = 90
 
 LOWER_BOUND_REQUIREMENTS = (
     "numpy==1.24.4",
@@ -128,6 +129,14 @@ def _workflow_yaml_issue(path: Path) -> str | None:
     except (OSError, TypeError, yaml.YAMLError) as error:
         return f"{path} is not valid workflow YAML: {error}"
     return None
+
+
+def _workflow_jobs(path: Path) -> dict[str, Any]:
+    workflow = _load_yaml(path)
+    jobs = workflow.get("jobs", {})
+    if not isinstance(jobs, dict):
+        return {}
+    return jobs
 
 
 def _walk_values_for_key(data: Any, key: str) -> list[Any]:
@@ -253,6 +262,24 @@ def _check_workflow_python_versions() -> list[str]:
     return issues
 
 
+def _check_workflow_job_timeouts() -> list[str]:
+    issues: list[str] = []
+    for path in _workflow_files():
+        for job_name, job in _workflow_jobs(path).items():
+            if not isinstance(job, dict):
+                issues.append(f"{path} job {job_name!r} is not a YAML mapping")
+                continue
+            timeout = job.get("timeout-minutes")
+            if not isinstance(timeout, int):
+                issues.append(f"{path} job {job_name!r} is missing integer timeout-minutes")
+                continue
+            if timeout <= 0 or timeout > MAX_WORKFLOW_TIMEOUT_MINUTES:
+                issues.append(
+                    f"{path} job {job_name!r} timeout-minutes is {timeout}, expected 1..{MAX_WORKFLOW_TIMEOUT_MINUTES}",
+                )
+    return issues
+
+
 def _check_full_matrix_workflow(path: Path) -> list[str]:
     workflow = _load_yaml(path)
     issues: list[str] = []
@@ -320,8 +347,11 @@ def _check_performance_workflow() -> list[str]:
             "asv --config asv.conf.json check --verbose",
             "asv --config asv-pytorch.conf.json check --verbose",
             "tools/asv_summary.py",
+            "tools/select_benchmark_filters.py",
             "benchmark-coverage-detail.json",
             "benchmark-evidence/",
+            "benchmark-filter.txt",
+            "changed-files.txt",
             "pytorch-benchmark-evidence/",
         ),
         "performance evidence gate",
@@ -368,6 +398,7 @@ def _check_workflows() -> list[str]:
     return [
         *_check_workflow_inventory(),
         *_check_workflow_python_versions(),
+        *_check_workflow_job_timeouts(),
         *_check_ci_workflow(),
         *_check_full_matrix_workflow(RELEASE_CANDIDATE_WORKFLOW),
         *_check_nightly_workflow(),

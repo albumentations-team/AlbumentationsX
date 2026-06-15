@@ -14,6 +14,15 @@ on:
   schedule:
     - cron: "43 4 * * 2"
   workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: "Optional git ref/SHA for the before baseline. Leave empty to run evidence for the selected ref only."
+        required: false
+        type: string
+      candidate_ref:
+        description: "Optional git ref/SHA for the after candidate. Defaults to the selected workflow ref."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -48,22 +57,35 @@ jobs:
     - name: Check benchmark suite importability
       working-directory: benchmark
       run: uv tool run --from asv asv --config asv.conf.json check
-    - name: Compare PR base and head benchmarks
-      if: github.event_name == 'pull_request'
+    - name: Compare baseline and candidate benchmarks
+      if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '')
       working-directory: benchmark
       run: |
         set -o pipefail
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          BASELINE_REF="${{ github.event.pull_request.base.sha }}"
+          CANDIDATE_REF="${{ github.event.pull_request.head.sha }}"
+        else
+          BASELINE_REF="${{ inputs.baseline_ref }}"
+          CANDIDATE_REF="${{ inputs.candidate_ref }}"
+          if [ -z "$CANDIDATE_REF" ]; then
+            CANDIDATE_REF="HEAD"
+          fi
+        fi
         uv tool run --from asv asv --config asv.conf.json continuous \
           --factor 1.05 \
           --split \
           --show-stderr \
           --attribute repeat=1 \
           --attribute number=1 \
-          "${{ github.event.pull_request.base.sha }}" \
-          "${{ github.event.pull_request.head.sha }}" \
+          "$BASELINE_REF" \
+          "$CANDIDATE_REF" \
           2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous.txt"
     - name: Run scheduled benchmark evidence
-      if: github.event_name != 'pull_request'
+      if: >
+        github.event_name == 'push' ||
+        github.event_name == 'schedule' ||
+        (github.event_name == 'workflow_dispatch' && inputs.baseline_ref == '')
       working-directory: benchmark
       run: |
         set -o pipefail

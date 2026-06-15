@@ -36,6 +36,13 @@ def test_benchmark_coverage_details_map_volumetric_matrix_to_public_transforms()
     assert "volumetric_matrix" in center_crop3d["layers"]
 
 
+def test_benchmark_coverage_details_map_expanded_pixel_matrix_to_public_transforms() -> None:
+    random_rain = _coverage_for("RandomRain")
+
+    assert random_rain["smoke_only"] is False
+    assert "family_matrix" in random_rain["layers"]
+
+
 def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     to_tensor = _coverage_for("ToTensorV2")
 

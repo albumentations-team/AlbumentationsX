@@ -69,24 +69,56 @@ class PixelSpec:
     factory: Factory
     channels: tuple[int, ...] = CHANNELS
     dtypes: tuple[str, ...] = tuple(DTYPES)
+    sizes: tuple[str, ...] = tuple(SIZES)
 
 
 PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
+    "advanced_blur": PixelSpec(lambda: albumentations.AdvancedBlur(p=1.0)),
+    "atmospheric_fog": PixelSpec(lambda: albumentations.AtmosphericFog(p=1.0)),
     "random_brightness_contrast": PixelSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
     "random_gamma": PixelSpec(lambda: albumentations.RandomGamma(p=1.0)),
     "auto_contrast": PixelSpec(lambda: albumentations.AutoContrast(p=1.0), dtypes=("uint8",)),
     "equalize": PixelSpec(lambda: albumentations.Equalize(p=1.0), channels=(1, 3), dtypes=("uint8",)),
     "clahe": PixelSpec(lambda: albumentations.CLAHE(p=1.0), channels=(1, 3), dtypes=("uint8",)),
+    "chromatic_aberration": PixelSpec(lambda: albumentations.ChromaticAberration(p=1.0), channels=(3,)),
+    "color_jitter": PixelSpec(lambda: albumentations.ColorJitter(p=1.0), channels=(1, 3)),
+    "colorize": PixelSpec(lambda: albumentations.Colorize(p=1.0), channels=(1,)),
+    "dithering": PixelSpec(lambda: albumentations.Dithering(p=1.0)),
+    "downscale": PixelSpec(lambda: albumentations.Downscale(p=1.0)),
+    "emboss": PixelSpec(lambda: albumentations.Emboss(p=1.0)),
+    "enhance": PixelSpec(lambda: albumentations.Enhance(p=1.0)),
+    "fancy_pca": PixelSpec(lambda: albumentations.FancyPCA(p=1.0), channels=(3,)),
+    "film_grain": PixelSpec(lambda: albumentations.FilmGrain(p=1.0)),
     "hue_saturation_value": PixelSpec(lambda: albumentations.HueSaturationValue(p=1.0), channels=(3,)),
     "rgb_shift": PixelSpec(lambda: albumentations.RGBShift(p=1.0), channels=(3,)),
+    "he_stain": PixelSpec(lambda: albumentations.HEStain(p=1.0), channels=(3,)),
+    "halftone": PixelSpec(lambda: albumentations.Halftone(p=1.0)),
     "gaussian_blur": PixelSpec(lambda: albumentations.GaussianBlur(blur_range=(3, 3), p=1.0)),
     "median_blur": PixelSpec(lambda: albumentations.MedianBlur(blur_range=(3, 3), p=1.0), dtypes=("uint8",)),
     "motion_blur": PixelSpec(lambda: albumentations.MotionBlur(blur_range=(5, 5), p=1.0), dtypes=("uint8",)),
+    "iso_noise": PixelSpec(lambda: albumentations.ISONoise(p=1.0), channels=(3,)),
+    "illumination": PixelSpec(lambda: albumentations.Illumination(p=1.0)),
+    "invert_img": PixelSpec(lambda: albumentations.InvertImg(p=1.0)),
     "gauss_noise": PixelSpec(lambda: albumentations.GaussNoise(p=1.0)),
     "additive_noise": PixelSpec(lambda: albumentations.AdditiveNoise(p=1.0)),
     "multiplicative_noise": PixelSpec(lambda: albumentations.MultiplicativeNoise(p=1.0)),
     "shot_noise": PixelSpec(lambda: albumentations.ShotNoise(p=1.0), dtypes=("uint8",)),
     "normalize": PixelSpec(lambda: albumentations.Normalize(p=1.0)),
+    "photometric_distort": PixelSpec(lambda: albumentations.PhotoMetricDistort(p=1.0), channels=(1, 3)),
+    "planckian_jitter": PixelSpec(lambda: albumentations.PlanckianJitter(p=1.0), channels=(3,)),
+    "plasma_brightness_contrast": PixelSpec(lambda: albumentations.PlasmaBrightnessContrast(p=1.0)),
+    "plasma_shadow": PixelSpec(lambda: albumentations.PlasmaShadow(p=1.0)),
+    "random_fog": PixelSpec(lambda: albumentations.RandomFog(p=1.0), channels=(3,)),
+    "random_gravel": PixelSpec(lambda: albumentations.RandomGravel(p=1.0), channels=(3,)),
+    "random_rain": PixelSpec(lambda: albumentations.RandomRain(p=1.0), channels=(3,)),
+    "random_shadow": PixelSpec(lambda: albumentations.RandomShadow(p=1.0)),
+    "random_snow": PixelSpec(lambda: albumentations.RandomSnow(p=1.0), channels=(3,)),
+    "random_sun_flare": PixelSpec(lambda: albumentations.RandomSunFlare(p=1.0), channels=(3,)),
+    "random_tone_curve": PixelSpec(lambda: albumentations.RandomToneCurve(p=1.0)),
+    "ringing_overshoot": PixelSpec(lambda: albumentations.RingingOvershoot(p=1.0)),
+    "salt_and_pepper": PixelSpec(lambda: albumentations.SaltAndPepper(p=1.0)),
+    "sharpen": PixelSpec(lambda: albumentations.Sharpen(p=1.0)),
+    "spatter": PixelSpec(lambda: albumentations.Spatter(p=1.0), channels=(3,)),
     "to_float": PixelSpec(lambda: albumentations.ToFloat(p=1.0), dtypes=("uint8",)),
     "from_float": PixelSpec(lambda: albumentations.FromFloat(p=1.0), dtypes=("float32",)),
     "to_gray": PixelSpec(lambda: albumentations.ToGray(p=1.0), channels=(3,)),
@@ -98,6 +130,8 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
         channels=(3,),
         dtypes=("uint8",),
     ),
+    "unsharp_mask": PixelSpec(lambda: albumentations.UnsharpMask(p=1.0)),
+    "vignetting": PixelSpec(lambda: albumentations.Vignetting(p=1.0)),
 }
 
 ANNOTATION_TRANSFORMS: Mapping[str, Factory] = {
@@ -165,7 +199,7 @@ def _parse_image_case(case_id: str) -> tuple[str, str, int, str]:
 def _pixel_cases() -> tuple[str, ...]:
     cases: list[str] = []
     for name, spec in PIXEL_TRANSFORMS.items():
-        cases.extend(_matrix_cases((name,), tuple(SIZES), spec.channels, spec.dtypes))
+        cases.extend(_matrix_cases((name,), spec.sizes, spec.channels, spec.dtypes))
     return tuple(cases)
 
 

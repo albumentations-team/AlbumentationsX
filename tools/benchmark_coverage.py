@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,13 @@ from benchmarks.test_family_matrix import (  # noqa: E402
     PIXEL_CASES,
     REFERENCE_CASES,
     VOLUME_CASES,
+)
+from benchmarks.test_functional_kernels import (  # noqa: E402
+    FUNCTIONAL_3D_CASES,
+    FUNCTIONAL_BLUR_CASES,
+    FUNCTIONAL_GEOMETRY_ANNOTATION_CASES,
+    FUNCTIONAL_GEOMETRY_IMAGE_CASES,
+    FUNCTIONAL_PIXEL_CASES,
 )
 
 MEMORY_BENCHMARKS = (
@@ -56,6 +64,13 @@ def _spec_summary() -> dict[str, Any]:
             "reference_data": len(REFERENCE_CASES),
             "volumetric": len(VOLUME_CASES),
         },
+        "direct_kernel_cases": {
+            "blur": len(FUNCTIONAL_BLUR_CASES),
+            "geometry_annotations": len(FUNCTIONAL_GEOMETRY_ANNOTATION_CASES),
+            "geometry_images": len(FUNCTIONAL_GEOMETRY_IMAGE_CASES),
+            "pixel": len(FUNCTIONAL_PIXEL_CASES),
+            "volumetric": len(FUNCTIONAL_3D_CASES),
+        },
         "memory_benchmarks": len(MEMORY_BENCHMARKS),
         "registered_specs": len(specs),
         "asv_cases": len(asv_case_ids()),
@@ -65,23 +80,22 @@ def _spec_summary() -> dict[str, Any]:
     }
 
 
-def _validate_registry() -> list[str]:
+def _validate_public_registry(public_names: set[str], spec_names: set[str]) -> list[str]:
     errors: list[str] = []
-    public_names = set(public_transform_names())
-    specs = benchmark_specs()
-    spec_names = set(specs)
-
     missing = sorted(public_names - spec_names)
     unexpected = sorted(spec_names - public_names)
     if missing:
         errors.append("Missing benchmark specs: " + ", ".join(missing))
     if unexpected:
         errors.append("Benchmark specs reference unknown transforms: " + ", ".join(unexpected))
-
     unknown_optional = sorted(set(OPTIONAL_BENCHMARK_TRANSFORMS) - public_names)
     if unknown_optional:
         errors.append("Optional benchmark transform is not public: " + ", ".join(unknown_optional))
+    return errors
 
+
+def _validate_transform_construction(specs: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
     for spec in specs.values():
         if spec.route == "optional":
             continue
@@ -89,16 +103,46 @@ def _validate_registry() -> list[str]:
             instantiate_transform(spec)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{spec.name}: cannot instantiate benchmark transform: {exc}")
-    required_matrix_groups = {
-        "annotation": ANNOTATION_CASES,
-        "geometry": GEOMETRY_CASES,
-        "pixel": PIXEL_CASES,
-        "reference_data": REFERENCE_CASES,
-        "volumetric": VOLUME_CASES,
-    }
-    for group, cases in required_matrix_groups.items():
+    return errors
+
+
+def _validate_case_groups(groups: Mapping[str, tuple[str, ...]], message: str) -> list[str]:
+    errors: list[str] = []
+    for group, cases in groups.items():
         if not cases:
-            errors.append(f"Missing full-matrix benchmark cases for {group}")
+            errors.append(message.format(group=group))
+    return errors
+
+
+def _validate_registry() -> list[str]:
+    specs = benchmark_specs()
+    errors = _validate_public_registry(set(public_transform_names()), set(specs))
+    errors.extend(_validate_transform_construction(specs))
+    errors.extend(
+        _validate_case_groups(
+            {
+                "annotation": ANNOTATION_CASES,
+                "geometry": GEOMETRY_CASES,
+                "pixel": PIXEL_CASES,
+                "reference_data": REFERENCE_CASES,
+                "volumetric": VOLUME_CASES,
+            },
+            "Missing full-matrix benchmark cases for {group}",
+        ),
+    )
+    required_direct_groups = {
+        "blur": FUNCTIONAL_BLUR_CASES,
+        "geometry_annotations": FUNCTIONAL_GEOMETRY_ANNOTATION_CASES,
+        "geometry_images": FUNCTIONAL_GEOMETRY_IMAGE_CASES,
+        "pixel": FUNCTIONAL_PIXEL_CASES,
+        "volumetric": FUNCTIONAL_3D_CASES,
+    }
+    errors.extend(
+        _validate_case_groups(
+            required_direct_groups,
+            "Missing direct functional-kernel benchmark cases for {group}",
+        ),
+    )
     return errors
 
 

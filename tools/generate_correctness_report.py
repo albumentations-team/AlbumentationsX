@@ -96,10 +96,16 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
             full_matrix_count = sum(value for value in full_matrix_cases.values() if isinstance(value, int))
         else:
             full_matrix_count = 0
+        direct_kernel_cases = summary.get("direct_kernel_cases", {})
+        if isinstance(direct_kernel_cases, dict):
+            direct_kernel_count = sum(value for value in direct_kernel_cases.values() if isinstance(value, int))
+        else:
+            direct_kernel_count = 0
         lines.append(
             "- Benchmark summary "
             f"{index}: {summary.get('asv_cases', 0)} catalog ASV smoke cases, "
             f"{full_matrix_count} full-matrix/reference/annotation/volumetric cases, "
+            f"{direct_kernel_count} direct functional-kernel cases, "
             f"{summary.get('memory_benchmarks', 0)} memory benchmark(s), "
             f"{summary.get('public_transforms', 0)} public transform(s) accounted",
         )

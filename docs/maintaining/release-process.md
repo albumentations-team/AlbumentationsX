@@ -36,6 +36,9 @@ Before a release is published, all of the following must be true:
    - security workflow checks
    - performance workflow completed, with any material regressions documented
 
+Performance coverage expectations and regression triage rules are maintained in
+`docs/maintaining/performance-coverage.md`.
+
 ## CI Quality Gates
 
 The release process depends on the repository CI in `.github/workflows/ci.yml`:

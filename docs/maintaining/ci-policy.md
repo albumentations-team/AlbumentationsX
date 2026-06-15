@@ -21,7 +21,8 @@ destabilizing contributor workflows.
   nightly/release workflows.
 - Manual release-candidate verification runs the full test suite across the
   supported OS/Python matrix with the release Hypothesis profile.
-- Performance benchmark import checks, ASV before/after comparison for
+- Performance benchmark import checks, catalog coverage validation, direct
+  functional-kernel coverage validation, ASV before/after comparison for
   performance-sensitive changes, manual baseline/candidate comparison through
   `workflow_dispatch`, and scheduled ASV artifact generation.
 - Security checks, including runtime dependency audit, GitHub Actions
@@ -43,6 +44,9 @@ representative benchmark case, should be treated as release-relevant. The
 change should either recover the regression or document the reason the slower
 behavior is an intentional tradeoff, such as a correctness fix, broader target
 support, or lower memory use.
+
+The benchmark coverage layers and release acceptance criteria are defined in
+`docs/maintaining/performance-coverage.md`.
 
 ## Evidence Artifacts
 

@@ -406,6 +406,45 @@ SIZE_ORDER = tuple(SIZES)
 VOLUME_SIZE_ORDER = tuple(VOLUME_SIZES)
 DTYPE_ORDER = tuple(DTYPES)
 CHANNEL_ORDER = CHANNELS
+ANNOTATION_COUNT_ORDER = (10, 100, 1000)
+
+AXIS_ORDERS: Mapping[str, tuple[Any, ...]] = {
+    "annotation_counts": ANNOTATION_COUNT_ORDER,
+    "channels": CHANNEL_ORDER,
+    "dtypes": DTYPE_ORDER,
+    "sizes": SIZE_ORDER,
+    "volume_sizes": VOLUME_SIZE_ORDER,
+}
+
+LAYER_AXIS_REFERENCES: Mapping[str, Mapping[str, tuple[Any, ...]]] = {
+    "annotation_scaling": {"annotation_counts": ANNOTATION_COUNT_ORDER},
+    "batch_matrix": {"channels": CHANNEL_ORDER, "dtypes": DTYPE_ORDER, "sizes": SIZE_ORDER},
+    "direct_kernel": {
+        "annotation_counts": ANNOTATION_COUNT_ORDER,
+        "channels": CHANNEL_ORDER,
+        "dtypes": DTYPE_ORDER,
+        "sizes": SIZE_ORDER,
+        "volume_sizes": VOLUME_SIZE_ORDER,
+    },
+    "family_matrix": {"channels": CHANNEL_ORDER, "dtypes": DTYPE_ORDER, "sizes": SIZE_ORDER},
+    "parameter_sensitivity": {"channels": CHANNEL_ORDER, "dtypes": DTYPE_ORDER, "sizes": SIZE_ORDER},
+    "pytorch_tensor": {"channels": CHANNEL_ORDER, "dtypes": DTYPE_ORDER, "sizes": SIZE_ORDER},
+    "reference_data": {"sizes": SIZE_ORDER},
+    "target_matrix": {"channels": CHANNEL_ORDER, "dtypes": DTYPE_ORDER, "sizes": SIZE_ORDER},
+    "volumetric_matrix": {"dtypes": DTYPE_ORDER, "volume_sizes": VOLUME_SIZE_ORDER},
+}
+
+LAYER_SKIP_REASONS: Mapping[str, str] = {
+    "annotation_scaling": "annotation matrix bounds expensive high-count cases to stable release-critical paths",
+    "batch_matrix": "batch matrix omits large image batches to keep CI evidence stable and affordable",
+    "direct_kernel": "direct-kernel cases cover the axes exercised by each shared functional hot path",
+    "family_matrix": "family matrix uses the transform's supported or representative size/channel/dtype axes",
+    "parameter_sensitivity": "parameter stress cases are bounded to representative axes for scheduled evidence",
+    "pytorch_tensor": "optional PyTorch tensor benchmarks follow supported tensor conversion axes",
+    "reference_data": "reference-data benchmarks are bounded to small/medium metadata-heavy cases",
+    "target_matrix": "target matrix uses the standard image axes for target-specialized transforms",
+    "volumetric_matrix": "volumetric matrix uses the supported volume size and dtype axes",
+}
 
 
 def _mapped_names(mapping: Mapping[str, str], names: Iterable[str]) -> set[str]:
@@ -636,11 +675,13 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
 def _parse_parameter_sensitivity_case(case_id: str) -> dict[str, Any]:
     """Parse a parameter-sensitivity benchmark case id."""
     name, parameter_scenario, size_name, channels, dtype_name = case_id.split("|")
+    spec = PARAMETER_SENSITIVITY_TRANSFORMS[name]
     return {
         "channels": int(channels),
         "dtype": dtype_name,
         "matrix_name": name,
         "parameter_scenario": parameter_scenario,
+        "parameter_values": _jsonable(spec.params),
         "size": size_name,
     }
 
@@ -833,6 +874,44 @@ def _scenario_contract(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "targets": _ordered(axes["targets"]),
         "volume_sizes": _ordered(axes["volume_sizes"], VOLUME_SIZE_ORDER),
     }
+
+
+def _axis_values(values: Iterable[Any], axis_name: str) -> list[Any]:
+    """Return axis values in project-defined order."""
+    return _ordered(values, AXIS_ORDERS.get(axis_name, ()))
+
+
+def _scenario_axis_contracts(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Return per-layer covered and intentionally skipped scenario axes."""
+    cases_by_layer: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for case in cases:
+        cases_by_layer[case["layer"]].append(case)
+
+    contracts: dict[str, dict[str, Any]] = {}
+    for layer, layer_cases in sorted(cases_by_layer.items()):
+        reference_axes = LAYER_AXIS_REFERENCES.get(layer)
+        if reference_axes is None:
+            continue
+
+        layer_summary = _scenario_contract(layer_cases)
+        covered: dict[str, list[Any]] = {}
+        skipped: dict[str, list[Any]] = {}
+        for axis_name, reference_values in reference_axes.items():
+            covered_values = layer_summary[axis_name]
+            if not covered_values:
+                continue
+            covered[axis_name] = covered_values
+            skipped_values = _axis_values(set(reference_values) - set(covered_values), axis_name)
+            if skipped_values:
+                skipped[axis_name] = skipped_values
+
+        contracts[layer] = {
+            "covered": covered,
+            "skip_reason": LAYER_SKIP_REASONS[layer] if skipped else "",
+            "skipped": skipped,
+        }
+
+    return contracts
 
 
 def _add_asv_case(
@@ -1078,6 +1157,7 @@ def coverage_details() -> dict[str, Any]:
                 "name": name,
                 "optional_reason": spec.reason,
                 "route": spec.route,
+                "scenario_axis_contracts": _scenario_axis_contracts(transform_cases),
                 "scenario_contract": _scenario_contract(transform_cases),
                 "smoke_only": spec.benchmark and not deep_layers,
             },
@@ -1111,7 +1191,7 @@ def coverage_details() -> dict[str, Any]:
         "kind": "benchmark-coverage-detail",
         "layer_counts": dict(sorted(layer_counts.items())),
         "public_transforms": len(transforms),
-        "schema_version": 3,
+        "schema_version": 4,
         "smoke_only_transforms": smoke_only,
         "summary": {
             "contract_failures": len(contract_failures),
@@ -1225,6 +1305,20 @@ def _validate_asv_case_metadata() -> list[str]:
     return errors
 
 
+def _validate_parameter_sensitivity_metadata() -> list[str]:
+    errors: list[str] = []
+    scenarios_by_transform: dict[str, set[str]] = defaultdict(set)
+    for name, spec in PARAMETER_SENSITIVITY_TRANSFORMS.items():
+        if not spec.params:
+            errors.append(f"{name}: parameter-sensitivity benchmark must record constructor params")
+        scenarios_by_transform[spec.public_transform].add(spec.parameter_scenario)
+
+    for transform_name, scenarios in sorted(scenarios_by_transform.items()):
+        if len(scenarios) < 2:
+            errors.append(f"{transform_name}: parameter-sensitivity coverage needs typical and stress scenarios")
+    return errors
+
+
 def _validate_registry() -> list[str]:
     specs = benchmark_specs()
     errors = _validate_public_registry(set(public_transform_names()), set(specs))
@@ -1232,6 +1326,7 @@ def _validate_registry() -> list[str]:
     errors.extend(_validate_coverage_layers(set(specs)))
     errors.extend(_validate_coverage_contracts())
     errors.extend(_validate_asv_case_metadata())
+    errors.extend(_validate_parameter_sensitivity_metadata())
     errors.extend(
         _validate_case_groups(
             {

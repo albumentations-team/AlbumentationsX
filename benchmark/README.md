@@ -100,6 +100,10 @@ Each ASV case also includes parsed scenario metadata, and each transform record
 includes a `scenario_contract` summary of covered sizes, channels, dtypes,
 annotation counts, batch sizes, targets, memory cases, direct-kernel groups,
 parameter-sensitivity scenarios, and benchmark scopes.
+The detail artifact also includes `scenario_axis_contracts`, which records
+covered axes, intentionally skipped standard axes, and the policy reason for
+each benchmark layer. Parameter-sensitivity cases record the exact constructor
+values used for each stress scenario.
 
 Summarize ASV before/after comparison text for release reports with:
 

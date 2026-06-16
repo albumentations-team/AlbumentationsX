@@ -48,6 +48,8 @@ each public transform it records:
 - a compact `scenario_contract` summary of covered sizes, channels, dtypes,
   annotation counts, batch sizes, targets, memory cases, direct-kernel groups,
   parameter-sensitivity scenarios, benchmark scopes, and volume sizes
+- per-layer `scenario_axis_contracts` with covered axes, skipped standard axes,
+  and skip reasons
 
 Validate coverage policy and benchmark stability classes with:
 
@@ -338,7 +340,8 @@ following are true:
   `benchmark-coverage-detail.json`.
 - `benchmark-coverage-detail.json` exposes class metadata, benchmark route,
   constructor parameters, family labels, ASV case IDs, parsed scenario
-  metadata, and scenario-contract axes for each public transform.
+  metadata, scenario-contract axes, scenario-axis skip reasons, and
+  parameter-sensitivity constructor values for each public transform.
 - The per-transform detail artifact is published and has zero smoke-only
   runnable transforms.
 - Every normal image transform has transform-level size/channel/dtype matrix

@@ -14,7 +14,7 @@ def _coverage_for(transform_name: str) -> dict[str, Any]:
 def test_benchmark_coverage_details_account_for_every_public_transform() -> None:
     details = coverage_details()
 
-    assert details["schema_version"] == 3
+    assert details["schema_version"] == 4
     assert details["public_transforms"] == len(details["transforms"])
     assert (
         details["layer_counts"]["catalog_smoke"] + details["layer_counts"]["optional"] == details["public_transforms"]
@@ -51,6 +51,8 @@ def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
     assert resize["scenario_contract"]["dtypes"] == ["uint8", "float32"]
     assert resize["scenario_contract"]["annotation_counts"] == [10, 100, 1000]
     assert resize["scenario_contract"]["batch_sizes"] == [4, 8]
+    assert resize["scenario_axis_contracts"]["family_matrix"]["skipped"] == {}
+    assert resize["scenario_axis_contracts"]["batch_matrix"]["skipped"] == {"sizes": ["large"]}
     assert {"bboxes", "image", "images", "masks"}.issubset(resize["scenario_contract"]["targets"])
     assert "peakmem_resize_large_rgb" in resize["scenario_contract"]["memory_cases"]
     assert {"geometry_annotation", "geometry_image"}.issubset(
@@ -87,12 +89,25 @@ def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transfor
     assert blur["scenario_contract"]["sizes"] == ["small", "medium", "large"]
     assert blur["scenario_contract"]["channels"] == [1, 3, 5]
     assert blur["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert blur["scenario_axis_contracts"]["parameter_sensitivity"]["skipped"] == {
+        "channels": [1, 5],
+        "sizes": ["large"],
+    }
     assert ("parameter_sensitivity", "blur_kernel_15|kernel_15|medium|3|float32") in {
         (case["layer"], case["case_id"]) for case in blur["asv_cases"]
     }
+    assert any(
+        case["scenario"].get("parameter_values", {}).get("blur_range") == [15, 15]
+        for case in blur["asv_cases"]
+        if case["layer"] == "parameter_sensitivity"
+    )
     assert "parameter_sensitivity" in superpixels["layers"]
     assert set(superpixels["scenario_contract"]["parameter_scenarios"]) == {"segments_32", "segments_128"}
     assert superpixels["scenario_contract"]["dtypes"] == ["uint8"]
+    assert superpixels["scenario_axis_contracts"]["family_matrix"]["skipped"] == {
+        "channels": [1, 5],
+        "dtypes": ["float32"],
+    }
 
 
 def test_benchmark_coverage_details_map_expanded_pixel_matrix_to_public_transforms() -> None:
@@ -191,6 +206,10 @@ def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_lay
         assert transform["asv_cases"] or transform["layers"] == ["optional"]
         assert transform["scenario_contract"]["case_count"] == len(transform["asv_cases"])
         assert set(transform["scenario_contract"]["layers"]).issubset(transform["layers"])
+        assert set(transform["scenario_axis_contracts"]).issubset(transform["layers"])
+        for axis_contract in transform["scenario_axis_contracts"].values():
+            if axis_contract["skipped"]:
+                assert axis_contract["skip_reason"]
         for case in transform["asv_cases"]:
             assert case["benchmark"]
             assert case["case_id"]

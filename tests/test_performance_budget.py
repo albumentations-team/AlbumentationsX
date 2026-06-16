@@ -15,6 +15,7 @@ def _coverage_detail() -> dict:
             "direct_kernel": 28,
             "family_matrix": 109,
             "memory": 9,
+            "parameter_sensitivity": 6,
             "pytorch_tensor": 2,
             "reference_data": 7,
             "target_matrix": 6,
@@ -56,6 +57,15 @@ def test_classify_benchmark_maps_batch_matrix_as_release_blocking() -> None:
 
     assert policy.benchmark_class == "batch_matrix"
     assert policy.release_blocking is True
+
+
+def test_classify_benchmark_maps_parameter_sensitivity_as_required_advisory() -> None:
+    policy = classify_benchmark(
+        "benchmarks.test_parameter_sensitivity.TimeParameterSensitivity.time_transform('blur_kernel_15')",
+    )
+
+    assert policy.benchmark_class == "parameter_sensitivity"
+    assert policy.release_blocking is False
 
 
 def test_build_budget_marks_large_stable_regression_as_release_blocker() -> None:

@@ -47,7 +47,7 @@ each public transform it records:
 - parsed scenario metadata for each ASV case
 - a compact `scenario_contract` summary of covered sizes, channels, dtypes,
   annotation counts, batch sizes, targets, memory cases, direct-kernel groups,
-  benchmark scopes, and volume sizes
+  parameter-sensitivity scenarios, benchmark scopes, and volume sizes
 
 Validate coverage policy and benchmark stability classes with:
 
@@ -110,6 +110,24 @@ The current family matrix covers:
   transforms in the optional PyTorch ASV lane
 - batch data: selected image, mask, volume, and mask3d batch routes over
   size, channel, dtype, and batch-size variants
+
+### L2b: Parameter Sensitivity
+
+Some transforms have runtime that is not represented well by the normal
+size/channel/dtype matrix alone. They also need fixed-parameter stress cases
+that make the expensive axis explicit:
+
+- blur and Gaussian blur kernel size
+- dropout hole count
+- grid distortion map resolution
+- image compression quality
+- superpixel segment count
+
+This layer is intentionally selective. It is required evidence for transforms
+with nonlinear or parameter-dominated cost, but it should not be copied to every
+transform just to increase case counts. New stress cases should identify the
+parameter axis, keep input recipes deterministic, and appear in the
+per-transform `scenario_contract.parameter_scenarios` artifact.
 
 ### L3: Direct Functional Kernels
 
@@ -221,8 +239,8 @@ Initial benchmark classes:
   matrices, batch matrices, annotation/special-target scaling, and direct
   functional kernels
 - advisory classes: catalog smoke, reference-data matrices, legacy
-  representative benchmarks, optional PyTorch tensor benchmarks, and
-  peak-memory checks
+  representative benchmarks, parameter-sensitivity benchmarks, optional
+  PyTorch tensor benchmarks, and peak-memory checks
 
 Advisory does not mean optional. It means the evidence must be reviewed, but
 shared-runner noise or optional dependency setup should not automatically block
@@ -330,6 +348,8 @@ following are true:
   in benchmark evidence.
 - Batch evidence includes image, mask, volume, and mask3d batch routes where
   supported.
+- Parameter-sensitive transforms have explicit stress scenarios in benchmark
+  evidence instead of relying only on default constructor parameters.
 - Core pipeline evidence includes dispatch, setup, `additional_targets`,
   image batch routing, and bbox/keypoint processor overhead.
 - Optional PyTorch tensor paths are included in scheduled or release-adjacent

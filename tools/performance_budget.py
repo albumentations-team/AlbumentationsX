@@ -27,6 +27,7 @@ REQUIRED_COVERAGE_LAYERS = (
     "volumetric_matrix",
     "direct_kernel",
     "memory",
+    "parameter_sensitivity",
     "pytorch_tensor",
 )
 
@@ -56,6 +57,13 @@ BENCHMARK_POLICIES = (
         "stable",
         True,
         "batch target routes are user-facing performance paths for images, masks, volumes, and masks3d",
+    ),
+    BenchmarkPolicy(
+        "TimeParameterSensitivity",
+        "parameter_sensitivity",
+        "advisory",
+        False,
+        "parameter stress scenarios are required evidence but need scheduled history before release blocking",
     ),
     BenchmarkPolicy(
         "TimeCatalogTransformSmoke",

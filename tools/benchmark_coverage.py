@@ -58,6 +58,10 @@ from benchmarks.test_functional_kernels import (  # noqa: E402
     FUNCTIONAL_GEOMETRY_IMAGE_CASES,
     FUNCTIONAL_PIXEL_CASES,
 )
+from benchmarks.test_parameter_sensitivity import (  # noqa: E402
+    PARAMETER_SENSITIVITY_CASES,
+    PARAMETER_SENSITIVITY_TRANSFORMS,
+)
 from pytorch_benchmarks import test_tensor as pytorch_tensor_benchmarks  # noqa: E402
 
 GEOMETRY_ALIAS_TO_TRANSFORM = {
@@ -225,6 +229,10 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "vertical_flip": "VerticalFlip",
 }
 
+PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM = {
+    name: spec.public_transform for name, spec in PARAMETER_SENSITIVITY_TRANSFORMS.items()
+}
+
 DIRECT_KERNEL_TRANSFORMS = frozenset(
     {
         "Affine",
@@ -345,6 +353,7 @@ ASV_BENCHMARKS = {
     "family_matrix_geometry": "benchmarks.test_family_matrix.TimeGeometryFullMatrix.time_transform",
     "family_matrix_pixel": "benchmarks.test_family_matrix.TimePixelFullMatrix.time_transform",
     "memory": "benchmarks.test_family_matrix.PeakMemoryHotPaths",
+    "parameter_sensitivity": "benchmarks.test_parameter_sensitivity.TimeParameterSensitivity.time_transform",
     "pytorch_tensor_2d": "pytorch_benchmarks.test_tensor.TimeToTensorV2",
     "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
     "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
@@ -360,6 +369,7 @@ DEEP_COVERAGE_LAYERS = frozenset(
         "direct_kernel",
         "family_matrix",
         "memory",
+        "parameter_sensitivity",
         "pytorch_tensor",
         "reference_data",
         "target_matrix",
@@ -374,6 +384,7 @@ ASV_CASE_REQUIRED_LAYERS = frozenset(
         "direct_kernel",
         "family_matrix",
         "memory",
+        "parameter_sensitivity",
         "pytorch_tensor",
         "reference_data",
         "target_matrix",
@@ -409,6 +420,10 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
     batch_matrix = _mapped_names(BATCH_ALIAS_TO_TRANSFORM, IMAGE_BATCH_TRANSFORMS)
     batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, MASK_BATCH_TRANSFORMS)
     batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, VOLUME_BATCH_TRANSFORMS)
+    parameter_sensitivity = _mapped_names(
+        PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM,
+        PARAMETER_SENSITIVITY_TRANSFORMS,
+    )
     reference_data = set(REFERENCE_TRANSFORMS)
     special_targets = _mapped_names(SPECIAL_TARGET_ALIAS_TO_TRANSFORM, SPECIAL_TARGET_TRANSFORMS)
     volumetric_matrix = _mapped_names(VOLUME_ALIAS_TO_TRANSFORM, VOLUME_TRANSFORMS)
@@ -420,6 +435,7 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
         "direct_kernel": set(DIRECT_KERNEL_TRANSFORMS),
         "family_matrix": geometry_matrix | pixel_matrix,
         "memory": set(MEMORY_COVERED_TRANSFORMS),
+        "parameter_sensitivity": parameter_sensitivity,
         "pytorch_tensor": set(PYTORCH_TENSOR_TRANSFORMS),
         "reference_data": reference_data,
         "target_matrix": special_targets,
@@ -617,6 +633,18 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
     return scenario
 
 
+def _parse_parameter_sensitivity_case(case_id: str) -> dict[str, Any]:
+    """Parse a parameter-sensitivity benchmark case id."""
+    name, parameter_scenario, size_name, channels, dtype_name = case_id.split("|")
+    return {
+        "channels": int(channels),
+        "dtype": dtype_name,
+        "matrix_name": name,
+        "parameter_scenario": parameter_scenario,
+        "size": size_name,
+    }
+
+
 def _catalog_smoke_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a catalog smoke case."""
     return {"scope": "compose", "targets": _route_targets(route)}
@@ -642,6 +670,15 @@ def _target_matrix_scenario(case: Mapping[str, str], route: str, transform_name:
 def _batch_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a batch matrix case."""
     return {**_parse_batch_case(case["case_id"]), "scope": "compose_batch"}
+
+
+def _parameter_sensitivity_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for a parameter-sensitivity case."""
+    return {
+        **_parse_parameter_sensitivity_case(case["case_id"]),
+        "scope": "compose_parameter_sensitivity",
+        "targets": ["image"],
+    }
 
 
 def _reference_data_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
@@ -682,6 +719,7 @@ SCENARIO_BUILDERS: Mapping[str, ScenarioBuilder] = {
     "direct_kernel": lambda case, _route, _transform_name: _direct_kernel_scenario(case),
     "family_matrix": _family_matrix_scenario,
     "memory": _memory_scenario,
+    "parameter_sensitivity": _parameter_sensitivity_scenario,
     "pytorch_tensor": _pytorch_tensor_scenario,
     "reference_data": _reference_data_scenario,
     "target_matrix": _target_matrix_scenario,
@@ -748,6 +786,7 @@ def _scenario_contract(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "dtypes": set(),
         "layers": set(),
         "memory_cases": set(),
+        "parameter_scenarios": set(),
         "scopes": set(),
         "sizes": set(),
         "targets": set(),
@@ -768,6 +807,7 @@ def _scenario_contract(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
             ("dtype", "dtypes"),
             ("kernel_group", "direct_kernel_groups"),
             ("memory_case", "memory_cases"),
+            ("parameter_scenario", "parameter_scenarios"),
             ("scope", "scopes"),
             ("size", "sizes"),
             ("volume_size", "volume_sizes"),
@@ -787,6 +827,7 @@ def _scenario_contract(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "dtypes": _ordered(axes["dtypes"], DTYPE_ORDER),
         "layers": _ordered(axes["layers"]),
         "memory_cases": _ordered(axes["memory_cases"]),
+        "parameter_scenarios": _ordered(axes["parameter_scenarios"]),
         "scopes": _ordered(axes["scopes"]),
         "sizes": _ordered(axes["sizes"], SIZE_ORDER),
         "targets": _ordered(axes["targets"]),
@@ -922,6 +963,13 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         layer="batch_matrix",
         name_map=BATCH_ALIAS_TO_TRANSFORM,
     )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["parameter_sensitivity"],
+        case_ids=PARAMETER_SENSITIVITY_CASES,
+        layer="parameter_sensitivity",
+        name_map=PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM,
+    )
     for case_id in REFERENCE_CASES:
         _add_asv_case(
             cases,
@@ -1050,6 +1098,7 @@ def coverage_details() -> dict[str, Any]:
                 "volumetric_matrix",
                 "direct_kernel",
                 "memory",
+                "parameter_sensitivity",
                 "pytorch_tensor",
                 "optional",
             )
@@ -1091,6 +1140,7 @@ def _spec_summary() -> dict[str, Any]:
             "batch_mask": len(MASK_BATCH_CASES),
             "batch_volume": len(VOLUME_BATCH_CASES),
             "geometry": len(GEOMETRY_CASES),
+            "parameter_sensitivity": len(PARAMETER_SENSITIVITY_CASES),
             "pixel": len(PIXEL_CASES),
             "reference_data": len(REFERENCE_CASES),
             "special_targets": len(SPECIAL_TARGET_CASES),
@@ -1190,6 +1240,7 @@ def _validate_registry() -> list[str]:
                 "batch_mask": MASK_BATCH_CASES,
                 "batch_volume": VOLUME_BATCH_CASES,
                 "geometry": GEOMETRY_CASES,
+                "parameter_sensitivity": PARAMETER_SENSITIVITY_CASES,
                 "pixel": PIXEL_CASES,
                 "reference_data": REFERENCE_CASES,
                 "special_targets": SPECIAL_TARGET_CASES,

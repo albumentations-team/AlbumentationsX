@@ -18,6 +18,7 @@ def test_select_benchmark_filters_add_pixel_family_matrix_for_pixel_changes() ->
     assert "TimePixelFullMatrix" in patterns
     assert "TimeFunctionalPixelKernels" in patterns
     assert "TimeBatch" in patterns
+    assert "TimeParameterSensitivity" in patterns
     assert "TimeCatalogTransformSmoke" in patterns
 
 
@@ -28,6 +29,7 @@ def test_select_benchmark_filters_add_geometry_and_annotation_paths_for_geometri
     assert "TimeAnnotationTargets" in patterns
     assert "TimeSpecialTargetMatrix" in patterns
     assert "TimeFunctionalGeometry" in patterns
+    assert "TimeParameterSensitivity" in patterns
 
 
 def test_select_benchmark_filters_add_memory_and_volume_paths_for_3d_changes() -> None:
@@ -52,5 +54,6 @@ def test_select_benchmark_filters_returns_asv_regex() -> None:
 
     assert regex == (
         "TimeBatch|TimeCatalogTransformSmoke|TimeCorePipeline|TimeFunctional|"
-        "TimePixelFullMatrix|TimeFunctionalPixelKernels|TimeFunctionalBlurKernels"
+        "TimeParameterSensitivity|TimePixelFullMatrix|"
+        "TimeFunctionalPixelKernels|TimeFunctionalBlurKernels"
     )

@@ -22,8 +22,8 @@ destabilizing contributor workflows.
 - Manual release-candidate verification runs the full test suite across the
   supported OS/Python matrix with the release Hypothesis profile.
 - Performance benchmark import checks, catalog coverage validation, direct
-  functional-kernel and batch-route coverage validation, per-transform
-  coverage-depth artifacts, ASV before/after comparison for
+  functional-kernel, batch-route, and parameter-sensitivity coverage
+  validation, per-transform coverage-depth artifacts, ASV before/after comparison for
   performance-sensitive changes, optional PyTorch tensor benchmark evidence,
   manual baseline/candidate comparison through `workflow_dispatch`, and
   scheduled ASV artifact generation.
@@ -38,9 +38,10 @@ evidence: changes to transform hot paths, functional kernels, parameter
 generation, or core pipeline code should compare the changed state against a
 baseline with ASV. Pull requests do this automatically when they touch runtime
 or benchmark code, using a bounded catalog/core/batch/direct-kernel comparison
-so the advisory lane stays timely. Release tasks, large branches, and local
-investigations can use the manual workflow inputs to compare an explicit
-`baseline_ref`, `candidate_ref`, and optional ASV `bench_filter`.
+plus changed-family and parameter-sensitive cases so the advisory lane stays
+timely. Release tasks, large branches, and local investigations can use the
+manual workflow inputs to compare an explicit `baseline_ref`, `candidate_ref`,
+and optional ASV `bench_filter`.
 The optional PyTorch tensor benchmark lane runs on `main`, scheduled, and
 manual performance workflows instead of every pull request because installing
 torch can dominate PR feedback time.

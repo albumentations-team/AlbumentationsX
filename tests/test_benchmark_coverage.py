@@ -78,6 +78,23 @@ def test_benchmark_coverage_details_map_batch_matrix_to_public_transforms() -> N
     }.issubset({(case["layer"], case["case_id"]) for case in horizontal_flip["asv_cases"]})
 
 
+def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transforms() -> None:
+    blur = _coverage_for("Blur")
+    superpixels = _coverage_for("Superpixels")
+
+    assert "parameter_sensitivity" in blur["layers"]
+    assert set(blur["scenario_contract"]["parameter_scenarios"]) == {"kernel_3", "kernel_15"}
+    assert blur["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert blur["scenario_contract"]["channels"] == [1, 3, 5]
+    assert blur["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert ("parameter_sensitivity", "blur_kernel_15|kernel_15|medium|3|float32") in {
+        (case["layer"], case["case_id"]) for case in blur["asv_cases"]
+    }
+    assert "parameter_sensitivity" in superpixels["layers"]
+    assert set(superpixels["scenario_contract"]["parameter_scenarios"]) == {"segments_32", "segments_128"}
+    assert superpixels["scenario_contract"]["dtypes"] == ["uint8"]
+
+
 def test_benchmark_coverage_details_map_expanded_pixel_matrix_to_public_transforms() -> None:
     random_rain = _coverage_for("RandomRain")
 

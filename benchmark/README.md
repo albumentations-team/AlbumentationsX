@@ -60,9 +60,10 @@ The baseline image matrix follows the project performance rule:
 
 Benchmarks cover public Compose paths, core pipeline dispatch/setup paths,
 direct functional kernels, image, mask, and volume batch routes,
-representative volumetric transforms, annotation scaling paths, memory checks,
-and reference-data transform paths. GitHub-hosted runner results are advisory
-until enough scheduled data exists to set reliable blocking thresholds.
+representative volumetric transforms, annotation scaling paths, selected
+parameter-sensitive stress cases, memory checks, and reference-data transform
+paths. GitHub-hosted runner results are advisory until enough scheduled data
+exists to set reliable blocking thresholds.
 
 ## Catalog Coverage
 
@@ -98,7 +99,7 @@ reference-data, volumetric, target, or optional PyTorch evidence.
 Each ASV case also includes parsed scenario metadata, and each transform record
 includes a `scenario_contract` summary of covered sizes, channels, dtypes,
 annotation counts, batch sizes, targets, memory cases, direct-kernel groups,
-and benchmark scopes.
+parameter-sensitivity scenarios, and benchmark scopes.
 
 Summarize ASV before/after comparison text for release reports with:
 
@@ -163,6 +164,9 @@ The current ASV suite includes these production coverage layers:
   Compose setup, and bbox/keypoint processor overhead.
 - Batch matrix: `images`, `images` plus `masks`, and `volumes` plus `masks3d`
   routes over bounded size, channel, dtype, and batch-size variants.
+- Parameter sensitivity: representative transforms whose runtime changes
+  materially with constructor parameters, such as blur kernel size, dropout
+  hole count, grid map resolution, JPEG quality, and superpixel segment count.
 - Direct functional kernels: shared geometry, annotation, pixel, blur/filter,
   and 3D kernels benchmarked outside `Compose` to identify whether changes come
   from raw kernels or pipeline overhead.

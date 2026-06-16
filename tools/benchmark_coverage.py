@@ -26,11 +26,14 @@ from benchmarks.catalog import (  # noqa: E402
     make_data,
     public_transform_names,
 )
+from benchmarks.common import CHANNELS, DTYPES, SIZES, VOLUME_SIZES  # noqa: E402
 from benchmarks.test_family_matrix import (  # noqa: E402
     ANNOTATION_CASES,
     ANNOTATION_TRANSFORMS,
+    BBOX_SPECIAL_TARGET_TRANSFORMS,
     GEOMETRY_CASES,
     GEOMETRY_TRANSFORMS,
+    HBB_KEYPOINT_TRANSFORMS,
     PIXEL_CASES,
     PIXEL_TRANSFORMS,
     REFERENCE_CASES,
@@ -361,6 +364,12 @@ class CoverageExpectation:
     reason: str = ""
 
 
+SIZE_ORDER = tuple(SIZES)
+VOLUME_SIZE_ORDER = tuple(VOLUME_SIZES)
+DTYPE_ORDER = tuple(DTYPES)
+CHANNEL_ORDER = CHANNELS
+
+
 def _mapped_names(mapping: Mapping[str, str], names: Iterable[str]) -> set[str]:
     """Map benchmark aliases to public transform names."""
     return {mapping[name] for name in names}
@@ -452,9 +461,240 @@ def _jsonable(value: Any) -> Any:
     return repr(value)
 
 
+def _ordered(values: Iterable[Any], order: tuple[Any, ...] = ()) -> list[Any]:
+    """Return values in project-defined order, then lexical order for unknowns."""
+    value_set = set(values)
+    ordered_values = [value for value in order if value in value_set]
+    remaining = sorted(value_set - set(order), key=str)
+    return [*ordered_values, *remaining]
+
+
 def _case_name(case_id: str) -> str:
     """Return the transform/kernel name prefix from a pipe-delimited ASV case id."""
     return case_id.split("|", 1)[0]
+
+
+def _route_targets(route: str) -> list[str]:
+    """Return target names exercised by a catalog smoke route."""
+    if route == "bboxes":
+        return ["bboxes", "image"]
+    if route == "crop_bbox":
+        return ["bboxes", "cropping_bbox", "image"]
+    if route == "mask":
+        return ["image", "mask"]
+    if route in {"metadata", "mixing"}:
+        return ["image", "reference_metadata"]
+    if route == "text":
+        return ["image", "text_metadata"]
+    if route == "volume":
+        return ["mask3d", "volume"]
+    return ["image"]
+
+
+def _memory_targets(case_id: str) -> list[str]:
+    """Return target names represented by a peak-memory case."""
+    if "volume" in case_id:
+        return ["mask3d", "volume"]
+    if "batch" in case_id:
+        return ["images"]
+    if "copy_paste" in case_id or "mosaic" in case_id:
+        return ["image", "reference_metadata"]
+    return ["image"]
+
+
+def _annotation_targets(name: str) -> list[str]:
+    """Return target names represented by an annotation-scaling case."""
+    targets = ["bboxes", "image"]
+    if name.startswith("hbb_"):
+        targets.append("mask")
+    if name in HBB_KEYPOINT_TRANSFORMS:
+        targets.extend(["keypoint_labels", "keypoints"])
+    return sorted(targets)
+
+
+def _special_target_targets(name: str) -> list[str]:
+    """Return target names represented by a special-target matrix case."""
+    targets = ["image", "mask"]
+    if name in BBOX_SPECIAL_TARGET_TRANSFORMS:
+        targets.extend(["bbox_labels", "bboxes"])
+    if name == "random_crop_near_bbox":
+        targets.append("cropping_bbox")
+    return sorted(targets)
+
+
+def _parse_image_matrix_case(case_id: str) -> dict[str, Any]:
+    """Parse a size/channel/dtype image matrix case id."""
+    name, size_name, channels, dtype_name = case_id.split("|")
+    return {
+        "channels": int(channels),
+        "dtype": dtype_name,
+        "matrix_name": name,
+        "size": size_name,
+    }
+
+
+def _parse_annotation_case(case_id: str) -> dict[str, Any]:
+    """Parse an annotation count case id."""
+    name, count = case_id.split("|")
+    return {
+        "annotation_count": int(count),
+        "annotation_type": "obb" if name.startswith("obb_") else "hbb",
+        "matrix_name": name,
+    }
+
+
+def _parse_volume_case(case_id: str) -> dict[str, Any]:
+    """Parse a volume size/dtype case id."""
+    name, size_name, dtype_name = case_id.split("|")
+    return {
+        "dtype": dtype_name,
+        "matrix_name": name,
+        "volume_size": size_name,
+    }
+
+
+def _parse_pytorch_case(case_id: str) -> dict[str, Any]:
+    """Parse an optional PyTorch tensor benchmark case id."""
+    size_name, channels, dtype_name = case_id.split("|")
+    return {
+        "channels": int(channels),
+        "dtype": dtype_name,
+        "size": size_name,
+    }
+
+
+def _case_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return reviewable scenario metadata for an ASV case."""
+    case_id = case["case_id"]
+    layer = case["layer"]
+    scenario: dict[str, Any] = {"layer": layer}
+
+    if layer == "catalog_smoke":
+        scenario.update({"scope": "compose", "targets": _route_targets(route)})
+    elif layer == "family_matrix":
+        scenario.update(_parse_image_matrix_case(case_id))
+        scenario.update({"scope": "compose", "targets": ["image"]})
+    elif layer == "annotation_scaling":
+        scenario.update(_parse_annotation_case(case_id))
+        scenario.update({"scope": "compose", "targets": _annotation_targets(scenario["matrix_name"])})
+    elif layer == "target_matrix":
+        scenario.update(_parse_image_matrix_case(case_id))
+        scenario.update({"scope": "compose", "targets": _special_target_targets(scenario["matrix_name"])})
+    elif layer == "reference_data":
+        name, size_name = case_id.split("|")
+        targets = ["image", "text_metadata"] if name == "TextImage" else ["image", "reference_metadata"]
+        scenario.update({"matrix_name": name, "scope": "compose", "size": size_name, "targets": targets})
+    elif layer == "volumetric_matrix":
+        scenario.update(_parse_volume_case(case_id))
+        scenario.update({"scope": "compose", "targets": ["mask3d", "volume"]})
+    elif layer == "direct_kernel":
+        scenario.update(_direct_kernel_scenario(case))
+    elif layer == "memory":
+        scenario.update({"memory_case": case_id, "scope": "memory", "targets": _memory_targets(case_id)})
+    elif layer == "pytorch_tensor":
+        scenario.update(_parse_pytorch_case(case_id))
+        targets = ["mask3d", "volume"] if transform_name == "ToTensor3D" else ["image", "images", "mask", "masks"]
+        scenario.update({"batch_size": 8, "scope": "optional_pytorch", "targets": targets})
+    else:
+        scenario.update({"scope": "unknown", "targets": []})
+    return scenario
+
+
+def _direct_kernel_scenario(case: Mapping[str, str]) -> dict[str, Any]:
+    """Return scenario metadata for a direct functional-kernel ASV case."""
+    benchmark = case["benchmark"]
+    case_id = case["case_id"]
+    if "GeometryAnnotation" in benchmark:
+        scenario = _parse_annotation_case(case_id)
+        return {
+            **scenario,
+            "kernel_group": "geometry_annotation",
+            "scope": "functional_kernel",
+            "targets": ["annotations"],
+        }
+    if "3D" in benchmark:
+        scenario = _parse_volume_case(case_id)
+        return {
+            **scenario,
+            "kernel_group": "volumetric",
+            "scope": "functional_kernel",
+            "targets": ["volume"],
+        }
+    scenario = _parse_image_matrix_case(case_id)
+    kernel_group = "blur" if "Blur" in benchmark else "pixel" if "Pixel" in benchmark else "geometry_image"
+    return {
+        **scenario,
+        "kernel_group": kernel_group,
+        "scope": "functional_kernel",
+        "targets": ["image"],
+    }
+
+
+def _annotate_asv_cases(cases: Iterable[dict[str, str]], route: str, transform_name: str) -> list[dict[str, Any]]:
+    """Attach parsed scenario metadata to ASV case records."""
+    return [
+        {
+            **case,
+            "scenario": _case_scenario(case, route, transform_name),
+        }
+        for case in cases
+    ]
+
+
+def _scenario_contract(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Return compact axes covered by a transform's ASV scenarios."""
+    axes: dict[str, set[Any]] = {
+        "annotation_counts": set(),
+        "channels": set(),
+        "configs": set(),
+        "direct_kernel_groups": set(),
+        "dtypes": set(),
+        "layers": set(),
+        "memory_cases": set(),
+        "scopes": set(),
+        "sizes": set(),
+        "targets": set(),
+        "volume_sizes": set(),
+    }
+    batch_sizes: set[int] = set()
+    case_count = 0
+    for case in cases:
+        case_count += 1
+        axes["configs"].add(case["config"])
+        scenario = case["scenario"]
+        axes["layers"].add(scenario["layer"])
+        for target in scenario.get("targets", []):
+            axes["targets"].add(target)
+        for key, axis_name in (
+            ("annotation_count", "annotation_counts"),
+            ("channels", "channels"),
+            ("dtype", "dtypes"),
+            ("kernel_group", "direct_kernel_groups"),
+            ("memory_case", "memory_cases"),
+            ("scope", "scopes"),
+            ("size", "sizes"),
+            ("volume_size", "volume_sizes"),
+        ):
+            if key in scenario:
+                axes[axis_name].add(scenario[key])
+        if "batch_size" in scenario:
+            batch_sizes.add(scenario["batch_size"])
+
+    return {
+        "annotation_counts": _ordered(axes["annotation_counts"]),
+        "batch_sizes": _ordered(batch_sizes),
+        "case_count": case_count,
+        "channels": _ordered(axes["channels"], CHANNEL_ORDER),
+        "configs": _ordered(axes["configs"]),
+        "direct_kernel_groups": _ordered(axes["direct_kernel_groups"]),
+        "dtypes": _ordered(axes["dtypes"], DTYPE_ORDER),
+        "layers": _ordered(axes["layers"]),
+        "memory_cases": _ordered(axes["memory_cases"]),
+        "scopes": _ordered(axes["scopes"]),
+        "sizes": _ordered(axes["sizes"], SIZE_ORDER),
+        "targets": _ordered(axes["targets"]),
+        "volume_sizes": _ordered(axes["volume_sizes"], VOLUME_SIZE_ORDER),
+    }
 
 
 def _add_asv_case(
@@ -648,13 +888,14 @@ def coverage_details() -> dict[str, Any]:
             if name in transform_names:
                 layers.append(layer_name)
 
+        transform_cases = _annotate_asv_cases(asv_cases.get(name, []), spec.route, name)
         layer_set = set(layers)
         expectation = _coverage_expectation(name, spec.route)
         contract_issues = _expectation_issues(name, layer_set, expectation)
         deep_layers = [layer for layer in layers if layer in DEEP_COVERAGE_LAYERS]
         transforms.append(
             {
-                "asv_cases": asv_cases.get(name, []),
+                "asv_cases": transform_cases,
                 "benchmark": spec.benchmark,
                 "benchmark_spec": _benchmark_spec_metadata(spec),
                 "class": _transform_class_metadata(name),
@@ -671,6 +912,7 @@ def coverage_details() -> dict[str, Any]:
                 "name": name,
                 "optional_reason": spec.reason,
                 "route": spec.route,
+                "scenario_contract": _scenario_contract(transform_cases),
                 "smoke_only": spec.benchmark and not deep_layers,
             },
         )
@@ -701,7 +943,7 @@ def coverage_details() -> dict[str, Any]:
         "kind": "benchmark-coverage-detail",
         "layer_counts": dict(sorted(layer_counts.items())),
         "public_transforms": len(transforms),
-        "schema_version": 2,
+        "schema_version": 3,
         "smoke_only_transforms": smoke_only,
         "summary": {
             "contract_failures": len(contract_failures),

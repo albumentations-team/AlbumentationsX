@@ -95,6 +95,10 @@ record includes the public class module/qualname, catalog benchmark route,
 constructor parameters, family labels, required coverage contract, and exact
 ASV case IDs for the transform's smoke, family-matrix, direct-kernel, memory,
 reference-data, volumetric, target, or optional PyTorch evidence.
+Each ASV case also includes parsed scenario metadata, and each transform record
+includes a `scenario_contract` summary of covered sizes, channels, dtypes,
+annotation counts, batch sizes, targets, memory cases, direct-kernel groups,
+and benchmark scopes.
 
 Summarize ASV before/after comparison text for release reports with:
 

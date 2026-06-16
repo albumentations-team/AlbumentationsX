@@ -14,7 +14,7 @@ def _coverage_for(transform_name: str) -> dict[str, Any]:
 def test_benchmark_coverage_details_account_for_every_public_transform() -> None:
     details = coverage_details()
 
-    assert details["schema_version"] == 2
+    assert details["schema_version"] == 3
     assert details["public_transforms"] == len(details["transforms"])
     assert (
         details["layer_counts"]["catalog_smoke"] + details["layer_counts"]["optional"] == details["public_transforms"]
@@ -46,6 +46,15 @@ def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
         ("direct_kernel", "resize|small|1|uint8"),
         ("memory", "peakmem_resize_large_rgb"),
     }.issubset({(case["layer"], case["case_id"]) for case in resize["asv_cases"]})
+    assert resize["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert resize["scenario_contract"]["channels"] == [1, 3, 5]
+    assert resize["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert resize["scenario_contract"]["annotation_counts"] == [10, 100, 1000]
+    assert {"bboxes", "image"}.issubset(resize["scenario_contract"]["targets"])
+    assert "peakmem_resize_large_rgb" in resize["scenario_contract"]["memory_cases"]
+    assert {"geometry_annotation", "geometry_image"}.issubset(
+        resize["scenario_contract"]["direct_kernel_groups"],
+    )
 
 
 def test_benchmark_coverage_details_map_volumetric_matrix_to_public_transforms() -> None:
@@ -107,8 +116,15 @@ def test_benchmark_coverage_details_explain_warning_aliases() -> None:
             "case_id": "ShiftScaleRotate",
             "config": "default",
             "layer": "catalog_smoke",
+            "scenario": {
+                "layer": "catalog_smoke",
+                "scope": "compose",
+                "targets": ["image"],
+            },
         },
     ]
+    assert shift_scale_rotate["scenario_contract"]["case_count"] == 1
+    assert shift_scale_rotate["scenario_contract"]["targets"] == ["image"]
 
 
 def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
@@ -129,6 +145,9 @@ def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
         ("pytorch", "pytorch_tensor", "small|1|uint8"),
         ("pytorch", "pytorch_tensor", "large|5|float32"),
     }.issubset({(case["config"], case["layer"], case["case_id"]) for case in to_tensor["asv_cases"]})
+    assert to_tensor["scenario_contract"]["batch_sizes"] == [8]
+    assert to_tensor["scenario_contract"]["configs"] == ["pytorch"]
+    assert to_tensor["scenario_contract"]["targets"] == ["image", "images", "mask", "masks"]
 
 
 def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_layers() -> None:
@@ -139,8 +158,13 @@ def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_lay
         assert transform["class"]["public_api"] == f"albumentations.{transform['name']}"
         assert transform["benchmark_spec"]["route"] == transform["route"]
         assert transform["asv_cases"] or transform["layers"] == ["optional"]
+        assert transform["scenario_contract"]["case_count"] == len(transform["asv_cases"])
+        assert set(transform["scenario_contract"]["layers"]).issubset(transform["layers"])
         for case in transform["asv_cases"]:
             assert case["benchmark"]
             assert case["case_id"]
             assert case["config"] in {"default", "pytorch"}
             assert case["layer"] in transform["layers"]
+            assert case["scenario"]["layer"] == case["layer"]
+            assert case["scenario"]["scope"]
+            assert isinstance(case["scenario"]["targets"], list)

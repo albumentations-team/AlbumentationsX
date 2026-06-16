@@ -44,6 +44,10 @@ each public transform it records:
 - family labels such as geometry, pixel, reference-data, volumetric, direct
   kernel, memory, alias, or optional PyTorch
 - exact ASV benchmark class, config, and case IDs that measure the transform
+- parsed scenario metadata for each ASV case
+- a compact `scenario_contract` summary of covered sizes, channels, dtypes,
+  annotation counts, batch sizes, targets, memory cases, direct-kernel groups,
+  benchmark scopes, and volume sizes
 
 Validate coverage policy and benchmark stability classes with:
 
@@ -300,8 +304,8 @@ following are true:
 - Every transform's benchmark coverage contract is satisfied in
   `benchmark-coverage-detail.json`.
 - `benchmark-coverage-detail.json` exposes class metadata, benchmark route,
-  constructor parameters, family labels, and ASV case IDs for each public
-  transform.
+  constructor parameters, family labels, ASV case IDs, parsed scenario
+  metadata, and scenario-contract axes for each public transform.
 - The per-transform detail artifact is published and has zero smoke-only
   runnable transforms.
 - Every normal image transform has transform-level size/channel/dtype matrix

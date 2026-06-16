@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import copy
 from typing import Any
 
-from tools.benchmark_coverage import coverage_details
+from tools.benchmark_coverage import coverage_details, coverage_diff
 
 
 def _coverage_for(transform_name: str) -> dict[str, Any]:
@@ -218,3 +219,39 @@ def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_lay
             assert case["scenario"]["layer"] == case["layer"]
             assert case["scenario"]["scope"]
             assert isinstance(case["scenario"]["targets"], list)
+
+
+def test_benchmark_coverage_diff_reports_catalog_and_case_drift() -> None:
+    base = copy.deepcopy(coverage_details())
+    base["transforms"] = [item for item in base["transforms"] if item["name"] != "Resize"]
+    base["transforms"].append(
+        {
+            "asv_cases": [],
+            "coverage_contract": {"status": "ok"},
+            "layers": ["catalog_smoke"],
+            "name": "RemovedTransform",
+            "route": "image",
+            "scenario_axis_contracts": {},
+        },
+    )
+    for item in base["transforms"]:
+        if item["name"] == "Blur":
+            item["layers"].remove("parameter_sensitivity")
+            item["asv_cases"] = [case for case in item["asv_cases"] if case["layer"] != "parameter_sensitivity"]
+            item["scenario_axis_contracts"].pop("parameter_sensitivity")
+            break
+
+    diff = coverage_diff(base)
+
+    assert diff["kind"] == "benchmark-coverage-diff"
+    assert diff["summary"]["status"] == "changed"
+    assert "Resize" in {item["name"] for item in diff["added_transforms"]}
+    assert "RemovedTransform" in {item["name"] for item in diff["removed_transforms"]}
+    blur_diff = next(item for item in diff["changed_transforms"] if item["name"] == "Blur")
+    assert set(blur_diff["changes"]["layers"]["current"]) == {
+        "catalog_smoke",
+        "direct_kernel",
+        "family_matrix",
+        "parameter_sensitivity",
+    }
+    assert blur_diff["changes"]["asv_cases"]["added"]

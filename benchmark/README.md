@@ -91,6 +91,14 @@ Emit the per-transform detail artifact with:
 uv run python -m tools.benchmark_coverage details --output benchmark-coverage-detail.json
 ```
 
+Compare a saved detail artifact against the current transform catalog with:
+
+```bash
+uv run python -m tools.benchmark_coverage diff \
+  --base-detail benchmark-coverage-detail-main.json \
+  --output benchmark-coverage-diff.json
+```
+
 The detail artifact is intended for review, not only for automation. Each
 record includes the public class module/qualname, catalog benchmark route,
 constructor parameters, family labels, required coverage contract, and exact
@@ -104,6 +112,9 @@ The detail artifact also includes `scenario_axis_contracts`, which records
 covered axes, intentionally skipped standard axes, and the policy reason for
 each benchmark layer. Parameter-sensitivity cases record the exact constructor
 values used for each stress scenario.
+The diff artifact is intended for PR and release review. It reports added or
+removed public transforms and coverage changes such as layer, ASV case, or
+axis-contract drift.
 
 Summarize ASV before/after comparison text for release reports with:
 

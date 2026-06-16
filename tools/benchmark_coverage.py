@@ -1428,6 +1428,100 @@ def details(output: Path | None) -> int:
     return 0
 
 
+def _transform_index(detail: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return coverage detail records keyed by transform name."""
+    return {str(item["name"]): dict(item) for item in detail.get("transforms", [])}
+
+
+def _case_keys(item: Mapping[str, Any]) -> set[tuple[str, str, str]]:
+    """Return stable ASV case keys for one transform detail record."""
+    return {(str(case["config"]), str(case["layer"]), str(case["case_id"])) for case in item.get("asv_cases", [])}
+
+
+def _transform_summary(item: Mapping[str, Any]) -> dict[str, Any]:
+    """Return compact transform metadata for added or removed diff entries."""
+    return {
+        "coverage_status": item.get("coverage_contract", {}).get("status", ""),
+        "layers": item.get("layers", []),
+        "name": item.get("name", ""),
+        "route": item.get("route", ""),
+    }
+
+
+def _changed_transform(base_item: Mapping[str, Any], current_item: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Return a compact diff for one transform when benchmark coverage changed."""
+    changes: dict[str, Any] = {}
+    for field in ("route", "layers", "scenario_axis_contracts"):
+        if base_item.get(field) != current_item.get(field):
+            changes[field] = {"base": base_item.get(field), "current": current_item.get(field)}
+
+    base_contract = base_item.get("coverage_contract", {})
+    current_contract = current_item.get("coverage_contract", {})
+    if base_contract.get("status") != current_contract.get("status"):
+        changes["coverage_status"] = {
+            "base": base_contract.get("status", ""),
+            "current": current_contract.get("status", ""),
+        }
+
+    base_cases = _case_keys(base_item)
+    current_cases = _case_keys(current_item)
+    added_cases = sorted(current_cases - base_cases)
+    removed_cases = sorted(base_cases - current_cases)
+    if added_cases or removed_cases:
+        changes["asv_cases"] = {
+            "added": [list(case) for case in added_cases],
+            "removed": [list(case) for case in removed_cases],
+        }
+
+    if not changes:
+        return None
+    return {"changes": changes, "name": current_item["name"]}
+
+
+def coverage_diff(base_detail: Mapping[str, Any], current_detail: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Return machine-readable benchmark coverage drift between two detail artifacts."""
+    current = coverage_details() if current_detail is None else dict(current_detail)
+    base_index = _transform_index(base_detail)
+    current_index = _transform_index(current)
+    added_names = sorted(set(current_index) - set(base_index))
+    removed_names = sorted(set(base_index) - set(current_index))
+    changed = [
+        item
+        for name in sorted(set(base_index) & set(current_index))
+        if (item := _changed_transform(base_index[name], current_index[name])) is not None
+    ]
+
+    return {
+        "base_public_transforms": base_detail.get("public_transforms", len(base_index)),
+        "base_schema_version": base_detail.get("schema_version"),
+        "current_public_transforms": current.get("public_transforms", len(current_index)),
+        "current_schema_version": current.get("schema_version"),
+        "added_transforms": [_transform_summary(current_index[name]) for name in added_names],
+        "changed_transforms": changed,
+        "kind": "benchmark-coverage-diff",
+        "removed_transforms": [_transform_summary(base_index[name]) for name in removed_names],
+        "schema_version": 1,
+        "summary": {
+            "added_transforms": len(added_names),
+            "changed_transforms": len(changed),
+            "removed_transforms": len(removed_names),
+            "status": "changed" if added_names or removed_names or changed else "ok",
+        },
+    }
+
+
+def diff_details(base_detail_path: Path, output: Path | None) -> int:
+    """Write or print benchmark coverage drift from a saved detail artifact."""
+    data = coverage_diff(json.loads(base_detail_path.read_text()))
+    text = json.dumps(data, indent=2, sort_keys=True) + "\n"
+    if output is None:
+        print(text, end="")
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text)
+    return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1454,6 +1548,18 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="write details JSON to this path instead of stdout",
     )
+    diff_parser = subparsers.add_parser("diff", help="compare saved benchmark coverage detail to current coverage")
+    diff_parser.add_argument(
+        "--base-detail",
+        required=True,
+        type=Path,
+        help="previous benchmark-coverage-detail JSON to compare against current coverage",
+    )
+    diff_parser.add_argument(
+        "--output",
+        type=Path,
+        help="write diff JSON to this path instead of stdout",
+    )
     return parser.parse_args()
 
 
@@ -1465,6 +1571,8 @@ def main() -> int:
         return summary(output=args.output)
     if args.command == "details":
         return details(output=args.output)
+    if args.command == "diff":
+        return diff_details(base_detail_path=args.base_detail, output=args.output)
     return 2
 
 

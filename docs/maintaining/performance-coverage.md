@@ -34,6 +34,14 @@ Inspect per-transform coverage depth with:
 uv run python -m tools.benchmark_coverage details --output benchmark-coverage-detail.json
 ```
 
+Compare a saved detail artifact against the current catalog with:
+
+```bash
+uv run python -m tools.benchmark_coverage diff \
+  --base-detail benchmark-coverage-detail-main.json \
+  --output benchmark-coverage-diff.json
+```
+
 The detail artifact is the auditable transform-by-transform evidence file. For
 each public transform it records:
 
@@ -50,6 +58,8 @@ each public transform it records:
   parameter-sensitivity scenarios, benchmark scopes, and volume sizes
 - per-layer `scenario_axis_contracts` with covered axes, skipped standard axes,
   and skip reasons
+- coverage diffs for public transform additions, removals, layer drift, ASV
+  case drift, and axis-contract drift
 
 Validate coverage policy and benchmark stability classes with:
 

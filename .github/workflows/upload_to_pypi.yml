@@ -91,11 +91,32 @@ jobs:
     - name: Verify uv.lock is up-to-date
       run: uv lock --check
 
+    - name: Prepare release evidence directory
+      run: python -c "from pathlib import Path; Path('dist/evidence').mkdir(parents=True, exist_ok=True)"
+
+    - name: Install release evidence dependencies
+      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+
     - name: Collect release environment evidence
       run: >
         uv run python tools/collect_test_environment.py
         --output dist/evidence/environment-release.json
         --command "release workflow"
+
+    - name: Run release correctness evidence tests
+      run: |
+        uv run python tools/verify_regression_vectors.py --all
+        uv run pytest -q tests/regression tests/property \
+          --hypothesis-profile=ci-fast \
+          --junitxml=dist/evidence/junit-release.xml
+
+    - name: Summarize release pytest results
+      if: always()
+      run: >
+        uv run python tools/pytest_summary.py
+        --junit dist/evidence/junit-release.xml
+        --output dist/evidence/pytest-summary-release.json
+        --allow-incomplete
 
     - name: Collect benchmark coverage evidence
       run: |

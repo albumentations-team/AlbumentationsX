@@ -60,9 +60,11 @@ def _format_test_summary(summaries: list[dict[str, Any]]) -> str:
     lines = []
     for index, summary in enumerate(summaries, start=1):
         totals = summary.get("totals", {})
+        status = summary.get("status", "ok")
+        status_text = f"status {status}; " if status != "ok" or summary.get("missing") else ""
         lines.append(
             "- Test summary "
-            f"{index}: {totals.get('passed', 0)} passed, {totals.get('failures', 0)} failed, "
+            f"{index}: {status_text}{totals.get('passed', 0)} passed, {totals.get('failures', 0)} failed, "
             f"{totals.get('errors', 0)} errors, {totals.get('skipped', 0)} skipped",
         )
     return "\n".join(lines)
@@ -212,8 +214,32 @@ def _has_performance_budget(summaries: list[dict[str, Any]]) -> bool:
     return any(summary.get("kind") == "performance-budget" for summary in summaries)
 
 
+def _pytest_summary_issue(summary: dict[str, Any]) -> str | None:
+    source = str(summary.get("source", "unknown source"))
+    status = summary.get("status", "ok")
+    if summary.get("missing") or status != "ok":
+        return f"{source} is {status}"
+
+    totals = summary.get("totals", {})
+    if not isinstance(totals, dict):
+        return f"{source} has no totals"
+
+    failures = totals.get("failures", 0)
+    errors = totals.get("errors", 0)
+    if not isinstance(failures, int) or not isinstance(errors, int):
+        return f"{source} has non-integer failure/error totals"
+    if failures or errors:
+        return f"{source} has {failures} failure(s) and {errors} error(s)"
+    return None
+
+
+def _pytest_summary_issues(summaries: list[dict[str, Any]]) -> list[str]:
+    return [issue for summary in summaries if (issue := _pytest_summary_issue(summary)) is not None]
+
+
 def _validate_required_evidence(
     environments: list[dict[str, Any]],
+    pytest_summaries: list[dict[str, Any]],
     benchmark_summaries: list[dict[str, Any]],
     security_summaries: list[dict[str, Any]],
     *,
@@ -225,6 +251,8 @@ def _validate_required_evidence(
     missing: list[str] = []
     if not environments:
         missing.append("environment*.json")
+    if not pytest_summaries:
+        missing.append("pytest-summary*.json")
     if not _has_benchmark_summary(benchmark_summaries):
         missing.append("benchmark coverage summary JSON")
     if not _has_benchmark_detail(benchmark_summaries):
@@ -236,6 +264,11 @@ def _validate_required_evidence(
 
     if missing:
         msg = "Missing required release evidence artifact(s): " + ", ".join(missing)
+        raise ValueError(msg)
+
+    pytest_issues = _pytest_summary_issues(pytest_summaries)
+    if pytest_issues:
+        msg = "Release pytest evidence is incomplete or failing: " + "; ".join(pytest_issues)
         raise ValueError(msg)
 
 
@@ -260,6 +293,7 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
 
     _validate_required_evidence(
         environments,
+        pytest_summaries,
         benchmark_summaries,
         security_summaries,
         allow_missing_evidence=allow_missing_evidence,

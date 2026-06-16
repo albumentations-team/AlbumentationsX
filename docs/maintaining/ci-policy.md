@@ -65,7 +65,10 @@ Each CI lane that runs tests should upload:
 - benchmark summary/detail, ASV comparison, or security JSON where those
   checks run.
 
-Release reports are generated from these artifacts when available. Local dry
-runs may use `--allow-missing-evidence`, but release workflows should provide
-environment evidence, benchmark coverage summary/detail evidence, and security
+Always-run CI evidence steps may pass `--allow-incomplete` to
+`tools/pytest_summary.py` so an early pytest configuration failure still leaves
+an explicit missing/invalid summary artifact. Release reports are stricter:
+local dry runs may use `--allow-missing-evidence`, but release workflows should
+provide passing pytest summary evidence, environment evidence, benchmark
+coverage summary/detail evidence, performance budget evidence, and security
 JSON evidence.

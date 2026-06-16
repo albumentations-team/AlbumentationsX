@@ -37,6 +37,7 @@ uv run python tools/generate_correctness_report.py \
 ```
 
 Release workflows should omit `--allow-missing-evidence` and provide at least
-one environment JSON artifact, benchmark coverage summary/detail JSON,
-benchmark performance-budget JSON, and security JSON evidence. Local dry runs
-may use `--allow-missing-evidence` when those artifacts are not available.
+one environment JSON artifact, passing pytest summary JSON, benchmark coverage
+summary/detail JSON, benchmark performance-budget JSON, and security JSON
+evidence. Local dry runs may use `--allow-missing-evidence` when those
+artifacts are not available.

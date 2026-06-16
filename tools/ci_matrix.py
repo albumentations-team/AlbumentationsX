@@ -233,6 +233,18 @@ def _check_ci_workflow() -> list[str]:
     if missing_oses:
         issues.append(f"{CI_WORKFLOW} does not test operating systems {sorted(missing_oses)!r}")
 
+    issues.extend(
+        _check_text_mentions(
+            CI_WORKFLOW,
+            (
+                "--hypothesis-profile=ci-fast",
+                "tools/pytest_summary.py",
+                "--allow-incomplete",
+            ),
+            "CI evidence gate",
+        ),
+    )
+
     return issues
 
 
@@ -309,6 +321,7 @@ def _check_nightly_workflow() -> list[str]:
                 "--hypothesis-profile=ci-nightly",
                 "tools/verify_regression_vectors.py --all",
                 "tools/pytest_summary.py",
+                "--allow-incomplete",
                 "environment-lower-bound.json",
                 "environment-property-regression.json",
                 "environment-optional-extras.json",
@@ -330,6 +343,7 @@ def _check_release_candidate_workflow() -> list[str]:
                 "tools.benchmark_coverage summary",
                 "tools.benchmark_coverage details",
                 "tools/pytest_summary.py",
+                "--allow-incomplete",
                 "tools/performance_budget.py",
                 "benchmark-performance-budget-",
             ),
@@ -391,7 +405,14 @@ def _check_release_workflow() -> list[str]:
             "uv build",
             "twine check",
             "cyclonedx-py",
+            "--no-install-package torch",
+            "--no-install-package torchvision",
             "tools/collect_test_environment.py",
+            "tools/verify_regression_vectors.py --all",
+            "tests/regression tests/property",
+            "--hypothesis-profile=ci-fast",
+            "tools/pytest_summary.py",
+            "pytest-summary-release.json",
             "tools.benchmark_coverage summary",
             "tools.benchmark_coverage details",
             "tools/performance_budget.py",

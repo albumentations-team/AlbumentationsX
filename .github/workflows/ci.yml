@@ -78,6 +78,7 @@ jobs:
         uv run python tools/pytest_summary.py
         --junit ci-evidence/junit.xml
         --output ci-evidence/pytest-summary-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --allow-incomplete
 
     - name: Upload CI evidence
       if: always()

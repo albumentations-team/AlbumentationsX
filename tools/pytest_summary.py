@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 import xml.etree.ElementTree as ET
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -34,24 +35,35 @@ def _suite_summaries(root: ET.Element) -> list[dict[str, Any]]:
     ]
 
 
+def _incomplete_summary(path: Path, *, status: str, message: str) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "kind": "pytest-summary",
+        "source": str(path),
+        "status": status,
+        "missing": status == "missing",
+        "message": message,
+        "totals": {
+            "tests": 0,
+            "failures": 0,
+            "errors": 1,
+            "skipped": 0,
+            "time": 0.0,
+            "passed": 0,
+        },
+        "suites": [],
+    }
+
+
 def summarize_junit(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return {
-            "schema_version": 1,
-            "source": str(path),
-            "missing": True,
-            "totals": {
-                "tests": 0,
-                "failures": 0,
-                "errors": 1,
-                "skipped": 0,
-                "time": 0.0,
-                "passed": 0,
-            },
-            "suites": [],
-        }
+        return _incomplete_summary(path, status="missing", message="JUnit XML file was not created.")
 
-    root = ET.parse(path).getroot()  # noqa: S314
+    try:
+        root = ET.parse(path).getroot()  # noqa: S314
+    except ET.ParseError as error:
+        return _incomplete_summary(path, status="invalid", message=f"JUnit XML could not be parsed: {error}")
+
     suites = _suite_summaries(root)
     totals = {
         "tests": sum(suite["tests"] for suite in suites),
@@ -61,20 +73,44 @@ def summarize_junit(path: Path) -> dict[str, Any]:
         "time": round(sum(suite["time"] for suite in suites), 3),
     }
     totals["passed"] = totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"]
-    return {"schema_version": 1, "source": str(path), "totals": totals, "suites": suites}
+    return {
+        "schema_version": 1,
+        "kind": "pytest-summary",
+        "source": str(path),
+        "status": "ok",
+        "missing": False,
+        "totals": totals,
+        "suites": suites,
+    }
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--junit", required=True, type=Path, help="JUnit XML file produced by pytest.")
     parser.add_argument("--output", required=True, type=Path, help="JSON summary file to write.")
-    return parser.parse_args()
+    parser.add_argument(
+        "--allow-incomplete",
+        action="store_true",
+        help="Write a missing/invalid summary instead of failing when pytest did not produce valid JUnit XML.",
+    )
+    parser.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    summary = summarize_junit(args.junit)
+    allow_incomplete = args.allow_incomplete or args.allow_missing
+    if summary["status"] != "ok" and not allow_incomplete:
+        print(summary["message"], file=sys.stderr)
+        return 1
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(summarize_junit(args.junit), indent=2, sort_keys=True) + "\n")
+    args.output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(f"Wrote pytest summary to {args.output}")
     return 0
 

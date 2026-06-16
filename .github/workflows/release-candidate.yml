@@ -64,6 +64,7 @@ jobs:
         uv run python tools/pytest_summary.py
         --junit release-candidate-evidence/junit.xml
         --output release-candidate-evidence/pytest-summary-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --allow-incomplete
     - name: Collect benchmark coverage evidence
       if: always()
       run: |

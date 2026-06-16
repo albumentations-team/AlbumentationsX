@@ -43,7 +43,24 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
                 "contract_failures": 0,
                 "deep_coverage_transforms": 1,
                 "optional_transforms": 0,
+                "performance_contract_status_counts": {
+                    "batch": {"covered": 1, "tracked_without_dedicated_matrix": 2},
+                    "memory": {"covered_advisory": 1},
+                },
                 "smoke_only_transforms": 0,
+            },
+        },
+    )
+    _write_json(
+        tmp_path / "benchmark-coverage-diff-local.json",
+        {
+            "kind": "benchmark-coverage-diff",
+            "schema_version": 1,
+            "summary": {
+                "added_transforms": 0,
+                "changed_transforms": 0,
+                "removed_transforms": 0,
+                "status": "ok",
             },
         },
     )
@@ -69,6 +86,9 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
     report = generate_report(tmp_path)
 
     assert "Benchmark coverage detail" in report
+    assert "Benchmark coverage diff" in report
     assert "Performance budget" in report
+    assert "batch: covered=1, tracked_without_dedicated_matrix=2" in report
+    assert "memory: covered_advisory=1" in report
     assert "0 coverage contract failure(s)" in report
     assert "Security summary: provided" in report

@@ -62,6 +62,8 @@ Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 | Core Compose overhead | `<status>` |
 | Memory checks | `<status>` |
 | ASV comparison summary | `<status/link>` |
+| Benchmark coverage diff | `<ok/changed/unavailable/link>` |
+| Performance contract audit | `<batch/annotation/direct-kernel/parameter/memory counts>` |
 | Performance budget | `<ok/triage_required/release_blocked/link>` |
 | Material runtime regressions | `<none/list with justification>` |
 | Material memory regressions | `<none/list with justification>` |

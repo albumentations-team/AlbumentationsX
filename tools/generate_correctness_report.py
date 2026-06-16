@@ -85,6 +85,37 @@ def _format_environment_summary(environments: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _format_status_counts(status_counts: dict[str, Any]) -> str:
+    """Return compact status counts for benchmark performance contracts."""
+    if not status_counts:
+        return "performance contract audit counts not provided"
+
+    axis_summaries: list[str] = []
+    for axis_name, counts in sorted(status_counts.items()):
+        if not isinstance(counts, dict):
+            continue
+        formatted_counts = ", ".join(
+            f"{status}={count}" for status, count in sorted(counts.items()) if isinstance(count, int)
+        )
+        if formatted_counts:
+            axis_summaries.append(f"{axis_name}: {formatted_counts}")
+    return "; ".join(axis_summaries) if axis_summaries else "performance contract audit counts not provided"
+
+
+def _format_coverage_diff(summary: dict[str, Any], index: int) -> str:
+    """Return one report line for benchmark coverage drift evidence."""
+    diff_summary = summary.get("summary", {})
+    status = diff_summary.get("status", "unknown")
+    if status == "unavailable":
+        return f"- Benchmark coverage diff {index}: unavailable; reason: {summary.get('reason', 'not provided')}"
+    return (
+        f"- Benchmark coverage diff {index}: status {status}; "
+        f"{diff_summary.get('added_transforms', 0)} added transform(s), "
+        f"{diff_summary.get('removed_transforms', 0)} removed transform(s), "
+        f"{diff_summary.get('changed_transforms', 0)} changed transform(s)"
+    )
+
+
 def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
     if not summaries:
         return "- Benchmark summary artifacts: not provided in this evidence bundle"
@@ -116,9 +147,13 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
                 f"performance decreased: {status.get('performance_decreased', False)}",
             )
             continue
+        if summary.get("kind") == "benchmark-coverage-diff":
+            lines.append(_format_coverage_diff(summary, index))
+            continue
         if summary.get("kind") == "benchmark-coverage-detail":
             coverage_depth = summary.get("summary", {})
             layer_counts = summary.get("layer_counts", {})
+            contract_counts = _format_status_counts(coverage_depth.get("performance_contract_status_counts", {}))
             lines.append(
                 "- Benchmark coverage detail "
                 f"{index}: {coverage_depth.get('deep_coverage_transforms', 0)} transform(s) with deep coverage, "
@@ -130,7 +165,8 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
                 f"{layer_counts.get('direct_kernel', 0)} direct-kernel, "
                 f"{layer_counts.get('target_matrix', 0)} target-matrix, "
                 f"{layer_counts.get('volumetric_matrix', 0)} volumetric-matrix, "
-                f"{layer_counts.get('pytorch_tensor', 0)} PyTorch tensor transform(s)",
+                f"{layer_counts.get('pytorch_tensor', 0)} PyTorch tensor transform(s); "
+                f"{contract_counts}",
             )
             continue
         full_matrix_cases = summary.get("full_matrix_cases", {})

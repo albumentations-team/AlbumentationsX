@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -27,6 +27,14 @@ from benchmarks.catalog import (  # noqa: E402
     public_transform_names,
 )
 from benchmarks.common import CHANNELS, DTYPES, SIZES, VOLUME_SIZES  # noqa: E402
+from benchmarks.test_batch_matrix import (  # noqa: E402
+    IMAGE_BATCH_CASES,
+    IMAGE_BATCH_TRANSFORMS,
+    MASK_BATCH_CASES,
+    MASK_BATCH_TRANSFORMS,
+    VOLUME_BATCH_CASES,
+    VOLUME_BATCH_TRANSFORMS,
+)
 from benchmarks.test_family_matrix import (  # noqa: E402
     ANNOTATION_CASES,
     ANNOTATION_TRANSFORMS,
@@ -203,6 +211,20 @@ VOLUME_ALIAS_TO_TRANSFORM = {
     "random_crop3d": "RandomCrop3D",
 }
 
+BATCH_ALIAS_TO_TRANSFORM = {
+    "channel_dropout": "ChannelDropout",
+    "coarse_dropout": "CoarseDropout",
+    "d4": "D4",
+    "gauss_noise": "GaussNoise",
+    "horizontal_flip": "HorizontalFlip",
+    "normalize": "Normalize",
+    "random_brightness_contrast": "RandomBrightnessContrast",
+    "random_rotate90": "RandomRotate90",
+    "resize": "Resize",
+    "transpose": "Transpose",
+    "vertical_flip": "VerticalFlip",
+}
+
 DIRECT_KERNEL_TRANSFORMS = frozenset(
     {
         "Affine",
@@ -309,6 +331,9 @@ MEMORY_CASES_BY_TRANSFORM = {
 
 ASV_BENCHMARKS = {
     "annotation_scaling": "benchmarks.test_family_matrix.TimeAnnotationTargets.time_transform",
+    "batch_image": "benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform",
+    "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
+    "batch_volume": "benchmarks.test_batch_matrix.TimeVolumeBatchMatrix.time_transform",
     "catalog_smoke": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
     "direct_kernel_3d": "benchmarks.test_functional_kernels.TimeFunctional3DKernels.time_kernel",
     "direct_kernel_blur": "benchmarks.test_functional_kernels.TimeFunctionalBlurKernels.time_kernel",
@@ -331,6 +356,7 @@ DEEP_COVERAGE_LAYERS = frozenset(
     {
         "alias_coverage",
         "annotation_scaling",
+        "batch_matrix",
         "direct_kernel",
         "family_matrix",
         "memory",
@@ -343,6 +369,7 @@ DEEP_COVERAGE_LAYERS = frozenset(
 ASV_CASE_REQUIRED_LAYERS = frozenset(
     {
         "annotation_scaling",
+        "batch_matrix",
         "catalog_smoke",
         "direct_kernel",
         "family_matrix",
@@ -379,6 +406,9 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
     geometry_matrix = _mapped_names(GEOMETRY_ALIAS_TO_TRANSFORM, GEOMETRY_TRANSFORMS)
     pixel_matrix = _mapped_names(PIXEL_ALIAS_TO_TRANSFORM, PIXEL_TRANSFORMS)
     annotation_scaling = _mapped_names(ANNOTATION_ALIAS_TO_TRANSFORM, ANNOTATION_TRANSFORMS)
+    batch_matrix = _mapped_names(BATCH_ALIAS_TO_TRANSFORM, IMAGE_BATCH_TRANSFORMS)
+    batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, MASK_BATCH_TRANSFORMS)
+    batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, VOLUME_BATCH_TRANSFORMS)
     reference_data = set(REFERENCE_TRANSFORMS)
     special_targets = _mapped_names(SPECIAL_TARGET_ALIAS_TO_TRANSFORM, SPECIAL_TARGET_TRANSFORMS)
     volumetric_matrix = _mapped_names(VOLUME_ALIAS_TO_TRANSFORM, VOLUME_TRANSFORMS)
@@ -386,6 +416,7 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
     return {
         "alias_coverage": set(ALIAS_COVERAGE_TRANSFORMS),
         "annotation_scaling": annotation_scaling,
+        "batch_matrix": batch_matrix,
         "direct_kernel": set(DIRECT_KERNEL_TRANSFORMS),
         "family_matrix": geometry_matrix | pixel_matrix,
         "memory": set(MEMORY_COVERED_TRANSFORMS),
@@ -563,41 +594,107 @@ def _parse_pytorch_case(case_id: str) -> dict[str, Any]:
     }
 
 
+def _parse_batch_case(case_id: str) -> dict[str, Any]:
+    """Parse a batch matrix benchmark case id."""
+    name, target_route, size_name, channels, dtype_name, batch_size = case_id.split("|")
+    targets = {
+        "images": ["images"],
+        "images_and_masks": ["images", "masks"],
+        "volumes_and_masks3d": ["masks3d", "volumes"],
+    }[target_route]
+    scenario = {
+        "batch_size": int(batch_size),
+        "channels": int(channels),
+        "dtype": dtype_name,
+        "matrix_name": name,
+        "target_route": target_route,
+        "targets": targets,
+    }
+    if target_route == "volumes_and_masks3d":
+        scenario["volume_size"] = size_name
+    else:
+        scenario["size"] = size_name
+    return scenario
+
+
+def _catalog_smoke_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for a catalog smoke case."""
+    return {"scope": "compose", "targets": _route_targets(route)}
+
+
+def _family_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for an image family matrix case."""
+    return {**_parse_image_matrix_case(case["case_id"]), "scope": "compose", "targets": ["image"]}
+
+
+def _annotation_scaling_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for an annotation-scaling case."""
+    scenario = _parse_annotation_case(case["case_id"])
+    return {**scenario, "scope": "compose", "targets": _annotation_targets(scenario["matrix_name"])}
+
+
+def _target_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for a special-target matrix case."""
+    scenario = _parse_image_matrix_case(case["case_id"])
+    return {**scenario, "scope": "compose", "targets": _special_target_targets(scenario["matrix_name"])}
+
+
+def _batch_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for a batch matrix case."""
+    return {**_parse_batch_case(case["case_id"]), "scope": "compose_batch"}
+
+
+def _reference_data_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for a reference-data matrix case."""
+    name, size_name = case["case_id"].split("|")
+    targets = ["image", "text_metadata"] if name == "TextImage" else ["image", "reference_metadata"]
+    return {"matrix_name": name, "scope": "compose", "size": size_name, "targets": targets}
+
+
+def _volumetric_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for a volumetric matrix case."""
+    return {**_parse_volume_case(case["case_id"]), "scope": "compose", "targets": ["mask3d", "volume"]}
+
+
+def _memory_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for a peak-memory case."""
+    case_id = case["case_id"]
+    return {"memory_case": case_id, "scope": "memory", "targets": _memory_targets(case_id)}
+
+
+def _pytorch_tensor_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
+    """Return scenario metadata for an optional PyTorch tensor case."""
+    targets = ["mask3d", "volume"] if transform_name == "ToTensor3D" else ["image", "images", "mask", "masks"]
+    return {
+        **_parse_pytorch_case(case["case_id"]),
+        "batch_size": 8,
+        "scope": "optional_pytorch",
+        "targets": targets,
+    }
+
+
+ScenarioBuilder = Callable[[Mapping[str, str], str, str], dict[str, Any]]
+
+SCENARIO_BUILDERS: Mapping[str, ScenarioBuilder] = {
+    "annotation_scaling": _annotation_scaling_scenario,
+    "batch_matrix": _batch_matrix_scenario,
+    "catalog_smoke": _catalog_smoke_scenario,
+    "direct_kernel": lambda case, _route, _transform_name: _direct_kernel_scenario(case),
+    "family_matrix": _family_matrix_scenario,
+    "memory": _memory_scenario,
+    "pytorch_tensor": _pytorch_tensor_scenario,
+    "reference_data": _reference_data_scenario,
+    "target_matrix": _target_matrix_scenario,
+    "volumetric_matrix": _volumetric_matrix_scenario,
+}
+
+
 def _case_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return reviewable scenario metadata for an ASV case."""
-    case_id = case["case_id"]
     layer = case["layer"]
-    scenario: dict[str, Any] = {"layer": layer}
-
-    if layer == "catalog_smoke":
-        scenario.update({"scope": "compose", "targets": _route_targets(route)})
-    elif layer == "family_matrix":
-        scenario.update(_parse_image_matrix_case(case_id))
-        scenario.update({"scope": "compose", "targets": ["image"]})
-    elif layer == "annotation_scaling":
-        scenario.update(_parse_annotation_case(case_id))
-        scenario.update({"scope": "compose", "targets": _annotation_targets(scenario["matrix_name"])})
-    elif layer == "target_matrix":
-        scenario.update(_parse_image_matrix_case(case_id))
-        scenario.update({"scope": "compose", "targets": _special_target_targets(scenario["matrix_name"])})
-    elif layer == "reference_data":
-        name, size_name = case_id.split("|")
-        targets = ["image", "text_metadata"] if name == "TextImage" else ["image", "reference_metadata"]
-        scenario.update({"matrix_name": name, "scope": "compose", "size": size_name, "targets": targets})
-    elif layer == "volumetric_matrix":
-        scenario.update(_parse_volume_case(case_id))
-        scenario.update({"scope": "compose", "targets": ["mask3d", "volume"]})
-    elif layer == "direct_kernel":
-        scenario.update(_direct_kernel_scenario(case))
-    elif layer == "memory":
-        scenario.update({"memory_case": case_id, "scope": "memory", "targets": _memory_targets(case_id)})
-    elif layer == "pytorch_tensor":
-        scenario.update(_parse_pytorch_case(case_id))
-        targets = ["mask3d", "volume"] if transform_name == "ToTensor3D" else ["image", "images", "mask", "masks"]
-        scenario.update({"batch_size": 8, "scope": "optional_pytorch", "targets": targets})
-    else:
-        scenario.update({"scope": "unknown", "targets": []})
-    return scenario
+    builder = SCENARIO_BUILDERS.get(layer)
+    scenario = builder(case, route, transform_name) if builder is not None else {"scope": "unknown", "targets": []}
+    return {"layer": layer, **scenario}
 
 
 def _direct_kernel_scenario(case: Mapping[str, str]) -> dict[str, Any]:
@@ -804,6 +901,27 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         layer="volumetric_matrix",
         name_map=VOLUME_ALIAS_TO_TRANSFORM,
     )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_image"],
+        case_ids=IMAGE_BATCH_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_mask"],
+        case_ids=MASK_BATCH_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_volume"],
+        case_ids=VOLUME_BATCH_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
     for case_id in REFERENCE_CASES:
         _add_asv_case(
             cases,
@@ -927,6 +1045,7 @@ def coverage_details() -> dict[str, Any]:
             layer_name: sum(1 for item in transforms if layer_name in item["layers"])
             for layer_name in (
                 "alias_coverage",
+                "batch_matrix",
                 "target_matrix",
                 "volumetric_matrix",
                 "direct_kernel",
@@ -968,6 +1087,9 @@ def _spec_summary() -> dict[str, Any]:
         "coverage_layer_counts": details["layer_counts"],
         "full_matrix_cases": {
             "annotations": len(ANNOTATION_CASES),
+            "batch_image": len(IMAGE_BATCH_CASES),
+            "batch_mask": len(MASK_BATCH_CASES),
+            "batch_volume": len(VOLUME_BATCH_CASES),
             "geometry": len(GEOMETRY_CASES),
             "pixel": len(PIXEL_CASES),
             "reference_data": len(REFERENCE_CASES),
@@ -1064,6 +1186,9 @@ def _validate_registry() -> list[str]:
         _validate_case_groups(
             {
                 "annotation": ANNOTATION_CASES,
+                "batch_image": IMAGE_BATCH_CASES,
+                "batch_mask": MASK_BATCH_CASES,
+                "batch_volume": VOLUME_BATCH_CASES,
                 "geometry": GEOMETRY_CASES,
                 "pixel": PIXEL_CASES,
                 "reference_data": REFERENCE_CASES,

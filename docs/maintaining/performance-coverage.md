@@ -108,6 +108,8 @@ The current family matrix covers:
 - volumetric data: public 3D transforms over volume size and dtype variants
 - optional tensor data: PyTorch tensor conversion paths for 2D and 3D terminal
   transforms in the optional PyTorch ASV lane
+- batch data: selected image, mask, volume, and mask3d batch routes over
+  size, channel, dtype, and batch-size variants
 
 ### L3: Direct Functional Kernels
 
@@ -143,6 +145,18 @@ transform kernels. This layer covers:
 - `Compose` setup time for simple and multi-transform pipelines
 - bbox/keypoint processor setup
 - bbox/keypoint processor round-trips using a no-op transform
+
+### L3c: Batch Routes
+
+Batch target routes must be benchmarked separately from single-image paths.
+This layer covers:
+
+- `images` routes for representative geometry, pixel, noise, dropout, and
+  normalization transforms
+- `images` plus `masks` routes for transforms that exercise mask batch routing
+- `volumes` plus `masks3d` routes for batch-capable volume transforms
+- batch sizes `4` and `8` for image/mask routes
+- batch sizes `2` and `4` for volume routes
 
 ### L4: Target Scaling
 
@@ -204,7 +218,8 @@ machine-readable budget evidence:
 Initial benchmark classes:
 
 - stable release-blocking classes: core pipeline, geometry/pixel/volumetric
-  matrices, annotation/special-target scaling, and direct functional kernels
+  matrices, batch matrices, annotation/special-target scaling, and direct
+  functional kernels
 - advisory classes: catalog smoke, reference-data matrices, legacy
   representative benchmarks, optional PyTorch tensor benchmarks, and
   peak-memory checks
@@ -221,8 +236,8 @@ Pull requests:
 - required: ASV suite importability where the performance workflow runs
 - advisory: ASV before/after comparison on GitHub-hosted runners when runtime
   or benchmark code changes; PR comparison starts with catalog smoke, core
-  pipeline, and direct functional-kernel benchmarks, then adds changed-family
-  matrix benchmarks through `tools/select_benchmark_filters.py`
+  pipeline, batch-route, and direct functional-kernel benchmarks, then adds
+  changed-family matrix benchmarks through `tools/select_benchmark_filters.py`
 - benchmark infrastructure changes rely on ASV importability and benchmark
   coverage validation in PR; full-suite comparison remains scheduled or manual
 - selected PR benchmark filter and changed-file evidence are uploaded with
@@ -313,6 +328,8 @@ following are true:
 - Direct functional kernels have non-empty coverage in each required group.
 - Annotation, reference-data, volumetric, batch, and memory paths are included
   in benchmark evidence.
+- Batch evidence includes image, mask, volume, and mask3d batch routes where
+  supported.
 - Core pipeline evidence includes dispatch, setup, `additional_targets`,
   image batch routing, and bbox/keypoint processor overhead.
 - Optional PyTorch tensor paths are included in scheduled or release-adjacent

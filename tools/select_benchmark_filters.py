@@ -7,6 +7,7 @@ from pathlib import Path
 
 BASELINE_PATTERNS = frozenset(
     {
+        "TimeBatch",
         "TimeCatalogTransformSmoke",
         "TimeCorePipeline",
         "TimeFunctional",
@@ -22,7 +23,7 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
             "albumentations/core/transforms_interface.py",
             "albumentations/core/utils.py",
         ),
-        frozenset({"TimeCatalogTransformSmoke", "TimeCorePipeline"}),
+        frozenset({"TimeBatch", "TimeCatalogTransformSmoke", "TimeCorePipeline"}),
     ),
     (
         (
@@ -46,6 +47,7 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
         frozenset(
             {
                 "TimeAnnotationTargets",
+                "TimeBatch",
                 "TimeFunctionalGeometry",
                 "TimeGeometryFullMatrix",
                 "TimeSpecialTargetMatrix",
@@ -62,6 +64,7 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
             {
                 "TimeFunctionalBlurKernels",
                 "TimeFunctionalPixelKernels",
+                "TimeBatch",
                 "TimePixelFullMatrix",
             },
         ),
@@ -71,6 +74,7 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
         frozenset(
             {
                 "PeakMemory",
+                "TimeBatch",
                 "TimeFunctionalPixelKernels",
                 "TimePixelFullMatrix",
                 "TimeSpecialTargetMatrix",
@@ -82,17 +86,18 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
             "albumentations/augmentations/mixing/",
             "albumentations/augmentations/text/",
         ),
-        frozenset({"PeakMemory", "TimeReferenceDataFullMatrix"}),
+        frozenset({"PeakMemory", "TimeBatch", "TimeReferenceDataFullMatrix"}),
     ),
     (
         ("albumentations/augmentations/transforms3d/",),
-        frozenset({"PeakMemory", "TimeFunctional3DKernels", "TimeVolumetricFullMatrix"}),
+        frozenset({"PeakMemory", "TimeBatch", "TimeFunctional3DKernels", "TimeVolumetricFullMatrix"}),
     ),
 )
 
 PATTERN_ORDER = (
     "Time",
     "PeakMemory",
+    "TimeBatch",
     "TimeCatalogTransformSmoke",
     "TimeCorePipeline",
     "TimeFunctional",

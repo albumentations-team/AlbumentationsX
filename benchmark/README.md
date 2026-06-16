@@ -40,9 +40,9 @@ The GitHub performance workflow can also be run manually with
 - `bench_filter`: optional ASV `--bench` regular expression for manual
   baseline/candidate comparisons.
 
-Pull requests run a bounded comparison over catalog smoke, core pipeline, and
-direct functional-kernel benchmarks. Scheduled runs and manual comparisons with
-an empty `bench_filter` run the full suite.
+Pull requests run a bounded comparison over catalog smoke, core pipeline,
+batch-route, and direct functional-kernel benchmarks. Scheduled runs and manual
+comparisons with an empty `bench_filter` run the full suite.
 
 ## Matrix
 
@@ -59,10 +59,10 @@ The baseline image matrix follows the project performance rule:
 - 1024 x 1024 x 5
 
 Benchmarks cover public Compose paths, core pipeline dispatch/setup paths,
-direct functional kernels, image batches, representative volumetric transforms,
-annotation scaling paths, memory checks, and reference-data transform paths.
-GitHub-hosted runner results are advisory until enough scheduled data exists to
-set reliable blocking thresholds.
+direct functional kernels, image, mask, and volume batch routes,
+representative volumetric transforms, annotation scaling paths, memory checks,
+and reference-data transform paths. GitHub-hosted runner results are advisory
+until enough scheduled data exists to set reliable blocking thresholds.
 
 ## Catalog Coverage
 
@@ -161,6 +161,8 @@ The current ASV suite includes these production coverage layers:
 - Core pipeline: single-transform Compose, multi-transform Compose,
   ReplayCompose, `p=0` skip dispatch, `additional_targets`, image batches,
   Compose setup, and bbox/keypoint processor overhead.
+- Batch matrix: `images`, `images` plus `masks`, and `volumes` plus `masks3d`
+  routes over bounded size, channel, dtype, and batch-size variants.
 - Direct functional kernels: shared geometry, annotation, pixel, blur/filter,
   and 3D kernels benchmarked outside `Compose` to identify whether changes come
   from raw kernels or pipeline overhead.

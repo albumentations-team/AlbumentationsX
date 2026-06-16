@@ -50,7 +50,8 @@ def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
     assert resize["scenario_contract"]["channels"] == [1, 3, 5]
     assert resize["scenario_contract"]["dtypes"] == ["uint8", "float32"]
     assert resize["scenario_contract"]["annotation_counts"] == [10, 100, 1000]
-    assert {"bboxes", "image"}.issubset(resize["scenario_contract"]["targets"])
+    assert resize["scenario_contract"]["batch_sizes"] == [4, 8]
+    assert {"bboxes", "image", "images", "masks"}.issubset(resize["scenario_contract"]["targets"])
     assert "peakmem_resize_large_rgb" in resize["scenario_contract"]["memory_cases"]
     assert {"geometry_annotation", "geometry_image"}.issubset(
         resize["scenario_contract"]["direct_kernel_groups"],
@@ -62,6 +63,19 @@ def test_benchmark_coverage_details_map_volumetric_matrix_to_public_transforms()
 
     assert center_crop3d["smoke_only"] is False
     assert "volumetric_matrix" in center_crop3d["layers"]
+
+
+def test_benchmark_coverage_details_map_batch_matrix_to_public_transforms() -> None:
+    horizontal_flip = _coverage_for("HorizontalFlip")
+
+    assert horizontal_flip["smoke_only"] is False
+    assert "batch_matrix" in horizontal_flip["layers"]
+    assert {"images", "masks", "masks3d", "volumes"}.issubset(horizontal_flip["scenario_contract"]["targets"])
+    assert {
+        ("batch_matrix", "horizontal_flip|images|small|1|uint8|4"),
+        ("batch_matrix", "horizontal_flip|images_and_masks|small|1|uint8|4"),
+        ("batch_matrix", "horizontal_flip|volumes_and_masks3d|small|1|uint8|2"),
+    }.issubset({(case["layer"], case["case_id"]) for case in horizontal_flip["asv_cases"]})
 
 
 def test_benchmark_coverage_details_map_expanded_pixel_matrix_to_public_transforms() -> None:

@@ -5,6 +5,7 @@ from tools.select_benchmark_filters import select_benchmark_patterns, select_ben
 
 def test_select_benchmark_filters_keep_baseline_for_docs_only_changes() -> None:
     assert select_benchmark_patterns(["docs/maintaining/performance-coverage.md"]) == (
+        "TimeBatch",
         "TimeCatalogTransformSmoke",
         "TimeCorePipeline",
         "TimeFunctional",
@@ -16,6 +17,7 @@ def test_select_benchmark_filters_add_pixel_family_matrix_for_pixel_changes() ->
 
     assert "TimePixelFullMatrix" in patterns
     assert "TimeFunctionalPixelKernels" in patterns
+    assert "TimeBatch" in patterns
     assert "TimeCatalogTransformSmoke" in patterns
 
 
@@ -38,6 +40,7 @@ def test_select_benchmark_filters_add_memory_and_volume_paths_for_3d_changes() -
 
 def test_select_benchmark_filters_keeps_benchmark_infrastructure_changes_bounded() -> None:
     assert select_benchmark_patterns(["benchmark/benchmarks/test_family_matrix.py"]) == (
+        "TimeBatch",
         "TimeCatalogTransformSmoke",
         "TimeCorePipeline",
         "TimeFunctional",
@@ -48,6 +51,6 @@ def test_select_benchmark_filters_returns_asv_regex() -> None:
     regex = select_benchmark_regex(["albumentations/augmentations/blur/transforms.py"])
 
     assert regex == (
-        "TimeCatalogTransformSmoke|TimeCorePipeline|TimeFunctional|"
+        "TimeBatch|TimeCatalogTransformSmoke|TimeCorePipeline|TimeFunctional|"
         "TimePixelFullMatrix|TimeFunctionalPixelKernels|TimeFunctionalBlurKernels"
     )

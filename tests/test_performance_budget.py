@@ -10,6 +10,7 @@ def _coverage_detail() -> dict:
         "kind": "benchmark-coverage-detail",
         "layer_counts": {
             "annotation_scaling": 7,
+            "batch_matrix": 11,
             "catalog_smoke": 134,
             "direct_kernel": 28,
             "family_matrix": 109,
@@ -47,6 +48,13 @@ def test_classify_benchmark_maps_stable_transform_matrix() -> None:
     policy = classify_benchmark("benchmarks.test_family_matrix.TimePixelFullMatrix.time_transform('blur|small|3')")
 
     assert policy.benchmark_class == "pixel_matrix"
+    assert policy.release_blocking is True
+
+
+def test_classify_benchmark_maps_batch_matrix_as_release_blocking() -> None:
+    policy = classify_benchmark("benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform('resize|images')")
+
+    assert policy.benchmark_class == "batch_matrix"
     assert policy.release_blocking is True
 
 

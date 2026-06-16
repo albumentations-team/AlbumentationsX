@@ -21,6 +21,7 @@ REQUIRED_COVERAGE_LAYERS = (
     "catalog_smoke",
     "family_matrix",
     "annotation_scaling",
+    "batch_matrix",
     "reference_data",
     "target_matrix",
     "volumetric_matrix",
@@ -48,6 +49,13 @@ BENCHMARK_POLICIES = (
         "advisory",
         False,
         "peak-memory measurements on shared runners are triage evidence until enough history exists",
+    ),
+    BenchmarkPolicy(
+        "BatchMatrix",
+        "batch_matrix",
+        "stable",
+        True,
+        "batch target routes are user-facing performance paths for images, masks, volumes, and masks3d",
     ),
     BenchmarkPolicy(
         "TimeCatalogTransformSmoke",

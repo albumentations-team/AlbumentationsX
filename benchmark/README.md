@@ -58,11 +58,11 @@ The baseline image matrix follows the project performance rule:
 - 1024 x 1024 x 3
 - 1024 x 1024 x 5
 
-Benchmarks cover public Compose paths, direct functional kernels, image
-batches, representative volumetric transforms, annotation scaling paths, memory
-checks, and reference-data transform paths. GitHub-hosted runner results are
-advisory until enough scheduled data exists to set reliable blocking
-thresholds.
+Benchmarks cover public Compose paths, core pipeline dispatch/setup paths,
+direct functional kernels, image batches, representative volumetric transforms,
+annotation scaling paths, memory checks, and reference-data transform paths.
+GitHub-hosted runner results are advisory until enough scheduled data exists to
+set reliable blocking thresholds.
 
 ## Catalog Coverage
 
@@ -154,6 +154,9 @@ The current ASV suite includes these production coverage layers:
   implementation while catalog smoke still validates public construction.
 - Optional PyTorch tensor paths: `ToTensorV2` and `ToTensor3D` in a separate
   ASV environment with torch installed.
+- Core pipeline: single-transform Compose, multi-transform Compose,
+  ReplayCompose, `p=0` skip dispatch, `additional_targets`, image batches,
+  Compose setup, and bbox/keypoint processor overhead.
 - Direct functional kernels: shared geometry, annotation, pixel, blur/filter,
   and 3D kernels benchmarked outside `Compose` to identify whether changes come
   from raw kernels or pipeline overhead.

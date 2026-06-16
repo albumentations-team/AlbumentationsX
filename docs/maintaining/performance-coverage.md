@@ -125,6 +125,21 @@ Direct-kernel coverage is summarized under `direct_kernel_cases` in the JSON
 output from `tools.benchmark_coverage`. Per-transform layer membership is
 published in the `benchmark-coverage-detail.json` evidence artifact.
 
+### L3b: Core Pipeline
+
+Core `Compose` and processor behavior must be benchmarked separately from
+transform kernels. This layer covers:
+
+- single-transform `Compose`
+- multi-transform `Compose`
+- `ReplayCompose`
+- `p=0` skip dispatch
+- `additional_targets` routing
+- image batch routing through `images`
+- `Compose` setup time for simple and multi-transform pipelines
+- bbox/keypoint processor setup
+- bbox/keypoint processor round-trips using a no-op transform
+
 ### L4: Target Scaling
 
 Annotation and metadata scaling must be measured separately from simple image
@@ -294,6 +309,8 @@ following are true:
 - Direct functional kernels have non-empty coverage in each required group.
 - Annotation, reference-data, volumetric, batch, and memory paths are included
   in benchmark evidence.
+- Core pipeline evidence includes dispatch, setup, `additional_targets`,
+  image batch routing, and bbox/keypoint processor overhead.
 - Optional PyTorch tensor paths are included in scheduled or release-adjacent
   benchmark evidence.
 - Performance-budget evidence is published and has no coverage-contract

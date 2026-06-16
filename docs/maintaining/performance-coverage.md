@@ -296,12 +296,12 @@ Pull requests:
 - performance-budget evidence classifies coverage status, benchmark stability,
   triage items, and release-blocking regressions
 - optional PyTorch ASV is not run on every pull request because installing
-  torch can dominate feedback time; it is run on `main`, scheduled, and manual
+  torch can dominate feedback time; it is run on scheduled and manual
   performance workflows
 
 Nightly and scheduled runs:
 
-- full ASV evidence on `main`
+- full ASV evidence from the default-branch scheduled workflow
 - optional PyTorch tensor ASV evidence
 - environment JSON
 - benchmark coverage JSON

@@ -67,13 +67,10 @@ LOWER_BOUND_REQUIREMENTS = (
 )
 
 SUPPORT_POLICY_TABLE_ROWS = (
-    "| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |",
-    "| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |",
-    "| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |",
-    (
-        "| `locked-latest` | Tests the repository lockfile and normal contributor environment. | "
-        "Required PR and `main` CI |"
-    ),
+    "| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |",
+    "| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |",
+    "| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |",
+    ("| `locked-latest` | Tests the repository lockfile and normal contributor environment. | Required PR gate |"),
     (
         "| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | "
         "Nightly and release gate |"
@@ -292,6 +289,15 @@ def _check_workflow_job_timeouts() -> list[str]:
     return issues
 
 
+def _check_workflow_push_triggers() -> list[str]:
+    issues: list[str] = []
+    for path in _workflow_files():
+        workflow_header = _read_text(path).split("jobs:", maxsplit=1)[0]
+        if re.search(r"(?m)^  push:\s*$", workflow_header):
+            issues.append(f"{path} must not run from a push trigger; use PR, schedule, manual, or release events")
+    return issues
+
+
 def _check_full_matrix_workflow(path: Path) -> list[str]:
     workflow = _load_yaml(path)
     issues: list[str] = []
@@ -431,6 +437,7 @@ def _check_workflows() -> list[str]:
         *_check_workflow_inventory(),
         *_check_workflow_python_versions(),
         *_check_workflow_job_timeouts(),
+        *_check_workflow_push_triggers(),
         *_check_ci_workflow(),
         *_check_full_matrix_workflow(RELEASE_CANDIDATE_WORKFLOW),
         *_check_nightly_workflow(),

@@ -23,9 +23,9 @@ Python minor versions unless maintenance cost becomes unreasonable.
 
 | Combination | Policy | CI Coverage |
 | --- | --- | --- |
-| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |
-| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |
-| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR and `main` CI |
+| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |
+| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |
+| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |
 | Non-x86 architectures | Best effort | Manual or future dedicated runners |
 
 The current policy keeps the full all-OS/all-Python PR matrix. If CI time
@@ -37,7 +37,7 @@ this document and the matrix validator.
 
 | Dependency Set | Purpose | Initial Gate |
 | --- | --- | --- |
-| `locked-latest` | Tests the repository lockfile and normal contributor environment. | Required PR and `main` CI |
+| `locked-latest` | Tests the repository lockfile and normal contributor environment. | Required PR gate |
 | `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | Nightly and release gate |
 | `optional-extras` | Smoke-tests extras such as `pillow`, `pytorch`, `text`, `hub`, and OpenCV variants. | Advisory until stable |
 | `pre-release-probe` | Probes future Python or dependency releases when wheels are available. | Scheduled advisory |

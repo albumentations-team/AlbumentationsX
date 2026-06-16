@@ -8,9 +8,6 @@ on:
       - "albumentations/**"
       - "benchmark/**"
       - ".github/workflows/performance.yml"
-  push:
-    branches:
-      - main
   schedule:
     - cron: "43 4 * * 2"
   workflow_dispatch:
@@ -210,7 +207,6 @@ jobs:
         "${BUDGET_COMMAND[@]}"
     - name: Run scheduled benchmark evidence
       if: >
-        github.event_name == 'push' ||
         github.event_name == 'schedule' ||
         (github.event_name == 'workflow_dispatch' && inputs.baseline_ref == '')
       working-directory: benchmark

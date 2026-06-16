@@ -13,6 +13,11 @@ destabilizing contributor workflows.
 - Pre-commit hooks and project-specific checks.
 - `tools.ci_matrix check`.
 
+Direct pushes to `main` are outside the maintenance policy and should be
+blocked with repository branch protection or rulesets. The repository workflows
+use pull-request, scheduled, manual, and release events for verification
+instead of `push` events.
+
 ## Scheduled And Release Gates
 
 - Lower-bound dependency testing on Ubuntu and Python 3.10.
@@ -42,9 +47,9 @@ plus changed-family and parameter-sensitive cases so the advisory lane stays
 timely. Release tasks, large branches, and local investigations can use the
 manual workflow inputs to compare an explicit `baseline_ref`, `candidate_ref`,
 and optional ASV `bench_filter`.
-The optional PyTorch tensor benchmark lane runs on `main`, scheduled, and
-manual performance workflows instead of every pull request because installing
-torch can dominate PR feedback time.
+The optional PyTorch tensor benchmark lane runs on scheduled and manual
+performance workflows instead of every pull request because installing torch
+can dominate PR feedback time.
 
 Material slowdowns, initially interpreted as more than about 5% on a
 representative benchmark case, should be treated as release-relevant. The

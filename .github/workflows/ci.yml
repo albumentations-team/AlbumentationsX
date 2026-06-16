@@ -6,12 +6,6 @@ on:
     paths-ignore:
       - '**.md'
       - 'benchmark/**'
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - '**.md'
-      - 'benchmark/**'
 
 permissions:
   contents: read

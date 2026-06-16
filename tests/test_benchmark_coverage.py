@@ -14,6 +14,7 @@ def _coverage_for(transform_name: str) -> dict[str, Any]:
 def test_benchmark_coverage_details_account_for_every_public_transform() -> None:
     details = coverage_details()
 
+    assert details["schema_version"] == 2
     assert details["public_transforms"] == len(details["transforms"])
     assert (
         details["layer_counts"]["catalog_smoke"] + details["layer_counts"]["optional"] == details["public_transforms"]
@@ -26,9 +27,25 @@ def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
     resize = _coverage_for("Resize")
 
     assert resize["smoke_only"] is False
+    assert resize["class"] == {
+        "module": "albumentations.augmentations.geometric.resize",
+        "public_api": "albumentations.Resize",
+        "qualname": "Resize",
+    }
+    assert resize["benchmark_spec"]["constructor_params"] == {"height": 128, "width": 128}
+    assert resize["benchmark_spec"]["route"] == "image"
+    assert {"annotation_scaling", "direct_kernel", "family_matrix", "geometry", "memory"}.issubset(
+        resize["families"],
+    )
     assert {"annotation_scaling", "catalog_smoke", "direct_kernel", "family_matrix", "memory"}.issubset(
         resize["layers"],
     )
+    assert {
+        ("catalog_smoke", "Resize"),
+        ("family_matrix", "resize|small|1|uint8"),
+        ("direct_kernel", "resize|small|1|uint8"),
+        ("memory", "peakmem_resize_large_rgb"),
+    }.issubset({(case["layer"], case["case_id"]) for case in resize["asv_cases"]})
 
 
 def test_benchmark_coverage_details_map_volumetric_matrix_to_public_transforms() -> None:
@@ -82,14 +99,48 @@ def test_benchmark_coverage_details_explain_warning_aliases() -> None:
 
     assert shift_scale_rotate["smoke_only"] is False
     assert shift_scale_rotate["covered_by"] == "Affine"
+    assert shift_scale_rotate["families"] == ["alias", "alias_coverage"]
     assert "alias_coverage" in shift_scale_rotate["layers"]
+    assert shift_scale_rotate["asv_cases"] == [
+        {
+            "benchmark": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
+            "case_id": "ShiftScaleRotate",
+            "config": "default",
+            "layer": "catalog_smoke",
+        },
+    ]
 
 
 def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     to_tensor = _coverage_for("ToTensorV2")
 
     assert to_tensor["benchmark"] is False
+    assert to_tensor["class"] == {
+        "module": "albumentations.pytorch.transforms",
+        "public_api": "albumentations.ToTensorV2",
+        "qualname": "ToTensorV2",
+    }
     assert to_tensor["layers"] == ["optional", "pytorch_tensor"]
+    assert to_tensor["families"] == ["pytorch_tensor"]
     assert to_tensor["coverage_contract"]["status"] == "ok"
     assert to_tensor["coverage_contract"]["required_layers"] == ["optional", "pytorch_tensor"]
     assert "PyTorch" in str(to_tensor["optional_reason"])
+    assert {
+        ("pytorch", "pytorch_tensor", "small|1|uint8"),
+        ("pytorch", "pytorch_tensor", "large|5|float32"),
+    }.issubset({(case["config"], case["layer"], case["case_id"]) for case in to_tensor["asv_cases"]})
+
+
+def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_layers() -> None:
+    details = coverage_details()
+
+    for transform in details["transforms"]:
+        assert transform["class"]["module"].startswith("albumentations.")
+        assert transform["class"]["public_api"] == f"albumentations.{transform['name']}"
+        assert transform["benchmark_spec"]["route"] == transform["route"]
+        assert transform["asv_cases"] or transform["layers"] == ["optional"]
+        for case in transform["asv_cases"]:
+            assert case["benchmark"]
+            assert case["case_id"]
+            assert case["config"] in {"default", "pytorch"}
+            assert case["layer"] in transform["layers"]

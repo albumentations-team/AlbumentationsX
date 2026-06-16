@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import albumentations
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ROOT = REPO_ROOT / "benchmark"
@@ -45,6 +47,7 @@ from benchmarks.test_functional_kernels import (  # noqa: E402
     FUNCTIONAL_GEOMETRY_IMAGE_CASES,
     FUNCTIONAL_PIXEL_CASES,
 )
+from pytorch_benchmarks import test_tensor as pytorch_tensor_benchmarks  # noqa: E402
 
 GEOMETRY_ALIAS_TO_TRANSFORM = {
     "affine": "Affine",
@@ -255,11 +258,89 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
 )
 
 PYTORCH_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
+PYTORCH_IMAGE_CASES = pytorch_tensor_benchmarks.IMAGE_CASES
+PYTORCH_VOLUME_CASES = pytorch_tensor_benchmarks.VOLUME_CASES
+
+DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
+    "Affine": ("bboxes_affine", "keypoints_affine"),
+    "AutoContrast": ("auto_contrast",),
+    "Blur": ("box_blur",),
+    "CenterCrop3D": ("crop3d",),
+    "ChannelShuffle": ("channel_shuffle",),
+    "CoarseDropout3D": ("cutout3d",),
+    "D4": ("d4", "bboxes_d4", "keypoints_d4"),
+    "Defocus": ("defocus",),
+    "Equalize": ("equalize",),
+    "GaussianBlur": ("convolve",),
+    "GlassBlur": ("glass_blur",),
+    "HorizontalFlip": ("hflip",),
+    "HueSaturationValue": ("shift_hsv",),
+    "ImageCompression": ("image_compression",),
+    "ModeFilter": ("mode_filter",),
+    "Normalize": ("normalize_per_image",),
+    "Pad": ("pad_with_params",),
+    "Pad3D": ("pad_3d_with_params",),
+    "Perspective": ("warp_perspective",),
+    "PixelDropout": ("pixel_dropout",),
+    "Posterize": ("posterize",),
+    "RandomGamma": ("gamma_transform",),
+    "Resize": ("resize", "resize_bboxes"),
+    "Solarize": ("solarize",),
+    "ToGray": ("to_gray",),
+    "Transpose": ("transpose",),
+    "VerticalFlip": ("vflip",),
+    "ZoomBlur": ("zoom_blur",),
+}
+
+MEMORY_CASES_BY_TRANSFORM = {
+    "Affine": ("peakmem_affine_large_rgb",),
+    "CopyAndPaste": ("peakmem_copy_paste_small_rgb",),
+    "GaussianBlur": ("peakmem_batch_pipeline_medium_rgb",),
+    "HorizontalFlip": ("peakmem_batch_pipeline_medium_rgb",),
+    "Mosaic": ("peakmem_mosaic_small_rgb",),
+    "Normalize": ("peakmem_normalize_large_rgb",),
+    "PadIfNeeded3D": ("peakmem_volume_pad_medium",),
+    "RandomBrightnessContrast": ("peakmem_batch_pipeline_medium_rgb",),
+    "Resize": ("peakmem_resize_large_rgb",),
+}
+
+ASV_BENCHMARKS = {
+    "annotation_scaling": "benchmarks.test_family_matrix.TimeAnnotationTargets.time_transform",
+    "catalog_smoke": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
+    "direct_kernel_3d": "benchmarks.test_functional_kernels.TimeFunctional3DKernels.time_kernel",
+    "direct_kernel_blur": "benchmarks.test_functional_kernels.TimeFunctionalBlurKernels.time_kernel",
+    "direct_kernel_geometry_annotation": (
+        "benchmarks.test_functional_kernels.TimeFunctionalGeometryAnnotationKernels.time_kernel"
+    ),
+    "direct_kernel_geometry_image": "benchmarks.test_functional_kernels.TimeFunctionalGeometryImageKernels.time_kernel",
+    "direct_kernel_pixel": "benchmarks.test_functional_kernels.TimeFunctionalPixelKernels.time_kernel",
+    "family_matrix_geometry": "benchmarks.test_family_matrix.TimeGeometryFullMatrix.time_transform",
+    "family_matrix_pixel": "benchmarks.test_family_matrix.TimePixelFullMatrix.time_transform",
+    "memory": "benchmarks.test_family_matrix.PeakMemoryHotPaths",
+    "pytorch_tensor_2d": "pytorch_benchmarks.test_tensor.TimeToTensorV2",
+    "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
+    "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
+    "target_matrix": "benchmarks.test_family_matrix.TimeSpecialTargetMatrix.time_transform",
+    "volumetric_matrix": "benchmarks.test_family_matrix.TimeVolumetricFullMatrix.time_transform",
+}
 
 DEEP_COVERAGE_LAYERS = frozenset(
     {
         "alias_coverage",
         "annotation_scaling",
+        "direct_kernel",
+        "family_matrix",
+        "memory",
+        "pytorch_tensor",
+        "reference_data",
+        "target_matrix",
+        "volumetric_matrix",
+    },
+)
+ASV_CASE_REQUIRED_LAYERS = frozenset(
+    {
+        "annotation_scaling",
+        "catalog_smoke",
         "direct_kernel",
         "family_matrix",
         "memory",
@@ -358,10 +439,207 @@ def _expectation_issues(name: str, layers: set[str], expectation: CoverageExpect
     return issues
 
 
+def _jsonable(value: Any) -> Any:
+    """Return a stable JSON-compatible representation for benchmark metadata."""
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, tuple | list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, str | int | float | bool) or value is None:
+        return value
+    return repr(value)
+
+
+def _case_name(case_id: str) -> str:
+    """Return the transform/kernel name prefix from a pipe-delimited ASV case id."""
+    return case_id.split("|", 1)[0]
+
+
+def _add_asv_case(
+    cases: dict[str, list[dict[str, str]]],
+    transform_name: str,
+    *,
+    benchmark: str,
+    case_id: str,
+    config: str = "default",
+    layer: str,
+) -> None:
+    cases[transform_name].append(
+        {
+            "benchmark": benchmark,
+            "case_id": case_id,
+            "config": config,
+            "layer": layer,
+        },
+    )
+
+
+def _add_matrix_cases(
+    cases: dict[str, list[dict[str, str]]],
+    *,
+    benchmark: str,
+    case_ids: Iterable[str],
+    layer: str,
+    name_map: Mapping[str, str],
+) -> None:
+    for case_id in case_ids:
+        _add_asv_case(
+            cases,
+            name_map[_case_name(case_id)],
+            benchmark=benchmark,
+            case_id=case_id,
+            layer=layer,
+        )
+
+
+def _add_direct_kernel_cases(cases: dict[str, list[dict[str, str]]]) -> None:
+    kernel_cases = {
+        ASV_BENCHMARKS["direct_kernel_3d"]: FUNCTIONAL_3D_CASES,
+        ASV_BENCHMARKS["direct_kernel_blur"]: FUNCTIONAL_BLUR_CASES,
+        ASV_BENCHMARKS["direct_kernel_geometry_annotation"]: FUNCTIONAL_GEOMETRY_ANNOTATION_CASES,
+        ASV_BENCHMARKS["direct_kernel_geometry_image"]: FUNCTIONAL_GEOMETRY_IMAGE_CASES,
+        ASV_BENCHMARKS["direct_kernel_pixel"]: FUNCTIONAL_PIXEL_CASES,
+    }
+    cases_by_prefix: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for benchmark, case_ids in kernel_cases.items():
+        for case_id in case_ids:
+            cases_by_prefix[_case_name(case_id)].append((benchmark, case_id))
+    for transform_name, prefixes in DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM.items():
+        for prefix in prefixes:
+            for benchmark, case_id in cases_by_prefix[prefix]:
+                _add_asv_case(
+                    cases,
+                    transform_name,
+                    benchmark=benchmark,
+                    case_id=case_id,
+                    layer="direct_kernel",
+                )
+
+
+def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
+    cases: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for name in asv_case_ids():
+        _add_asv_case(
+            cases,
+            name,
+            benchmark=ASV_BENCHMARKS["catalog_smoke"],
+            case_id=name,
+            layer="catalog_smoke",
+        )
+
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["family_matrix_geometry"],
+        case_ids=GEOMETRY_CASES,
+        layer="family_matrix",
+        name_map=GEOMETRY_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["family_matrix_pixel"],
+        case_ids=PIXEL_CASES,
+        layer="family_matrix",
+        name_map=PIXEL_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["annotation_scaling"],
+        case_ids=ANNOTATION_CASES,
+        layer="annotation_scaling",
+        name_map=ANNOTATION_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["target_matrix"],
+        case_ids=SPECIAL_TARGET_CASES,
+        layer="target_matrix",
+        name_map=SPECIAL_TARGET_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["volumetric_matrix"],
+        case_ids=VOLUME_CASES,
+        layer="volumetric_matrix",
+        name_map=VOLUME_ALIAS_TO_TRANSFORM,
+    )
+    for case_id in REFERENCE_CASES:
+        _add_asv_case(
+            cases,
+            _case_name(case_id),
+            benchmark=ASV_BENCHMARKS["reference_data"],
+            case_id=case_id,
+            layer="reference_data",
+        )
+    _add_direct_kernel_cases(cases)
+    for transform_name, case_ids in MEMORY_CASES_BY_TRANSFORM.items():
+        for case_id in case_ids:
+            _add_asv_case(
+                cases,
+                transform_name,
+                benchmark=f"{ASV_BENCHMARKS['memory']}.{case_id}",
+                case_id=case_id,
+                layer="memory",
+            )
+    for case_id in PYTORCH_IMAGE_CASES:
+        _add_asv_case(
+            cases,
+            "ToTensorV2",
+            benchmark=ASV_BENCHMARKS["pytorch_tensor_2d"],
+            case_id=case_id,
+            config="pytorch",
+            layer="pytorch_tensor",
+        )
+    for case_id in PYTORCH_VOLUME_CASES:
+        _add_asv_case(
+            cases,
+            "ToTensor3D",
+            benchmark=ASV_BENCHMARKS["pytorch_tensor_3d"],
+            case_id=case_id,
+            config="pytorch",
+            layer="pytorch_tensor",
+        )
+    return {
+        name: sorted(items, key=lambda item: (item["layer"], item["benchmark"], item["case_id"]))
+        for name, items in cases.items()
+    }
+
+
+def _family_labels(name: str, layers: Iterable[str]) -> list[str]:
+    families = set(layers) - {"catalog_smoke", "optional"}
+    if name in _mapped_names(GEOMETRY_ALIAS_TO_TRANSFORM, GEOMETRY_TRANSFORMS):
+        families.add("geometry")
+    if name in _mapped_names(PIXEL_ALIAS_TO_TRANSFORM, PIXEL_TRANSFORMS):
+        families.add("pixel")
+    if name in ALIAS_COVERAGE_TRANSFORMS:
+        families.add("alias")
+    return sorted(families)
+
+
+def _transform_class_metadata(name: str) -> dict[str, str]:
+    transform_cls = getattr(albumentations, name)
+    return {
+        "module": transform_cls.__module__,
+        "public_api": f"albumentations.{name}",
+        "qualname": transform_cls.__qualname__,
+    }
+
+
+def _benchmark_spec_metadata(spec: Any) -> dict[str, Any]:
+    return {
+        "constructor_params": _jsonable(spec.params),
+        "default_channels": spec.channels,
+        "default_size": spec.size_name,
+        "route": spec.route,
+    }
+
+
 def coverage_details() -> dict[str, Any]:
     """Return per-transform benchmark coverage metadata."""
     specs = benchmark_specs()
     layer_sets = _coverage_layer_sets()
+    asv_cases = _benchmark_case_index()
     transforms: list[dict[str, Any]] = []
 
     for name, spec in specs.items():
@@ -376,7 +654,10 @@ def coverage_details() -> dict[str, Any]:
         deep_layers = [layer for layer in layers if layer in DEEP_COVERAGE_LAYERS]
         transforms.append(
             {
+                "asv_cases": asv_cases.get(name, []),
                 "benchmark": spec.benchmark,
+                "benchmark_spec": _benchmark_spec_metadata(spec),
+                "class": _transform_class_metadata(name),
                 "covered_by": ALIAS_COVERAGE_TRANSFORMS.get(name, ""),
                 "coverage_contract": {
                     "issues": contract_issues,
@@ -385,6 +666,7 @@ def coverage_details() -> dict[str, Any]:
                     "required_layers": sorted(expectation.required_layers),
                     "status": "ok" if not contract_issues else "missing",
                 },
+                "families": _family_labels(name, layers),
                 "layers": layers,
                 "name": name,
                 "optional_reason": spec.reason,
@@ -419,6 +701,7 @@ def coverage_details() -> dict[str, Any]:
         "kind": "benchmark-coverage-detail",
         "layer_counts": dict(sorted(layer_counts.items())),
         "public_transforms": len(transforms),
+        "schema_version": 2,
         "smoke_only_transforms": smoke_only,
         "summary": {
             "contract_failures": len(contract_failures),
@@ -516,12 +799,25 @@ def _validate_coverage_contracts() -> list[str]:
     ]
 
 
+def _validate_asv_case_metadata() -> list[str]:
+    details = coverage_details()
+    errors: list[str] = []
+    for item in details["transforms"]:
+        case_layers = {case["layer"] for case in item["asv_cases"]}
+        missing_case_layers = sorted((set(item["layers"]) & ASV_CASE_REQUIRED_LAYERS) - case_layers)
+        errors.extend(
+            f"{item['name']}: coverage layer '{layer}' has no ASV case metadata" for layer in missing_case_layers
+        )
+    return errors
+
+
 def _validate_registry() -> list[str]:
     specs = benchmark_specs()
     errors = _validate_public_registry(set(public_transform_names()), set(specs))
     errors.extend(_validate_transform_construction(specs))
     errors.extend(_validate_coverage_layers(set(specs)))
     errors.extend(_validate_coverage_contracts())
+    errors.extend(_validate_asv_case_metadata())
     errors.extend(
         _validate_case_groups(
             {

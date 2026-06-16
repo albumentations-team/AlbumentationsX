@@ -34,6 +34,17 @@ Inspect per-transform coverage depth with:
 uv run python -m tools.benchmark_coverage details --output benchmark-coverage-detail.json
 ```
 
+The detail artifact is the auditable transform-by-transform evidence file. For
+each public transform it records:
+
+- public class metadata: module, qualname, and `albumentations.<Transform>`
+  export path
+- benchmark route and constructor parameters used by the catalog smoke path
+- coverage layers and required coverage contract
+- family labels such as geometry, pixel, reference-data, volumetric, direct
+  kernel, memory, alias, or optional PyTorch
+- exact ASV benchmark class, config, and case IDs that measure the transform
+
 Validate coverage policy and benchmark stability classes with:
 
 ```bash
@@ -273,6 +284,9 @@ following are true:
   explicitly accounted as optional with a dedicated benchmark lane.
 - Every transform's benchmark coverage contract is satisfied in
   `benchmark-coverage-detail.json`.
+- `benchmark-coverage-detail.json` exposes class metadata, benchmark route,
+  constructor parameters, family labels, and ASV case IDs for each public
+  transform.
 - The per-transform detail artifact is published and has zero smoke-only
   runnable transforms.
 - Every normal image transform has transform-level size/channel/dtype matrix

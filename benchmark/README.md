@@ -90,6 +90,12 @@ Emit the per-transform detail artifact with:
 uv run python -m tools.benchmark_coverage details --output benchmark-coverage-detail.json
 ```
 
+The detail artifact is intended for review, not only for automation. Each
+record includes the public class module/qualname, catalog benchmark route,
+constructor parameters, family labels, required coverage contract, and exact
+ASV case IDs for the transform's smoke, family-matrix, direct-kernel, memory,
+reference-data, volumetric, target, or optional PyTorch evidence.
+
 Summarize ASV before/after comparison text for release reports with:
 
 ```bash

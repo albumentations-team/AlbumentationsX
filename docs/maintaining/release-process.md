@@ -34,9 +34,10 @@ Before a release is published, all of the following must be true:
    - golden regression vector verification
    - property tests with the release profile
    - security workflow checks
-   - performance workflow completed, including benchmark coverage detail,
-     performance-budget artifacts, and optional PyTorch tensor benchmark
-     evidence, with any material regressions documented
+   - performance workflow completed, including benchmark coverage detail and
+     performance-budget artifacts
+   - optional PyTorch tensor benchmark evidence from the PyTorch Tensor
+     Performance workflow, with any material regressions documented
 
 Performance coverage expectations and regression triage rules are maintained in
 `docs/maintaining/performance-coverage.md`.

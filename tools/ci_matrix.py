@@ -45,6 +45,7 @@ REPORT_TEMPLATE = REPO_ROOT / "docs" / "maintaining" / "correctness-report-templ
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 NIGHTLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "nightly.yml"
 PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "performance.yml"
+PYTORCH_PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pytorch-performance.yml"
 RELEASE_CANDIDATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-candidate.yml"
 SECURITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "security.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
@@ -53,6 +54,7 @@ WORKFLOWS = (
     CI_WORKFLOW,
     NIGHTLY_WORKFLOW,
     PERFORMANCE_WORKFLOW,
+    PYTORCH_PERFORMANCE_WORKFLOW,
     RELEASE_CANDIDATE_WORKFLOW,
     SECURITY_WORKFLOW,
     RELEASE_WORKFLOW,
@@ -367,7 +369,6 @@ def _check_performance_workflow() -> list[str]:
             "tools.benchmark_coverage summary",
             "tools.benchmark_coverage details",
             "asv --config asv.conf.json check --verbose",
-            "asv --config asv-pytorch.conf.json check --verbose",
             "tools/asv_summary.py",
             "tools/performance_budget.py",
             "tools/select_benchmark_filters.py",
@@ -376,9 +377,24 @@ def _check_performance_workflow() -> list[str]:
             "benchmark-evidence/",
             "benchmark-filter.txt",
             "changed-files.txt",
-            "pytorch-benchmark-evidence/",
         ),
         "performance evidence gate",
+    )
+
+
+def _check_pytorch_performance_workflow() -> list[str]:
+    return _check_text_mentions(
+        PYTORCH_PERFORMANCE_WORKFLOW,
+        (
+            "schedule:",
+            "workflow_dispatch:",
+            "continue-on-error: true",
+            "uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision",
+            "asv --config asv-pytorch.conf.json check --verbose",
+            "asv --config asv-pytorch.conf.json run",
+            "pytorch-benchmark-evidence/",
+        ),
+        "PyTorch tensor performance evidence gate",
     )
 
 
@@ -443,6 +459,7 @@ def _check_workflows() -> list[str]:
         *_check_nightly_workflow(),
         *_check_release_candidate_workflow(),
         *_check_performance_workflow(),
+        *_check_pytorch_performance_workflow(),
         *_check_security_workflow(),
         *_check_release_workflow(),
     ]

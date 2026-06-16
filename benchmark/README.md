@@ -112,9 +112,14 @@ The detail artifact also includes `scenario_axis_contracts`, which records
 covered axes, intentionally skipped standard axes, and the policy reason for
 each benchmark layer. Parameter-sensitivity cases record the exact constructor
 values used for each stress scenario.
+Each transform also has a `performance_contract` section for batch,
+annotation, direct-kernel, parameter-sensitivity, and memory expectations. This
+section records required benchmark layers, directly declared implementation
+methods, and the reason a dedicated layer is covered, advisory, tracked for
+audit, optional, or not required.
 The diff artifact is intended for PR and release review. It reports added or
 removed public transforms and coverage changes such as layer, ASV case, or
-axis-contract drift.
+axis-contract, performance-contract, or benchmark-policy drift.
 
 Summarize ASV before/after comparison text for release reports with:
 

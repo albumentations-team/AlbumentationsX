@@ -60,6 +60,10 @@ each public transform it records:
   and skip reasons
 - coverage diffs for public transform additions, removals, layer drift, ASV
   case drift, and axis-contract drift
+- per-transform `performance_contract` entries for batch, annotation,
+  direct-kernel, parameter-sensitivity, and memory expectations; each entry
+  records required layers, declared implementation methods, status, and the
+  reason a dedicated benchmark layer is or is not required
 
 Validate coverage policy and benchmark stability classes with:
 
@@ -188,6 +192,13 @@ This layer covers:
 - batch sizes `4` and `8` for image/mask routes
 - batch sizes `2` and `4` for volume routes
 
+The benchmark detail artifact also inventories transforms that declare custom
+batch methods but are not yet promoted to dedicated batch-matrix cases. Those
+records use `performance_contract.batch.status` values such as
+`tracked_without_dedicated_matrix`, with a reason explaining the current
+coverage path. This is intentional audit evidence, not an excuse to silently
+ignore custom batch implementations.
+
 ### L4: Target Scaling
 
 Annotation and metadata scaling must be measured separately from simple image
@@ -257,6 +268,16 @@ Initial benchmark classes:
 Advisory does not mean optional. It means the evidence must be reviewed, but
 shared-runner noise or optional dependency setup should not automatically block
 a release until scheduled history proves the benchmark is stable enough.
+
+Pull-request performance artifacts include a benchmark coverage diff when the
+baseline ref already contains the coverage tooling. Bootstrap PRs that introduce
+the tooling emit an explicit unavailable diff artifact instead of silently
+skipping the comparison.
+
+Release-candidate verification has a dedicated Ubuntu performance comparison
+job. It runs ASV `continuous` against the configured baseline, writes raw ASV
+output, summarizes the comparison, and runs the performance budget in strict
+mode with `--require-comparison --fail-on-release-blockers`.
 
 ## CI And Release Evidence
 

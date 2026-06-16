@@ -15,13 +15,15 @@ def _coverage_for(transform_name: str) -> dict[str, Any]:
 def test_benchmark_coverage_details_account_for_every_public_transform() -> None:
     details = coverage_details()
 
-    assert details["schema_version"] == 4
+    assert details["schema_version"] == 5
     assert details["public_transforms"] == len(details["transforms"])
     assert (
         details["layer_counts"]["catalog_smoke"] + details["layer_counts"]["optional"] == details["public_transforms"]
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
+    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 11
+    assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 6
 
 
 def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
@@ -54,6 +56,12 @@ def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
     assert resize["scenario_contract"]["batch_sizes"] == [4, 8]
     assert resize["scenario_axis_contracts"]["family_matrix"]["skipped"] == {}
     assert resize["scenario_axis_contracts"]["batch_matrix"]["skipped"] == {"sizes": ["large"]}
+    assert resize["performance_contract"]["annotation"]["status"] == "covered"
+    assert resize["performance_contract"]["batch"]["status"] == "covered"
+    assert resize["performance_contract"]["direct_kernel"]["status"] == "covered"
+    assert resize["performance_contract"]["memory"]["status"] == "covered_advisory"
+    assert resize["performance_contract"]["parameter_sensitivity"]["status"] == "not_required"
+    assert resize["performance_contract"]["batch"]["required_layers"] == ["batch_matrix"]
     assert {"bboxes", "image", "images", "masks"}.issubset(resize["scenario_contract"]["targets"])
     assert "peakmem_resize_large_rgb" in resize["scenario_contract"]["memory_cases"]
     assert {"geometry_annotation", "geometry_image"}.issubset(
@@ -73,6 +81,13 @@ def test_benchmark_coverage_details_map_batch_matrix_to_public_transforms() -> N
 
     assert horizontal_flip["smoke_only"] is False
     assert "batch_matrix" in horizontal_flip["layers"]
+    assert horizontal_flip["performance_contract"]["batch"]["status"] == "covered"
+    assert set(horizontal_flip["performance_contract"]["batch"]["implementation_methods"]) == {
+        "apply_to_images",
+        "apply_to_masks",
+        "apply_to_masks3d",
+        "apply_to_volumes",
+    }
     assert {"images", "masks", "masks3d", "volumes"}.issubset(horizontal_flip["scenario_contract"]["targets"])
     assert {
         ("batch_matrix", "horizontal_flip|images|small|1|uint8|4"),
@@ -86,6 +101,7 @@ def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transfor
     superpixels = _coverage_for("Superpixels")
 
     assert "parameter_sensitivity" in blur["layers"]
+    assert blur["performance_contract"]["parameter_sensitivity"]["status"] == "covered"
     assert set(blur["scenario_contract"]["parameter_scenarios"]) == {"kernel_3", "kernel_15"}
     assert blur["scenario_contract"]["sizes"] == ["small", "medium", "large"]
     assert blur["scenario_contract"]["channels"] == [1, 3, 5]
@@ -103,6 +119,7 @@ def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transfor
         if case["layer"] == "parameter_sensitivity"
     )
     assert "parameter_sensitivity" in superpixels["layers"]
+    assert superpixels["performance_contract"]["parameter_sensitivity"]["status"] == "covered"
     assert set(superpixels["scenario_contract"]["parameter_scenarios"]) == {"segments_32", "segments_128"}
     assert superpixels["scenario_contract"]["dtypes"] == ["uint8"]
     assert superpixels["scenario_axis_contracts"]["family_matrix"]["skipped"] == {
@@ -172,6 +189,7 @@ def test_benchmark_coverage_details_explain_warning_aliases() -> None:
     ]
     assert shift_scale_rotate["scenario_contract"]["case_count"] == 1
     assert shift_scale_rotate["scenario_contract"]["targets"] == ["image"]
+    assert shift_scale_rotate["performance_contract"]["direct_kernel"]["status"] == "not_required"
 
 
 def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
@@ -187,6 +205,7 @@ def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     assert to_tensor["families"] == ["pytorch_tensor"]
     assert to_tensor["coverage_contract"]["status"] == "ok"
     assert to_tensor["coverage_contract"]["required_layers"] == ["optional", "pytorch_tensor"]
+    assert to_tensor["performance_contract"]["batch"]["status"] == "covered_optional"
     assert "PyTorch" in str(to_tensor["optional_reason"])
     assert {
         ("pytorch", "pytorch_tensor", "small|1|uint8"),
@@ -208,6 +227,17 @@ def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_lay
         assert transform["scenario_contract"]["case_count"] == len(transform["asv_cases"])
         assert set(transform["scenario_contract"]["layers"]).issubset(transform["layers"])
         assert set(transform["scenario_axis_contracts"]).issubset(transform["layers"])
+        assert set(transform["performance_contract"]) == {
+            "annotation",
+            "batch",
+            "direct_kernel",
+            "memory",
+            "parameter_sensitivity",
+        }
+        for axis_contract in transform["performance_contract"].values():
+            assert axis_contract["reason"]
+            assert isinstance(axis_contract["implementation_methods"], list)
+            assert set(axis_contract["required_layers"]).issubset(transform["layers"])
         for axis_contract in transform["scenario_axis_contracts"].values():
             if axis_contract["skipped"]:
                 assert axis_contract["skip_reason"]
@@ -219,6 +249,26 @@ def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_lay
             assert case["scenario"]["layer"] == case["layer"]
             assert case["scenario"]["scope"]
             assert isinstance(case["scenario"]["targets"], list)
+
+
+def test_benchmark_coverage_details_track_batch_and_annotation_audit_paths() -> None:
+    auto_contrast = _coverage_for("AutoContrast")
+    crop_and_pad = _coverage_for("CropAndPad")
+
+    assert auto_contrast["performance_contract"]["batch"] == {
+        "implementation_methods": ["apply_to_images", "apply_to_volumes"],
+        "reason": (
+            "custom batch methods are inventoried for review; current release-critical evidence comes from "
+            "catalog smoke, family matrices, direct kernels, and core batch dispatch until this route is promoted"
+        ),
+        "required_layers": [],
+        "status": "tracked_without_dedicated_matrix",
+    }
+    assert crop_and_pad["performance_contract"]["annotation"]["status"] == "tracked_without_dedicated_scaling"
+    assert crop_and_pad["performance_contract"]["annotation"]["implementation_methods"] == [
+        "apply_to_bboxes",
+        "apply_to_keypoints",
+    ]
 
 
 def test_benchmark_coverage_diff_reports_catalog_and_case_drift() -> None:

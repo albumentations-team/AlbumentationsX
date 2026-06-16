@@ -106,6 +106,7 @@ jobs:
         uv run python tools/performance_budget.py summarize \
           --coverage-summary dist/evidence/benchmark-coverage-release.json \
           --coverage-detail dist/evidence/benchmark-coverage-detail-release.json \
+          --fail-on-release-blockers \
           --output dist/evidence/benchmark-performance-budget-release.json
 
     - name: Export locked runtime dependencies

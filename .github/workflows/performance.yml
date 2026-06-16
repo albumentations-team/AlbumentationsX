@@ -61,6 +61,63 @@ jobs:
           --output benchmark-evidence/benchmark-coverage.json
         uv run --no-sync python -m tools.benchmark_coverage details \
           --output benchmark-evidence/benchmark-coverage-detail.json
+    - name: Compare benchmark coverage with baseline
+      if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '')
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        write_unavailable_diff() {
+          python - "$1" "$2" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        output = Path(sys.argv[1])
+        reason = sys.argv[2]
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                {
+                    "kind": "benchmark-coverage-diff",
+                    "reason": reason,
+                    "schema_version": 1,
+                    "summary": {"status": "unavailable"},
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+        )
+        PY
+        }
+
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          BASELINE_REF="$PR_BASE_SHA"
+        else
+          BASELINE_REF="$INPUT_BASELINE_REF"
+        fi
+
+        if git cat-file -e "$BASELINE_REF:tools/benchmark_coverage.py"; then
+          BASE_WORKTREE="$RUNNER_TEMP/benchmark-coverage-base"
+          git worktree add --detach "$BASE_WORKTREE" "$BASELINE_REF"
+          if PYTHONPATH="$BASE_WORKTREE:$BASE_WORKTREE/benchmark" python "$BASE_WORKTREE/tools/benchmark_coverage.py" details \
+            --output "$GITHUB_WORKSPACE/benchmark-evidence/benchmark-coverage-detail-base.json"; then
+            uv run --no-sync python -m tools.benchmark_coverage diff \
+              --base-detail benchmark-evidence/benchmark-coverage-detail-base.json \
+              --output benchmark-evidence/benchmark-coverage-diff.json
+          else
+            write_unavailable_diff \
+              benchmark-evidence/benchmark-coverage-diff.json \
+              "baseline benchmark coverage detail could not be generated"
+          fi
+          git worktree remove --force "$BASE_WORKTREE"
+        else
+          write_unavailable_diff \
+            benchmark-evidence/benchmark-coverage-diff.json \
+            "baseline ref does not include tools/benchmark_coverage.py"
+        fi
     - name: Register ASV machine profile
       working-directory: benchmark
       run: uv tool run --from asv asv --config asv.conf.json machine --yes
@@ -134,6 +191,9 @@ jobs:
         fi
     - name: Classify performance budget evidence
       if: always()
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
       run: |
         BUDGET_COMMAND=(
           uv run --no-sync python tools/performance_budget.py summarize
@@ -143,6 +203,9 @@ jobs:
         )
         if [ -f benchmark-evidence/benchmark-asv-summary.json ]; then
           BUDGET_COMMAND+=(--asv-summary benchmark-evidence/benchmark-asv-summary.json)
+        fi
+        if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_BASELINE_REF" ]; then
+          BUDGET_COMMAND+=(--require-comparison --fail-on-release-blockers)
         fi
         "${BUDGET_COMMAND[@]}"
     - name: Run scheduled benchmark evidence

@@ -64,6 +64,17 @@ from benchmarks.test_parameter_sensitivity import (  # noqa: E402
 )
 from pytorch_benchmarks import test_tensor as pytorch_tensor_benchmarks  # noqa: E402
 
+BATCH_METHOD_NAMES = (
+    "apply_to_images",
+    "apply_to_masks",
+    "apply_to_volumes",
+    "apply_to_masks3d",
+)
+ANNOTATION_METHOD_NAMES = (
+    "apply_to_bboxes",
+    "apply_to_keypoints",
+)
+
 GEOMETRY_ALIAS_TO_TRANSFORM = {
     "affine": "Affine",
     "center_crop": "CenterCrop",
@@ -1111,6 +1122,12 @@ def _transform_class_metadata(name: str) -> dict[str, str]:
     }
 
 
+def _declared_transform_methods(name: str, method_names: Iterable[str]) -> list[str]:
+    """Return methods declared directly on a public transform class."""
+    transform_cls = getattr(albumentations, name)
+    return sorted(method_name for method_name in method_names if method_name in transform_cls.__dict__)
+
+
 def _benchmark_spec_metadata(spec: Any) -> dict[str, Any]:
     return {
         "constructor_params": _jsonable(spec.params),
@@ -1118,6 +1135,179 @@ def _benchmark_spec_metadata(spec: Any) -> dict[str, Any]:
         "default_size": spec.size_name,
         "route": spec.route,
     }
+
+
+def _performance_contract_entry(
+    *,
+    reason: str,
+    required_layers: Iterable[str] = (),
+    status: str,
+    implementation_methods: Iterable[str] = (),
+) -> dict[str, Any]:
+    """Return a stable performance-contract entry for one behavior axis."""
+    return {
+        "implementation_methods": sorted(implementation_methods),
+        "reason": reason,
+        "required_layers": sorted(required_layers),
+        "status": status,
+    }
+
+
+def _batch_performance_contract(name: str, layers: set[str]) -> dict[str, Any]:
+    """Return batch-route performance expectations for one transform."""
+    methods = _declared_transform_methods(name, BATCH_METHOD_NAMES)
+    if name in PYTORCH_TENSOR_TRANSFORMS:
+        return _performance_contract_entry(
+            implementation_methods=methods,
+            reason="optional tensor batch routes are measured in the dedicated PyTorch benchmark lane",
+            required_layers=("pytorch_tensor",),
+            status="covered_optional",
+        )
+    if "batch_matrix" in layers:
+        return _performance_contract_entry(
+            implementation_methods=methods,
+            reason="batch-sensitive public routes have dedicated image, mask, or volume batch matrix cases",
+            required_layers=("batch_matrix",),
+            status="covered",
+        )
+    if methods:
+        return _performance_contract_entry(
+            implementation_methods=methods,
+            reason=(
+                "custom batch methods are inventoried for review; current release-critical evidence comes from "
+                "catalog smoke, family matrices, direct kernels, and core batch dispatch until this route is promoted"
+            ),
+            status="tracked_without_dedicated_matrix",
+        )
+    return _performance_contract_entry(
+        reason="transform does not declare a custom batch route that needs dedicated batch scaling evidence",
+        status="not_required",
+    )
+
+
+def _annotation_performance_contract(name: str, route: str, layers: set[str]) -> dict[str, Any]:
+    """Return annotation-scaling performance expectations for one transform."""
+    methods = _declared_transform_methods(name, ANNOTATION_METHOD_NAMES)
+    if "annotation_scaling" in layers:
+        return _performance_contract_entry(
+            implementation_methods=methods,
+            reason="bbox, OBB, keypoint, and label-field scaling is measured by annotation matrix cases",
+            required_layers=("annotation_scaling",),
+            status="covered",
+        )
+    if "target_matrix" in layers:
+        return _performance_contract_entry(
+            implementation_methods=methods,
+            reason="target-specialized crop/dropout route is measured by the special-target matrix",
+            required_layers=("target_matrix",),
+            status="covered_special_target",
+        )
+    if route in {"bboxes", "crop_bbox", "mask"}:
+        return _performance_contract_entry(
+            implementation_methods=methods,
+            reason="target-specialized route must be covered by annotation scaling or target matrix evidence",
+            required_layers=("annotation_scaling", "target_matrix"),
+            status="missing_required_target_matrix",
+        )
+    if methods:
+        return _performance_contract_entry(
+            implementation_methods=methods,
+            reason=(
+                "annotation methods are inventoried for audit; representative scaling is covered by direct "
+                "annotation kernels, target matrices, or core processor benchmarks where applicable"
+            ),
+            status="tracked_without_dedicated_scaling",
+        )
+    return _performance_contract_entry(
+        reason="transform does not declare bbox or keypoint mutation methods",
+        status="not_required",
+    )
+
+
+def _direct_kernel_performance_contract(name: str, layers: set[str]) -> dict[str, Any]:
+    """Return direct functional-kernel expectations for one transform."""
+    if "direct_kernel" in layers:
+        return _performance_contract_entry(
+            reason="shared hot functional kernels are benchmarked directly outside Compose",
+            required_layers=("direct_kernel",),
+            status="covered",
+        )
+    if "family_matrix" in layers:
+        return _performance_contract_entry(
+            reason="transform-level Compose matrix is the primary evidence; no dedicated shared kernel mapping exists",
+            status="covered_by_compose_matrix",
+        )
+    return _performance_contract_entry(
+        reason="no transform-specific direct functional-kernel benchmark is required by the current contract",
+        status="not_required",
+    )
+
+
+def _parameter_performance_contract(name: str, layers: set[str]) -> dict[str, Any]:
+    """Return parameter-sensitivity performance expectations for one transform."""
+    if "parameter_sensitivity" in layers:
+        return _performance_contract_entry(
+            reason="runtime-sensitive constructor parameters have fixed typical and stress benchmark scenarios",
+            required_layers=("parameter_sensitivity",),
+            status="covered",
+        )
+    return _performance_contract_entry(
+        reason="no nonlinear or parameter-dominated runtime axis is required by the current benchmark contract",
+        status="not_required",
+    )
+
+
+def _memory_performance_contract(name: str, layers: set[str]) -> dict[str, Any]:
+    """Return peak-memory performance expectations for one transform."""
+    if "memory" in layers:
+        return _performance_contract_entry(
+            reason="allocation-heavy path has a selected peak-memory benchmark case",
+            required_layers=("memory",),
+            status="covered_advisory",
+        )
+    return _performance_contract_entry(
+        reason="no dedicated peak-memory case is required by the current allocation-risk contract",
+        status="not_required",
+    )
+
+
+def _performance_contract(name: str, route: str, layers: Iterable[str]) -> dict[str, Any]:
+    """Return behavior-specific performance expectations for one transform."""
+    layer_set = set(layers)
+    return {
+        "annotation": _annotation_performance_contract(name, route, layer_set),
+        "batch": _batch_performance_contract(name, layer_set),
+        "direct_kernel": _direct_kernel_performance_contract(name, layer_set),
+        "memory": _memory_performance_contract(name, layer_set),
+        "parameter_sensitivity": _parameter_performance_contract(name, layer_set),
+    }
+
+
+def _performance_contract_issues(layers: set[str], contract: Mapping[str, Any]) -> list[str]:
+    """Return unmet behavior-specific performance-contract messages."""
+    issues: list[str] = []
+    for axis_name, axis_contract in contract.items():
+        required_layers = set(axis_contract["required_layers"])
+        if not required_layers:
+            continue
+        if axis_contract["status"].startswith("missing_"):
+            missing = sorted(required_layers - layers)
+        else:
+            missing = sorted(required_layers - layers)
+        if missing:
+            issues.append(
+                f"{axis_name} performance contract missing required layer(s): {', '.join(missing)}",
+            )
+    return issues
+
+
+def _performance_contract_status_counts(transforms: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, int]]:
+    """Return status counts for each behavior-specific performance axis."""
+    counters: dict[str, Counter[str]] = defaultdict(Counter)
+    for transform in transforms:
+        for axis_name, axis_contract in transform["performance_contract"].items():
+            counters[axis_name][axis_contract["status"]] += 1
+    return {axis_name: dict(sorted(counter.items())) for axis_name, counter in sorted(counters.items())}
 
 
 def coverage_details() -> dict[str, Any]:
@@ -1136,7 +1326,11 @@ def coverage_details() -> dict[str, Any]:
         transform_cases = _annotate_asv_cases(asv_cases.get(name, []), spec.route, name)
         layer_set = set(layers)
         expectation = _coverage_expectation(name, spec.route)
-        contract_issues = _expectation_issues(name, layer_set, expectation)
+        performance_contract = _performance_contract(name, spec.route, layers)
+        contract_issues = [
+            *_expectation_issues(name, layer_set, expectation),
+            *_performance_contract_issues(layer_set, performance_contract),
+        ]
         deep_layers = [layer for layer in layers if layer in DEEP_COVERAGE_LAYERS]
         transforms.append(
             {
@@ -1156,6 +1350,7 @@ def coverage_details() -> dict[str, Any]:
                 "layers": layers,
                 "name": name,
                 "optional_reason": spec.reason,
+                "performance_contract": performance_contract,
                 "route": spec.route,
                 "scenario_axis_contracts": _scenario_axis_contracts(transform_cases),
                 "scenario_contract": _scenario_contract(transform_cases),
@@ -1191,12 +1386,13 @@ def coverage_details() -> dict[str, Any]:
         "kind": "benchmark-coverage-detail",
         "layer_counts": dict(sorted(layer_counts.items())),
         "public_transforms": len(transforms),
-        "schema_version": 4,
+        "schema_version": 5,
         "smoke_only_transforms": smoke_only,
         "summary": {
             "contract_failures": len(contract_failures),
             "deep_coverage_transforms": len(transforms) - len(smoke_only) - layer_counts["optional"],
             "optional_transforms": layer_counts["optional"],
+            "performance_contract_status_counts": _performance_contract_status_counts(transforms),
             "smoke_only_transforms": len(smoke_only),
         },
         "transforms": transforms,
@@ -1238,6 +1434,7 @@ def _spec_summary() -> dict[str, Any]:
         "registered_specs": len(specs),
         "asv_cases": len(asv_case_ids()),
         "optional_cases": optional,
+        "performance_contract_status_counts": details["summary"]["performance_contract_status_counts"],
         "route_counts": dict(sorted(route_counts.items())),
         "runnable_transforms": runnable,
     }
@@ -1451,7 +1648,7 @@ def _transform_summary(item: Mapping[str, Any]) -> dict[str, Any]:
 def _changed_transform(base_item: Mapping[str, Any], current_item: Mapping[str, Any]) -> dict[str, Any] | None:
     """Return a compact diff for one transform when benchmark coverage changed."""
     changes: dict[str, Any] = {}
-    for field in ("route", "layers", "scenario_axis_contracts"):
+    for field in ("route", "layers", "performance_contract", "scenario_axis_contracts"):
         if base_item.get(field) != current_item.get(field):
             changes[field] = {"base": base_item.get(field), "current": current_item.get(field)}
 

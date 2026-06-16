@@ -59,6 +59,13 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
   uv run python tools/quality_gate.py fast
   ```
 
+- Changes to support metadata, CI workflows, release docs, or correctness-report
+  templates must keep the machine-readable support matrix in sync:
+
+  ```bash
+  uv run python -m tools.ci_matrix check
+  ```
+
 ### Python Version and Type Hints
 
 - Use Python 3.10+ features and syntax

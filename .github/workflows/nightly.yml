@@ -1,0 +1,143 @@
+name: Nightly Verification
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  lower_bound_dependencies:
+    name: Lower-bound dependency check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - name: Install uv and Python 3.10
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: "3.10"
+        activate-environment: true
+    - name: Install declared minimum runtime dependencies
+      run: >
+        uv pip install -e .
+        numpy==1.24.4
+        scipy==1.10.1
+        pydantic==2.12.4
+        albucore==0.1.6
+        opencv-python-headless==4.13.0.92
+        pytest
+    - name: Prepare nightly evidence directory
+      run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
+    - name: Collect lower-bound environment evidence
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output nightly-evidence/environment-lower-bound.json
+        --command "lower-bound dependency pytest"
+    - name: Run representative lower-bound tests
+      run: >
+        uv run pytest -q
+        tests/test_core.py::test_compose
+        tests/regression
+        --junitxml=nightly-evidence/junit-lower-bound.xml
+    - name: Summarize lower-bound pytest results
+      if: always()
+      run: >
+        uv run python tools/pytest_summary.py
+        --junit nightly-evidence/junit-lower-bound.xml
+        --output nightly-evidence/pytest-summary-lower-bound.json
+        --allow-incomplete
+    - name: Upload lower-bound evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: lower-bound-evidence
+        path: nightly-evidence/
+        if-no-files-found: ignore
+
+  property_and_regression:
+    name: Property and regression verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - name: Install uv and Python 3.14
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: "3.14"
+        activate-environment: true
+    - name: Install dependencies
+      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+    - name: Prepare nightly evidence directory
+      run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
+    - name: Verify golden vectors
+      run: uv run python tools/verify_regression_vectors.py --all
+    - name: Run property and regression tests
+      run: >
+        uv run pytest -q tests/regression tests/property
+        --hypothesis-profile=ci-nightly
+        --junitxml=nightly-evidence/junit-property-regression.xml
+    - name: Collect property environment evidence
+      if: always()
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output nightly-evidence/environment-property-regression.json
+        --command "pytest tests/regression tests/property --hypothesis-profile=ci-nightly"
+    - name: Summarize property pytest results
+      if: always()
+      run: >
+        uv run python tools/pytest_summary.py
+        --junit nightly-evidence/junit-property-regression.xml
+        --output nightly-evidence/pytest-summary-property-regression.json
+        --allow-incomplete
+    - name: Upload property evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: property-regression-evidence
+        path: nightly-evidence/
+        if-no-files-found: ignore
+
+  optional_extras:
+    name: Optional extras smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - name: Install uv and Python 3.14
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: "3.14"
+        activate-environment: true
+    - name: Install optional extras
+      run: >
+        uv sync --locked --group dev --inexact
+        --extra pillow
+        --extra text
+        --extra hub
+        --extra contrib-headless
+        --no-install-package torch
+        --no-install-package torchvision
+    - name: Run optional extras smoke tests
+      run: uv run pytest -q tests/test_text.py tests/test_hub_mixin.py
+    - name: Collect optional extras environment
+      if: always()
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output nightly-evidence/environment-optional-extras.json
+        --command "optional extras smoke"
+    - name: Upload optional extras evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: optional-extras-evidence
+        path: nightly-evidence/
+        if-no-files-found: ignore

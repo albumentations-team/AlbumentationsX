@@ -6,12 +6,6 @@ on:
     paths-ignore:
       - '**.md'
       - 'benchmark/**'
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - '**.md'
-      - 'benchmark/**'
 
 permissions:
   contents: read
@@ -20,6 +14,7 @@ jobs:
   test_and_lint:
     name: Test and lint
     runs-on: ${{ matrix.operating-system }}
+    timeout-minutes: 45
     strategy:
       matrix:
         operating-system: [ubuntu-latest, windows-latest, macos-latest]
@@ -27,7 +22,7 @@ jobs:
       fail-fast: true
     steps:
     - name: Checkout
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - name: Install uv and set Python version ${{ matrix.python-version }}
       uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       with:
@@ -52,8 +47,40 @@ jobs:
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'
       run: uv lock --check
 
+    - name: Prepare CI evidence directory
+      run: python -c "from pathlib import Path; Path('ci-evidence').mkdir(exist_ok=True)"
+
     - name: Run PyTest with coverage
-      run: uv run pytest -n auto --cov=albumentations --cov-branch --cov-report=xml
+      run: >
+        uv run pytest -n auto
+        --cov=albumentations
+        --cov-branch
+        --cov-report=xml
+        --hypothesis-profile=ci-fast
+        --junitxml=ci-evidence/junit.xml
+
+    - name: Collect test environment evidence
+      if: always()
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output ci-evidence/environment-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --command "uv run pytest -n auto --hypothesis-profile=ci-fast"
+
+    - name: Summarize pytest results
+      if: always()
+      run: >
+        uv run python tools/pytest_summary.py
+        --junit ci-evidence/junit.xml
+        --output ci-evidence/pytest-summary-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --allow-incomplete
+
+    - name: Upload CI evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: ci-evidence-${{ matrix.operating-system }}-${{ matrix.python-version }}
+        path: ci-evidence/
+        if-no-files-found: ignore
 
     - name: Upload coverage reports to Codecov
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'
@@ -62,18 +89,22 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: albumentations-team/AlbumentationsX
         files: ./coverage.xml
+        disable_search: true
         fail_ci_if_error: true
+        use_pypi: true
+        version: 11.2.8
 
   check_code_formatting_types:
     name: Check repository hooks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: true
       matrix:
         python-version: ["3.10"]
     steps:
     - name: Checkout
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - name: Install uv and set Python version ${{ matrix.python-version }}
       uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       with:
@@ -84,6 +115,8 @@ jobs:
     - name: Install all requirements
       run: uv sync --locked --group dev --inexact
 
+    - name: Check support matrix consistency
+      run: uv run python -m tools.ci_matrix check
     - name: Run checks
       run: uv run pre-commit run --all-files
     - name: check-defaults-in-apply

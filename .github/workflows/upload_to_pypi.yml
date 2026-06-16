@@ -7,11 +7,12 @@ on:
 jobs:
   build_release_artifacts:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
     steps:
     - name: Checkout
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - name: Install uv
       uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       with:
@@ -90,8 +91,63 @@ jobs:
     - name: Verify uv.lock is up-to-date
       run: uv lock --check
 
+    - name: Prepare release evidence directory
+      run: python -c "from pathlib import Path; Path('dist/evidence').mkdir(parents=True, exist_ok=True)"
+
+    - name: Install release evidence dependencies
+      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+
+    - name: Collect release environment evidence
+      run: >
+        uv run python tools/collect_test_environment.py
+        --output dist/evidence/environment-release.json
+        --command "release workflow"
+
+    - name: Run release correctness evidence tests
+      run: |
+        uv run python tools/verify_regression_vectors.py --all
+        uv run pytest -q tests/regression tests/property \
+          --hypothesis-profile=ci-fast \
+          --junitxml=dist/evidence/junit-release.xml
+
+    - name: Summarize release pytest results
+      if: always()
+      run: >
+        uv run python tools/pytest_summary.py
+        --junit dist/evidence/junit-release.xml
+        --output dist/evidence/pytest-summary-release.json
+        --allow-incomplete
+
+    - name: Collect benchmark coverage evidence
+      run: |
+        uv run python -m tools.benchmark_coverage summary \
+          --output dist/evidence/benchmark-coverage-release.json
+        uv run python -m tools.benchmark_coverage details \
+          --output dist/evidence/benchmark-coverage-detail-release.json
+        uv run python tools/performance_budget.py summarize \
+          --coverage-summary dist/evidence/benchmark-coverage-release.json \
+          --coverage-detail dist/evidence/benchmark-coverage-detail-release.json \
+          --fail-on-release-blockers \
+          --output dist/evidence/benchmark-performance-budget-release.json
+
     - name: Export locked runtime dependencies
       run: uv export --frozen --no-dev --format requirements-txt --output-file dist/runtime-requirements.txt
+
+    - name: Collect release security evidence
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        uv tool run --from pip-audit pip-audit \
+          --requirement dist/runtime-requirements.txt \
+          --no-deps \
+          --disable-pip \
+          --format=json \
+          --output dist/evidence/security-pip-audit.json
+        uv tool run --from zizmor zizmor \
+          --format=json \
+          --min-severity=medium \
+          --min-confidence=medium \
+          .github > dist/evidence/security-zizmor.json
 
     - name: Generate CycloneDX SBOM
       run: |
@@ -99,11 +155,17 @@ jobs:
           --output-format JSON \
           --output-file "dist/${SBOM_FILENAME}"
 
+    - name: Generate correctness and compatibility report
+      run: >
+        uv run python tools/generate_correctness_report.py
+        --evidence-dir dist/evidence
+        --output "dist/albumentationsx-${PACKAGE_VERSION}-correctness-compatibility-report.md"
+
     - name: Generate checksums
       run: |
         (
           cd dist
-          sha256sum ./*.whl ./*.tar.gz ./*-sbom.cdx.json > SHA256SUMS.txt
+          sha256sum ./*.whl ./*.tar.gz ./*-sbom.cdx.json ./*-correctness-compatibility-report.md > SHA256SUMS.txt
         )
 
     - name: Upload distribution artifacts for PyPI
@@ -123,6 +185,7 @@ jobs:
           dist/*.whl
           dist/*.tar.gz
           dist/*-sbom.cdx.json
+          dist/*-correctness-compatibility-report.md
           dist/SHA256SUMS.txt
         if-no-files-found: error
 
@@ -133,11 +196,13 @@ jobs:
           dist/*.whl
           dist/*.tar.gz
           dist/*-sbom.cdx.json
+          dist/*-correctness-compatibility-report.md
           dist/SHA256SUMS.txt
         fail_on_unmatched_files: true
 
   publish_to_pypi:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: build_release_artifacts
     environment: pypi
     permissions:

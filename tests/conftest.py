@@ -4,6 +4,7 @@ import sys
 import cv2
 import numpy as np
 import pytest
+from hypothesis import HealthCheck, settings
 
 # albucore → numkong may set flush-to-zero (FTZ) on import; then struct-based float
 # bit tricks in Hypothesis see subnormals as 0 and st.floats() raises unless
@@ -13,6 +14,17 @@ import albumentations as A
 cv2.setRNGSeed(137)
 
 np.random.seed(137)
+
+
+settings.register_profile(
+    "local",
+    max_examples=25,
+    deadline=None,
+    suppress_health_check=(HealthCheck.function_scoped_fixture,),
+)
+settings.register_profile("ci-fast", max_examples=10, deadline=None, derandomize=True)
+settings.register_profile("ci-nightly", max_examples=75, deadline=None, derandomize=True)
+settings.register_profile("release", max_examples=100, deadline=None, derandomize=True)
 
 
 @pytest.fixture

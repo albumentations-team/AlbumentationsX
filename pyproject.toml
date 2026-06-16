@@ -152,6 +152,7 @@ dev = [
   "mypy>=2.0.0",
   "opencv-python-headless>=4.13.0.92",
   "pip-audit",
+  "pillow",
   "pre-commit>=4.5.1",
   "pyrefly",
   "pyvips[binary]",
@@ -451,6 +452,8 @@ addopts = [
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "obb: tests for oriented bounding boxes",
+    "property: property-based invariant tests",
+    "regression: transform regression harness tests",
 ]
 filterwarnings = [
     "ignore::UserWarning",

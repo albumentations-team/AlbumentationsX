@@ -1,0 +1,438 @@
+{
+  "cases": [
+    {
+      "behavior_epoch": "2.4",
+      "environment": {
+        "albumentations": "2.3.1",
+        "numpy": "2.2.6",
+        "opencv": "4.13.0",
+        "platform": "macOS-26.4.1-arm64-arm-64bit",
+        "python": "3.10.16"
+      },
+      "id": "CenterCrop3D",
+      "input_recipe": {
+        "mask3d_dtype": "uint8",
+        "mask3d_shape": [
+          6,
+          8,
+          10
+        ],
+        "name": "volume_mask3d",
+        "seed": 137,
+        "volume_dtype": "uint8",
+        "volume_shape": [
+          6,
+          8,
+          10,
+          1
+        ]
+      },
+      "input_recipe_name": "volume_mask3d",
+      "outputs": {
+        "mask3d": {
+          "dtype": "uint8",
+          "max": 3.0,
+          "min": 0.0,
+          "sha256": "394cb7fb9ad3de75698dbb4cbbc55573fa1f7a3f3032447832f27bfaea88550e",
+          "shape": [
+            4,
+            6,
+            6
+          ],
+          "sum": 204.0
+        },
+        "volume": {
+          "dtype": "uint8",
+          "max": 252.0,
+          "min": 0.0,
+          "sha256": "2aee1a7f79b7a6f01b015c21f152b218a6b24cc791b104314c354ad571a3acda",
+          "shape": [
+            4,
+            6,
+            6,
+            1
+          ],
+          "sum": 17888.0
+        }
+      },
+      "params": {
+        "size": [
+          4,
+          6,
+          6
+        ]
+      },
+      "seed": 137,
+      "stability": "exact",
+      "targets": [
+        "volume",
+        "mask3d"
+      ],
+      "tolerance": 1e-05,
+      "transform": "CenterCrop3D",
+      "vector_file": "v1/CenterCrop3D.npz"
+    },
+    {
+      "behavior_epoch": "2.4",
+      "environment": {
+        "albumentations": "2.3.1",
+        "numpy": "2.2.6",
+        "opencv": "4.13.0",
+        "platform": "macOS-26.4.1-arm64-arm-64bit",
+        "python": "3.10.16"
+      },
+      "id": "HorizontalFlip",
+      "input_recipe": {
+        "image_dtype": "uint8",
+        "image_shape": [
+          8,
+          10,
+          3
+        ],
+        "mask_dtype": "uint8",
+        "mask_shape": [
+          8,
+          10
+        ],
+        "name": "image_mask",
+        "seed": 137
+      },
+      "input_recipe_name": "image_mask",
+      "outputs": {
+        "image": {
+          "dtype": "uint8",
+          "max": 255.0,
+          "min": 1.0,
+          "sha256": "d699551dd94bf17201406a5438935600398a8727241d905674891d750a7aa87a",
+          "shape": [
+            8,
+            10,
+            3
+          ],
+          "sum": 31690.0
+        },
+        "mask": {
+          "dtype": "uint8",
+          "max": 1.0,
+          "min": 0.0,
+          "sha256": "9dee7f669b0d66ef046aaf124f7c820fca49e3239aa2c06fd2253c560a91cc17",
+          "shape": [
+            8,
+            10
+          ],
+          "sum": 45.0
+        }
+      },
+      "params": {},
+      "seed": 137,
+      "stability": "exact",
+      "targets": [
+        "image",
+        "mask"
+      ],
+      "tolerance": 1e-05,
+      "transform": "HorizontalFlip",
+      "vector_file": "v1/HorizontalFlip.npz"
+    },
+    {
+      "behavior_epoch": "2.4",
+      "environment": {
+        "albumentations": "2.3.1",
+        "numpy": "2.2.6",
+        "opencv": "4.13.0",
+        "platform": "macOS-26.4.1-arm64-arm-64bit",
+        "python": "3.10.16"
+      },
+      "id": "RandomRotate90",
+      "input_recipe": {
+        "image_dtype": "uint8",
+        "image_shape": [
+          8,
+          10,
+          3
+        ],
+        "mask_dtype": "uint8",
+        "mask_shape": [
+          8,
+          10
+        ],
+        "name": "image_mask",
+        "seed": 137
+      },
+      "input_recipe_name": "image_mask",
+      "outputs": {
+        "image": {
+          "dtype": "uint8",
+          "max": 255.0,
+          "min": 1.0,
+          "sha256": "cb9388c4b27d1f2c699663a527b6f7cb5798804a83c62b5193ede305a78c4824",
+          "shape": [
+            10,
+            8,
+            3
+          ],
+          "sum": 31690.0
+        },
+        "mask": {
+          "dtype": "uint8",
+          "max": 1.0,
+          "min": 0.0,
+          "sha256": "f553ccc8777199356e9cc27b866dbbe44068bedba05afe87cbcd6df08ebfd823",
+          "shape": [
+            10,
+            8
+          ],
+          "sum": 45.0
+        }
+      },
+      "params": {},
+      "seed": 137,
+      "stability": "exact",
+      "targets": [
+        "image",
+        "mask"
+      ],
+      "tolerance": 1e-05,
+      "transform": "RandomRotate90",
+      "vector_file": "v1/RandomRotate90.npz"
+    },
+    {
+      "behavior_epoch": "2.4",
+      "environment": {
+        "albumentations": "2.3.1",
+        "numpy": "2.2.6",
+        "opencv": "4.13.0",
+        "platform": "macOS-26.4.1-arm64-arm-64bit",
+        "python": "3.10.16"
+      },
+      "id": "Resize",
+      "input_recipe": {
+        "bbox_labels": [
+          3,
+          7
+        ],
+        "bboxes": [
+          [
+            1.0,
+            1.0,
+            6.0,
+            5.0
+          ],
+          [
+            3.0,
+            2.0,
+            9.0,
+            7.0
+          ]
+        ],
+        "image_dtype": "uint8",
+        "image_shape": [
+          8,
+          10,
+          3
+        ],
+        "keypoint_labels": [
+          11,
+          13
+        ],
+        "keypoints": [
+          [
+            2.0,
+            3.0
+          ],
+          [
+            8.0,
+            6.0
+          ]
+        ],
+        "name": "hbb_keypoints",
+        "seed": 137
+      },
+      "input_recipe_name": "hbb_keypoints",
+      "outputs": {
+        "bbox_labels": {
+          "dtype": "float64",
+          "max": 7.0,
+          "min": 3.0,
+          "sha256": "04ff484aaa85a80a8704d23c1067cb4eda511cbf448b75bb3e937806b6ea6461",
+          "shape": [
+            2
+          ],
+          "sum": 10.0
+        },
+        "bboxes": {
+          "dtype": "float64",
+          "max": 17.999999523162842,
+          "min": 2.0,
+          "sha256": "79890962d38a6ad8d96cab95ad4a32e04f73cf0d142c339dcf58c25f1b0d8d41",
+          "shape": [
+            2,
+            4
+          ],
+          "sum": 68.0000002682209
+        },
+        "keypoint_labels": {
+          "dtype": "float64",
+          "max": 13.0,
+          "min": 11.0,
+          "sha256": "b2f6136618bd8a72143fdf7d3a39544d512d7a932dfc1f51fb30edc96158f103",
+          "shape": [
+            2
+          ],
+          "sum": 24.0
+        },
+        "keypoints": {
+          "dtype": "float32",
+          "max": 16.0,
+          "min": 4.0,
+          "sha256": "99e1ae1f2f17dcc54dc33e85b0080161f483216a681940e76e2d728b1152cc28",
+          "shape": [
+            2,
+            2
+          ],
+          "sum": 38.0
+        }
+      },
+      "params": {
+        "height": 16,
+        "width": 20
+      },
+      "seed": 137,
+      "stability": "tolerance",
+      "targets": [
+        "bboxes",
+        "bbox_labels",
+        "keypoints",
+        "keypoint_labels"
+      ],
+      "tolerance": 1e-05,
+      "transform": "Resize",
+      "vector_file": "v1/Resize.npz"
+    },
+    {
+      "behavior_epoch": "2.4",
+      "environment": {
+        "albumentations": "2.3.1",
+        "numpy": "2.2.6",
+        "opencv": "4.13.0",
+        "platform": "macOS-26.4.1-arm64-arm-64bit",
+        "python": "3.10.16"
+      },
+      "id": "Transpose",
+      "input_recipe": {
+        "image_dtype": "uint8",
+        "image_shape": [
+          8,
+          10,
+          3
+        ],
+        "mask_dtype": "uint8",
+        "mask_shape": [
+          8,
+          10
+        ],
+        "name": "image_mask",
+        "seed": 137
+      },
+      "input_recipe_name": "image_mask",
+      "outputs": {
+        "image": {
+          "dtype": "uint8",
+          "max": 255.0,
+          "min": 1.0,
+          "sha256": "a80dab1a23f7691a68f69d39c42e5105ad336adb1e0e75ab5ae951725e51d5f0",
+          "shape": [
+            10,
+            8,
+            3
+          ],
+          "sum": 31690.0
+        },
+        "mask": {
+          "dtype": "uint8",
+          "max": 1.0,
+          "min": 0.0,
+          "sha256": "4665da2137c557e0cf70ac4fb433e8d680cb85418cf89c444e516a6d86a03e18",
+          "shape": [
+            10,
+            8
+          ],
+          "sum": 45.0
+        }
+      },
+      "params": {},
+      "seed": 137,
+      "stability": "exact",
+      "targets": [
+        "image",
+        "mask"
+      ],
+      "tolerance": 1e-05,
+      "transform": "Transpose",
+      "vector_file": "v1/Transpose.npz"
+    },
+    {
+      "behavior_epoch": "2.4",
+      "environment": {
+        "albumentations": "2.3.1",
+        "numpy": "2.2.6",
+        "opencv": "4.13.0",
+        "platform": "macOS-26.4.1-arm64-arm-64bit",
+        "python": "3.10.16"
+      },
+      "id": "VerticalFlip",
+      "input_recipe": {
+        "image_dtype": "uint8",
+        "image_shape": [
+          8,
+          10,
+          3
+        ],
+        "mask_dtype": "uint8",
+        "mask_shape": [
+          8,
+          10
+        ],
+        "name": "image_mask",
+        "seed": 137
+      },
+      "input_recipe_name": "image_mask",
+      "outputs": {
+        "image": {
+          "dtype": "uint8",
+          "max": 255.0,
+          "min": 1.0,
+          "sha256": "f2b69f0ae94e79d8d44d99ae21e4d779c077607e9b4c080ac4860d449a451753",
+          "shape": [
+            8,
+            10,
+            3
+          ],
+          "sum": 31690.0
+        },
+        "mask": {
+          "dtype": "uint8",
+          "max": 1.0,
+          "min": 0.0,
+          "sha256": "9d89f3d9f365878102d035a862e83a033c76c4c26e4d3b431c918bcd48a0e319",
+          "shape": [
+            8,
+            10
+          ],
+          "sum": 45.0
+        }
+      },
+      "params": {},
+      "seed": 137,
+      "stability": "exact",
+      "targets": [
+        "image",
+        "mask"
+      ],
+      "tolerance": 1e-05,
+      "transform": "VerticalFlip",
+      "vector_file": "v1/VerticalFlip.npz"
+    }
+  ],
+  "schema_version": 1
+}

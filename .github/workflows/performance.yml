@@ -1,0 +1,230 @@
+name: Performance
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "albumentations/**"
+      - "benchmark/**"
+      - ".github/workflows/performance.yml"
+  schedule:
+    - cron: "43 4 * * 2"
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: "Optional git ref/SHA for the before baseline. Leave empty to run evidence for the selected ref only."
+        required: false
+        type: string
+      candidate_ref:
+        description: "Optional git ref/SHA for the after candidate. Defaults to the selected workflow ref."
+        required: false
+        type: string
+      bench_filter:
+        description: "Optional ASV --bench regex for manual baseline/candidate comparisons. Leave empty for the full suite."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  asv_smoke:
+    name: ASV benchmark evidence
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: 0
+    - name: Install uv and Python 3.12
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: "3.12"
+        activate-environment: true
+    - name: Install dependencies
+      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+    - name: Collect benchmark environment evidence
+      run: >
+        uv run --no-sync python tools/collect_test_environment.py
+        --output benchmark-evidence/environment-benchmark.json
+        --command "asv continuous/run performance evidence"
+    - name: Collect benchmark coverage evidence
+      run: |
+        uv run --no-sync python -m tools.benchmark_coverage summary \
+          --output benchmark-evidence/benchmark-coverage.json
+        uv run --no-sync python -m tools.benchmark_coverage details \
+          --output benchmark-evidence/benchmark-coverage-detail.json
+    - name: Compare benchmark coverage with baseline
+      if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '')
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        write_unavailable_diff() {
+          python - "$1" "$2" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        output = Path(sys.argv[1])
+        reason = sys.argv[2]
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                {
+                    "kind": "benchmark-coverage-diff",
+                    "reason": reason,
+                    "schema_version": 1,
+                    "summary": {"status": "unavailable"},
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+        )
+        PY
+        }
+
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          BASELINE_REF="$PR_BASE_SHA"
+        else
+          BASELINE_REF="$INPUT_BASELINE_REF"
+        fi
+
+        if git cat-file -e "$BASELINE_REF:tools/benchmark_coverage.py"; then
+          BASE_WORKTREE="$RUNNER_TEMP/benchmark-coverage-base"
+          git worktree add --detach "$BASE_WORKTREE" "$BASELINE_REF"
+          if PYTHONPATH="$BASE_WORKTREE:$BASE_WORKTREE/benchmark" python "$BASE_WORKTREE/tools/benchmark_coverage.py" details \
+            --output "$GITHUB_WORKSPACE/benchmark-evidence/benchmark-coverage-detail-base.json"; then
+            uv run --no-sync python -m tools.benchmark_coverage diff \
+              --base-detail benchmark-evidence/benchmark-coverage-detail-base.json \
+              --output benchmark-evidence/benchmark-coverage-diff.json
+          else
+            write_unavailable_diff \
+              benchmark-evidence/benchmark-coverage-diff.json \
+              "baseline benchmark coverage detail could not be generated"
+          fi
+          git worktree remove --force "$BASE_WORKTREE"
+        else
+          write_unavailable_diff \
+            benchmark-evidence/benchmark-coverage-diff.json \
+            "baseline ref does not include tools/benchmark_coverage.py"
+        fi
+    - name: Register ASV machine profile
+      working-directory: benchmark
+      run: uv tool run --from asv asv --config asv.conf.json machine --yes
+    - name: Check benchmark suite importability
+      working-directory: benchmark
+      run: uv tool run --from asv asv --config asv.conf.json check --verbose
+    - name: Compare baseline and candidate benchmarks
+      if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '')
+      working-directory: benchmark
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
+        INPUT_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+        INPUT_BENCH_FILTER: ${{ inputs.bench_filter }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -o pipefail
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          BASELINE_REF="$PR_BASE_SHA"
+          CANDIDATE_REF="$PR_HEAD_SHA"
+          git diff --name-only "$BASELINE_REF" "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/benchmark-evidence/changed-files.txt"
+          BENCH_FILTER="$(
+            uv run --no-sync python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" \
+              --changed-files "$GITHUB_WORKSPACE/benchmark-evidence/changed-files.txt"
+          )"
+        else
+          BASELINE_REF="$INPUT_BASELINE_REF"
+          CANDIDATE_REF="$INPUT_CANDIDATE_REF"
+          BENCH_FILTER="$INPUT_BENCH_FILTER"
+          if [ -z "$CANDIDATE_REF" ]; then
+            CANDIDATE_REF="HEAD"
+          fi
+        fi
+        echo "$BENCH_FILTER" > "$GITHUB_WORKSPACE/benchmark-evidence/benchmark-filter.txt"
+        ASV_EXIT_CODE=0
+        ASV_COMMAND=(
+          uv tool run --from asv asv --config asv.conf.json continuous
+          --factor 1.05
+          --split
+          --show-stderr
+          --attribute repeat=1
+          --attribute number=1
+        )
+        if [ -n "$BENCH_FILTER" ]; then
+          ASV_COMMAND+=(--bench "$BENCH_FILTER")
+        fi
+        ASV_COMMAND+=("$BASELINE_REF" "$CANDIDATE_REF")
+        "${ASV_COMMAND[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
+        echo "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous-exit-code.txt"
+        if [ "$ASV_EXIT_CODE" -ne 0 ]; then
+          echo "::warning::ASV comparison reported performance changes. See benchmark-evidence/asv-continuous.txt and benchmark-asv-summary.json."
+        fi
+    - name: Summarize ASV comparison evidence
+      if: >
+        always() &&
+        (github.event_name == 'pull_request' ||
+        (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != ''))
+      run: |
+        ASV_EXIT_CODE="$(cat benchmark-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
+        if [ -n "$ASV_EXIT_CODE" ]; then
+          uv run --no-sync python tools/asv_summary.py \
+            --input benchmark-evidence/asv-continuous.txt \
+            --output benchmark-evidence/benchmark-asv-summary.json \
+            --asv-exit-code "$ASV_EXIT_CODE"
+        else
+          uv run --no-sync python tools/asv_summary.py \
+            --input benchmark-evidence/asv-continuous.txt \
+            --output benchmark-evidence/benchmark-asv-summary.json \
+            --allow-missing
+        fi
+    - name: Classify performance budget evidence
+      if: always()
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
+      run: |
+        BUDGET_COMMAND=(
+          uv run --no-sync python tools/performance_budget.py summarize
+          --coverage-summary benchmark-evidence/benchmark-coverage.json
+          --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
+          --output benchmark-evidence/benchmark-performance-budget.json
+        )
+        if [ -f benchmark-evidence/benchmark-asv-summary.json ]; then
+          BUDGET_COMMAND+=(--asv-summary benchmark-evidence/benchmark-asv-summary.json)
+        fi
+        if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_BASELINE_REF" ]; then
+          BUDGET_COMMAND+=(--require-comparison --fail-on-release-blockers)
+        fi
+        "${BUDGET_COMMAND[@]}"
+    - name: Run scheduled benchmark evidence
+      if: >
+        github.event_name == 'schedule' ||
+        (github.event_name == 'workflow_dispatch' && inputs.baseline_ref == '')
+      working-directory: benchmark
+      run: |
+        set -o pipefail
+        uv tool run --from asv asv --config asv.conf.json run \
+          --show-stderr \
+          --durations 20 \
+          --attribute repeat=1 \
+          --attribute number=1 \
+          'HEAD^!' \
+          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-run.txt"
+    - name: Upload benchmark artifacts
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: benchmark-evidence
+        path: |
+          benchmark-evidence/
+          benchmark/.asv/results/
+        if-no-files-found: ignore

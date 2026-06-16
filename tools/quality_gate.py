@@ -13,8 +13,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 Command = tuple[str, ...]
 
 FAST_CHECKS: tuple[Command, ...] = (
-    ("ruff", "format", "--check", "albumentations", "tests", "tools"),
-    ("ruff", "check", "albumentations", "tests", "tools", "--no-fix"),
+    ("ruff", "format", "--check", "albumentations", "benchmark", "tests", "tools"),
+    ("ruff", "check", "albumentations", "benchmark", "tests", "tools", "--no-fix"),
+    ("python", "-m", "tools.ci_matrix", "check"),
+    ("python", "-m", "tools.benchmark_coverage", "check"),
+    ("python", "-m", "tools.performance_budget", "check"),
+    ("python", "-m", "tools.verify_regression_vectors", "--all"),
     ("pre-commit", "run", "--all-files"),
     ("python", "-m", "tools.check_defaults"),
     ("pytest", "-q", "tests/test_core.py::test_compose"),

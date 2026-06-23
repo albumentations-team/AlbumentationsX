@@ -151,6 +151,12 @@ Other installation options are described in the [documentation](https://albument
 
 The full documentation is available at **[https://albumentations.ai/docs/](https://albumentations.ai/docs/)**.
 
+For AI-assisted augmentation review, AlbumentationsX can also be used through MCP-capable hosts such as Claude Desktop,
+Cursor, Claude Code, and Codex. The community
+[AlbumentationsX MCP integration](docs/integrations/mcp.md) lets assistants inspect transforms, validate pipelines,
+render bounded local preview batches, compare preview runs, collect concrete feedback, and export reproducible
+AlbumentationsX pipelines.
+
 ## A simple example
 
 ```python

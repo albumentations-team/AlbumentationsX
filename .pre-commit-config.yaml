@@ -144,7 +144,7 @@ repos:
         pass_filenames: false
         files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.14
+    rev: v0.15.20
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -176,10 +176,11 @@ repos:
         args:
           [ --config-file=pyproject.toml ]
   - repo: https://github.com/facebook/pyrefly-pre-commit
-    rev: 1.0.0
+    rev: 1.1.1
     hooks:
       - id: pyrefly-check
         name: Pyrefly type check
+        entry: uv run pyrefly check
         args:
           - --output-format=github
           - --error

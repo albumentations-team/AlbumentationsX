@@ -16,9 +16,15 @@ IGNORED_CLASSES = {
     "Transform3D",
 }
 
+UTM_QUERY_RE = re.compile(r"\?utm_(?:source|medium|campaign|term|content)=[^)\s|]+")
+
 
 def make_augmentation_docs_link(cls) -> str:
     return f"[{cls.__name__}](https://albumentations.ai/explore/transform/{cls.__name__}/)"
+
+
+def strip_utm_query_params(text: str) -> str:
+    return UTM_QUERY_RE.sub("", text)
 
 
 def parse_args() -> argparse.Namespace:
@@ -200,7 +206,7 @@ def check_docs(
             continue
 
         # Check if all generated lines are in the section
-        section_content = match[1].strip()
+        section_content = strip_utm_query_params(match[1].strip())
         for line in section_info["generated"].split("\n"):
             if line.strip() and line not in section_content:
                 outdated_docs.add(section_name)

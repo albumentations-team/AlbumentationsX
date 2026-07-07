@@ -4,12 +4,12 @@
 ![CI](https://github.com/albumentations-team/AlbumentationsX/workflows/CI/badge.svg)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/albumentationsx.svg?label=PyPI%20downloads)](https://pypi.org/project/albumentationsx/)
 
-> 📣 **Stay updated!** [Subscribe to our newsletter](https://albumentations.ai/subscribe) for the latest releases, tutorials, and tips.
+> 📣 **Stay updated!** [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme) for the latest releases, tutorials, and tips.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Commercial License](https://img.shields.io/badge/Commercial_License-available-brightgreen)](https://albumentations.ai/pricing)
+[![Commercial License](https://img.shields.io/badge/Commercial_License-available-brightgreen)](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
 
-[![Docs](https://img.shields.io/badge/docs-albumentations.ai-blue)](https://albumentations.ai/docs/) [![Discord](https://img.shields.io/badge/Discord-join-7289da?logo=discord&logoColor=white)](https://discord.gg/AKPrrDYNAt) [![Twitter](https://img.shields.io/badge/Twitter-follow-1da1f2?logo=twitter&logoColor=white)](https://twitter.com/albumentations) [![LinkedIn](https://img.shields.io/badge/LinkedIn-connect-0077b5?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/albumentations/) [![Reddit](https://img.shields.io/badge/Reddit-join-ff4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Albumentations/)
+[![Docs](https://img.shields.io/badge/docs-albumentations.ai-blue)](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme) [![Discord](https://img.shields.io/badge/Discord-join-7289da?logo=discord&logoColor=white)](https://discord.gg/AKPrrDYNAt) [![Twitter](https://img.shields.io/badge/Twitter-follow-1da1f2?logo=twitter&logoColor=white)](https://twitter.com/albumentations) [![LinkedIn](https://img.shields.io/badge/LinkedIn-connect-0077b5?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/albumentations/) [![Reddit](https://img.shields.io/badge/Reddit-join-ff4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Albumentations/)
 
 **AlbumentationsX** is a Python library for image augmentation. It provides high-performance, robust implementations and cutting-edge features for computer vision tasks. Image augmentation is used in deep learning and computer vision to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
 
@@ -45,7 +45,7 @@ transform = A.Compose([
 ])
 ```
 
-For commercial licensing inquiries, please visit [our pricing page](https://albumentations.ai/pricing).
+For commercial licensing inquiries, please visit [our pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
 ---
 
@@ -56,8 +56,8 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 
 - **Complete Computer Vision Support**: Works with all major CV tasks
 - **Simple, Unified API**: [One consistent interface](#a-simple-example) for all data types - RGB/grayscale/multispectral images, masks, bounding boxes, and keypoints.
-- **Rich Augmentation Library**: [70+ high-quality augmentations](https://albumentations.ai/docs/reference/supported-targets-by-transform/) to enhance your training data.
-- **Fast**: Consistently benchmarked as the [fastest augmentation library](https://albumentations.ai/docs/benchmarks/image-benchmarks/) also shown [below section](#performance-comparison), with optimizations for production use.
+- **Rich Augmentation Library**: [70+ high-quality augmentations](https://albumentations.ai/docs/reference/supported-targets-by-transform/?utm_source=github&utm_medium=referral&utm_campaign=readme) to enhance your training data.
+- **Fast**: Consistently benchmarked as the [fastest augmentation library](https://albumentations.ai/docs/benchmarks/image-benchmarks/?utm_source=github&utm_medium=referral&utm_campaign=readme) also shown [below section](#performance-comparison), with optimizations for production use.
 - **Deep Learning Integration**: Works with [PyTorch](https://pytorch.org/), [TensorFlow](https://www.tensorflow.org/), and other frameworks. Part of the [PyTorch ecosystem](https://pytorch.org/ecosystem/).
 - **Created by Experts**: Built by [developers with deep experience in computer vision and machine learning competitions](#authors).
 
@@ -145,11 +145,11 @@ pip install -U albumentationsx[contrib-headless]
 
 Choose the one that fits your needs. The library will detect whichever is installed.
 
-Other installation options are described in the [documentation](https://albumentations.ai/docs/1-introduction/installation/).
+Other installation options are described in the [documentation](https://albumentations.ai/docs/1-introduction/installation/?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
 ## Documentation
 
-The full documentation is available at **[https://albumentations.ai/docs/](https://albumentations.ai/docs/)**.
+The full documentation is available at **[https://albumentations.ai/docs/](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme)**.
 
 For AI-assisted augmentation review, AlbumentationsX can also be used through MCP-capable hosts such as Claude Desktop,
 Cursor, Claude Code, and Codex. The community
@@ -187,77 +187,77 @@ AlbumentationsX collects anonymous usage statistics to improve the library. This
 
 Pixel-level transforms will change just an input image and will leave any additional targets such as masks, bounding boxes, and keypoints unchanged. For volumetric data (volumes and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The list of pixel-level transforms:
 
-- [AdditiveNoise](https://albumentations.ai/explore/transform/AdditiveNoise/)
-- [AdvancedBlur](https://albumentations.ai/explore/transform/AdvancedBlur/)
-- [AnnotationArtifacts](https://albumentations.ai/explore/transform/AnnotationArtifacts/)
-- [AtmosphericFog](https://albumentations.ai/explore/transform/AtmosphericFog/)
-- [AutoContrast](https://albumentations.ai/explore/transform/AutoContrast/)
-- [Blur](https://albumentations.ai/explore/transform/Blur/)
-- [CLAHE](https://albumentations.ai/explore/transform/CLAHE/)
-- [ChannelDropout](https://albumentations.ai/explore/transform/ChannelDropout/)
-- [ChannelShuffle](https://albumentations.ai/explore/transform/ChannelShuffle/)
-- [ChannelSwap](https://albumentations.ai/explore/transform/ChannelSwap/)
-- [ChromaticAberration](https://albumentations.ai/explore/transform/ChromaticAberration/)
-- [ColorJitter](https://albumentations.ai/explore/transform/ColorJitter/)
-- [Colorize](https://albumentations.ai/explore/transform/Colorize/)
-- [Defocus](https://albumentations.ai/explore/transform/Defocus/)
-- [Dithering](https://albumentations.ai/explore/transform/Dithering/)
-- [Downscale](https://albumentations.ai/explore/transform/Downscale/)
-- [Emboss](https://albumentations.ai/explore/transform/Emboss/)
-- [Enhance](https://albumentations.ai/explore/transform/Enhance/)
-- [Equalize](https://albumentations.ai/explore/transform/Equalize/)
-- [FDA](https://albumentations.ai/explore/transform/FDA/)
-- [FancyPCA](https://albumentations.ai/explore/transform/FancyPCA/)
-- [FilmGrain](https://albumentations.ai/explore/transform/FilmGrain/)
-- [FromFloat](https://albumentations.ai/explore/transform/FromFloat/)
-- [GaussNoise](https://albumentations.ai/explore/transform/GaussNoise/)
-- [GaussianBlur](https://albumentations.ai/explore/transform/GaussianBlur/)
-- [GlassBlur](https://albumentations.ai/explore/transform/GlassBlur/)
-- [HEStain](https://albumentations.ai/explore/transform/HEStain/)
-- [Halftone](https://albumentations.ai/explore/transform/Halftone/)
-- [HistogramMatching](https://albumentations.ai/explore/transform/HistogramMatching/)
-- [HueSaturationValue](https://albumentations.ai/explore/transform/HueSaturationValue/)
-- [ISONoise](https://albumentations.ai/explore/transform/ISONoise/)
-- [Illumination](https://albumentations.ai/explore/transform/Illumination/)
-- [ImageCompression](https://albumentations.ai/explore/transform/ImageCompression/)
-- [InvertImg](https://albumentations.ai/explore/transform/InvertImg/)
-- [LensFlare](https://albumentations.ai/explore/transform/LensFlare/)
-- [MedianBlur](https://albumentations.ai/explore/transform/MedianBlur/)
-- [ModeFilter](https://albumentations.ai/explore/transform/ModeFilter/)
-- [MotionBlur](https://albumentations.ai/explore/transform/MotionBlur/)
-- [MultiplicativeNoise](https://albumentations.ai/explore/transform/MultiplicativeNoise/)
-- [Normalize](https://albumentations.ai/explore/transform/Normalize/)
-- [PhotoMetricDistort](https://albumentations.ai/explore/transform/PhotoMetricDistort/)
-- [PixelDistributionAdaptation](https://albumentations.ai/explore/transform/PixelDistributionAdaptation/)
-- [PlanckianJitter](https://albumentations.ai/explore/transform/PlanckianJitter/)
-- [PlasmaBrightnessContrast](https://albumentations.ai/explore/transform/PlasmaBrightnessContrast/)
-- [PlasmaShadow](https://albumentations.ai/explore/transform/PlasmaShadow/)
-- [Posterize](https://albumentations.ai/explore/transform/Posterize/)
-- [RGBShift](https://albumentations.ai/explore/transform/RGBShift/)
-- [RandomBrightnessContrast](https://albumentations.ai/explore/transform/RandomBrightnessContrast/)
-- [RandomFog](https://albumentations.ai/explore/transform/RandomFog/)
-- [RandomGamma](https://albumentations.ai/explore/transform/RandomGamma/)
-- [RandomGravel](https://albumentations.ai/explore/transform/RandomGravel/)
-- [RandomRain](https://albumentations.ai/explore/transform/RandomRain/)
-- [RandomShadow](https://albumentations.ai/explore/transform/RandomShadow/)
-- [RandomSnow](https://albumentations.ai/explore/transform/RandomSnow/)
-- [RandomSunFlare](https://albumentations.ai/explore/transform/RandomSunFlare/)
-- [RandomToneCurve](https://albumentations.ai/explore/transform/RandomToneCurve/)
-- [RingingOvershoot](https://albumentations.ai/explore/transform/RingingOvershoot/)
-- [SaltAndPepper](https://albumentations.ai/explore/transform/SaltAndPepper/)
-- [Sharpen](https://albumentations.ai/explore/transform/Sharpen/)
-- [ShotNoise](https://albumentations.ai/explore/transform/ShotNoise/)
-- [Solarize](https://albumentations.ai/explore/transform/Solarize/)
-- [Spatter](https://albumentations.ai/explore/transform/Spatter/)
-- [Superpixels](https://albumentations.ai/explore/transform/Superpixels/)
-- [TextImage](https://albumentations.ai/explore/transform/TextImage/)
-- [ToFloat](https://albumentations.ai/explore/transform/ToFloat/)
-- [ToGray](https://albumentations.ai/explore/transform/ToGray/)
-- [ToRGB](https://albumentations.ai/explore/transform/ToRGB/)
-- [ToSepia](https://albumentations.ai/explore/transform/ToSepia/)
-- [UnsharpMask](https://albumentations.ai/explore/transform/UnsharpMask/)
-- [Vignetting](https://albumentations.ai/explore/transform/Vignetting/)
-- [ZoomBlur](https://albumentations.ai/explore/transform/ZoomBlur/)
+- [AdditiveNoise](https://albumentations.ai/explore/transform/AdditiveNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [AdvancedBlur](https://albumentations.ai/explore/transform/AdvancedBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [AnnotationArtifacts](https://albumentations.ai/explore/transform/AnnotationArtifacts/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [AtmosphericFog](https://albumentations.ai/explore/transform/AtmosphericFog/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [AutoContrast](https://albumentations.ai/explore/transform/AutoContrast/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Blur](https://albumentations.ai/explore/transform/Blur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [CLAHE](https://albumentations.ai/explore/transform/CLAHE/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ChannelDropout](https://albumentations.ai/explore/transform/ChannelDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ChannelShuffle](https://albumentations.ai/explore/transform/ChannelShuffle/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ChannelSwap](https://albumentations.ai/explore/transform/ChannelSwap/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ChromaticAberration](https://albumentations.ai/explore/transform/ChromaticAberration/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ColorJitter](https://albumentations.ai/explore/transform/ColorJitter/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Colorize](https://albumentations.ai/explore/transform/Colorize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Defocus](https://albumentations.ai/explore/transform/Defocus/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Dithering](https://albumentations.ai/explore/transform/Dithering/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Downscale](https://albumentations.ai/explore/transform/Downscale/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Emboss](https://albumentations.ai/explore/transform/Emboss/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Enhance](https://albumentations.ai/explore/transform/Enhance/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Equalize](https://albumentations.ai/explore/transform/Equalize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [FDA](https://albumentations.ai/explore/transform/FDA/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [FancyPCA](https://albumentations.ai/explore/transform/FancyPCA/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [FilmGrain](https://albumentations.ai/explore/transform/FilmGrain/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [FromFloat](https://albumentations.ai/explore/transform/FromFloat/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [GaussNoise](https://albumentations.ai/explore/transform/GaussNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [GaussianBlur](https://albumentations.ai/explore/transform/GaussianBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [GlassBlur](https://albumentations.ai/explore/transform/GlassBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [HEStain](https://albumentations.ai/explore/transform/HEStain/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Halftone](https://albumentations.ai/explore/transform/Halftone/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [HistogramMatching](https://albumentations.ai/explore/transform/HistogramMatching/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [HueSaturationValue](https://albumentations.ai/explore/transform/HueSaturationValue/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ISONoise](https://albumentations.ai/explore/transform/ISONoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Illumination](https://albumentations.ai/explore/transform/Illumination/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ImageCompression](https://albumentations.ai/explore/transform/ImageCompression/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [InvertImg](https://albumentations.ai/explore/transform/InvertImg/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [LensFlare](https://albumentations.ai/explore/transform/LensFlare/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [MedianBlur](https://albumentations.ai/explore/transform/MedianBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ModeFilter](https://albumentations.ai/explore/transform/ModeFilter/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [MotionBlur](https://albumentations.ai/explore/transform/MotionBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [MultiplicativeNoise](https://albumentations.ai/explore/transform/MultiplicativeNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Normalize](https://albumentations.ai/explore/transform/Normalize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [PhotoMetricDistort](https://albumentations.ai/explore/transform/PhotoMetricDistort/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [PixelDistributionAdaptation](https://albumentations.ai/explore/transform/PixelDistributionAdaptation/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [PlanckianJitter](https://albumentations.ai/explore/transform/PlanckianJitter/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [PlasmaBrightnessContrast](https://albumentations.ai/explore/transform/PlasmaBrightnessContrast/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [PlasmaShadow](https://albumentations.ai/explore/transform/PlasmaShadow/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Posterize](https://albumentations.ai/explore/transform/Posterize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RGBShift](https://albumentations.ai/explore/transform/RGBShift/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomBrightnessContrast](https://albumentations.ai/explore/transform/RandomBrightnessContrast/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomFog](https://albumentations.ai/explore/transform/RandomFog/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomGamma](https://albumentations.ai/explore/transform/RandomGamma/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomGravel](https://albumentations.ai/explore/transform/RandomGravel/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomRain](https://albumentations.ai/explore/transform/RandomRain/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomShadow](https://albumentations.ai/explore/transform/RandomShadow/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomSnow](https://albumentations.ai/explore/transform/RandomSnow/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomSunFlare](https://albumentations.ai/explore/transform/RandomSunFlare/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RandomToneCurve](https://albumentations.ai/explore/transform/RandomToneCurve/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RingingOvershoot](https://albumentations.ai/explore/transform/RingingOvershoot/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [SaltAndPepper](https://albumentations.ai/explore/transform/SaltAndPepper/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Sharpen](https://albumentations.ai/explore/transform/Sharpen/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ShotNoise](https://albumentations.ai/explore/transform/ShotNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Solarize](https://albumentations.ai/explore/transform/Solarize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Spatter](https://albumentations.ai/explore/transform/Spatter/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Superpixels](https://albumentations.ai/explore/transform/Superpixels/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [TextImage](https://albumentations.ai/explore/transform/TextImage/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ToFloat](https://albumentations.ai/explore/transform/ToFloat/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ToGray](https://albumentations.ai/explore/transform/ToGray/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ToRGB](https://albumentations.ai/explore/transform/ToRGB/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ToSepia](https://albumentations.ai/explore/transform/ToSepia/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [UnsharpMask](https://albumentations.ai/explore/transform/UnsharpMask/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [Vignetting](https://albumentations.ai/explore/transform/Vignetting/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ZoomBlur](https://albumentations.ai/explore/transform/ZoomBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 
 ### Spatial-level transforms
 
@@ -268,62 +268,62 @@ Spatial-level transforms will simultaneously change both an input image as well 
 
 | Transform                                                                                         | Image | Mask | BBoxes (HBB) | BBoxes (OBB) | Keypoints | Volume | Mask3D |
 | ------------------------------------------------------------------------------------------------- | :---: | :--: | :----------: | :----------: | :-------: | :----: | :----: |
-| [Affine](https://albumentations.ai/explore/transform/Affine/)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [AtLeastOneBBoxRandomCrop](https://albumentations.ai/explore/transform/AtLeastOneBBoxRandomCrop/) | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [BBoxSafeRandomCrop](https://albumentations.ai/explore/transform/BBoxSafeRandomCrop/)             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [CenterCrop](https://albumentations.ai/explore/transform/CenterCrop/)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [CoarseDropout](https://albumentations.ai/explore/transform/CoarseDropout/)                       | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [ConstrainedCoarseDropout](https://albumentations.ai/explore/transform/ConstrainedCoarseDropout/) | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [CopyAndPaste](https://albumentations.ai/explore/transform/CopyAndPaste/)                         | ✓     | ✓    | ✓            |              | ✓         |        |        |
-| [Crop](https://albumentations.ai/explore/transform/Crop/)                                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [CropAndPad](https://albumentations.ai/explore/transform/CropAndPad/)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [CropNonEmptyMaskIfExists](https://albumentations.ai/explore/transform/CropNonEmptyMaskIfExists/) | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [D4](https://albumentations.ai/explore/transform/D4/)                                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [ElasticTransform](https://albumentations.ai/explore/transform/ElasticTransform/)                 | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [Erasing](https://albumentations.ai/explore/transform/Erasing/)                                   | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [FrequencyMasking](https://albumentations.ai/explore/transform/FrequencyMasking/)                 | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [GridDistortion](https://albumentations.ai/explore/transform/GridDistortion/)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [GridDropout](https://albumentations.ai/explore/transform/GridDropout/)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [GridElasticDeform](https://albumentations.ai/explore/transform/GridElasticDeform/)               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [GridMask](https://albumentations.ai/explore/transform/GridMask/)                                 | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [HorizontalFlip](https://albumentations.ai/explore/transform/HorizontalFlip/)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [Lambda](https://albumentations.ai/explore/transform/Lambda/)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [LetterBox](https://albumentations.ai/explore/transform/LetterBox/)                               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [LongestMaxSize](https://albumentations.ai/explore/transform/LongestMaxSize/)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [MaskDropout](https://albumentations.ai/explore/transform/MaskDropout/)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [Morphological](https://albumentations.ai/explore/transform/Morphological/)                       | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [Mosaic](https://albumentations.ai/explore/transform/Mosaic/)                                     | ✓     | ✓    | ✓            | ✓            | ✓         |        |        |
-| [NoOp](https://albumentations.ai/explore/transform/NoOp/)                                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [OpticalDistortion](https://albumentations.ai/explore/transform/OpticalDistortion/)               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [OverlayElements](https://albumentations.ai/explore/transform/OverlayElements/)                   | ✓     | ✓    |              |              |           |        |        |
-| [Pad](https://albumentations.ai/explore/transform/Pad/)                                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [PadIfNeeded](https://albumentations.ai/explore/transform/PadIfNeeded/)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [Perspective](https://albumentations.ai/explore/transform/Perspective/)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [PiecewiseAffine](https://albumentations.ai/explore/transform/PiecewiseAffine/)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [PixelDropout](https://albumentations.ai/explore/transform/PixelDropout/)                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [PixelSpread](https://albumentations.ai/explore/transform/PixelSpread/)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [RandomCrop](https://albumentations.ai/explore/transform/RandomCrop/)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [RandomCropFromBorders](https://albumentations.ai/explore/transform/RandomCropFromBorders/)       | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [RandomCropNearBBox](https://albumentations.ai/explore/transform/RandomCropNearBBox/)             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [RandomGridShuffle](https://albumentations.ai/explore/transform/RandomGridShuffle/)               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [RandomResizedCrop](https://albumentations.ai/explore/transform/RandomResizedCrop/)               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [RandomRotate90](https://albumentations.ai/explore/transform/RandomRotate90/)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [RandomScale](https://albumentations.ai/explore/transform/RandomScale/)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [RandomSizedBBoxSafeCrop](https://albumentations.ai/explore/transform/RandomSizedBBoxSafeCrop/)   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [RandomSizedCrop](https://albumentations.ai/explore/transform/RandomSizedCrop/)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [Resize](https://albumentations.ai/explore/transform/Resize/)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [Rotate](https://albumentations.ai/explore/transform/Rotate/)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [SafeRotate](https://albumentations.ai/explore/transform/SafeRotate/)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [ShiftScaleRotate](https://albumentations.ai/explore/transform/ShiftScaleRotate/)                 | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [SmallestMaxSize](https://albumentations.ai/explore/transform/SmallestMaxSize/)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [SquareSymmetry](https://albumentations.ai/explore/transform/SquareSymmetry/)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [ThinPlateSpline](https://albumentations.ai/explore/transform/ThinPlateSpline/)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [TimeMasking](https://albumentations.ai/explore/transform/TimeMasking/)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
-| [TimeReverse](https://albumentations.ai/explore/transform/TimeReverse/)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [Transpose](https://albumentations.ai/explore/transform/Transpose/)                               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [VerticalFlip](https://albumentations.ai/explore/transform/VerticalFlip/)                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [WaterRefraction](https://albumentations.ai/explore/transform/WaterRefraction/)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [XYMasking](https://albumentations.ai/explore/transform/XYMasking/)                               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [Affine](https://albumentations.ai/explore/transform/Affine/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [AtLeastOneBBoxRandomCrop](https://albumentations.ai/explore/transform/AtLeastOneBBoxRandomCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [BBoxSafeRandomCrop](https://albumentations.ai/explore/transform/BBoxSafeRandomCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme)             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [CenterCrop](https://albumentations.ai/explore/transform/CenterCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [CoarseDropout](https://albumentations.ai/explore/transform/CoarseDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme)                       | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [ConstrainedCoarseDropout](https://albumentations.ai/explore/transform/ConstrainedCoarseDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [CopyAndPaste](https://albumentations.ai/explore/transform/CopyAndPaste/?utm_source=github&utm_medium=referral&utm_campaign=readme)                         | ✓     | ✓    | ✓            |              | ✓         |        |        |
+| [Crop](https://albumentations.ai/explore/transform/Crop/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [CropAndPad](https://albumentations.ai/explore/transform/CropAndPad/?utm_source=github&utm_medium=referral&utm_campaign=readme)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [CropNonEmptyMaskIfExists](https://albumentations.ai/explore/transform/CropNonEmptyMaskIfExists/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [D4](https://albumentations.ai/explore/transform/D4/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [ElasticTransform](https://albumentations.ai/explore/transform/ElasticTransform/?utm_source=github&utm_medium=referral&utm_campaign=readme)                 | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [Erasing](https://albumentations.ai/explore/transform/Erasing/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                   | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [FrequencyMasking](https://albumentations.ai/explore/transform/FrequencyMasking/?utm_source=github&utm_medium=referral&utm_campaign=readme)                 | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [GridDistortion](https://albumentations.ai/explore/transform/GridDistortion/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [GridDropout](https://albumentations.ai/explore/transform/GridDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [GridElasticDeform](https://albumentations.ai/explore/transform/GridElasticDeform/?utm_source=github&utm_medium=referral&utm_campaign=readme)               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [GridMask](https://albumentations.ai/explore/transform/GridMask/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                 | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [HorizontalFlip](https://albumentations.ai/explore/transform/HorizontalFlip/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [Lambda](https://albumentations.ai/explore/transform/Lambda/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [LetterBox](https://albumentations.ai/explore/transform/LetterBox/?utm_source=github&utm_medium=referral&utm_campaign=readme)                               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [LongestMaxSize](https://albumentations.ai/explore/transform/LongestMaxSize/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [MaskDropout](https://albumentations.ai/explore/transform/MaskDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [Morphological](https://albumentations.ai/explore/transform/Morphological/?utm_source=github&utm_medium=referral&utm_campaign=readme)                       | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [Mosaic](https://albumentations.ai/explore/transform/Mosaic/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                     | ✓     | ✓    | ✓            | ✓            | ✓         |        |        |
+| [NoOp](https://albumentations.ai/explore/transform/NoOp/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [OpticalDistortion](https://albumentations.ai/explore/transform/OpticalDistortion/?utm_source=github&utm_medium=referral&utm_campaign=readme)               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [OverlayElements](https://albumentations.ai/explore/transform/OverlayElements/?utm_source=github&utm_medium=referral&utm_campaign=readme)                   | ✓     | ✓    |              |              |           |        |        |
+| [Pad](https://albumentations.ai/explore/transform/Pad/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [PadIfNeeded](https://albumentations.ai/explore/transform/PadIfNeeded/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [Perspective](https://albumentations.ai/explore/transform/Perspective/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [PiecewiseAffine](https://albumentations.ai/explore/transform/PiecewiseAffine/?utm_source=github&utm_medium=referral&utm_campaign=readme)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [PixelDropout](https://albumentations.ai/explore/transform/PixelDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme)                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [PixelSpread](https://albumentations.ai/explore/transform/PixelSpread/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [RandomCrop](https://albumentations.ai/explore/transform/RandomCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [RandomCropFromBorders](https://albumentations.ai/explore/transform/RandomCropFromBorders/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [RandomCropNearBBox](https://albumentations.ai/explore/transform/RandomCropNearBBox/?utm_source=github&utm_medium=referral&utm_campaign=readme)             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [RandomGridShuffle](https://albumentations.ai/explore/transform/RandomGridShuffle/?utm_source=github&utm_medium=referral&utm_campaign=readme)               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [RandomResizedCrop](https://albumentations.ai/explore/transform/RandomResizedCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme)               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [RandomRotate90](https://albumentations.ai/explore/transform/RandomRotate90/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [RandomScale](https://albumentations.ai/explore/transform/RandomScale/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [RandomSizedBBoxSafeCrop](https://albumentations.ai/explore/transform/RandomSizedBBoxSafeCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme)   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [RandomSizedCrop](https://albumentations.ai/explore/transform/RandomSizedCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [Resize](https://albumentations.ai/explore/transform/Resize/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [Rotate](https://albumentations.ai/explore/transform/Rotate/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [SafeRotate](https://albumentations.ai/explore/transform/SafeRotate/?utm_source=github&utm_medium=referral&utm_campaign=readme)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [ShiftScaleRotate](https://albumentations.ai/explore/transform/ShiftScaleRotate/?utm_source=github&utm_medium=referral&utm_campaign=readme)                 | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [SmallestMaxSize](https://albumentations.ai/explore/transform/SmallestMaxSize/?utm_source=github&utm_medium=referral&utm_campaign=readme)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [SquareSymmetry](https://albumentations.ai/explore/transform/SquareSymmetry/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [ThinPlateSpline](https://albumentations.ai/explore/transform/ThinPlateSpline/?utm_source=github&utm_medium=referral&utm_campaign=readme)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [TimeMasking](https://albumentations.ai/explore/transform/TimeMasking/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [TimeReverse](https://albumentations.ai/explore/transform/TimeReverse/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [Transpose](https://albumentations.ai/explore/transform/Transpose/?utm_source=github&utm_medium=referral&utm_campaign=readme)                               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [VerticalFlip](https://albumentations.ai/explore/transform/VerticalFlip/?utm_source=github&utm_medium=referral&utm_campaign=readme)                         | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [WaterRefraction](https://albumentations.ai/explore/transform/WaterRefraction/?utm_source=github&utm_medium=referral&utm_campaign=readme)                   | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [XYMasking](https://albumentations.ai/explore/transform/XYMasking/?utm_source=github&utm_medium=referral&utm_campaign=readme)                               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 
 ### 3D transforms
 
@@ -336,13 +336,13 @@ Where:
 
 | Transform                                                                       | Volume | Mask3D | Keypoints |
 | ------------------------------------------------------------------------------- | :----: | :----: | :-------: |
-| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)       | ✓      | ✓      | ✓         |
-| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/) | ✓      | ✓      | ✓         |
-| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)     | ✓      | ✓      | ✓         |
-| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)     | ✓      | ✓      | ✓         |
-| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                     | ✓      | ✓      | ✓         |
-| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)     | ✓      | ✓      | ✓         |
-| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)       | ✓      | ✓      | ✓         |
+| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓      | ✓      | ✓         |
+| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓      | ✓      | ✓         |
+| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
+| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
+| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓      | ✓      | ✓         |
+| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
+| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓      | ✓      | ✓         |
 
 ## A few more examples of **augmentations**
 
@@ -460,7 +460,7 @@ We look forward to your contributions to help make the AlbumentationsX ecosystem
 AlbumentationsX offers two licensing options to suit different needs:
 
 - **AGPL-3.0 License**: This [OSI-approved](https://opensource.org/license) open-source license is perfect for students, researchers, and enthusiasts. It encourages open collaboration and knowledge sharing. See the [LICENSE](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSE) file for full details.
-- **AlbumentationsX Commercial License**: Designed for commercial use, this license allows for the seamless integration of AlbumentationsX into commercial products and services, bypassing the open-source requirements of AGPL-3.0. If your use case involves commercial deployment, please visit [our pricing page](https://albumentations.ai/pricing).
+- **AlbumentationsX Commercial License**: Designed for commercial use, this license allows for the seamless integration of AlbumentationsX into commercial products and services, bypassing the open-source requirements of AGPL-3.0. If your use case involves commercial deployment, please visit [our pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
 ## 📞 Contact
 
@@ -489,6 +489,6 @@ If you find this library useful for your research, please consider citing [Album
 
 ## 📫 Stay Connected
 
-Never miss updates, tutorials, and tips from the AlbumentationsX team! [Subscribe to our newsletter](https://albumentations.ai/subscribe).
+Never miss updates, tutorials, and tips from the AlbumentationsX team! [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
 <!-- GitAds-Verify: 99ZXCN5GQ9CQN3QEMO5H4RAOI8C5YTKV -->

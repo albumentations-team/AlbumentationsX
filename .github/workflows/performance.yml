@@ -2,6 +2,12 @@ name: Performance
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
     branches:
       - main
     paths:
@@ -28,12 +34,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  asv_smoke:
+  benchmark_evidence:
     name: ASV benchmark evidence
     runs-on: ubuntu-latest
     continue-on-error: true
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
     - name: Checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -51,7 +61,7 @@ jobs:
       run: >
         uv run --no-sync python tools/collect_test_environment.py
         --output benchmark-evidence/environment-benchmark.json
-        --command "asv continuous/run performance evidence"
+        --command "benchmark coverage and ASV importability evidence"
     - name: Collect benchmark coverage evidence
       run: |
         uv run --no-sync python -m tools.benchmark_coverage summary \
@@ -121,6 +131,61 @@ jobs:
     - name: Check benchmark suite importability
       working-directory: benchmark
       run: uv tool run --from asv asv --config asv.conf.json check --verbose
+    - name: Classify performance budget evidence
+      if: always()
+      run: >
+        uv run --no-sync python tools/performance_budget.py summarize
+        --coverage-summary benchmark-evidence/benchmark-coverage.json
+        --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
+        --output benchmark-evidence/benchmark-performance-budget.json
+    - name: Upload benchmark artifacts
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: benchmark-evidence
+        path: benchmark-evidence/
+        if-no-files-found: ignore
+
+  asv_comparison:
+    name: ASV comparison evidence
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'run-performance'))
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: 0
+    - name: Install uv and Python 3.12
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: "3.12"
+        activate-environment: true
+    - name: Install dependencies
+      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+    - name: Collect ASV environment evidence
+      run: >
+        uv run --no-sync python tools/collect_test_environment.py
+        --output benchmark-asv-evidence/environment-asv.json
+        --command "ASV timing evidence"
+    - name: Collect benchmark coverage evidence
+      run: |
+        uv run --no-sync python -m tools.benchmark_coverage summary \
+          --output benchmark-asv-evidence/benchmark-coverage.json
+        uv run --no-sync python -m tools.benchmark_coverage details \
+          --output benchmark-asv-evidence/benchmark-coverage-detail.json
+    - name: Register ASV machine profile
+      working-directory: benchmark
+      run: uv tool run --from asv asv --config asv.conf.json machine --yes
+    - name: Check benchmark suite importability
+      working-directory: benchmark
+      run: uv tool run --from asv asv --config asv.conf.json check --verbose
     - name: Compare baseline and candidate benchmarks
       if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '')
       working-directory: benchmark
@@ -136,10 +201,10 @@ jobs:
         if [ "$EVENT_NAME" = "pull_request" ]; then
           BASELINE_REF="$PR_BASE_SHA"
           CANDIDATE_REF="$PR_HEAD_SHA"
-          git diff --name-only "$BASELINE_REF" "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/benchmark-evidence/changed-files.txt"
+          git diff --name-only "$BASELINE_REF" "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/benchmark-asv-evidence/changed-files.txt"
           BENCH_FILTER="$(
             uv run --no-sync python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" \
-              --changed-files "$GITHUB_WORKSPACE/benchmark-evidence/changed-files.txt"
+              --changed-files "$GITHUB_WORKSPACE/benchmark-asv-evidence/changed-files.txt"
           )"
         else
           BASELINE_REF="$INPUT_BASELINE_REF"
@@ -149,7 +214,7 @@ jobs:
             CANDIDATE_REF="HEAD"
           fi
         fi
-        echo "$BENCH_FILTER" > "$GITHUB_WORKSPACE/benchmark-evidence/benchmark-filter.txt"
+        echo "$BENCH_FILTER" > "$GITHUB_WORKSPACE/benchmark-asv-evidence/benchmark-filter.txt"
         ASV_EXIT_CODE=0
         ASV_COMMAND=(
           uv tool run --from asv asv --config asv.conf.json continuous
@@ -163,10 +228,10 @@ jobs:
           ASV_COMMAND+=(--bench "$BENCH_FILTER")
         fi
         ASV_COMMAND+=("$BASELINE_REF" "$CANDIDATE_REF")
-        "${ASV_COMMAND[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
-        echo "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/benchmark-evidence/asv-continuous-exit-code.txt"
+        "${ASV_COMMAND[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/benchmark-asv-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
+        echo "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/benchmark-asv-evidence/asv-continuous-exit-code.txt"
         if [ "$ASV_EXIT_CODE" -ne 0 ]; then
-          echo "::warning::ASV comparison reported performance changes. See benchmark-evidence/asv-continuous.txt and benchmark-asv-summary.json."
+          echo "::warning::ASV comparison reported performance changes. See benchmark-asv-evidence/asv-continuous.txt and benchmark-asv-summary.json."
         fi
     - name: Summarize ASV comparison evidence
       if: >
@@ -174,32 +239,35 @@ jobs:
         (github.event_name == 'pull_request' ||
         (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != ''))
       run: |
-        ASV_EXIT_CODE="$(cat benchmark-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
+        ASV_EXIT_CODE="$(cat benchmark-asv-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
         if [ -n "$ASV_EXIT_CODE" ]; then
           uv run --no-sync python tools/asv_summary.py \
-            --input benchmark-evidence/asv-continuous.txt \
-            --output benchmark-evidence/benchmark-asv-summary.json \
+            --input benchmark-asv-evidence/asv-continuous.txt \
+            --output benchmark-asv-evidence/benchmark-asv-summary.json \
             --asv-exit-code "$ASV_EXIT_CODE"
         else
           uv run --no-sync python tools/asv_summary.py \
-            --input benchmark-evidence/asv-continuous.txt \
-            --output benchmark-evidence/benchmark-asv-summary.json \
+            --input benchmark-asv-evidence/asv-continuous.txt \
+            --output benchmark-asv-evidence/benchmark-asv-summary.json \
             --allow-missing
         fi
-    - name: Classify performance budget evidence
-      if: always()
+    - name: Classify ASV comparison budget evidence
+      if: >
+        always() &&
+        (github.event_name == 'pull_request' ||
+        (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != ''))
       env:
         EVENT_NAME: ${{ github.event_name }}
         INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
       run: |
         BUDGET_COMMAND=(
           uv run --no-sync python tools/performance_budget.py summarize
-          --coverage-summary benchmark-evidence/benchmark-coverage.json
-          --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
-          --output benchmark-evidence/benchmark-performance-budget.json
+          --coverage-summary benchmark-asv-evidence/benchmark-coverage.json
+          --coverage-detail benchmark-asv-evidence/benchmark-coverage-detail.json
+          --output benchmark-asv-evidence/benchmark-performance-budget.json
         )
-        if [ -f benchmark-evidence/benchmark-asv-summary.json ]; then
-          BUDGET_COMMAND+=(--asv-summary benchmark-evidence/benchmark-asv-summary.json)
+        if [ -f benchmark-asv-evidence/benchmark-asv-summary.json ]; then
+          BUDGET_COMMAND+=(--asv-summary benchmark-asv-evidence/benchmark-asv-summary.json)
         fi
         if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_BASELINE_REF" ]; then
           BUDGET_COMMAND+=(--require-comparison --fail-on-release-blockers)
@@ -218,13 +286,13 @@ jobs:
           --attribute repeat=1 \
           --attribute number=1 \
           'HEAD^!' \
-          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-evidence/asv-run.txt"
-    - name: Upload benchmark artifacts
+          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-asv-evidence/asv-run.txt"
+    - name: Upload ASV artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
-        name: benchmark-evidence
+        name: benchmark-asv-evidence
         path: |
-          benchmark-evidence/
+          benchmark-asv-evidence/
           benchmark/.asv/results/
         if-no-files-found: ignore

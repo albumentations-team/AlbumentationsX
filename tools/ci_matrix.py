@@ -62,10 +62,11 @@ WORKFLOWS = (
 MAX_WORKFLOW_TIMEOUT_MINUTES = 90
 
 LOWER_BOUND_REQUIREMENTS = (
-    "numpy==1.24.4",
-    "scipy==1.10.1",
+    "numpy==2.2.6",
+    "scipy==1.15.3",
     "pydantic==2.12.4",
     "albucore==0.2.4",
+    "opencv-python-headless==5.0.0.93",
 )
 
 SUPPORT_POLICY_TABLE_ROWS = (

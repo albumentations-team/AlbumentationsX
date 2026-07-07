@@ -176,7 +176,7 @@ repos:
         args:
           [ --config-file=pyproject.toml ]
   - repo: https://github.com/facebook/pyrefly-pre-commit
-    rev: 1.1.1
+    rev: 1.2.0.dev1
     hooks:
       - id: pyrefly-check
         name: Pyrefly type check

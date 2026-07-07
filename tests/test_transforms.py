@@ -505,6 +505,17 @@ def test_crop_non_empty_mask():
     _test_crops(np.stack([mask_2, mask_1]), np.stack([crop_2, crop_1]), aug_1, n=1)
 
 
+def test_crop_non_empty_mask_if_exists_handles_opencv_find_non_zero_shape():
+    image = np.zeros((8, 8, 3), dtype=np.uint8)
+    mask = np.zeros((8, 8), dtype=np.uint8)
+    mask[3, 4] = 1
+    transform = A.Compose([A.CropNonEmptyMaskIfExists(height=1, width=1, p=1)], seed=137)
+
+    result = transform(image=image, mask=mask)
+
+    np.testing.assert_array_equal(result["mask"], np.array([[1]], dtype=np.uint8))
+
+
 @pytest.mark.parametrize(
     "images",
     [

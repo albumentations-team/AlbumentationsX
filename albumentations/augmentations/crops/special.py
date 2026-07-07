@@ -200,7 +200,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
             mask_sum = reduce_sum(mask, axis=-1) if mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else mask
             non_empty_mask = np.asarray(mask_sum) > 0
             non_zero_xy = cv2.findNonZero(non_empty_mask.astype(np.uint8))
-            non_zero_yx = non_zero_xy[:, 0, ::-1]
+            non_zero_yx = non_zero_xy.reshape(-1, 2)[:, ::-1]
             y, x = self.py_random.choice(non_zero_yx)
 
             # Calculate crop coordinates centered around chosen point

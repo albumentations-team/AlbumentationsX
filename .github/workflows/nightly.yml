@@ -28,8 +28,8 @@ jobs:
         numpy==1.24.4
         scipy==1.10.1
         pydantic==2.12.4
-        albucore==0.1.6
-        opencv-python-headless==4.13.0.92
+        albucore==0.2.4
+        opencv-python-headless==5.0.0.93
         pytest
     - name: Prepare nightly evidence directory
       run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"

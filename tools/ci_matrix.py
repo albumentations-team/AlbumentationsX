@@ -65,7 +65,7 @@ LOWER_BOUND_REQUIREMENTS = (
     "numpy==1.24.4",
     "scipy==1.10.1",
     "pydantic==2.12.4",
-    "albucore==0.1.6",
+    "albucore==0.2.4",
 )
 
 SUPPORT_POLICY_TABLE_ROWS = (

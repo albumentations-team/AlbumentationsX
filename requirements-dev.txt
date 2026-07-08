@@ -4,7 +4,7 @@ eval-type-backport
 google-docstring-parser>=0.0.9
 hypothesis>=6.0.0
 mypy>=2.0.0
-opencv-python-headless>=4.13.0.92
+opencv-python-headless>=5.0.0.93
 pip-audit
 pre_commit>=4.5.1
 pyrefly

@@ -8,7 +8,6 @@ def test_select_benchmark_filters_keep_baseline_for_docs_only_changes() -> None:
         "TimeBatch",
         "TimeCatalogTransformSmoke",
         "TimeCorePipeline",
-        "TimeFunctional",
     )
 
 
@@ -45,7 +44,6 @@ def test_select_benchmark_filters_keeps_benchmark_infrastructure_changes_bounded
         "TimeBatch",
         "TimeCatalogTransformSmoke",
         "TimeCorePipeline",
-        "TimeFunctional",
     )
 
 
@@ -53,7 +51,13 @@ def test_select_benchmark_filters_returns_asv_regex() -> None:
     regex = select_benchmark_regex(["albumentations/augmentations/blur/transforms.py"])
 
     assert regex == (
-        "TimeBatch|TimeCatalogTransformSmoke|TimeCorePipeline|TimeFunctional|"
-        "TimeParameterSensitivity|TimePixelFullMatrix|"
+        "TimeBatch|TimeCatalogTransformSmoke|TimeCorePipeline|TimeParameterSensitivity|TimePixelFullMatrix|"
         "TimeFunctionalPixelKernels|TimeFunctionalBlurKernels"
     )
+
+
+def test_select_benchmark_filters_do_not_use_broad_functional_class_by_default() -> None:
+    patterns = select_benchmark_patterns(["albumentations/augmentations/geometric/functional.py"])
+
+    assert "TimeFunctional" not in patterns
+    assert "TimeFunctionalGeometry" in patterns

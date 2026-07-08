@@ -62,10 +62,11 @@ WORKFLOWS = (
 MAX_WORKFLOW_TIMEOUT_MINUTES = 90
 
 LOWER_BOUND_REQUIREMENTS = (
-    "numpy==1.24.4",
-    "scipy==1.10.1",
+    "numpy==2.2.6",
+    "scipy==1.15.3",
     "pydantic==2.12.4",
-    "albucore==0.1.6",
+    "albucore==0.2.4",
+    "opencv-python-headless==5.0.0.93",
 )
 
 SUPPORT_POLICY_TABLE_ROWS = (
@@ -319,6 +320,13 @@ def _check_text_mentions(path: Path, required: tuple[str, ...], context: str) ->
     return [f"{path} does not include required {context}: {item}" for item in required if item not in text]
 
 
+def _workflow_job_run_text(job: dict[str, Any]) -> str:
+    steps = job.get("steps", [])
+    if not isinstance(steps, list):
+        return ""
+    return "\n".join(str(step.get("run", "")) for step in steps if isinstance(step, dict))
+
+
 def _check_nightly_workflow() -> list[str]:
     issues = _check_text_mentions(NIGHTLY_WORKFLOW, LOWER_BOUND_REQUIREMENTS, "lower-bound dependency")
     issues.extend(
@@ -362,24 +370,52 @@ def _check_release_candidate_workflow() -> list[str]:
 
 
 def _check_performance_workflow() -> list[str]:
-    return _check_text_mentions(
+    issues = _check_text_mentions(
         PERFORMANCE_WORKFLOW,
         (
             "continue-on-error: true",
             "tools.benchmark_coverage summary",
             "tools.benchmark_coverage details",
             "asv --config asv.conf.json check --verbose",
+            "asv --config asv.conf.json continuous",
+            "asv --config asv.conf.json run",
             "tools/asv_summary.py",
             "tools/performance_budget.py",
             "tools/select_benchmark_filters.py",
             "benchmark-coverage-detail.json",
             "benchmark-performance-budget.json",
             "benchmark-evidence/",
+            "benchmark-asv-evidence/",
             "benchmark-filter.txt",
             "changed-files.txt",
+            "run-performance",
         ),
         "performance evidence gate",
     )
+    jobs = _workflow_jobs(PERFORMANCE_WORKFLOW)
+    evidence_job = jobs.get("benchmark_evidence")
+    if not isinstance(evidence_job, dict):
+        issues.append(f"{PERFORMANCE_WORKFLOW} is missing benchmark_evidence job")
+    else:
+        if evidence_job.get("timeout-minutes") != 10:
+            issues.append(f"{PERFORMANCE_WORKFLOW} benchmark_evidence job must keep timeout-minutes at 10")
+        evidence_run_text = _workflow_job_run_text(evidence_job)
+        for command in ("asv --config asv.conf.json continuous", "asv --config asv.conf.json run"):
+            if command in evidence_run_text:
+                issues.append(f"{PERFORMANCE_WORKFLOW} benchmark_evidence job must not run timing command: {command}")
+
+    asv_job = jobs.get("asv_comparison")
+    if not isinstance(asv_job, dict):
+        issues.append(f"{PERFORMANCE_WORKFLOW} is missing asv_comparison job")
+        return issues
+
+    if "run-performance" not in str(asv_job.get("if", "")):
+        issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job must be PR label gated")
+    asv_run_text = _workflow_job_run_text(asv_job)
+    for command in ("asv --config asv.conf.json continuous", "asv --config asv.conf.json run"):
+        if command not in asv_run_text:
+            issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job is missing timing command: {command}")
+    return issues
 
 
 def _check_pytorch_performance_workflow() -> list[str]:

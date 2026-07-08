@@ -182,7 +182,7 @@ class TestAreaForDownscaleOutput:
         )
 
 
-# ── cv2.resize channel-count behaviour (documents OpenCV 4.13 limitation) ────
+# ── cv2.resize channel-count behaviour (documents current OpenCV limitation) ────
 
 WORKING_INTERPOLATIONS = [
     cv2.INTER_LINEAR,
@@ -203,7 +203,7 @@ def test_cv2_resize_works_for_5plus_channels(num_channels, interpolation):
 
 @pytest.mark.parametrize("num_channels", [5, 6])
 def test_cv2_resize_inter_area_fails_for_5plus_channels_non_integer_scale(num_channels):
-    """cv2.resize raises for INTER_AREA + 5+ channels when the scale is non-integer (OpenCV 4.13 limitation).
+    """cv2.resize raises for INTER_AREA + 5+ channels when the scale is non-integer.
 
     Integer scale factors (e.g. 100->50, exact 2x) happen to work, but non-integer
     scale factors (e.g. 100->37) hit the cn<=4 assertion in the INTER_AREA path.

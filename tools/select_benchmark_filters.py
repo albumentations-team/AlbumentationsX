@@ -10,7 +10,6 @@ BASELINE_PATTERNS = frozenset(
         "TimeBatch",
         "TimeCatalogTransformSmoke",
         "TimeCorePipeline",
-        "TimeFunctional",
     },
 )
 
@@ -103,7 +102,6 @@ PATTERN_ORDER = (
     "TimeBatch",
     "TimeCatalogTransformSmoke",
     "TimeCorePipeline",
-    "TimeFunctional",
     "TimeParameterSensitivity",
     "TimeGeometryFullMatrix",
     "TimePixelFullMatrix",

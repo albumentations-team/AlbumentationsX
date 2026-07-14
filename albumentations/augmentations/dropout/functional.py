@@ -425,7 +425,7 @@ def cutout(
     # Handle inpainting methods
     if isinstance(fill, str):
         if fill in {"inpaint_telea", "inpaint_ns"}:
-            return apply_inpainting(img, holes, cast("Literal['inpaint_telea', 'inpaint_ns']", fill))
+            return apply_inpainting(img, holes, fill)
         if fill == "random":
             return fill_holes_with_random(img, holes, random_generator, uniform=False)
         if fill == "random_uniform":
@@ -483,9 +483,7 @@ def cutout_on_volume(
     # Handle inpainting methods
     if isinstance(fill, str):
         if fill in {"inpaint_telea", "inpaint_ns"}:
-            processed_images = [
-                apply_inpainting(img, holes, cast("Literal['inpaint_telea', 'inpaint_ns']", fill)) for img in volume
-            ]
+            processed_images = [apply_inpainting(img, holes, fill) for img in volume]
             result = np.array(processed_images)
             # Reshape to original volume shape: (D, H, W, C) or (D, H, W)
             return cast("ImageType", result.reshape(volume.shape))
@@ -548,11 +546,7 @@ def cutout_on_volumes(
     # Handle inpainting methods
     if isinstance(fill, str):
         if fill in {"inpaint_telea", "inpaint_ns"}:
-            processed_images = [
-                apply_inpainting(img, holes, cast("Literal['inpaint_telea', 'inpaint_ns']", fill))
-                for volume in volumes
-                for img in volume
-            ]
+            processed_images = [apply_inpainting(img, holes, fill) for volume in volumes for img in volume]
             result = np.array(processed_images)
             # Reshape to original batch of volumes shape: (N, D, H, W, C) or (N, D, H, W)
             return result.reshape(volumes.shape)

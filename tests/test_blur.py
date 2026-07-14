@@ -214,12 +214,16 @@ def test_gaussian_blur_matches_pil():
     pil_image = Image.fromarray(image[:, :, 0])
 
     for sigma in sigmas:
+        sigma_value = float(sigma)
+
         # PIL blur
-        pil_blurred = pil_image.filter(ImageFilter.GaussianBlur(radius=sigma))
+        pil_blurred = pil_image.filter(ImageFilter.GaussianBlur(radius=sigma_value))
         pil_sharpness.append(compute_sharpness(np.array(pil_blurred)))
 
         # Albumentations blur
-        alb_blurred = A.GaussianBlur(blur_range=(0, 0), sigma_range=(sigma, sigma), p=1.0)(image=image)["image"]
+        alb_blurred = A.GaussianBlur(blur_range=(0, 0), sigma_range=(sigma_value, sigma_value), p=1.0)(image=image)[
+            "image"
+        ]
         alb_sharpness.append(compute_sharpness(alb_blurred))
 
     # Convert to numpy arrays for easier comparison

@@ -914,9 +914,7 @@ class HEStain(ImageOnlyTransform):
 
         # Initialize stain extractor here if needed
         if method in ["vahadane", "macenko"]:
-            self.stain_extractor = fpixel.get_normalizer(
-                cast("Literal['vahadane', 'macenko']", method),
-            )
+            self.stain_extractor = fpixel.get_normalizer(method)
 
         self.preset_names = [
             "ruifrok",

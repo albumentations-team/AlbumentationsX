@@ -41,11 +41,12 @@ The repository implementation now follows this design:
 - nightly and release-candidate workflows retain the complete 3 × 5 suite;
 - security, legal, packaging, ASV, and Antigravity work is routed by relevance.
 
-The corresponding repository-ruleset cutover must require `PR plan`, `Fast
-checks`, `Correctness`, and `Security and policy`, and remove exact
-`Analyze (*)`, matrix-leaf, and `ASV benchmark evidence` contexts. Hosted-runner
-p50/p95 must be re-measured after the cutover; the service levels below remain
-targets until those observations exist.
+The main-branch repository ruleset now requires `PR plan`, `Fast checks`,
+`Correctness`, and `Security and policy`. Exact `Analyze (*)`, matrix-leaf, and
+`ASV benchmark evidence` contexts have been removed; the existing `CodeQL` and
+`license/cla` gates remain required. Hosted-runner p50/p95 still need to be
+measured over multiple post-cutover runs, so the service levels below remain
+targets rather than measured guarantees.
 
 ## What the current checks are doing
 

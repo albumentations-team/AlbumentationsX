@@ -37,9 +37,9 @@ jobs:
     - name: Install PyTorch
       run: |
         if [ "${{ matrix.operating-system }}" = "macos-latest" ]; then
-          uv pip install torch==2.12.1 torchvision==0.27.1
+          uv pip install torch==2.13.0 torchvision==0.28.0
         else
-          uv pip install torch==2.12.1+cpu torchvision==0.27.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+          uv pip install torch==2.13.0+cpu torchvision==0.28.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu
         fi
       shell: bash
 
@@ -92,7 +92,7 @@ jobs:
         disable_search: true
         fail_ci_if_error: true
         use_pypi: true
-        version: 11.2.8
+        version: 11.3.1
 
   check_code_formatting_types:
     name: Check repository hooks

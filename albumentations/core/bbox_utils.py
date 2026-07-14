@@ -781,8 +781,8 @@ def polygons_to_obb(
     obb_list: list[list[float]] = []
     polygons32 = polygons.astype(np.float32)
 
-    for poly in polygons32:
-        rect = cv2.minAreaRect(poly)
+    for index in range(polygons32.shape[0]):
+        rect = cv2.minAreaRect(polygons32[index, :, :])
         corners = cv2.boxPoints(rect).astype(np.float64)
         cx, cy, width, height, angle = _corners_to_obb_params(corners)
 
@@ -919,8 +919,18 @@ def convert_bboxes_to_albumentations(
     elif source_format == "cxcywh":
         if bbox_type == "obb":
             # OBB cxcywh is typically OpenCV minAreaRect format; convert via corners
+            bboxes32 = bboxes.astype(np.float32)
             corners = np.array(
-                [cv2.boxPoints(((b[0], b[1]), (b[2], b[3]), b[4])) for b in bboxes.astype(np.float32)],
+                [
+                    cv2.boxPoints(
+                        (
+                            (float(bboxes32[index, 0]), float(bboxes32[index, 1])),
+                            (float(bboxes32[index, 2]), float(bboxes32[index, 3])),
+                            float(bboxes32[index, 4]),
+                        ),
+                    )
+                    for index in range(bboxes32.shape[0])
+                ],
                 dtype=np.float32,
             )
             internal_px = polygons_to_obb(corners)

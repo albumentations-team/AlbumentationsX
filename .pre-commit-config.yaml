@@ -150,7 +150,7 @@ repos:
         pass_filenames: false
         files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.20
+    rev: v0.15.21
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -172,17 +172,20 @@ repos:
     rev: v2.4.2
     hooks:
       - id: codespell
-        additional_dependencies: ["tomli"]
+        additional_dependencies: ["tomli>=2.4.1"]
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.1.0
+    rev: v2.3.0
     hooks:
       - id: mypy
         files: ^albumentations/
-        additional_dependencies: [ types-PyYAML, types-setuptools, pydantic>=2.13.4]
+        additional_dependencies:
+          - types-PyYAML>=6.0.12.20260518
+          - types-setuptools>=83.0.0.20260706
+          - pydantic>=2.13.4
         args:
           [ --config-file=pyproject.toml ]
   - repo: https://github.com/facebook/pyrefly-pre-commit
-    rev: 1.2.0.dev1
+    rev: 1.2.0.dev2
     hooks:
       - id: pyrefly-check
         name: Pyrefly type check

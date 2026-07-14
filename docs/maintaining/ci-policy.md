@@ -25,6 +25,31 @@ their exact notice contents, and confirms that inbound CLA material is absent.
 Keep this workflow always reporting rather than path-filtering it if it is made
 a required repository check.
 
+## Antigravity Pull-Request Reviews
+
+`Antigravity PR Checks` reviews non-draft pull requests into `main` when the
+source branch belongs to this repository. It skips forks so pull-request code
+cannot use the Google Cloud identity. The review job authenticates to Vertex AI
+through GitHub OIDC and Workload Identity Federation. Gemini receives read-only
+repository file tools; it receives no pull-request write token, shell tool, or
+MCP server. A separate job downloads the review as a one-day artifact and posts
+it as a pull-request comment.
+
+Configure these GitHub repository variables before requiring the check:
+
+| Name | Value |
+| --- | --- |
+| `ANTIGRAVITY_GCP_PROJECT_ID` | `albumentations` |
+| `ANTIGRAVITY_GCP_LOCATION` | `global` |
+| `ANTIGRAVITY_GCP_SERVICE_ACCOUNT` | `antigravity-pr-review@albumentations.iam.gserviceaccount.com` |
+| `ANTIGRAVITY_GCP_WIF_PROVIDER` | `projects/663083315901/locations/global/workloadIdentityPools/github-actions/providers/albumentationsx-pr-review` |
+
+The Workload Identity provider must accept only this GitHub repository. The
+optional `GEMINI_CLI_VERSION`, `GEMINI_MODEL`, and `GEMINI_DEBUG` variables
+override the action defaults; debug mode defaults to `false`. Review findings
+are advisory. The workflow fails only when its configuration or execution
+fails, not when Gemini reports a finding.
+
 ## Scheduled And Release Gates
 
 - Lower-bound dependency testing on Ubuntu and Python 3.10.

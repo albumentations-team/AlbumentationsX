@@ -43,6 +43,7 @@ TEST_GROUPS = (
 SUPPORT_POLICY = REPO_ROOT / "docs" / "maintaining" / "support-policy.md"
 REPORT_TEMPLATE = REPO_ROOT / "docs" / "maintaining" / "correctness-report-template.md"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+ANTIGRAVITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "antigravity-pr-checks.yml"
 NIGHTLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "nightly.yml"
 PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "performance.yml"
 PYTORCH_PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pytorch-performance.yml"
@@ -52,6 +53,7 @@ RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
 WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
 WORKFLOWS = (
     CI_WORKFLOW,
+    ANTIGRAVITY_WORKFLOW,
     NIGHTLY_WORKFLOW,
     PERFORMANCE_WORKFLOW,
     PYTORCH_PERFORMANCE_WORKFLOW,

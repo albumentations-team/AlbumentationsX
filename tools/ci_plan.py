@@ -105,9 +105,11 @@ BENCHMARK_TOOL_PATHS = {
 }
 PYTORCH_TEST_PATHS = {
     "tests/test_additional_targets.py",
+    "tests/test_benchmark_coverage.py",
     "tests/test_flip_masks_comprehensive.py",
     "tests/test_per_worker_seed.py",
     "tests/test_pytorch.py",
+    "tests/test_serialization.py",
     "tests/transforms3d/test_pytorch.py",
 }
 PYTORCH_ONLY_TEST_PATHS = {
@@ -266,7 +268,7 @@ def _select_correctness_checks(checks: dict[str, bool], domains: set[str], chang
     checks["coverage"] = full_matrix
     checks["primary"] = primary and not full_matrix
     checks["targeted"] = bool(isolated_tests) and not full_matrix and not primary
-    checks["pytorch"] = bool(domains & {"pytorch", "dependencies", "unknown"}) or any(
+    checks["pytorch"] = bool(domains & {"pytorch", "dependencies", "benchmarks", "unknown"}) or any(
         path.startswith("albumentations/core/") for path in changed_files
     )
 

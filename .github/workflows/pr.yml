@@ -413,6 +413,8 @@ jobs:
           tests/test_per_worker_seed.py
           tests/test_flip_masks_comprehensive.py
           tests/test_additional_targets.py
+          tests/test_benchmark_coverage.py
+          tests/test_serialization.py
       - name: Validate optional benchmark policy
         run: |
           python -m tools.benchmark_coverage check

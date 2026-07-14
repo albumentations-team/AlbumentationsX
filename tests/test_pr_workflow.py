@@ -62,6 +62,8 @@ def test_coverage_and_pytorch_are_not_duplicated_across_matrix_cells() -> None:
     assert "Install CPU-only PyTorch" not in compatibility
     assert text.count("--cov=albumentations") == 1
     assert text.count("Install CPU-only PyTorch") == 1
+    assert "tests/test_benchmark_coverage.py" in text
+    assert "tests/test_serialization.py" in text
 
 
 def test_obsolete_unconditional_pr_workflows_are_removed() -> None:

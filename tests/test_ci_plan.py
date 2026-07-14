@@ -64,6 +64,12 @@ def test_core_runtime_change_also_selects_dedicated_pytorch_coverage() -> None:
     assert plan.checks["pytorch"]
 
 
+def test_benchmark_tooling_selects_dedicated_pytorch_policy() -> None:
+    plan = build_plan(["tools/benchmark_coverage.py"])
+
+    assert plan.checks["pytorch"]
+
+
 def test_isolated_test_change_selects_targeted_compatibility() -> None:
     plan = build_plan(["tests/test_bbox.py"])
 

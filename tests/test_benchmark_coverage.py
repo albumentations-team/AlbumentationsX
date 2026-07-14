@@ -195,6 +195,7 @@ def test_benchmark_coverage_details_explain_warning_aliases() -> None:
     assert shift_scale_rotate["performance_contract"]["direct_kernel"]["status"] == "not_required"
 
 
+@pytest.mark.pytorch
 def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     to_tensor = _coverage_for("ToTensorV2")
 

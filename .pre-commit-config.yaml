@@ -41,7 +41,7 @@ repos:
         entry: python tools/verify_legal_integrity.py
         language: system
         pass_filenames: false
-        files: ^(LICENSE$|LICENSE_HISTORY\.md$|THIRD_PARTY_NOTICES\.md$|LICENSES/|CLA\.md$|CONTRIBUTING\.md$|README\.md$|legal/cla/|pyproject\.toml$|MANIFEST\.in$|conda\.recipe/meta\.yaml$|docs/maintaining/license-provenance\.md$|tools/verify_legal_integrity\.py$|tests/test_legal_integrity\.py$|\.github/workflows/(legal-integrity|release-candidate|upload_to_pypi)\.yml$)
+        files: ^(LICENSE$|LICENSE_HISTORY\.md$|THIRD_PARTY_NOTICES\.md$|LICENSES/|CLA\.md$|CONTRIBUTING\.md$|README\.md$|legal/cla/|pyproject\.toml$|MANIFEST\.in$|conda\.recipe/meta\.yaml$|docs/maintaining/license-provenance\.md$|tools/verify_legal_integrity\.py$|tests/test_legal_integrity\.py$|\.github/workflows/(pr|release-candidate|upload_to_pypi)\.yml$)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

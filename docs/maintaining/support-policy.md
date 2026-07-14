@@ -23,21 +23,22 @@ Python minor versions unless maintenance cost becomes unreasonable.
 
 | Combination | Policy | CI Coverage |
 | --- | --- | --- |
-| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |
-| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |
-| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |
+| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
+| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
+| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
 | Non-x86 architectures | Best effort | Manual or future dedicated runners |
 
-The current policy keeps the full all-OS/all-Python PR matrix. If CI time
-becomes too high, Ubuntu all-version coverage remains required and some
-Windows/macOS combinations may move to nightly only after maintainers update
-this document and the matrix validator.
+Runtime source and shared-test-infrastructure changes keep the full
+all-OS/all-Python PR matrix. Changes that cannot affect runtime compatibility
+use narrower risk-based profiles. The complete matrix also runs nightly and
+before a release. Moving a supported combination out of the runtime PR profile
+requires an update to this document and the matrix validator.
 
 ## Dependency Sets
 
 | Dependency Set | Purpose | Initial Gate |
 | --- | --- | --- |
-| `locked-latest` | Tests the repository lockfile and normal contributor environment. | Required PR gate |
+| `locked-latest` | Tests the repository lockfile and normal contributor environment. | Selected PR gates and full nightly/release |
 | `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | Nightly and release gate |
 | `optional-extras` | Smoke-tests extras such as `pillow`, `pytorch`, `text`, `hub`, and OpenCV variants. | Advisory until stable |
 | `pre-release-probe` | Probes future Python or dependency releases when wheels are available. | Scheduled advisory |

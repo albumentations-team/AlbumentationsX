@@ -142,19 +142,15 @@ pyvips = ["pyvips[binary]"]
 text = ["pillow"]
 
 [dependency-groups]
-dev = [
+ci-test = [
   "albu-spec>=0.0.6",
   "deepdiff>=9.1.0",
+  "defusedxml>=0.7.1",
   "eval-type-backport>=0.4.0",
-  "google-docstring-parser>=0.0.11",
   "huggingface-hub>=1.23.0",
   "hypothesis>=6.156.6",
-  "mypy>=2.3.0",
   "opencv-python-headless>=5.0.0.93",
-  "pip-audit>=2.10.1",
   "pillow>=12.3.0",
-  "pre-commit>=4.6.0",
-  "pyrefly>=1.2.0.dev2",
   "pyvips[binary]>=3.1.1",
   "pytest>=9.1.1",
   "pytest-cov>=7.1.0",
@@ -163,15 +159,57 @@ dev = [
   "pytest-xdist>=3.8.0",
   "pytz>=2026.2",
   "requests>=2.34.2",
-  "ruff>=0.15.21",
   "scikit-image>=0.25.2",
   "scikit-learn>=1.7.2",
   "tomli>=2.4.1",
-  "torch>=2.13.0",
-  "torchvision>=0.28.0",
+]
+ci-quality = [
+  "defusedxml>=0.7.1",
+  "google-docstring-parser>=0.0.11",
+  "opencv-python-headless>=5.0.0.93",
+  "pre-commit>=4.6.0",
+  "ruff>=0.15.21",
+  "tomli>=2.4.1",
+]
+ci-types = [
+  "mypy>=2.3.0",
+  "opencv-python-headless>=5.0.0.93",
+  "pyrefly>=1.2.0.dev2",
   "types-PyYAML>=6.0.12.20260518",
   "types-setuptools>=83.0.0.20260706",
+]
+ci-security = [
+  "pip-audit>=2.10.1",
   "zizmor>=1.27.0",
+]
+ci-package = [
+  "pytest>=9.1.1",
+  "twine",
+]
+ci-benchmark = [
+  "asv",
+  "opencv-python-headless>=5.0.0.93",
+]
+ci-release = [
+  { include-group = "ci-test" },
+  { include-group = "ci-package" },
+  { include-group = "ci-security" },
+  "cyclonedx-bom",
+]
+ci-pytorch = [
+  { include-group = "ci-test" },
+]
+dev = [
+  { include-group = "ci-test" },
+  { include-group = "ci-quality" },
+  { include-group = "ci-types" },
+  { include-group = "ci-security" },
+  { include-group = "ci-package" },
+  { include-group = "ci-benchmark" },
+  { include-group = "ci-release" },
+  { include-group = "ci-pytorch" },
+  "torch>=2.13.0",
+  "torchvision>=0.28.0",
 ]
 
 [project.urls]
@@ -454,6 +492,7 @@ addopts = [
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "pytorch: tests that require the PyTorch dependency profile",
     "obb: tests for oriented bounding boxes",
     "property: property-based invariant tests",
     "regression: transform regression harness tests",

@@ -1,9 +1,6 @@
 name: Security
 
 on:
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
   schedule:
     - cron: "37 3 * * 1"
@@ -21,12 +18,11 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-    - name: Install uv
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Set up security environment
+      uses: ./.github/actions/setup-ci
       with:
-        enable-cache: true
-        python-version: "3.11"
-        activate-environment: true
+        python-version: "3.12"
+        dependency-group: ci-security
     - name: Prepare security evidence directory
       run: python -c "from pathlib import Path; Path('security-evidence').mkdir(exist_ok=True)"
     - name: Export locked runtime dependencies
@@ -36,7 +32,7 @@ jobs:
         --output-file runtime-requirements.txt
     - name: Run pip-audit
       run: >
-        uv tool run --from pip-audit pip-audit
+        pip-audit
         --requirement runtime-requirements.txt
         --no-deps
         --disable-pip
@@ -57,19 +53,18 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-    - name: Install uv
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Set up security environment
+      uses: ./.github/actions/setup-ci
       with:
-        enable-cache: true
-        python-version: "3.11"
-        activate-environment: true
+        python-version: "3.12"
+        dependency-group: ci-security
     - name: Prepare security evidence directory
       run: python -c "from pathlib import Path; Path('security-evidence').mkdir(exist_ok=True)"
     - name: Run zizmor
       env:
         GH_TOKEN: ${{ github.token }}
       run: >
-        uv tool run --from zizmor zizmor
+        zizmor
         --format=github
         --min-severity=medium
         --min-confidence=medium
@@ -79,7 +74,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: >
-        uv tool run --from zizmor zizmor
+        zizmor
         --format=json
         --min-severity=medium
         --min-confidence=medium
@@ -95,7 +90,7 @@ jobs:
   scorecard:
     name: OpenSSF Scorecard
     # Scorecard only supports the repository default branch for branch dispatches.
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

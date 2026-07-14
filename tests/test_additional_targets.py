@@ -183,6 +183,7 @@ class TestGetShape:
         with pytest.raises(ValueError, match="No image or volume found"):
             get_shape({"bboxes": np.array([[0, 0, 1, 1]])})
 
+    @pytest.mark.pytorch
     def test_torch_chw_under_alias(self) -> None:
         torch = pytest.importorskip("torch")
         data = {"x_img": torch.zeros(3, 10, 20)}

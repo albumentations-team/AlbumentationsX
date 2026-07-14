@@ -13,12 +13,11 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-    - name: Install uv
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Set up release environment
+      uses: ./.github/actions/setup-ci
       with:
-        enable-cache: true
-        python-version: "3.11"
-        activate-environment: true
+        python-version: "3.12"
+        dependency-group: ci-release
 
     - name: Resolve release metadata from pyproject
       env:
@@ -68,7 +67,7 @@ jobs:
       run: python tools/verify_legal_integrity.py --artifacts dist/*.whl dist/*.tar.gz
 
     - name: Check distribution metadata
-      run: uv tool run --from twine twine check dist/*
+      run: twine check dist/*
 
     - name: Smoke test built wheel
       run: |
@@ -97,37 +96,34 @@ jobs:
     - name: Prepare release evidence directory
       run: python -c "from pathlib import Path; Path('dist/evidence').mkdir(parents=True, exist_ok=True)"
 
-    - name: Install release evidence dependencies
-      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
-
     - name: Collect release environment evidence
       run: >
-        uv run python tools/collect_test_environment.py
+        python tools/collect_test_environment.py
         --output dist/evidence/environment-release.json
         --command "release workflow"
 
     - name: Run release correctness evidence tests
       run: |
-        uv run python tools/verify_regression_vectors.py --all
-        uv run pytest -q tests/regression tests/property \
+        python tools/verify_regression_vectors.py --all
+        python -m pytest -q tests/regression tests/property \
           --hypothesis-profile=ci-fast \
           --junitxml=dist/evidence/junit-release.xml
 
     - name: Summarize release pytest results
       if: always()
       run: >
-        uv run python tools/pytest_summary.py
+        python tools/pytest_summary.py
         --junit dist/evidence/junit-release.xml
         --output dist/evidence/pytest-summary-release.json
         --allow-incomplete
 
     - name: Collect benchmark coverage evidence
       run: |
-        uv run python -m tools.benchmark_coverage summary \
+        python -m tools.benchmark_coverage summary \
           --output dist/evidence/benchmark-coverage-release.json
-        uv run python -m tools.benchmark_coverage details \
+        python -m tools.benchmark_coverage details \
           --output dist/evidence/benchmark-coverage-detail-release.json
-        uv run python tools/performance_budget.py summarize \
+        python tools/performance_budget.py summarize \
           --coverage-summary dist/evidence/benchmark-coverage-release.json \
           --coverage-detail dist/evidence/benchmark-coverage-detail-release.json \
           --fail-on-release-blockers \
@@ -140,13 +136,13 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        uv tool run --from pip-audit pip-audit \
+        pip-audit \
           --requirement dist/runtime-requirements.txt \
           --no-deps \
           --disable-pip \
           --format=json \
           --output dist/evidence/security-pip-audit.json
-        uv tool run --from zizmor zizmor \
+        zizmor \
           --format=json \
           --min-severity=medium \
           --min-confidence=medium \
@@ -154,13 +150,13 @@ jobs:
 
     - name: Generate CycloneDX SBOM
       run: |
-        uv tool run --from cyclonedx-bom cyclonedx-py requirements dist/runtime-requirements.txt \
+        cyclonedx-py requirements dist/runtime-requirements.txt \
           --output-format JSON \
           --output-file "dist/${SBOM_FILENAME}"
 
     - name: Generate correctness and compatibility report
       run: >
-        uv run python tools/generate_correctness_report.py
+        python tools/generate_correctness_report.py
         --evidence-dir dist/evidence
         --output "dist/albumentationsx-${PACKAGE_VERSION}-correctness-compatibility-report.md"
 

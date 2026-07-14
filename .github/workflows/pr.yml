@@ -1,0 +1,578 @@
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: PR plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      plan_json: ${{ steps.plan.outputs.plan }}
+      markdown: ${{ steps.plan.outputs.markdown }}
+      lint: ${{ steps.plan.outputs.lint }}
+      mypy: ${{ steps.plan.outputs.mypy }}
+      pyrefly: ${{ steps.plan.outputs.pyrefly }}
+      contracts: ${{ steps.plan.outputs.contracts }}
+      compatibility: ${{ steps.plan.outputs.compatibility }}
+      coverage: ${{ steps.plan.outputs.coverage }}
+      primary: ${{ steps.plan.outputs.primary }}
+      targeted: ${{ steps.plan.outputs.targeted }}
+      pytorch: ${{ steps.plan.outputs.pytorch }}
+      dependency_audit: ${{ steps.plan.outputs.dependency_audit }}
+      workflow_audit: ${{ steps.plan.outputs.workflow_audit }}
+      legal: ${{ steps.plan.outputs.legal }}
+      package: ${{ steps.plan.outputs.package }}
+      install_smoke: ${{ steps.plan.outputs.install_smoke }}
+      pytest_targets: ${{ steps.plan.outputs.pytest_targets }}
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Collect changed paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p ci-plan
+          git diff --name-only -z "${BASE_SHA}" "${HEAD_SHA}" -- > ci-plan/changed-files.z
+
+      - name: Select pull-request checks
+        id: plan
+        env:
+          DRAFT: ${{ github.event.pull_request.draft }}
+          FORCE_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: >-
+          python -m tools.ci_plan
+          --paths-file ci-plan/changed-files.z --null
+          --draft "${DRAFT}" --force-full "${FORCE_FULL}"
+          --github-output "${GITHUB_OUTPUT}"
+          --summary "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload routing evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr-ci-plan
+          path: ci-plan/
+          if-no-files-found: error
+          retention-days: 7
+
+  markdown:
+    name: Markdown
+    needs: plan
+    if: needs.plan.outputs.markdown == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up quality environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-quality
+      - name: Download changed paths
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: pr-ci-plan
+          path: ci-plan
+      - name: Check changed Markdown
+        run: python -m tools.quality_gate markdown --paths-file ci-plan/changed-files.z --null
+
+  lint:
+    name: Ruff and formatting
+    needs: plan
+    if: needs.plan.outputs.lint == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up quality environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-quality
+      - name: Run Ruff and formatting checks
+        run: python -m tools.quality_gate lint
+
+  mypy:
+    name: mypy
+    needs: plan
+    if: needs.plan.outputs.mypy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up typing environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-quality
+      - name: Run mypy
+        run: python -m tools.quality_gate mypy
+
+  pyrefly:
+    name: Pyrefly
+    needs: plan
+    if: needs.plan.outputs.pyrefly == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up typing environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-types
+      - name: Run Pyrefly
+        run: python -m tools.quality_gate pyrefly
+
+  contracts:
+    name: Repository contracts
+    needs: plan
+    if: needs.plan.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up contract environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-quality
+      - name: Download changed paths
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: pr-ci-plan
+          path: ci-plan
+      - name: Run repository contracts
+        run: python -m tools.quality_gate contracts --paths-file ci-plan/changed-files.z --null
+
+  fast_checks:
+    name: Fast checks
+    needs: [plan, markdown, lint, mypy, pyrefly, contracts]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Aggregate fast checks
+        env:
+          PLAN_JSON: ${{ needs.plan.outputs.plan_json }}
+        run: >-
+          python -m tools.ci_gate --gate fast --plan-json "${PLAN_JSON}"
+          --result "markdown=${{ needs.markdown.result }}"
+          --result "lint=${{ needs.lint.result }}"
+          --result "mypy=${{ needs.mypy.result }}"
+          --result "pyrefly=${{ needs.pyrefly.result }}"
+          --result "contracts=${{ needs.contracts.result }}"
+
+  compatibility:
+    name: Compatibility (${{ matrix.operating-system }}, Python ${{ matrix.python-version }}, ${{ matrix.shard-label }})
+    needs: plan
+    if: needs.plan.outputs.compatibility == 'true'
+    runs-on: ${{ matrix.operating-system }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        operating-system: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        shard-count: [1]
+        shard-index: [0]
+        shard-label: [full]
+        include:
+          - operating-system: windows-latest
+            python-version: "3.10"
+            shard-count: 1
+            shard-index: 0
+            shard-label: full
+          - operating-system: windows-latest
+            python-version: "3.11"
+            shard-count: 2
+            shard-index: 0
+            shard-label: 1-of-2
+          - operating-system: windows-latest
+            python-version: "3.11"
+            shard-count: 2
+            shard-index: 1
+            shard-label: 2-of-2
+          - operating-system: windows-latest
+            python-version: "3.12"
+            shard-count: 2
+            shard-index: 0
+            shard-label: 1-of-2
+          - operating-system: windows-latest
+            python-version: "3.12"
+            shard-count: 2
+            shard-index: 1
+            shard-label: 2-of-2
+          - operating-system: windows-latest
+            python-version: "3.13"
+            shard-count: 2
+            shard-index: 0
+            shard-label: 1-of-2
+          - operating-system: windows-latest
+            python-version: "3.13"
+            shard-count: 2
+            shard-index: 1
+            shard-label: 2-of-2
+          - operating-system: windows-latest
+            python-version: "3.14"
+            shard-count: 1
+            shard-index: 0
+            shard-label: full
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up test environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: ${{ matrix.python-version }}
+          dependency-group: ci-test
+      - name: Run duration-balanced base-suite shard
+        shell: bash
+        run: |
+          mkdir -p ci-evidence
+          mapfile -d '' -t test_files < <(
+            python -m tools.ci_shard select \
+              --shard-count "${{ matrix.shard-count }}" \
+              --shard-index "${{ matrix.shard-index }}" \
+              --exclude-file tests/test_pytorch.py \
+              --exclude-file tests/transforms3d/test_pytorch.py
+          )
+          python -m pytest "${test_files[@]}" \
+            -n 2 --dist=worksteal -m "not pytorch" \
+            --hypothesis-profile=ci-fast \
+            --junitxml=ci-evidence/junit.xml
+      - name: Collect test environment evidence
+        if: always()
+        shell: bash
+        run: >-
+          python tools/collect_test_environment.py
+          --output ci-evidence/environment.json
+          --command "python -m pytest -n 2 --dist=worksteal -m not-pytorch"
+      - name: Summarize pytest results
+        if: always()
+        run: >-
+          python tools/pytest_summary.py
+          --junit ci-evidence/junit.xml
+          --output ci-evidence/pytest-summary.json
+          --allow-incomplete
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: compatibility-${{ matrix.operating-system }}-${{ matrix.python-version }}-${{ matrix.shard-label }}
+          path: ci-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  coverage:
+    name: Primary coverage
+    needs: plan
+    if: needs.plan.outputs.coverage == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up test environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-test
+      - name: Run base suite with branch coverage
+        shell: bash
+        run: |
+          mapfile -d '' -t test_files < <(
+            python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
+              --exclude-file tests/test_pytorch.py \
+              --exclude-file tests/transforms3d/test_pytorch.py
+          )
+          python -m pytest "${test_files[@]}" \
+            -n 2 --dist=worksteal -m "not pytorch" \
+            --hypothesis-profile=ci-fast \
+            --cov=albumentations --cov-branch --cov-report=xml
+      - name: Upload coverage report
+        continue-on-error: true
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: albumentations-team/AlbumentationsX
+          files: ./coverage.xml
+          disable_search: true
+          fail_ci_if_error: false
+          use_pypi: true
+          version: 11.3.1
+
+  primary:
+    name: Primary suite
+    needs: plan
+    if: needs.plan.outputs.primary == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up test environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-test
+      - name: Run complete base suite
+        shell: bash
+        run: |
+          mapfile -d '' -t test_files < <(
+            python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
+              --exclude-file tests/test_pytorch.py \
+              --exclude-file tests/transforms3d/test_pytorch.py
+          )
+          python -m pytest "${test_files[@]}" \
+            -n 2 --dist=worksteal -m "not pytorch" --hypothesis-profile=ci-fast
+
+  targeted:
+    name: Targeted tests (${{ matrix.operating-system }}, Python ${{ matrix.python-version }})
+    needs: plan
+    if: needs.plan.outputs.targeted == 'true'
+    runs-on: ${{ matrix.operating-system }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - operating-system: ubuntu-latest
+            python-version: "3.12"
+          - operating-system: windows-latest
+            python-version: "3.10"
+          - operating-system: windows-latest
+            python-version: "3.14"
+          - operating-system: macos-latest
+            python-version: "3.10"
+          - operating-system: macos-latest
+            python-version: "3.14"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up test environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: ${{ matrix.python-version }}
+          dependency-group: ci-test
+      - name: Run changed test modules
+        env:
+          PYTEST_TARGETS: ${{ needs.plan.outputs.pytest_targets }}
+        shell: bash
+        run: |
+          python -c 'import json, os, pathlib; pathlib.Path("targets.z").write_bytes(b"\0".join(path.encode() for path in json.loads(os.environ["PYTEST_TARGETS"])) + b"\0")'
+          mapfile -d '' -t test_files < targets.z
+          python -m pytest "${test_files[@]}" \
+            -n 2 --dist=worksteal -m "not pytorch" --hypothesis-profile=ci-fast
+
+  pytorch:
+    name: PyTorch tests
+    needs: plan
+    if: needs.plan.outputs.pytorch == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up PyTorch test environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-pytorch
+      - name: Install CPU-only PyTorch
+        run: >-
+          uv pip install torch==2.13.0+cpu torchvision==0.28.0+cpu
+          --extra-index-url https://download.pytorch.org/whl/cpu
+      - name: Run PyTorch-marked tests
+        run: >-
+          python -m pytest -n 2 --dist=worksteal -m pytorch
+          tests/test_pytorch.py
+          tests/transforms3d/test_pytorch.py
+          tests/test_per_worker_seed.py
+          tests/test_flip_masks_comprehensive.py
+          tests/test_additional_targets.py
+
+  correctness:
+    name: Correctness
+    needs: [plan, compatibility, coverage, primary, targeted, pytorch]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Aggregate correctness checks
+        env:
+          PLAN_JSON: ${{ needs.plan.outputs.plan_json }}
+        run: >-
+          python -m tools.ci_gate --gate correctness --plan-json "${PLAN_JSON}"
+          --result "compatibility=${{ needs.compatibility.result }}"
+          --result "coverage=${{ needs.coverage.result }}"
+          --result "primary=${{ needs.primary.result }}"
+          --result "targeted=${{ needs.targeted.result }}"
+          --result "pytorch=${{ needs.pytorch.result }}"
+
+  dependency_audit:
+    name: Dependency audit
+    needs: plan
+    if: needs.plan.outputs.dependency_audit == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up security environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-security
+      - name: Export locked runtime dependencies
+        run: >-
+          uv export --frozen --no-dev --no-emit-project
+          --format requirements-txt --output-file runtime-requirements.txt
+      - name: Audit locked runtime dependencies
+        run: >-
+          pip-audit --requirement runtime-requirements.txt
+          --no-deps --disable-pip --format=json --output dependency-audit.json
+      - name: Upload dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dependency-audit-evidence
+          path: dependency-audit.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  workflow_audit:
+    name: GitHub Actions hardening audit
+    needs: plan
+    if: needs.plan.outputs.workflow_audit == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up security environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-security
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor --format=github --min-severity=medium --min-confidence=medium .github
+
+  legal:
+    name: Legal source integrity
+    needs: plan
+    if: needs.plan.outputs.legal == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up package environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-package
+      - name: Verify source-tree legal integrity
+        run: python tools/verify_legal_integrity.py
+      - name: Test legal-integrity verifier
+        run: python -m pytest --noconftest -q tests/test_legal_integrity.py
+
+  package:
+    name: Package artifacts
+    needs: plan
+    if: needs.plan.outputs.package == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up package environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-package
+      - name: Build wheel and source distribution
+        run: uv build --out-dir dist
+      - name: Verify packaged legal notices
+        run: python tools/verify_legal_integrity.py --artifacts dist/*.whl dist/*.tar.gz
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+  install_smoke:
+    name: Install smoke (${{ matrix.operating-system }}, Python ${{ matrix.python-version }})
+    needs: plan
+    if: needs.plan.outputs.install_smoke == 'true'
+    runs-on: ${{ matrix.operating-system }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        operating-system: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up package environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: ${{ matrix.python-version }}
+          dependency-group: ci-package
+      - name: Build wheel
+        run: uv build --wheel --out-dir dist
+      - name: Install wheel into a clean environment
+        shell: bash
+        run: |
+          uv venv --python "${{ matrix.python-version }}" "${RUNNER_TEMP}/install-smoke"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            smoke_python="${RUNNER_TEMP}/install-smoke/Scripts/python.exe"
+          else
+            smoke_python="${RUNNER_TEMP}/install-smoke/bin/python"
+          fi
+          uv pip install --python "${smoke_python}" dist/*.whl "opencv-python-headless>=5.0.0.93"
+          "${smoke_python}" -I -c "import albumentations; print(albumentations.__version__)"
+
+  security_policy:
+    name: Security and policy
+    needs: [plan, dependency_audit, workflow_audit, legal, package, install_smoke]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Aggregate security and policy checks
+        env:
+          PLAN_JSON: ${{ needs.plan.outputs.plan_json }}
+        run: >-
+          python -m tools.ci_gate --gate policy --plan-json "${PLAN_JSON}"
+          --result "dependency-audit=${{ needs.dependency_audit.result }}"
+          --result "workflow-audit=${{ needs.workflow_audit.result }}"
+          --result "legal=${{ needs.legal.result }}"
+          --result "package=${{ needs.package.result }}"
+          --result "install-smoke=${{ needs.install_smoke.result }}"

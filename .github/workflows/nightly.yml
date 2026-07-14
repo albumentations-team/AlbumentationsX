@@ -9,6 +9,69 @@ permissions:
   contents: read
 
 jobs:
+  compatibility_matrix:
+    name: Full compatibility (${{ matrix.operating-system }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.operating-system }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        operating-system: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - name: Set up test environment
+      uses: ./.github/actions/setup-ci
+      with:
+        python-version: ${{ matrix.python-version }}
+        dependency-group: ci-test
+    - name: Run complete base suite
+      shell: bash
+      run: |
+        mkdir -p nightly-evidence
+        mapfile -d '' -t test_files < <(
+          python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
+            --exclude-file tests/test_pytorch.py \
+            --exclude-file tests/transforms3d/test_pytorch.py
+        )
+        python -m pytest "${test_files[@]}" \
+          -n 2 --dist=worksteal -m "not pytorch" \
+          --hypothesis-profile=ci-fast \
+          --junitxml=nightly-evidence/junit.xml
+    - name: Upload compatibility evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: nightly-compatibility-${{ matrix.operating-system }}-${{ matrix.python-version }}
+        path: nightly-evidence/
+        if-no-files-found: ignore
+
+  pytorch:
+    name: PyTorch compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - name: Set up PyTorch test environment
+      uses: ./.github/actions/setup-ci
+      with:
+        python-version: "3.12"
+        dependency-group: ci-pytorch
+    - name: Install CPU-only PyTorch
+      run: >-
+        uv pip install torch==2.13.0+cpu torchvision==0.28.0+cpu
+        --extra-index-url https://download.pytorch.org/whl/cpu
+    - name: Run PyTorch-marked tests
+      run: >-
+        python -m pytest -n 2 --dist=worksteal -m pytorch
+        tests/test_pytorch.py
+        tests/transforms3d/test_pytorch.py
+        tests/test_per_worker_seed.py
+        tests/test_flip_masks_comprehensive.py
+        tests/test_additional_targets.py
+
   lower_bound_dependencies:
     name: Lower-bound dependency check
     runs-on: ubuntu-latest
@@ -36,19 +99,19 @@ jobs:
       run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Collect lower-bound environment evidence
       run: >
-        uv run python tools/collect_test_environment.py
+        python tools/collect_test_environment.py
         --output nightly-evidence/environment-lower-bound.json
         --command "lower-bound dependency pytest"
     - name: Run representative lower-bound tests
       run: >
-        uv run pytest -q
+        python -m pytest -q
         tests/test_core.py::test_compose
         tests/regression
         --junitxml=nightly-evidence/junit-lower-bound.xml
     - name: Summarize lower-bound pytest results
       if: always()
       run: >
-        uv run python tools/pytest_summary.py
+        python tools/pytest_summary.py
         --junit nightly-evidence/junit-lower-bound.xml
         --output nightly-evidence/pytest-summary-lower-bound.json
         --allow-incomplete
@@ -67,33 +130,30 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-    - name: Install uv and Python 3.14
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Set up test environment
+      uses: ./.github/actions/setup-ci
       with:
-        enable-cache: true
         python-version: "3.14"
-        activate-environment: true
-    - name: Install dependencies
-      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+        dependency-group: ci-test
     - name: Prepare nightly evidence directory
       run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Verify golden vectors
-      run: uv run python tools/verify_regression_vectors.py --all
+      run: python tools/verify_regression_vectors.py --all
     - name: Run property and regression tests
       run: >
-        uv run pytest -q tests/regression tests/property
+        python -m pytest -q tests/regression tests/property
         --hypothesis-profile=ci-nightly
         --junitxml=nightly-evidence/junit-property-regression.xml
     - name: Collect property environment evidence
       if: always()
       run: >
-        uv run python tools/collect_test_environment.py
+        python tools/collect_test_environment.py
         --output nightly-evidence/environment-property-regression.json
         --command "pytest tests/regression tests/property --hypothesis-profile=ci-nightly"
     - name: Summarize property pytest results
       if: always()
       run: >
-        uv run python tools/pytest_summary.py
+        python tools/pytest_summary.py
         --junit nightly-evidence/junit-property-regression.xml
         --output nightly-evidence/pytest-summary-property-regression.json
         --allow-incomplete
@@ -112,15 +172,14 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-    - name: Install uv and Python 3.14
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Set up test environment
+      uses: ./.github/actions/setup-ci
       with:
-        enable-cache: true
         python-version: "3.14"
-        activate-environment: true
+        dependency-group: ci-test
     - name: Install optional extras
       run: >
-        uv sync --locked --group dev --inexact
+        uv sync --locked --no-default-groups --group ci-test --inexact
         --extra pillow
         --extra text
         --extra hub
@@ -128,11 +187,11 @@ jobs:
         --no-install-package torch
         --no-install-package torchvision
     - name: Run optional extras smoke tests
-      run: uv run pytest -q tests/test_text.py tests/test_hub_mixin.py
+      run: python -m pytest -q tests/test_text.py tests/test_hub_mixin.py
     - name: Collect optional extras environment
       if: always()
       run: >
-        uv run python tools/collect_test_environment.py
+        python tools/collect_test_environment.py
         --output nightly-evidence/environment-optional-extras.json
         --command "optional extras smoke"
     - name: Upload optional extras evidence

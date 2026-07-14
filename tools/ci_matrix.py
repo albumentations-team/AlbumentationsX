@@ -42,7 +42,7 @@ TEST_GROUPS = (
 
 SUPPORT_POLICY = REPO_ROOT / "docs" / "maintaining" / "support-policy.md"
 REPORT_TEMPLATE = REPO_ROOT / "docs" / "maintaining" / "correctness-report-template.md"
-CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+PR_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pr.yml"
 ANTIGRAVITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "antigravity-pr-checks.yml"
 NIGHTLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "nightly.yml"
 PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "performance.yml"
@@ -52,7 +52,7 @@ SECURITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "security.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
 WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
 WORKFLOWS = (
-    CI_WORKFLOW,
+    PR_WORKFLOW,
     ANTIGRAVITY_WORKFLOW,
     NIGHTLY_WORKFLOW,
     PERFORMANCE_WORKFLOW,
@@ -60,6 +60,10 @@ WORKFLOWS = (
     RELEASE_CANDIDATE_WORKFLOW,
     SECURITY_WORKFLOW,
     RELEASE_WORKFLOW,
+)
+FORBIDDEN_WORKFLOWS = (
+    REPO_ROOT / ".github" / "workflows" / "ci.yml",
+    REPO_ROOT / ".github" / "workflows" / "legal-integrity.yml",
 )
 MAX_WORKFLOW_TIMEOUT_MINUTES = 90
 
@@ -70,12 +74,25 @@ LOWER_BOUND_REQUIREMENTS = (
     "albucore==0.2.4",
     "opencv-python-headless==5.0.0.93",
 )
+CI_DEPENDENCY_GROUPS = {
+    "ci-benchmark": {"asv", "opencv-python-headless"},
+    "ci-package": {"pytest", "twine"},
+    "ci-pytorch": set(),
+    "ci-quality": {"defusedxml", "google-docstring-parser", "opencv-python-headless", "pre-commit", "ruff"},
+    "ci-release": {"cyclonedx-bom"},
+    "ci-security": {"pip-audit", "zizmor"},
+    "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-cov", "pytest-xdist"},
+    "ci-types": {"mypy", "opencv-python-headless", "pyrefly"},
+}
 
 SUPPORT_POLICY_TABLE_ROWS = (
-    "| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |",
-    "| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |",
-    "| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Required PR gate |",
-    ("| `locked-latest` | Tests the repository lockfile and normal contributor environment. | Required PR gate |"),
+    ("| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
+    ("| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
+    ("| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
+    (
+        "| `locked-latest` | Tests the repository lockfile and normal contributor environment. | "
+        "Selected PR gates and full nightly/release |"
+    ),
     (
         "| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | "
         "Nightly and release gate |"
@@ -174,6 +191,11 @@ def _workflow_matrix_values(workflow: dict[str, Any], matrix_key: str) -> set[st
     for matrix in _walk_values_for_key(workflow, "matrix"):
         if isinstance(matrix, dict):
             values.update(_string_values(matrix.get(matrix_key, [])))
+            includes = matrix.get("include", [])
+            if isinstance(includes, list):
+                for include in includes:
+                    if isinstance(include, dict) and matrix_key in include:
+                        values.add(str(include[matrix_key]))
     return values
 
 
@@ -218,32 +240,91 @@ def _check_pyproject() -> list[str]:
             f"pyproject.toml Python classifiers are {sorted(classifiers)!r}, expected {sorted(expected)!r}",
         )
 
+    dependency_groups = pyproject.get("dependency-groups", {})
+    if not isinstance(dependency_groups, dict):
+        issues.append("pyproject.toml dependency-groups must be a table")
+        return issues
+
+    for group, required_packages in sorted(CI_DEPENDENCY_GROUPS.items()):
+        entries = dependency_groups.get(group)
+        if not isinstance(entries, list):
+            issues.append(f"pyproject.toml is missing CI dependency group {group!r}")
+            continue
+        packages = {
+            re.split(r"[<>=!~\[]", entry, maxsplit=1)[0].casefold() for entry in entries if isinstance(entry, str)
+        }
+        missing_packages = required_packages - packages
+        if missing_packages:
+            issues.append(f"pyproject.toml group {group!r} is missing {sorted(missing_packages)!r}")
+        if packages & {"torch", "torchvision"}:
+            issues.append(f"pyproject.toml group {group!r} must not install PyTorch directly")
+
+    dev_entries = dependency_groups.get("dev", [])
+    if not isinstance(dev_entries, list):
+        issues.append("pyproject.toml dependency group 'dev' must be a list")
+        return issues
+    included_groups = {
+        entry.get("include-group")
+        for entry in dev_entries
+        if isinstance(entry, dict) and isinstance(entry.get("include-group"), str)
+    }
+    missing_includes = set(CI_DEPENDENCY_GROUPS) - included_groups
+    if missing_includes:
+        issues.append(f"pyproject.toml dev group does not include {sorted(missing_includes)!r}")
+
     return issues
 
 
-def _check_ci_workflow() -> list[str]:
-    workflow = _load_yaml(CI_WORKFLOW)
+def _check_pr_workflow() -> list[str]:
+    workflow = _load_yaml(PR_WORKFLOW)
     issues: list[str] = []
 
     ci_versions = _ci_python_versions(workflow)
     missing_versions = set(SUPPORTED_PYTHONS) - ci_versions
     if missing_versions:
-        issues.append(f"{CI_WORKFLOW} does not test Python versions {sorted(missing_versions)!r}")
+        issues.append(f"{PR_WORKFLOW} does not test Python versions {sorted(missing_versions)!r}")
 
     ci_oses = _ci_operating_systems(workflow)
     missing_oses = set(TIER_1_OSES) - ci_oses
     if missing_oses:
-        issues.append(f"{CI_WORKFLOW} does not test operating systems {sorted(missing_oses)!r}")
+        issues.append(f"{PR_WORKFLOW} does not test operating systems {sorted(missing_oses)!r}")
+
+    workflow_header = _read_text(PR_WORKFLOW).split("permissions:", maxsplit=1)[0]
+    if "paths:" in workflow_header or "paths-ignore:" in workflow_header:
+        issues.append(f"{PR_WORKFLOW} must always start and route changed paths inside the plan job")
+
+    jobs = _workflow_jobs(PR_WORKFLOW)
+    expected_stable_jobs = {
+        "plan": "PR plan",
+        "fast_checks": "Fast checks",
+        "correctness": "Correctness",
+        "security_policy": "Security and policy",
+    }
+    for job_id, expected_name in expected_stable_jobs.items():
+        job = jobs.get(job_id)
+        if not isinstance(job, dict) or job.get("name") != expected_name:
+            issues.append(f"{PR_WORKFLOW} must define stable job {job_id!r} named {expected_name!r}")
 
     issues.extend(
         _check_text_mentions(
-            CI_WORKFLOW,
+            PR_WORKFLOW,
             (
+                "python -m tools.ci_plan",
+                "python -m tools.ci_gate",
+                "dependency-group: ci-test",
+                "dependency-group: ci-quality",
+                "dependency-group: ci-types",
+                "dependency-group: ci-security",
+                "dependency-group: ci-package",
+                "dependency-group: ci-pytorch",
+                "python -m tools.ci_shard select",
+                "--dist=worksteal",
+                '-m "not pytorch"',
                 "--hypothesis-profile=ci-fast",
                 "tools/pytest_summary.py",
                 "--allow-incomplete",
             ),
-            "CI evidence gate",
+            "selective PR gate",
         ),
     )
 
@@ -258,10 +339,16 @@ def _check_workflow_inventory() -> list[str]:
     if missing:
         issues.append("Missing expected workflow file(s): " + ", ".join(str(path) for path in missing))
 
+    forbidden = sorted(path for path in FORBIDDEN_WORKFLOWS if path in present)
+    if forbidden:
+        issues.append("Obsolete workflow file(s) must be removed: " + ", ".join(str(path) for path in forbidden))
+
     for path in _workflow_files():
         issue = _workflow_yaml_issue(path)
         if issue is not None:
             issues.append(issue)
+        if "--group dev" in _read_text(path):
+            issues.append(f"{path} must use a purpose-specific CI dependency group instead of dev")
     return issues
 
 
@@ -330,7 +417,8 @@ def _workflow_job_run_text(job: dict[str, Any]) -> str:
 
 
 def _check_nightly_workflow() -> list[str]:
-    issues = _check_text_mentions(NIGHTLY_WORKFLOW, LOWER_BOUND_REQUIREMENTS, "lower-bound dependency")
+    issues = _check_full_matrix_workflow(NIGHTLY_WORKFLOW)
+    issues.extend(_check_text_mentions(NIGHTLY_WORKFLOW, LOWER_BOUND_REQUIREMENTS, "lower-bound dependency"))
     issues.extend(
         _check_text_mentions(
             NIGHTLY_WORKFLOW,
@@ -343,6 +431,11 @@ def _check_nightly_workflow() -> list[str]:
                 "environment-lower-bound.json",
                 "environment-property-regression.json",
                 "environment-optional-extras.json",
+                "dependency-group: ci-test",
+                "dependency-group: ci-pytorch",
+                "python -m tools.ci_shard select",
+                '-m "not pytorch"',
+                "-m pytorch",
             ),
             "nightly evidence gate",
         ),
@@ -364,6 +457,12 @@ def _check_release_candidate_workflow() -> list[str]:
                 "--allow-incomplete",
                 "tools/performance_budget.py",
                 "benchmark-performance-budget-",
+                "dependency-group: ci-test",
+                "dependency-group: ci-pytorch",
+                "dependency-group: ci-benchmark",
+                "python -m tools.ci_shard select",
+                '-m "not pytorch"',
+                "-m pytorch",
             ),
             "release-candidate evidence gate",
         ),
@@ -427,7 +526,7 @@ def _check_pytorch_performance_workflow() -> list[str]:
             "schedule:",
             "workflow_dispatch:",
             "continue-on-error: true",
-            "uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision",
+            "dependency-group: ci-benchmark",
             "asv --config asv-pytorch.conf.json check --verbose",
             "asv --config asv-pytorch.conf.json run",
             "pytorch-benchmark-evidence/",
@@ -465,8 +564,7 @@ def _check_release_workflow() -> list[str]:
             "uv build",
             "twine check",
             "cyclonedx-py",
-            "--no-install-package torch",
-            "--no-install-package torchvision",
+            "dependency-group: ci-release",
             "tools/collect_test_environment.py",
             "tools/verify_regression_vectors.py --all",
             "tests/regression tests/property",
@@ -492,7 +590,7 @@ def _check_workflows() -> list[str]:
         *_check_workflow_python_versions(),
         *_check_workflow_job_timeouts(),
         *_check_workflow_push_triggers(),
-        *_check_ci_workflow(),
+        *_check_pr_workflow(),
         *_check_full_matrix_workflow(RELEASE_CANDIDATE_WORKFLOW),
         *_check_nightly_workflow(),
         *_check_release_candidate_workflow(),

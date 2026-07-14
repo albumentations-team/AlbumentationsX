@@ -1,5 +1,8 @@
 albu-spec>=0.0.6
+asv
+cyclonedx-bom
 deepdiff>=9.1.0
+defusedxml>=0.7.1
 eval-type-backport>=0.4.0
 google-docstring-parser>=0.0.11
 huggingface-hub>=1.23.0
@@ -24,6 +27,7 @@ scikit-learn>=1.7.2
 tomli>=2.4.1
 torch>=2.13.0
 torchvision>=0.28.0
+twine
 types-PyYAML>=6.0.12.20260518
 types-setuptools>=83.0.0.20260706
 zizmor>=1.27.0

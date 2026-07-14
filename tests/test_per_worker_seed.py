@@ -168,6 +168,7 @@ def test_worker_seed_without_torch():
     assert result["image"].shape == (100, 100, 3)
 
 
+@pytest.mark.pytorch
 @pytest.mark.skipif(
     "torch" not in sys.modules and not any("torch" in str(p) for p in sys.path),
     reason="PyTorch not available",
@@ -223,6 +224,7 @@ def test_worker_seed_with_torch():
                 assert differences > 0, "Different workers produced identical results"
 
 
+@pytest.mark.pytorch
 @pytest.mark.skipif(
     "torch" not in sys.modules and not any("torch" in str(p) for p in sys.path),
     reason="PyTorch not available",
@@ -270,6 +272,7 @@ def test_dataloader_epoch_diversity():
     )
 
 
+@pytest.mark.pytorch
 @pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
 def test_unseeded_compose_dataloader_respawns_use_new_worker_seed():
     """Unseeded Compose should not replay identical dropout geometry when workers respawn."""
@@ -278,6 +281,7 @@ def test_unseeded_compose_dataloader_respawns_use_new_worker_seed():
     _assert_any_epoch_differs(first_batches)
 
 
+@pytest.mark.pytorch
 @pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
 def test_unseeded_direct_transform_dataloader_respawns_use_new_worker_seed():
     """Direct BasicTransform usage should get the same worker RNG protection as Compose."""
@@ -286,6 +290,7 @@ def test_unseeded_direct_transform_dataloader_respawns_use_new_worker_seed():
     _assert_any_epoch_differs(first_batches)
 
 
+@pytest.mark.pytorch
 @pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
 def test_seeded_compose_dataloader_reproducible_with_same_torch_generator_seed():
     """Compose seed plus DataLoader generator seed should reproduce the worker-derived sequence."""
@@ -301,6 +306,7 @@ def test_seeded_compose_dataloader_reproducible_with_same_torch_generator_seed()
     assert first_run == second_run
 
 
+@pytest.mark.pytorch
 @pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
 def test_seeded_compose_dataloader_seed_changes_child_random_params():
     """Changing Compose seed should change child transform params under the same worker seeds."""
@@ -318,6 +324,7 @@ def test_seeded_compose_dataloader_seed_changes_child_random_params():
     assert seed_137_batch != seed_138_batch
 
 
+@pytest.mark.pytorch
 @pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")
 def test_persistent_workers_advance_rng_across_epochs():
     """Persistent workers should keep advancing RNG instead of resetting to worker seed every call."""

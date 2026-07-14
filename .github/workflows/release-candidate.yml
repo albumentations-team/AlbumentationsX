@@ -33,52 +33,57 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-    - name: Install uv and set Python version ${{ matrix.python-version }}
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Set up test environment
+      uses: ./.github/actions/setup-ci
       with:
-        enable-cache: true
         python-version: ${{ matrix.python-version }}
-        activate-environment: true
-    - name: Install dependencies
-      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+        dependency-group: ci-test
     - name: Verify matrix and regression vectors
+      if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.12'
       run: |
-        uv run python -m tools.ci_matrix check
-        uv run python tools/verify_regression_vectors.py --all
+        python -m tools.ci_matrix check
+        python tools/verify_regression_vectors.py --all
     - name: Verify license and CLA provenance
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'
-      run: uv run python tools/verify_legal_integrity.py
+      run: python tools/verify_legal_integrity.py
     - name: Prepare release candidate evidence directory
       run: python -c "from pathlib import Path; Path('release-candidate-evidence').mkdir(exist_ok=True)"
     - name: Run release candidate tests
-      run: >
-        uv run pytest -n auto
-        --hypothesis-profile=release
-        --junitxml=release-candidate-evidence/junit.xml
+      shell: bash
+      run: |
+        mapfile -d '' -t test_files < <(
+          python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
+            --exclude-file tests/test_pytorch.py \
+            --exclude-file tests/transforms3d/test_pytorch.py
+        )
+        python -m pytest "${test_files[@]}" \
+          -n 2 --dist=worksteal -m "not pytorch" \
+          --hypothesis-profile=release \
+          --junitxml=release-candidate-evidence/junit.xml
     - name: Collect release candidate environment
       if: always()
       run: >
-        uv run python tools/collect_test_environment.py
+        python tools/collect_test_environment.py
         --output release-candidate-evidence/environment-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
         --command "release candidate verification"
     - name: Summarize release candidate pytest results
       if: always()
       run: >
-        uv run python tools/pytest_summary.py
+        python tools/pytest_summary.py
         --junit release-candidate-evidence/junit.xml
         --output release-candidate-evidence/pytest-summary-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
         --allow-incomplete
     - name: Collect benchmark coverage evidence
-      if: always()
+      if: always() && matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.12'
       run: |
-        uv run python -m tools.benchmark_coverage summary \
+        python -m tools.benchmark_coverage summary \
           --output release-candidate-evidence/benchmark-coverage-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
-        uv run python -m tools.benchmark_coverage details \
+        python -m tools.benchmark_coverage details \
           --output release-candidate-evidence/benchmark-coverage-detail-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
     - name: Classify performance budget evidence
-      if: always()
+      if: always() && matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.12'
       run: >
-        uv run python tools/performance_budget.py summarize
+        python tools/performance_budget.py summarize
         --coverage-summary release-candidate-evidence/benchmark-coverage-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
         --coverage-detail release-candidate-evidence/benchmark-coverage-detail-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
         --fail-on-release-blockers
@@ -91,6 +96,31 @@ jobs:
         path: release-candidate-evidence/
         if-no-files-found: ignore
 
+  release_candidate_pytorch:
+    name: Release candidate PyTorch compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - name: Set up PyTorch test environment
+      uses: ./.github/actions/setup-ci
+      with:
+        python-version: "3.12"
+        dependency-group: ci-pytorch
+    - name: Install CPU-only PyTorch
+      run: >-
+        uv pip install torch==2.13.0+cpu torchvision==0.28.0+cpu
+        --extra-index-url https://download.pytorch.org/whl/cpu
+    - name: Run PyTorch-marked tests
+      run: >-
+        python -m pytest -n 2 --dist=worksteal -m pytorch
+        tests/test_pytorch.py
+        tests/transforms3d/test_pytorch.py
+        tests/test_per_worker_seed.py
+        tests/test_flip_masks_comprehensive.py
+        tests/test_additional_targets.py
+
   release_candidate_performance:
     name: Release candidate performance comparison
     runs-on: ubuntu-latest
@@ -100,33 +130,30 @@ jobs:
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         fetch-depth: 0
-    - name: Install uv and Python 3.12
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Set up benchmark environment
+      uses: ./.github/actions/setup-ci
       with:
-        enable-cache: true
         python-version: "3.12"
-        activate-environment: true
-    - name: Install dependencies
-      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+        dependency-group: ci-benchmark
     - name: Prepare release candidate performance evidence directory
       run: python -c "from pathlib import Path; Path('release-candidate-performance-evidence').mkdir(exist_ok=True)"
     - name: Collect release candidate performance environment
       run: >
-        uv run python tools/collect_test_environment.py
+        python tools/collect_test_environment.py
         --output release-candidate-performance-evidence/environment-performance.json
         --command "release candidate ASV performance comparison"
     - name: Collect benchmark coverage evidence
       run: |
-        uv run python -m tools.benchmark_coverage summary \
+        python -m tools.benchmark_coverage summary \
           --output release-candidate-performance-evidence/benchmark-coverage.json
-        uv run python -m tools.benchmark_coverage details \
+        python -m tools.benchmark_coverage details \
           --output release-candidate-performance-evidence/benchmark-coverage-detail.json
     - name: Register ASV machine profile
       working-directory: benchmark
-      run: uv tool run --from asv asv --config asv.conf.json machine --yes
+      run: asv --config asv.conf.json machine --yes
     - name: Check benchmark suite importability
       working-directory: benchmark
-      run: uv tool run --from asv asv --config asv.conf.json check --verbose
+      run: asv --config asv.conf.json check --verbose
     - name: Compare release candidate benchmarks
       working-directory: benchmark
       env:
@@ -145,7 +172,7 @@ jobs:
         echo "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/release-candidate-performance-evidence/benchmark-candidate-ref.txt"
         echo "$BENCH_FILTER" > "$GITHUB_WORKSPACE/release-candidate-performance-evidence/benchmark-filter.txt"
         ASV_COMMAND=(
-          uv tool run --from asv asv --config asv.conf.json continuous
+          asv --config asv.conf.json continuous
           --factor 1.05
           --split
           --show-stderr
@@ -164,19 +191,19 @@ jobs:
       run: |
         ASV_EXIT_CODE="$(cat release-candidate-performance-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
         if [ -n "$ASV_EXIT_CODE" ]; then
-          uv run python tools/asv_summary.py \
+          python tools/asv_summary.py \
             --input release-candidate-performance-evidence/asv-continuous.txt \
             --output release-candidate-performance-evidence/benchmark-asv-summary.json \
             --asv-exit-code "$ASV_EXIT_CODE"
         else
-          uv run python tools/asv_summary.py \
+          python tools/asv_summary.py \
             --input release-candidate-performance-evidence/asv-continuous.txt \
             --output release-candidate-performance-evidence/benchmark-asv-summary.json
         fi
     - name: Classify strict performance budget evidence
       if: always()
       run: >
-        uv run python tools/performance_budget.py summarize
+        python tools/performance_budget.py summarize
         --coverage-summary release-candidate-performance-evidence/benchmark-coverage.json
         --coverage-detail release-candidate-performance-evidence/benchmark-coverage-detail.json
         --asv-summary release-candidate-performance-evidence/benchmark-asv-summary.json

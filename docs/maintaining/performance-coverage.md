@@ -322,7 +322,7 @@ Manual investigations:
 
 ```bash
 cd benchmark
-uv tool run --from asv asv --config asv.conf.json continuous \
+uv run asv --config asv.conf.json continuous \
   --factor 1.05 \
   --split \
   --show-stderr \
@@ -337,7 +337,7 @@ Optional PyTorch tensor benchmarks can be run locally with:
 
 ```bash
 cd benchmark
-uv tool run --from asv asv --config asv-pytorch.conf.json run --quick --show-stderr
+uv run asv --config asv-pytorch.conf.json run --quick --show-stderr
 ```
 
 The raw ASV comparison text is the source artifact. The compact JSON summary

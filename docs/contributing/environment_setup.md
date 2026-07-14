@@ -32,6 +32,16 @@ uv sync --group dev
 This is the canonical setup path for contributors and coding agents. It installs the same toolchain used by CI,
 including Ruff, mypy, Pyrefly, pytest, pre-commit, and security tooling.
 
+CI itself uses smaller locked groups so unrelated jobs do not install the full
+toolchain: `ci-test`, `ci-quality`, `ci-types`, `ci-pytorch`, `ci-security`,
+`ci-package`, `ci-benchmark`, and `ci-release`. Contributors normally should
+keep using `dev`; the purpose-specific groups are useful when reproducing one
+CI leaf, for example:
+
+```bash
+uv sync --locked --no-default-groups --group ci-test
+```
+
 #### pip fallback
 
 If you cannot use uv, create and activate a virtual environment manually, then install the project and development
@@ -94,13 +104,13 @@ pytest
 For a faster local gate before handing work off, run:
 
 ```bash
-uv run python tools/quality_gate.py fast
+uv run python -m tools.quality_gate fast
 ```
 
 With the pip fallback:
 
 ```bash
-python tools/quality_gate.py fast
+python -m tools.quality_gate fast
 ```
 
 ### Verification Infrastructure Commands
@@ -110,6 +120,7 @@ support-policy changes:
 
 ```bash
 uv run python -m tools.ci_matrix check
+uv run python -m tools.ci_shard check
 uv run python tools/verify_regression_vectors.py --all
 uv run pytest -q tests/regression tests/property --hypothesis-profile=ci-fast
 uv run python tools/generate_correctness_report.py \

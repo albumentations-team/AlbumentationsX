@@ -27,6 +27,12 @@ def test_antigravity_review_is_pr_scoped_read_only_and_uses_vertex_ai() -> None:
     assert 'use_vertex_ai: "true"' in workflow
     assert "GEMINI_CLI_TRUST_WORKSPACE" in workflow
     assert "gh pr diff" in workflow
+    assert "python -m tools.ci_plan" in workflow
+    assert "--github-files-json .antigravity/pr-files.json" in workflow
+    assert "--paginate" in workflow
+    assert "--slurp" in workflow
+    assert "if: steps.plan.outputs.antigravity == 'true'" in workflow
+    assert "if: needs.antigravity-review.outputs.selected == 'true'" in workflow
     assert "gh pr review" in workflow
     assert ".antigravity/pr-metadata.txt" in workflow
     assert ".antigravity/pr-metadata.json" not in workflow

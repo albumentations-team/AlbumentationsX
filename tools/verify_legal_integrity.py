@@ -70,7 +70,7 @@ def _read_required_files(repo_root: Path) -> dict[str, bytes]:
 
 def _check_project_metadata(repo_root: Path) -> list[str]:
     errors: list[str] = []
-    pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text())
+    pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     project = pyproject.get("project", {})
     if project.get("license") != SPDX_LICENSE:
         errors.append(f"pyproject project.license must be {SPDX_LICENSE!r}")
@@ -96,7 +96,7 @@ def _check_project_metadata(repo_root: Path) -> list[str]:
         if excluded_path not in build_excludes
     )
 
-    conda_metadata = (repo_root / "conda.recipe/meta.yaml").read_text()
+    conda_metadata = (repo_root / "conda.recipe/meta.yaml").read_text(encoding="utf-8")
     required_conda_lines = (
         "license: AGPL-3.0-only",
         "- LICENSE",
@@ -110,7 +110,7 @@ def _check_project_metadata(repo_root: Path) -> list[str]:
         if required_line not in conda_metadata
     )
 
-    manifest = (repo_root / "MANIFEST.in").read_text()
+    manifest = (repo_root / "MANIFEST.in").read_text(encoding="utf-8")
     required_manifest_lines = (
         "include LICENSES/MIT-Albumentations-2.0.8.txt",
         "exclude CLA.md",
@@ -165,7 +165,7 @@ def _check_license_texts(repo_root: Path) -> list[str]:
 
 
 def _check_history_and_notices(repo_root: Path) -> list[str]:
-    history = " ".join((repo_root / "LICENSE_HISTORY.md").read_text().split())
+    history = " ".join((repo_root / "LICENSE_HISTORY.md").read_text(encoding="utf-8").split())
     required_history_phrases = (
         "4d2cf04b6635663275a747333754410ef255e54c",
         "c1720fbab8209450328ef2e68f0ddc0c4806f7a8",
@@ -184,7 +184,7 @@ def _check_history_and_notices(repo_root: Path) -> list[str]:
         f"LICENSE_HISTORY.md is missing {phrase!r}" for phrase in required_history_phrases if phrase not in history
     ]
 
-    notices = " ".join((repo_root / "THIRD_PARTY_NOTICES.md").read_text().split())
+    notices = " ".join((repo_root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8").split())
     required_notice_phrases = (
         "Copyright (c) 2017 Vladimir Iglovikov, Alexander Buslaev, Alexander Parinov,",
         MIT_208_SHA256,
@@ -225,7 +225,7 @@ def _check_cla_archive(repo_root: Path) -> list[str]:
     if cla_v2 != archived_v2:
         errors.append("root CLA.md is not byte-identical to the archived Version 2.0 text")
 
-    manifest = (archive / "MANIFEST.md").read_text()
+    manifest = (archive / "MANIFEST.md").read_text(encoding="utf-8")
     required_manifest_values = (
         CLA_V1_INITIAL_SHA256,
         CLA_V1_FORMATTED_SHA256,
@@ -255,14 +255,14 @@ def _check_cla_archive(repo_root: Path) -> list[str]:
         f"CLA Version 2.0 is missing {phrase!r}" for phrase in required_v2_phrases if phrase not in normalized_cla
     )
 
-    contributing = (repo_root / "CONTRIBUTING.md").read_text()
+    contributing = (repo_root / "CONTRIBUTING.md").read_text(encoding="utf-8")
     if "A Version 1 signature does **not** accept\nVersion 2.0" not in contributing:
         errors.append("CONTRIBUTING.md must require Version 1 signers to reaccept Version 2.0")
     return errors
 
 
 def _check_public_copy(repo_root: Path) -> list[str]:
-    normalized_readme = " ".join((repo_root / "README.md").read_text().split())
+    normalized_readme = " ".join((repo_root / "README.md").read_text(encoding="utf-8").split())
     stale_phrases = (
         "Free for open-source projects",
         "For proprietary/commercial use",

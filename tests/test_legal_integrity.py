@@ -89,6 +89,21 @@ def test_source_legal_integrity() -> None:
     assert collect_source_errors() == []
 
 
+def test_source_legal_integrity_with_windows_default_encoding(monkeypatch) -> None:
+    original_read_text = Path.read_text
+
+    def read_text_with_windows_default(
+        path: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        return original_read_text(path, encoding=encoding or "cp1252", errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", read_text_with_windows_default)
+
+    assert collect_source_errors() == []
+
+
 def test_cli_reports_missing_required_notice_without_artifacts(
     tmp_path: Path,
     monkeypatch,

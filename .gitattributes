@@ -1,2 +1,10 @@
 *.py linguist-language=python
 *.ipynb linguist-documentation
+
+# Legal and provenance files are verified byte-for-byte and must retain LF on Windows.
+/CLA.md text eol=lf
+/LICENSE text eol=lf
+/LICENSE_HISTORY.md text eol=lf
+/THIRD_PARTY_NOTICES.md text eol=lf
+/LICENSES/*.txt text eol=lf
+/legal/cla/archive/* text eol=lf

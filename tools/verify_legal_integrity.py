@@ -425,13 +425,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     """Run source and optional artifact checks."""
     args = parse_args()
-    errors = collect_source_errors()
-    expected_files = _read_required_files(REPO_ROOT)
-    for artifact in args.artifacts:
-        if not artifact.is_file():
-            errors.append(f"artifact does not exist: {artifact}")
-            continue
-        errors.extend(collect_artifact_errors(artifact, expected_files))
+    errors = collect_source_errors(REPO_ROOT)
+    if not errors and args.artifacts:
+        expected_files = _read_required_files(REPO_ROOT)
+        for artifact in args.artifacts:
+            if not artifact.is_file():
+                errors.append(f"artifact does not exist: {artifact}")
+                continue
+            errors.extend(collect_artifact_errors(artifact, expected_files))
 
     if errors:
         for error in errors:

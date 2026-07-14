@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import io
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
 
+import tools.verify_legal_integrity as legal_integrity
 from tools.verify_legal_integrity import (
     FIRST_ONLY_RELEASE,
     REPO_ROOT,
     REQUIRED_LICENSE_FILES,
+    SOURCE_ONLY_NOTICE_FILES,
     collect_artifact_errors,
     collect_source_errors,
 )
@@ -84,6 +87,28 @@ def _write_sdist(
 
 def test_source_legal_integrity() -> None:
     assert collect_source_errors() == []
+
+
+def test_cli_reports_missing_required_notice_without_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    missing_notice = "THIRD_PARTY_NOTICES.md"
+    for relative_path in (*REQUIRED_LICENSE_FILES, *SOURCE_ONLY_NOTICE_FILES):
+        if relative_path == missing_notice:
+            continue
+        source_path = tmp_path / relative_path
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(b"placeholder")
+
+    monkeypatch.setattr(legal_integrity, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["verify_legal_integrity.py"])
+
+    assert legal_integrity.main() == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"ERROR: missing required license or provenance file: {missing_notice}\n"
 
 
 def test_wheel_and_sdist_accept_exact_required_files(tmp_path: Path) -> None:

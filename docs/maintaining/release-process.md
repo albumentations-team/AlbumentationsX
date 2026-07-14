@@ -38,6 +38,15 @@ Before a release is published, all of the following must be true:
      performance-budget artifacts
    - optional PyTorch tensor benchmark evidence from the PyTorch Tensor
      Performance workflow, with any material regressions documented
+9. License and notice integrity passes:
+   - `python tools/verify_legal_integrity.py`
+   - the wheel and sdist contain exact copies of `LICENSE`,
+     `LICENSE_HISTORY.md`, `THIRD_PARTY_NOTICES.md`, and the preserved legacy
+     MIT notice
+   - neither artifact contains the inbound `CLA.md` or `legal/cla/` archive
+   - release `2.3.2` is the first prospective `AGPL-3.0-only` distribution;
+     published `2.3.1` artifacts declared `AGPL-3.0-or-later` and must never be
+     rebuilt or republished with different metadata
 
 Performance coverage expectations and regression triage rules are maintained in
 `docs/maintaining/performance-coverage.md`.
@@ -61,6 +70,8 @@ The release process depends on the repository CI in `.github/workflows/ci.yml`:
 - lockfile freshness check through `uv lock --check`
 - `tools.check_defaults`
 - README transform tables vs code via pre-commit hook `check-readme-transforms-docs` (`make_transforms_docs check`)
+- license, CLA archive, metadata, and notice consistency through the always-on
+  `Legal Integrity` pull-request workflow
 
 Releases must not be cut from a commit that has failing required checks.
 
@@ -87,6 +98,8 @@ Each official release must publish:
 5. GitHub Actions performs the release workflow:
    - checks out the released tag/source
    - builds wheel and sdist with `uv build`
+   - verifies exact license/provenance content and excludes inbound CLA files
+     with `tools/verify_legal_integrity.py`
    - runs `twine check`
    - installs the built wheel in a clean virtual environment together with `opencv-python-headless`
    - imports `albumentations` from outside the repository checkout
@@ -118,6 +131,10 @@ Release validation must preserve the documented support matrix:
   - Windows
 
 The wheel smoke test is the minimum packaging compatibility check. If a release changes dependency constraints or packaging behavior, perform an extra install test from the uploaded wheel before announcing the release.
+
+License and provenance controls are maintained in
+`docs/maintaining/license-provenance.md`. A release must not proceed when
+package metadata, notices, CLA history, or built artifact contents disagree.
 
 Each release should also attach a Correctness & Compatibility Report. The report is generated from the matrix policy
 and available CI evidence. It summarizes unit, regression, property, performance, and security checks in public

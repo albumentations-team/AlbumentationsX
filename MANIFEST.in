@@ -1,5 +1,12 @@
 include LICENSE
+include LICENSE_HISTORY.md
+include THIRD_PARTY_NOTICES.md
 include README.md
+include LICENSES/MIT-Albumentations-2.0.8.txt
+
+exclude CLA.md
+exclude LICENSES/OFL-1.1.txt
+prune legal
 
 prune docs/_build
 global-exclude docs/augs_overview/*/images/*.jpg

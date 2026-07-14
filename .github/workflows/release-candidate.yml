@@ -45,6 +45,9 @@ jobs:
       run: |
         uv run python -m tools.ci_matrix check
         uv run python tools/verify_regression_vectors.py --all
+    - name: Verify license and CLA provenance
+      if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.10'
+      run: uv run python tools/verify_legal_integrity.py
     - name: Prepare release candidate evidence directory
       run: python -c "from pathlib import Path; Path('release-candidate-evidence').mkdir(exist_ok=True)"
     - name: Run release candidate tests

@@ -251,15 +251,14 @@ jobs:
       - name: Run duration-balanced base-suite shard
         shell: bash
         run: |
+          set -o pipefail
           mkdir -p ci-evidence
-          mapfile -d '' -t test_files < <(
-            python -m tools.ci_shard select \
-              --shard-count "${{ matrix.shard-count }}" \
-              --shard-index "${{ matrix.shard-index }}" \
-              --exclude-file tests/test_pytorch.py \
-              --exclude-file tests/transforms3d/test_pytorch.py
-          )
-          python -m pytest "${test_files[@]}" \
+          python -m tools.ci_shard select \
+            --shard-count "${{ matrix.shard-count }}" \
+            --shard-index "${{ matrix.shard-index }}" \
+            --exclude-file tests/test_pytorch.py \
+            --exclude-file tests/transforms3d/test_pytorch.py \
+            | xargs -0 python -m pytest \
             -n 2 --dist=worksteal -m "not pytorch" \
             --hypothesis-profile=ci-fast \
             --junitxml=ci-evidence/junit.xml

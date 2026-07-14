@@ -34,6 +34,9 @@ does not check out the pull-request head; Gemini receives its metadata and diff
 as untrusted review data. It receives read-only repository file tools and no
 pull-request write token, shell tool, or MCP server. A separate job downloads
 the review as a one-day artifact and posts it as a pull-request comment.
+The narrow `zizmor` suppression on this trigger is intentional; security
+contract tests require the trusted-base checkout and reject any PR-head
+checkout.
 
 Configure these GitHub repository variables before requiring the check:
 

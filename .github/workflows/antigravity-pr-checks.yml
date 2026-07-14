@@ -1,6 +1,7 @@
 name: Antigravity PR Checks
 
-on:
+# The PR head is never checked out or executed; only its metadata and diff are handled as untrusted data.
+on: # zizmor: ignore[dangerous-triggers]
   pull_request_target:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
@@ -17,6 +18,7 @@ jobs:
     name: Antigravity Review
     if: >-
       ${{
+        github.repository == 'albumentations-team/AlbumentationsX' &&
         github.event.pull_request.draft == false &&
         github.event.pull_request.head.repo.full_name == github.repository
       }}

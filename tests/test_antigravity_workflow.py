@@ -9,10 +9,13 @@ def test_antigravity_review_is_pr_scoped_read_only_and_uses_vertex_ai() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "name: Antigravity PR Checks" in workflow
+    assert "on: # zizmor: ignore[dangerous-triggers]" in workflow
+    assert "The PR head is never checked out or executed" in workflow
     assert "\n  pull_request_target:\n" in workflow
     assert "\n  pull_request:\n" not in workflow
     assert "branches: [main]" in workflow
     assert "types: [opened, reopened, synchronize, ready_for_review]" in workflow
+    assert "github.repository == 'albumentations-team/AlbumentationsX'" in workflow
     assert "github.event.pull_request.head.repo.full_name == github.repository" in workflow
     assert "github.event.pull_request.draft == false" in workflow
     assert "id-token: write" in workflow

@@ -17,19 +17,23 @@
 
 [![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=albumentations-team/albumentationsx@github)](https://gitads.dev/v1/ad-track?source=albumentations-team/albumentationsx@github)
 
-## 📢 AlbumentationsX Licensing
+## 📢 Licensing: commercial use is allowed
 
-The public AlbumentationsX repository is available under **AGPL-3.0-only**. The
-AGPL permits commercial use subject to its terms. Albumentations, LLC also
-offers separately negotiated commercial licenses with alternative,
-scope-specific permissions for the versions and uses covered by an executed
-agreement.
+**AlbumentationsX can be used in commercial projects under the AGPL.** The
+current public repository is available under **AGPL-3.0-only**, an open-source
+license. The AGPL permits commercial use subject to its terms.
 
-Whether a particular use complies with the AGPL depends on the facts; labels
-such as "commercial," "proprietary," "production," or "internal" do not by
-themselves decide the answer. Support, warranties, maintenance, and service
-levels are included only when an executed agreement or order form expressly
-says so. See [LICENSE](LICENSE), [license history](LICENSE_HISTORY.md), and
+Albumentations, LLC also offers separately negotiated commercial licenses with
+alternative, scope-specific permissions for the versions and uses covered by
+an executed agreement. A commercial license is an option when a team needs
+terms different from the AGPL. It is not automatically required because a
+project is commercial, proprietary, in production, or internal.
+
+Which terms fit depends on the deployment facts, including modification,
+combination, copying or conveyance, and network interaction. Support,
+warranties, maintenance, and service levels are included only when an executed
+agreement or order form expressly says so. See [LICENSE](LICENSE),
+[license history](LICENSE_HISTORY.md), and
 [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ### Quick Start
@@ -465,13 +469,15 @@ We look forward to your contributions to help make the AlbumentationsX ecosystem
 
 ## 📜 License
 
-AlbumentationsX is licensed under **AGPL-3.0-only**. Alternative commercial
-terms are available from Albumentations, LLC for a specifically agreed scope.
-The AGPL itself permits commercial use subject to its terms, so a commercial
-license is not described as mandatory merely because a use is commercial,
-proprietary, in production, or internal. Review the [license notice](LICENSE)
-and your facts; for alternative terms, visit the
+The current public repository is licensed under **AGPL-3.0-only**. Earlier
+AlbumentationsX releases retain the license terms recorded in the
+[license history](LICENSE_HISTORY.md). The AGPL permits commercial use subject
+to its terms.
+
+For alternative, scope-specific terms from Albumentations, LLC, visit the
 [pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
+The [license notice](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md)
+contain the complete repository-level details.
 
 ## 📞 Contact
 

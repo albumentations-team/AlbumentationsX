@@ -24,6 +24,19 @@ always_apply: true
 - After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
   complete when the environment can support it.
 
+## License and CLA Integrity
+- Use SPDX `AGPL-3.0-only` consistently; do not silently change it to an
+  `-or-later` expression.
+- Preserve the complete AGPL text, the legacy Albumentations 2.0.8 MIT notice,
+  and immutable CLA archives.
+- Treat CLA acceptance as version-specific. Never infer acceptance of a new CLA
+  from an old signature.
+- Run `python tools/verify_legal_integrity.py`; after packaging changes, build
+  both distributions and pass them with `--artifacts`.
+- Read `docs/maintaining/license-provenance.md` and use the
+  `license-integrity` skill for any license, CLA, notice, packaging-license, or
+  commercial-license wording change.
+
 ## Complete Documentation
 
 See these documents for comprehensive guidelines:

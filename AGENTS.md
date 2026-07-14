@@ -13,6 +13,7 @@ Project-specific skills live in `.codex/skills`. Use the matching skill whenever
 - `benchmark`
 - `docstring-deep-dive`
 - `internal-workspace`
+- `license-integrity`
 - `mixing-transforms`
 - `release-notes`
 - `review-transform`

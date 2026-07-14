@@ -47,15 +47,34 @@ We've organized our contribution guidelines into focused documents:
 
 ## Contributor License Agreement
 
-Before we can accept your contribution, you must sign our [Contributor License Agreement (CLA)](https://github.com/albumentations-team/AlbumentationsX/blob/main/CLA.md). This is a one-time process that ensures we can use your contributions in both versions of AlbumentationsX:
+Before we can accept your contribution, you must accept our
+[Contributor License Agreement (CLA) Version 2.0](CLA.md). It lets
+Albumentations, LLC publish accepted contributions under AGPL-3.0-only and
+offer the same contributions under separately negotiated commercial terms.
+You retain ownership of your work.
 
-- **Open-source version** (AGPL-3.0 License)
-- **Commercial version** (for enterprise customers)
+CLA acceptance is version-specific. A Version 1 signature does **not** accept
+Version 2.0. Contributors recorded only against Version 1 must review and
+accept Version 2.0 before another contribution can be merged. The new
+acceptance grants rights in qualifying contributions submitted before, on, and
+after the Version 2.0 acceptance date; it does not pretend that Version 2.0 was
+accepted earlier.
 
-When you open your first pull request, the CLA Assistant bot will automatically check if you've signed. To sign, simply comment on the PR:
+For an individual contribution, comment on the pull request with this exact
+Version 2.0 statement:
 
 ```text
-I have read the CLA Document and I hereby sign the CLA
+I have read and agree to the AlbumentationsX CLA Version 2.0 (July 14, 2026) as an individual.
 ```
 
-The whole process takes just a few seconds and helps maintain the project's sustainability through dual licensing.
+If an employer or another legal entity owns or controls the contribution, use
+the Entity Acceptance process in [CLA.md](CLA.md) instead. A corporate signer
+must identify the exact legal entity, their authority, and the covered
+contributors. Do not use an individual acceptance to license employer-owned
+work.
+
+The repository text and acceptance phrase are ready for Version 2.0. The
+external CLA Assistant configuration and any existing signature records must
+be migrated before this requirement is enforced as a merge gate; until that
+migration is verified, maintainers must review the durable acceptance record
+manually.

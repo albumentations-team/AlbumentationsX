@@ -17,6 +17,10 @@ For each release, the following artifacts are official:
 - Correctness & Compatibility Report Markdown in the GitHub Release assets
 - matching wheel and sdist files published on PyPI
 
+Each wheel and sdist also carries the repository license, license history,
+third-party notices, and exact legacy Albumentations 2.0.8 MIT notice. The
+inbound contributor agreement and its archive are intentionally excluded.
+
 ## Quick Verification
 
 To verify a release as a downstream user:
@@ -34,6 +38,9 @@ sha256sum -c SHA256SUMS.txt
    - the file was published with trusted publishing
    - attestation/provenance metadata is present
    - the source repository and workflow identity match `albumentations-team/AlbumentationsX`
+6. Run `python tools/verify_legal_integrity.py --artifacts <wheel> <sdist>`
+   from the matching source revision to confirm exact notice contents and CLA
+   exclusion.
 
 ## Programmatic Verification
 

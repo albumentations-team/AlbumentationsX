@@ -1,0 +1,36 @@
+name: Legal Integrity
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  legal_integrity:
+    name: License, CLA, and package notices
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - name: Install uv and Python
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+        python-version: "3.11"
+        activate-environment: true
+    - name: Verify source-tree legal integrity
+      run: python tools/verify_legal_integrity.py
+    - name: Test legal-integrity verifier
+      run: uv run --no-project --with pytest pytest -q tests/test_legal_integrity.py
+    - name: Build wheel and source distribution
+      run: uv build --out-dir "${RUNNER_TEMP}/albumentationsx-legal-dist"
+    - name: Verify distribution notices and CLA exclusion
+      run: >-
+        python tools/verify_legal_integrity.py --artifacts
+        "${RUNNER_TEMP}"/albumentationsx-legal-dist/*.whl
+        "${RUNNER_TEMP}"/albumentationsx-legal-dist/*.tar.gz
+    - name: Check distribution metadata
+      run: uv tool run --from twine twine check "${RUNNER_TEMP}"/albumentationsx-legal-dist/*

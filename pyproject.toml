@@ -5,9 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "albumentationsx"
 
-version = "2.3.1"
+version = "2.3.2"
 
-description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volumes, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Licensed under AGPL-3.0 (open source); commercial licenses are also available."
+description = "Image augmentation library for 2D and 3D computer vision workflows. Licensed under AGPL-3.0-only; alternative commercial terms are available."
 readme = "README.md"
 keywords = [
   "2D augmentation",
@@ -73,8 +73,8 @@ keywords = [
   "volumetric masks",
 
 ]
-license = "AGPL-3.0-or-later"
-license-files = ["LICENSE"]
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "LICENSE_HISTORY.md", "THIRD_PARTY_NOTICES.md", "LICENSES/MIT-Albumentations-2.0.8.txt"]
 
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 
@@ -188,10 +188,14 @@ packages = ["albumentations"]
 
 [tool.hatch.build]
 exclude = [
+  "CLA.md",
   "tests",
   "tools",
   "benchmark",
   "docs",
+  "legal",
+  "legal-dist",
+  "LICENSES/OFL-1.1.txt",
   ".github",
   ".codex",
   "conda.recipe",

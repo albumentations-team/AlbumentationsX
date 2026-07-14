@@ -64,6 +64,9 @@ jobs:
     - name: Build distributions
       run: uv build
 
+    - name: Verify distribution license and notice integrity
+      run: python tools/verify_legal_integrity.py --artifacts dist/*.whl dist/*.tar.gz
+
     - name: Check distribution metadata
       run: uv tool run --from twine twine check dist/*
 

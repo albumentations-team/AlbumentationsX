@@ -6,7 +6,7 @@
 
 > 📣 **Stay updated!** [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme) for the latest releases, tutorials, and tips.
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-blue.svg)](LICENSE)
 [![Commercial License](https://img.shields.io/badge/Commercial_License-available-brightgreen)](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
 
 [![Docs](https://img.shields.io/badge/docs-albumentations.ai-blue)](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme) [![Discord](https://img.shields.io/badge/Discord-join-7289da?logo=discord&logoColor=white)](https://discord.gg/AKPrrDYNAt) [![Twitter](https://img.shields.io/badge/Twitter-follow-1da1f2?logo=twitter&logoColor=white)](https://twitter.com/albumentations) [![LinkedIn](https://img.shields.io/badge/LinkedIn-connect-0077b5?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/albumentations/) [![Reddit](https://img.shields.io/badge/Reddit-join-ff4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Albumentations/)
@@ -17,12 +17,20 @@
 
 [![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=albumentations-team/albumentationsx@github)](https://gitads.dev/v1/ad-track?source=albumentations-team/albumentationsx@github)
 
-## 📢 Important: AlbumentationsX Licensing
+## 📢 AlbumentationsX Licensing
 
-AlbumentationsX offers dual licensing:
+The public AlbumentationsX repository is available under **AGPL-3.0-only**. The
+AGPL permits commercial use subject to its terms. Albumentations, LLC also
+offers separately negotiated commercial licenses with alternative,
+scope-specific permissions for the versions and uses covered by an executed
+agreement.
 
-- **AGPL-3.0 License**: Free for open-source projects
-- **Commercial License**: For proprietary/commercial use (contact for pricing)
+Whether a particular use complies with the AGPL depends on the facts; labels
+such as "commercial," "proprietary," "production," or "internal" do not by
+themselves decide the answer. Support, warranties, maintenance, and service
+levels are included only when an executed agreement or order form expressly
+says so. See [LICENSE](LICENSE), [license history](LICENSE_HISTORY.md), and
+[third-party notices](THIRD_PARTY_NOTICES.md).
 
 ### Quick Start
 
@@ -457,10 +465,13 @@ We look forward to your contributions to help make the AlbumentationsX ecosystem
 
 ## 📜 License
 
-AlbumentationsX offers two licensing options to suit different needs:
-
-- **AGPL-3.0 License**: This [OSI-approved](https://opensource.org/license) open-source license is perfect for students, researchers, and enthusiasts. It encourages open collaboration and knowledge sharing. See the [LICENSE](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSE) file for full details.
-- **AlbumentationsX Commercial License**: Designed for commercial use, this license allows for the seamless integration of AlbumentationsX into commercial products and services, bypassing the open-source requirements of AGPL-3.0. If your use case involves commercial deployment, please visit [our pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
+AlbumentationsX is licensed under **AGPL-3.0-only**. Alternative commercial
+terms are available from Albumentations, LLC for a specifically agreed scope.
+The AGPL itself permits commercial use subject to its terms, so a commercial
+license is not described as mandatory merely because a use is commercial,
+proprietary, in production, or internal. Review the [license notice](LICENSE)
+and your facts; for alternative terms, visit the
+[pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
 ## 📞 Contact
 

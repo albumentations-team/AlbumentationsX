@@ -47,5 +47,11 @@ test:
 
 about:
   home: {{ data['url'] }}
-  license: {{ data['license'] }}
+  license: AGPL-3.0-only
+  license_family: AGPL
+  license_file:
+    - LICENSE
+    - LICENSE_HISTORY.md
+    - THIRD_PARTY_NOTICES.md
+    - LICENSES/MIT-Albumentations-2.0.8.txt
   summary: {{ data['description'] }}

@@ -1,86 +1,186 @@
-# CI Policy
+# CI policy
 
-AlbumentationsX CI separates fast pull-request signal from slower confidence
-checks. The current required PR matrix remains intentionally broad while the
-new nightly, release-candidate, and performance lanes collect evidence without
-destabilizing contributor workflows.
+AlbumentationsX pull-request CI optimizes for merge-ready wall time while
+preserving the supported compatibility guarantee. The workflow always starts,
+classifies the changed paths, and runs only the checks that can produce useful
+signal for those paths. Unknown paths fail closed to the complete profile.
 
-## Required Pull-Request Gates
+The implementation lives in `.github/workflows/pr.yml`. Routing is owned by
+`tools/ci_plan.py`; stable gate aggregation is owned by `tools/ci_gate.py`.
 
-- Full test matrix on `ubuntu-latest`, `windows-latest`, and `macos-latest`.
-- Python 3.10, 3.11, 3.12, 3.13, and 3.14.
-- Locked latest dependency set from `uv.lock`.
-- Pre-commit hooks and project-specific checks.
-- `tools.ci_matrix check`.
+## Required pull-request gates
+
+Repository rules should require these repository-owned jobs, not conditional
+leaf jobs:
+
+- `PR / PR plan`
+- `PR / Fast checks`
+- `PR / Correctness`
+- `PR / Security and policy`
+
+The plan job always reports. Each aggregate gate also always reports and fails
+closed when a selected leaf is missing, skipped, cancelled, or failed. A leaf
+that the router did not select may be skipped without leaving the pull request
+waiting for a status that will never arrive.
+
+Keep the external CLA check and GitHub's stable code-scanning results rule when
+they are part of repository policy. Do not require dynamic CodeQL leaf names
+such as `Analyze (actions)` or `Analyze (python)`. Do not require advisory ASV
+or AI-review jobs.
 
 Direct pushes to `main` are outside the maintenance policy and should be
-blocked with repository branch protection or rulesets. The repository workflows
-use pull-request, scheduled, manual, and release events for verification
-instead of `push` events.
+blocked by the repository ruleset. Repository workflows use pull-request,
+scheduled, manual, and release events instead of `push` events.
 
-The lightweight `Legal Integrity` check runs on every pull request, including
-documentation-only changes that the full test matrix intentionally ignores. It
-verifies the source license and CLA archive, builds the wheel and sdist, checks
-their exact notice contents, and confirms that inbound CLA material is absent.
-Keep this workflow always reporting rather than path-filtering it if it is made
-a required repository check.
+## Path-based selection
 
-## Scheduled And Release Gates
+The router applies additive domains: a mixed change receives the union of the
+relevant checks. These are the normal profiles:
 
-- Lower-bound dependency testing on Ubuntu and Python 3.10.
-- Golden regression vectors.
-- Property tests with the `ci-fast` profile on PR and broader profiles in
-  nightly/release workflows.
-- Manual release-candidate verification runs the full test suite across the
-  supported OS/Python matrix with the release Hypothesis profile.
-- Performance benchmark import checks, catalog coverage validation, direct
-  functional-kernel, batch-route, and parameter-sensitivity coverage
-  validation, per-transform coverage-depth artifacts, ASV before/after comparison for
-  performance-sensitive changes, optional PyTorch tensor benchmark evidence,
-  manual baseline/candidate comparison through `workflow_dispatch`, and
-  scheduled ASV artifact generation.
-- Security checks, including runtime dependency audit, GitHub Actions
-  hardening audit, and OpenSSF Scorecard JSON/SARIF evidence.
+| Changed paths | Required work | Work intentionally skipped |
+| --- | --- | --- |
+| Ordinary Markdown | Changed-file Markdown hooks | pytest, typing, packaging, security audits |
+| CI policy Markdown | Markdown hooks and repository contracts | product pytest |
+| Runtime source | Ruff, mypy, Pyrefly, contracts, full 3 × 5 compatibility, one coverage lane | package builds and workflow audit |
+| Isolated test module | Changed module on the primary and OS/version boundary lanes | full product matrix |
+| Shared pytest infrastructure | Full 3 × 5 compatibility | unrelated package and workflow policy jobs |
+| PyTorch source or tests | Dedicated CPU-only PyTorch job plus relevant base checks | Torch installation in ordinary compatibility jobs |
+| Dependency metadata or lockfile | Primary suite, PyTorch, dependency audit, legal/package checks, clean install matrix | ASV timing comparison |
+| Packaging or legal inputs | Source legal verification, wheel/sdist verification, metadata check, clean installs when relevant | product compatibility matrix |
+| `.github/**` | Repository contracts and `zizmor` | product pytest unless the PR workflow/router itself changed |
+| Benchmark source or tooling | Benchmark contracts and advisory ASV evidence | product pytest |
+| Unknown path | Complete conservative profile | Nothing |
 
-## Performance Regression Policy
+Draft pull requests run the selected fast feedback only. Moving a pull request
+to ready-for-review starts its selected correctness and policy work. The
+`full-ci` label overrides draft routing and selects the complete conservative
+profile.
 
-The performance workflow is advisory on GitHub-hosted runners until scheduled
-data establishes reliable blocking thresholds. It still produces review
-evidence: changes to transform hot paths, functional kernels, parameter
-generation, or core pipeline code should compare the changed state against a
-baseline with ASV. Pull requests do this automatically when they touch runtime
-or benchmark code, using a bounded catalog/core/batch/direct-kernel comparison
-plus changed-family and parameter-sensitive cases so the advisory lane stays
-timely. Release tasks, large branches, and local investigations can use the
-manual workflow inputs to compare an explicit `baseline_ref`, `candidate_ref`,
-and optional ASV `bench_filter`.
-The optional PyTorch tensor benchmark lane lives in a separate scheduled/manual
-workflow instead of the pull-request Performance workflow because installing
-torch can dominate PR feedback time.
+## Compatibility and wall time
 
-Material slowdowns, initially interpreted as more than about 5% on a
-representative benchmark case, should be treated as release-relevant. The
-change should either recover the regression or document the reason the slower
-behavior is an intentional tradeoff, such as a correctness fix, broader target
-support, or lower memory use.
+Runtime changes retain every supported operating-system and Python pair:
 
-The benchmark coverage layers and release acceptance criteria are defined in
-`docs/maintaining/performance-coverage.md`.
+- Ubuntu, Windows, and macOS;
+- Python 3.10, 3.11, 3.12, 3.13, and 3.14;
+- the locked `ci-test` dependency profile.
 
-## Evidence Artifacts
+Compatibility jobs do not collect coverage and do not install PyTorch. Branch
+coverage runs once on Ubuntu and Python 3.12. PyTorch-marked tests run once in a
+dedicated CPU-only environment.
 
-Each CI lane that runs tests should upload:
+Windows 3.11, 3.12, and 3.13 are split into two duration-balanced test-file
+shards because the measured baseline exceeded two minutes. The committed
+weights live in `ci/test-durations.json`; `tools/ci_shard.py` assigns every
+discovered test file exactly once and gives new files a deterministic fallback
+weight. Other compatibility pairs stay unsharded.
 
-- environment JSON from `tools/collect_test_environment.py`;
-- JUnit XML from pytest where practical;
-- compact pytest summary JSON from `tools/pytest_summary.py`;
-- benchmark summary/detail, ASV comparison, or security JSON where those
-  checks run.
+All pytest lanes use two xdist workers with the `worksteal` scheduler. The
+workflow cancels obsolete runs when a newer commit updates the same pull
+request.
 
-Always-run CI evidence steps may pass `--allow-incomplete` to
-`tools/pytest_summary.py` so an early pytest configuration failure still leaves
-an explicit missing/invalid summary artifact. Release reports are stricter:
-local dry runs may use `--allow-missing-evidence`, but release workflows should
-provide passing pytest summary evidence, environment evidence, benchmark
-coverage summary/detail evidence, performance budget evidence, and security
-JSON evidence.
+The operational targets are:
+
+| Pull-request class | Required p50 | Required p95 |
+| --- | ---: | ---: |
+| Ordinary Markdown only | 20s | 45s |
+| Workflow, legal, or benchmark infrastructure | 30s | 60s |
+| Runtime Python | 90s | 120s |
+| Dependency, packaging, or PyTorch | 120s | 180s |
+
+Measure from the latest pull-request event until every required gate is final,
+including queue time. Two-minute parallel jobs are acceptable; an irrelevant
+job or a missing required status is not.
+
+## Purpose-specific environments
+
+CI jobs sync one locked dependency group through
+`.github/actions/setup-ci/action.yml`:
+
+- `ci-test`: base pytest suite and optional test libraries;
+- `ci-quality`: Ruff, pre-commit, the isolated mypy hook, and repository contracts;
+- `ci-types`: Pyrefly and standalone typing tools;
+- `ci-pytorch`: base test dependencies before the CPU-only Torch install;
+- `ci-security`: pip-audit and zizmor;
+- `ci-package`: build, twine, and legal verifier tests;
+- `ci-benchmark`: ASV;
+- `ci-release`: release evidence and artifact tooling.
+
+The contributor-facing `dev` group includes all of these capabilities plus
+normal PyTorch packages. CI must not sync the broad `dev` group.
+
+## ASV performance evidence
+
+ASV means **airspeed velocity**, the Python benchmark framework used under
+`benchmark/`. It is unrelated to Python abstract syntax trees.
+
+The lightweight `ASV benchmark evidence` job validates benchmark catalog
+coverage and benchmark-suite importability. It runs only when runtime,
+benchmark, performance-workflow, or benchmark-policy files change. Actual
+before/after timing runs for pull requests require the `run-performance` label;
+scheduled and manual workflows can also run them.
+
+Performance jobs remain advisory while hosted-runner variance is being
+measured. If performance becomes blocking, introduce one stable always-reported
+`Performance` gate with documented thresholds. Never make a conditional ASV
+leaf globally required.
+
+## Security, legal, and release coverage
+
+The pull-request workflow routes dependency audit, workflow audit, source legal
+verification, artifact verification, and clean install smoke tests by path.
+The scheduled Security workflow still runs dependency audit, `zizmor`, and
+OpenSSF Scorecard evidence independently of pull-request routing.
+
+Nightly and release-candidate workflows run the complete 3 × 5 base suite.
+They also retain lower-bound, property/regression, optional-extra, PyTorch,
+performance, and release artifact evidence where appropriate.
+
+CodeQL is managed by GitHub default setup. Do not add an advanced CodeQL
+workflow while default setup is enabled, because duplicate configurations can
+reject SARIF uploads. Selective language analysis should be handled as a
+separate default-to-advanced migration.
+
+## Antigravity pull-request reviews
+
+`Antigravity PR Checks` is advisory and outside merge-ready wall time. It runs
+for non-draft, same-repository pull requests whose paths select source, tests,
+workflows, legal policy, or unknown high-risk changes. Ordinary Markdown and
+dependency-only changes do not invoke the model.
+
+The `pull_request_target` workflow checks out only the trusted base revision.
+Gemini receives pull-request metadata and diff as untrusted review data, has
+read-only repository tools, and has no shell or pull-request write token. A
+separate publisher job posts the one-day review artifact.
+
+Configure these repository variables:
+
+| Name | Value |
+| --- | --- |
+| `ANTIGRAVITY_GCP_PROJECT_ID` | `albumentations` |
+| `ANTIGRAVITY_GCP_LOCATION` | `global` |
+| `ANTIGRAVITY_GCP_SERVICE_ACCOUNT` | `antigravity-pr-review@albumentations.iam.gserviceaccount.com` |
+| `ANTIGRAVITY_GCP_WIF_PROVIDER` | `projects/663083315901/locations/global/workloadIdentityPools/github-actions/providers/albumentationsx-pr-review` |
+
+The Workload Identity provider condition must match repository ID
+`1005218687`, owner ID `57894582`, event `pull_request_target`, base branch
+`main`, and workflow ref
+`albumentations-team/AlbumentationsX/.github/workflows/antigravity-pr-checks.yml@refs/heads/main`.
+
+## Local validation and evidence
+
+Use the same repository-owned commands locally:
+
+```bash
+uv run python -m tools.ci_matrix check
+uv run python -m tools.ci_shard check
+uv run python -m tools.quality_gate fast
+```
+
+Test lanes should retain JUnit XML and compact summaries where practical.
+Always-run evidence steps may pass `--allow-incomplete` to
+`tools/pytest_summary.py` so early failures still produce explicit evidence.
+Release reports remain strict and require complete test, environment,
+benchmark, performance-budget, and security evidence.
+
+The design rationale, measured baseline, and future impact-selection criteria
+are recorded in `docs/maintaining/ci-greenfield-plan.md`.

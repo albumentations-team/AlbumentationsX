@@ -706,6 +706,7 @@ def test_serialization_conversion_without_totensor(
     ), f"The transformed images are not equal {(image1 - image2).mean()}"
 
 
+@pytest.mark.pytorch
 @pytest.mark.parametrize(
     "transform_file_name",
     [

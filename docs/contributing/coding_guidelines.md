@@ -56,7 +56,7 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 - Before handing off Python changes, run the fast local quality gate:
 
   ```bash
-  uv run python tools/quality_gate.py fast
+  uv run python -m tools.quality_gate fast
   ```
 
 - Changes to support metadata, CI workflows, release docs, or correctness-report
@@ -64,6 +64,7 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 
   ```bash
   uv run python -m tools.ci_matrix check
+  uv run python -m tools.ci_shard check
   ```
 
 ### Python Version and Type Hints

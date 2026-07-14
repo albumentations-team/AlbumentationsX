@@ -51,27 +51,31 @@ Before a release is published, all of the following must be true:
 Performance coverage expectations and regression triage rules are maintained in
 `docs/maintaining/performance-coverage.md`.
 
-## CI Quality Gates
+## CI quality gates
 
-The release process depends on the repository CI in `.github/workflows/ci.yml`:
+The release process depends on the stable required gates in
+`.github/workflows/pr.yml`:
 
-- test matrix on:
-  - `ubuntu-latest`
-  - `windows-latest`
-  - `macos-latest`
-- supported Python versions:
-  - `3.10`
-  - `3.11`
-  - `3.12`
-  - `3.13`
-  - `3.14`
-- code formatting and type checks through `pre-commit`
-- support matrix consistency through `tools.ci_matrix check`
-- lockfile freshness check through `uv lock --check`
-- `tools.check_defaults`
-- README transform tables vs code via pre-commit hook `check-readme-transforms-docs` (`make_transforms_docs check`)
-- license, CLA archive, metadata, and notice consistency through the always-on
-  `Legal Integrity` pull-request workflow
+- `PR plan` selects checks from the changed paths and fails closed for unknown
+  paths;
+- `Fast checks` aggregates formatting, Ruff, typing, Markdown, and repository
+  contracts;
+- `Correctness` aggregates the selected compatibility, coverage, targeted, and
+  PyTorch test profiles;
+- `Security and policy` aggregates dependency, workflow, legal, packaging, and
+  clean-install checks.
+
+Runtime changes run Ubuntu, Windows, and macOS on Python 3.10, 3.11, 3.12,
+3.13, and 3.14. The nightly and release-candidate workflows run that complete
+matrix regardless of changed paths. Coverage runs once on the primary Linux
+lane, and PyTorch has a dedicated CPU-only lane.
+
+Repository contracts include support matrix consistency through
+`tools.ci_matrix check`, lock freshness through `uv lock --check`, shard
+integrity through `tools.ci_shard check`, `tools.check_defaults`, README
+transform-table consistency, and source legal integrity. Artifact legal
+verification runs when packaging or legal inputs change and again during the
+release workflow.
 
 Releases must not be cut from a commit that has failing required checks.
 

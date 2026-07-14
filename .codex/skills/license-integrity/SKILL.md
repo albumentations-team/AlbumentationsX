@@ -53,7 +53,7 @@ uv run pytest -q tests/test_legal_integrity.py
 artifact_dir="$(mktemp -d)"
 uv build --out-dir "${artifact_dir}"
 uv run python tools/verify_legal_integrity.py --artifacts "${artifact_dir}"/*.whl "${artifact_dir}"/*.tar.gz
-uv tool run --from twine twine check "${artifact_dir}"/*
+uv run twine check "${artifact_dir}"/*
 ```
 
 Then run the repository quality gate required by the surrounding change.

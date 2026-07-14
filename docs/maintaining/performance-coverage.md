@@ -295,9 +295,14 @@ Pull requests:
   benchmark artifacts when a comparison runs
 - performance-budget evidence classifies coverage status, benchmark stability,
   triage items, and release-blocking regressions
+- the default performance workflow evaluates the core budget with `--core-only`;
+  it does not report the separately owned `pytorch_tensor` layer as missing
 - optional PyTorch ASV is not run on every pull request because installing
   torch can dominate feedback time; it is run by the separate scheduled/manual
   PyTorch Tensor Performance workflow
+- when the PR router selects the CPU-only PyTorch correctness job, that job
+  validates the complete benchmark catalog and performance policy with Torch
+  installed
 
 Nightly and scheduled runs:
 
@@ -322,7 +327,7 @@ Manual investigations:
 
 ```bash
 cd benchmark
-uv tool run --from asv asv --config asv.conf.json continuous \
+uv run asv --config asv.conf.json continuous \
   --factor 1.05 \
   --split \
   --show-stderr \
@@ -337,7 +342,7 @@ Optional PyTorch tensor benchmarks can be run locally with:
 
 ```bash
 cd benchmark
-uv tool run --from asv asv --config asv-pytorch.conf.json run --quick --show-stderr
+uv run asv --config asv-pytorch.conf.json run --quick --show-stderr
 ```
 
 The raw ASV comparison text is the source artifact. The compact JSON summary

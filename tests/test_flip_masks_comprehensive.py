@@ -195,6 +195,7 @@ class TestFlipMasksContiguity:
         assert isinstance(result["mask3d"], np.ndarray)
 
 
+@pytest.mark.pytorch
 class TestFlipMasksPyTorchCompatibility:
     """Test that flipped masks can be converted to PyTorch tensors."""
 

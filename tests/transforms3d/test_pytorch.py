@@ -4,6 +4,8 @@ import torch
 
 import albumentations as A
 
+pytestmark = pytest.mark.pytorch
+
 test_cases = [
     pytest.param(
         (64, 64, 64, 3),  # volume shape

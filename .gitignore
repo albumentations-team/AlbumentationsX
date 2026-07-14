@@ -178,6 +178,12 @@ conda_build/
 
 .ruff_cache/
 
+# Gemini/Antigravity GitHub Action local artifacts
+.gemini/
+.antigravity/
+gha-creds-*.json
+gemini-artifacts/
+
 # uv.lock is intentionally tracked for reproducible release builds
 
 data/

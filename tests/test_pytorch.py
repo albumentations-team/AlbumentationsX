@@ -7,6 +7,8 @@ from torchvision.transforms import ColorJitter
 import albumentations as A
 from tests.conftest import RECTANGULAR_UINT8_IMAGE, SQUARE_UINT8_IMAGE, UINT8_IMAGES
 
+pytestmark = pytest.mark.pytorch
+
 
 @pytest.mark.parametrize("image", UINT8_IMAGES)
 def test_torch_to_tensor_v2_augmentations(image):

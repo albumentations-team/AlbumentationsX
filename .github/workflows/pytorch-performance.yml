@@ -19,30 +19,27 @@ jobs:
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         fetch-depth: 0
-    - name: Install uv and Python 3.12
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Set up benchmark environment
+      uses: ./.github/actions/setup-ci
       with:
-        enable-cache: true
         python-version: "3.12"
-        activate-environment: true
-    - name: Install tooling dependencies
-      run: uv sync --locked --group dev --inexact --no-install-package torch --no-install-package torchvision
+        dependency-group: ci-benchmark
     - name: Collect PyTorch benchmark environment evidence
       run: >
-        uv run --no-sync python tools/collect_test_environment.py
+        python tools/collect_test_environment.py
         --output pytorch-benchmark-evidence/environment-pytorch-benchmark.json
         --command "asv run optional PyTorch tensor benchmark evidence"
     - name: Register PyTorch ASV machine profile
       working-directory: benchmark
-      run: uv tool run --from asv asv --config asv-pytorch.conf.json machine --yes
+      run: asv --config asv-pytorch.conf.json machine --yes
     - name: Check PyTorch benchmark suite importability
       working-directory: benchmark
-      run: uv tool run --from asv asv --config asv-pytorch.conf.json check --verbose
+      run: asv --config asv-pytorch.conf.json check --verbose
     - name: Run PyTorch tensor benchmark evidence
       working-directory: benchmark
       run: |
         set -o pipefail
-        uv tool run --from asv asv --config asv-pytorch.conf.json run \
+        asv --config asv-pytorch.conf.json run \
           --quick \
           --show-stderr \
           --attribute repeat=1 \

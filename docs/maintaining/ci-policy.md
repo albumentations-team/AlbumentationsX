@@ -18,6 +18,13 @@ blocked with repository branch protection or rulesets. The repository workflows
 use pull-request, scheduled, manual, and release events for verification
 instead of `push` events.
 
+The lightweight `Legal Integrity` check runs on every pull request, including
+documentation-only changes that the full test matrix intentionally ignores. It
+verifies the source license and CLA archive, builds the wheel and sdist, checks
+their exact notice contents, and confirms that inbound CLA material is absent.
+Keep this workflow always reporting rather than path-filtering it if it is made
+a required repository check.
+
 ## Scheduled And Release Gates
 
 - Lower-bound dependency testing on Ubuntu and Python 3.10.

@@ -180,6 +180,7 @@ conda_build/
 
 # Gemini/Antigravity GitHub Action local artifacts
 .gemini/
+.antigravity/
 gha-creds-*.json
 gemini-artifacts/
 

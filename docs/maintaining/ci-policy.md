@@ -28,12 +28,12 @@ a required repository check.
 ## Antigravity Pull-Request Reviews
 
 `Antigravity PR Checks` reviews non-draft pull requests into `main` when the
-source branch belongs to this repository. It skips forks so pull-request code
-cannot use the Google Cloud identity. The review job authenticates to Vertex AI
-through GitHub OIDC and Workload Identity Federation. Gemini receives read-only
-repository file tools; it receives no pull-request write token, shell tool, or
-MCP server. A separate job downloads the review as a one-day artifact and posts
-it as a pull-request comment.
+source branch belongs to this repository. The `pull_request_target` event loads
+the workflow and repository guidance from the trusted base revision. The job
+does not check out the pull-request head; Gemini receives its metadata and diff
+as untrusted review data. It receives read-only repository file tools and no
+pull-request write token, shell tool, or MCP server. A separate job downloads
+the review as a one-day artifact and posts it as a pull-request comment.
 
 Configure these GitHub repository variables before requiring the check:
 
@@ -44,11 +44,14 @@ Configure these GitHub repository variables before requiring the check:
 | `ANTIGRAVITY_GCP_SERVICE_ACCOUNT` | `antigravity-pr-review@albumentations.iam.gserviceaccount.com` |
 | `ANTIGRAVITY_GCP_WIF_PROVIDER` | `projects/663083315901/locations/global/workloadIdentityPools/github-actions/providers/albumentationsx-pr-review` |
 
-The Workload Identity provider must accept only this GitHub repository. The
-optional `GEMINI_CLI_VERSION`, `GEMINI_MODEL`, and `GEMINI_DEBUG` variables
+The Workload Identity provider condition must match repository ID `1005218687`,
+owner ID `57894582`, event `pull_request_target`, base branch `main`, and
+workflow ref
+`albumentations-team/AlbumentationsX/.github/workflows/antigravity-pr-checks.yml@refs/heads/main`.
+The optional `GEMINI_CLI_VERSION`, `GEMINI_MODEL`, and `GEMINI_DEBUG` variables
 override the action defaults; debug mode defaults to `false`. Review findings
-are advisory. The workflow fails only when its configuration or execution
-fails, not when Gemini reports a finding.
+are advisory. Configuration or execution failures fail the workflow; reported
+findings do not.
 
 ## Scheduled And Release Gates
 

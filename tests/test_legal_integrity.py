@@ -8,7 +8,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-import tools.verify_legal_integrity as legal_integrity
+from tools import verify_legal_integrity as legal_integrity
 from tools.verify_legal_integrity import (
     FIRST_ONLY_RELEASE,
     REPO_ROOT,
@@ -16,6 +16,7 @@ from tools.verify_legal_integrity import (
     SOURCE_ONLY_NOTICE_FILES,
     collect_artifact_errors,
     collect_source_errors,
+    main,
 )
 
 
@@ -120,7 +121,7 @@ def test_cli_reports_missing_required_notice_without_artifacts(
     monkeypatch.setattr(legal_integrity, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(sys, "argv", ["verify_legal_integrity.py"])
 
-    assert legal_integrity.main() == 1
+    assert main() == 1
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == f"ERROR: missing required license or provenance file: {missing_notice}\n"

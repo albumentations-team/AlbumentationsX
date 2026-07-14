@@ -295,9 +295,14 @@ Pull requests:
   benchmark artifacts when a comparison runs
 - performance-budget evidence classifies coverage status, benchmark stability,
   triage items, and release-blocking regressions
+- the default performance workflow evaluates the core budget with `--core-only`;
+  it does not report the separately owned `pytorch_tensor` layer as missing
 - optional PyTorch ASV is not run on every pull request because installing
   torch can dominate feedback time; it is run by the separate scheduled/manual
   PyTorch Tensor Performance workflow
+- when the PR router selects the CPU-only PyTorch correctness job, that job
+  validates the complete benchmark catalog and performance policy with Torch
+  installed
 
 Nightly and scheduled runs:
 

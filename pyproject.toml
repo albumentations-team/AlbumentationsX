@@ -167,6 +167,7 @@ ci-quality = [
   "defusedxml>=0.7.1",
   "google-docstring-parser>=0.0.11",
   "opencv-python-headless>=5.0.0.93",
+  "pillow>=12.3.0",
   "pre-commit>=4.6.0",
   "ruff>=0.15.21",
   "tomli>=2.4.1",
@@ -421,6 +422,15 @@ warn_unused_ignores = true
 [tool.pyrefly]
 python-version = "3.10"
 project-includes = ["albumentations"]
+ignore-missing-imports = [
+  "PIL",
+  "PIL.Image",
+  "huggingface_hub",
+  "huggingface_hub.utils",
+  "pyvips",
+  "torch",
+  "torch.utils.data",
+]
 project-excludes = [
   "**/__pycache__",
   ".venv",

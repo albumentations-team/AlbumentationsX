@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from tools.benchmark_coverage import coverage_details
+    from tools.benchmark_coverage import coverage_details, unavailable_optional_transform_names
 except ModuleNotFoundError:  # pragma: no cover - direct script execution fallback
-    from benchmark_coverage import coverage_details
+    from benchmark_coverage import coverage_details, unavailable_optional_transform_names
 
 WARNING_REGRESSION_RATIO = 1.05
 BLOCKING_REGRESSION_RATIO = 1.10
@@ -186,7 +186,11 @@ def classify_benchmark(benchmark_name: str) -> BenchmarkPolicy:
     return UNKNOWN_BENCHMARK_POLICY
 
 
-def _coverage_issue_summary(coverage_detail: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+def _coverage_issue_summary(
+    coverage_detail: dict[str, Any],
+    *,
+    require_optional: bool,
+) -> tuple[list[str], dict[str, Any]]:
     detail_summary = coverage_detail.get("summary", {})
     layer_counts = coverage_detail.get("layer_counts", {})
     issues: list[str] = []
@@ -196,7 +200,8 @@ def _coverage_issue_summary(coverage_detail: dict[str, Any]) -> tuple[list[str],
     if detail_summary.get("smoke_only_transforms", 0) != 0:
         issues.append(f"{detail_summary.get('smoke_only_transforms')} runnable smoke-only transform(s)")
 
-    missing_layers = [layer for layer in REQUIRED_COVERAGE_LAYERS if layer_counts.get(layer, 0) <= 0]
+    required_layers = REQUIRED_COVERAGE_LAYERS if require_optional else REQUIRED_COVERAGE_LAYERS[:-1]
+    missing_layers = [layer for layer in required_layers if layer_counts.get(layer, 0) <= 0]
     if missing_layers:
         issues.append("missing required benchmark coverage layer(s): " + ", ".join(missing_layers))
 
@@ -210,7 +215,12 @@ def _coverage_issue_summary(coverage_detail: dict[str, Any]) -> tuple[list[str],
     }
 
 
-def _coverage_summary_issues(coverage_summary: dict[str, Any], coverage_detail: dict[str, Any]) -> list[str]:
+def _coverage_summary_issues(
+    coverage_summary: dict[str, Any],
+    coverage_detail: dict[str, Any],
+    *,
+    require_optional: bool,
+) -> list[str]:
     issues: list[str] = []
     summary_public = coverage_summary.get("public_transforms")
     detail_public = coverage_detail.get("public_transforms")
@@ -224,7 +234,7 @@ def _coverage_summary_issues(coverage_summary: dict[str, Any], coverage_detail: 
         issues.append("benchmark coverage summary reports contract failures")
     if coverage_summary.get("memory_benchmarks", 0) <= 0:
         issues.append("benchmark coverage summary reports no memory benchmarks")
-    if coverage_summary.get("pytorch_tensor_benchmark_cases", 0) <= 0:
+    if require_optional and coverage_summary.get("pytorch_tensor_benchmark_cases", 0) <= 0:
         issues.append("benchmark coverage summary reports no optional PyTorch tensor benchmark cases")
     return issues
 
@@ -312,10 +322,14 @@ def build_budget(
     asv_summary: dict[str, Any] | None = None,
     *,
     require_comparison: bool = False,
+    require_optional: bool = True,
 ) -> dict[str, Any]:
     """Build machine-readable performance budget evidence."""
-    detail_issues, coverage = _coverage_issue_summary(coverage_detail)
-    coverage_issues = [*detail_issues, *_coverage_summary_issues(coverage_summary, coverage_detail)]
+    detail_issues, coverage = _coverage_issue_summary(coverage_detail, require_optional=require_optional)
+    coverage_issues = [
+        *detail_issues,
+        *_coverage_summary_issues(coverage_summary, coverage_detail, require_optional=require_optional),
+    ]
     comparison = _classify_regressions(asv_summary)
     status = _budget_status(coverage_issues, comparison, require_comparison=require_comparison)
     issues = list(coverage_issues)
@@ -352,6 +366,7 @@ def _summarize(args: argparse.Namespace) -> int:
         _read_json(args.coverage_detail),
         asv_summary,
         require_comparison=args.require_comparison,
+        require_optional=not args.core_only,
     )
     _write_budget(args.output, budget)
     print(f"Wrote performance budget to {args.output}: {budget['status']}")
@@ -368,7 +383,11 @@ def _check_current() -> int:
         "public_transforms": detail["public_transforms"],
         "pytorch_tensor_benchmark_cases": detail["layer_counts"].get("pytorch_tensor", 0),
     }
-    budget = build_budget(summary, detail)
+    budget = build_budget(
+        summary,
+        detail,
+        require_optional=not unavailable_optional_transform_names(),
+    )
     if budget["status"] != "ok":
         print("Performance budget validation failed:")
         for issue in budget["issues"]:
@@ -395,6 +414,11 @@ def parse_args() -> argparse.Namespace:
     summarize_parser.add_argument("--coverage-detail", required=True, type=Path)
     summarize_parser.add_argument("--asv-summary", type=Path)
     summarize_parser.add_argument("--output", required=True, type=Path)
+    summarize_parser.add_argument(
+        "--core-only",
+        action="store_true",
+        help="Validate the core benchmark lane without requiring optional PyTorch evidence.",
+    )
     summarize_parser.add_argument(
         "--require-comparison",
         action="store_true",

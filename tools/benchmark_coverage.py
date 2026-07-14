@@ -25,6 +25,7 @@ from benchmarks.catalog import (  # noqa: E402
     make_compose,
     make_data,
     public_transform_names,
+    unavailable_optional_transform_names,
 )
 from benchmarks.common import CHANNELS, DTYPES, SIZES, VOLUME_SIZES  # noqa: E402
 from benchmarks.test_batch_matrix import (  # noqa: E402
@@ -1448,7 +1449,9 @@ def _validate_public_registry(public_names: set[str], spec_names: set[str]) -> l
         errors.append("Missing benchmark specs: " + ", ".join(missing))
     if unexpected:
         errors.append("Benchmark specs reference unknown transforms: " + ", ".join(unexpected))
-    unknown_optional = sorted(set(OPTIONAL_BENCHMARK_TRANSFORMS) - public_names)
+    unknown_optional = sorted(
+        set(OPTIONAL_BENCHMARK_TRANSFORMS) - public_names - unavailable_optional_transform_names(),
+    )
     if unknown_optional:
         errors.append("Optional benchmark transform is not public: " + ", ".join(unknown_optional))
     return errors
@@ -1477,7 +1480,7 @@ def _validate_case_groups(groups: Mapping[str, tuple[str, ...]], message: str) -
 def _validate_coverage_layers(spec_names: set[str]) -> list[str]:
     layer_sets = _coverage_layer_sets()
     referenced = set().union(*layer_sets.values())
-    unknown = sorted(referenced - spec_names)
+    unknown = sorted(referenced - spec_names - unavailable_optional_transform_names())
     if unknown:
         return ["Benchmark coverage layers reference unknown transforms: " + ", ".join(unknown)]
     return []

@@ -3,6 +3,9 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+import pytest
+
+from tools import benchmark_coverage
 from tools.benchmark_coverage import coverage_details, coverage_diff
 
 
@@ -214,6 +217,25 @@ def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     assert to_tensor["scenario_contract"]["batch_sizes"] == [8]
     assert to_tensor["scenario_contract"]["configs"] == ["pytorch"]
     assert to_tensor["scenario_contract"]["targets"] == ["image", "images", "mask", "masks"]
+
+
+def test_registry_allows_optional_transforms_only_when_their_dependency_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    optional = set(benchmark_coverage.OPTIONAL_BENCHMARK_TRANSFORMS)
+    spec_names = set(benchmark_coverage.benchmark_specs()) - optional
+    public_names = set(benchmark_coverage.public_transform_names()) - optional
+
+    monkeypatch.setattr(benchmark_coverage, "unavailable_optional_transform_names", lambda: optional)
+    assert benchmark_coverage._validate_public_registry(public_names, spec_names) == []
+    assert benchmark_coverage._validate_coverage_layers(spec_names) == []
+
+    monkeypatch.setattr(benchmark_coverage, "unavailable_optional_transform_names", set)
+    registry_errors = benchmark_coverage._validate_public_registry(public_names, spec_names)
+    layer_errors = benchmark_coverage._validate_coverage_layers(spec_names)
+
+    assert registry_errors == ["Optional benchmark transform is not public: ToTensor3D, ToTensorV2"]
+    assert layer_errors == ["Benchmark coverage layers reference unknown transforms: ToTensor3D, ToTensorV2"]
 
 
 def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_layers() -> None:

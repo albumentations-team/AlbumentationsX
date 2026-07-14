@@ -130,3 +130,16 @@ def test_build_budget_rejects_missing_required_coverage_layers() -> None:
 
     assert budget["status"] == "release_blocked"
     assert any("family_matrix" in issue for issue in budget["issues"])
+
+
+def test_build_budget_allows_optional_layer_only_in_core_mode() -> None:
+    coverage_detail = _coverage_detail()
+    coverage_detail["layer_counts"] = {**coverage_detail["layer_counts"], "pytorch_tensor": 0}
+    coverage_detail["public_transforms"] = 134
+    coverage_detail["summary"] = {**coverage_detail["summary"], "optional_transforms": 0}
+    coverage_summary = _coverage_summary()
+    coverage_summary["public_transforms"] = 134
+    coverage_summary["pytorch_tensor_benchmark_cases"] = 0
+
+    assert build_budget(coverage_summary, coverage_detail, require_optional=False)["status"] == "ok"
+    assert build_budget(coverage_summary, coverage_detail, require_optional=True)["status"] == "release_blocked"

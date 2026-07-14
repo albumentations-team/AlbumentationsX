@@ -7,6 +7,7 @@ staying small enough for scheduled CI.
 
 from __future__ import annotations
 
+import importlib.util
 import inspect
 import warnings
 from collections.abc import Callable, Mapping
@@ -35,6 +36,10 @@ ABSTRACT_TRANSFORM_NAMES = frozenset(
 OPTIONAL_BENCHMARK_TRANSFORMS = {
     "ToTensor3D": "requires optional PyTorch dependency; covered by the dedicated PyTorch ASV lane",
     "ToTensorV2": "requires optional PyTorch dependency; covered by the dedicated PyTorch ASV lane",
+}
+OPTIONAL_BENCHMARK_DEPENDENCIES = {
+    "ToTensor3D": "torch",
+    "ToTensorV2": "torch",
 }
 
 EXPECTED_INIT_WARNINGS = (
@@ -149,6 +154,15 @@ def _public_transform_classes() -> dict[str, type[BasicTransform]]:
 def public_transform_names() -> tuple[str, ...]:
     """Return public concrete transform names exposed by the package."""
     return tuple(_public_transform_classes())
+
+
+def unavailable_optional_transform_names() -> set[str]:
+    """Return optional transforms whose runtime dependency is not installed."""
+    return {
+        name
+        for name, dependency in OPTIONAL_BENCHMARK_DEPENDENCIES.items()
+        if importlib.util.find_spec(dependency) is None
+    }
 
 
 def _route_for_transform(name: str, transform_cls: type[BasicTransform]) -> str:

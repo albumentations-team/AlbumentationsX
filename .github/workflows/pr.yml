@@ -138,7 +138,7 @@ jobs:
       - name: Set up typing environment
         uses: ./.github/actions/setup-ci
         with:
-          python-version: "3.12"
+          python-version: "3.10"
           dependency-group: ci-types
       - name: Run Pyrefly
         run: python -m tools.quality_gate pyrefly
@@ -413,6 +413,10 @@ jobs:
           tests/test_per_worker_seed.py
           tests/test_flip_masks_comprehensive.py
           tests/test_additional_targets.py
+      - name: Validate optional benchmark policy
+        run: |
+          python -m tools.benchmark_coverage check
+          python -m tools.performance_budget check
 
   correctness:
     name: Correctness

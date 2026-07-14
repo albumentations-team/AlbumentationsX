@@ -139,6 +139,7 @@ jobs:
         --coverage-summary benchmark-evidence/benchmark-coverage.json
         --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
         --output benchmark-evidence/benchmark-performance-budget.json
+        --core-only
     - name: Upload benchmark artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -263,6 +264,7 @@ jobs:
           --coverage-summary benchmark-asv-evidence/benchmark-coverage.json
           --coverage-detail benchmark-asv-evidence/benchmark-coverage-detail.json
           --output benchmark-asv-evidence/benchmark-performance-budget.json
+          --core-only
         )
         if [ -f benchmark-asv-evidence/benchmark-asv-summary.json ]; then
           BUDGET_COMMAND+=(--asv-summary benchmark-asv-evidence/benchmark-asv-summary.json)

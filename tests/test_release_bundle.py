@@ -171,14 +171,17 @@ def test_finalize_bundle_requires_complete_check_set(tmp_path: Path) -> None:
 class FakeGitHubAPI:
     """Fixture-backed GitHub API for artifact provenance tests."""
 
-    def __init__(self, responses: dict[str, dict[str, Any]]) -> None:
+    def __init__(self, responses: dict[str, dict[str, Any] | list[dict[str, Any]]]) -> None:
         self.responses = responses
 
-    def get_json(self, path: str) -> dict[str, Any]:
+    def get_json(self, path: str) -> dict[str, Any] | list[dict[str, Any]]:
         return self.responses[path]
 
 
-def _artifact_responses(*, merged_at: str | None = "2026-07-15T12:00:00Z") -> dict[str, dict[str, Any]]:
+def _artifact_responses(
+    *,
+    merged_at: str | None = "2026-07-15T12:00:00Z",
+) -> dict[str, dict[str, Any] | list[dict[str, Any]]]:
     artifact_name = "release-bundle-2.3.3-digest"
     return {
         "/repos/albumentations-team/AlbumentationsX/actions/artifacts?name=" + artifact_name + "&per_page=100": {
@@ -208,6 +211,27 @@ def _artifact_responses(*, merged_at: str | None = "2026-07-15T12:00:00Z") -> di
     }
 
 
+def _head_commit_fallback_responses(
+    *,
+    merged_at: str | None = "2026-07-15T12:00:00Z",
+    base_ref: str = "main",
+) -> dict[str, dict[str, Any] | list[dict[str, Any]]]:
+    responses = _artifact_responses()
+    run_path = "/repos/albumentations-team/AlbumentationsX/actions/runs/173"
+    run = responses[run_path]
+    assert isinstance(run, dict)
+    run["head_sha"] = "abc137"
+    run["pull_requests"] = []
+    responses["/repos/albumentations-team/AlbumentationsX/commits/abc137/pulls"] = [
+        {
+            "number": 305,
+            "merged_at": merged_at,
+            "base": {"ref": base_ref},
+        },
+    ]
+    return responses
+
+
 def test_resolve_artifact_requires_successful_merged_pr_run() -> None:
     resolved = resolve_artifact(
         FakeGitHubAPI(_artifact_responses()),
@@ -219,6 +243,40 @@ def test_resolve_artifact_requires_successful_merged_pr_run() -> None:
 
     assert resolved.artifact_id == 137
     assert resolved.run_id == 173
+
+
+def test_resolve_artifact_uses_head_commit_when_run_omits_pull_requests() -> None:
+    resolved = resolve_artifact(
+        FakeGitHubAPI(_head_commit_fallback_responses()),
+        repository="albumentations-team/AlbumentationsX",
+        artifact_name="release-bundle-2.3.3-digest",
+        workflow_path=".github/workflows/pr.yml",
+        default_branch="main",
+    )
+
+    assert resolved.artifact_id == 137
+    assert resolved.run_id == 173
+
+
+@pytest.mark.parametrize(
+    ("merged_at", "base_ref"),
+    [
+        (None, "main"),
+        ("2026-07-15T12:00:00Z", "release"),
+    ],
+)
+def test_resolve_artifact_rejects_head_commit_without_merged_default_branch_pr(
+    merged_at: str | None,
+    base_ref: str,
+) -> None:
+    with pytest.raises(BundleError, match="No unexpired release bundle"):
+        resolve_artifact(
+            FakeGitHubAPI(_head_commit_fallback_responses(merged_at=merged_at, base_ref=base_ref)),
+            repository="albumentations-team/AlbumentationsX",
+            artifact_name="release-bundle-2.3.3-digest",
+            workflow_path=".github/workflows/pr.yml",
+            default_branch="main",
+        )
 
 
 def test_resolve_artifact_rejects_unmerged_pr_run() -> None:

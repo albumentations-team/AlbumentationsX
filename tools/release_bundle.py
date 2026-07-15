@@ -53,6 +53,7 @@ MANIFEST_KEYS = {
     "version",
 }
 REPOSITORY_PATTERN = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+GitHubResponse = dict[str, Any] | list[dict[str, Any]]
 
 
 class BundleError(ValueError):
@@ -81,8 +82,8 @@ class ResolvedArtifact:
 class GitHubAPI(Protocol):
     """Minimal interface required by the provenance resolver."""
 
-    def get_json(self, path: str) -> dict[str, Any]:
-        """Return one GitHub REST response as a JSON object."""
+    def get_json(self, path: str) -> GitHubResponse:
+        """Return one GitHub REST response as a JSON object or array."""
 
 
 class GitHubClient:
@@ -95,7 +96,7 @@ class GitHubClient:
         self.token = token
         self.api_url = api_url.rstrip("/")
 
-    def get_json(self, path: str) -> dict[str, Any]:
+    def get_json(self, path: str) -> GitHubResponse:
         """Fetch a GitHub REST endpoint without exposing the token in arguments or logs."""
         request = urllib.request.Request(
             f"{self.api_url}{path}",
@@ -108,8 +109,8 @@ class GitHubClient:
         )
         with urllib.request.urlopen(request, timeout=30) as response:
             data = json.load(response)
-        if not isinstance(data, dict):
-            msg = f"GitHub API endpoint {path} did not return a JSON object"
+        if not isinstance(data, (dict, list)):
+            msg = f"GitHub API endpoint {path} did not return a JSON object or array"
             raise BundleError(msg)
         return data
 
@@ -480,6 +481,55 @@ def verify_bundle(
     return manifest
 
 
+def _is_merged_into(pull_request: dict[str, Any], default_branch: str) -> bool:
+    pull_base = pull_request.get("base", {})
+    return (
+        pull_request.get("merged_at") is not None
+        and isinstance(pull_base, dict)
+        and pull_base.get("ref") == default_branch
+    )
+
+
+def _run_has_required_status(run: dict[str, Any], workflow_path: str) -> bool:
+    return (
+        run.get("event") == "pull_request"
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        and run.get("path") == workflow_path
+    )
+
+
+def _summary_identifies_merged_pr(
+    api: GitHubAPI,
+    repository: str,
+    summary: Any,
+    default_branch: str,
+) -> bool:
+    if not isinstance(summary, dict):
+        return False
+    base = summary.get("base", {})
+    number = summary.get("number")
+    if not isinstance(base, dict) or base.get("ref") != default_branch or not isinstance(number, int):
+        return False
+    pull_request = api.get_json(f"/repos/{repository}/pulls/{number}")
+    return isinstance(pull_request, dict) and _is_merged_into(pull_request, default_branch)
+
+
+def _head_commit_identifies_merged_pr(
+    api: GitHubAPI,
+    repository: str,
+    head_sha: Any,
+    default_branch: str,
+) -> bool:
+    if not isinstance(head_sha, str) or not head_sha:
+        return False
+    pull_requests = api.get_json(f"/repos/{repository}/commits/{head_sha}/pulls")
+    return isinstance(pull_requests, list) and any(
+        isinstance(pull_request, dict) and _is_merged_into(pull_request, default_branch)
+        for pull_request in pull_requests
+    )
+
+
 def _run_matches_release_policy(
     api: GitHubAPI,
     repository: str,
@@ -489,32 +539,14 @@ def _run_matches_release_policy(
     default_branch: str,
 ) -> bool:
     run = api.get_json(f"/repos/{repository}/actions/runs/{run_id}")
-    if (
-        run.get("event") != "pull_request"
-        or run.get("status") != "completed"
-        or run.get("conclusion") != "success"
-        or run.get("path") != workflow_path
-    ):
+    if not isinstance(run, dict) or not _run_has_required_status(run, workflow_path):
         return False
     pull_requests = run.get("pull_requests", [])
-    if not isinstance(pull_requests, list):
-        return False
-    for pull_request_summary in pull_requests:
-        if not isinstance(pull_request_summary, dict):
-            continue
-        base = pull_request_summary.get("base", {})
-        number = pull_request_summary.get("number")
-        if not isinstance(base, dict) or base.get("ref") != default_branch or not isinstance(number, int):
-            continue
-        pull_request = api.get_json(f"/repos/{repository}/pulls/{number}")
-        pull_base = pull_request.get("base", {})
-        if (
-            pull_request.get("merged_at") is not None
-            and isinstance(pull_base, dict)
-            and pull_base.get("ref") == default_branch
-        ):
-            return True
-    return False
+    if isinstance(pull_requests, list) and any(
+        _summary_identifies_merged_pr(api, repository, summary, default_branch) for summary in pull_requests
+    ):
+        return True
+    return _head_commit_identifies_merged_pr(api, repository, run.get("head_sha"), default_branch)
 
 
 def resolve_artifact(
@@ -531,6 +563,9 @@ def resolve_artifact(
         raise BundleError(msg)
     encoded_name = urllib.parse.quote(artifact_name, safe="")
     response = api.get_json(f"/repos/{repository}/actions/artifacts?name={encoded_name}&per_page=100")
+    if not isinstance(response, dict):
+        msg = "GitHub artifacts response is not a JSON object"
+        raise BundleError(msg)
     artifacts = response.get("artifacts", [])
     if not isinstance(artifacts, list):
         msg = "GitHub artifacts response does not contain an artifacts array"

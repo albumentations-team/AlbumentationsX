@@ -32,6 +32,23 @@ def test_release_workflow_resolves_bundle_by_tag_version_and_source_digest() -> 
     assert "steps.metadata.outputs.source_digest" in text
 
 
+def test_release_workflow_can_recover_an_existing_tag_from_main() -> None:
+    workflow = _workflow()
+    triggers = workflow.get("on", workflow.get(True, {}))
+    recovery_input = triggers["workflow_dispatch"]["inputs"]["release_tag"]
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert recovery_input["required"] is True
+    assert recovery_input["type"] == "string"
+    assert "github.event.release.tag_name || inputs.release_tag" in text
+    assert "path: release-automation" in text
+    assert "path: released-source" in text
+    assert "github.event_name == 'workflow_dispatch'" in text
+    assert '"refs/heads/${DEFAULT_BRANCH}"' in text
+    assert '--source-root "${GITHUB_WORKSPACE}/released-source"' in text
+    assert "tag_name: ${{ env.RELEASE_TAG }}" in text
+
+
 def test_release_workflow_contains_only_identity_and_delivery_steps() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     forbidden_commands = (

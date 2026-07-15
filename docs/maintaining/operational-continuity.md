@@ -29,7 +29,8 @@ Escalation happens when any of the following are true:
 
 - a suspected vulnerability affects supported versions
 - release verification fails for a tagged release
-- the release workflow fails after a public release is published
+- the release preflight fails during a version-bump pull request
+- release delivery fails after a public GitHub Release is published
 - a maintainer is unavailable during an active incident or scheduled release
 
 Escalation actions:

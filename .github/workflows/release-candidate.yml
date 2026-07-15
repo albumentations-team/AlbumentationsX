@@ -83,9 +83,10 @@ jobs:
     - name: Classify performance budget evidence
       if: always() && matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.12'
       run: >
-        python tools/performance_budget.py summarize
+        python -m tools.performance_budget summarize
         --coverage-summary release-candidate-evidence/benchmark-coverage-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
         --coverage-detail release-candidate-evidence/benchmark-coverage-detail-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
+        --core-only
         --fail-on-release-blockers
         --output release-candidate-evidence/benchmark-performance-budget-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
     - name: Upload release candidate evidence
@@ -203,10 +204,11 @@ jobs:
     - name: Classify strict performance budget evidence
       if: always()
       run: >
-        python tools/performance_budget.py summarize
+        python -m tools.performance_budget summarize
         --coverage-summary release-candidate-performance-evidence/benchmark-coverage.json
         --coverage-detail release-candidate-performance-evidence/benchmark-coverage-detail.json
         --asv-summary release-candidate-performance-evidence/benchmark-asv-summary.json
+        --core-only
         --require-comparison
         --fail-on-release-blockers
         --output release-candidate-performance-evidence/benchmark-performance-budget.json

@@ -357,7 +357,7 @@ uv run python tools/asv_summary.py \
 Classify the comparison against the release budget with:
 
 ```bash
-uv run python tools/performance_budget.py summarize \
+uv run python -m tools.performance_budget summarize \
   --coverage-summary benchmark-evidence/benchmark-coverage.json \
   --coverage-detail benchmark-evidence/benchmark-coverage-detail.json \
   --asv-summary benchmark-evidence/benchmark-asv-summary.json \

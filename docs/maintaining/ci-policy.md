@@ -103,7 +103,8 @@ CI jobs sync one locked dependency group through
 - `ci-security`: pip-audit and zizmor;
 - `ci-package`: build, twine, and legal verifier tests;
 - `ci-benchmark`: ASV;
-- `ci-release`: release evidence and artifact tooling.
+- `ci-release`: version-bump preflight, final distributions, release evidence,
+  and bundle tooling.
 
 The contributor-facing `dev` group includes all of these capabilities plus
 normal PyTorch packages. CI must not sync the broad `dev` group.
@@ -128,6 +129,10 @@ leaf globally required.
 
 The pull-request workflow routes dependency audit, workflow audit, source legal
 verification, artifact verification, and clean install smoke tests by path.
+Any valid `project.version` increase also selects the complete profile and the
+release preflight that creates the final publishable bundle. The later
+`release: published` workflow only verifies and delivers that bundle; it does
+not repeat the release checks.
 The scheduled Security workflow still runs dependency audit, `zizmor`, and
 OpenSSF Scorecard evidence independently of pull-request routing.
 

@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from tools.benchmark_coverage import coverage_details, unavailable_optional_transform_names
-except ModuleNotFoundError:  # pragma: no cover - direct script execution fallback
-    from benchmark_coverage import coverage_details, unavailable_optional_transform_names
+    from tools import benchmark_coverage as _benchmark_coverage
+except ImportError:  # pragma: no cover - direct script execution fallback
+    import benchmark_coverage as _benchmark_coverage  # type: ignore[no-redef]
 
 WARNING_REGRESSION_RATIO = 1.05
 BLOCKING_REGRESSION_RATIO = 1.10
@@ -370,13 +370,15 @@ def _summarize(args: argparse.Namespace) -> int:
     )
     _write_budget(args.output, budget)
     print(f"Wrote performance budget to {args.output}: {budget['status']}")
+    for issue in budget["issues"]:
+        print(f"- {issue}")
     if args.fail_on_release_blockers and budget["status"] in {"missing_comparison", "release_blocked"}:
         return 1
     return 0
 
 
 def _check_current() -> int:
-    detail = coverage_details()
+    detail = _benchmark_coverage.coverage_details()
     summary = {
         "coverage_depth": detail["summary"],
         "memory_benchmarks": detail["layer_counts"].get("memory", 0),
@@ -386,7 +388,7 @@ def _check_current() -> int:
     budget = build_budget(
         summary,
         detail,
-        require_optional=not unavailable_optional_transform_names(),
+        require_optional=not _benchmark_coverage.unavailable_optional_transform_names(),
     )
     if budget["status"] != "ok":
         print("Performance budget validation failed:")

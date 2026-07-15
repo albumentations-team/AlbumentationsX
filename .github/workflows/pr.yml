@@ -16,7 +16,7 @@ jobs:
   plan:
     name: PR plan
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       plan_json: ${{ steps.plan.outputs.plan }}
       markdown: ${{ steps.plan.outputs.markdown }}
@@ -34,13 +34,21 @@ jobs:
       legal: ${{ steps.plan.outputs.legal }}
       package: ${{ steps.plan.outputs.package }}
       install_smoke: ${{ steps.plan.outputs.install_smoke }}
+      release_preflight: ${{ steps.plan.outputs.release_preflight }}
       pytest_targets: ${{ steps.plan.outputs.pytest_targets }}
+      version_change: ${{ steps.plan.outputs.version_change }}
     steps:
       - name: Checkout pull request
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Set up plan environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-quality
 
       - name: Collect changed paths
         env:
@@ -49,6 +57,8 @@ jobs:
         run: |
           mkdir -p ci-plan
           git diff --name-only -z "${BASE_SHA}" "${HEAD_SHA}" -- > ci-plan/changed-files.z
+          git show "${BASE_SHA}:pyproject.toml" > ci-plan/base-pyproject.toml
+          cp pyproject.toml ci-plan/head-pyproject.toml
 
       - name: Select pull-request checks
         id: plan
@@ -58,6 +68,8 @@ jobs:
         run: >-
           python -m tools.ci_plan
           --paths-file ci-plan/changed-files.z --null
+          --base-pyproject ci-plan/base-pyproject.toml
+          --head-pyproject ci-plan/head-pyproject.toml
           --draft "${DRAFT}" --force-full "${FORCE_FULL}"
           --github-output "${GITHUB_OUTPUT}"
           --summary "${GITHUB_STEP_SUMMARY}"
@@ -562,9 +574,165 @@ jobs:
           uv pip install --python "${smoke_python}" dist/*.whl "opencv-python-headless>=5.0.0.93"
           "${smoke_python}" -I -c "import albumentations; print(albumentations.__version__)"
 
+  release_preflight:
+    name: Release preflight
+    needs: plan
+    if: needs.plan.outputs.release_preflight == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up exact release environment
+        uses: ./.github/actions/setup-ci
+        with:
+          python-version: "3.12"
+          dependency-group: ci-release
+      - name: Prepare release bundle
+        id: metadata
+        run: |
+          mkdir -p \
+            "${RUNNER_TEMP}/release-bundle/dist" \
+            "${RUNNER_TEMP}/release-bundle/evidence" \
+            "${RUNNER_TEMP}/release-bundle/public"
+          python -m tools.release_bundle metadata \
+            --source-root . \
+            --github-output "${GITHUB_OUTPUT}"
+      - name: Build final distributions
+        run: uv build --out-dir "${RUNNER_TEMP}/release-bundle/dist"
+      - name: Verify distribution license and notice integrity
+        run: >-
+          python tools/verify_legal_integrity.py
+          --artifacts "${RUNNER_TEMP}"/release-bundle/dist/*.whl "${RUNNER_TEMP}"/release-bundle/dist/*.tar.gz
+      - name: Check final distribution metadata
+        run: twine check "${RUNNER_TEMP}"/release-bundle/dist/*
+      - name: Smoke test final wheel
+        shell: bash
+        run: |
+          smoke_venv="${RUNNER_TEMP}/albumentationsx-release-smoke"
+          uv venv --clear --python 3.12 "${smoke_venv}"
+          wheels=("${RUNNER_TEMP}"/release-bundle/dist/*.whl)
+          uv pip install \
+            --python "${smoke_venv}/bin/python" \
+            "${wheels[0]}" "opencv-python-headless>=5.0.0.93"
+          cd "${RUNNER_TEMP}"
+          "${smoke_venv}/bin/python" -I - <<'PY'
+          import albumentations
+          import numpy as np
+
+          image = np.zeros((64, 64, 3), dtype=np.uint8)
+          albumentations.HorizontalFlip(p=1)(image=image)
+          print("albumentations release smoke passed:", albumentations.__version__)
+          PY
+      - name: Verify lock freshness
+        run: uv lock --check
+      - name: Collect release environment evidence
+        run: >-
+          python tools/collect_test_environment.py
+          --output "${RUNNER_TEMP}/release-bundle/evidence/environment-release.json"
+          --command "version-bump PR release preflight"
+      - name: Run release correctness evidence tests
+        run: |
+          python tools/verify_regression_vectors.py --all
+          python -m pytest -q tests/regression tests/property \
+            --hypothesis-profile=ci-fast \
+            --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-release.xml"
+      - name: Summarize release pytest results
+        if: always()
+        run: >-
+          python tools/pytest_summary.py
+          --junit "${RUNNER_TEMP}/release-bundle/evidence/junit-release.xml"
+          --output "${RUNNER_TEMP}/release-bundle/evidence/pytest-summary-release.json"
+          --allow-incomplete
+      - name: Collect core benchmark coverage evidence
+        run: |
+          python -m tools.benchmark_coverage summary \
+            --output "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-release.json"
+          python -m tools.benchmark_coverage details \
+            --output "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-detail-release.json"
+          python -m tools.performance_budget summarize \
+            --coverage-summary "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-release.json" \
+            --coverage-detail "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-detail-release.json" \
+            --core-only \
+            --fail-on-release-blockers \
+            --output "${RUNNER_TEMP}/release-bundle/evidence/benchmark-performance-budget-release.json"
+      - name: Export locked runtime dependencies
+        run: >-
+          uv export --frozen --no-dev --no-emit-project
+          --format requirements-txt
+          --output-file "${RUNNER_TEMP}/release-bundle/evidence/runtime-requirements.txt"
+      - name: Collect release security evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pip-audit \
+            --requirement "${RUNNER_TEMP}/release-bundle/evidence/runtime-requirements.txt" \
+            --no-deps \
+            --disable-pip \
+            --format=json \
+            --output "${RUNNER_TEMP}/release-bundle/evidence/security-pip-audit.json"
+          zizmor \
+            --format=json \
+            --min-severity=medium \
+            --min-confidence=medium \
+            .github > "${RUNNER_TEMP}/release-bundle/evidence/security-zizmor.json"
+      - name: Generate CycloneDX SBOM
+        env:
+          PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
+        run: >-
+          cyclonedx-py requirements "${RUNNER_TEMP}/release-bundle/evidence/runtime-requirements.txt"
+          --output-format JSON
+          --output-file
+          "${RUNNER_TEMP}/release-bundle/public/albumentationsx-${PACKAGE_VERSION}-sbom.cdx.json"
+      - name: Generate correctness and compatibility report
+        env:
+          PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
+        run: >-
+          python tools/generate_correctness_report.py
+          --evidence-dir "${RUNNER_TEMP}/release-bundle/evidence"
+          --output
+          "${RUNNER_TEMP}/release-bundle/public/albumentationsx-${PACKAGE_VERSION}-correctness-compatibility-report.md"
+      - name: Finalize immutable release bundle
+        id: finalize
+        run: >-
+          python -m tools.release_bundle finalize
+          --bundle-dir "${RUNNER_TEMP}/release-bundle"
+          --source-root .
+          --check clean_install
+          --check correctness
+          --check legal
+          --check lock
+          --check package
+          --check performance_core
+          --check report
+          --check security
+          --retention-days 90
+          --github-output "${GITHUB_OUTPUT}"
+      - name: Upload publishable release bundle
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.finalize.outputs.artifact_name }}
+          path: ${{ runner.temp }}/release-bundle/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload failed preflight diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-diagnostics-${{ steps.metadata.outputs.package_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-bundle/evidence/
+          if-no-files-found: ignore
+          retention-days: 14
+
   security_policy:
     name: Security and policy
-    needs: [plan, dependency_audit, workflow_audit, legal, package, install_smoke]
+    needs: [plan, dependency_audit, workflow_audit, legal, package, install_smoke, release_preflight]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -581,3 +749,4 @@ jobs:
           --result "legal=${{ needs.legal.result }}"
           --result "package=${{ needs.package.result }}"
           --result "install-smoke=${{ needs.install_smoke.result }}"
+          --result "release-preflight=${{ needs.release_preflight.result }}"

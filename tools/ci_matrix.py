@@ -78,7 +78,14 @@ CI_DEPENDENCY_GROUPS = {
     "ci-benchmark": {"asv", "opencv-python-headless"},
     "ci-package": {"pytest", "twine"},
     "ci-pytorch": set(),
-    "ci-quality": {"defusedxml", "google-docstring-parser", "opencv-python-headless", "pre-commit", "ruff"},
+    "ci-quality": {
+        "defusedxml",
+        "google-docstring-parser",
+        "opencv-python-headless",
+        "packaging",
+        "pre-commit",
+        "ruff",
+    },
     "ci-release": {"cyclonedx-bom"},
     "ci-security": {"pip-audit", "zizmor"},
     "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-cov", "pytest-xdist"},
@@ -323,6 +330,10 @@ def _check_pr_workflow() -> list[str]:
                 "--hypothesis-profile=ci-fast",
                 "tools/pytest_summary.py",
                 "--allow-incomplete",
+                "tools.release_bundle finalize",
+                "dependency-group: ci-release",
+                "--core-only",
+                "release-preflight=${{ needs.release_preflight.result }}",
             ),
             "selective PR gate",
         ),
@@ -558,30 +569,44 @@ def _check_security_workflow() -> list[str]:
 
 
 def _check_release_workflow() -> list[str]:
-    return _check_text_mentions(
+    issues = _check_text_mentions(
         RELEASE_WORKFLOW,
         (
-            "uv build",
-            "twine check",
-            "cyclonedx-py",
-            "dependency-group: ci-release",
-            "tools/collect_test_environment.py",
-            "tools/verify_regression_vectors.py --all",
-            "tests/regression tests/property",
-            "--hypothesis-profile=ci-fast",
-            "tools/pytest_summary.py",
-            "pytest-summary-release.json",
-            "tools.benchmark_coverage summary",
-            "tools.benchmark_coverage details",
-            "tools/performance_budget.py",
-            "tools/generate_correctness_report.py",
-            "benchmark-performance-budget-release.json",
-            "SHA256SUMS.txt",
+            "tools.release_bundle metadata",
+            "--expected-tag",
+            "tools.release_bundle resolve",
+            "steps.metadata.outputs.artifact_name",
+            "steps.resolve.outputs.artifact_id",
+            "steps.resolve.outputs.run_id",
+            "tools.release_bundle verify",
+            "steps.metadata.outputs.source_digest",
+            "verified-release-bundle",
+            "release-bundle/public/SHA256SUMS.txt",
             "softprops/action-gh-release",
             "pypa/gh-action-pypi-publish",
+            "packages-dir: release-bundle/dist",
         ),
-        "release artifact gate",
+        "delivery-only release contract",
     )
+    release_text = _read_text(RELEASE_WORKFLOW)
+    forbidden_commands = (
+        "uv build",
+        "twine check",
+        "verify_legal_integrity",
+        "pytest",
+        "benchmark_coverage",
+        "performance_budget",
+        "pip-audit",
+        "zizmor",
+        "cyclonedx-py",
+        "generate_correctness_report",
+    )
+    issues.extend(
+        f"{RELEASE_WORKFLOW} delivery-only workflow must not run {command!r}"
+        for command in forbidden_commands
+        if command in release_text
+    )
+    return issues
 
 
 def _check_workflows() -> list[str]:

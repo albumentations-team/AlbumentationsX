@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from tools.ci_plan import _read_github_files, build_plan, classify_path
@@ -160,7 +162,7 @@ def test_torch_only_module_uses_dedicated_profile_without_targeted_base_job() ->
     assert plan.pytest_targets == ()
 
 
-def test_github_file_reader_preserves_untrusted_filename_boundaries(tmp_path) -> None:
+def test_github_file_reader_preserves_untrusted_filename_boundaries(tmp_path: Path) -> None:
     files_json = tmp_path / "files.json"
     files_json.write_text(
         '[[{"filename":"docs/normal.md"}], [{"filename":"docs/line\\nbreak.md"}]]',
@@ -169,3 +171,50 @@ def test_github_file_reader_preserves_untrusted_filename_boundaries(tmp_path) ->
 
     assert _read_github_files(files_json) == ["docs/normal.md", "docs/line\nbreak.md"]
     assert "unknown" in build_plan(_read_github_files(files_json)).domains
+
+
+def test_version_increase_selects_complete_release_preflight() -> None:
+    plan = build_plan(["pyproject.toml"], base_version="2.3.2", head_version="2.3.3")
+
+    assert plan.base_version == "2.3.2"
+    assert plan.head_version == "2.3.3"
+    assert plan.version_change == "increase"
+    assert plan.checks["release_preflight"]
+    assert plan.checks["compatibility"]
+    assert plan.checks["pytorch"]
+    assert "release-preflight" in plan.gates["policy"]
+
+
+def test_prerelease_version_increase_selects_release_preflight() -> None:
+    plan = build_plan(["pyproject.toml"], base_version="2.3.2", head_version="2.3.3rc1")
+
+    assert plan.version_change == "increase"
+    assert plan.checks["release_preflight"]
+
+
+def test_unchanged_version_does_not_select_release_preflight() -> None:
+    plan = build_plan(["pyproject.toml"], base_version="2.3.2", head_version="2.3.2")
+
+    assert plan.version_change == "unchanged"
+    assert not plan.checks["release_preflight"]
+
+
+def test_draft_version_bump_defers_release_preflight() -> None:
+    plan = build_plan(["pyproject.toml"], base_version="2.3.2", head_version="2.3.3", draft=True)
+
+    assert plan.version_change == "increase"
+    assert not plan.checks["release_preflight"]
+    assert plan.gates["policy"] == ()
+
+
+def test_version_decrease_is_recorded_as_invalid_release_direction() -> None:
+    plan = build_plan(["pyproject.toml"], base_version="2.4.0", head_version="2.3.3")
+
+    assert plan.version_change == "decrease"
+    assert not plan.checks["release_preflight"]
+
+
+@pytest.mark.parametrize("version", ["", "release-2.3.3", "2.3.3+"])
+def test_invalid_project_version_fails_closed(version: str) -> None:
+    with pytest.raises(ValueError, match="Invalid PEP 440 version"):
+        build_plan(["pyproject.toml"], base_version="2.3.2", head_version=version)

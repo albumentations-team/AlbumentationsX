@@ -1,10 +1,12 @@
 # Release Verification
 
-AlbumentationsX release verification is based on three things:
+AlbumentationsX release verification is based on four things:
 
-1. GitHub Release assets are the canonical public release bundle.
-2. PyPI publishes the same wheel and sdist via trusted publishing.
-3. PyPI provenance/attestations bind the uploaded package files to the GitHub Actions workflow that produced them.
+1. A successful version-bump pull request builds the final release bundle.
+2. The bundle manifest binds every payload file to the reviewed source tree.
+3. GitHub Release assets and PyPI receive the same verified wheel and sdist.
+4. PyPI provenance/attestations bind the uploaded package files to the trusted
+   delivery workflow.
 
 ## Official Artifacts
 
@@ -72,11 +74,18 @@ limitations; it does not prove absence of bugs.
 
 AlbumentationsX relies on ecosystem-standard trust roots instead of manual long-lived signing keys:
 
-- GitHub Actions OIDC identity for the release workflow
+- the protected pull-request workflow that builds and verifies the release bundle
+- GitHub's immutable Actions artifact storage between review and delivery
+- the source, manifest, payload, and checksum digests verified by the delivery workflow
+- GitHub Actions OIDC identity for the PyPI delivery job
 - PyPI trusted publishing
 - PyPI-hosted provenance/attestations for published distribution files
 
-This means authenticity is anchored in the CI identity that built and published the release, not in a maintainer-managed GPG key.
+This means authenticity is anchored in the reviewed source, protected CI
+workflows, immutable bundle, and publishing identity, not in a
+maintainer-managed GPG key. PyPI provenance authenticates the delivery of the
+verified files; the release manifest connects those files to the pull-request
+build that produced them.
 
 This posture is aligned with SLSA-style provenance principles: the source repository,
 workflow identity, artifact build path, PyPI provenance, SBOM, and checksum manifest

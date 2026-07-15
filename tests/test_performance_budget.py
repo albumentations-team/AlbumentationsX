@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+from tools import performance_budget
 from tools.performance_budget import build_budget, classify_benchmark
 
 
@@ -143,3 +150,35 @@ def test_build_budget_allows_optional_layer_only_in_core_mode() -> None:
 
     assert build_budget(coverage_summary, coverage_detail, require_optional=False)["status"] == "ok"
     assert build_budget(coverage_summary, coverage_detail, require_optional=True)["status"] == "release_blocked"
+
+
+def test_summarize_prints_concrete_release_blockers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    coverage_detail = _coverage_detail()
+    coverage_detail["layer_counts"] = {**coverage_detail["layer_counts"], "family_matrix": 0}
+    summary_path = tmp_path / "summary.json"
+    detail_path = tmp_path / "detail.json"
+    output_path = tmp_path / "budget.json"
+    summary_path.write_text(json.dumps(_coverage_summary()), encoding="utf-8")
+    detail_path.write_text(json.dumps(coverage_detail), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "performance_budget.py",
+            "summarize",
+            "--coverage-summary",
+            str(summary_path),
+            "--coverage-detail",
+            str(detail_path),
+            "--output",
+            str(output_path),
+            "--fail-on-release-blockers",
+        ],
+    )
+
+    assert performance_budget.main() == 1
+    assert "missing required benchmark coverage layer(s): family_matrix" in capsys.readouterr().out

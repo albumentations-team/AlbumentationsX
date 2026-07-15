@@ -9,7 +9,14 @@ from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-SCHEMA_VERSION = 1
+from packaging.version import InvalidVersion, Version
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
+    import tomli as tomllib
+
+SCHEMA_VERSION = 2
 
 CHECK_NAMES = (
     "markdown",
@@ -27,6 +34,7 @@ CHECK_NAMES = (
     "legal",
     "package",
     "install_smoke",
+    "release_preflight",
 )
 
 FAST_CHECKS = ("markdown", "lint", "mypy", "pyrefly", "contracts")
@@ -37,6 +45,7 @@ POLICY_CHECKS = (
     "legal",
     "package",
     "install_smoke",
+    "release_preflight",
 )
 
 LEGAL_PATHS = {
@@ -133,6 +142,9 @@ class CIPlan:
     """Serializable CI selection for one pull-request revision."""
 
     schema_version: int
+    base_version: str | None
+    head_version: str | None
+    version_change: str
     changed_files: tuple[str, ...]
     domains: tuple[str, ...]
     checks: dict[str, bool]
@@ -285,6 +297,7 @@ def _select_everything(checks: dict[str, bool]) -> None:
     checks.update(dict.fromkeys(CHECK_NAMES, True))
     checks["primary"] = False
     checks["targeted"] = False
+    checks["release_preflight"] = False
 
 
 def _disable_heavy_checks(checks: dict[str, bool]) -> None:
@@ -296,18 +309,48 @@ def _gate_jobs(checks: dict[str, bool], names: tuple[str, ...]) -> tuple[str, ..
     return tuple(name.replace("_", "-") for name in names if checks[name])
 
 
-def build_plan(paths: list[str] | tuple[str, ...], *, draft: bool = False, force_full: bool = False) -> CIPlan:
+def _version_change(base_version: str | None, head_version: str | None) -> str:
+    if base_version is None and head_version is None:
+        return "unspecified"
+    if base_version is None or head_version is None:
+        msg = "Both base_version and head_version are required when comparing project versions"
+        raise ValueError(msg)
+
+    try:
+        parsed_base = Version(base_version)
+        parsed_head = Version(head_version)
+    except InvalidVersion as error:
+        msg = f"Invalid PEP 440 version: {error}"
+        raise ValueError(msg) from error
+
+    if parsed_head > parsed_base:
+        return "increase"
+    if parsed_head < parsed_base:
+        return "decrease"
+    return "unchanged"
+
+
+def build_plan(
+    paths: list[str] | tuple[str, ...],
+    *,
+    draft: bool = False,
+    force_full: bool = False,
+    base_version: str | None = None,
+    head_version: str | None = None,
+) -> CIPlan:
     """Build the final CI plan for the supplied changed paths."""
     changed_files = tuple(sorted({_normalise_path(path) or "<invalid-path>" for path in paths}))
     classified = [classify_path(path) for path in changed_files]
     domains = set().union(*classified) if classified else {"unknown"}
     checks = _new_checks()
+    version_change = _version_change(base_version, head_version)
 
     _select_fast_checks(checks, domains)
     _select_correctness_checks(checks, domains, changed_files)
     _select_policy_checks(checks, domains, changed_files)
-    if force_full or "unknown" in domains:
+    if force_full or "unknown" in domains or version_change == "increase":
         _select_everything(checks)
+    checks["release_preflight"] = version_change == "increase"
     if draft and not force_full:
         _disable_heavy_checks(checks)
 
@@ -326,6 +369,7 @@ def build_plan(paths: list[str] | tuple[str, ...], *, draft: bool = False, force
     reasons = (
         f"Classified {len(changed_files)} changed path(s).",
         f"Selected domains: {', '.join(sorted(domains))}.",
+        f"Project version change: {version_change}.",
         (
             "Unknown paths select the complete conservative profile."
             if "unknown" in domains
@@ -335,6 +379,9 @@ def build_plan(paths: list[str] | tuple[str, ...], *, draft: bool = False, force
 
     return CIPlan(
         schema_version=SCHEMA_VERSION,
+        base_version=base_version,
+        head_version=head_version,
+        version_change=version_change,
         changed_files=changed_files,
         domains=tuple(sorted(domains)),
         checks=checks,
@@ -391,6 +438,9 @@ def _write_github_outputs(path: Path, plan: CIPlan) -> None:
         (
             f"advisory_asv={str(plan.advisory_asv).lower()}",
             f"antigravity={str(plan.antigravity).lower()}",
+            f"base_version={plan.base_version or ''}",
+            f"head_version={plan.head_version or ''}",
+            f"version_change={plan.version_change}",
             "pytest_targets=" + json.dumps(plan.pytest_targets, separators=(",", ":")),
         ),
     )
@@ -408,6 +458,7 @@ def _write_summary(path: Path, plan: CIPlan) -> None:
         f"Selected checks: {', '.join(selected) if selected else 'none'}",
         f"Advisory ASV: {'yes' if plan.advisory_asv else 'no'}",
         f"Antigravity review: {'yes' if plan.antigravity else 'no'}",
+        f"Version: {plan.base_version or 'unspecified'} → {plan.head_version or 'unspecified'} ({plan.version_change})",
         "",
         *[f"- {reason}" for reason in plan.reasons],
         "",
@@ -423,24 +474,58 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--null", action="store_true", help="Read the paths file as NUL-delimited data.")
     parser.add_argument("--draft", type=_parse_bool, default=False, help="Whether the pull request is a draft.")
     parser.add_argument("--force-full", type=_parse_bool, default=False, help="Select the complete CI profile.")
+    parser.add_argument("--base-pyproject", type=Path, help="Base revision pyproject.toml.")
+    parser.add_argument("--head-pyproject", type=Path, help="Head revision pyproject.toml.")
     parser.add_argument("--github-output", type=Path, help="Append scalar outputs for GitHub Actions.")
     parser.add_argument("--summary", type=Path, help="Write a human-readable job summary.")
     return parser.parse_args()
 
 
+def _read_project_version(path: Path) -> str:
+    with path.open("rb") as pyproject_file:
+        data = tomllib.load(pyproject_file)
+    project = data.get("project")
+    if not isinstance(project, dict):
+        msg = f"{path} is missing a [project] table"
+        raise TypeError(msg)
+    version = project.get("version")
+    if not isinstance(version, str) or not version:
+        msg = f"{path} is missing a non-empty project.version"
+        raise ValueError(msg)
+    return version
+
+
 def main() -> int:
     args = parse_args()
-    paths = list(args.path)
-    if args.paths_file is not None:
-        paths.extend(_read_paths(args.paths_file, null_delimited=args.null))
-    if args.github_files_json is not None:
-        paths.extend(_read_github_files(args.github_files_json))
-    plan = build_plan(paths, draft=args.draft, force_full=args.force_full)
+    try:
+        paths = list(args.path)
+        if args.paths_file is not None:
+            paths.extend(_read_paths(args.paths_file, null_delimited=args.null))
+        if args.github_files_json is not None:
+            paths.extend(_read_github_files(args.github_files_json))
+        base_version = _read_project_version(args.base_pyproject) if args.base_pyproject is not None else None
+        head_version = _read_project_version(args.head_pyproject) if args.head_pyproject is not None else None
+        plan = build_plan(
+            paths,
+            draft=args.draft,
+            force_full=args.force_full,
+            base_version=base_version,
+            head_version=head_version,
+        )
+    except (OSError, TypeError, ValueError) as error:
+        print(f"CI plan failed: {error}", file=sys.stderr)
+        return 1
     if args.github_output is not None:
         _write_github_outputs(args.github_output, plan)
     if args.summary is not None:
         _write_summary(args.summary, plan)
     print(plan.to_json())
+    if plan.version_change == "decrease":
+        print(
+            f"CI plan failed: project.version decreased from {plan.base_version} to {plan.head_version}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

@@ -81,6 +81,7 @@ Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 ## Reproducibility
 
 - CI workflow run: `<url>`
-- Release workflow run: `<url>`
+- Version-bump preflight run: `<url>`
+- Release delivery workflow run: `<url>`
 - Lockfile hash: `<hash>`
 - Environment summary artifacts: `<url>`

@@ -25,7 +25,9 @@ from benchmarks.catalog import (  # noqa: E402
     make_compose,
     make_data,
     public_transform_names,
-    unavailable_optional_transform_names,
+)
+from benchmarks.catalog import (  # noqa: E402
+    unavailable_optional_transform_names as _unavailable_optional_transform_names,
 )
 from benchmarks.common import CHANNELS, DTYPES, SIZES, VOLUME_SIZES  # noqa: E402
 from benchmarks.test_batch_matrix import (  # noqa: E402
@@ -64,6 +66,12 @@ from benchmarks.test_parameter_sensitivity import (  # noqa: E402
     PARAMETER_SENSITIVITY_TRANSFORMS,
 )
 from pytorch_benchmarks import test_tensor as pytorch_tensor_benchmarks  # noqa: E402
+
+
+def unavailable_optional_transform_names() -> set[str]:
+    """Return optional transforms unavailable in the current environment."""
+    return _unavailable_optional_transform_names()
+
 
 BATCH_METHOD_NAMES = (
     "apply_to_images",

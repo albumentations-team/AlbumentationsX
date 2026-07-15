@@ -655,7 +655,7 @@ jobs:
             --output "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-release.json"
           python -m tools.benchmark_coverage details \
             --output "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-detail-release.json"
-          python tools/performance_budget.py summarize \
+          python -m tools.performance_budget summarize \
             --coverage-summary "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-release.json" \
             --coverage-detail "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-detail-release.json" \
             --core-only \

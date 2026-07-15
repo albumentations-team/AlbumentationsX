@@ -11,7 +11,7 @@ from typing import Any
 
 try:
     from tools import benchmark_coverage as _benchmark_coverage
-except ModuleNotFoundError:  # pragma: no cover - direct script execution fallback
+except ImportError:  # pragma: no cover - direct script execution fallback
     import benchmark_coverage as _benchmark_coverage  # type: ignore[no-redef]
 
 WARNING_REGRESSION_RATIO = 1.05

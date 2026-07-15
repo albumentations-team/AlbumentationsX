@@ -135,7 +135,7 @@ jobs:
     - name: Classify performance budget evidence
       if: always()
       run: >
-        python tools/performance_budget.py summarize
+        python -m tools.performance_budget summarize
         --coverage-summary benchmark-evidence/benchmark-coverage.json
         --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
         --output benchmark-evidence/benchmark-performance-budget.json
@@ -260,7 +260,7 @@ jobs:
         INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
       run: |
         BUDGET_COMMAND=(
-          python tools/performance_budget.py summarize
+          python -m tools.performance_budget summarize
           --coverage-summary benchmark-asv-evidence/benchmark-coverage.json
           --coverage-detail benchmark-asv-evidence/benchmark-coverage-detail.json
           --output benchmark-asv-evidence/benchmark-performance-budget.json

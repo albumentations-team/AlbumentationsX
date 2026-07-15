@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,6 +12,9 @@ import pytest
 
 from tools import performance_budget
 from tools.performance_budget import build_budget, classify_benchmark
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PERFORMANCE_BUDGET_SCRIPT = REPO_ROOT / "tools" / "performance_budget.py"
 
 
 def _coverage_detail() -> dict:
@@ -182,3 +187,22 @@ def test_summarize_prints_concrete_release_blockers(
 
     assert performance_budget.main() == 1
     assert "missing required benchmark coverage layer(s): family_matrix" in capsys.readouterr().out
+
+
+def test_direct_script_ignores_unrelated_tools_package(tmp_path: Path) -> None:
+    shadow_package = tmp_path / "tools"
+    shadow_package.mkdir()
+    (shadow_package / "__init__.py").write_text('"""Unrelated package."""\n', encoding="utf-8")
+    environment = {**os.environ, "PYTHONPATH": str(tmp_path)}
+
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, str(PERFORMANCE_BUDGET_SCRIPT), "--help"],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Classify benchmark coverage and ASV comparison evidence" in result.stdout

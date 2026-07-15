@@ -98,6 +98,8 @@ def test_version_bump_preflight_builds_publishable_bundle_in_core_profile() -> N
     assert 'uv build --out-dir "${RUNNER_TEMP}/release-bundle/dist"' in run_text
     assert "${{ runner.temp }}/release-bundle/" in WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "tools.release_bundle finalize" in run_text
+    assert "python -m tools.performance_budget summarize" in run_text
+    assert "python tools/performance_budget.py" not in run_text
     assert "--core-only" in run_text
     assert "--check performance_core" in run_text
     assert "release-preflight=${{ needs.release_preflight.result }}" in policy_run_text

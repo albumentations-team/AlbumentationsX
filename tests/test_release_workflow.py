@@ -75,5 +75,6 @@ def test_only_pypi_job_receives_oidc_permission() -> None:
 def test_release_candidate_core_profiles_do_not_require_optional_pytorch_coverage() -> None:
     text = RELEASE_CANDIDATE_PATH.read_text(encoding="utf-8")
 
-    assert text.count("tools/performance_budget.py summarize") == 2
+    assert text.count("python -m tools.performance_budget summarize") == 2
+    assert "python tools/performance_budget.py" not in text
     assert text.count("--core-only") == 2

@@ -89,6 +89,7 @@ def test_coverage_and_pytorch_are_not_duplicated_across_matrix_cells() -> None:
 def test_version_bump_preflight_builds_publishable_bundle_in_core_profile() -> None:
     workflow = _workflow()
     job = workflow["jobs"]["release_preflight"]
+    upload_step = next(step for step in job["steps"] if step["name"] == "Upload publishable release bundle")
     run_text = "\n".join(str(step.get("run", "")) for step in job["steps"])
     policy_run_text = "\n".join(str(step.get("run", "")) for step in workflow["jobs"]["security_policy"]["steps"])
 
@@ -97,6 +98,7 @@ def test_version_bump_preflight_builds_publishable_bundle_in_core_profile() -> N
     assert "dependency-group: ci-release" in WORKFLOW_PATH.read_text(encoding="utf-8")
     assert 'uv build --out-dir "${RUNNER_TEMP}/release-bundle/dist"' in run_text
     assert "${{ runner.temp }}/release-bundle/" in WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert upload_step["with"]["include-hidden-files"] is True
     assert "tools.release_bundle finalize" in run_text
     assert "python -m tools.performance_budget summarize" in run_text
     assert "python tools/performance_budget.py" not in run_text

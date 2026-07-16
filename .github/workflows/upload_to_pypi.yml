@@ -101,6 +101,7 @@ jobs:
         with:
           name: verified-release-bundle
           path: ${{ github.workspace }}/release-bundle/
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
 

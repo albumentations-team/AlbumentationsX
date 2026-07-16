@@ -70,13 +70,18 @@ def test_release_workflow_contains_only_identity_and_delivery_steps() -> None:
 
 def test_release_workflow_delivers_one_verified_bundle_to_both_destinations() -> None:
     jobs = _workflow()["jobs"]
+    resolve_job = jobs["resolve_release_bundle"]
     attach_job = jobs["attach_release_assets"]
     pypi_job = jobs["publish_to_pypi"]
+    handoff_step = next(
+        step for step in resolve_job["steps"] if step["name"] == "Hand verified bundle to delivery jobs"
+    )
 
     assert attach_job["needs"] == "resolve_release_bundle"
     assert attach_job["permissions"] == {"actions": "read", "contents": "write"}
     assert pypi_job["needs"] == "attach_release_assets"
     assert pypi_job["permissions"] == {"actions": "read", "contents": "read", "id-token": "write"}
+    assert handoff_step["with"]["include-hidden-files"] is True
     assert "verified-release-bundle" in WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "packages-dir: release-bundle/dist" in WORKFLOW_PATH.read_text(encoding="utf-8")
 

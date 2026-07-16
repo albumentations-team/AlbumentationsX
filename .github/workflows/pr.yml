@@ -719,6 +719,7 @@ jobs:
         with:
           name: ${{ steps.finalize.outputs.artifact_name }}
           path: ${{ runner.temp }}/release-bundle/
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 90
       - name: Upload failed preflight diagnostics

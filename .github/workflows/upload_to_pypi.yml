@@ -3,9 +3,18 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to recover
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
 
 jobs:
   resolve_release_bundle:
@@ -20,12 +29,27 @@ jobs:
       package_version: ${{ steps.metadata.outputs.package_version }}
       source_digest: ${{ steps.metadata.outputs.source_digest }}
     steps:
-      - name: Checkout released tag
+      - name: Require recovery from the default branch
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ "${GITHUB_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]]; then
+            echo "Release recovery must run from ${DEFAULT_BRANCH}, not ${GITHUB_REF}." >&2
+            exit 1
+          fi
+      - name: Checkout release automation
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          path: release-automation
+          persist-credentials: false
+      - name: Checkout released source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          path: released-source
           persist-credentials: false
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
       - name: Set up release identity runtime
         uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
         with:
@@ -34,15 +58,15 @@ jobs:
           python-version: "3.12"
       - name: Verify tag and compute released source identity
         id: metadata
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        working-directory: release-automation
         run: >-
           python -m tools.release_bundle metadata
-          --source-root .
+          --source-root "${GITHUB_WORKSPACE}/released-source"
           --expected-tag "${RELEASE_TAG}"
           --github-output "${GITHUB_OUTPUT}"
       - name: Resolve matching successful PR artifact
         id: resolve
+        working-directory: release-automation
         env:
           ARTIFACT_NAME: ${{ steps.metadata.outputs.artifact_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -63,19 +87,20 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.resolve.outputs.run_id }}
       - name: Verify immutable release bundle
+        working-directory: release-automation
         env:
           EXPECTED_SOURCE_DIGEST: ${{ steps.metadata.outputs.source_digest }}
           EXPECTED_VERSION: ${{ steps.metadata.outputs.package_version }}
         run: >-
           python -m tools.release_bundle verify
-          --bundle-dir release-bundle
+          --bundle-dir "${GITHUB_WORKSPACE}/release-bundle"
           --expected-version "${EXPECTED_VERSION}"
           --expected-source-digest "${EXPECTED_SOURCE_DIGEST}"
       - name: Hand verified bundle to delivery jobs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: verified-release-bundle
-          path: release-bundle/
+          path: ${{ github.workspace }}/release-bundle/
           if-no-files-found: error
           retention-days: 7
 
@@ -96,6 +121,7 @@ jobs:
       - name: Attach verified files to GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             release-bundle/dist/*.whl
             release-bundle/dist/*.tar.gz

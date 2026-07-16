@@ -572,6 +572,10 @@ def _check_release_workflow() -> list[str]:
     issues = _check_text_mentions(
         RELEASE_WORKFLOW,
         (
+            "workflow_dispatch",
+            "github.event.release.tag_name || inputs.release_tag",
+            "path: release-automation",
+            "path: released-source",
             "tools.release_bundle metadata",
             "--expected-tag",
             "tools.release_bundle resolve",
@@ -583,6 +587,7 @@ def _check_release_workflow() -> list[str]:
             "verified-release-bundle",
             "release-bundle/public/SHA256SUMS.txt",
             "softprops/action-gh-release",
+            "tag_name: ${{ env.RELEASE_TAG }}",
             "pypa/gh-action-pypi-publish",
             "packages-dir: release-bundle/dist",
         ),

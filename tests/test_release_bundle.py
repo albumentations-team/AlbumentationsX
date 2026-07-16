@@ -145,6 +145,55 @@ def test_verify_bundle_rejects_payload_tampering(tmp_path: Path) -> None:
         )
 
 
+def test_verify_bundle_accepts_known_legacy_upload_artifact_omission(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    bundle = _bundle(repository)
+    gitignore = bundle / "dist" / ".gitignore"
+    gitignore.write_text("*", encoding="utf-8")
+    manifest = finalize_bundle(bundle, repository, checks=REQUIRED_CHECKS)
+    gitignore.unlink()
+
+    verified = verify_bundle(
+        bundle,
+        expected_version="2.3.3",
+        expected_source_digest=source_digest(repository),
+    )
+
+    assert verified == manifest
+
+
+def test_verify_bundle_rejects_legacy_omission_with_unexpected_digest(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    bundle = _bundle(repository)
+    gitignore = bundle / "dist" / ".gitignore"
+    gitignore.write_text("unexpected", encoding="utf-8")
+    finalize_bundle(bundle, repository, checks=REQUIRED_CHECKS)
+    gitignore.unlink()
+
+    with pytest.raises(BundleError, match=r"missing or is not regular: dist/\.gitignore"):
+        verify_bundle(
+            bundle,
+            expected_version="2.3.3",
+            expected_source_digest=source_digest(repository),
+        )
+
+
+def test_verify_bundle_rejects_legacy_omission_for_another_version(tmp_path: Path) -> None:
+    repository = _repository(tmp_path, version="2.3.4")
+    bundle = _bundle(repository, version="2.3.4")
+    gitignore = bundle / "dist" / ".gitignore"
+    gitignore.write_text("*", encoding="utf-8")
+    finalize_bundle(bundle, repository, checks=REQUIRED_CHECKS)
+    gitignore.unlink()
+
+    with pytest.raises(BundleError, match=r"missing or is not regular: dist/\.gitignore"):
+        verify_bundle(
+            bundle,
+            expected_version="2.3.4",
+            expected_source_digest=source_digest(repository),
+        )
+
+
 def test_verify_bundle_rejects_expired_manifest(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     bundle = _bundle(repository)

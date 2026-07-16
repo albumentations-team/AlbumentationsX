@@ -27,6 +27,10 @@ SCHEMA_VERSION = 1
 MANIFEST_NAME = "release-manifest.json"
 DEFAULT_RETENTION_DAYS = 90
 DEFAULT_WORKFLOW_PATH = ".github/workflows/pr.yml"
+# GitHub upload-artifact omitted this uv-generated hidden file before hidden-file uploads were enabled.
+LEGACY_TRANSPORT_OMISSIONS = {
+    ("2.3.3", "dist/.gitignore"): "sha256:684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+}
 REQUIRED_CHECKS = frozenset(
     {
         "clean_install",
@@ -368,11 +372,12 @@ def _parse_timestamp(value: Any, label: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def _validated_artifacts(bundle_dir: Path, artifacts: Any) -> dict[str, str]:
+def _validated_artifacts(bundle_dir: Path, artifacts: Any, version: str) -> tuple[dict[str, str], set[str]]:
     if not isinstance(artifacts, dict) or not artifacts:
         msg = "Release manifest artifacts must be a non-empty mapping"
         raise BundleError(msg)
     validated: dict[str, str] = {}
+    omitted: set[str] = set()
     for raw_path, raw_digest in artifacts.items():
         if not isinstance(raw_path, str) or not isinstance(raw_digest, str):
             msg = "Release manifest artifact paths and digests must be strings"
@@ -382,6 +387,14 @@ def _validated_artifacts(bundle_dir: Path, artifacts: Any) -> dict[str, str]:
             msg = f"Release manifest contains an unsafe artifact path: {raw_path!r}"
             raise BundleError(msg)
         path = bundle_dir.joinpath(*relative.parts)
+        if (
+            not path.is_symlink()
+            and not path.exists()
+            and LEGACY_TRANSPORT_OMISSIONS.get((version, raw_path)) == raw_digest
+        ):
+            validated[raw_path] = raw_digest
+            omitted.add(raw_path)
+            continue
         if path.is_symlink() or not path.is_file():
             msg = f"Release manifest artifact is missing or is not regular: {raw_path}"
             raise BundleError(msg)
@@ -390,7 +403,7 @@ def _validated_artifacts(bundle_dir: Path, artifacts: Any) -> dict[str, str]:
             msg = f"Release artifact digest mismatch for {raw_path}: {actual_digest} != {raw_digest}"
             raise BundleError(msg)
         validated[raw_path] = raw_digest
-    return validated
+    return validated, omitted
 
 
 def _read_manifest(bundle_dir: Path) -> dict[str, Any]:
@@ -444,9 +457,9 @@ def _validate_manifest_identity(
 
 
 def _validate_manifest_payload(bundle_dir: Path, manifest: dict[str, Any], version: str) -> None:
-    validated_artifacts = _validated_artifacts(bundle_dir, manifest["artifacts"])
+    validated_artifacts, omitted_artifacts = _validated_artifacts(bundle_dir, manifest["artifacts"], version)
     actual_payload = set(_payload_files(bundle_dir))
-    if actual_payload != set(validated_artifacts):
+    if actual_payload != set(validated_artifacts) - omitted_artifacts:
         msg = "Release bundle payload does not exactly match the manifest"
         raise BundleError(msg)
     wheel, sdist, sbom, report, checksums = _required_publish_files(bundle_dir, version)

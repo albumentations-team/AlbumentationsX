@@ -93,7 +93,6 @@ jobs:
 
       - name: Run Antigravity pull request review
         if: steps.plan.outputs.antigravity == 'true'
-        id: gemini_review
         uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         env:
           GEMINI_CLI_TRUST_WORKSPACE: "true"
@@ -152,15 +151,10 @@ jobs:
 
       - name: Prepare review artifact
         if: steps.plan.outputs.antigravity == 'true'
-        env:
-          REVIEW_BODY: ${{ steps.gemini_review.outputs.summary }}
-        run: |
-          if [ -z "${REVIEW_BODY}" ]; then
-            echo "::error::Gemini returned an empty pull request review."
-            exit 1
-          fi
-
-          printf '%s\n' "${REVIEW_BODY}" > .antigravity/review.md
+        run: >-
+          python -m tools.antigravity_review
+          --input gemini-artifacts/stdout.log
+          --output .antigravity/review.md
 
       - name: Upload review artifact
         if: steps.plan.outputs.antigravity == 'true'

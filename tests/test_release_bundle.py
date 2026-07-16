@@ -288,3 +288,27 @@ def test_resolve_artifact_rejects_unmerged_pr_run() -> None:
             workflow_path=".github/workflows/pr.yml",
             default_branch="main",
         )
+
+
+def test_resolve_artifact_does_not_replace_reported_prs_with_head_commit_associations() -> None:
+    responses = _artifact_responses(merged_at=None)
+    run_path = "/repos/albumentations-team/AlbumentationsX/actions/runs/173"
+    run = responses[run_path]
+    assert isinstance(run, dict)
+    run["head_sha"] = "abc137"
+    responses["/repos/albumentations-team/AlbumentationsX/commits/abc137/pulls"] = [
+        {
+            "number": 306,
+            "merged_at": "2026-07-15T12:00:00Z",
+            "base": {"ref": "main"},
+        },
+    ]
+
+    with pytest.raises(BundleError, match="No unexpired release bundle"):
+        resolve_artifact(
+            FakeGitHubAPI(responses),
+            repository="albumentations-team/AlbumentationsX",
+            artifact_name="release-bundle-2.3.3-digest",
+            workflow_path=".github/workflows/pr.yml",
+            default_branch="main",
+        )

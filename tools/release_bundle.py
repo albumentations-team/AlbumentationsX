@@ -542,10 +542,10 @@ def _run_matches_release_policy(
     if not isinstance(run, dict) or not _run_has_required_status(run, workflow_path):
         return False
     pull_requests = run.get("pull_requests", [])
-    if isinstance(pull_requests, list) and any(
-        _summary_identifies_merged_pr(api, repository, summary, default_branch) for summary in pull_requests
-    ):
-        return True
+    if not isinstance(pull_requests, list):
+        return False
+    if pull_requests:
+        return any(_summary_identifies_merged_pr(api, repository, summary, default_branch) for summary in pull_requests)
     return _head_commit_identifies_merged_pr(api, repository, run.get("head_sha"), default_branch)
 
 

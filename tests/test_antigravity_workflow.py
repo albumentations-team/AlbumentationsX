@@ -82,3 +82,13 @@ def test_antigravity_isolates_model_execution_from_pr_write_access() -> None:
     assert "path: .antigravity/review.md" in model_job
     assert "include-hidden-files: true" in model_job
     assert "if-no-files-found: error" in model_job
+
+
+def test_antigravity_validates_cli_json_before_publishing_review() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "python -m tools.antigravity_review" in workflow
+    assert "--input gemini-artifacts/stdout.log" in workflow
+    assert "--output .antigravity/review.md" in workflow
+    assert "steps.gemini_review.outputs.summary" not in workflow
+    assert "REVIEW_BODY" not in workflow

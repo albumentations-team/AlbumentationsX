@@ -52,6 +52,7 @@ LEGAL_PATHS = {
     "CLA.md",
     "CONTRIBUTING.md",
     "LICENSE",
+    "LICENSE_HISTORY.md",
     "LICENSING.md",
     "MANIFEST.in",
     "README.md",

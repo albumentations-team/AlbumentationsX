@@ -36,7 +36,6 @@ PUBLISHED_OR_LATER_VERSIONS = frozenset(
     },
 )
 
-AGPL_TEXT_MARKER = b"                    GNU AFFERO GENERAL PUBLIC LICENSE\n"
 AGPL_TEXT_SHA256 = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
 MIT_208_SHA256 = "bea4dc8e93ae2784bccd45f1cdba53da97b99646bca390c7d725e17b72dc2180"
 OFL_11_SHA256 = "21b459dcbf31a1933546fb2b2511bfcab7c51c500838cef480f2266d8aba93b3"
@@ -49,14 +48,15 @@ CLA_V1_GIST_REVISION = "3115a7364f5ab8a58a7e7ffa51dfdf1ec8a5b006"
 
 REQUIRED_LICENSE_FILES = (
     "LICENSE",
-    "LICENSE_HISTORY.md",
+    "LICENSING.md",
     "THIRD_PARTY_NOTICES.md",
-    "LICENSES/MIT-Albumentations-2.0.8.txt",
+    "THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
 )
 SOURCE_ONLY_NOTICE_FILES = (
-    "LICENSES/OFL-1.1.txt",
+    "THIRD_PARTY_LICENSES/OFL-1.1.txt",
     "tests/files/LiberationSerif-Bold.ttf",
 )
+GITHUB_LICENSEE_CONFLICT_PATHS = ("LICENSE_HISTORY.md", "LICENSES")
 
 
 def sha256(data: bytes) -> str:
@@ -89,7 +89,7 @@ def _check_project_metadata(repo_root: Path) -> list[str]:
         errors.append("pyproject project.license-files does not match the four required artifact notices")
 
     build_excludes = set(pyproject.get("tool", {}).get("hatch", {}).get("build", {}).get("exclude", []))
-    required_excludes = ("CLA.md", "legal", "LICENSES/OFL-1.1.txt")
+    required_excludes = ("CLA.md", "legal", "THIRD_PARTY_LICENSES/OFL-1.1.txt")
     errors.extend(
         f"pyproject hatch build exclusions must contain {excluded_path!r}"
         for excluded_path in required_excludes
@@ -100,9 +100,9 @@ def _check_project_metadata(repo_root: Path) -> list[str]:
     required_conda_lines = (
         "license: AGPL-3.0-only",
         "- LICENSE",
-        "- LICENSE_HISTORY.md",
+        "- LICENSING.md",
         "- THIRD_PARTY_NOTICES.md",
-        "- LICENSES/MIT-Albumentations-2.0.8.txt",
+        "- THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
     )
     errors.extend(
         f"conda metadata is missing {required_line!r}"
@@ -112,9 +112,9 @@ def _check_project_metadata(repo_root: Path) -> list[str]:
 
     manifest = (repo_root / "MANIFEST.in").read_text(encoding="utf-8")
     required_manifest_lines = (
-        "include LICENSES/MIT-Albumentations-2.0.8.txt",
+        "include THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
         "exclude CLA.md",
-        "exclude LICENSES/OFL-1.1.txt",
+        "exclude THIRD_PARTY_LICENSES/OFL-1.1.txt",
         "prune legal",
     )
     errors.extend(
@@ -128,33 +128,14 @@ def _check_project_metadata(repo_root: Path) -> list[str]:
 def _check_license_texts(repo_root: Path) -> list[str]:
     errors: list[str] = []
     license_bytes = (repo_root / "LICENSE").read_bytes()
-    if license_bytes.count(AGPL_TEXT_MARKER) != 1:
-        errors.append("LICENSE must contain exactly one canonical AGPL text marker")
-    else:
-        agpl_text = license_bytes[license_bytes.index(AGPL_TEXT_MARKER) :]
-        if sha256(agpl_text) != AGPL_TEXT_SHA256:
-            errors.append("the complete AGPL text below the repository lead-in changed")
+    if sha256(license_bytes) != AGPL_TEXT_SHA256:
+        errors.append("LICENSE must be the complete, unmodified canonical GNU AGPL version 3 text")
 
-    lead_in_end = license_bytes.find(AGPL_TEXT_MARKER)
-    license_lead_in = " ".join(license_bytes[:lead_in_end].decode().split())
-    required_lead_in_phrases = (
-        "code, tests, documentation, and other copyrightable material",
-        "AGPL-3.0-only",
-        "The AGPL permits commercial use subject to its terms.",
-        "scope-specific permissions",
-        "only when an executed agreement or order form expressly says so",
-    )
-    errors.extend(
-        f"LICENSE lead-in is missing {required_phrase!r}"
-        for required_phrase in required_lead_in_phrases
-        if required_phrase not in license_lead_in
-    )
-
-    mit_bytes = (repo_root / "LICENSES/MIT-Albumentations-2.0.8.txt").read_bytes()
+    mit_bytes = (repo_root / "THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt").read_bytes()
     if sha256(mit_bytes) != MIT_208_SHA256:
         errors.append("legacy Albumentations 2.0.8 MIT text changed")
 
-    ofl_bytes = (repo_root / "LICENSES/OFL-1.1.txt").read_bytes()
+    ofl_bytes = (repo_root / "THIRD_PARTY_LICENSES/OFL-1.1.txt").read_bytes()
     if sha256(ofl_bytes) != OFL_11_SHA256:
         errors.append("Liberation Serif Bold OFL-1.1 notice or license text changed")
 
@@ -165,8 +146,12 @@ def _check_license_texts(repo_root: Path) -> list[str]:
 
 
 def _check_history_and_notices(repo_root: Path) -> list[str]:
-    history = " ".join((repo_root / "LICENSE_HISTORY.md").read_text(encoding="utf-8").split())
-    required_history_phrases = (
+    licensing = " ".join((repo_root / "LICENSING.md").read_text(encoding="utf-8").split())
+    required_licensing_phrases = (
+        "code, tests, documentation, and other copyrightable material",
+        "The AGPL permits commercial use subject to its terms.",
+        "scope-specific permissions",
+        "only when an executed agreement or order form expressly says so",
         "4d2cf04b6635663275a747333754410ef255e54c",
         "c1720fbab8209450328ef2e68f0ddc0c4806f7a8",
         "068f0ec5a6a49e0b0f8b138ea0dcdc1d60cdcc21",
@@ -180,9 +165,7 @@ def _check_history_and_notices(repo_root: Path) -> list[str]:
         "prospectively",
         "never be rebuilt or republished",
     )
-    errors = [
-        f"LICENSE_HISTORY.md is missing {phrase!r}" for phrase in required_history_phrases if phrase not in history
-    ]
+    errors = [f"LICENSING.md is missing {phrase!r}" for phrase in required_licensing_phrases if phrase not in licensing]
 
     notices = " ".join((repo_root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8").split())
     required_notice_phrases = (
@@ -201,6 +184,14 @@ def _check_history_and_notices(repo_root: Path) -> list[str]:
         f"THIRD_PARTY_NOTICES.md is missing {phrase!r}" for phrase in required_notice_phrases if phrase not in notices
     )
     return errors
+
+
+def _check_github_licensee_layout(repo_root: Path) -> list[str]:
+    return [
+        f"GitHub Licensee conflict path must not exist: {relative_path}"
+        for relative_path in GITHUB_LICENSEE_CONFLICT_PATHS
+        if (repo_root / relative_path).exists()
+    ]
 
 
 def _check_cla_archive(repo_root: Path) -> list[str]:
@@ -289,6 +280,7 @@ def collect_source_errors(repo_root: Path = REPO_ROOT) -> list[str]:
     if errors:
         return errors
 
+    errors.extend(_check_github_licensee_layout(repo_root))
     errors.extend(_check_project_metadata(repo_root))
     errors.extend(_check_license_texts(repo_root))
     errors.extend(_check_history_and_notices(repo_root))
@@ -382,7 +374,9 @@ def _forbidden_artifact_errors(artifact: Path, members: Mapping[str, bytes]) -> 
         member_path = PurePosixPath(member_name)
         if member_path.name == "CLA.md" or "legal/cla" in member_name:
             errors.append(f"{artifact.name}: inbound CLA material leaked into artifact as {member_name}")
-        if member_path.name == "LiberationSerif-Bold.ttf" or member_name.endswith("LICENSES/OFL-1.1.txt"):
+        if member_path.name == "LiberationSerif-Bold.ttf" or member_name.endswith(
+            "THIRD_PARTY_LICENSES/OFL-1.1.txt",
+        ):
             errors.append(f"{artifact.name}: source-only OFL test asset leaked into artifact as {member_name}")
         if artifact.suffix != ".whl" and member_name.endswith((".whl", ".tar.gz")):
             errors.append(f"{artifact.name}: nested distribution artifact leaked into sdist as {member_name}")

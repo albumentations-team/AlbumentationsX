@@ -1,27 +1,3 @@
-AlbumentationsX License Notice
-==============================
-
-Except where a file or notice says otherwise, the AlbumentationsX code, tests,
-documentation, and other copyrightable material in this repository are
-licensed under the GNU Affero General Public License, version 3 only
-(AGPL-3.0-only). Third-party material and its applicable notices are identified
-in THIRD_PARTY_NOTICES.md.
-
-The AGPL permits commercial use subject to its terms. Albumentations, LLC also
-offers separately negotiated commercial licenses that provide alternative,
-scope-specific permissions for the versions and uses identified in the
-applicable agreement or order form. A commercial license does not remove the
-AGPL availability of the public repository. Support, warranties, maintenance,
-and service levels are included only when an executed agreement or order form
-expressly says so.
-
-For commercial licensing inquiries, visit https://albumentations.ai/pricing or
-contact vladimir@albumentations.ai.
-
-The full AGPL-3.0-only license text follows:
-
----
-
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

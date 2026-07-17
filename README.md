@@ -32,8 +32,8 @@ project is commercial, proprietary, in production, or internal.
 Which terms fit depends on the deployment facts, including modification,
 combination, copying or conveyance, and network interaction. Support,
 warranties, maintenance, and service levels are included only when an executed
-agreement or order form expressly says so. See [LICENSE](LICENSE),
-[license history](LICENSE_HISTORY.md), and
+agreement or order form expressly says so. See the [AGPL text](LICENSE),
+[licensing details and history](LICENSING.md), and
 [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ### Quick Start
@@ -471,13 +471,14 @@ We look forward to your contributions to help make the AlbumentationsX ecosystem
 
 The current public repository is licensed under **AGPL-3.0-only**. Earlier
 AlbumentationsX releases retain the license terms recorded in the
-[license history](LICENSE_HISTORY.md). The AGPL permits commercial use subject
+[licensing details and history](LICENSING.md). The AGPL permits commercial use subject
 to its terms.
 
 For alternative, scope-specific terms from Albumentations, LLC, visit the
 [pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
-The [license notice](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md)
-contain the complete repository-level details.
+The [AGPL text](LICENSE), [licensing details](LICENSING.md), and
+[third-party notices](THIRD_PARTY_NOTICES.md) contain the complete
+repository-level details.
 
 ## 📞 Contact
 

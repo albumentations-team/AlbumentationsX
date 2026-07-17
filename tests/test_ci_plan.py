@@ -18,6 +18,9 @@ from tools.ci_plan import _read_github_files, build_plan, classify_path
         ("tests/conftest.py", {"tests", "shared_tests"}),
         ("benchmark/benchmarks/augmentations.py", {"benchmarks"}),
         ("LICENSE", {"legal"}),
+        ("LICENSE_HISTORY.md", {"docs", "legal"}),
+        ("LICENSING.md", {"docs", "legal"}),
+        ("THIRD_PARTY_LICENSES/OFL-1.1.txt", {"legal"}),
         ("pyproject.toml", {"dependencies", "legal", "packaging", "quality_config"}),
         (".github/workflows/pr.yml", {"workflows", "ci_tooling", "self_ci"}),
         ("unclassified/new-area/data.bin", {"unknown"}),
@@ -44,6 +47,12 @@ def test_readme_runs_package_policy_without_product_tests() -> None:
     assert plan.checks["package"]
     assert not plan.checks["install_smoke"]
     assert plan.gates["correctness"] == ()
+
+
+def test_forbidden_license_history_path_runs_legal_policy() -> None:
+    plan = build_plan(["LICENSE_HISTORY.md"])
+
+    assert plan.checks["legal"]
 
 
 def test_runtime_plan_keeps_full_compatibility_and_performance_evidence() -> None:

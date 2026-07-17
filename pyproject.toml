@@ -74,7 +74,12 @@ keywords = [
 
 ]
 license = "AGPL-3.0-only"
-license-files = ["LICENSE", "LICENSE_HISTORY.md", "THIRD_PARTY_NOTICES.md", "LICENSES/MIT-Albumentations-2.0.8.txt"]
+license-files = [
+  "LICENSE",
+  "LICENSING.md",
+  "THIRD_PARTY_NOTICES.md",
+  "THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
+]
 
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 
@@ -234,7 +239,7 @@ exclude = [
   "benchmark",
   "docs",
   "legal",
-  "LICENSES/OFL-1.1.txt",
+  "THIRD_PARTY_LICENSES/OFL-1.1.txt",
   ".github",
   ".codex",
   "conda.recipe",

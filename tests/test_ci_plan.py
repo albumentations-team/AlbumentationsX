@@ -18,6 +18,8 @@ from tools.ci_plan import _read_github_files, build_plan, classify_path
         ("tests/conftest.py", {"tests", "shared_tests"}),
         ("benchmark/benchmarks/augmentations.py", {"benchmarks"}),
         ("LICENSE", {"legal"}),
+        ("LICENSING.md", {"docs", "legal"}),
+        ("THIRD_PARTY_LICENSES/OFL-1.1.txt", {"legal"}),
         ("pyproject.toml", {"dependencies", "legal", "packaging", "quality_config"}),
         (".github/workflows/pr.yml", {"workflows", "ci_tooling", "self_ci"}),
         ("unclassified/new-area/data.bin", {"unknown"}),

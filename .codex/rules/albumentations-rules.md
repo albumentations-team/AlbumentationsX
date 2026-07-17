@@ -27,8 +27,9 @@ always_apply: true
 ## License and CLA Integrity
 - Use SPDX `AGPL-3.0-only` consistently; do not silently change it to an
   `-or-later` expression.
-- Preserve the complete AGPL text, the legacy Albumentations 2.0.8 MIT notice,
-  and immutable CLA archives.
+- Keep `LICENSE` as the complete canonical AGPL text. Preserve the repository
+  expression and history in `LICENSING.md`, the legacy Albumentations 2.0.8
+  MIT notice, and immutable CLA archives.
 - Treat CLA acceptance as version-specific. Never infer acceptance of a new CLA
   from an old signature.
 - Run `python tools/verify_legal_integrity.py`; after packaging changes, build

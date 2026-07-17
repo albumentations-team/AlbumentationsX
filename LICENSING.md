@@ -1,18 +1,39 @@
-# AlbumentationsX License History
+# AlbumentationsX Licensing
+
+## Current Repository License
+
+Except where a file or notice says otherwise, the AlbumentationsX code, tests,
+documentation, and other copyrightable material in this repository are
+licensed under the GNU Affero General Public License, version 3 only
+(`AGPL-3.0-only`). Third-party material and its applicable notices are
+identified in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The AGPL permits commercial use subject to its terms. Albumentations, LLC also
+offers separately negotiated commercial licenses that provide alternative,
+scope-specific permissions for the versions and uses identified in the
+applicable agreement or order form. A commercial license does not remove the
+AGPL availability of the public repository. Support, warranties, maintenance,
+and service levels are included only when an executed agreement or order form
+expressly says so.
+
+For commercial licensing inquiries, visit <https://albumentations.ai/pricing>
+or contact <vladimir@albumentations.ai>.
+
+## License History
 
 This file records the public license boundary between the legacy
 `albumentations` project and the successor `AlbumentationsX` repository. It is
 a provenance record, not a substitute for the license text that accompanied a
 particular copy.
 
-## Timeline
+### Timeline
 
 - **May 27, 2025 — legacy Albumentations 2.0.8.** The
   [`2.0.8`](https://github.com/albumentations-team/albumentations/tree/2.0.8)
   tag points to commit `4d2cf04b6635663275a747333754410ef255e54c` in the
   legacy repository. That release was published under the MIT License. Its
   exact license notice is preserved at
-  [`LICENSES/MIT-Albumentations-2.0.8.txt`](LICENSES/MIT-Albumentations-2.0.8.txt).
+  [`THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt`](THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt).
 - **June 19, 2025 — AlbumentationsX begins.** The first commit in this
   repository, `c1720fbab8209450328ef2e68f0ddc0c4806f7a8`, created the
   AlbumentationsX successor repository. Its `LICENSE` contained GNU AGPL
@@ -33,7 +54,7 @@ particular copy.
   published `2.3.1` artifacts must never be rebuilt or republished with
   different license metadata.
 
-## No Retroactive Relicensing
+### No Retroactive Relicensing
 
 Creating AlbumentationsX did not revoke or alter the MIT permissions already
 granted for legacy Albumentations releases. A person who received legacy
@@ -50,10 +71,11 @@ reinterpret permissions already granted for the published `2.1.3` through
 `2.3.1` releases. Copies of those releases continue under the notices and
 metadata that accompanied them.
 
-## How To Read The Repository
+### How To Read The Repository
 
-- [`LICENSE`](LICENSE) contains the current repository notice and complete
-  AGPL-3.0-only text.
+- [`LICENSE`](LICENSE) contains the complete, unmodified GNU AGPL version 3
+  text. The current repository expression and commercial-license path are
+  stated above.
 - [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) identifies inherited or
   third-party material that requires a separate notice.
 - A file-specific copyright or license notice controls for that file when it

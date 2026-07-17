@@ -8,13 +8,13 @@ License with the following copyright holders named in its notice:
 
 The complete, byte-for-byte license text from the legacy `2.0.8` tag is
 preserved in
-[`LICENSES/MIT-Albumentations-2.0.8.txt`](LICENSES/MIT-Albumentations-2.0.8.txt).
+[`THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt`](THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt).
 Its SHA-256 digest is
 `bea4dc8e93ae2784bccd45f1cdba53da97b99646bca390c7d725e17b72dc2180`.
 That MIT notice applies to material inherited from that legacy release. The
-current repository default for later AlbumentationsX work is stated in
-[`LICENSE`](LICENSE); the history and boundary are described in
-[`LICENSE_HISTORY.md`](LICENSE_HISTORY.md).
+current repository default, commercial-license path, history, and boundary for
+later AlbumentationsX work are stated in [`LICENSING.md`](LICENSING.md). The
+complete AGPL version 3 text is preserved in [`LICENSE`](LICENSE).
 
 The current repository notice does not retroactively withdraw or narrow the
 MIT permissions granted for inherited legacy material or the license metadata
@@ -35,8 +35,8 @@ text-rendering tests. Its embedded metadata states:
 > Copyright (c) 2012 Red Hat, Inc., with Reserved Font Name Liberation.
 
 The font is licensed under the SIL Open Font License, Version 1.1. Its complete
-notice and license are preserved at `LICENSES/OFL-1.1.txt`; the authoritative
-license text is published by the
+notice and license are preserved at
+`THIRD_PARTY_LICENSES/OFL-1.1.txt`; the authoritative license text is published by the
 [OFL steward](https://openfontlicense.org/open-font-license-official-text/).
 
 The repository copy of the font remains under OFL-1.1 and is not relicensed

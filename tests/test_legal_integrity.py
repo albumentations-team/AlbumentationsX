@@ -59,7 +59,7 @@ def _write_wheel(
         if include_cla:
             archive.writestr("CLA.md", b"inbound agreement")
         if include_source_only_asset:
-            archive.writestr("LICENSES/OFL-1.1.txt", b"source-only")
+            archive.writestr("THIRD_PARTY_LICENSES/OFL-1.1.txt", b"source-only")
 
 
 def _write_sdist(
@@ -103,6 +103,16 @@ def test_source_legal_integrity_with_windows_default_encoding(monkeypatch) -> No
     monkeypatch.setattr(Path, "read_text", read_text_with_windows_default)
 
     assert collect_source_errors() == []
+
+
+def test_github_licensee_rejects_conflicting_paths(tmp_path: Path) -> None:
+    (tmp_path / "LICENSES").mkdir()
+    (tmp_path / "LICENSE_HISTORY.md").write_text("legacy layout", encoding="utf-8")
+
+    assert legal_integrity._check_github_licensee_layout(tmp_path) == [
+        "GitHub Licensee conflict path must not exist: LICENSE_HISTORY.md",
+        "GitHub Licensee conflict path must not exist: LICENSES",
+    ]
 
 
 def test_cli_reports_missing_required_notice_without_artifacts(
@@ -167,7 +177,9 @@ def test_artifact_rejects_source_only_ofl_asset(tmp_path: Path) -> None:
 
     errors = collect_artifact_errors(wheel, expected_files)
 
-    assert errors == [f"{wheel.name}: source-only OFL test asset leaked into artifact as LICENSES/OFL-1.1.txt"]
+    assert errors == [
+        f"{wheel.name}: source-only OFL test asset leaked into artifact as THIRD_PARTY_LICENSES/OFL-1.1.txt",
+    ]
 
 
 def test_sdist_rejects_nested_distribution_artifact(tmp_path: Path) -> None:
@@ -208,7 +220,7 @@ def test_wheel_rejects_missing_license_file_metadata(tmp_path: Path) -> None:
 
     assert errors == [
         f"{wheel.name}: wheel METADATA License-File entries must be exactly LICENSE, "
-        "LICENSE_HISTORY.md, THIRD_PARTY_NOTICES.md, LICENSES/MIT-Albumentations-2.0.8.txt",
+        "LICENSING.md, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
     ]
 
 
@@ -237,7 +249,7 @@ def test_sdist_rejects_missing_license_file_metadata(tmp_path: Path) -> None:
 
     assert errors == [
         f"{sdist.name}: sdist PKG-INFO License-File entries must be exactly LICENSE, "
-        "LICENSE_HISTORY.md, THIRD_PARTY_NOTICES.md, LICENSES/MIT-Albumentations-2.0.8.txt",
+        "LICENSING.md, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
     ]
 
 

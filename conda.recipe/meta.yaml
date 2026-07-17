@@ -51,7 +51,7 @@ about:
   license_family: AGPL
   license_file:
     - LICENSE
-    - LICENSE_HISTORY.md
+    - LICENSING.md
     - THIRD_PARTY_NOTICES.md
-    - LICENSES/MIT-Albumentations-2.0.8.txt
+    - THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt
   summary: {{ data['description'] }}

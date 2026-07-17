@@ -15,7 +15,7 @@ Read these files completely before editing:
 
 1. `docs/maintaining/license-provenance.md`
 2. `LICENSE`
-3. `LICENSE_HISTORY.md`
+3. `LICENSING.md`
 4. `THIRD_PARTY_NOTICES.md`
 5. `CLA.md`
 6. `legal/cla/archive/MANIFEST.md`
@@ -30,7 +30,9 @@ Read these files completely before editing:
 - Separately negotiated commercial terms grant alternative permissions only
   for their stated scope. Do not promise support, warranties, maintenance, or
   an SLA unless an executed agreement or order form includes it.
-- Do not alter the complete AGPL text below the `LICENSE` lead-in.
+- Keep `LICENSE` byte-identical to the complete canonical GNU AGPL version 3
+  text; keep the repository expression and commercial-license path in
+  `LICENSING.md`.
 - Do not remove the exact legacy Albumentations 2.0.8 MIT notice or describe
   the successor license as retroactive.
 - CLA acceptance is version-specific. Archive every operative byte version,

@@ -22,19 +22,19 @@ themselves resolve the license analysis.
 
 | File | Purpose |
 |---|---|
-| `LICENSE` | Repository notice and full AGPL-3.0-only text |
-| `LICENSE_HISTORY.md` | Boundary between legacy MIT Albumentations and AlbumentationsX |
+| `LICENSE` | Complete, unmodified GNU AGPL version 3 text |
+| `LICENSING.md` | Current repository expression, commercial-license path, and license history |
 | `THIRD_PARTY_NOTICES.md` | Notice for inherited and separately licensed material |
-| `LICENSES/MIT-Albumentations-2.0.8.txt` | Exact MIT notice from legacy tag `2.0.8` |
-| `LICENSES/OFL-1.1.txt` | OFL-1.1 notice for the source-only Liberation Serif Bold test font |
+| `THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt` | Exact MIT notice from legacy tag `2.0.8` |
+| `THIRD_PARTY_LICENSES/OFL-1.1.txt` | OFL-1.1 notice for the source-only Liberation Serif Bold test font |
 | `CLA.md` | CLA version currently offered to contributors |
 | `legal/cla/archive/MANIFEST.md` | Immutable CLA texts, byte hashes, and acceptance-record requirements |
 | `pyproject.toml` | SPDX package metadata and PEP 639 license-file declarations |
 | `conda.recipe/meta.yaml` | Conda license metadata and packaged notice list |
 
-The complete AGPL text below the repository lead-in must not be edited. If the
-project changes its default outbound license, treat that as a separate,
-explicitly reviewed change rather than a copy edit.
+The complete AGPL text in `LICENSE` must not be edited. If the project changes
+its default outbound license, treat that as a separate, explicitly reviewed
+change rather than a copy edit.
 
 ## Historical Boundary
 
@@ -58,8 +58,9 @@ The tracked `tests/files/LiberationSerif-Bold.ttf` is a separate source-only
 test asset under OFL-1.1. Its embedded copyright notices name Google
 Corporation (2010) and Red Hat, Inc. (2012), and its SHA-256 is
 `d754ba427cfe0bca54ae052384baa8f842da5bd6550ad4da024ac441e7a7d5ce`.
-The font and `LICENSES/OFL-1.1.txt` are excluded from wheel and sdist artifacts;
-their notices accompany redistribution of the Git source repository.
+The font and `THIRD_PARTY_LICENSES/OFL-1.1.txt` are excluded from wheel and
+sdist artifacts; their notices accompany redistribution of the Git source
+repository.
 
 ## CLA Versioning
 
@@ -83,14 +84,15 @@ affiliates are not automatically included.
 Every wheel and sdist must contain exact copies of:
 
 - `LICENSE`;
-- `LICENSE_HISTORY.md`;
+- `LICENSING.md`;
 - `THIRD_PARTY_NOTICES.md`; and
-- `LICENSES/MIT-Albumentations-2.0.8.txt`.
+- `THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt`.
 
 These files may appear below the distribution metadata license directory, as
 required by the packaging backend. Neither `CLA.md` nor `legal/cla/` belongs in
 a release artifact: the CLA governs inbound contributions, not package use.
-The source-only Liberation font and `LICENSES/OFL-1.1.txt` are also excluded.
+The source-only Liberation font and `THIRD_PARTY_LICENSES/OFL-1.1.txt` are
+also excluded.
 
 Run:
 

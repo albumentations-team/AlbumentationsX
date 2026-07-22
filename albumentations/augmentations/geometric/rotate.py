@@ -197,7 +197,11 @@ class RandomRotate90(DualTransform):
             group_element = self.random_generator.choice(self.group_elements)
         else:
             group_element = self.random_generator.choice(c4_group_elements)
-        self.applied_config = {"group_element": group_element}
+
+        # Explicitly clear group_elements so that _build_applied_config() does not
+        # merge the unused constructor tuple (e.g. ("r90", "r270")) into the record,
+        # which would cause InitSchema to reject the replay as mutually exclusive.
+        self.applied_config = {"group_element": group_element, "group_elements": None}
         return {"group_element": group_element}
 
     def apply_to_bboxes(

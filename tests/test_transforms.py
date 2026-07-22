@@ -2227,6 +2227,26 @@ def test_random_rotate90_records_sampled_group_element_in_applied_config(
     assert result.shape == image.shape
 
 
+def test_random_rotate90_group_elements_applied_config_round_trip() -> None:
+    """Recorded applied_config with group_elements must be replay-valid.
+
+    Regression: when group_elements is set, the recorded applied_config must not
+    contain both group_element and group_elements, which would cause
+    Compose.from_applied_transforms() to raise a ValueError.
+    """
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    transform = A.Compose(
+        [A.RandomRotate90(p=1.0, group_elements=("r90", "r270"))],
+        save_applied_params=True,
+        strict=True,
+    )
+    result = transform(image=image)
+    # Must not raise ValueError about mutually exclusive group_element/group_elements
+    replay = A.Compose.from_applied_transforms(result["applied_transforms"])
+    replay_result = replay(image=image)
+    np.testing.assert_array_equal(result["image"], replay_result["image"])
+
+
 def test_random_rotate90_group_elements_serialization() -> None:
     """Serializing and deserializing preserves group_elements behavior."""
     image = np.arange(64 * 64 * 3, dtype=np.uint8).reshape(64, 64, 3)

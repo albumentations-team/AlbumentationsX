@@ -613,6 +613,39 @@ def test_get_scale_balanced_scale_behavior():
     assert any(v < 1.0 for v in result.values()) or any(v > 1.0 for v in result.values())
 
 
+def test_get_scale_balanced_one_sided_ranges_stay_within_bounds():
+    scale = {"x": (0.5, 0.8), "y": (1.2, 1.5)}
+
+    for seed in range(100):
+        result = A.Affine._get_scale(scale, keep_ratio=False, balanced_scale=True, random_state=random.Random(seed))
+
+        assert scale["x"][0] <= result["x"] <= scale["x"][1]
+        assert scale["y"][0] <= result["y"] <= scale["y"][1]
+
+
+def test_get_scale_balanced_crossing_range_samples_both_sides_equally():
+    scale = {"x": (0.5, 2.0), "y": (0.5, 2.0)}
+    sampled_x = [
+        A.Affine._get_scale(scale, keep_ratio=False, balanced_scale=True, random_state=random.Random(seed))["x"]
+        for seed in range(1_000)
+    ]
+    below_one_count = sum(value < 1.0 for value in sampled_x)
+
+    assert all(scale["x"][0] <= value <= scale["x"][1] for value in sampled_x)
+    assert 450 <= below_one_count <= 550
+
+
+@pytest.mark.parametrize("scale_range", [(0.5, 0.8), (1.2, 1.5), (1.0, 1.0)])
+def test_get_scale_balanced_keep_ratio_stays_within_bounds(scale_range):
+    scale = {"x": scale_range, "y": scale_range}
+
+    for seed in range(100):
+        result = A.Affine._get_scale(scale, keep_ratio=True, balanced_scale=True, random_state=random.Random(seed))
+
+        assert scale_range[0] <= result["x"] <= scale_range[1]
+        assert result["y"] == result["x"]
+
+
 def test_get_scale_keep_ratio():
     scale = {"x": (0.5, 1.5), "y": (0.8, 1.2)}
     result = A.Affine._get_scale(scale, keep_ratio=True, balanced_scale=False, random_state=random.Random(42))

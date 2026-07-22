@@ -715,8 +715,8 @@ class Affine(DualTransform):
                 result_scale[key] = float(value)
             elif isinstance(value, tuple):
                 if balanced_scale:
-                    lower_interval = (value[0], 1.0) if value[0] < 1 else None
-                    upper_interval = (1.0, value[1]) if value[1] > 1 else None
+                    lower_interval = (value[0], min(value[1], 1.0)) if value[0] < 1 else None
+                    upper_interval = (max(value[0], 1.0), value[1]) if value[1] > 1 else None
 
                     if lower_interval is not None and upper_interval is not None:
                         selected_interval = random_state.choice(

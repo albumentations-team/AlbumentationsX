@@ -1232,6 +1232,7 @@ def filter_bboxes_with_mask(
 
     keep_mask = (
         (denormalized_box_areas >= epsilon)
+        & (clipped_box_areas >= epsilon)
         & (clipped_box_areas >= min_area - epsilon)
         & (clipped_box_areas / (denormalized_box_areas + epsilon) >= min_visibility)
         & (clipped_widths >= min_width - epsilon)

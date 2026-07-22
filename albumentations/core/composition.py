@@ -1556,6 +1556,8 @@ class Compose(BaseCompose, HubMixin):
 
         """
         if self.main_compose:
+            self._filter_bound_bboxes_before_postprocess(data)
+
             for p in self.processors.values():
                 p.postprocess(data)
 
@@ -1571,6 +1573,22 @@ class Compose(BaseCompose, HubMixin):
             self._remove_grayscale_channels(data)
 
         return data
+
+    def _filter_bound_bboxes_before_postprocess(self, data: dict[str, Any]) -> None:
+        """Filter bound bboxes at the final boundary and mirror their keep mask before postprocessing removes internal
+        instance ids required to align masks and keypoints.
+        """
+        binding = self._instance_binding
+        if binding is None or "bboxes" not in binding:
+            return
+
+        bbox_processor = self.processors.get("bboxes")
+        if not isinstance(bbox_processor, BboxProcessor):
+            return
+
+        shape = get_shape(data, self._additional_targets)
+        self._bbox_filter_with_mirror(bbox_processor, data, shape, binding)
+        self._resync_instance_ids(data)
 
     def _remove_grayscale_channels(self, data: dict[str, Any]) -> None:
         """Strip the trailing channel dimension that `_add_grayscale_channels` added,

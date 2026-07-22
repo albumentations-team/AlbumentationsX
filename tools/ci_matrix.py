@@ -81,9 +81,11 @@ CI_DEPENDENCY_GROUPS = {
     "ci-quality": {
         "defusedxml",
         "google-docstring-parser",
+        "hypothesis",
         "opencv-python-headless",
         "packaging",
         "pre-commit",
+        "pytest",
         "ruff",
     },
     "ci-release": {"cyclonedx-bom"},

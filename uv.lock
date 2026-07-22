@@ -121,6 +121,7 @@ ci-pytorch = [
 ci-quality = [
     { name = "defusedxml" },
     { name = "google-docstring-parser" },
+    { name = "hypothesis" },
     { name = "opencv-python-headless" },
     { name = "packaging" },
     { name = "pillow" },
@@ -282,6 +283,7 @@ ci-pytorch = [
 ci-quality = [
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "google-docstring-parser", specifier = ">=0.0.11" },
+    { name = "hypothesis", specifier = ">=6.156.6" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
     { name = "packaging", specifier = ">=25.0" },
     { name = "pillow", specifier = ">=12.3.0" },

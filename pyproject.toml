@@ -171,6 +171,7 @@ ci-test = [
 ci-quality = [
   "defusedxml>=0.7.1",
   "google-docstring-parser>=0.0.11",
+  "hypothesis>=6.156.6",
   "opencv-python-headless>=5.0.0.93",
   "packaging>=25.0",
   "pillow>=12.3.0",

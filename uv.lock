@@ -46,6 +46,7 @@ version = "2.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "albucore" },
+    { name = "numkong" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -234,6 +235,7 @@ dev = [
 requires-dist = [
     { name = "albucore", specifier = "==0.2.4" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
+    { name = "numkong", specifier = "!=7.7.1" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "opencv-contrib-python", marker = "extra == 'contrib'", specifier = ">=5.0.0.93" },
     { name = "opencv-contrib-python-headless", marker = "extra == 'contrib-headless'", specifier = ">=5.0.0.93" },

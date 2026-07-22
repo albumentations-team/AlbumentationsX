@@ -442,6 +442,10 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
     ["augmentation_cls", "params"],
     get_2d_transforms(
         custom_arguments={
+            A.Normalize: {
+                "mean": (0.5, 0.5, 0.5, 0.5, 0.5),
+                "std": (0.25, 0.25, 0.25, 0.25, 0.25),
+            },
             A.ToGray: {
                 "method": "pca",
                 "num_output_channels": 5,
@@ -595,6 +599,10 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
     ["augmentation_cls", "params"],
     get_2d_transforms(
         custom_arguments={
+            A.Normalize: {
+                "mean": (0.5, 0.5, 0.5, 0.5, 0.5),
+                "std": (0.25, 0.25, 0.25, 0.25, 0.25),
+            },
             A.ToGray: {
                 "method": "pca",
                 "num_output_channels": 5,

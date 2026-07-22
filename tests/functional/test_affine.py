@@ -613,6 +613,52 @@ def test_get_scale_balanced_scale_behavior():
     assert any(v < 1.0 for v in result.values()) or any(v > 1.0 for v in result.values())
 
 
+def test_get_scale_balanced_one_sided_ranges_stay_within_bounds():
+    scale = {"x": (0.5, 0.8), "y": (1.2, 1.5)}
+
+    for seed in range(100):
+        result = A.Affine._get_scale(scale, keep_ratio=False, balanced_scale=True, random_state=random.Random(seed))
+
+        assert scale["x"][0] <= result["x"] <= scale["x"][1]
+        assert scale["y"][0] <= result["y"] <= scale["y"][1]
+
+
+def test_affine_balanced_one_sided_ranges_through_compose():
+    scale = {"x": (0.5, 0.8), "y": (1.2, 1.5)}
+    affine = A.Affine(scale=scale, keep_ratio=False, balanced_scale=True, p=1.0)
+    transform = A.Compose([affine], seed=137)
+
+    transform(image=SQUARE_UINT8_IMAGE)
+
+    sampled_scale = affine.applied_config["scale"]
+    assert scale["x"][0] <= sampled_scale["x"] <= scale["x"][1]
+    assert scale["y"][0] <= sampled_scale["y"] <= scale["y"][1]
+
+
+def test_get_scale_balanced_crossing_range_chooses_between_both_sides(mocker):
+    scale = {"x": (0.5, 2.0), "y": (0.5, 2.0)}
+    intervals = [(0.5, 1.0), (1.0, 2.0)]
+    random_state = mocker.Mock(spec=random.Random)
+    random_state.choice.side_effect = intervals
+    random_state.uniform.side_effect = lambda lower, upper: (lower + upper) / 2
+
+    result = A.Affine._get_scale(scale, keep_ratio=False, balanced_scale=True, random_state=random_state)
+
+    assert result == {"x": 0.75, "y": 1.5}
+    assert [args.args[0] for args in random_state.choice.call_args_list] == [intervals, intervals]
+
+
+@pytest.mark.parametrize("scale_range", [(0.5, 0.8), (1.2, 1.5), (1.0, 1.0)])
+def test_get_scale_balanced_keep_ratio_stays_within_bounds(scale_range):
+    scale = {"x": scale_range, "y": scale_range}
+
+    for seed in range(100):
+        result = A.Affine._get_scale(scale, keep_ratio=True, balanced_scale=True, random_state=random.Random(seed))
+
+        assert scale_range[0] <= result["x"] <= scale_range[1]
+        assert result["y"] == result["x"]
+
+
 def test_get_scale_keep_ratio():
     scale = {"x": (0.5, 1.5), "y": (0.8, 1.2)}
     result = A.Affine._get_scale(scale, keep_ratio=True, balanced_scale=False, random_state=random.Random(42))

@@ -594,12 +594,12 @@ class BaseCompose(Serializable):
         processor (e.g. bbox filter) on matching data keys. Returns filtered data dict.
 
         When `instance_binding` is active and the bbox processor drops rows, this method
-        mirrors that survival decision onto `masks` (positionally) and `keypoints` (by
-        surviving `_bbox_instance_id` value) so the structural invariant
-        `len(masks) == len(bboxes)` and "no orphan keypoints" is upheld at every transform
-        boundary. Without this mirror-drop the resync would have to reconstruct the
-        survival decision from snapshot state — phase 3b of the rewrite collapses that
-        machinery into a single keep-mask plumbed straight from `BboxProcessor`.
+        mirrors that survival decision onto `masks` rows or `mask` channels (positionally)
+        and `keypoints` (by surviving `_bbox_instance_id` value) so bound targets remain
+        aligned at every transform boundary. Without this mirror-drop the resync would have
+        to reconstruct the survival decision from snapshot state — phase 3b of the rewrite
+        collapses that machinery into a single keep-mask plumbed straight from
+        `BboxProcessor`.
 
         Args:
             data (dict[str, Any]): Dictionary containing transformed data
@@ -640,15 +640,15 @@ class BaseCompose(Serializable):
 
         1. Pre-filter realignment. Some transforms (CoarseDropout, Crop with `min_area`,
            etc.) drop bbox rows inside their own `apply_to_bboxes` without touching the
-           mask stack. At this point `len(masks) > len(bboxes)` and the surviving bboxes
-           carry their original `_bbox_instance_id` in the last column. That id is the row
-           index into the still-id-indexed mask stack, so we fancy-index masks down to the
-           surviving id set and drop keypoints whose `_kp_instance_id` is no longer present.
-           This collapses the legacy "id-indexed masks + sparse ids" layout into the
-           positional layout the rest of this method assumes.
+           bound masks. The surviving bboxes carry their original `_bbox_instance_id` in
+           the last column. That id selects a row in `masks` or a channel in `mask`, so we
+           fancy-index the bound masks down to the surviving id set and drop keypoints whose
+           `_kp_instance_id` is no longer present. This collapses the legacy "id-indexed
+           masks + sparse ids" layout into the positional layout the rest of this method
+           assumes.
         2. BboxProcessor filter + post-filter mirror. Standard `filter_with_keep_mask` on
-           bboxes; mirror the resulting `keep_mask` positionally onto masks and by
-           surviving id onto keypoints.
+           bboxes; mirror the resulting `keep_mask` positionally onto mask rows or channels
+           and by surviving id onto keypoints.
         """
         bboxes_pre = data.get("bboxes")
         if isinstance(bboxes_pre, np.ndarray) and bboxes_pre.shape[0] > 0:
@@ -675,14 +675,20 @@ class BaseCompose(Serializable):
         pre_bbox_ids: np.ndarray,
         n_pre: int,
     ) -> None:
-        """Drop mask rows / keypoints whose ids are not in `pre_bbox_ids` so the in-flight `data`
-        is positionally aligned BEFORE the bbox-processor's own filter runs.
+        """Drop bound mask rows or channels and keypoints absent from `pre_bbox_ids` so data remains positionally
+        aligned before the bbox processor's filter runs.
         """
         if "masks" in binding:
             masks_pre = data.get("masks")
             if isinstance(masks_pre, np.ndarray) and len(masks_pre) > n_pre:
                 valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < len(masks_pre))]
                 data["masks"] = masks_pre[valid] if valid.shape[0] > 0 else masks_pre[:0]
+        elif "mask" in binding:
+            mask_pre = data.get("mask")
+            if isinstance(mask_pre, np.ndarray) and mask_pre.ndim >= 3 and mask_pre.shape[-1] > n_pre:
+                channel_count = mask_pre.shape[-1]
+                valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < channel_count)]
+                data["mask"] = mask_pre[..., valid] if valid.shape[0] > 0 else mask_pre[..., :0]
         if "keypoints" in binding:
             kps_pre = data.get("keypoints")
             if isinstance(kps_pre, np.ndarray) and kps_pre.shape[0] > 0:
@@ -726,13 +732,17 @@ class BaseCompose(Serializable):
         pre_bbox_ids: np.ndarray,
         n_pre: int,
     ) -> None:
-        """Mirror the bbox-processor's positional `keep_mask` onto masks (positional) and
-        keypoints (by surviving `_kp_instance_id`) so all three arrays stay row-aligned.
+        """Mirror the bbox processor's positional keep mask onto bound mask rows or channels and keypoints by
+        surviving instance id so all targets stay aligned.
         """
         if "masks" in binding:
             masks = data.get("masks")
             if isinstance(masks, np.ndarray) and len(masks) == n_pre:
                 data["masks"] = masks[keep_mask]
+        elif "mask" in binding:
+            mask = data.get("mask")
+            if isinstance(mask, np.ndarray) and mask.ndim >= 3 and mask.shape[-1] == n_pre:
+                data["mask"] = mask[..., keep_mask]
         if "keypoints" in binding:
             kps = data.get("keypoints")
             if isinstance(kps, np.ndarray) and kps.shape[0] > 0:
@@ -1556,6 +1566,8 @@ class Compose(BaseCompose, HubMixin):
 
         """
         if self.main_compose:
+            self._filter_bound_bboxes_before_postprocess(data)
+
             for p in self.processors.values():
                 p.postprocess(data)
 
@@ -1571,6 +1583,22 @@ class Compose(BaseCompose, HubMixin):
             self._remove_grayscale_channels(data)
 
         return data
+
+    def _filter_bound_bboxes_before_postprocess(self, data: dict[str, Any]) -> None:
+        """Filter bound bboxes at the final boundary and mirror their keep mask before postprocessing removes internal
+        instance ids required to align masks and keypoints.
+        """
+        binding = self._instance_binding
+        if binding is None or "bboxes" not in binding:
+            return
+
+        bbox_processor = self.processors.get("bboxes")
+        if not isinstance(bbox_processor, BboxProcessor):
+            return
+
+        shape = get_shape(data, self._additional_targets)
+        self._bbox_filter_with_mirror(bbox_processor, data, shape, binding)
+        self._resync_instance_ids(data)
 
     def _remove_grayscale_channels(self, data: dict[str, Any]) -> None:
         """Strip the trailing channel dimension that `_add_grayscale_channels` added,

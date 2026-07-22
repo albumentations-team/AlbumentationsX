@@ -20,6 +20,7 @@ from albumentations.core.bbox_utils import (
     convert_bboxes_to_albumentations,
     denormalize_bboxes,
     filter_bboxes,
+    filter_bboxes_with_mask,
     mask_to_bboxes,
     masks_from_bboxes,
     normalize_bboxes,
@@ -1027,6 +1028,23 @@ def test_filter_bboxes_clipping():
 
     expected = np.array([[0.0, 0.0, 1.0, 1.0], [0.3, 0.3, 0.4, 0.4]])
     np.testing.assert_allclose(result, expected, rtol=1e-5)
+
+
+def test_filter_bboxes_rejects_fully_clipped_box_with_zero_thresholds():
+    bboxes = np.array([[-0.1, -0.1, 0.0, 0.0], [0.25, 0.25, 0.75, 0.75]])
+
+    filtered, keep_mask = filter_bboxes_with_mask(
+        bboxes,
+        (100, 100),
+        "hbb",
+        min_area=0,
+        min_visibility=0,
+        min_width=0,
+        min_height=0,
+    )
+
+    np.testing.assert_array_equal(filtered, bboxes[1:])
+    np.testing.assert_array_equal(keep_mask, [False, True])
 
 
 def test_filter_bboxes_noop():

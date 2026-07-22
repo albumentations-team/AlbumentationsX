@@ -1,3 +1,6 @@
+import json
+
+import numpy as np
 import pytest
 
 import albumentations as A
@@ -22,3 +25,34 @@ def test_replay_normalization_keeps_valid_scalars_and_wraps_tuple_only_fields() 
     assert _normalize_config_for_replay(A.HistogramMatching, {"blend_ratio": 0.75}) == {
         "blend_ratio": (0.75, 0.75),
     }
+
+
+@pytest.mark.parametrize(
+    ("transform_cls", "kwargs"),
+    [
+        (A.TimeMasking, {"time_mask_param": 8}),
+        (A.FrequencyMasking, {"freq_mask_param": 8}),
+    ],
+)
+def test_spectrogram_alias_applied_replay_preserves_mask_fill(
+    transform_cls: type[A.BasicTransform],
+    kwargs: dict[str, int],
+) -> None:
+    image = np.ones((16, 16, 1), dtype=np.uint8)
+    mask = np.ones_like(image)
+    with pytest.warns(UserWarning):
+        original = A.Compose(
+            [transform_cls(p=1, **kwargs)],
+            save_applied_params=True,
+            seed=137,
+        )
+
+    original_result = original(image=image.copy(), mask=mask.copy())
+    record = json.loads(json.dumps(original_result["applied_transforms"], allow_nan=False))
+    replay = A.Compose.from_applied_transforms(record, seed=137)
+    replay_result = replay(image=image.copy(), mask=mask.copy())
+
+    assert record[0][0] == "XYMasking"
+    assert record[0][1]["fill_mask"] == 0
+    np.testing.assert_array_equal(replay_result["image"], original_result["image"])
+    np.testing.assert_array_equal(replay_result["mask"], original_result["mask"])

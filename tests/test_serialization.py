@@ -1,3 +1,5 @@
+import copy
+import inspect
 import io
 from io import StringIO
 from pathlib import Path
@@ -10,253 +12,128 @@ from deepdiff import DeepDiff
 import albumentations as A
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.core.serialization import SERIALIZABLE_REGISTRY, shorten_class_name
-from albumentations.core.transforms_interface import ImageOnlyTransform, Transform3D
-from tests.aug_definitions import AUGMENTATION_CLS_PARAMS
-from tests.conftest import (
-    FLOAT32_IMAGES,
-    IMAGES,
-    SQUARE_FLOAT_IMAGE,
-    SQUARE_UINT8_IMAGE,
-    UINT8_IMAGES,
-)
-
-from .utils import (
-    check_all_augs_exists,
-    get_dual_transforms,
-    get_image_only_transforms,
-    get_transforms,
+from albumentations.core.transforms_interface import ImageOnlyTransform
+from tests.conftest import IMAGES, SQUARE_FLOAT_IMAGE, SQUARE_UINT8_IMAGE
+from tests.helpers.transform_cases import (
+    PRIMARY_TRANSFORM_CONTRACT_CASES,
+    TRANSFORM_CONTRACT_CASES,
+    TransformContractCase,
 )
 
 images = []
-
-
-AUGMENTATION_CLS_EXCEPT = {
-    A.Lambda,
-}
 
 
 ## Can use several seeds, but just too slow.
 TEST_SEEDS = (137,)
 
 
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_transforms(
-        custom_arguments={},
-        except_augmentations={
-            A.Lambda,
-        },
-    ),
-)
-@pytest.mark.parametrize("p", [0.5])
+def _make_case_pipeline(case: TransformContractCase, seed: int) -> A.Compose:
+    transform = case.transform_cls(p=1.0, **copy.deepcopy(dict(case.init_kwargs)))
+    return A.Compose(
+        [transform],
+        seed=seed,
+        **copy.deepcopy(dict(case.compose_kwargs)),
+    )
+
+
+def _assert_data_equal(actual: Any, expected: Any, path: str = "result") -> None:
+    if isinstance(actual, np.ndarray) or isinstance(expected, np.ndarray):
+        np.testing.assert_array_equal(actual, expected, err_msg=path)
+        return
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        assert actual.keys() == expected.keys(), path
+        for key in actual:
+            _assert_data_equal(actual[key], expected[key], f"{path}.{key}")
+        return
+    if isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple)):
+        assert len(actual) == len(expected), path
+        for index, (actual_item, expected_item) in enumerate(zip(actual, expected, strict=True)):
+            _assert_data_equal(actual_item, expected_item, f"{path}[{index}]")
+        return
+    assert actual == expected, path
+
+
+def _assert_case_roundtrip(
+    case: TransformContractCase,
+    original: A.Compose,
+    restored: A.Compose,
+    seed: int,
+) -> None:
+    original.set_random_seed(seed)
+    restored.set_random_seed(seed)
+    original_data = case.data_factory(np.random.default_rng(seed))
+    restored_data = case.data_factory(np.random.default_rng(seed))
+    _assert_data_equal(original(**original_data), restored(**restored_data))
+
+
+@pytest.mark.parametrize("case", TRANSFORM_CONTRACT_CASES, ids=lambda case: case.case_id)
 @pytest.mark.parametrize("seed", TEST_SEEDS)
-@pytest.mark.parametrize("image", IMAGES)
-def test_augmentations_serialization(augmentation_cls, params, p, seed, image):
-    mask = image.copy()
+def test_transform_case_dict_serialization(case: TransformContractCase, seed: int) -> None:
+    original = _make_case_pipeline(case, seed)
+    restored = A.from_dict(A.to_dict(original))
 
-    aug = augmentation_cls(p=p, **params)
-    aug.random_generator = np.random.default_rng(seed)
-
-    serialized_aug = A.to_dict(aug)
-    deserialized_aug = A.from_dict(serialized_aug)
-
-    deserialized_aug.random_generator = np.random.default_rng(seed)
-
-    data = {"image": image, "mask": mask}
-
-    if augmentation_cls == A.FDA:
-        data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.HistogramMatching:
-        data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.PixelDistributionAdaptation:
-        data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.Mosaic:
-        data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
-    elif augmentation_cls == A.CopyAndPaste:
-        data["copy_paste_metadata"] = []
-
-    aug_data = aug(**data)
-    deserialized_aug_data = deserialized_aug(**data)
-
-    np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
-    np.testing.assert_array_equal(aug_data["mask"], deserialized_aug_data["mask"])
+    assert isinstance(restored, A.Compose)
+    _assert_case_roundtrip(case, original, restored, seed)
 
 
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    check_all_augs_exists(AUGMENTATION_CLS_PARAMS, AUGMENTATION_CLS_EXCEPT),
-)
-@pytest.mark.parametrize("p", [0.5])
-@pytest.mark.parametrize("seed", TEST_SEEDS)
-@pytest.mark.parametrize("image", UINT8_IMAGES)
-def test_augmentations_serialization_with_custom_parameters(
-    augmentation_cls,
-    params,
-    p,
-    seed,
-    image,
-):
-    mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
-    aug = augmentation_cls(p=p, **params)
-    aug.set_random_seed(seed)
-    # Automatically detect Transform3D descendants
-    is_transform3d = issubclass(augmentation_cls, Transform3D)
-
-    serialized_aug = A.to_dict(aug)
-    deserialized_aug = A.from_dict(serialized_aug)
-    deserialized_aug.set_random_seed(seed)
-
-    data = {
-        "image": image,
-        "mask": mask,
-    }
-    if augmentation_cls == A.OverlayElements:
-        data["overlay_metadata"] = []
-    elif augmentation_cls == A.RandomCropNearBBox:
-        data["cropping_bbox"] = [10, 20, 40, 50]
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {"text": "Test", "bbox": (0.1, 0.1, 0.9, 0.2)}
-    elif is_transform3d:
-        data["volume"] = np.array([image] * 10)
-        data["mask"] = np.array([mask] * 10)
-    elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop}:
-        data["bboxes"] = np.array([[10, 20, 40, 50]])
-    elif augmentation_cls == A.FDA:
-        data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.HistogramMatching:
-        data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.PixelDistributionAdaptation:
-        data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.Mosaic:
-        data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
-    elif augmentation_cls == A.CopyAndPaste:
-        data["copy_paste_metadata"] = []
-
-    aug_data = aug(**data)
-    deserialized_aug_data = deserialized_aug(**data)
-
-    if not is_transform3d:
-        np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
-        np.testing.assert_array_equal(aug_data["mask"], deserialized_aug_data["mask"])
-    else:
-        np.testing.assert_array_equal(aug_data["volume"], deserialized_aug_data["volume"])
-        np.testing.assert_array_equal(aug_data["mask"], deserialized_aug_data["mask"])
-
-
-@pytest.mark.parametrize("image", UINT8_IMAGES)
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    [
-        (cls, param_set)
-        for cls, params_list in check_all_augs_exists(AUGMENTATION_CLS_PARAMS, AUGMENTATION_CLS_EXCEPT)
-        for param_set in (params_list if isinstance(params_list, list) else [params_list])
-    ],
-)
-@pytest.mark.parametrize("p", [0.5])
+@pytest.mark.parametrize("case", TRANSFORM_CONTRACT_CASES, ids=lambda case: case.case_id)
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 @pytest.mark.parametrize("data_format", ("yaml", "json"))
-def test_augmentations_serialization_to_file_with_custom_parameters(
-    augmentation_cls,
-    params,
-    p,
-    seed,
-    image,
-    data_format,
-):
-    # Automatically detect Transform3D descendants
-    is_transform3d = issubclass(augmentation_cls, Transform3D)
-    mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
+def test_transform_case_file_serialization(
+    case: TransformContractCase,
+    seed: int,
+    data_format: str,
+) -> None:
+    buffer = StringIO()
+    original = _make_case_pipeline(case, seed)
+    A.save(original, buffer, data_format=data_format)
+    buffer.seek(0)
+    restored = A.load(buffer, data_format=data_format)
 
-    # Create in-memory file objects
-    yaml_buffer = StringIO()
-    json_buffer = StringIO()
+    assert isinstance(restored, A.Compose)
+    _assert_case_roundtrip(case, original, restored, seed)
 
-    aug = augmentation_cls(p=p, **params)
-    aug.set_random_seed(seed)
 
-    # Save to in-memory buffer
-    if data_format == "yaml":
-        A.save(aug, yaml_buffer, data_format=data_format)
-        yaml_buffer.seek(0)
-        deserialized_aug = A.load(yaml_buffer, data_format=data_format)
-    else:
-        A.save(aug, json_buffer, data_format=data_format)
-        json_buffer.seek(0)
-        deserialized_aug = A.load(json_buffer, data_format=data_format)
-
-    deserialized_aug.set_random_seed(seed)
-
-    data = {
-        "image": image,
-        "mask": mask,
+_DUAL_SERIALIZATION_CASES = tuple(
+    case
+    for case in PRIMARY_TRANSFORM_CONTRACT_CASES
+    if issubclass(case.transform_cls, A.DualTransform)
+    and not issubclass(case.transform_cls, A.Transform3D)
+    and case.transform_cls
+    not in {
+        A.CoarseDropout,
+        A.CropNonEmptyMaskIfExists,
+        A.OverlayElements,
+        A.TextImage,
+        A.Mosaic,
+        A.CopyAndPaste,
     }
-
-    if augmentation_cls == A.OverlayElements:
-        data["overlay_metadata"] = []
-    elif augmentation_cls == A.RandomCropNearBBox:
-        data["cropping_bbox"] = [10, 20, 40, 50]
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {"text": "Test", "bbox": (0.1, 0.1, 0.9, 0.2)}
-    elif is_transform3d:
-        data = {"volume": np.array([image] * 10), "mask3d": np.array([mask] * 10)}
-    elif augmentation_cls in {A.RandomCropNearBBox, A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop}:
-        data["bboxes"] = np.array([[10, 20, 40, 50]])
-    elif augmentation_cls == A.FDA:
-        data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.HistogramMatching:
-        data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.PixelDistributionAdaptation:
-        data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.Mosaic:
-        data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
-    elif augmentation_cls == A.CopyAndPaste:
-        data["copy_paste_metadata"] = []
-
-    aug_data = aug(**data)
-    deserialized_aug_data = deserialized_aug(**data)
-
-    if not is_transform3d:
-        np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
-        np.testing.assert_array_equal(aug_data["mask"], deserialized_aug_data["mask"])
-    else:
-        np.testing.assert_array_equal(aug_data["volume"], deserialized_aug_data["volume"])
-        np.testing.assert_array_equal(aug_data["mask3d"], deserialized_aug_data["mask3d"])
-
-
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_dual_transforms(
-        custom_arguments={},
-        except_augmentations={
-            A.Lambda,
-            A.CoarseDropout,
-            A.CropNonEmptyMaskIfExists,
-            A.OverlayElements,
-            A.TextImage,
-            A.Mosaic,
-            A.CopyAndPaste,
-        },
-    ),
 )
+
+
+@pytest.mark.parametrize("case", _DUAL_SERIALIZATION_CASES, ids=lambda case: case.case_id)
 @pytest.mark.parametrize("p", [0.5, 1])
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 def test_augmentations_for_bboxes_serialization(
-    augmentation_cls,
-    params,
+    case: TransformContractCase,
     p,
     seed,
     albumentations_bboxes,
 ):
+    augmentation_cls = case.transform_cls
     image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
-    aug = A.Compose([augmentation_cls(p=p, **params)], bbox_params={"coord_format": "pascal_voc"})
+    transform = augmentation_cls(p=p, **copy.deepcopy(dict(case.init_kwargs)))
+    aug = A.Compose(
+        [transform],
+        bbox_params={"coord_format": "pascal_voc"},
+    )
     aug.set_random_seed(seed)
-    data = {"image": image, "bboxes": albumentations_bboxes}
-    if augmentation_cls == A.MaskDropout:
-        mask = np.zeros_like(image)[:, :, 0]
-        mask[:20, :20] = 1
-        data["mask"] = mask
-    elif augmentation_cls == A.RandomCropNearBBox:
-        data["cropping_bbox"] = [12, 77, 177, 231]
+    data = case.data_factory(np.random.default_rng(seed))
+    data.update(image=image, bboxes=albumentations_bboxes)
+    data.pop("bbox_labels", None)
+    if "mask" in data:
+        data["mask"] = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
+        data["mask"][:20, :20] = 1
 
     serialized_aug = A.to_dict(aug)
     deserialized_aug = A.from_dict(serialized_aug)
@@ -267,41 +144,36 @@ def test_augmentations_for_bboxes_serialization(
     np.testing.assert_array_equal(aug_data["bboxes"], deserialized_aug_data["bboxes"])
 
 
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_dual_transforms(
-        custom_arguments={},
-        except_augmentations={
-            A.Lambda,
-            A.CropNonEmptyMaskIfExists,
-            A.RandomSizedBBoxSafeCrop,
-            A.BBoxSafeRandomCrop,
-            A.OverlayElements,
-            A.TextImage,
-            A.Mosaic,
-            A.CopyAndPaste,
-        },
-    ),
+_KEYPOINT_SERIALIZATION_CASES = tuple(
+    case
+    for case in _DUAL_SERIALIZATION_CASES
+    if case.transform_cls
+    not in {
+        A.CropNonEmptyMaskIfExists,
+        A.RandomSizedBBoxSafeCrop,
+        A.BBoxSafeRandomCrop,
+    }
 )
+
+
+@pytest.mark.parametrize("case", _KEYPOINT_SERIALIZATION_CASES, ids=lambda case: case.case_id)
 @pytest.mark.parametrize("p", [0.5])
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 def test_augmentations_for_keypoints_serialization(
-    augmentation_cls,
-    params,
+    case: TransformContractCase,
     p,
     seed,
     keypoints,
 ):
+    augmentation_cls = case.transform_cls
     image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
-    aug = augmentation_cls(p=p, **params)
+    aug = augmentation_cls(p=p, **copy.deepcopy(dict(case.init_kwargs)))
     aug.set_random_seed(seed)
-    data = {"image": image, "keypoints": keypoints}
-    if augmentation_cls == A.MaskDropout:
-        mask = np.zeros((image.shape[0], image.shape[1], 1))
-        mask[:20, :20] = 1
-        data["mask"] = mask
-    elif augmentation_cls == A.RandomCropNearBBox:
-        data["cropping_bbox"] = [12, 77, 177, 231]
+    data = case.data_factory(np.random.default_rng(seed))
+    data.update(image=image, keypoints=keypoints)
+    if "mask" in data:
+        data["mask"] = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
+        data["mask"][:20, :20] = 1
 
     serialized_aug = A.to_dict(aug)
     deserialized_aug = A.from_dict(serialized_aug)
@@ -313,50 +185,6 @@ def test_augmentations_for_keypoints_serialization(
         aug_data["keypoints"],
         deserialized_aug_data["keypoints"],
     )
-
-
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params", "call_params"],
-    [
-        [
-            A.RandomCropNearBBox,
-            {"max_part_shift": (0.15, 0.15)},
-            {"cropping_bbox": [-59, 77, 177, 231]},
-        ],
-    ],
-)
-@pytest.mark.parametrize("p", [0.5])
-@pytest.mark.parametrize("seed", TEST_SEEDS)
-@pytest.mark.parametrize("image", IMAGES)
-def test_augmentations_serialization_with_call_params(
-    augmentation_cls,
-    params,
-    call_params,
-    p,
-    seed,
-    image,
-):
-    aug = augmentation_cls(p=p, **params)
-    aug.set_random_seed(seed)
-    data = {"image": image, **call_params}
-    serialized_aug = A.to_dict(aug)
-    deserialized_aug = A.from_dict(serialized_aug)
-    deserialized_aug.set_random_seed(seed)
-
-    aug_data = aug(**data)
-    deserialized_aug_data = deserialized_aug(**data)
-
-    np.testing.assert_array_equal(aug_data["image"], deserialized_aug_data["image"])
-
-
-@pytest.mark.parametrize("image", FLOAT32_IMAGES)
-def test_from_float_serialization(image):
-    aug = A.FromFloat(p=1, dtype="uint8")
-    serialized_aug = A.to_dict(aug)
-    deserialized_aug = A.from_dict(serialized_aug)
-    aug_data = aug(image=image)
-    deserialized_aug_data = deserialized_aug(image=image)
-    assert np.array_equal(aug_data["image"], deserialized_aug_data["image"])
 
 
 @pytest.mark.parametrize("seed", TEST_SEEDS)
@@ -549,46 +377,34 @@ def test_transform_pipeline_serialization_with_keypoints(
     )
 
 
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_image_only_transforms(
-        except_augmentations={
-            A.TextImage,
-        },
-    ),
+_IMAGE_ONLY_SERIALIZATION_CASES = tuple(
+    case
+    for case in PRIMARY_TRANSFORM_CONTRACT_CASES
+    if issubclass(case.transform_cls, A.ImageOnlyTransform) and case.transform_cls is not A.TextImage
 )
+
+
+@pytest.mark.parametrize("case", _IMAGE_ONLY_SERIALIZATION_CASES, ids=lambda case: case.case_id)
 @pytest.mark.parametrize("seed", TEST_SEEDS)
 def test_additional_targets_for_image_only_serialization(
-    augmentation_cls,
-    params,
+    case: TransformContractCase,
     seed,
 ):
-    image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
+    augmentation_cls = case.transform_cls
+    data = case.data_factory(np.random.default_rng(seed))
+    image = data["image"]
     aug = A.Compose(
-        [augmentation_cls(p=1.0, **params)],
+        [augmentation_cls(p=1.0, **copy.deepcopy(dict(case.init_kwargs)))],
         additional_targets={"image2": "image"},
         seed=seed,
         strict=True,
     )
 
-    image2 = image.copy()
+    data["image2"] = image.copy()
 
     serialized_aug = A.to_dict(aug)
     deserialized_aug = A.from_dict(serialized_aug)
     deserialized_aug.set_random_seed(seed)
-
-    data = {"image": image, "image2": image2}
-
-    if augmentation_cls == A.FDA:
-        data["fda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.HistogramMatching:
-        data["hm_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.PixelDistributionAdaptation:
-        data["pda_metadata"] = [np.random.randint(0, 256, image.shape, dtype=np.uint8)]
-    elif augmentation_cls == A.Mosaic:
-        data["mosaic_metadata"] = [{"image": np.random.randint(0, 256, image.shape, dtype=np.uint8)}]
-    elif augmentation_cls == A.CopyAndPaste:
-        data["copy_paste_metadata"] = []
 
     aug_data = aug(**data)
     deserialized_aug_data = deserialized_aug(**data)
@@ -795,72 +611,19 @@ def test_shorten_class_name(class_fullname, expected_short_class_name):
     assert shorten_class_name(class_fullname) == expected_short_class_name
 
 
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_transforms(
-        custom_arguments={},
-        except_augmentations={
-            A.Lambda,
-        },
-    ),
-)
-def test_augmentations_serialization(
-    augmentation_cls: A.BasicTransform,
-    params: dict[str, Any],
-) -> None:
-    instance = augmentation_cls(**params)
+@pytest.mark.parametrize("case", TRANSFORM_CONTRACT_CASES, ids=lambda case: case.case_id)
+def test_serialized_fields_match_public_constructor(case: TransformContractCase) -> None:
+    instance = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)))
+    signature = inspect.signature(case.transform_cls.__init__)
+    public_fields = {
+        name
+        for name, parameter in signature.parameters.items()
+        if name not in {"self", "strict"}
+        and parameter.kind in {parameter.POSITIONAL_OR_KEYWORD, parameter.KEYWORD_ONLY}
+    }
+    serialized_fields = set(instance.to_dict()["transform"]) - {"__class_fullname__"}
 
-    # Get expected args by examining the instance's class and its parents
-    import inspect
-
-    def get_all_constructor_params(cls) -> set[str]:
-        fields = set()
-        for parent_cls in cls.__mro__:
-            if parent_cls.__init__ is not object.__init__:
-                try:
-                    sig = inspect.signature(parent_cls.__init__)
-                    for param_name, param in sig.parameters.items():
-                        if param.kind in {param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY}:
-                            fields.add(param_name)
-                except (ValueError, TypeError):
-                    continue
-        return fields - {"self", "strict"}
-
-    # Get fields from InitSchema hierarchy or constructor signatures
-    def get_all_init_schema_fields(model_cls: A.BasicTransform) -> set[str]:
-        if not hasattr(model_cls, "InitSchema"):
-            return get_all_constructor_params(model_cls)
-
-        fields = set()
-        # Add fields from this class's InitSchema
-        for field_name in model_cls.InitSchema.model_fields:
-            fields.add(field_name)
-
-        # Also consider parent classes' InitSchema fields
-        for parent_cls in model_cls.__mro__[1:]:  # Skip the class itself
-            if hasattr(parent_cls, "InitSchema"):
-                for field_name in parent_cls.InitSchema.model_fields:
-                    fields.add(field_name)
-
-        return fields
-
-    # Get parameters either from InitSchema or from constructor signatures
-    model_fields = get_all_init_schema_fields(augmentation_cls)
-    # Also get constructor params to handle classes like SafeRotate with Affine parent
-    constructor_params = get_all_constructor_params(augmentation_cls)
-    # Combine both sources of parameters
-    expected_args = (model_fields | constructor_params) - {"__class_fullname__"}
-
-    # Get reported args from serialization
-    achieved_args = set(instance.to_dict()["transform"].keys())
-    reported_args = achieved_args - {"__class_fullname__"}
-
-    # Check if the reported arguments are a subset of the expected arguments
-    assert reported_args.issubset(
-        expected_args | {"p"},  # Always allow p
-    ), (
-        f"Mismatch in {augmentation_cls.__name__}: Serialized fields {reported_args} not a subset of expected fields {expected_args}"
-    )
+    assert serialized_fields <= public_fields | {"p"}
 
 
 def test_serialization_excludes_strict() -> None:

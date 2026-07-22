@@ -220,9 +220,12 @@ class AnnotationArtifacts(ImageOnlyTransform):
         image_height: int,
         image_width: int,
     ) -> dict[str, Any]:
+        def bounds(values: list[Any]) -> tuple[Any, Any] | None:
+            flattened = [item for value in values for item in (value if isinstance(value, tuple) else (value,))]
+            return (min(flattened), max(flattened)) if flattened else None
+
         min_dimension = min(image_height, image_width)
-        return {
-            "count_range": len(artifacts),
+        sampled_values = {
             "text_length_range": [len(artifact["text"]) for artifact in artifacts if artifact["type"] == "text"],
             "font_scale_range": [artifact["font_scale"] for artifact in artifacts if artifact["type"] == "text"],
             "thickness_range": [artifact["thickness"] for artifact in artifacts if "thickness" in artifact],
@@ -245,6 +248,13 @@ class AnnotationArtifacts(ImageOnlyTransform):
             ],
             "tip_length_range": [artifact["tip_length"] for artifact in artifacts if artifact["type"] == "arrow"],
         }
+        result: dict[str, Any] = {"count_range": len(artifacts)}
+        result.update(
+            (name, sampled_bounds)
+            for name, values in sampled_values.items()
+            if (sampled_bounds := bounds(values)) is not None
+        )
+        return result
 
     def _generate_artifacts(self, image_height: int, image_width: int) -> list[dict[str, Any]]:
         if image_height <= 1 or image_width <= 1:

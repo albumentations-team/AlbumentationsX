@@ -983,7 +983,7 @@ class RandomSunFlare(ImageOnlyTransform):
             )
 
         self.applied_config = {
-            "angle_range": angle,
+            "angle_range": angle / (2 * math.pi),
             "num_flare_circles_range": num_circles,
             "src_radius": self.src_radius,
             "src_color": self.src_color,
@@ -1165,7 +1165,7 @@ class RandomShadow(ImageOnlyTransform):
             "num_shadows_range": num_shadows,
             "shadow_dimension": self.shadow_dimension,
             "shadow_roi": self.shadow_roi,
-            "shadow_intensity_range": intensities.tolist(),
+            "shadow_intensity_range": (float(intensities.min()), float(intensities.max())),
         }
 
         return {"vertices_list": vertices_list, "intensities": intensities}

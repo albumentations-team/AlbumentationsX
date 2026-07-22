@@ -125,6 +125,7 @@ ci-quality = [
     { name = "packaging" },
     { name = "pillow" },
     { name = "pre-commit" },
+    { name = "pytest" },
     { name = "ruff" },
     { name = "tomli" },
 ]
@@ -285,6 +286,7 @@ ci-quality = [
     { name = "packaging", specifier = ">=25.0" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pre-commit", specifier = ">=4.6.0" },
+    { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.15.21" },
     { name = "tomli", specifier = ">=2.4.1" },
 ]

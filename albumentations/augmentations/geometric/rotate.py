@@ -11,6 +11,8 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 from albucore import warp_affine
+from pydantic import model_validator
+from typing_extensions import Self
 
 from albumentations.augmentations.crops import functional as fcrops
 from albumentations.augmentations.geometric.transforms import Affine
@@ -53,6 +55,9 @@ class RandomRotate90(DualTransform):
     - With p=0.8: Each rotation angle has 0.2 probability, and no transform has 0.2 probability
     - With p=0.5: Each rotation angle has 0.125 probability, and no transform has 0.5 probability
 
+    When `group_elements` is specified, the transform samples uniformly from that subset. Excluding `"e"` prevents an
+    identity rotation when the transform is applied.
+
     Common applications:
     - Aerial/satellite imagery: Objects can appear in any orientation
     - Medical imaging: Scans/slides may not have a consistent orientation
@@ -89,6 +94,9 @@ class RandomRotate90(DualTransform):
         group_element (Literal['e', 'r90', 'r180', 'r270'] | None): If set, always apply this
             C4 group element: "e"=identity, "r90"=90°, "r180"=180°, "r270"=270° counterclockwise.
             Use for TTA. Default: None (random choice).
+        group_elements (tuple[Literal["e", "r90", "r180", "r270"], ...] | None): If set, sample uniformly
+            from this non-empty subset of C4 group elements. The values must be unique. Mutually exclusive with
+            `group_element`. Default: None.
 
     Targets:
         image, mask, bboxes, keypoints, volume, mask3d
@@ -147,14 +155,27 @@ class RandomRotate90(DualTransform):
 
     class InitSchema(BaseTransformInitSchema):
         group_element: Literal["e", "r90", "r180", "r270"] | None
+        group_elements: tuple[Literal["e", "r90", "r180", "r270"], ...] | None
+
+        @model_validator(mode="after")
+        def _validate_group_configuration(self) -> Self:
+            if self.group_element is not None and self.group_elements is not None:
+                raise ValueError("group_element and group_elements are mutually exclusive")
+            if self.group_elements is not None and not self.group_elements:
+                raise ValueError("group_elements must be non-empty")
+            if self.group_elements is not None and len(self.group_elements) != len(set(self.group_elements)):
+                raise ValueError("group_elements must contain unique elements")
+            return self
 
     def __init__(
         self,
         p: float = 1,
         group_element: Literal["e", "r90", "r180", "r270"] | None = None,
+        group_elements: tuple[Literal["e", "r90", "r180", "r270"], ...] | None = None,
     ):
         super().__init__(p=p)
         self.group_element = group_element
+        self.group_elements = group_elements
 
     def apply(
         self,
@@ -167,9 +188,11 @@ class RandomRotate90(DualTransform):
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270"]]:
         if self.group_element is not None:
             group_element = self.group_element
+        elif self.group_elements is not None:
+            group_element = self.random_generator.choice(self.group_elements)
         else:
             group_element = self.random_generator.choice(c4_group_elements)
-        self.applied_config = {"group_element": group_element}
+        self.applied_config = {"group_element": str(group_element), "group_elements": None}
         return {"group_element": group_element}
 
     def apply_to_bboxes(

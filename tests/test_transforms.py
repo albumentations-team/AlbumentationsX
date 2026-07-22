@@ -1,5 +1,6 @@
 import copy
 import random
+from collections import Counter
 from functools import partial
 from typing import Any
 
@@ -19,8 +20,8 @@ from tests.conftest import (
     SQUARE_MULTI_UINT8_IMAGE,
     SQUARE_UINT8_IMAGE,
 )
+from tests.helpers import TransformTestHelper
 
-from .aug_definitions import transforms2metadata_key
 from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms
 
 
@@ -1391,8 +1392,10 @@ def test_change_image(augmentation_cls, params, image):
         ]
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [np.random.randint(0, 255, image.shape, dtype=image.dtype)]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [
+            np.random.randint(0, 255, image.shape, dtype=image.dtype),
+        ]
 
     transformed = aug(**data)
 
@@ -1873,8 +1876,8 @@ def test_return_nonzero(augmentation_cls, params):
         ]
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
     result = aug(**data)
 
@@ -2168,6 +2171,38 @@ def test_random_rotate90_tta_deterministic(group_element):
     results = [transform(image=image)["image"] for _ in range(3)]
     np.testing.assert_array_equal(results[0], results[1])
     np.testing.assert_array_equal(results[1], results[2])
+
+
+@pytest.mark.parametrize("seed", [0, 1, 137, 999])
+def test_random_rotate90_full_subset_preserves_default_sampling(seed: int) -> None:
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
+    default = A.Compose([A.RandomRotate90(p=1.0)], save_applied_params=True, seed=seed)
+    explicit = A.Compose(
+        [A.RandomRotate90(group_elements=("e", "r90", "r180", "r270"), p=1.0)],
+        save_applied_params=True,
+        seed=seed,
+    )
+
+    default_result = default(image=image.copy())
+    explicit_result = explicit(image=image.copy())
+
+    np.testing.assert_array_equal(explicit_result["image"], default_result["image"])
+    assert explicit_result["applied_transforms"] == default_result["applied_transforms"]
+
+
+def test_random_rotate90_subset_sampling_is_uniform() -> None:
+    pipeline = A.Compose(
+        [A.RandomRotate90(group_elements=("r90", "r270"), p=1.0)],
+        save_applied_params=True,
+        seed=137,
+    )
+    image = np.zeros((3, 5, 1), dtype=np.uint8)
+
+    samples = [pipeline(image=image)["applied_transforms"][0][1]["group_element"] for _ in range(1_000)]
+    counts = Counter(samples)
+
+    assert counts.keys() == {"r90", "r270"}
+    np.testing.assert_allclose([counts["r90"], counts["r270"]], [500, 500], rtol=0.12)
 
 
 @pytest.mark.parametrize("group_element", ["e", "r90", "h", "t"])

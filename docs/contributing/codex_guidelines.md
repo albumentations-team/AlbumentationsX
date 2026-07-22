@@ -15,6 +15,7 @@
 > - `docs/design/dithering.md` - Dithering transform design
 > - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 > - `docs/design/mosaic.md` - Mosaic transform technical specification
+> - `docs/design/applied-config-replay-contracts.md` - Applied configuration and replay contracts
 >
 > **Important**: Do NOT create summary documents like `.codex/rules/<topic>.md` for every fix.
 > These are only created for significant architectural changes or complex features that need design documentation.
@@ -182,6 +183,22 @@ def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> Image
 - Use `np.testing` functions instead of plain `assert`
 - **NEVER** create temporary test files - add permanent tests to test suite
 
+#### Transform contract registry
+
+`tests/helpers/transform_cases.py` is the only shared inventory of public transform configurations. When a transform or
+its constructor changes:
+
+- add or update a named `TransformContractCase`;
+- give every configurable public constructor parameter except `p` and `strict` a non-default case;
+- provide a deterministic data factory for masks, bboxes, keypoints, volumes, batches, or custom metadata;
+- do not add a parallel class/parameter list, adapter, broad skip, or exemption;
+- make realized `applied_config` fields constructor-valid after strict JSON transport;
+- clear stochastic policy fields when they conflict with a sampled field; and
+- use `ReplayProfile.EXACT` only when applied configuration resolves all relevant randomness.
+
+Run `uv run pytest -q tests/contracts` and the relevant constructor serialization tests. See
+`docs/design/applied-config-replay-contracts.md` for the five contract levels and production replay rules.
+
 #### Test Helper Utilities (tests/helpers/)
 
 Use the helper modules to simplify test code and ensure consistency:
@@ -222,7 +239,8 @@ Use the helper modules to simplify test code and ensure consistency:
 - **Use independent RNGs**: Avoid global `np.random.seed()` in tests - use `np.random.default_rng(seed)` instead
 - **Fixture independence**: Module-scoped fixtures should use `_make_rng()` helper from conftest
 - **No side effects**: Tests must not mutate shared parameters (use `safe_copy_params()` or `copy.deepcopy()`)
-- **Immutable params**: Test parameters from `get_*_transforms()` are wrapped in `FrozenParams` to prevent accidental mutation
+- **Immutable params**: Test parameters derived from `TRANSFORM_CONTRACT_CASES` are wrapped in `FrozenParams` to prevent
+  accidental mutation
   ```python
   from tests.utils import get_dual_transforms
   import copy

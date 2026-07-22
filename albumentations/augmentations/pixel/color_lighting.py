@@ -717,7 +717,10 @@ class Vignetting(ImageOnlyTransform):
         intensity = self.py_random.uniform(*self.intensity_range)
         center_x = self.py_random.uniform(*self.center_range)
         center_y = self.py_random.uniform(*self.center_range)
-        self.applied_config = {"intensity_range": intensity, "center_range": (center_x, center_y)}
+        self.applied_config = {
+            "intensity_range": intensity,
+            "center_range": (min(center_x, center_y), max(center_x, center_y)),
+        }
         return {
             "intensity": intensity,
             "center_x": center_x,

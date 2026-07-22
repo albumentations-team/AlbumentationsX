@@ -11,7 +11,7 @@ from pydantic import Field
 
 from albumentations.augmentations.dropout.xy_masking import XYMasking
 from albumentations.augmentations.geometric.flip import HorizontalFlip
-from albumentations.core.transforms_interface import BaseTransformInitSchema
+from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform
 from albumentations.core.type_definitions import ALL_TARGETS
 
 __all__ = [
@@ -76,6 +76,12 @@ class TimeReverse(HorizontalFlip):
             stacklevel=2,
         )
         super().__init__(p=p)
+
+    def get_applied_replay_class(self) -> type[BasicTransform]:
+        """Select HorizontalFlip as the canonical replay constructor because TimeReverse is a semantic spectrogram
+        alias with identical realized behavior.
+        """
+        return HorizontalFlip
 
 
 class TimeMasking(XYMasking):
@@ -153,6 +159,12 @@ class TimeMasking(XYMasking):
         )
         self.time_mask_param = time_mask_param
 
+    def get_applied_replay_class(self) -> type[BasicTransform]:
+        """Select XYMasking as the canonical replay constructor because TimeMasking emits resolved spatial masking
+        fields rather than its shortcut argument.
+        """
+        return XYMasking
+
 
 class FrequencyMasking(XYMasking):
     """Mask spectrogram in frequency domain. freq_mask_param sets max mask length; SpecAugment-style.
@@ -228,3 +240,9 @@ class FrequencyMasking(XYMasking):
             num_masks_y_range=(1, 1),
         )
         self.freq_mask_param = freq_mask_param
+
+    def get_applied_replay_class(self) -> type[BasicTransform]:
+        """Select XYMasking as the canonical replay constructor because FrequencyMasking emits resolved spatial
+        masking fields rather than its shortcut argument.
+        """
+        return XYMasking

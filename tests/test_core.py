@@ -1,4 +1,3 @@
-import copy
 import warnings
 from typing import Any
 from unittest import mock
@@ -30,7 +29,6 @@ from tests.conftest import (
 from tests.helpers import TransformTestHelper
 from tests.utils import get_dual_transforms, get_image_only_transforms
 
-from .aug_definitions import transforms2metadata_key
 from .utils import (
     get_2d_transforms,
     get_dual_transforms,
@@ -828,8 +826,8 @@ def test_non_contiguous_input_imageonly(augmentation_cls, params):
     data = {
         "image": image,
     }
-    if augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    if augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
     # pipeline gracefully handles non-contiguous inputs
     data = transform(**data)
@@ -1215,8 +1213,8 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
     elif augmentation_cls == A.CopyAndPaste:
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
         data["copy_paste_metadata"] = []
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
         aug = A.Compose([augmentation_cls(p=1, **params)], p=1, strict=True, seed=137)
     else:
         # standard args: image and mask
@@ -2835,127 +2833,9 @@ def test_user_data_additional_targets_transform_without_user_data_in_targets() -
 
 # ── applied_config tests ──────────────────────────────────────────────────────
 
-_ALL_2D_TRANSFORMS = get_dual_transforms() + get_image_only_transforms()
-
-_NEEDS_OVERLAY = {A.OverlayElements}
-_NEEDS_MOSAIC = {A.Mosaic}
-_NEEDS_DOMAIN_ADAPT = {A.HistogramMatching, A.FDA, A.PixelDistributionAdaptation}
-_NEEDS_TEXT = {A.TextImage}
-_NEEDS_BBOXES = {A.BBoxSafeRandomCrop, A.RandomSizedBBoxSafeCrop, A.RandomCropNearBBox, A.AtLeastOneBBoxRandomCrop}
-_NEEDS_NONEMPTY_MASK = {A.CropNonEmptyMaskIfExists, A.MaskDropout, A.ConstrainedCoarseDropout}
-
-_SKIP_APPLIED_CONFIG = (
-    _NEEDS_OVERLAY | _NEEDS_MOSAIC | _NEEDS_DOMAIN_ADAPT | _NEEDS_TEXT | _NEEDS_BBOXES | _NEEDS_NONEMPTY_MASK
-)
-
 
 def _make_test_image() -> np.ndarray:
     return np.random.default_rng(137).integers(0, 256, (100, 100, 3), dtype=np.uint8)
-
-
-@pytest.mark.parametrize(
-    ["aug_cls", "params"],
-    [(cls, p) for cls, p in _ALL_2D_TRANSFORMS if cls not in _SKIP_APPLIED_CONFIG],
-)
-def test_applied_config_keys_are_constructor_params(aug_cls, params):
-    """Every key in applied_config must be a valid constructor parameter name."""
-    image = _make_test_image()
-    aug = aug_cls(**copy.deepcopy(params))
-    data = TransformTestHelper.prepare_test_data(aug_cls, image)
-    aug(**data)
-
-    config = aug.applied_config
-    if not config:
-        return  # transform was skipped (p=0) or has no range params — fine
-
-    valid_keys = aug._get_valid_config_keys()
-    invalid = set(config) - valid_keys
-    assert not invalid, (
-        f"{aug_cls.__name__}.applied_config has invalid keys {invalid}. Valid keys: {sorted(valid_keys)}"
-    )
-
-
-@pytest.mark.parametrize(
-    ["aug_cls", "params"],
-    [(cls, p) for cls, p in _ALL_2D_TRANSFORMS if cls not in _SKIP_APPLIED_CONFIG],
-)
-def test_applied_config_contains_p(aug_cls, params):
-    """applied_config must always contain 'p' when the transform was applied."""
-    image = _make_test_image()
-    aug = aug_cls(**copy.deepcopy(params), p=1.0)
-    data = TransformTestHelper.prepare_test_data(aug_cls, image)
-    aug(**data)
-
-    assert "p" in aug.applied_config, (
-        f"{aug_cls.__name__}.applied_config missing 'p'. Got: {sorted(aug.applied_config)}"
-    )
-
-
-def _get_applied_config_overrides(aug: A.BasicTransform, data: dict[str, Any]) -> dict[str, Any]:
-    """Run the transform and capture the override dict written by get_params* before _build_applied_config
-    merges in constructor defaults. Returns the raw overrides dict (what the transform explicitly set).
-    """
-    captured: dict[str, Any] = {}
-    original_build = aug._build_applied_config
-
-    def capturing_build() -> None:
-        captured.update(aug.applied_config)
-        original_build()
-
-    aug._build_applied_config = capturing_build  # type: ignore[method-assign]
-    aug(**data)
-    return captured
-
-
-@pytest.mark.parametrize(
-    ["aug_cls", "params"],
-    [(cls, p) for cls, p in _ALL_2D_TRANSFORMS if cls not in _SKIP_APPLIED_CONFIG],
-)
-def test_applied_config_writes_overrides_for_range_params(aug_cls, params):
-    """Every constructor param ending in `_range` must be explicitly written to applied_config by
-    get_params / get_params_dependent_on_data — even if the recorded value happens to equal the
-    constructor range (e.g. per-pixel noise bounds, conditional sampling that didn't trigger).
-
-    Contract from BasicTransform.get_applied_config:
-        "Range params are overridden by concrete values sampled in get_params /
-         get_params_dependent_on_data."
-
-    Without this, applied_config silently echoes the constructor range, hiding whether the
-    transform actually sampled anything. Catches transforms where get_params forgot to record
-    sampled values, or wrappers (RGBShift, ShiftScaleRotate) that delegate to a parent class
-    using different key names.
-
-    Conditional sampling (e.g. PhotoMetricDistort's distort_p, Illumination's mode) is handled
-    by retrying with multiple seeds until the override is captured.
-    """
-    range_keys = [k for k in aug_cls._get_valid_config_keys() if k.endswith("_range")]
-    if not range_keys:
-        return
-
-    image = _make_test_image()
-    seen_overrides: set[str] = set()
-    constructor_param_values: dict[str, Any] = {}
-
-    for seed in range(20):
-        aug = aug_cls(**copy.deepcopy(params), p=1.0)
-        aug.set_random_seed(seed)
-        for key in range_keys:
-            constructor_param_values.setdefault(key, getattr(aug, key, None))
-        data = TransformTestHelper.prepare_test_data(aug_cls, image)
-        overrides = _get_applied_config_overrides(aug, data)
-        seen_overrides.update(overrides.keys())
-        # Early-exit once every range key with a non-None constructor value has been written —
-        # most transforms hit this on the first seed; only conditional samplers need retries.
-        expected = {key for key in range_keys if constructor_param_values.get(key) is not None}
-        if expected.issubset(seen_overrides):
-            break
-
-    missing = [key for key in range_keys if key not in seen_overrides and constructor_param_values.get(key) is not None]
-    assert not missing, (
-        f"{aug_cls.__name__}: applied_config never recorded range params {missing} across 20 seeds. "
-        f"get_params/get_params_dependent_on_data must write `self.applied_config[<range_param>] "
-        f"= <sampled_value>` so consumers can introspect what was actually applied."
-    )
 
 
 def test_applied_config_empty_when_skipped():
@@ -3060,158 +2940,6 @@ def test_applied_transforms_tracking_excludes_skipped():
     assert "Blur" not in names
     assert "HorizontalFlip" in names
     assert "RandomBrightnessContrast" in names
-
-
-# ── applied_config tests for special-data transforms ─────────────────────────
-
-
-def _assert_applied_config_valid(aug: A.BasicTransform) -> None:
-    """Check applied_config keys are valid constructor params and 'p' is present."""
-    config = aug.applied_config
-    assert config, f"{aug.__class__.__name__}.applied_config is empty after apply"
-    assert "p" in config, f"{aug.__class__.__name__}.applied_config missing 'p'"
-    valid_keys = aug._get_valid_config_keys()
-    invalid = set(config) - valid_keys
-    assert not invalid, f"{aug.__class__.__name__}.applied_config has invalid keys {invalid}"
-
-
-def test_applied_config_bbox_safe_crop():
-    image = _make_test_image()
-    mask = np.zeros((100, 100), dtype=np.uint8)
-    bboxes = [[0.1, 0.1, 0.5, 0.5]]
-    bbox_labels = [1]
-
-    aug = A.BBoxSafeRandomCrop(erosion_rate=0.0, p=1.0)
-    pipeline = A.Compose(
-        [aug],
-        bbox_params=A.BboxParams(coord_format="albumentations", label_fields=["bbox_labels"]),
-        save_applied_params=True,
-    )
-    pipeline(image=image, mask=mask, bboxes=bboxes, bbox_labels=bbox_labels)
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_random_sized_bbox_safe_crop():
-    image = _make_test_image()
-    mask = np.zeros((100, 100), dtype=np.uint8)
-    bboxes = [[0.1, 0.1, 0.5, 0.5]]
-    bbox_labels = [1]
-
-    aug = A.RandomSizedBBoxSafeCrop(height=80, width=80, erosion_rate=0.0, p=1.0)
-    pipeline = A.Compose(
-        [aug],
-        bbox_params=A.BboxParams(coord_format="albumentations", label_fields=["bbox_labels"]),
-        save_applied_params=True,
-    )
-    pipeline(image=image, mask=mask, bboxes=bboxes, bbox_labels=bbox_labels)
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_random_crop_near_bbox():
-    image = _make_test_image()
-    bboxes = [[0.2, 0.2, 0.6, 0.6]]
-    bbox_labels = [1]
-
-    aug = A.RandomCropNearBBox(max_part_shift=(0.1, 0.5), p=1.0)
-    pipeline = A.Compose(
-        [aug],
-        bbox_params=A.BboxParams(coord_format="albumentations", label_fields=["bbox_labels"]),
-        save_applied_params=True,
-    )
-    pipeline(image=image, bboxes=bboxes, bbox_labels=bbox_labels, cropping_bbox=[0, 0, 10, 10])
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_at_least_one_bbox_random_crop():
-    image = _make_test_image()
-    mask = np.zeros((100, 100), dtype=np.uint8)
-    bboxes = [[0.1, 0.1, 0.5, 0.5]]
-    bbox_labels = [1]
-
-    aug = A.AtLeastOneBBoxRandomCrop(height=80, width=80, p=1.0)
-    pipeline = A.Compose(
-        [aug],
-        bbox_params=A.BboxParams(coord_format="albumentations", label_fields=["bbox_labels"]),
-        save_applied_params=True,
-    )
-    pipeline(image=image, mask=mask, bboxes=bboxes, bbox_labels=bbox_labels)
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_crop_non_empty_mask_if_exists():
-    image = _make_test_image()
-    mask = np.zeros((100, 100), dtype=np.uint8)
-    mask[20:60, 20:60] = 1
-
-    aug = A.CropNonEmptyMaskIfExists(height=50, width=50, p=1.0)
-    aug(image=image, mask=mask)
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_mask_dropout():
-    image = _make_test_image()
-    # MaskDropout squeezes axis=2, so pass a (H, W, 1) mask with distinct labeled regions
-    mask = np.zeros((100, 100, 1), dtype=np.uint8)
-    mask[10:40, 10:40, 0] = 1
-    mask[60:90, 60:90, 0] = 1
-
-    aug = A.MaskDropout(max_objects_range=(1, 2), p=1.0)
-    aug(image=image, mask=mask)
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_constrained_coarse_dropout():
-    image = _make_test_image()
-    mask = np.zeros((100, 100), dtype=np.uint8)
-    mask[10:50, 10:50] = 1
-
-    # hole ranges are fractions of the object bounding box [0, 1]
-    aug = A.ConstrainedCoarseDropout(
-        num_holes_range=(1, 2),
-        hole_height_range=(0.1, 0.3),
-        hole_width_range=(0.1, 0.3),
-        p=1.0,
-    )
-    aug(image=image, mask=mask)
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_overlay_elements():
-    image = _make_test_image()
-    overlay = np.random.default_rng(42).integers(0, 256, (20, 20, 3), dtype=np.uint8)
-    overlay_mask = np.ones((20, 20), dtype=np.uint8)
-    metadata = [{"image": overlay, "mask": overlay_mask}]
-
-    aug = A.OverlayElements(p=1.0)
-    aug(image=image, overlay_metadata=metadata)
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_histogram_matching():
-    image = _make_test_image()
-    reference = np.random.default_rng(42).integers(0, 256, (100, 100, 3), dtype=np.uint8)
-
-    aug = A.HistogramMatching(blend_ratio=(0.5, 1.0), p=1.0)
-    aug(image=image, hm_metadata=[reference])
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_fda():
-    image = _make_test_image()
-    reference = np.random.default_rng(42).integers(0, 256, (100, 100, 3), dtype=np.uint8)
-
-    aug = A.FDA(beta_range=(0.05, 0.1), p=1.0)
-    aug(image=image, fda_metadata=[reference])
-    _assert_applied_config_valid(aug)
-
-
-def test_applied_config_pixel_distribution_adaptation():
-    image = _make_test_image()
-    reference = np.random.default_rng(42).integers(0, 256, (100, 100, 3), dtype=np.uint8)
-
-    aug = A.PixelDistributionAdaptation(blend_ratio=(0.5, 1.0), p=1.0)
-    aug(image=image, pda_metadata=[reference])
-    _assert_applied_config_valid(aug)
 
 
 # ── applied_config: range params must resolve to sampled scalars ─────────────

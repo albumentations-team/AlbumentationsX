@@ -524,7 +524,9 @@ This rule is enforced by a pre-commit hook that will flag any violations during 
 
 #### No `get_transform_init_args_names` Override
 
-**Do not override `get_transform_init_args_names()`.** The base class auto-infers init argument names by introspecting `__init__` signatures across the MRO. Overriding this method is unnecessary and can cause serialization mismatches.
+**Do not override `get_transform_init_args_names()`.** The base class reads the concrete transform's public `__init__`
+signature. Parent-only implementation fields are deliberately excluded because they are not part of the public
+serialization or applied-configuration boundary. Overriding this method can cause constructor mismatches.
 
 ### Batch Performance (`apply_to_images`)
 

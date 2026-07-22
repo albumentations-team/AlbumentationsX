@@ -15,7 +15,6 @@ from tests.conftest import (
 )
 from tests.helpers import TransformTestHelper
 
-from .aug_definitions import transforms2metadata_key
 from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms, set_seed
 
 
@@ -83,8 +82,8 @@ def test_image_only_augmentations(augmentation_cls, params):
                 "mask": mask,
             },
         ]
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
         data = aug(**data)
     else:
@@ -188,8 +187,8 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
                 "mask": mask,
             },
         ]
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
     aug(**data)
 
@@ -235,8 +234,8 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
                 "image": image_float32,
             },
         ]
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image_float32]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image_float32]
 
     aug(**data)
 
@@ -315,11 +314,11 @@ def test_augmentations_wont_change_shape_rgb(augmentation_cls, params):
                 },
             ],
         }
-    elif augmentation_cls in transforms2metadata_key:
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data = {
             "image": image_3ch,
             "mask": mask_3ch,
-            transforms2metadata_key[augmentation_cls]: [image_3ch],
+            TransformTestHelper.METADATA_KEYS[augmentation_cls]: [image_3ch],
         }
     else:
         data = {
@@ -431,8 +430,8 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
                 "image": image,
             },
         ]
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
     data = aug(**data)
     assert data["image"].dtype == np.uint8
@@ -504,8 +503,8 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
                 "image": image,
             },
         ]
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
     data = aug(**data)
 
@@ -583,8 +582,8 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
                 "image": image,
             },
         ]
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
     data = aug(**data)
 
@@ -662,8 +661,8 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
                 "image": image,
             },
         ]
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
     data = aug(**data)
 

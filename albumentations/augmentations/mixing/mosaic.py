@@ -294,8 +294,21 @@ class Mosaic(DualTransform):
             py_random=self.py_random,
         )
 
+        rows, cols = self.grid_yx
+        cell_height, cell_width = self.cell_shape
+        target_height, target_width = self.target_size
+        min_center_x = target_width // 2
+        min_center_y = target_height // 2
+        valid_width = cols * cell_width - target_width + 1
+        valid_height = rows * cell_height - target_height + 1
+        relative_center_x = (center_xy[0] - min_center_x) / max(valid_width, 1)
+        relative_center_y = (center_xy[1] - min_center_y) / max(valid_height, 1)
+
         self.applied_config = {
-            "center_range": center_xy,
+            "center_range": (
+                min(relative_center_x, relative_center_y),
+                max(relative_center_x, relative_center_y),
+            ),
         }
 
         return fmixing.calculate_cell_placements(

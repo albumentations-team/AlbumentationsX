@@ -912,6 +912,7 @@ class ShiftScaleRotate(Affine):
     """
 
     _targets = ALL_TARGETS
+    _applied_replay_class = Affine
 
     class InitSchema(BaseTransformInitSchema):
         shift_range: tuple[float, float]
@@ -1014,40 +1015,6 @@ class ShiftScaleRotate(Affine):
             "rotate_method": self.rotate_method,
             "mask_interpolation": self.mask_interpolation,
         }
-
-    def get_params_dependent_on_data(
-        self,
-        params: dict[str, Any],
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
-        result = super().get_params_dependent_on_data(params=params, data=data)
-
-        # Remap parent Affine's `rotate`/`scale` overrides to ShiftScaleRotate's constructor names
-        # so applied_config exposes the sampled scalars under valid keys (rotate_range, scale_range).
-        if "rotate" in self.applied_config:
-            self.applied_config["rotate_range"] = self.applied_config.pop("rotate")
-        if "scale" in self.applied_config:
-            scale = self.applied_config.pop("scale")
-            self.applied_config["scale_range"] = scale - 1.0 if isinstance(scale, (int, float)) else scale
-        # ShiftScaleRotate doesn't expose `shear` as a constructor param (always (0,0))
-        self.applied_config.pop("shear", None)
-        # Translate is exposed via shift_range_x/shift_range_y as fractions in [-1, 1], but
-        # parent Affine stores the sampled translation in pixel units. Convert back to fractions.
-        if "translate_percent" in self.applied_config:
-            translate = self.applied_config.pop("translate_percent")
-            if isinstance(translate, dict):
-                height, width = params["shape"][:2]
-                shift_x = translate.get("x")
-                shift_y = translate.get("y")
-                self.applied_config["shift_range_x"] = (
-                    shift_x / width if isinstance(shift_x, (int, float)) and width else shift_x
-                )
-                self.applied_config["shift_range_y"] = (
-                    shift_y / height if isinstance(shift_y, (int, float)) and height else shift_y
-                )
-        self.applied_config.pop("translate_px", None)
-
-        return result
 
 
 class GridElasticDeform(DualTransform):

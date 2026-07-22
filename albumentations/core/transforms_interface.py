@@ -106,6 +106,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BasicTransformInitSchema
     _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
+    _applied_replay_class: ClassVar[type["BasicTransform"] | None] = None
 
     def __init__(self, p: float = 0.5):
         self.p = p
@@ -272,38 +273,23 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return d
 
     def get_transform_init_args_names(self) -> tuple[str, ...]:
-        """Returns names of arguments that are used in __init__ method of the transform.
-        Introspects MRO; excludes self and strict.
-
-        This method introspects the entire Method Resolution Order (MRO) to gather the names
-        of parameters accepted by the __init__ methods of all parent classes,
-        to collect all possible parameters, excluding 'self' and 'strict'
-        which are handled separately.
+        """Inspect the transform constructor and return its serializable public argument names, keeping
+        inherited implementation details out of persisted configurations.
         """
         transform_cls = type(self)
         cache = transform_cls.__dict__.get("_transform_init_args_names_cache")
         if cache is not None:
             return cache
 
-        all_param_names = set()
-
-        for cls in self.__class__.__mro__:
-            # Skip the class if it's the base object or doesn't define __init__
-            if cls is object or "__init__" not in cls.__dict__:
-                continue
-
-            try:
-                # Access the class's __init__ method through __dict__ to avoid mypy errors
-                init_method = cls.__dict__["__init__"]
-                signature = inspect.signature(init_method)
-                for name, param in signature.parameters.items():
-                    if param.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}:
-                        all_param_names.add(name)
-            except (ValueError, TypeError):
-                continue
-
-        # Exclude 'self' and 'strict'
-        result = tuple(sorted(all_param_names - {"self", "strict"}))
+        signature = inspect.signature(transform_cls.__init__)
+        result = tuple(
+            sorted(
+                name
+                for name, parameter in signature.parameters.items()
+                if name not in {"self", "strict"}
+                and parameter.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+            ),
+        )
         type.__setattr__(transform_cls, "_transform_init_args_names_cache", result)
         return result
 
@@ -390,13 +376,25 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return self.params
 
     def get_applied_config(self) -> dict[str, Any]:
-        """Return the full applied_config from the last call, with all constructor params
-        and range params resolved to sampled scalar values. Lightweight and JSON-safe.
+        """Return the constructor-valid configuration captured by the latest successful application, for JSON
+        transport and public pipeline reconstruction.
 
-        Empty dict if the transform was not applied. Range params are overridden by concrete
-        values sampled in get_params / get_params_dependent_on_data.
+        The result is empty when the transform was not applied. Realized values written by
+        get_params or get_params_dependent_on_data replace their source constructor policy,
+        and aliases expose the fields of their canonical replay class. Values are JSON-safe.
         """
         return self.applied_config
+
+    def get_applied_replay_class(self) -> "type[BasicTransform]":
+        """Select the public constructor represented by this transform's applied record, allowing semantic aliases
+        to replay through canonical implementations.
+
+        Most transforms replay as their own class. Semantic aliases declare their canonical
+        implementation through `_applied_replay_class` so replay does not re-enter deprecated
+        constructors.
+        """
+        replay_cls = self._applied_replay_class
+        return type(self) if replay_cls is None else replay_cls
 
     @classmethod
     def _get_valid_config_keys(cls) -> frozenset[str]:
@@ -404,19 +402,13 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             "_valid_applied_config_keys_cache" not in cls.__dict__
             or cls.__dict__["_valid_applied_config_keys_cache"] is None
         ):
-            all_param_names: set[str] = set()
-            for klass in cls.__mro__:
-                if klass is object or "__init__" not in klass.__dict__:
-                    continue
-                try:
-                    init_method = klass.__dict__["__init__"]
-                    sig = inspect.signature(init_method)
-                    for name, param in sig.parameters.items():
-                        if param.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}:
-                            all_param_names.add(name)
-                except (ValueError, TypeError):
-                    continue
-            valid_keys = frozenset(all_param_names - {"self", "strict"})
+            signature = inspect.signature(cls.__init__)
+            valid_keys = frozenset(
+                name
+                for name, parameter in signature.parameters.items()
+                if name not in {"self", "strict"}
+                and parameter.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+            )
             cls._valid_applied_config_keys_cache = valid_keys
             return valid_keys
 
@@ -427,24 +419,24 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return cached_keys
 
     def _build_applied_config(self) -> None:
-        """Assemble the final applied_config by merging all constructor defaults with sampled overrides,
-        then validate the override keys.
+        """Merge constructor state with values realized by the latest application, then retain only fields accepted
+        by the selected replay class.
 
-        Starts with get_base_init_args() + get_transform_init_args() (all constructor params
-        with instance values, e.g. blur_range=(3,7), interpolation=1). Then overrides with
-        self.applied_config entries set by get_params/get_params_dependent_on_data (e.g.
-        blur_range=5 — the concrete sampled value).
-
-        Validates that all override keys are valid constructor param names.
+        Merge base and public transform state with realized overrides, validate against the
+        selected replay class, and discard fields that are not part of that class's public
+        constructor.
         """
         overrides = self.applied_config
+        replay_cls = self.get_applied_replay_class()
+        valid_keys = replay_cls._get_valid_config_keys()  # noqa: SLF001 - replay classes share this base contract.
 
         if overrides:
-            invalid = set(overrides) - self._get_valid_config_keys()
+            invalid = set(overrides) - valid_keys
             if invalid:
                 msg = (
                     f"{self.__class__.__name__}.applied_config has keys {invalid} "
-                    f"that are not constructor params. Valid keys: {sorted(self._get_valid_config_keys())}"
+                    f"that are not constructor params for {replay_cls.__name__}. "
+                    f"Valid keys: {sorted(valid_keys)}"
                 )
                 raise ValueError(msg)
 
@@ -452,7 +444,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         config.update(self.get_transform_init_args())
         config.update(overrides)
 
-        self.applied_config = config
+        self.applied_config = {key: value for key, value in config.items() if key in valid_keys}
 
     def inverse(self) -> "BasicTransform":
         """Return a new transform that is the mathematical inverse of this one. Useful for TTA to

@@ -97,7 +97,8 @@ class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
 ```
 
 ### Critical rules:
-- **NO `get_transform_init_args_names()` override** — the base class auto-infers init arg names from `__init__` via MRO introspection. Do not define this method.
+- **NO `get_transform_init_args_names()` override** — the base class reads the concrete transform's public `__init__`
+  signature. Do not expose parent-only implementation fields.
 - **NO "Random" prefix** in the class name
 - **Parameter ranges** use `_range` suffix: `brightness_range`, not `brightness_limit`
 - **`fill` not `fill_value`**, **`fill_mask` not `fill_mask_value`**
@@ -177,15 +178,27 @@ def test_my_transform(param_range, expected_...):
     np.testing.assert_...
 ```
 
-Also add it to the parametrized lists in `tests/utils.py`:
-- `get_dual_transforms()` if it's a `DualTransform`
-- `get_image_only_transforms()` if it's `ImageOnlyTransform`
+Register the transform in `tests/helpers/transform_cases.py`:
+
+- Add at least one named `TransformContractCase`.
+- Give every configurable public constructor parameter except `p` and `strict` a non-default case. A singleton `Literal`
+  equal to its default is non-configurable and needs no artificial mode.
+- Add distinct cases for mutually exclusive fields or behaviorally different modes.
+- Select or add a deterministic factory in `tests/helpers/contract_data.py` for masks, bboxes, keypoints, volumes,
+  batches, or custom metadata.
+- Use `ReplayProfile.EXACT` only when `applied_config` resolves all randomness required to reproduce every supplied
+  target; otherwise use `RUNNABLE`.
+- Do not add another class/parameter inventory, compatibility adapter, broad skip, or coverage exemption.
+
+If the transform samples constructor fields, write the realized values to `self.applied_config`. Clear any original
+policy field that becomes mutually exclusive with the realized value. If a convenience alias emits the canonical
+constructor's state, declare `_applied_replay_class`.
 
 Check edge cases: uint8, float32, single channel, multichannel.
 
 ## 7. Verify checklist
 
-- [ ] No `get_transform_init_args_names()` override (auto-inferred from `__init__`)
+- [ ] No `get_transform_init_args_names()` override (derived from the concrete public `__init__`)
 - [ ] No "Random" prefix in class name
 - [ ] `_range` suffix on range params
 - [ ] `fill` / `fill_mask` (not `fill_value` / `fill_mask_value`)
@@ -199,5 +212,9 @@ Check edge cases: uint8, float32, single channel, multichannel.
 - [ ] Examples section uses plural "Examples" (not "Example")
 - [ ] Exported in `albumentations/__init__.py`
 - [ ] Tests added (parametrized, seed=137, `np.testing` assertions)
+- [ ] Named cases added to `tests/helpers/transform_cases.py`
+- [ ] Every configurable public constructor parameter has a non-default case
+- [ ] Applied configuration passes `uv run pytest -q tests/contracts`
+- [ ] Constructor dict/JSON/YAML round trips pass in `tests/test_serialization.py`
 - [ ] Pre-commit passes: `pre-commit run --all-files`
 - [ ] Tests pass: `uv run pytest -m "not slow"`

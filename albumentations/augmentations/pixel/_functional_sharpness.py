@@ -222,12 +222,12 @@ def _distort_channel(
         m1type=cv2.CV_32FC1,
     )
     return remap(
-        channel,
+        channel[..., None],
         map_x,
         map_y,
         interpolation=interpolation,
         border_mode=cv2.BORDER_REPLICATE,
-    )
+    )[..., 0]
 
 
 PLANCKIAN_COEFFS: dict[str, dict[int, list[float]]] = {

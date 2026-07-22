@@ -1206,9 +1206,9 @@ class CoarseDropout3D(Transform3D):
 
         self.applied_config = {
             "num_holes_range": num_holes,
-            "hole_depth_range": (int(hole_depths.min()), int(hole_depths.max())),
-            "hole_height_range": (int(hole_heights.min()), int(hole_heights.max())),
-            "hole_width_range": (int(hole_widths.min()), int(hole_widths.max())),
+            "hole_depth_range": (float(hole_depths.min() / depth), float(hole_depths.max() / depth)),
+            "hole_height_range": (float(hole_heights.min() / height), float(hole_heights.max() / height)),
+            "hole_width_range": (float(hole_widths.min() / width), float(hole_widths.max() / width)),
         }
 
         return {"holes": holes}

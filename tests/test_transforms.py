@@ -19,8 +19,8 @@ from tests.conftest import (
     SQUARE_MULTI_UINT8_IMAGE,
     SQUARE_UINT8_IMAGE,
 )
+from tests.helpers import TransformTestHelper
 
-from .aug_definitions import transforms2metadata_key
 from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms
 
 
@@ -1391,8 +1391,10 @@ def test_change_image(augmentation_cls, params, image):
         ]
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [np.random.randint(0, 255, image.shape, dtype=image.dtype)]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [
+            np.random.randint(0, 255, image.shape, dtype=image.dtype),
+        ]
 
     transformed = aug(**data)
 
@@ -1873,8 +1875,8 @@ def test_return_nonzero(augmentation_cls, params):
         ]
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls in transforms2metadata_key:
-        data[transforms2metadata_key[augmentation_cls]] = [image]
+    elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
+        data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
     result = aug(**data)
 

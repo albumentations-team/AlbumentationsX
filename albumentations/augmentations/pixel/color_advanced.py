@@ -595,7 +595,13 @@ class PlanckianJitter(ImageOnlyTransform):
             self.temperature_range[1],
         )
 
-        self.applied_config = {"temperature_range": int(temperature)}
+        white_temperature = PLANKIAN_JITTER_CONST["WHITE_TEMP"]
+        self.applied_config = {
+            "temperature_range": (
+                min(int(temperature), white_temperature),
+                max(int(temperature), white_temperature),
+            ),
+        }
         return {"temperature": int(temperature)}
 
 
@@ -993,8 +999,8 @@ class HEStain(ImageOnlyTransform):
         shift_values = np.array([shift_h, shift_e])
 
         self.applied_config = {
-            "intensity_scale_range": (scale_h, scale_e),
-            "intensity_shift_range": (shift_h, shift_e),
+            "intensity_scale_range": (min(scale_h, scale_e), max(scale_h, scale_e)),
+            "intensity_shift_range": (min(shift_h, shift_e), max(shift_h, shift_e)),
         }
 
         return {

@@ -1255,7 +1255,7 @@ class AdvancedBlur(ImageOnlyTransform):
         @classmethod
         def _check_beta_range(cls, value: tuple[float, float]) -> tuple[float, float]:
             result = (value[0], value[1])
-            if not (result[0] < 1.0 < result[1]):
+            if not (result[0] <= 1.0 <= result[1]):
                 raise ValueError(f"Beta range should include 1.0, got {result}")
             return result
 
@@ -1315,7 +1315,7 @@ class AdvancedBlur(ImageOnlyTransform):
             "sigma_x_range": sigma_x,
             "sigma_y_range": sigma_y,
             "rotate_range": float(np.rad2deg(angle)),
-            "beta_range": beta,
+            "beta_range": (min(beta, 1.0), max(beta, 1.0)),
             # noise_range is the per-pixel kernel-noise distribution bounds; record the realized
             # (min, max) of the sampled matrix so applied_config reflects what was actually used.
             "noise_range": (float(noise_matrix.min()), float(noise_matrix.max())),

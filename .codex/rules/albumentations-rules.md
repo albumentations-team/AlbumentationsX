@@ -14,6 +14,12 @@ always_apply: true
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite
+- `tests/helpers/transform_cases.py` is the single shared transform-configuration registry. Add a named non-default
+  `TransformContractCase` for every new configurable public constructor parameter or behaviorally distinct mode; do not
+  add parallel inventories, adapters, broad skips, or coverage exemptions.
+- Applied configurations must survive strict JSON transport, public reconstruction through
+  `Compose.from_applied_transforms()`, and execution on fresh data. Clear constructor policy fields that conflict with
+  realized sampled fields. See `docs/design/applied-config-replay-contracts.md`.
 - Within `Compose`, images and volumes always have an explicit channel dimension:
   `(H, W, C)`, `(N, H, W, C)`, `(D, H, W, C)`, or `(N, D, H, W, C)`
 - Grayscale in Compose is `(H, W, 1)`, not `(H, W)`; do not add 2D grayscale compatibility branches to
@@ -53,3 +59,4 @@ See these documents for comprehensive guidelines:
 - `docs/design/dithering.md` - Dithering transform design
 - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 - `docs/design/mosaic.md` - Mosaic transform technical specification
+- `docs/design/applied-config-replay-contracts.md` - Applied configuration replay contract architecture

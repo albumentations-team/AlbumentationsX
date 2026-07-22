@@ -33,7 +33,8 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 - [ ] **No default values in `InitSchema`** (except Pydantic discriminator fields)
 - [ ] **No default values in `apply_*` method args** (other than `self`, `**params`)
 - [ ] All `InitSchema` fields use `Annotated[...]` validators where applicable
-- [ ] **No `get_transform_init_args_names()` override** — the base class auto-detects from `__init__` via MRO
+- [ ] **No `get_transform_init_args_names()` override** — the base class uses the concrete public `__init__` signature
+- [ ] Parent-only implementation fields do not leak into serialization or `applied_config`
 
 ## 4. Random Number Generation (🔴 Critical)
 
@@ -79,7 +80,13 @@ Flag any violations with a concrete speedup suggestion.
 
 ## 8. Test Coverage (🟡 Important)
 
-- [ ] Transform appears in `get_dual_transforms()` or `get_image_only_transforms()` in `tests/utils.py`
+- [ ] Transform has named cases in `tests/helpers/transform_cases.py`
+- [ ] Every configurable public constructor parameter except `p` and `strict` has a non-default case
+- [ ] Behaviorally distinct and mutually exclusive modes have separate cases
+- [ ] Special targets or metadata use a deterministic factory, not a generic-test class-name branch
+- [ ] Realized `applied_config` survives strict JSON, public reconstruction, and fresh-data execution
+- [ ] Conflicting stochastic-policy fields are cleared when sampled fields are emitted
+- [ ] Exact replay is asserted only when the applied configuration captures all relevant randomness
 - [ ] Tested with uint8 and float32
 - [ ] Tested with 1, 3, and N channels (if applicable)
 - [ ] Edge cases covered (empty bboxes, zero-area regions, etc.)

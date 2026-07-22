@@ -14,11 +14,12 @@ import types
 import warnings
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
-from typing import Any, ClassVar, Union, cast, get_args, get_origin
+from typing import Any, ClassVar, Union, cast
 
 import cv2
 import numpy as np
 from numpy.typing import NDArray
+from pydantic import PydanticSchemaGenerationError, PydanticUserError, TypeAdapter, ValidationError
 
 from .analytics.collectors import collect_pipeline_info, get_environment_info
 
@@ -63,62 +64,71 @@ __all__ = [
 
 NUM_ONEOF_TRANSFORMS = 2
 
-_RANGE_PARAMS_CACHE: dict[type, frozenset[str]] = {}
+_REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
 
 
-def _get_range_param_names(cls: type) -> frozenset[str]:
-    """Return constructor parameter names whose type annotation accepts a tuple range value
-    (e.g. tuple[int, int] | int). Results are cached per class for performance.
+def _get_replay_param_annotations(cls: type) -> dict[str, Any]:
+    """Inspect the selected replay constructor once and cache its annotated public parameters for transport-shape
+    normalization during reconstruction.
     """
-    if cls in _RANGE_PARAMS_CACHE:
-        return _RANGE_PARAMS_CACHE[cls]
+    if cls not in _REPLAY_PARAM_ANNOTATIONS_CACHE:
+        signature = inspect.signature(cls)
+        _REPLAY_PARAM_ANNOTATIONS_CACHE[cls] = {
+            name: parameter.annotation
+            for name, parameter in signature.parameters.items()
+            if name != "self" and parameter.annotation is not inspect.Parameter.empty
+        }
+    return _REPLAY_PARAM_ANNOTATIONS_CACHE[cls]
 
-    range_params: set[str] = set()
-    for klass in cls.__mro__:
-        if klass is object or "__init__" not in klass.__dict__:
-            continue
+
+def _normalize_replay_value(annotation: Any, value: Any) -> Any:
+    """Normalize one JSON-transported value into a constructor-valid shape without changing values that already
+    satisfy the public annotation.
+
+    Applied records intentionally store resolved scalars. JSON transport also changes tuples
+    to lists. The constructor may require a two-value tuple, a mapping of axis names to
+    tuples, or a pair of compound values. Try those lossless shapes in that order while
+    leaving values that already satisfy the annotation untouched.
+    """
+    try:
+        adapter = TypeAdapter(annotation)
+    except (PydanticSchemaGenerationError, PydanticUserError):
+        return value
+    try:
+        adapter.validate_python(value)
+    except ValidationError:
+        pass
+    except (PydanticSchemaGenerationError, PydanticUserError):
+        return value
+    else:
+        return value
+
+    candidates: list[Any] = []
+    if isinstance(value, dict):
+        candidates.append({key: (item, item) for key, item in value.items()})
+    if value is not None:
+        candidates.append((value, value))
+
+    for candidate in candidates:
         try:
-            sig = inspect.signature(klass.__dict__["__init__"])
-            for name, param in sig.parameters.items():
-                if name == "self" or param.annotation is inspect.Parameter.empty:
-                    continue
-                if _annotation_accepts_tuple(param.annotation):
-                    range_params.add(name)
-        except (ValueError, TypeError):
+            adapter.validate_python(candidate)
+        except ValidationError:
             continue
+        except (PydanticSchemaGenerationError, PydanticUserError):
+            return value
+        return candidate
+    return value
 
-    result = frozenset(range_params)
-    _RANGE_PARAMS_CACHE[cls] = result
-    return result
 
-
-def _annotation_accepts_tuple(annotation: Any) -> bool:
-    """Return True if the annotation includes tuple as an accepted type
-    (e.g. tuple[int,int]|int). Handles typing.Union, types.UnionType (X|Y), and str annotations.
+def _normalize_config_for_replay(cls: type, config: dict[str, Any]) -> dict[str, Any]:
+    """Normalize every transported configuration field against the replay constructor, restoring tuple and range
+    shapes lost across JSON.
     """
-    origin = get_origin(annotation)
-
-    if origin is tuple:
-        return True
-
-    if origin is Union or isinstance(annotation, types.UnionType):
-        return any(_annotation_accepts_tuple(arg) for arg in get_args(annotation))
-
-    return isinstance(annotation, str) and "tuple" in annotation.lower()
-
-
-def _wrap_scalars_for_replay(cls: type, config: dict[str, Any]) -> dict[str, Any]:
-    """Convert scalar values in config to (v,v) degenerate range tuples for params
-    that expect ranges (e.g. blur_range=5 becomes (5,5)) to skip symmetric expansion.
-    """
-    range_params = _get_range_param_names(cls)
-    result: dict[str, Any] = {}
-    for key, value in config.items():
-        if key in range_params and not isinstance(value, (tuple, list)):
-            result[key] = (value, value)
-        else:
-            result[key] = value
-    return result
+    annotations = _get_replay_param_annotations(cls)
+    return {
+        key: _normalize_replay_value(annotations[key], value) if key in annotations else value
+        for key, value in config.items()
+    }
 
 
 REPR_INDENT_STEP = 2
@@ -286,9 +296,9 @@ class BaseCompose(Serializable):
         """Append a (class_fullname, applied_config) tuple to applied_transforms when
         save_applied_params=True. Skipped transforms (empty applied_config) are not recorded.
         """
-        if "applied_transforms" in data and hasattr(transform, "applied_config") and transform.applied_config:
+        if "applied_transforms" in data and isinstance(transform, BasicTransform) and transform.applied_config:
             data["applied_transforms"].append(
-                (transform.get_class_fullname(), transform.applied_config.copy()),
+                (transform.get_applied_replay_class().get_class_fullname(), transform.applied_config.copy()),
             )
 
     def set_random_state(
@@ -1315,6 +1325,7 @@ class Compose(BaseCompose, HubMixin):
     @staticmethod
     def from_applied_transforms(
         applied_transforms: list[tuple[str, dict[str, Any]]],
+        **compose_kwargs: Any,
     ) -> "Compose":
         """Reconstruct a Compose pipeline from the applied_transforms list
         captured in a previous run; each entry is instantiated with p=1.0 for replay.
@@ -1328,6 +1339,8 @@ class Compose(BaseCompose, HubMixin):
         Args:
             applied_transforms (list[tuple[str, dict[str, Any]]]): List of (class_fullname, applied_config)
                 tuples as produced by Compose when save_applied_params=True.
+            **compose_kwargs (Any): Keyword arguments forwarded to the reconstructed `Compose`, such as
+                `bbox_params`, `keypoint_params`, or `additional_targets`. The pipeline probability is always 1.0.
 
         Returns:
             Compose: A pipeline with p=1.0 for all transforms and constructor params
@@ -1339,12 +1352,15 @@ class Compose(BaseCompose, HubMixin):
         for class_name, config in applied_transforms:
             cls = SERIALIZABLE_REGISTRY[class_name]
 
-            replay_config = _wrap_scalars_for_replay(cls, config)
+            replay_config = _normalize_config_for_replay(cls, config)
             replay_config["p"] = 1.0
 
             transforms.append(cls(**replay_config))
 
-        return Compose(transforms, p=1.0)
+        if "p" in compose_kwargs:
+            msg = "from_applied_transforms() fixes the reconstructed Compose probability at 1.0; do not pass p"
+            raise ValueError(msg)
+        return Compose(transforms, p=1.0, **compose_kwargs)
 
     def _check_worker_seed(self) -> None:
         """Backward-compatible alias for runtime worker RNG synchronization kept for private

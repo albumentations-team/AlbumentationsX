@@ -156,6 +156,8 @@ class XYMasking(BaseDropout):
             "num_masks_y_range": len(masks_y),
             "mask_x_length_range": self.mask_x_length_range,
             "mask_y_length_range": self.mask_y_length_range,
+            "fill": self.fill,
+            "fill_mask": self.fill_mask,
         }
 
         return {"holes": holes, "seed": int(self.random_generator.integers(0, 2**32 - 1))}

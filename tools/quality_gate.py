@@ -43,6 +43,7 @@ PYREFLY_CHECKS = (
     ),
 )
 CONTRACT_CHECKS = (
+    CommandSpec(("pytest", "-q", "tests/contracts")),
     CommandSpec(("python", "-m", "tools.ci_matrix", "check")),
     CommandSpec(("python", "-m", "tools.ci_shard", "check")),
     CommandSpec(("python", "-m", "tools.benchmark_coverage", "check")),

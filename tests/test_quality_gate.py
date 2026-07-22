@@ -20,6 +20,12 @@ def test_contracts_skip_checks_owned_by_parallel_jobs() -> None:
     assert dict(pre_commit.environment)["SKIP"] == "mypy,pyrefly-check,ruff,ruff-format"
 
 
+def test_contracts_run_applied_configuration_suite() -> None:
+    commands = {command.args for command in CHECK_GROUPS["contracts"]}
+
+    assert ("pytest", "-q", "tests/contracts") in commands
+
+
 def test_read_paths_keeps_existing_markdown_without_directory_escape(tmp_path: Path) -> None:
     markdown = Path("docs/maintaining/ci-policy.md")
     paths_file = tmp_path / "paths"

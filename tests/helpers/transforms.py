@@ -10,7 +10,6 @@ from typing import Any, ClassVar
 import numpy as np
 
 import albumentations as A
-from tests.aug_definitions import transforms2metadata_key
 
 
 class TransformTestHelper:
@@ -19,6 +18,14 @@ class TransformTestHelper:
     Centralizes all transform categorization to eliminate duplication
     of exception lists across test files.
     """
+
+    METADATA_KEYS: ClassVar[dict[type, str]] = {
+        A.FDA: "fda_metadata",
+        A.HistogramMatching: "hm_metadata",
+        A.PixelDistributionAdaptation: "pda_metadata",
+        A.Mosaic: "mosaic_metadata",
+        A.CopyAndPaste: "copy_paste_metadata",
+    }
 
     # Transforms that require special metadata
     METADATA_TRANSFORMS: ClassVar[set[type]] = {
@@ -252,8 +259,8 @@ class TransformTestHelper:
             if "copy_paste_metadata" not in data:
                 data["copy_paste_metadata"] = []
 
-        elif transform_cls in transforms2metadata_key:
-            metadata_key = transforms2metadata_key[transform_cls]
+        elif transform_cls in TransformTestHelper.METADATA_KEYS:
+            metadata_key = TransformTestHelper.METADATA_KEYS[transform_cls]
             if metadata_key not in data:
                 data[metadata_key] = [base_image]
 

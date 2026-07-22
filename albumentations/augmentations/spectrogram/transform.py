@@ -61,6 +61,7 @@ class TimeReverse(HorizontalFlip):
     """
 
     _targets = ALL_TARGETS
+    _applied_replay_class = HorizontalFlip
 
     class InitSchema(BaseTransformInitSchema):
         pass
@@ -127,6 +128,8 @@ class TimeMasking(XYMasking):
         - Original implementation: https://pytorch.org/audio/stable/transforms.html#timemask
 
     """
+
+    _applied_replay_class = XYMasking
 
     class InitSchema(BaseTransformInitSchema):
         time_mask_param: int = Field(gt=0)
@@ -203,6 +206,8 @@ class FrequencyMasking(XYMasking):
         - Original implementation: https://pytorch.org/audio/stable/transforms.html#freqmask
 
     """
+
+    _applied_replay_class = XYMasking
 
     class InitSchema(BaseTransformInitSchema):
         freq_mask_param: int = Field(gt=0)

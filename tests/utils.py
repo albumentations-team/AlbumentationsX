@@ -7,7 +7,6 @@ from io import StringIO
 import numpy as np
 
 import albumentations
-from tests.aug_definitions import AUGMENTATION_CLS_PARAMS
 
 
 class FrozenParams(dict):
@@ -143,23 +142,11 @@ def get_filtered_transforms(
     except_augmentations=None,
     exclude_base_classes=None,
 ):
+    from tests.helpers.transform_cases import PRIMARY_TRANSFORM_CASE_BY_CLASS
+
     custom_arguments = custom_arguments or {}
     except_augmentations = except_augmentations or set()
     exclude_base_classes = exclude_base_classes or ()
-
-    # Create a mapping of transform class to params from AUGMENTATION_CLS_PARAMS
-    default_params = {}
-    for transform_entry in AUGMENTATION_CLS_PARAMS:
-        transform_cls = transform_entry[0]
-        params = transform_entry[1]
-
-        # Convert single dict to list for uniform handling
-        if isinstance(params, dict):
-            params = [params]
-
-        if transform_cls not in default_params:
-            default_params[transform_cls] = []
-        default_params[transform_cls].extend(params)
 
     result = []
     for cls in get_all_valid_transforms():
@@ -181,10 +168,9 @@ def get_filtered_transforms(
             for param_set in params:
                 # Wrap in FrozenParams to prevent mutation across tests
                 result.append((cls, FrozenParams(param_set)))
-        elif cls in default_params:
-            for param_set in default_params[cls]:
-                # Wrap in FrozenParams to prevent mutation across tests
-                result.append((cls, FrozenParams(param_set)))
+        elif cls in PRIMARY_TRANSFORM_CASE_BY_CLASS:
+            case = PRIMARY_TRANSFORM_CASE_BY_CLASS[cls]
+            result.append((cls, FrozenParams(case.init_kwargs)))
         else:
             result.append((cls, FrozenParams({})))
 
@@ -234,36 +220,6 @@ def get_2d_transforms(
         except_augmentations=except_augmentations,
         exclude_base_classes=(albumentations.Transform3D,),  # Exclude Transform3D and its children
     )
-
-
-def check_all_augs_exists(
-    augmentations: list[list],
-    except_augmentations: set | None = None,
-) -> list[tuple[type, dict]]:
-    existed_augs = {i[0] for i in augmentations}
-    except_augmentations = except_augmentations or set()
-
-    not_existed = []
-
-    for cls, _ in get_transforms(except_augmentations=except_augmentations):
-        if cls not in existed_augs:
-            not_existed.append(cls.__name__)
-
-    if not_existed:
-        raise ValueError(f"These augmentations do not exist in augmentations and except_augmentations: {not_existed}")
-
-    # Flatten the parameter sets into individual test cases
-    flattened_augmentations = []
-    for aug_cls, params in augmentations:
-        if isinstance(params, list):
-            # If params is a list, create a test case for each parameter set
-            for param_set in params:
-                flattened_augmentations.append((aug_cls, param_set))
-        else:
-            # If params is a single dict, keep as is
-            flattened_augmentations.append((aug_cls, params))
-
-    return flattened_augmentations
 
 
 def get_3d_transforms(

@@ -36,6 +36,15 @@ Technical specification for the Mosaic transform's data handling, including labe
 **Status**: Implemented
 **Phase**: Complete
 
+### [Applied Configuration Replay Contracts](applied-config-replay-contracts.md)
+
+Implemented configuration-centric contract system that verifies strict JSON transport, public transform
+reconstruction, replay execution, exact output where declared, and non-default coverage for every public constructor
+parameter.
+
+**Status**: Implemented
+**Phase**: Complete
+
 ## Creating New Design Documents
 
 When creating a new design document:

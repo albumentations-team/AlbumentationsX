@@ -597,6 +597,14 @@ class Equalize(ImageOnlyTransform):
         mask: np.ndarray | Callable[..., Any] | None
         mask_params: Sequence[str]
 
+        @field_validator("mask", mode="before")
+        @classmethod
+        def deserialize_mask(cls, value: Any) -> Any:
+            """Convert a static mask restored from JSON containers back into a NumPy array while leaving callables
+            and absent masks unchanged.
+            """
+            return np.asarray(value) if isinstance(value, list) else value
+
     def __init__(
         self,
         mode: Literal["cv", "pil"] = "cv",
@@ -611,6 +619,15 @@ class Equalize(ImageOnlyTransform):
         self.by_channels = by_channels
         self.mask = mask
         self.mask_params = mask_params
+
+    def get_transform_init_args(self) -> dict[str, Any]:
+        """Serialize a static Equalize mask as nested Python lists so constructor policies remain portable across
+        dict, JSON, and YAML round trips.
+        """
+        args = super().get_transform_init_args()
+        if isinstance(args.get("mask"), np.ndarray):
+            args["mask"] = args["mask"].tolist()
+        return args
 
     def apply(self, img: ImageType, mask: np.ndarray, **params: Any) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
@@ -628,6 +645,7 @@ class Equalize(ImageOnlyTransform):
         data: dict[str, Any],
     ) -> dict[str, Any]:
         if not callable(self.mask):
+            self.applied_config = {"mask": None, "mask_params": ()}
             return {"mask": self.mask}
 
         mask_params = {"image": data["image"]}
@@ -638,6 +656,7 @@ class Equalize(ImageOnlyTransform):
                 )
             mask_params[key] = data[key]
 
+        self.applied_config = {"mask": None, "mask_params": ()}
         return {"mask": self.mask(**mask_params)}
 
     @property

@@ -103,7 +103,6 @@ SELF_CI_PATHS = {
 }
 SHARED_TEST_PATHS = {
     "tests/__init__.py",
-    "tests/aug_definitions.py",
     "tests/conftest.py",
     "tests/utils.py",
 }

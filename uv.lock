@@ -46,6 +46,7 @@ version = "2.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "albucore" },
+    { name = "numkong" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -121,10 +122,12 @@ ci-pytorch = [
 ci-quality = [
     { name = "defusedxml" },
     { name = "google-docstring-parser" },
+    { name = "hypothesis" },
     { name = "opencv-python-headless" },
     { name = "packaging" },
     { name = "pillow" },
     { name = "pre-commit" },
+    { name = "pytest" },
     { name = "ruff" },
     { name = "tomli" },
 ]
@@ -232,6 +235,7 @@ dev = [
 requires-dist = [
     { name = "albucore", specifier = "==0.2.4" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
+    { name = "numkong", specifier = "!=7.7.1" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "opencv-contrib-python", marker = "extra == 'contrib'", specifier = ">=5.0.0.93" },
     { name = "opencv-contrib-python-headless", marker = "extra == 'contrib-headless'", specifier = ">=5.0.0.93" },
@@ -281,10 +285,12 @@ ci-pytorch = [
 ci-quality = [
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "google-docstring-parser", specifier = ">=0.0.11" },
+    { name = "hypothesis", specifier = ">=6.156.6" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
     { name = "packaging", specifier = ">=25.0" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pre-commit", specifier = ">=4.6.0" },
+    { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.15.21" },
     { name = "tomli", specifier = ">=2.4.1" },
 ]

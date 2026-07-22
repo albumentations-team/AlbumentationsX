@@ -168,9 +168,9 @@ class RandomScale(DualTransform):
 
         @model_validator(mode="after")
         def _validate_scale_range(self) -> Self:
-            if isinstance(self.scale_range, dict) and ("x" not in self.scale_range or "y" not in self.scale_range):
+            if isinstance(self.scale_range, dict) and set(self.scale_range) != {"x", "y"}:
                 raise ValueError(
-                    f"scale_range dict must contain both 'x' and 'y' keys. Got keys: {set(self.scale_range)}",
+                    f"scale_range dict must contain exactly 'x' and 'y' keys. Got keys: {set(self.scale_range)}",
                 )
             return self
 

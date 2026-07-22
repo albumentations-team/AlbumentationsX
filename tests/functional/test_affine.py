@@ -623,16 +623,29 @@ def test_get_scale_balanced_one_sided_ranges_stay_within_bounds():
         assert scale["y"][0] <= result["y"] <= scale["y"][1]
 
 
-def test_get_scale_balanced_crossing_range_samples_both_sides_equally():
-    scale = {"x": (0.5, 2.0), "y": (0.5, 2.0)}
-    sampled_x = [
-        A.Affine._get_scale(scale, keep_ratio=False, balanced_scale=True, random_state=random.Random(seed))["x"]
-        for seed in range(1_000)
-    ]
-    below_one_count = sum(value < 1.0 for value in sampled_x)
+def test_affine_balanced_one_sided_ranges_through_compose():
+    scale = {"x": (0.5, 0.8), "y": (1.2, 1.5)}
+    affine = A.Affine(scale=scale, keep_ratio=False, balanced_scale=True, p=1.0)
+    transform = A.Compose([affine], seed=137)
 
-    assert all(scale["x"][0] <= value <= scale["x"][1] for value in sampled_x)
-    assert 450 <= below_one_count <= 550
+    transform(image=SQUARE_UINT8_IMAGE)
+
+    sampled_scale = affine.applied_config["scale"]
+    assert scale["x"][0] <= sampled_scale["x"] <= scale["x"][1]
+    assert scale["y"][0] <= sampled_scale["y"] <= scale["y"][1]
+
+
+def test_get_scale_balanced_crossing_range_chooses_between_both_sides(mocker):
+    scale = {"x": (0.5, 2.0), "y": (0.5, 2.0)}
+    intervals = [(0.5, 1.0), (1.0, 2.0)]
+    random_state = mocker.Mock(spec=random.Random)
+    random_state.choice.side_effect = intervals
+    random_state.uniform.side_effect = lambda lower, upper: (lower + upper) / 2
+
+    result = A.Affine._get_scale(scale, keep_ratio=False, balanced_scale=True, random_state=random_state)
+
+    assert result == {"x": 0.75, "y": 1.5}
+    assert [args.args[0] for args in random_state.choice.call_args_list] == [intervals, intervals]
 
 
 @pytest.mark.parametrize("scale_range", [(0.5, 0.8), (1.2, 1.5), (1.0, 1.0)])

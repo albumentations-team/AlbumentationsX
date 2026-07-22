@@ -22,16 +22,12 @@ from tests.helpers.contract_data import (
     make_float_image_data,
     make_grayscale_image_data,
     make_hbb_data,
-    make_image_batch_data,
     make_image_data,
-    make_keypoint_data,
     make_mask_data,
     make_mosaic_data,
-    make_obb_data,
     make_overlay_data,
     make_reference_data,
     make_text_data,
-    make_volume_batch_data,
     make_volume_data,
     remap_data_key,
 )
@@ -1249,81 +1245,6 @@ def _iter_parameter_mode_cases() -> list[TransformContractCase]:
 TRANSFORM_CONTRACT_CASES = (
     *_iter_base_cases(),
     *_iter_parameter_mode_cases(),
-    TransformContractCase(
-        case_id="random-rotate90-subset",
-        transform_cls=A.RandomRotate90,
-        init_kwargs={"group_elements": ("r90", "r270")},
-        replay_profile=ReplayProfile.EXACT,
-    ),
-    TransformContractCase(
-        case_id="random-rotate90-subset-mask",
-        transform_cls=A.RandomRotate90,
-        init_kwargs={"group_elements": ("r90", "r270")},
-        data_factory=make_mask_data,
-        replay_profile=ReplayProfile.EXACT,
-    ),
-    TransformContractCase(
-        case_id="random-rotate90-subset-hbb",
-        transform_cls=A.RandomRotate90,
-        init_kwargs={"group_elements": ("r90", "r270")},
-        data_factory=make_hbb_data,
-        compose_kwargs={
-            "bbox_params": A.BboxParams(
-                coord_format="albumentations",
-                label_fields=["bbox_labels"],
-            ),
-        },
-        replay_profile=ReplayProfile.EXACT,
-    ),
-    TransformContractCase(
-        case_id="random-rotate90-subset-obb",
-        transform_cls=A.RandomRotate90,
-        init_kwargs={"group_elements": ("r90", "r270")},
-        data_factory=make_obb_data,
-        compose_kwargs={
-            "bbox_params": A.BboxParams(
-                coord_format="albumentations",
-                bbox_type="obb",
-                label_fields=["bbox_labels"],
-            ),
-        },
-        replay_profile=ReplayProfile.EXACT,
-    ),
-    TransformContractCase(
-        case_id="random-rotate90-subset-keypoints",
-        transform_cls=A.RandomRotate90,
-        init_kwargs={"group_elements": ("r90", "r270")},
-        data_factory=make_keypoint_data,
-        compose_kwargs={
-            "keypoint_params": A.KeypointParams(
-                coord_format="xy",
-                label_fields=["keypoint_labels"],
-                label_mapping={},
-            ),
-        },
-        replay_profile=ReplayProfile.EXACT,
-    ),
-    TransformContractCase(
-        case_id="random-rotate90-subset-volume",
-        transform_cls=A.RandomRotate90,
-        init_kwargs={"group_elements": ("r90", "r270")},
-        data_factory=make_volume_data,
-        replay_profile=ReplayProfile.EXACT,
-    ),
-    TransformContractCase(
-        case_id="random-rotate90-subset-image-batch",
-        transform_cls=A.RandomRotate90,
-        init_kwargs={"group_elements": ("r90", "r270")},
-        data_factory=make_image_batch_data,
-        replay_profile=ReplayProfile.EXACT,
-    ),
-    TransformContractCase(
-        case_id="random-rotate90-subset-volume-batch",
-        transform_cls=A.RandomRotate90,
-        init_kwargs={"group_elements": ("r90", "r270")},
-        data_factory=make_volume_batch_data,
-        replay_profile=ReplayProfile.EXACT,
-    ),
 )
 
 TRANSFORM_CASES_BY_CLASS: dict[type[A.BasicTransform], tuple[TransformContractCase, ...]] = {

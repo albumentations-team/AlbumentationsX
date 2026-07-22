@@ -20,14 +20,8 @@ path a user calls:
 The contract unit is a constructor configuration, not a class. This matters when one class has mutually exclusive
 fields, mode selectors, custom metadata keys, scalar-or-range behavior, or another cross-field validator.
 
-The motivating failure was `RandomRotate90(group_elements=("r90", "r270"))`. Capturing a sampled
-`group_element="r90"` while retaining the original plural field produced a record whose keys were individually legal
-but whose combined state was constructor-invalid. The implemented transform now emits the realized singular choice and
-clears the stochastic subset:
-
-```python
-{"p": 1.0, "group_element": "r90", "group_elements": None}
-```
+The harness catches records whose individual values are valid but whose realized combination cannot be passed back
+through the public constructor.
 
 ## Keep the persistence contracts separate
 

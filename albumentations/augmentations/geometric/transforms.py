@@ -912,6 +912,7 @@ class ShiftScaleRotate(Affine):
     """
 
     _targets = ALL_TARGETS
+    _applied_replay_class = Affine
 
     class InitSchema(BaseTransformInitSchema):
         shift_range: tuple[float, float]
@@ -1014,12 +1015,6 @@ class ShiftScaleRotate(Affine):
             "rotate_method": self.rotate_method,
             "mask_interpolation": self.mask_interpolation,
         }
-
-    def get_applied_replay_class(self) -> type[Affine]:
-        """Select Affine as the canonical replay constructor because this convenience transform emits fully resolved
-        affine configuration fields.
-        """
-        return Affine
 
 
 class GridElasticDeform(DualTransform):

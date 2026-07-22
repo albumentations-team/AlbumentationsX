@@ -192,7 +192,7 @@ Register the transform in `tests/helpers/transform_cases.py`:
 
 If the transform samples constructor fields, write the realized values to `self.applied_config`. Clear any original
 policy field that becomes mutually exclusive with the realized value. If a convenience alias emits the canonical
-constructor's state, override `get_applied_replay_class()`.
+constructor's state, declare `_applied_replay_class`.
 
 Check edge cases: uint8, float32, single channel, multichannel.
 

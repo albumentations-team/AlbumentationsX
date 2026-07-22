@@ -106,6 +106,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BasicTransformInitSchema
     _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
+    _applied_replay_class: ClassVar[type["BasicTransform"] | None] = None
 
     def __init__(self, p: float = 0.5):
         self.p = p
@@ -388,10 +389,12 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         """Select the public constructor represented by this transform's applied record, allowing semantic aliases
         to replay through canonical implementations.
 
-        Most transforms replay as their own class. Semantic aliases may return their canonical
-        implementation so replay does not re-enter deprecated constructors.
+        Most transforms replay as their own class. Semantic aliases declare their canonical
+        implementation through `_applied_replay_class` so replay does not re-enter deprecated
+        constructors.
         """
-        return type(self)
+        replay_cls = self._applied_replay_class
+        return type(self) if replay_cls is None else replay_cls
 
     @classmethod
     def _get_valid_config_keys(cls) -> frozenset[str]:

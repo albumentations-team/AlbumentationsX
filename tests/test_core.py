@@ -2871,6 +2871,15 @@ def test_applied_config_invalid_key_raises():
         aug(image=_make_test_image())
 
 
+def test_custom_transform_uses_its_concrete_applied_replay_class_by_default() -> None:
+    """Custom transforms require no replay-class declaration unless they are semantic aliases."""
+
+    class CustomNoOp(A.NoOp):
+        pass
+
+    assert CustomNoOp().get_applied_replay_class() is CustomNoOp
+
+
 def test_transform_init_args_names_are_cached():
     """Repeated applied_config builds should not re-run signature introspection."""
 

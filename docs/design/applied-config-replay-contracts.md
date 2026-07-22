@@ -178,8 +178,8 @@ original constructor value is not sufficient.
 
 ### Aliases replay through canonical classes
 
-`BasicTransform.get_applied_replay_class()` defaults to the concrete class. Convenience or deprecated aliases override
-it when their realized configuration belongs to a canonical implementation:
+`BasicTransform.get_applied_replay_class()` defaults to the concrete class. Convenience or deprecated aliases declare
+`_applied_replay_class` when their realized configuration belongs to a canonical implementation:
 
 - `TimeReverse` replays as `HorizontalFlip`;
 - `TimeMasking` and `FrequencyMasking` replay as `XYMasking`;
@@ -242,7 +242,7 @@ When adding or changing a transform:
 4. set `ReplayProfile.EXACT` only when applied configuration resolves all relevant randomness;
 5. write `self.applied_config` overrides for every realized constructor field;
 6. clear source policy fields that conflict with those realized values;
-7. use `get_applied_replay_class()` only when the emitted state belongs to a different canonical constructor;
+7. declare `_applied_replay_class` only when the emitted state belongs to a different canonical constructor;
 8. keep mathematical, dtype, target-alignment, and distribution tests alongside the transform; and
 9. run the contract, property, serialization, and fast quality commands above.
 

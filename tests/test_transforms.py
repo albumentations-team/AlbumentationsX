@@ -2172,6 +2172,102 @@ def test_random_rotate90_tta_deterministic(group_element):
     np.testing.assert_array_equal(results[1], results[2])
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        (
+            {"group_element": "r90", "group_elements": ("r90", "r270")},
+            "mutually exclusive",
+        ),
+        (
+            {"group_elements": ()},
+            "non-empty",
+        ),
+        (
+            {"group_elements": ("r90", "foo")},
+            "Input should be 'e', 'r90', 'r180' or 'r270'",
+        ),
+        (
+            {"group_elements": ("r90", "r90", "r180")},
+            "group_elements must not contain duplicate elements",
+        ),
+    ],
+)
+def test_random_rotate90_group_elements_validation(kwargs: dict, match: str) -> None:
+    """Invalid group_elements configurations raise a ValueError."""
+    with pytest.raises(ValueError, match=match):
+        A.RandomRotate90(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("transform", "expected_elements"),
+    [
+        (
+            A.RandomRotate90(p=1.0),
+            {"e", "r90", "r180", "r270"},
+        ),
+        (
+            A.RandomRotate90(p=1.0, group_elements=("r90", "r270")),
+            {"r90", "r270"},
+        ),
+    ],
+)
+def test_random_rotate90_records_sampled_group_element_in_applied_config(
+    transform: A.RandomRotate90,
+    expected_elements: set[str],
+) -> None:
+    """The sampled rotation element is recorded in the applied configuration."""
+    image = np.arange(64 * 64 * 3, dtype=np.uint8).reshape(64, 64, 3)
+    transform.set_random_seed(137)
+
+    result = transform(image=image)["image"]
+    applied_config = transform.get_applied_config()
+
+    assert applied_config["group_element"] in expected_elements
+    assert result.shape == image.shape
+
+
+def test_random_rotate90_group_elements_applied_config_round_trip() -> None:
+    """Recorded applied_config with group_elements must be replay-valid.
+
+    Regression: when group_elements is set, the recorded applied_config must not
+    contain both group_element and group_elements, which would cause
+    Compose.from_applied_transforms() to raise a ValueError.
+    """
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    transform = A.Compose(
+        [A.RandomRotate90(p=1.0, group_elements=("r90", "r270"))],
+        save_applied_params=True,
+        strict=True,
+    )
+    result = transform(image=image)
+    # Must not raise ValueError about mutually exclusive group_element/group_elements
+    replay = A.Compose.from_applied_transforms(result["applied_transforms"])
+    replay_result = replay(image=image)
+    np.testing.assert_array_equal(result["image"], replay_result["image"])
+
+
+def test_random_rotate90_group_elements_serialization() -> None:
+    """Serializing and deserializing preserves group_elements behavior."""
+    image = np.arange(64 * 64 * 3, dtype=np.uint8).reshape(64, 64, 3)
+
+    transform = A.RandomRotate90(p=1.0, group_elements=("r90", "r270"))
+    transform.set_random_seed(137)
+
+    result = transform(image=image)["image"]
+
+    serialized = A.to_dict(transform)
+    deserialized = A.from_dict(serialized)
+
+    assert deserialized is not None
+    assert deserialized.group_elements == ("r90", "r270")
+
+    deserialized.set_random_seed(137)
+    deserialized_result = deserialized(image=image)["image"]
+
+    np.testing.assert_array_equal(result, deserialized_result)
+
+
 @pytest.mark.parametrize("group_element", ["e", "r90", "h", "t"])
 def test_square_symmetry_tta_same_as_d4(group_element):
     """SquareSymmetry with group_element produces same result as D4."""
@@ -2216,6 +2312,13 @@ def test_random_rotate90_inverse_roundtrip(group_element: str) -> None:
 def test_random_rotate90_inverse_requires_group_element() -> None:
     """inverse() on RandomRotate90 without group_element raises ValueError."""
     aug = A.RandomRotate90(p=1)
+    with pytest.raises(ValueError, match="group_element"):
+        aug.inverse()
+
+
+def test_random_rotate90_inverse_requires_deterministic_group_element() -> None:
+    """inverse() on RandomRotate90 with group_elements raises ValueError."""
+    aug = A.RandomRotate90(p=1, group_elements=("r90", "r270"))
     with pytest.raises(ValueError, match="group_element"):
         aug.inverse()
 

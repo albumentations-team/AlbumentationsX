@@ -172,6 +172,11 @@ PxType = (
 )
 
 
+PxChoiceType = tuple[int, ...]
+
+PercentChoiceType = tuple[float, ...]
+
+
 REFLECT_BORDER_MODES = {
     cv2.BORDER_REFLECT_101,
     cv2.BORDER_REFLECT,

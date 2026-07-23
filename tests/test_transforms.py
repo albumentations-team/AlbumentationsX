@@ -1777,6 +1777,285 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
 
 
 @pytest.mark.parametrize(
+    "px_choices, sample_independently",
+    [
+        ((-5, -10, -15, -20), False),
+        ((-5, -10, -15, -20), True),
+        ((2, 4), False),
+    ],
+)
+def test_crop_and_pad_px_choices(px_choices, sample_independently):
+    image = np.ones((50, 50, 3), dtype=np.uint8) * 255
+
+    transform = A.Compose(
+        [
+            A.CropAndPad(
+                px_choices=px_choices,
+                fill=0,
+                keep_size=False,
+                sample_independently=sample_independently,
+                p=1.0,
+            ),
+        ],
+        strict=True,
+        seed=42,
+    )
+
+    result = transform(image=image)["image"]
+
+    # Negative choices crop inward, positive choices pad outward.
+    # With sample_independently=False all sides use the same drawn value
+    # (square output); with =True each side draws independently.
+    amounts = sorted({abs(v) for v in px_choices})
+    is_cropping = all(v < 0 for v in px_choices)
+
+    if sample_independently:
+        if is_cropping:
+            possible_dim = {50 - a - b for a in amounts for b in amounts if 50 - a - b > 0}
+        else:
+            possible_dim = {50 + a + b for a in amounts for b in amounts if 50 + a + b > 0}
+        assert result.shape[0] in possible_dim
+        assert result.shape[1] in possible_dim
+    else:
+        if is_cropping:
+            possible = {(50 - v - v, 50 - v - v) for v in amounts if 50 - v - v > 0}
+        else:
+            possible = {(50 + v + v, 50 + v + v) for v in amounts if 50 + v + v > 0}
+        assert (result.shape[0], result.shape[1]) in possible
+
+    assert result.shape[2] == 3
+
+    # Verify the applied_config stores resolved values under px, not px_choices
+    applied = transform.transforms[0].applied_config
+    assert applied["px_choices"] is None  # original choices cleared
+    realized = applied["px"]
+    assert realized is not None  # resolved values stored here
+    assert all(v in px_choices for v in realized)
+
+
+@pytest.mark.parametrize(
+    "percent_choices, sample_independently, keep_size",
+    [
+        ((-0.05, -0.10, -0.15), False, False),
+        ((-0.05, -0.10, -0.15), True, False),
+        ((0.05, 0.10, 0.15), False, True),
+        ((0.05, 0.10, 0.15), True, True),
+    ],
+)
+def test_crop_and_pad_percent_choices(percent_choices, sample_independently, keep_size):
+    image = np.ones((50, 50, 3), dtype=np.uint8) * 255
+
+    transform = A.Compose(
+        [
+            A.CropAndPad(
+                percent_choices=percent_choices,
+                fill=0,
+                keep_size=keep_size,
+                sample_independently=sample_independently,
+                p=1.0,
+            ),
+        ],
+        strict=True,
+        seed=42,
+    )
+
+    result = transform(image=image)["image"]
+
+    if keep_size:
+        assert result.shape == image.shape
+    else:
+        # For sample_independently=False the same value applies to all 4 sides
+        # (square output). For =True each side draws independently.
+        crop_px = [int(v * 50) for v in percent_choices]  # fractional → pixel deltas
+
+        if sample_independently:
+            possible_dim = {50 + a + b for a in crop_px for b in crop_px if 50 + a + b > 0}
+            assert result.shape[0] in possible_dim
+            assert result.shape[1] in possible_dim
+        else:
+            possible = {(50 + d + d, 50 + d + d) for d in crop_px if 50 + d + d > 0}
+            assert (result.shape[0], result.shape[1]) in possible
+
+        assert result.shape[2] == 3
+
+    # Verify the applied_config stores resolved values under percent, not percent_choices
+    applied = transform.transforms[0].applied_config
+    assert applied["percent_choices"] is None  # original choices cleared
+    realized = applied["percent"]
+    assert realized is not None  # resolved fractions stored here
+
+
+def test_crop_and_pad_px_choices_cropped_content() -> None:
+    """px_choices with negative (cropping) values preserves exact pixel content."""
+    image = np.ones((50, 50, 3), dtype=np.uint8) * 255
+
+    transform = A.CropAndPad(
+        px_choices=(-5, -10, -15),
+        fill=0,
+        keep_size=False,
+        sample_independently=False,
+        p=1.0,
+    )
+    transform.set_random_seed(42)
+    result = transform(image=image)["image"]
+
+    applied = transform.applied_config
+    realized = applied["px"]  # [top, right, bottom, left]
+
+    top, right, bottom, left = (-v for v in realized)
+    expected = image[top : 50 - bottom, left : 50 - right, :]
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_crop_and_pad_px_choices_padded_content() -> None:
+    """px_choices with positive (padding) values places original content correctly."""
+    image = np.ones((50, 50, 3), dtype=np.uint8) * 255
+
+    transform = A.CropAndPad(
+        px_choices=(2, 4, 6),
+        fill=0,
+        keep_size=False,
+        sample_independently=False,
+        p=1.0,
+    )
+    transform.set_random_seed(42)
+    result = transform(image=image)["image"]
+
+    applied = transform.applied_config
+    realized = applied["px"]  # [top, right, bottom, left] - all positive
+
+    top, right, bottom, left = realized
+    central_region = result[top : top + 50, left : left + 50, :]
+    np.testing.assert_array_equal(central_region, image)
+
+    # Padding border should be all zeros
+    assert np.all(result[:top, :, :] == 0)
+    assert np.all(result[:, :left, :] == 0)
+    assert np.all(result[top + 50 :, :, :] == 0)
+    assert np.all(result[:, left + 50 :, :] == 0)
+
+
+def test_crop_and_pad_percent_choices_cropped_content() -> None:
+    """percent_choices with negative (cropping) values preserves exact pixel content."""
+    image = np.ones((50, 50, 3), dtype=np.uint8) * 255
+
+    transform = A.CropAndPad(
+        percent_choices=(-0.10, -0.20, -0.30),
+        fill=0,
+        keep_size=False,
+        sample_independently=False,
+        p=1.0,
+    )
+    transform.set_random_seed(42)
+    result = transform(image=image)["image"]
+
+    applied = transform.applied_config
+    realized = applied["percent"]  # [top, right, bottom, left] — all negative
+
+    top_px, right_px, bottom_px, left_px = (int(-v * 50) for v in realized)
+    expected = image[top_px : 50 - bottom_px, left_px : 50 - right_px, :]
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_crop_and_pad_percent_choices_padded_content() -> None:
+    """percent_choices with positive (padding) values places original content correctly."""
+    image = np.ones((50, 50, 3), dtype=np.uint8) * 255
+
+    transform = A.CropAndPad(
+        percent_choices=(0.05, 0.10, 0.15),
+        fill=0,
+        keep_size=False,
+        sample_independently=False,
+        p=1.0,
+    )
+    transform.set_random_seed(42)
+    result = transform(image=image)["image"]
+
+    applied = transform.applied_config
+    realized = applied["percent"]  # [top, right, bottom, left] — all positive
+
+    top_px, right_px, bottom_px, left_px = (int(v * 50) for v in realized)
+    central_region = result[top_px : top_px + 50, left_px : left_px + 50, :]
+    np.testing.assert_array_equal(central_region, image)
+
+    # Padding border should be all zeros
+    assert np.all(result[:top_px, :, :] == 0)
+    assert np.all(result[:, :left_px, :] == 0)
+    assert np.all(result[top_px + 50 :, :, :] == 0)
+    assert np.all(result[:, left_px + 50 :, :] == 0)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"px": 10, "px_choices": (-5, -10)}, "Exactly one of"),
+        (
+            {"px": None, "percent": None, "px_choices": None, "percent_choices": None},
+            "Exactly one of",
+        ),
+        ({"px_choices": ()}, "non-empty"),
+        ({"percent_choices": ()}, "non-empty"),
+        ({"px": 10, "percent": 0.1}, "Exactly one of"),
+    ],
+)
+def test_crop_and_pad_choices_validation(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        A.CropAndPad(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("param_name", "param_value"),
+    [
+        ("px_choices", (-5, -10, -15)),
+        ("percent_choices", (-0.05, -0.10)),
+    ],
+)
+def test_crop_and_pad_choices_applied_config_round_trip(
+    param_name: str, param_value: tuple[int, ...] | tuple[float, ...]
+) -> None:
+    """applied_config with px_choices / percent_choices must be replay-valid.
+
+    The recorded applied_config records the four resolved scalar values under
+    px/percent, not the original choices tuple, so from_applied_transforms creates
+    a CropAndPad with px/percent, not px_choices/percent_choices, avoiding
+    validation errors.
+    """
+    image = np.ones((50, 50, 3), dtype=np.uint8)
+    transform = A.Compose(
+        [A.CropAndPad(**{param_name: param_value}, fill=0, keep_size=False, p=1.0)],
+        save_applied_params=True,
+        strict=True,
+    )
+    result = transform(image=image)
+    replay = A.Compose.from_applied_transforms(result["applied_transforms"])
+    replay_result = replay(image=image)
+    np.testing.assert_array_equal(result["image"], replay_result["image"])
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"px_choices": (-5, -10, -15)},
+        {"percent_choices": (-0.05, -0.10)},
+    ],
+)
+def test_crop_and_pad_choices_serialization(kwargs) -> None:
+    """Serializing and deserializing preserves px_choices/percent_choices."""
+    image = np.ones((50, 50, 3), dtype=np.uint8)
+
+    transform = A.CropAndPad(**kwargs, p=1.0)
+    transform.set_random_seed(42)
+    result = transform(image=image)["image"]
+
+    serialized = A.to_dict(transform)
+    deserialized = A.from_dict(serialized)
+
+    deserialized.set_random_seed(42)
+    deserialized_result = deserialized(image=image)["image"]
+    np.testing.assert_array_equal(result, deserialized_result)
+
+
+@pytest.mark.parametrize(
     "params",
     [
         ({"fog_coef_range": (1.2, 1.5)}),  # Invalid fog coefficient range -> upper bound

@@ -394,9 +394,9 @@ jobs:
         shell: bash
         run: |
           python -c 'import json, os, pathlib; pathlib.Path("targets.z").write_bytes(b"\0".join(path.encode() for path in json.loads(os.environ["PYTEST_TARGETS"])) + b"\0")'
-          mapfile -d '' -t test_files < targets.z
-          python -m pytest "${test_files[@]}" \
-            -n 2 --dist=worksteal -m "not pytorch" --hypothesis-profile=ci-fast
+          xargs -0 python -m pytest \
+            -n 2 --dist=worksteal -m "not pytorch" --hypothesis-profile=ci-fast \
+            < targets.z
 
   pytorch:
     name: PyTorch tests

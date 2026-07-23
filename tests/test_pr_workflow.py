@@ -74,6 +74,14 @@ def test_compatibility_shard_handoff_is_portable_to_macos_bash() -> None:
     assert "xargs -0 python -m pytest" in compatibility
 
 
+def test_targeted_test_handoff_is_portable_to_macos_bash() -> None:
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    targeted = text.split("\n  targeted:\n", maxsplit=1)[1].split("\n  pytorch:\n", maxsplit=1)[0]
+
+    assert "mapfile" not in targeted
+    assert "xargs -0 python -m pytest" in targeted
+
+
 def test_coverage_and_pytorch_are_not_duplicated_across_matrix_cells() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     compatibility = text.split("\n  compatibility:\n", maxsplit=1)[1].split("\n  coverage:\n", maxsplit=1)[0]

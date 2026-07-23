@@ -40,6 +40,11 @@ def test_antigravity_review_is_pr_scoped_read_only_and_uses_vertex_ai() -> None:
     assert "GITHUB_PERSONAL_ACCESS_TOKEN" not in workflow
     assert "run_shell_command" not in workflow
     assert "mcpServers" not in workflow
+    assert "gemini_cli_version: ${{ vars.GEMINI_CLI_VERSION || '0.51.0' }}" in workflow
+    assert 'gemini_debug: "true"' in workflow
+    assert '"maxSessionTurns": -1' in workflow
+    assert "Batch related file reads" in workflow
+    assert "Finish before the job timeout" in workflow
 
     for tool in ("glob", "grep_search", "list_directory", "read_file", "read_many_files"):
         assert f'"{tool}"' in workflow
@@ -92,3 +97,20 @@ def test_antigravity_validates_cli_json_before_publishing_review() -> None:
     assert "--output .antigravity/review.md" in workflow
     assert "steps.gemini_review.outputs.summary" not in workflow
     assert "REVIEW_BODY" not in workflow
+
+
+def test_antigravity_preserves_diagnostics_when_gemini_fails() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    review_index = workflow.index("- name: Run Antigravity pull request review")
+    diagnostics_index = workflow.index("- name: Upload Gemini failure diagnostics")
+    failure_index = workflow.index("- name: Fail after preserving Gemini diagnostics")
+
+    assert review_index < diagnostics_index < failure_index
+    assert "id: gemini_review" in workflow
+    assert "continue-on-error: true" in workflow
+    assert "always() &&" in workflow
+    assert "steps.gemini_review.outcome == 'failure'" in workflow
+    assert "name: antigravity-gemini-diagnostics-${{ github.event.pull_request.number }}" in workflow
+    assert "gemini-artifacts/stdout.log" in workflow
+    assert "gemini-artifacts/stderr.log" in workflow
+    assert 'upload_artifacts: "false"' in workflow

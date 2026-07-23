@@ -93,6 +93,8 @@ jobs:
 
       - name: Run Antigravity pull request review
         if: steps.plan.outputs.antigravity == 'true'
+        id: gemini_review
+        continue-on-error: true
         uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         env:
           GEMINI_CLI_TRUST_WORKSPACE: "true"
@@ -101,8 +103,8 @@ jobs:
           gcp_project_id: ${{ vars.ANTIGRAVITY_GCP_PROJECT_ID }}
           gcp_service_account: ${{ vars.ANTIGRAVITY_GCP_SERVICE_ACCOUNT }}
           gcp_workload_identity_provider: ${{ vars.ANTIGRAVITY_GCP_WIF_PROVIDER }}
-          gemini_cli_version: ${{ vars.GEMINI_CLI_VERSION }}
-          gemini_debug: ${{ fromJSON(vars.GEMINI_DEBUG || 'false') }}
+          gemini_cli_version: ${{ vars.GEMINI_CLI_VERSION || '0.51.0' }}
+          gemini_debug: "true"
           gemini_model: ${{ vars.GEMINI_MODEL }}
           github_pr_number: ${{ github.event.pull_request.number }}
           use_vertex_ai: "true"
@@ -111,7 +113,7 @@ jobs:
           settings: |
             {
               "model": {
-                "maxSessionTurns": 50
+                "maxSessionTurns": -1
               },
               "context": {
                 "fileFiltering": {
@@ -143,11 +145,34 @@ jobs:
 
             Focus on demonstrable correctness bugs, security issues, behavioral regressions, maintainability risks,
             and missing tests or documentation. Read relevant trusted-base files when the diff alone is insufficient.
+            Batch related file reads with `read_many_files` to conserve tool turns. Finish before the job timeout.
+            Report any additional context you could not inspect as residual risk.
             Do not modify files, request clarification, or attempt to call GitHub or shell tools.
 
             Return concise GitHub-flavored Markdown beginning with `## Antigravity Review`. List findings first,
             ordered by severity, and include the file path and changed line number for each finding. If there are no
             actionable findings, state that explicitly and mention only material residual test or operational risk.
+
+      - name: Upload Gemini failure diagnostics
+        if: >-
+          ${{
+            always() &&
+            steps.plan.outputs.antigravity == 'true' &&
+            steps.gemini_review.outcome == 'failure'
+          }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: antigravity-gemini-diagnostics-${{ github.event.pull_request.number }}
+          path: |
+            gemini-artifacts/stdout.log
+            gemini-artifacts/stderr.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Fail after preserving Gemini diagnostics
+        if: steps.gemini_review.outcome == 'failure'
+        run: exit 1
 
       - name: Prepare review artifact
         if: steps.plan.outputs.antigravity == 'true'

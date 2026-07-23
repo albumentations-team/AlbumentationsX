@@ -397,12 +397,26 @@ def _is_two_vector_tuple(annotation: Any) -> bool:
     return _is_uniform_number_tuple(args[0]) and args[0] == args[1]
 
 
+def _is_dict_of_two_number_tuples(annotation: Any) -> bool:
+    """Return True iff `annotation` is a `dict[K, V]` where `V` is a two-number tuple."""
+    annotation = _unwrap(annotation)
+    if get_origin(annotation) is not dict:
+        return False
+    args = get_args(annotation)
+    if len(args) != 2:
+        return False
+    return _is_two_number_tuple(args[1])
+
+
 def _is_valid_range_annotation(annotation: Any) -> bool:
-    """Each union arm must be either a two-number scalar range or a two-vector range
-    (per-channel sampling, e.g. `tuple[tuple[int, int, int], tuple[int, int, int]]`).
+    """Each union arm must be either a two-number scalar range, a two-vector range
+    (per-channel sampling, e.g. `tuple[tuple[int, int, int], tuple[int, int, int]]`),
+    or a dict whose values are two-number scalar ranges (e.g. `dict[K, tuple[float, float]]`).
     """
     arms = _arms(annotation)
-    return bool(arms) and all(_is_two_number_tuple(a) or _is_two_vector_tuple(a) for a in arms)
+    return bool(arms) and all(
+        _is_two_number_tuple(a) or _is_two_vector_tuple(a) or _is_dict_of_two_number_tuples(a) for a in arms
+    )
 
 
 def _collect_range_fields() -> list[tuple[type, str, Any]]:

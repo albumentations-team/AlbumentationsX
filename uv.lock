@@ -26,7 +26,7 @@ wheels = [
 
 [[package]]
 name = "albucore"
-version = "0.2.4"
+version = "0.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numkong" },
@@ -35,14 +35,14 @@ dependencies = [
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "stringzilla" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/87/01b0e1334c071123b90abb1075a33b00400f1da9602520156f1c88168fbb/albucore-0.2.4.tar.gz", hash = "sha256:83ccc541e3535affd5964326568bd7bf6edd87ebc09d892504d649c4739f907c", size = 145449, upload-time = "2026-07-07T15:22:48.526Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/69/c5846a4e520935a8125c5a83be11326eae838a1dfb280c7b38fa1b9c5f33/albucore-0.2.5.tar.gz", hash = "sha256:6653da52223987af3bcf264ff4c1672595ed8c13b6f66ffd28c5a353a68cb43f", size = 153595, upload-time = "2026-07-22T13:55:02.478Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/4e/198499a987aea1e11ec03a025980cb903b2edb94bc214b821204f83698ff/albucore-0.2.4-py3-none-any.whl", hash = "sha256:f1dbca8848815eb6fd7fa2147643c80e86d7c5281f1b421e2462f69569c82d02", size = 42854, upload-time = "2026-07-07T15:22:47.319Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/ef/dd7fddfc3ce4d25d51923eb68a09e9a29e23740f731d1b9116d99c338f8a/albucore-0.2.5-py3-none-any.whl", hash = "sha256:946a28bbe1c6078a72ef9220955239db7d4b4fec4ba90b552c25e3daa5d2f2ae", size = 42535, upload-time = "2026-07-22T13:55:00.939Z" },
 ]
 
 [[package]]
 name = "albumentationsx"
-version = "2.3.4"
+version = "2.3.5"
 source = { editable = "." }
 dependencies = [
     { name = "albucore" },
@@ -233,7 +233,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "albucore", specifier = "==0.2.4" },
+    { name = "albucore", specifier = "==0.2.5" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
     { name = "numkong", specifier = "!=7.7.1" },
     { name = "numpy", specifier = ">=2.2.6" },

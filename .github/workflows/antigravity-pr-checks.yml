@@ -104,7 +104,7 @@ jobs:
           gcp_service_account: ${{ vars.ANTIGRAVITY_GCP_SERVICE_ACCOUNT }}
           gcp_workload_identity_provider: ${{ vars.ANTIGRAVITY_GCP_WIF_PROVIDER }}
           gemini_cli_version: ${{ vars.GEMINI_CLI_VERSION || '0.51.0' }}
-          gemini_debug: "true"
+          gemini_debug: "false"
           gemini_model: ${{ vars.GEMINI_MODEL }}
           github_pr_number: ${{ github.event.pull_request.number }}
           use_vertex_ai: "true"

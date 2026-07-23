@@ -41,7 +41,8 @@ def test_antigravity_review_is_pr_scoped_read_only_and_uses_vertex_ai() -> None:
     assert "run_shell_command" not in workflow
     assert "mcpServers" not in workflow
     assert "gemini_cli_version: ${{ vars.GEMINI_CLI_VERSION || '0.51.0' }}" in workflow
-    assert 'gemini_debug: "true"' in workflow
+    assert 'gemini_debug: "false"' in workflow
+    assert 'gemini_debug: "true"' not in workflow
     assert '"maxSessionTurns": -1' in workflow
     assert "Batch related file reads" in workflow
     assert "Finish before the job timeout" in workflow

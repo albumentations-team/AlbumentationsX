@@ -11,7 +11,6 @@ from ._functional_color import (
     to_gray_weighted_average,
 )
 from ._functional_shared import (
-    MAX_VALUES_BY_DTYPE,
     ImageType,
     ImageUInt8,
     add_weighted,
@@ -27,11 +26,45 @@ from ._functional_shared import (
     multiply_add,
     np,
     preserve_channel_dim,
-    reduce_sum,
     std,
     sz_lut,
     uint8_io,
 )
+
+
+def _replace_segments_with_mean(
+    image: np.ndarray,
+    segments: np.ndarray,
+    replace_samples: Sequence[bool],
+) -> np.ndarray:
+    unique_labels, inverse_labels = np.unique(segments, return_inverse=True)
+    inverse_labels = inverse_labels.reshape(-1)
+    replace_start = 1 if unique_labels[0] == 0 else 0
+    num_replaceable = len(unique_labels) - replace_start
+    if num_replaceable == 0:
+        return image.copy()
+
+    replace_by_label = np.zeros(len(unique_labels), dtype=bool)
+    replace_by_label[replace_start:] = np.resize(
+        np.asarray(replace_samples, dtype=bool),
+        num_replaceable,
+    )
+    replace_mask = replace_by_label[inverse_labels]
+
+    result = image.copy()
+    result_flat = result.reshape(-1, result.shape[-1])
+    counts = np.bincount(inverse_labels, minlength=len(unique_labels))
+
+    for channel_index in range(result.shape[-1]):
+        sums = np.bincount(
+            inverse_labels,
+            weights=result_flat[:, channel_index],
+            minlength=len(unique_labels),
+        )
+        segment_means = np.rint(sums / counts).astype(np.uint8)
+        result_flat[replace_mask, channel_index] = segment_means[inverse_labels[replace_mask]]
+
+    return result
 
 
 @float32_io
@@ -342,38 +375,7 @@ def superpixels(
         compactness=10,
     )
 
-    min_value = 0
-    max_value = MAX_VALUES_BY_DTYPE[image.dtype]
-    image = np.copy(image)
-
-    num_channels = get_num_channels(image)
-
-    for c in range(num_channels):
-        image_sp_c = image[..., c]
-        # Get unique segment labels (skip 0 if it exists as it's typically background)
-        unique_labels = np.unique(segments)
-        if unique_labels[0] == 0:
-            unique_labels = unique_labels[1:]
-
-        # Calculate mean intensity for each segment
-        for idx, label in enumerate(unique_labels):
-            # with mod here, because slic can sometimes create more superpixel than requested.
-            # replace_samples then does not have enough values, so we just start over with the first one again.
-            if replace_samples[idx % len(replace_samples)]:
-                mask = segments == label
-                mean_intensity = float(mean(image_sp_c[mask]))
-
-                if image_sp_c.dtype.kind in ["i", "u", "b"]:
-                    # After rounding the value can end up slightly outside of the value_range. Hence, we need to clip.
-                    # We do clip via min(max(...)) instead of np.clip because
-                    # the latter one does not seem to keep dtypes for dtypes with large itemsizes (e.g. uint64).
-                    value: int | float
-                    value = int(np.round(mean_intensity))
-                    value = min(max(value, min_value), max_value)
-                else:
-                    value = mean_intensity
-
-                image_sp_c[mask] = value
+    image = _replace_segments_with_mean(image, segments, replace_samples)
 
     return fgeometric.resize(image, orig_shape[:2], interpolation) if orig_shape != image.shape else image
 
@@ -403,6 +405,7 @@ def slic(
     # Normalize image to [0, 1] range
     max_val = np.float32(image.max())
     image_normalized = image.astype(np.float32) / (max_val + np.float32(1e-6))
+    single_channel = image_normalized.shape[-1] == 1
 
     # Initialize cluster centers via meshgrid
     grid_step = int((num_pixels / n_segments) ** 0.5)
@@ -410,9 +413,15 @@ def slic(
     y_range = np.arange(grid_step // 2, height, grid_step)
     xx_grid, yy_grid = np.meshgrid(x_range, y_range)
     centers = np.column_stack([xx_grid.ravel(), yy_grid.ravel()]).astype(np.float32)
+    y_coordinates, x_coordinates = np.indices((height, width), dtype=np.float64)
+    x_coordinates_flat = x_coordinates.reshape(-1)
+    y_coordinates_flat = y_coordinates.reshape(-1)
 
     # Initialize labels and distances
     labels = np.full((height, width), -1, dtype=np.int32)
+    if len(centers) == 0:
+        return labels
+
     distances = np.full((height, width), np.inf, dtype=np.float32)
 
     inv_grid_step_sq = np.float32(1.0 / (grid_step * grid_step))
@@ -426,7 +435,16 @@ def slic(
 
             crop = image_normalized[y_low:y_high, x_low:x_high]
             color_diff = crop - image_normalized[y, x]
-            color_distance = reduce_sum(color_diff**2, axis=-1)
+            if single_channel:
+                color_distance = color_diff[..., 0] ** 2
+            else:
+                color_distance = np.einsum(
+                    "...c,...c->...",
+                    color_diff,
+                    color_diff,
+                    dtype=np.float32,
+                    optimize=False,
+                )
 
             yy, xx = np.ogrid[y_low:y_high, x_low:x_high]
             spatial_distance = ((yy - y) ** 2 + (xx - x) ** 2) * inv_grid_step_sq
@@ -438,11 +456,21 @@ def slic(
             dist_slice[mask] = distance[mask]
             labels[y_low:y_high, x_low:x_high][mask] = i
 
-        for i in range(len(centers)):
-            mask = labels == i
-            if np.any(mask):
-                ys, xs = np.where(mask)
-                centers[i] = [mean(xs.astype(np.float32)), mean(ys.astype(np.float32))]
+        labels_flat = labels.reshape(-1)
+        counts = np.bincount(labels_flat, minlength=len(centers))
+        nonempty = counts > 0
+        x_sums = np.bincount(
+            labels_flat,
+            weights=x_coordinates_flat,
+            minlength=len(centers),
+        )
+        y_sums = np.bincount(
+            labels_flat,
+            weights=y_coordinates_flat,
+            minlength=len(centers),
+        )
+        centers[nonempty, 0] = x_sums[nonempty] / counts[nonempty]
+        centers[nonempty, 1] = y_sums[nonempty] / counts[nonempty]
 
     return labels
 

@@ -64,9 +64,13 @@ Benchmark the original loop as a real candidate.
 and weighted sums in one compiled pass:
 
 ```python
-counts = np.bincount(labels, minlength=num_labels)
-sum_x = np.bincount(labels, weights=x_coordinates, minlength=num_labels)
-sum_y = np.bincount(labels, weights=y_coordinates, minlength=num_labels)
+labels_1d = labels.ravel()
+x_coordinates_1d = x_coordinates.ravel()
+y_coordinates_1d = y_coordinates.ravel()
+
+counts = np.bincount(labels_1d, minlength=num_labels)
+sum_x = np.bincount(labels_1d, weights=x_coordinates_1d, minlength=num_labels)
+sum_y = np.bincount(labels_1d, weights=y_coordinates_1d, minlength=num_labels)
 
 nonempty = counts > 0
 center_x = sum_x[nonempty] / counts[nonempty]
@@ -226,9 +230,14 @@ The stats API already routes selected uint8 and low-channel reductions through N
 OpenCV where they win. Reimplementing these reductions inside AlbumentationsX loses both the routing and its benchmark
 coverage.
 
-Use `docs/numkong-performance.md` for current NumKong route evidence and
-`docs/performance-regressions-plan.md` for known router regressions. Regenerate or extend the relevant benchmark when a
-route changes; do not update a threshold from an isolated microbenchmark alone.
+In the Albucore checkout, use `docs/numkong-performance.md` for current NumKong route evidence and
+`docs/performance-regressions-plan.md` for known router regressions. When using the bundled fallback from an
+AlbumentationsX checkout, read the same files under `../albucore/docs/` if a sibling Albucore checkout is available.
+If it is absent, these supporting documents are unavailable: use repository-local benchmarks for candidate discovery
+and defer Albucore route or threshold changes until the canonical evidence can be checked.
+
+Regenerate or extend the relevant benchmark when a route changes; do not update a threshold from an isolated
+microbenchmark alone.
 
 ## Preserve behavior before measuring speed
 

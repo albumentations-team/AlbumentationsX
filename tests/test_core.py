@@ -762,27 +762,38 @@ def test_non_contiguous_input_dual(augmentation_cls, params):
     assert isinstance(data["mask"], np.ndarray)
 
 
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_dual_transforms(
-        custom_arguments={},
-        except_augmentations={
-            A.FDA,
-            A.HistogramMatching,
-            A.Lambda,
-            A.RandomSizedBBoxSafeCrop,
-            A.CropNonEmptyMaskIfExists,
-            A.BBoxSafeRandomCrop,
-            A.OverlayElements,
-            A.TextImage,
-            A.RandomCropNearBBox,
-            A.Mosaic,
-            A.MaskDropout,
-            A.ConstrainedCoarseDropout,
-            A.PixelDropout,
-        },
-    ),
+NON_CONTIGUOUS_VOLUMETRIC_CASES = get_dual_transforms(
+    custom_arguments={},
+    except_augmentations={
+        A.FDA,
+        A.HistogramMatching,
+        A.Lambda,
+        A.RandomSizedBBoxSafeCrop,
+        A.CropNonEmptyMaskIfExists,
+        A.BBoxSafeRandomCrop,
+        A.OverlayElements,
+        A.TextImage,
+        A.RandomCropNearBBox,
+        A.Mosaic,
+        A.MaskDropout,
+        A.ConstrainedCoarseDropout,
+        A.PixelDropout,
+    },
 )
+
+NON_CONTIGUOUS_MASK3D_COMPOSE_SHAPES = [
+    pytest.param((3, 100, 120), id="grayscale"),
+    pytest.param((3, 100, 120, 3), id="multichannel"),
+]
+
+
+def _create_non_contiguous_mask3d(shape: tuple[int, ...]) -> np.ndarray:
+    source_mask3d = np.zeros(shape, dtype=np.uint8)
+    source_mask3d[:, 20:80, 30:90] = 1
+    return source_mask3d.swapaxes(1, 2)
+
+
+@pytest.mark.parametrize(["augmentation_cls", "params"], NON_CONTIGUOUS_VOLUMETRIC_CASES)
 def test_non_contiguous_input_volume(augmentation_cls, params):
     set_seed(42)
     # create non-contiguous volume (D, H, W, C)
@@ -798,6 +809,42 @@ def test_non_contiguous_input_volume(augmentation_cls, params):
     data = transform(**data)
     assert "volume" in data
     assert isinstance(data["volume"], np.ndarray)
+
+
+@pytest.mark.parametrize(["augmentation_cls", "params"], NON_CONTIGUOUS_VOLUMETRIC_CASES)
+def test_non_contiguous_input_mask3d(augmentation_cls, params):
+    set_seed(137)
+    mask3d = _create_non_contiguous_mask3d((3, 100, 120, 3))
+
+    assert not mask3d.flags["C_CONTIGUOUS"]
+
+    transform = augmentation_cls(p=1, **params)
+    data = {"mask3d": mask3d}
+    if augmentation_cls == A.CopyAndPaste:
+        data["copy_paste_metadata"] = []
+
+    result = transform(**data)
+    transformed_mask3d = result["mask3d"]
+
+    assert isinstance(transformed_mask3d, np.ndarray)
+    assert transformed_mask3d.ndim == mask3d.ndim
+    assert transformed_mask3d.shape[0] == mask3d.shape[0]
+    assert all(dimension > 0 for dimension in transformed_mask3d.shape)
+    assert transformed_mask3d.dtype == mask3d.dtype
+
+
+@pytest.mark.parametrize("mask3d_shape", NON_CONTIGUOUS_MASK3D_COMPOSE_SHAPES)
+def test_compose_preserves_non_contiguous_mask3d(mask3d_shape):
+    mask3d = _create_non_contiguous_mask3d(mask3d_shape)
+
+    assert not mask3d.flags["C_CONTIGUOUS"]
+
+    transform = A.Compose([A.NoOp(p=1)], seed=137, strict=True)
+    transformed_mask3d = transform(mask3d=mask3d)["mask3d"]
+
+    np.testing.assert_array_equal(transformed_mask3d, mask3d)
+    assert transformed_mask3d.shape == mask3d.shape
+    assert transformed_mask3d.dtype == mask3d.dtype
 
 
 @pytest.mark.parametrize(

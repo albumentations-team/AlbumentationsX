@@ -760,6 +760,10 @@ Examples:
 
 When writing or reviewing performance-sensitive code (functional layer, apply methods, core pipeline), apply these techniques in priority order:
 
+Use the repo-local `performance-optimization` skill for the complete workflow. It loads Albucore's canonical
+performance guide and requires a delete-first pass, backend comparison, correctness baseline, and representative
+benchmarks.
+
 ### 1. Eliminate Python Loops Over Pixels
 
 Python `for y in range(h): for x in range(w):` loops are ~100x slower than vectorized numpy. Replace with:
@@ -768,7 +772,22 @@ Python `for y in range(h): for x in range(w):` loops are ~100x slower than vecto
 - `np.einsum` for weighted sums over control points
 - Scatter-update via fancy indexing (`arr[ys, xs] = vals`) instead of per-pixel assignment
 
-### 2. Use `cv2.LUT` / `sz_lut` for uint8 Pixel-Wise Transforms
+### 2. Eliminate Per-Label Full-Array Scans
+
+When integer labels are dense and non-negative, use `np.bincount` as a grouped reduction instead of constructing one
+full-image mask per label:
+
+```python
+counts = np.bincount(labels, minlength=num_labels)
+weighted_sums = np.bincount(labels, weights=values, minlength=num_labels)
+means = weighted_sums / counts
+```
+
+This can replace `for label: mask = labels == label` for component sizes, sums, means, histograms, and cluster-center
+updates. Benchmark small label counts too: sparse IDs require remapping, `weights=` changes accumulation precision,
+and `np.unique(..., return_inverse=True)` may cost more than the scans it replaces.
+
+### 3. Use `cv2.LUT` / `sz_lut` for uint8 Pixel-Wise Transforms
 
 Any function `f(pixel) -> pixel` on uint8 data should build a 256-entry LUT and apply it via `sz_lut(img, lut, inplace=...)`. This is orders of magnitude faster than per-pixel numpy.
 
@@ -783,7 +802,7 @@ result = img & mask
 For multichannel bit masks, benchmark broadcasted `img & masks` against a preallocated per-channel loop. Broadcasting
 small per-channel masks can create slow strided operations.
 
-### 3. Vectorize LUT and Array Construction
+### 4. Vectorize LUT and Array Construction
 
 Replace Python list comprehensions with numpy vectorized equivalents:
 
@@ -796,7 +815,7 @@ indices = np.arange(256, dtype=np.uint8)
 lut = np.where(indices >= thresh, max_val - indices, indices)
 ```
 
-### 4. Use `out=` for In-Place Operations
+### 5. Use `out=` for In-Place Operations
 
 Avoid allocating temporaries on image-sized arrays:
 
@@ -811,14 +830,14 @@ np.clip(result, 0, 1, out=result)
 
 Key functions with `out=` support: `np.clip`, `np.multiply`, `np.add`, `np.divide`.
 
-### 5. Avoid Float64 Waste
+### 6. Avoid Float64 Waste
 
 Numpy defaults to float64. Always specify `dtype=np.float32` for:
 
 - `np.arange`, `np.linspace`, `np.zeros`, `np.ones`, `np.full`
 - `np.meshgrid` inputs (pass float32 arrays)
 
-### 6. Fuse Multi-Step Operations
+### 7. Fuse Multi-Step Operations
 
 Replace chains of temporary allocations with single calls:
 
@@ -830,10 +849,11 @@ result = img + alpha * (img - blurred)
 result = add_weighted(img, 1.0 + alpha, blurred, -alpha)
 ```
 
-### 7. Choose OpenCV vs NumPy by Benchmark
+### 8. Choose Backends by Benchmark
 
-OpenCV is often faster for image-sized dense operations, but not automatically. Benchmark the exact dtype, shape, and
-channel matrix before switching.
+Compare NumPy, OpenCV, NumKong, StringZilla, and LUT implementations that can express the complete operation. Include
+dispatch, conversion, contiguity, clipping, and allocation costs. Benchmark the exact dtype, shape, and channel matrix
+before switching.
 
 - Use scalar NumPy bitwise, for example `img & np.uint8(mask)`, when the operation has a scalar mask.
 - Use `cv2.bitwise_*` only when both operands are dense contiguous arrays and `dst=` can reuse output.
@@ -843,7 +863,7 @@ channel matrix before switching.
 - For sparse multi-channel replacement, copy plus masked assignment can beat nested `np.where`; benchmark the
   density threshold.
 
-### 8. Preallocate Outside Loops
+### 9. Preallocate Outside Loops
 
 Move `np.zeros` / `np.empty` calls outside loops and reset with `arr[:] = 0`:
 
@@ -860,16 +880,20 @@ for item in items:
     cv2.fillPoly(mask, ...)
 ```
 
-### 9. Skip Redundant Work in Hot Paths
+### 10. Skip Redundant Work in Hot Paths
 
 - Guard `np.ascontiguousarray` with `if not arr.flags["C_CONTIGUOUS"]`
 - Use `first_result[np.newaxis]` instead of `np.array([first_result])` for batch-of-one
 - Precompute loop-invariant expressions (e.g., `inv_sq = 1.0 / (step * step)`)
 - Use `np.where(mask)` instead of `np.argwhere(mask)` — returns tuple of 1D arrays instead of 2D index array
 
-### 10. Vectorize Random Number Generation
+### 11. Compare and Vectorize Random Number Generation
 
-Replace per-element Python RNG loops with single numpy calls:
+Use Python `random.Random` for a few scalar choices and NumPy `Generator` for arrays as starting candidates. Benchmark
+Python, NumPy, and OpenCV random generation when more than one can express the workload. Preserve per-transform seeded
+isolation and replay behavior; OpenCV's global RNG may make it ineligible even when its kernel is fast.
+
+Replace per-element Python RNG loops with single NumPy calls:
 
 ```python
 # Slow

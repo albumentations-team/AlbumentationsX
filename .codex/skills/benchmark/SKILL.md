@@ -7,6 +7,10 @@ description: Run performance benchmarks for transform changes. Use when the user
 
 Any change touching `apply_*`, `functional.py`, `get_params`, `get_params_dependent_on_data`, `composition.py`, or `transforms_interface.py` **must** include benchmark results.
 
+Before designing the benchmark, read `../performance-optimization/SKILL.md` and its required reference completely.
+Use that workflow to define candidates and the dimension that controls each candidate, such as label density for
+`bincount`, channel layout for LUTs, or output size and dtype for random generation.
+
 ## Standard Matrix
 
 Always benchmark all 9 combinations:

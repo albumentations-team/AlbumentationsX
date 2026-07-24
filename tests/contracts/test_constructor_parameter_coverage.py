@@ -1,14 +1,24 @@
 """Completeness contracts for the transform-case registry."""
 
 import inspect
+import json
+from pathlib import Path
 from typing import Literal, get_args, get_origin, get_type_hints
 
 import numpy as np
 import pytest
 
 import albumentations as A
-from tests.helpers.transform_cases import TRANSFORM_CONTRACT_CASES, TransformContractCase
+from tests.helpers.applied_config import ReplayProfile
+from tests.helpers.transform_cases import (
+    PRIMARY_TRANSFORM_CONTRACT_CASES,
+    TRANSFORM_CASES_BY_CLASS,
+    TRANSFORM_CONTRACT_CASES,
+    TransformContractCase,
+)
 from tests.utils import get_transforms
+
+POSITIONAL_PARAMETERS_SNAPSHOT = Path(__file__).parents[1] / "files" / "public_transform_positional_parameters.json"
 
 
 def _differs_from_default(value: object, default: object) -> bool:
@@ -101,3 +111,45 @@ def test_every_public_constructor_parameter_has_a_non_default_case() -> None:
     missing = sorted(f"{transform_cls.__name__}.{name}" for transform_cls, name in parameters - covered)
 
     assert not missing, "Public parameters without a non-default contract case:\n" + "\n".join(missing)
+
+
+def test_exact_replay_profile_applies_to_every_registered_mode() -> None:
+    exact_transform_classes = {
+        case.transform_cls for case in PRIMARY_TRANSFORM_CONTRACT_CASES if case.replay_profile is ReplayProfile.EXACT
+    }
+    non_exact_cases = [
+        case.case_id
+        for transform_cls in exact_transform_classes
+        for case in TRANSFORM_CASES_BY_CLASS[transform_cls]
+        if case.replay_profile is not ReplayProfile.EXACT
+    ]
+
+    assert not non_exact_cases, "Modes missing the transform's exact replay profile:\n" + "\n".join(non_exact_cases)
+
+
+def test_crop_and_pad_registered_modes_require_exact_replay() -> None:
+    non_exact_cases = [
+        case.case_id
+        for case in TRANSFORM_CASES_BY_CLASS[A.CropAndPad]
+        if case.replay_profile is not ReplayProfile.EXACT
+    ]
+
+    assert not non_exact_cases, "CropAndPad modes without exact replay:\n" + "\n".join(non_exact_cases)
+
+
+def test_public_transform_positional_parameters_are_stable() -> None:
+    expected = json.loads(POSITIONAL_PARAMETERS_SNAPSHOT.read_text())
+    registered_transform_classes = {case.transform_cls for case in TRANSFORM_CONTRACT_CASES}
+    actual = {
+        transform_cls.__name__: [
+            name
+            for name, parameter in inspect.signature(transform_cls.__init__).parameters.items()
+            if name != "self" and parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        ]
+        for transform_cls in sorted(registered_transform_classes, key=lambda cls: cls.__name__)
+    }
+
+    assert actual == expected, (
+        "Public positional constructor parameters changed. Existing positional parameters are frozen; "
+        "add new parameters as keyword-only."
+    )

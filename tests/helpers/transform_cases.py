@@ -1112,6 +1112,7 @@ _REFERENCE_METADATA_KEYS = {
 }
 _EXACT_TRANSFORMS = {
     A.Blur,
+    A.CropAndPad,
     A.HorizontalFlip,
     A.NoOp,
     A.Pad,
@@ -1237,6 +1238,7 @@ def _iter_parameter_mode_cases() -> list[TransformContractCase]:
                 init_kwargs=params,
                 data_factory=data_factory,
                 compose_kwargs=compose_kwargs,
+                replay_profile=ReplayProfile.EXACT if transform_cls in _EXACT_TRANSFORMS else ReplayProfile.RUNNABLE,
                 metadata_keys=metadata_keys,
             ),
         )

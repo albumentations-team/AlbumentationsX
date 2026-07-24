@@ -1,0 +1,4 @@
+interface:
+  display_name: "Performance Optimization"
+  short_description: "Systematic performance review for runtime code"
+  default_prompt: "Use $performance-optimization to audit and optimize this runtime path with benchmark evidence."

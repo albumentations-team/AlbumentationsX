@@ -116,6 +116,8 @@ def __init__(self, brightness: float | tuple[float, float] = 0.2):
 
 #### Performance Decision Rules
 
+- **Run the repo-local `performance-optimization` skill** for runtime changes. It loads Albucore's canonical workflow
+  and requires delete-first, allocation, vectorization, LUT, RNG, backend, extraction, and in-place checks.
 - **Do not blindly replace NumPy with cv2**. Benchmark the exact shape/dtype/channel matrix.
 - **LUTs are not always best**. For operations that are literally bit masks, prefer direct bitwise operations
   such as `img & np.uint8(mask)`.
@@ -129,6 +131,8 @@ def __init__(self, brightness: float | tuple[float, float] = 0.2):
   `np.arange(..., dtype=np.float32)` and `cv2.sqrt(..., dst=...)` can be faster and simpler.
 - **Sparse multi-channel replacement can favor copy + assignment**. Benchmark threshold-dependent mask paths;
   nested `np.where` is not automatically faster.
+- **Treat integer labels as grouped data**. Benchmark `np.bincount` for dense non-negative labels when code repeatedly
+  scans `labels == label`; include sparse IDs and the common small-label case because remapping can erase the gain.
 
 ### Batch Optimization (`apply_to_images`)
 

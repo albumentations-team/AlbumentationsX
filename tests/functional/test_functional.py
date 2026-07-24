@@ -14,6 +14,7 @@ from sklearn.decomposition import NMF
 
 import albumentations.augmentations.blur.functional as fblur
 import albumentations.augmentations.geometric.functional as fgeometric
+import albumentations.augmentations.pixel._functional_torchvision as ftorchvision
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.core.type_definitions import d4_group_elements
 from tests.conftest import (
@@ -1144,6 +1145,53 @@ def test_fancy_pca_zero_alpha(shape, dtype):
     result = fpixel.fancy_pca(image, alpha_vector)
 
     np.testing.assert_array_equal(image, result)
+
+
+@pytest.mark.parametrize(
+    ("channels", "expected_hash"),
+    [
+        (1, "3f7d5fd9af229099078be43a5119cc70a1ffb3487e0fb933e89db31ac667a1a0"),
+        (3, "f1e44bb1c912d89a4393343f0caec246d12707511a3099d450591f9e24b1879c"),
+        (5, "3b074bf63f9fe72f4c5839ab24b0e15fc49fe091697ab1cec2299117a8db63f4"),
+    ],
+)
+def test_slic_output_regression(channels, expected_hash):
+    image = np.random.default_rng(137).integers(0, 256, (17, 23, channels), dtype=np.uint8)
+
+    labels = fpixel.slic(image, n_segments=13)
+
+    assert hashlib.sha256(labels.tobytes()).hexdigest() == expected_hash
+
+
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_superpixels_segment_mean_replacement(monkeypatch, channels, dtype):
+    image_uint8 = np.arange(2 * 4 * channels, dtype=np.uint8).reshape(2, 4, channels)
+    image = image_uint8 if dtype == np.uint8 else image_uint8.astype(np.float32) / 255
+    segments = np.array(
+        [
+            [0, 0, 1, 1],
+            [2, 2, 3, 3],
+        ],
+        dtype=np.int32,
+    )
+    monkeypatch.setattr(ftorchvision, "slic", lambda image, n_segments, compactness: segments)
+
+    result = fpixel.superpixels(
+        image,
+        n_segments=3,
+        replace_samples=[True, False],
+        max_size=None,
+        interpolation=cv2.INTER_NEAREST,
+    )
+
+    expected_uint8 = image_uint8.copy()
+    for segment_label in (1, 3):
+        segment_mask = segments == segment_label
+        expected_uint8[segment_mask] = np.rint(image_uint8[segment_mask].mean(axis=0)).astype(np.uint8)
+    expected = expected_uint8 if dtype == np.uint8 else expected_uint8.astype(np.float32) / 255
+
+    np.testing.assert_array_equal(result, expected)
 
 
 @pytest.mark.parametrize(

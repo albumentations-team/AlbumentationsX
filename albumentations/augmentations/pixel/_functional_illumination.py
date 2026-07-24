@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Literal, cast
 
+import numkong as nk
+
 from ._functional_noise import (
     DIAMOND_KERNEL,
     SQUARE_KERNEL,
@@ -1163,7 +1165,14 @@ def generate_water_displacement_maps(
         wave_y = np.sin(angle)
 
         projection = x * wave_x + y * wave_y
-        displacement = amp * np.sin(2 * np.pi * freq * projection + phase)
+        phase_field = 2 * np.pi * freq * projection + phase
+        sine = nk.sin(phase_field.reshape(-1))
+        if sine is None:
+            raise RuntimeError("nk.sin returned None")
+        displacement_buffer = nk.scale(sine, alpha=amp, beta=0.0)
+        if displacement_buffer is None:
+            raise RuntimeError("nk.scale returned None")
+        displacement = np.asarray(displacement_buffer).reshape(height, width)
 
         dx += displacement * (-wave_y)
         dy += displacement * wave_x

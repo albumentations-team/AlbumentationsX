@@ -781,6 +781,17 @@ NON_CONTIGUOUS_VOLUMETRIC_CASES = get_dual_transforms(
     },
 )
 
+NON_CONTIGUOUS_MASK3D_COMPOSE_SHAPES = [
+    pytest.param((3, 100, 120), id="grayscale"),
+    pytest.param((3, 100, 120, 3), id="multichannel"),
+]
+
+
+def _create_non_contiguous_mask3d(shape: tuple[int, ...]) -> np.ndarray:
+    source_mask3d = np.zeros(shape, dtype=np.uint8)
+    source_mask3d[:, 20:80, 30:90] = 1
+    return source_mask3d.swapaxes(1, 2)
+
 
 @pytest.mark.parametrize(["augmentation_cls", "params"], NON_CONTIGUOUS_VOLUMETRIC_CASES)
 def test_non_contiguous_input_volume(augmentation_cls, params):
@@ -802,13 +813,12 @@ def test_non_contiguous_input_volume(augmentation_cls, params):
 
 @pytest.mark.parametrize(["augmentation_cls", "params"], NON_CONTIGUOUS_VOLUMETRIC_CASES)
 def test_non_contiguous_input_mask3d(augmentation_cls, params):
-    source_mask3d = np.zeros((3, 100, 120), dtype=np.uint8)
-    source_mask3d[:, 20:80, 30:90] = 1
-    mask3d = source_mask3d.transpose(0, 2, 1)
+    set_seed(137)
+    mask3d = _create_non_contiguous_mask3d((3, 100, 120, 3))
 
     assert not mask3d.flags["C_CONTIGUOUS"]
 
-    transform = A.Compose([augmentation_cls(p=1, **params)], seed=137, strict=True)
+    transform = augmentation_cls(p=1, **params)
     data = {"mask3d": mask3d}
     if augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
@@ -820,6 +830,20 @@ def test_non_contiguous_input_mask3d(augmentation_cls, params):
     assert transformed_mask3d.ndim == mask3d.ndim
     assert transformed_mask3d.shape[0] == mask3d.shape[0]
     assert all(dimension > 0 for dimension in transformed_mask3d.shape)
+    assert transformed_mask3d.dtype == mask3d.dtype
+
+
+@pytest.mark.parametrize("mask3d_shape", NON_CONTIGUOUS_MASK3D_COMPOSE_SHAPES)
+def test_compose_preserves_non_contiguous_mask3d(mask3d_shape):
+    mask3d = _create_non_contiguous_mask3d(mask3d_shape)
+
+    assert not mask3d.flags["C_CONTIGUOUS"]
+
+    transform = A.Compose([A.NoOp(p=1)], seed=137, strict=True)
+    transformed_mask3d = transform(mask3d=mask3d)["mask3d"]
+
+    np.testing.assert_array_equal(transformed_mask3d, mask3d)
+    assert transformed_mask3d.shape == mask3d.shape
     assert transformed_mask3d.dtype == mask3d.dtype
 
 

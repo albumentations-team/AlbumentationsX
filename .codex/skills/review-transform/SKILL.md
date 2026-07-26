@@ -52,14 +52,18 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 
 ## 6. Performance (🟡 Important)
 
+Read `../performance-optimization/SKILL.md` and its required reference completely before reviewing this section.
+
 Priority order to check:
-1. **`cv2.LUT`** used for pixel lookup operations (fastest)
-2. **`albucore.resize` not `cv2.resize`** for image resizing (handles 5+ channels, INTER_AREA, etc.)
-3. **`cv2` over numpy** for image ops where applicable
-4. **Vectorized numpy** instead of Python loops
-5. **In-place ops** where safe (avoid unnecessary `.copy()`)
-6. No repeated array allocations in tight loops
-7. Expensive computations cached in `get_params` / `get_params_dependent_on_data`
+1. Delete redundant work, full-array passes, conversions, and copies.
+2. Vectorize loops when the benchmark supports the resulting memory layout.
+3. Use grouped reductions such as `np.bincount` instead of repeated per-label full-array masks when labels are dense.
+4. Compare LUT, NumPy, OpenCV, NumKong, and StringZilla implementations where applicable.
+5. Compare Python, NumPy, and OpenCV random generation without breaking seeded isolation or replay.
+6. Use `albucore.resize`, not `cv2.resize`, for image resizing.
+7. Move reusable atomic image operations into Albucore.
+8. Use in-place operations where ownership and aliasing make them safe.
+9. Cache expensive setup in `get_params` / `get_params_dependent_on_data` or once per batch.
 
 ### Batch Optimization Checks
 

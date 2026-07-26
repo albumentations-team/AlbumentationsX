@@ -452,13 +452,10 @@ class ElasticTransform(BaseDistortion):
             noise_distribution=self.noise_distribution,
         )
 
-        y_coords, x_coords = np.meshgrid(
-            np.arange(scaled_height, dtype=np.float32),
-            np.arange(scaled_width, dtype=np.float32),
-            indexing="ij",
-        )
-        map_x = (x_coords + dx).astype(np.float32)
-        map_y = (y_coords + dy).astype(np.float32)
+        map_y = dy.copy() if self.same_dxdy else dy
+        map_x = dx
+        map_x += np.arange(scaled_width, dtype=np.float32)
+        map_y += np.arange(scaled_height, dtype=np.float32)[:, None]
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return {

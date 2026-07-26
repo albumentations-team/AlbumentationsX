@@ -21,6 +21,9 @@ Put the transform in the most specific matching subpackage:
 
 ## 2. Functional layer first
 
+Read `../performance-optimization/SKILL.md` and its required reference completely before implementing the functional
+kernel.
+
 Add the pure function in the corresponding `functional.py` file (no class state, no RNG):
 
 ```python
@@ -30,8 +33,11 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
 
 - Accept `np.ndarray`, return `np.ndarray`
 - No randomness — all random values come from `get_params` / `get_params_dependent_on_data`
-- Prefer `cv2` over numpy for performance (see benchmarking rules)
-- Use `cv2.LUT` for lookup-based pixel ops (fastest)
+- Delete redundant work and full-array passes before selecting a backend
+- Compare applicable NumPy, OpenCV, NumKong, StringZilla, and LUT implementations
+- Consider `np.bincount` for repeated reductions over dense non-negative integer labels
+- Move a reusable atomic image operation into Albucore instead of duplicating it locally
+- Use in-place operations only when ownership and aliasing make mutation safe
 - Use `@uint8_io` / `@float32_io` decorators if dtype conversion is needed
 
 ## 3. Write the transform class

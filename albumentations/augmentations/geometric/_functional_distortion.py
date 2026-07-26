@@ -103,25 +103,17 @@ def upscale_distortion_maps(
     if (map_height, map_width) == (height, width):
         return map_x, map_y
 
-    y_coords, x_coords = np.meshgrid(
-        np.arange(map_height, dtype=np.float32),
-        np.arange(map_width, dtype=np.float32),
-        indexing="ij",
-    )
-    dx = map_x - x_coords
-    dy = map_y - y_coords
+    dx = map_x - np.arange(map_width, dtype=np.float32)
+    dy = map_y - np.arange(map_height, dtype=np.float32)[:, None]
 
     scale_y = 1 if height == 1 or map_height == 1 else (map_height - 1) / (height - 1)
     scale_x = 1 if width == 1 or map_width == 1 else (map_width - 1) / (width - 1)
     dx = cv2.resize(dx, (width, height), interpolation=interpolation) / scale_x
     dy = cv2.resize(dy, (width, height), interpolation=interpolation) / scale_y
 
-    y_coords, x_coords = np.meshgrid(
-        np.arange(height, dtype=np.float32),
-        np.arange(width, dtype=np.float32),
-        indexing="ij",
-    )
-    return x_coords + dx, y_coords + dy
+    dx += np.arange(width, dtype=np.float32)
+    dy += np.arange(height, dtype=np.float32)[:, None]
+    return dx, dy
 
 
 def generate_displacement_fields(
@@ -166,11 +158,12 @@ def generate_displacement_fields(
         if max_abs > 1e-6:
             fields /= max_abs
     else:  # uniform is already normalized to [-1, 1]
-        fields = random_generator.uniform(
-            -1,
-            1,
-            size=(1 if same_dxdy else 2, *image_shape[:2]),
-        ).astype(np.float32)
+        fields = random_generator.random(
+            (1 if same_dxdy else 2, *image_shape[:2]),
+            dtype=np.float32,
+        )
+        fields *= 2
+        fields -= 1
 
     # # Apply Gaussian blur if needed using fast OpenCV operations
     # When kernel_size is (0,0) cv2.GaussianBlur uses automatic kernel size. Kernel == (0,0) is NOT a noop.

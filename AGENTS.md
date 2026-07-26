@@ -15,6 +15,11 @@ Project-specific skills live in `.codex/skills`. Use the matching skill whenever
 - `internal-workspace`
 - `license-integrity`
 - `mixing-transforms`
+- `performance-optimization`
 - `release-notes`
 - `review-transform`
 - `validate-and-fix`
+
+Use `performance-optimization` whenever implementing, reviewing, profiling, or optimizing runtime code. The skill
+loads Albucore's canonical performance workflow, including delete-first review, vectorization, grouped reductions,
+LUT and random-generator selection, backend comparison, Albucore extraction, and safe in-place operations.

@@ -142,7 +142,7 @@ class RandomScale(DualTransform):
         ...         interpolation=cv2.INTER_LINEAR,
         ...         p=1.0
         ...     )
-        ... ], bbox_params=A.BboxParams(coord_format='albumentations', label_fields=['bbox_labels']),
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
         ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> result2 = transform2(
@@ -166,12 +166,26 @@ class RandomScale(DualTransform):
         interpolation: FullInterpolationType
         mask_interpolation: FullInterpolationType
 
+        @staticmethod
+        def _validate_range(low: float, high: float) -> None:
+            if not np.isfinite(low) or not np.isfinite(high):
+                raise ValueError(f"scale_range bounds must be finite. Got ({low}, {high})")
+            if low > high:
+                raise ValueError(f"scale_range low must be <= high. Got ({low}, {high})")
+            if low <= -1.0:
+                raise ValueError(f"scale_range low must be > -1 to avoid non-positive dimensions. Got {low}")
+
         @model_validator(mode="after")
         def _validate_scale_range(self) -> Self:
-            if isinstance(self.scale_range, dict) and set(self.scale_range) != {"x", "y"}:
-                raise ValueError(
-                    f"scale_range dict must contain exactly 'x' and 'y' keys. Got keys: {set(self.scale_range)}",
-                )
+            if isinstance(self.scale_range, dict):
+                if set(self.scale_range) != {"x", "y"}:
+                    raise ValueError(
+                        f"scale_range dict must contain exactly 'x' and 'y' keys. Got keys: {set(self.scale_range)}",
+                    )
+                for rng in self.scale_range.values():
+                    self._validate_range(*rng)
+            else:
+                self._validate_range(*self.scale_range)
             return self
 
     def __init__(

@@ -951,6 +951,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("fixed-element", A.RandomRotate90, {"group_element": "r90"}),
     ("subset-elements", A.RandomRotate90, {"group_elements": ("r90", "r270")}),
+    ("anisotropic-range", A.RandomScale, {"scale_range": {"x": (-0.2, 0.3), "y": (-0.1, 0.15)}}),
     ("downscale-aware", A.RandomScale, {"mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"}),
     ("variable-intensity", A.RandomShadow, {"shadow_intensity_range": (0.2, 0.7)}),
     (

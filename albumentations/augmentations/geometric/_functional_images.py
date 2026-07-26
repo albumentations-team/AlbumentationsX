@@ -301,7 +301,7 @@ def scale_xy(img: ImageType, scale_x: float, scale_y: float, interpolation: int)
 
     """
     height, width = img.shape[:2]
-    new_size = max(1, round(height * scale_y)), max(1, round(width * scale_x))
+    new_size = max(1, int(height * scale_y)), max(1, int(width * scale_x))
     return resize(img, new_size, interpolation)
 
 

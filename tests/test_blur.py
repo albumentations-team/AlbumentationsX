@@ -1,13 +1,13 @@
 import warnings
 from typing import Any
 
-import cv2
 import numpy as np
 import pytest
 from PIL import Image, ImageFilter
 
 import albumentations as A
 from albumentations.augmentations.blur import functional as fblur
+from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import UINT8_IMAGES
 
@@ -186,58 +186,71 @@ def test_process_blur_range_rejects_scalar(scalar: Any) -> None:
         fblur.process_blur_range(scalar, info, min_value=0)
 
 
-def compute_sharpness(image: np.ndarray) -> float:
-    kernel = np.array(
+def apply_pillow_gaussian_blur(image: np.ndarray, radius: float) -> np.ndarray:
+    """Apply Pillow's GaussianBlur to every supported channel layout."""
+    if image.shape[-1] == 1:
+        result = np.array(Image.fromarray(image[..., 0]).filter(ImageFilter.GaussianBlur(radius=radius)))
+        return result[..., None]
+    if image.shape[-1] in {3, 4}:
+        return np.array(Image.fromarray(image).filter(ImageFilter.GaussianBlur(radius=radius)))
+
+    return np.stack(
         [
-            [-1, -1, -1],
-            [-1, 8, -1],
-            [-1, -1, -1],
+            np.array(Image.fromarray(image[..., channel]).filter(ImageFilter.GaussianBlur(radius=radius)))
+            for channel in range(image.shape[-1])
         ],
+        axis=-1,
     )
-    edges = cv2.filter2D(image.astype(np.float32), -1, kernel)
-    return np.std(edges)
 
 
-def test_gaussian_blur_matches_pil():
-    # Create a test image with high-frequency details
-    image = np.zeros((100, 100, 1), dtype=np.uint8)
-    image[::10, :] = 255  # horizontal lines
-    image[:, ::10] = 255  # vertical lines
+@pytest.mark.parametrize("radius", [0.0, 0.1, 0.25, 0.5, 0.75, 1.0, 2.0, 3.0])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+@pytest.mark.parametrize("image_shape", [(2, 3), (9, 11)])
+def test_gaussian_blur_auto_kernel_matches_pillow(
+    radius: float,
+    num_channels: int,
+    image_shape: tuple[int, int],
+) -> None:
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (*image_shape, num_channels), dtype=np.uint8)
+    image[0, 0] = 255
+    image[-1, -1] = 0
 
-    # Test points
-    sigmas = np.linspace(0.2, 10, 50)
+    expected = apply_pillow_gaussian_blur(image, radius)
+    transform = A.GaussianBlur(blur_range=(0, 0), sigma_range=(radius, radius), p=1.0)
+    result = transform(image=image)["image"]
 
-    # Get blur progression for PIL
-    pil_sharpness = []
-    alb_sharpness = []
+    np.testing.assert_array_equal(result, expected)
 
-    pil_image = Image.fromarray(image[:, :, 0])
 
-    for sigma in sigmas:
-        sigma_value = float(sigma)
+def test_gaussian_blur_auto_kernel_preserves_float32_contract() -> None:
+    rng = np.random.default_rng(137)
+    image = rng.random((17, 13, 5), dtype=np.float32)
+    transform = A.GaussianBlur(blur_range=(0, 0), sigma_range=(0.75, 0.75), p=1.0)
 
-        # PIL blur
-        pil_blurred = pil_image.filter(ImageFilter.GaussianBlur(radius=sigma_value))
-        pil_sharpness.append(compute_sharpness(np.array(pil_blurred)))
+    result = transform(image=image)["image"]
 
-        # Albumentations blur
-        alb_blurred = A.GaussianBlur(blur_range=(0, 0), sigma_range=(sigma_value, sigma_value), p=1.0)(image=image)[
-            "image"
-        ]
-        alb_sharpness.append(compute_sharpness(alb_blurred))
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    assert result.min() >= 0
+    assert result.max() <= 1
 
-    # Convert to numpy arrays for easier comparison
-    pil_sharpness = np.array(pil_sharpness)
-    alb_sharpness = np.array(alb_sharpness)
 
-    # Compare curves directly using absolute differences
-    abs_diff = np.abs(pil_sharpness - alb_sharpness)
-    mean_diff = np.mean(abs_diff)
-    max_diff = np.max(abs_diff)
+def test_gaussian_blur_explicit_kernel_uses_discrete_gaussian() -> None:
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (17, 13, 3), dtype=np.uint8)
+    sigma = 1.25
+    kernel_size = 5
+    expected = fpixel.separable_convolve(image, fblur.create_gaussian_kernel_1d(sigma, kernel_size))
+    transform = A.GaussianBlur(
+        blur_range=(kernel_size, kernel_size),
+        sigma_range=(sigma, sigma),
+        p=1.0,
+    )
 
-    # Assert reasonable absolute differences
-    assert mean_diff < 10, f"Average absolute difference too high: {mean_diff:.2f}"
-    assert max_diff < 83, f"Maximum absolute difference too high: {max_diff:.2f}"
+    result = transform(image=image)["image"]
+
+    np.testing.assert_array_equal(result, expected)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])

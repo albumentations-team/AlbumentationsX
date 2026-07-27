@@ -26,9 +26,19 @@ from pydantic import ValidationInfo
 
 from albumentations.augmentations.geometric.functional import scale
 from albumentations.augmentations.pixel.functional import convolve
-from albumentations.core.type_definitions import EIGHT, ImageType
+from albumentations.core.type_definitions import EIGHT, ImageFloat32, ImageType, ImageUInt8
 
 __all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "mode_filter", "zoom_blur"]
+
+
+_PILLOW_FIXED_POINT_BITS = 24
+_PILLOW_FIXED_POINT_SCALE = 1 << _PILLOW_FIXED_POINT_BITS
+_PILLOW_FIXED_POINT_SCALE_F32 = np.float32(_PILLOW_FIXED_POINT_SCALE)
+_PILLOW_F32_ONE = np.float32(1.0)
+_PILLOW_F32_TWO = np.float32(2.0)
+_PILLOW_F32_THREE = np.float32(3.0)
+_PILLOW_F32_SIX = np.float32(6.0)
+_PILLOW_F32_TWELVE = np.float32(12.0)
 
 
 @preserve_channel_dim
@@ -391,19 +401,18 @@ def sample_odd_from_range(random_state: random.Random, low: int, high: int) -> i
 
 
 def create_gaussian_kernel(sigma: float, ksize: int = 0) -> np.ndarray:
-    """Create 2D Gaussian kernel (PIL-style). Sigma and ksize (0 = auto). Returns normalized
+    """Create a discrete 2D Gaussian kernel. Sigma and ksize (0 = auto). Returns normalized
     float32 kernel for separable or 2D convolution.
 
     Args:
         sigma (float): Standard deviation for Gaussian kernel.
-        ksize (int): Kernel size. If 0, size is computed as int(sigma * 3.5) * 2 + 1
-               to match PIL's implementation. Otherwise, must be positive and odd.
+        ksize (int): Kernel size. If 0, size is computed as int(sigma * 3.5) * 2 + 1.
+            Otherwise, must be positive and odd.
 
     Returns:
         np.ndarray: 2D normalized Gaussian kernel.
 
     """
-    # PIL's kernel creation approach
     size = int(sigma * 3.5) * 2 + 1 if ksize == 0 else ksize
 
     # Ensure odd size
@@ -421,19 +430,18 @@ def create_gaussian_kernel(sigma: float, ksize: int = 0) -> np.ndarray:
 
 
 def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
-    """Create 1D Gaussian kernel (PIL-style). Sigma and ksize (0 = auto). For separable
+    """Create a discrete 1D Gaussian kernel. Sigma and ksize (0 = auto). For separable
     Gaussian blur; returns normalized float32 1D array.
 
     Args:
         sigma (float): Standard deviation for Gaussian kernel.
-        ksize (int): Kernel size. If 0, size is computed as int(sigma * 3.5) * 2 + 1
-               to match PIL's implementation. Otherwise, must be positive and odd.
+        ksize (int): Kernel size. If 0, size is computed as int(sigma * 3.5) * 2 + 1.
+            Otherwise, must be positive and odd.
 
     Returns:
         np.ndarray: 1D normalized Gaussian kernel.
 
     """
-    # PIL's kernel creation approach
     size = int(sigma * 3.5) * 2 + 1 if ksize == 0 else ksize
 
     # Ensure odd size
@@ -451,6 +459,125 @@ def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
     x_f32 = x.astype(np.float32)
     kernel_1d = np.exp(np.float32(-0.5) * (x_f32 / np.float32(sigma)) ** 2)
     return (kernel_1d / reduce_sum(kernel_1d)).astype(np.float32)
+
+
+def create_pillow_gaussian_kernel(sigma: float) -> np.ndarray:
+    """Build the fixed-point extended-box kernel that Pillow uses to approximate Gaussian
+    blur, including fractional edge weights for exact uint8 rounding.
+
+    Args:
+        sigma (float): Standard deviation of the target Gaussian.
+
+    Returns:
+        np.ndarray: One-dimensional uint32 kernel in Pillow's 24-bit fixed-point scale.
+
+    """
+    sigma_f32 = np.float32(sigma)
+    variance = sigma_f32 * sigma_f32 / _PILLOW_F32_THREE
+    box_length = np.sqrt(_PILLOW_F32_TWELVE * variance + _PILLOW_F32_ONE)
+    integer_radius = np.floor((box_length - _PILLOW_F32_ONE) / _PILLOW_F32_TWO)
+    radius_plus_one = integer_radius + _PILLOW_F32_ONE
+    box_width = _PILLOW_F32_TWO * integer_radius + _PILLOW_F32_ONE
+    fractional_radius = box_width * (integer_radius * radius_plus_one - _PILLOW_F32_THREE * variance)
+    fractional_radius /= _PILLOW_F32_SIX * (variance - radius_plus_one * radius_plus_one)
+    box_radius = integer_radius + fractional_radius
+
+    radius = int(box_radius)
+    whole_weight = int(_PILLOW_FIXED_POINT_SCALE_F32 / (_PILLOW_F32_TWO * box_radius + _PILLOW_F32_ONE))
+    far_weight = (_PILLOW_FIXED_POINT_SCALE - (radius * 2 + 1) * whole_weight) // 2
+    kernel = np.full(radius * 2 + 3, whole_weight, dtype=np.uint32)
+    kernel[0] = far_weight
+    kernel[-1] = far_weight
+    return kernel
+
+
+def _pillow_gaussian_blur_uint8(
+    img: ImageUInt8,
+    kernel: np.ndarray,
+) -> ImageUInt8:
+    # The uint32 weights and uint8 samples fit exactly in float64. Adding 0.5 in OpenCV and then truncating during
+    # the uint8 copy reproduces Pillow's fixed-point round-half-up operation without separate full-image passes.
+    normalized_kernel = kernel.astype(np.float64) / _PILLOW_FIXED_POINT_SCALE
+    horizontal_kernel = normalized_kernel[np.newaxis, :]
+    vertical_kernel = normalized_kernel[:, np.newaxis]
+    result = np.array(img, copy=True, order="C")
+    output = np.empty_like(result)
+    filtered = np.empty(result.shape, dtype=np.float64)
+
+    for filter_kernel in (
+        horizontal_kernel,
+        horizontal_kernel,
+        horizontal_kernel,
+        vertical_kernel,
+        vertical_kernel,
+        vertical_kernel,
+    ):
+        cv2.filter2D(
+            result,
+            ddepth=cv2.CV_64F,
+            kernel=filter_kernel,
+            dst=filtered,
+            delta=0.5,
+            borderType=cv2.BORDER_REPLICATE,
+        )
+        np.copyto(output, filtered, casting="unsafe")
+        result, output = output, result
+
+    return result
+
+
+def _pillow_gaussian_blur_float32(
+    img: ImageFloat32,
+    kernel: np.ndarray,
+) -> ImageFloat32:
+    normalized_kernel = kernel.astype(np.float32) / _PILLOW_FIXED_POINT_SCALE_F32
+    horizontal_kernel = normalized_kernel[np.newaxis, :]
+    vertical_kernel = normalized_kernel[:, np.newaxis]
+    result = np.array(img, copy=True, order="C")
+    output = np.empty_like(result)
+
+    for filter_kernel in (
+        horizontal_kernel,
+        horizontal_kernel,
+        horizontal_kernel,
+        vertical_kernel,
+        vertical_kernel,
+        vertical_kernel,
+    ):
+        cv2.filter2D(
+            result,
+            ddepth=-1,
+            kernel=filter_kernel,
+            dst=output,
+            borderType=cv2.BORDER_REPLICATE,
+        )
+        result, output = output, result
+
+    return result
+
+
+@preserve_channel_dim
+def pillow_gaussian_blur(img: ImageType, kernel: np.ndarray) -> ImageType:
+    """Blur an image with Pillow's three-pass extended-box Gaussian approximation, reproducing
+    uint8 rounding without importing Pillow at runtime.
+
+    Float32 inputs use the same normalized kernel and replicated borders without uint8 quantization.
+
+    Args:
+        img (ImageType): Input image.
+        kernel (np.ndarray): Fixed-point extended-box kernel from `create_pillow_gaussian_kernel`.
+
+    Returns:
+        ImageType: Blurred image with the input shape and dtype.
+
+    """
+    whole_weight = int(kernel[1])
+    far_weight = int(kernel[0])
+    if whole_weight == _PILLOW_FIXED_POINT_SCALE and far_weight == 0:
+        return cast("ImageType", np.array(img, copy=True, order="C"))
+    if img.dtype == np.uint8:
+        return _pillow_gaussian_blur_uint8(cast("ImageUInt8", img), kernel)
+    return _pillow_gaussian_blur_float32(cast("ImageFloat32", img), kernel)
 
 
 def create_gaussian_kernel_input_array(size: int) -> np.ndarray:

@@ -32,9 +32,12 @@ class RandomScale(DualTransform):
     targets scaled together. Useful for scale augmentation without cropping.
 
     Args:
-        scale_range (tuple[float, float]): Scaling factor range (low, high), sampled per image.
-            The factor is biased by 1, i.e. the actual scale is sampled from (1 + low, 1 + high).
-            Default: (-0.1, 0.1).
+        scale_range (tuple[float, float] or dict[Literal["x", "y"], tuple[float, float]]): Scaling factor range.
+            - If a tuple `(low, high)`: A single scale factor is sampled per image from
+              `(1 + low, 1 + high)` and applied uniformly to both width and height.
+            - If a dict with keys `"x"` and `"y"`: Each entry must be a `(low, high)`
+              tuple. Scale factors are sampled independently per axis. Both keys are required.
+            Default: `(-0.1, 0.1)`.
         interpolation (OpenCV flag): flag that is used to specify the interpolation algorithm. Should be one of:
             cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
             Default: cv2.INTER_LINEAR.
@@ -65,11 +68,21 @@ class RandomScale(DualTransform):
         - Keypoint coordinates are scaled accordingly.
         - When area_for_downscale is set, INTER_AREA interpolation will be used automatically for
           downscaling (scale < 1.0), which provides better quality for size reduction.
+        - When `scale_range` is a tuple, the same scale factor is applied to both width and height
+          (uniform scaling). When it is a dict, `scale_x` and `scale_y` are sampled independently
+          (anisotropic scaling).
 
     Mathematical formulation:
         Let (W, H) be the original image dimensions and (W', H') be the output dimensions.
-        The scale factor s is sampled from the range [1 + scale_range[0], 1 + scale_range[1]].
-        Then, W' = W * s and H' = H * s.
+
+        **Uniform** (tuple `scale_range`):
+            The scale factor s is sampled from [1 + low, 1 + high].
+            Then, W' = W * s and H' = H * s.
+
+        **Anisotropic** (dict `scale_range`):
+            scale_x is sampled from [1 + scale_range["x"][0], 1 + scale_range["x"][1]].
+            scale_y is sampled from [1 + scale_range["y"][0], 1 + scale_range["y"][1]].
+            Then, W' = W * scale_x and H' = H * scale_y.
 
     Examples:
         >>> import numpy as np
@@ -92,10 +105,10 @@ class RandomScale(DualTransform):
         >>> keypoints = np.array([[50, 50]])  # Center of circle
         >>> keypoint_labels = [0]
         >>>
-        >>> # Apply RandomScale transform with comprehensive parameters
+        >>> # Example 1: Uniform scaling with tuple scale_range
         >>> transform = A.Compose([
         ...     A.RandomScale(
-        ...         scale_range=(-0.3, 0.5),     # Scale between 0.7x and 1.5x
+        ...         scale_range=(-0.3, 0.5),     # Uniform: scale between 0.7x and 1.5x
         ...         interpolation=cv2.INTER_LINEAR,
         ...         mask_interpolation=cv2.INTER_NEAREST,
         ...         area_for_downscale="image",  # Use INTER_AREA for image downscaling
@@ -122,8 +135,25 @@ class RandomScale(DualTransform):
         >>> scaled_keypoints = result['keypoints']      # Keypoints adjusted to new dimensions
         >>> scaled_keypoint_labels = result['keypoint_labels']  # Labels remain unchanged
         >>>
-        >>> # The image dimensions will vary based on the randomly sampled scale factor
-        >>> # With scale_range=(-0.3, 0.5), dimensions could be anywhere from 70% to 150% of original
+        >>> # Example 2: Anisotropic scaling with dict scale_range
+        >>> transform2 = A.Compose([
+        ...     A.RandomScale(
+        ...         scale_range={"x": (-0.20, 0.30), "y": (-0.10, 0.15)},  # Independent axes
+        ...         interpolation=cv2.INTER_LINEAR,
+        ...         p=1.0
+        ...     )
+        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
+        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
+        >>>
+        >>> result2 = transform2(
+        ...     image=image,
+        ...     mask=mask,
+        ...     bboxes=bboxes,
+        ...     bbox_labels=bbox_labels,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels
+        ... )
+        >>> # Width and height will scale independently
 
     """
 
@@ -131,14 +161,36 @@ class RandomScale(DualTransform):
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
-        scale_range: tuple[float, float]
+        scale_range: tuple[float, float] | dict[Literal["x", "y"], tuple[float, float]]
         area_for_downscale: Literal["image", "image_mask"] | None
         interpolation: FullInterpolationType
         mask_interpolation: FullInterpolationType
 
+        @staticmethod
+        def _validate_range(low: float, high: float) -> None:
+            if not np.isfinite(low) or not np.isfinite(high):
+                raise ValueError(f"scale_range bounds must be finite. Got ({low}, {high})")
+            if low > high:
+                raise ValueError(f"scale_range low must be <= high. Got ({low}, {high})")
+            if low <= -1.0:
+                raise ValueError(f"scale_range low must be > -1 to avoid non-positive dimensions. Got {low}")
+
+        @model_validator(mode="after")
+        def _validate_scale_range(self) -> Self:
+            if isinstance(self.scale_range, dict):
+                if set(self.scale_range) != {"x", "y"}:
+                    raise ValueError(
+                        f"scale_range dict must contain exactly 'x' and 'y' keys. Got keys: {set(self.scale_range)}",
+                    )
+                for rng in self.scale_range.values():
+                    self._validate_range(*rng)
+            else:
+                self._validate_range(*self.scale_range)
+            return self
+
     def __init__(
         self,
-        scale_range: tuple[float, float] = (-0.1, 0.1),
+        scale_range: tuple[float, float] | dict[Literal["x", "y"], tuple[float, float]] = (-0.1, 0.1),
         interpolation: FullInterpolationType = CV2_INTER_LINEAR,
         mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         area_for_downscale: Literal["image", "image_mask"] | None = None,
@@ -151,45 +203,69 @@ class RandomScale(DualTransform):
         self.area_for_downscale = area_for_downscale
 
     def get_params(self) -> dict[str, float]:
-        scale = self.py_random.uniform(*self.scale_range) + 1.0
-        self.applied_config = {"scale_range": scale - 1.0}
-        return {"scale": scale}
+        if isinstance(self.scale_range, dict):
+            scale_x = self.py_random.uniform(*self.scale_range["x"]) + 1.0
+            scale_y = self.py_random.uniform(*self.scale_range["y"]) + 1.0
+            self.applied_config = {"scale_range": {"x": scale_x - 1.0, "y": scale_y - 1.0}}
+        else:
+            scale = self.py_random.uniform(*self.scale_range) + 1.0
+            scale_x = scale_y = scale
+            self.applied_config = {"scale_range": scale - 1.0}
+        return {"scale_x": scale_x, "scale_y": scale_y}
 
     def apply(
         self,
         img: ImageType,
-        scale: float,
+        scale_x: float,
+        scale_y: float,
         **params: Any,
     ) -> ImageType:
+        is_downscale = scale_x < 1.0 or scale_y < 1.0
         interpolation = self.interpolation
-        if self.area_for_downscale in ["image", "image_mask"] and scale < 1.0:
+        if self.area_for_downscale in ["image", "image_mask"] and is_downscale:
             interpolation = cv2.INTER_AREA
 
-        return fgeometric.scale(img, scale, interpolation)
+        return fgeometric.scale_xy(img, scale_x, scale_y, interpolation)
 
     def apply_to_mask(
         self,
         mask: ImageType,
-        scale: float,
+        scale_x: float,
+        scale_y: float,
         **params: Any,
     ) -> ImageType:
+        is_downscale = scale_x < 1.0 or scale_y < 1.0
         interpolation = self.mask_interpolation
-        if self.area_for_downscale == "image_mask" and scale < 1.0:
+        if self.area_for_downscale == "image_mask" and is_downscale:
             interpolation = cv2.INTER_AREA
 
-        return fgeometric.scale(mask, scale, interpolation)
+        return fgeometric.scale_xy(mask, scale_x, scale_y, interpolation)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        # Bounding box coordinates are scale invariant
-        return bboxes
+    def apply_to_bboxes(
+        self,
+        bboxes: np.ndarray,
+        scale_x: float,
+        scale_y: float,
+        **params: Any,
+    ) -> np.ndarray:
+        height, width = params["shape"][:2]
+        new_height = max(1, round(height * scale_y))
+        new_width = max(1, round(width * scale_x))
+        return fgeometric.resize_bboxes(
+            bboxes,
+            image_shape=(height, width),
+            output_shape=(new_height, new_width),
+            bbox_type=params["bbox_type"],
+        )
 
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
-        scale: float,
+        scale_x: float,
+        scale_y: float,
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.keypoints_scale(keypoints, scale, scale)
+        return fgeometric.keypoints_scale(keypoints, scale_x, scale_y)
 
 
 class MaxSizeTransform(DualTransform):

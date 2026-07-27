@@ -282,8 +282,26 @@ def scale(img: ImageType, scale: float, interpolation: int) -> ImageType:
         ImageType: Scaled image.
 
     """
+    return scale_xy(img, scale, scale, interpolation)
+
+
+@preserve_channel_dim
+def scale_xy(img: ImageType, scale_x: float, scale_y: float, interpolation: int) -> ImageType:
+    """Scale an image by independent X and Y factors. scale_x > 1 widens,
+    scale_y > 1 heightens. Useful for anisotropic / non-uniform scaling.
+
+    Args:
+        img (ImageType): Input image to scale.
+        scale_x (float): Scale factor for the width (x-axis).
+        scale_y (float): Scale factor for the height (y-axis).
+        interpolation (int): Interpolation method to use (cv2 interpolation flag).
+
+    Returns:
+        ImageType: Scaled image.
+
+    """
     height, width = img.shape[:2]
-    new_size = int(height * scale), int(width * scale)
+    new_size = max(1, int(height * scale_y)), max(1, int(width * scale_x))
     return resize(img, new_size, interpolation)
 
 
@@ -1480,6 +1498,7 @@ __all__ = [
     "rot90_volumes",
     "rotation2d_matrix_to_euler_angles",
     "scale",
+    "scale_xy",
     "transpose",
     "transpose_images",
     "transpose_volumes",

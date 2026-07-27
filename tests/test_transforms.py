@@ -1893,23 +1893,6 @@ def test_crop_and_pad_percent_choices(
 
 
 @pytest.mark.parametrize(
-    ("param_name", "param_value", "seed"),
-    [
-        pytest.param("px_choices", (-5, -10, -15), 42, id="px-crop-shared"),
-        pytest.param(
-            "px_choices",
-            (-5, -10, -15),
-            42,
-            marks=pytest.mark.parametrize("sample_independently", [True], indirect=False),
-            id="px-crop-indep",
-        ),
-    ],
-)
-def _helper():
-    pass
-
-
-@pytest.mark.parametrize(
     ("param_name", "param_value", "sample_independently"),
     [
         pytest.param("px_choices", (-5, -10, -15), False, id="px-crop-shared"),

@@ -33,7 +33,6 @@ __all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "mode_filter", "
 
 _PILLOW_FIXED_POINT_BITS = 24
 _PILLOW_FIXED_POINT_SCALE = 1 << _PILLOW_FIXED_POINT_BITS
-_PILLOW_FIXED_POINT_ROUNDING = 1 << (_PILLOW_FIXED_POINT_BITS - 1)
 _PILLOW_FIXED_POINT_SCALE_F32 = np.float32(_PILLOW_FIXED_POINT_SCALE)
 _PILLOW_F32_ONE = np.float32(1.0)
 _PILLOW_F32_TWO = np.float32(2.0)
@@ -492,49 +491,36 @@ def create_pillow_gaussian_kernel(sigma: float) -> np.ndarray:
     return kernel
 
 
-def _set_far_pixel_sums(img: ImageUInt8, far_pixel_sums: np.ndarray, axis: int, distance: int) -> None:
-    source = np.moveaxis(img, axis, 0)
-    destination = np.moveaxis(far_pixel_sums, axis, 0)
-    length = source.shape[0]
-    edge_length = min(distance, length)
-
-    np.copyto(destination[:edge_length], source[:1], casting="unsafe")
-    if edge_length < length:
-        np.copyto(destination[edge_length:], source[:-edge_length], casting="unsafe")
-        np.add(destination[:-edge_length], source[edge_length:], out=destination[:-edge_length])
-    np.add(destination[-edge_length:], source[-1:], out=destination[-edge_length:])
-
-
 def _pillow_gaussian_blur_uint8(
     img: ImageUInt8,
-    radius: int,
-    whole_weight: int,
-    far_weight: int,
+    kernel: np.ndarray,
 ) -> ImageUInt8:
+    # The uint32 weights and uint8 samples fit exactly in float64. Adding 0.5 in OpenCV and then truncating during
+    # the uint8 copy reproduces Pillow's fixed-point round-half-up operation without separate full-image passes.
+    normalized_kernel = kernel.astype(np.float64) / _PILLOW_FIXED_POINT_SCALE
+    horizontal_kernel = normalized_kernel[np.newaxis, :]
+    vertical_kernel = normalized_kernel[:, np.newaxis]
     result = np.array(img, copy=True, order="C")
     output = np.empty_like(result)
-    weighted_sum_i32 = np.empty(result.shape, dtype=np.int32)
-    far_pixel_sums = np.empty(result.shape, dtype=np.uint32)
-    distance = radius + 1
+    filtered = np.empty(result.shape, dtype=np.float64)
 
-    for axis in (1, 1, 1, 0, 0, 0):
-        kernel_size = (radius * 2 + 1, 1) if axis == 1 else (1, radius * 2 + 1)
-        cv2.boxFilter(
+    for filter_kernel in (
+        horizontal_kernel,
+        horizontal_kernel,
+        horizontal_kernel,
+        vertical_kernel,
+        vertical_kernel,
+        vertical_kernel,
+    ):
+        cv2.filter2D(
             result,
-            ddepth=cv2.CV_32S,
-            ksize=kernel_size,
-            dst=weighted_sum_i32,
-            normalize=False,
+            ddepth=cv2.CV_64F,
+            kernel=filter_kernel,
+            dst=filtered,
+            delta=0.5,
             borderType=cv2.BORDER_REPLICATE,
         )
-        weighted_sum = weighted_sum_i32.view(np.uint32)
-        np.multiply(weighted_sum, np.uint32(whole_weight), out=weighted_sum)
-        _set_far_pixel_sums(result, far_pixel_sums, axis, distance)
-        np.multiply(far_pixel_sums, np.uint32(far_weight), out=far_pixel_sums)
-        np.add(weighted_sum, far_pixel_sums, out=weighted_sum)
-        np.add(weighted_sum, np.uint32(_PILLOW_FIXED_POINT_ROUNDING), out=weighted_sum)
-        np.right_shift(weighted_sum, _PILLOW_FIXED_POINT_BITS, out=weighted_sum)
-        np.copyto(output, weighted_sum, casting="unsafe")
+        np.copyto(output, filtered, casting="unsafe")
         result, output = output, result
 
     return result
@@ -542,29 +528,26 @@ def _pillow_gaussian_blur_uint8(
 
 def _pillow_gaussian_blur_float32(
     img: ImageFloat32,
-    radius: int,
-    whole_weight: int,
-    far_weight: int,
+    kernel: np.ndarray,
 ) -> ImageFloat32:
-    kernel = np.full(radius * 2 + 3, np.float32(whole_weight / _PILLOW_FIXED_POINT_SCALE), dtype=np.float32)
-    kernel[[0, -1]] = np.float32(far_weight / _PILLOW_FIXED_POINT_SCALE)
-    identity = np.ones(1, dtype=np.float32)
+    normalized_kernel = kernel.astype(np.float32) / _PILLOW_FIXED_POINT_SCALE_F32
+    horizontal_kernel = normalized_kernel[np.newaxis, :]
+    vertical_kernel = normalized_kernel[:, np.newaxis]
     result = np.array(img, copy=True, order="C")
     output = np.empty_like(result)
 
-    for kernel_x, kernel_y in (
-        (kernel, identity),
-        (kernel, identity),
-        (kernel, identity),
-        (identity, kernel),
-        (identity, kernel),
-        (identity, kernel),
+    for filter_kernel in (
+        horizontal_kernel,
+        horizontal_kernel,
+        horizontal_kernel,
+        vertical_kernel,
+        vertical_kernel,
+        vertical_kernel,
     ):
-        cv2.sepFilter2D(
+        cv2.filter2D(
             result,
             ddepth=-1,
-            kernelX=kernel_x,
-            kernelY=kernel_y,
+            kernel=filter_kernel,
             dst=output,
             borderType=cv2.BORDER_REPLICATE,
         )
@@ -588,14 +571,13 @@ def pillow_gaussian_blur(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: Blurred image with the input shape and dtype.
 
     """
-    radius = (kernel.size - 3) // 2
     whole_weight = int(kernel[1])
     far_weight = int(kernel[0])
     if whole_weight == _PILLOW_FIXED_POINT_SCALE and far_weight == 0:
         return cast("ImageType", np.array(img, copy=True, order="C"))
     if img.dtype == np.uint8:
-        return _pillow_gaussian_blur_uint8(cast("ImageUInt8", img), radius, whole_weight, far_weight)
-    return _pillow_gaussian_blur_float32(cast("ImageFloat32", img), radius, whole_weight, far_weight)
+        return _pillow_gaussian_blur_uint8(cast("ImageUInt8", img), kernel)
+    return _pillow_gaussian_blur_float32(cast("ImageFloat32", img), kernel)
 
 
 def create_gaussian_kernel_input_array(size: int) -> np.ndarray:

@@ -43,12 +43,12 @@ def test_sample_odd_from_range(low: int, high: int, expected_range: set[int]):
     assert results == expected_range, f"Failed for low={low}, high={high}"
 
 
-def create_pil_kernel(radius):
-    """Helper function to extract PIL's Gaussian kernel for comparison"""
-    size = int(radius * 3.5) * 2 + 1
+def create_reference_gaussian_kernel(sigma: float) -> np.ndarray:
+    """Build the discrete Gaussian kernel used to check the functional helper."""
+    size = int(sigma * 3.5) * 2 + 1
     kernel = []
-    sigma2 = radius * radius
-    scale = 1.0 / (radius * np.sqrt(2.0 * np.pi))
+    sigma2 = sigma * sigma
+    scale = 1.0 / (sigma * np.sqrt(2.0 * np.pi))
 
     for i in range(-size // 2 + 1, size // 2 + 1):
         x = i * 1.0
@@ -111,11 +111,11 @@ def test_kernel_symmetry(sigma):
 
 
 @pytest.mark.parametrize("sigma", [0.5, 1.0, 2.0, 3.0])
-def test_matches_pil_kernel(sigma):
-    """Test that our kernel matches PIL's kernel"""
+def test_matches_reference_gaussian_kernel(sigma):
+    """Test that the functional helper matches the reference Gaussian formula."""
     our_kernel = fblur.create_gaussian_kernel(sigma, 0)
-    pil_kernel = create_pil_kernel(sigma)
-    np.testing.assert_allclose(our_kernel, pil_kernel, rtol=1e-5)
+    reference_kernel = create_reference_gaussian_kernel(sigma)
+    np.testing.assert_allclose(our_kernel, reference_kernel, rtol=1e-5)
 
 
 @pytest.mark.parametrize(
@@ -148,13 +148,12 @@ def test_1d_kernel_peak_values(sigma, ksize, expected_max_value):
     assert np.abs(kernel.max() - expected_max_value) < 0.01
 
 
-def test_kernel_visual_comparison():
-    """Visual test to compare kernels (useful for debugging)"""
+def test_gaussian_kernel_matches_reference():
     sigma = 2.0
     our_kernel = fblur.create_gaussian_kernel(sigma, 0)
-    pil_kernel = create_pil_kernel(sigma)
+    reference_kernel = create_reference_gaussian_kernel(sigma)
 
-    np.testing.assert_allclose(our_kernel, pil_kernel, rtol=1e-5)
+    np.testing.assert_allclose(our_kernel, reference_kernel, rtol=1e-5)
 
 
 @pytest.mark.parametrize("ksize", [3, 5, 7, 11, 15])

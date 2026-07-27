@@ -656,8 +656,8 @@ class ModeFilter(ImageOnlyTransform):
 
 
 class GaussianBlur(ImageOnlyTransform):
-    """Smooth the image with a Gaussian kernel (weighted average; reduces noise and fine
-    detail). Kernel size and sigma are sampled randomly per call.
+    """Smooth an image with Gaussian blur to reduce noise and fine detail. Blur strength and
+    size are sampled independently on every call.
 
     This transform blurs the input image using a Gaussian filter with a random kernel size
     and sigma value. Gaussian blur is a widely used image processing technique that reduces
@@ -669,9 +669,9 @@ class GaussianBlur(ImageOnlyTransform):
             Default: (0.5, 3.0)
 
         blur_range (tuple[int, int]): Inclusive range of the Gaussian kernel size.
-            Both ends must be 0 or odd and >= 0. If set to (0, 0) (default), the kernel size
-            is computed from sigma as `int(sigma * 3.5) * 2 + 1` to exactly match PIL's
-            implementation.
+            Both ends must be 0 or odd and >= 0. The default `(0, 0)` uses Pillow's
+            three-pass extended-box approximation. Positive values use a discrete Gaussian
+            kernel with the sampled size.
             Default: (0, 0)
 
         p (float): Probability of applying the transform. Default: 0.5
@@ -686,13 +686,11 @@ class GaussianBlur(ImageOnlyTransform):
         Any
 
     Note:
-        - When blur_range=(0, 0) (default), this implementation exactly matches PIL's
-          GaussianBlur behavior:
-          * Kernel size is computed as int(sigma * 3.5) * 2 + 1
-          * Gaussian values are computed using the standard formula
-          * Kernel is normalized to preserve image luminance
-        - When blur_range has positive values, the kernel size is randomly sampled from
-          that range regardless of sigma, which might result in inconsistent blur effects.
+        - For uint8 images, `blur_range=(0, 0)` matches Pillow's `GaussianBlur` pixel for
+          pixel, including its fixed-point rounding and replicated border handling.
+        - Float32 images use the same extended-box approximation without uint8 quantization.
+        - Positive `blur_range` values select a discrete Gaussian kernel independently of
+          sigma, so some size and sigma combinations can truncate the blur substantially.
         - The default sigma range (0.5, 3.0) provides a good balance between subtle
           and strong blur effects:
           * sigma=0.5 results in a subtle blur
@@ -710,7 +708,7 @@ class GaussianBlur(ImageOnlyTransform):
         >>> cv2.circle(image, (150, 150), 30, (0, 255, 0), -1)  # Green circle
         >>> cv2.putText(image, "Sample Text", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
         >>>
-        >>> # Example 1: Default Gaussian blur (automatic kernel size)
+        >>> # Example 1: Default Pillow-compatible Gaussian blur
         >>> default_blur = A.Compose([
         ...     A.GaussianBlur(p=1.0)  # Using default parameters
         ... ])
@@ -723,7 +721,7 @@ class GaussianBlur(ImageOnlyTransform):
         >>> light_blur = A.Compose([
         ...     A.GaussianBlur(
         ...         sigma_range=(0.2, 0.5),  # Small sigma for subtle blur
-        ...         blur_range=(0, 0),       # Auto-compute kernel size
+        ...         blur_range=(0, 0),       # Use Pillow-compatible automatic blur
         ...         p=1.0
         ...     )
         ... ])
@@ -736,7 +734,7 @@ class GaussianBlur(ImageOnlyTransform):
         >>> strong_blur = A.Compose([
         ...     A.GaussianBlur(
         ...         sigma_range=(3.0, 7.0),  # Larger sigma for stronger blur
-        ...         blur_range=(0, 0),       # Auto-compute kernel size
+        ...         blur_range=(0, 0),       # Use Pillow-compatible automatic blur
         ...         p=1.0
         ...     )
         ... ])
@@ -816,13 +814,17 @@ class GaussianBlur(ImageOnlyTransform):
         kernel: np.ndarray,
         **params: Any,
     ) -> ImageType:
+        if params.get("pillow_mode", False):
+            return fblur.pillow_gaussian_blur(img, kernel)
         return fpixel.separable_convolve(img, kernel=kernel)
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, np.ndarray]:
+    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         sigma = self.py_random.uniform(*self.sigma_range)
         ksize = self.py_random.randint(*self.blur_range)
         self.applied_config = {"sigma_range": sigma, "blur_range": ksize}
-        return {"kernel": fblur.create_gaussian_kernel_1d(sigma, ksize)}
+        if ksize == 0:
+            return {"kernel": fblur.create_pillow_gaussian_kernel(sigma), "pillow_mode": True}
+        return {"kernel": fblur.create_gaussian_kernel_1d(sigma, ksize), "pillow_mode": False}
 
 
 class GlassBlur(ImageOnlyTransform):

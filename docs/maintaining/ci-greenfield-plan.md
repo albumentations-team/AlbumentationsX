@@ -42,11 +42,13 @@ The repository implementation now follows this design:
 - security, legal, packaging, ASV, and Antigravity work is routed by relevance.
 
 The main-branch repository ruleset now requires `PR plan`, `Fast checks`,
-`Correctness`, and `Security and policy`. Exact `Analyze (*)`, matrix-leaf, and
-`ASV benchmark evidence` contexts have been removed; the existing `CodeQL` and
-`license/cla` gates remain required. Hosted-runner p50/p95 still need to be
-measured over multiple post-cutover runs, so the service levels below remain
-targets rather than measured guarantees.
+`Correctness`, `Security and policy`, and `license/cla`. Exact `Analyze (*)`,
+matrix-leaf, `ASV benchmark evidence`, and `CodeQL` contexts have been removed.
+Default setup does not analyze pull requests from forks, so a globally required
+`CodeQL` context would block external contributions without creating an
+analysis. Hosted-runner p50/p95 still need to be measured over multiple
+post-cutover runs, so the service levels below remain targets rather than
+measured guarantees.
 
 ## What the current checks are doing
 
@@ -120,6 +122,10 @@ change. The pull request already has the stable `Code scanning results / CodeQL`
 gate and a successful Python analysis. A stale dynamic job name should not also
 be required globally.
 
+The aggregate `CodeQL` context is also unsuitable as a global requirement while
+the repository uses default setup. GitHub excludes pull requests from forks
+from default-setup analysis, so those pull requests never report the context.
+
 ### ASV, not AST
 
 ASV means **airspeed velocity**. It is the Python benchmarking framework used
@@ -168,11 +174,10 @@ always creates:
 3. `Correctness`
 4. `Security and policy`
 5. The existing external `license/cla` gate
-6. The GitHub code-scanning results rule, if the repository wants code scanning
-   to block merges
 
 Do not require individual matrix cells, ASV leaf jobs, CodeQL language jobs,
-OpenSSF Scorecard, Antigravity, Sourcery, or coverage-upload jobs.
+the aggregate `CodeQL` context from default setup, OpenSSF Scorecard,
+Antigravity, Sourcery, or coverage-upload jobs.
 
 The four repository-owned gates should be aggregation jobs with fixed names.
 They run with `if: always()`, inspect the router plan plus every relevant leaf
@@ -320,20 +325,23 @@ names. They are implementation details of a dynamic analysis matrix.
 
 Preferred policy:
 
-- keep the repository's stable GitHub code-scanning results rule as the merge
-  gate;
+- keep CodeQL enabled for same-repository pull requests, pushes to the default
+  branch, and weekly scans;
+- do not require the aggregate `CodeQL` context while default setup excludes
+  pull requests from forks;
 - run Python analysis for runtime or Python tooling changes;
 - run Actions analysis for workflow/local-action changes;
 - run the complete scan on the default branch and weekly;
 - do not run a language analysis for Markdown-only changes.
 
-GitHub default setup has limited trigger control. If selective CodeQL execution
-is important, migrate to
+GitHub default setup has limited trigger control and excludes pull requests
+from forks. If every pull request must pass CodeQL, or selective execution is
+important, migrate to
 [advanced setup](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types)
 in a separate change, and disable default setup before enabling the advanced
 workflow. Do not run both configurations accidentally. Advanced setup permits
-normal workflow triggers and CodeQL path configuration; the repository should
-validate the resulting security coverage before changing the ruleset.
+normal workflow triggers and CodeQL path configuration. Validate one
+fork-based pull request before adding CodeQL back to the required merge gates.
 
 ### Legal integrity
 
@@ -542,10 +550,10 @@ trail for the order and safety conditions behind the design.
    checks.
 2. Remove stale/dynamic `Analyze (actions)` and language-specific `Analyze (*)`
    contexts from required status checks.
-3. Keep the stable GitHub code-scanning results rule if code scanning should
-   block merges.
-4. Verify with one Markdown-only PR, one source PR, and one workflow-only PR
-   that every required context reports a final result.
+3. Remove the aggregate `CodeQL` context while default setup excludes pull
+   requests from forks.
+4. Verify with one fork-based PR, one Markdown-only PR, one source PR, and one
+   workflow-only PR that every required context reports a final result.
 
 This phase fixes the current pending state without redesigning test coverage.
 

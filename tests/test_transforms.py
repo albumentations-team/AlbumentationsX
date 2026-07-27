@@ -1996,6 +1996,9 @@ def test_crop_and_pad_percent_choices_padded_content() -> None:
         ({"px_choices": ()}, "non-empty"),
         ({"percent_choices": ()}, "non-empty"),
         ({"px": 10, "percent": 0.1}, "Exactly one of"),
+        ({"percent_choices": (-1.5, 0.5)}, "All percent_choices values must be in range"),
+        ({"percent_choices": (0.5, 2.0)}, "All percent_choices values must be in range"),
+        ({"percent_choices": (0.3, -1.2)}, "All percent_choices values must be in range"),
     ],
 )
 def test_crop_and_pad_choices_validation(kwargs, match):

@@ -858,6 +858,9 @@ class CropAndPad(DualTransform):
             if self.percent_choices is not None and len(self.percent_choices) == 0:
                 msg = "percent_choices must be a non-empty tuple"
                 raise ValueError(msg)
+            if self.percent_choices is not None and any(not -1.0 <= v <= 1.0 for v in self.percent_choices):
+                msg = f"All percent_choices values must be in range [-1.0, 1.0], got {self.percent_choices}"
+                raise ValueError(msg)
 
             return self
 

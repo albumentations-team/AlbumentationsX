@@ -865,8 +865,6 @@ class CropAndPad(DualTransform):
         self,
         px: PxType | None = None,
         percent: PercentType | None = None,
-        px_choices: PxChoiceType | None = None,
-        percent_choices: PercentChoiceType | None = None,
         keep_size: bool = True,
         sample_independently: bool = True,
         interpolation: FullInterpolationType = CV2_INTER_LINEAR,
@@ -875,6 +873,9 @@ class CropAndPad(DualTransform):
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         p: float = 1.0,
+        *,
+        px_choices: PxChoiceType | None = None,
+        percent_choices: PercentChoiceType | None = None,
     ):
         super().__init__(p=p)
 

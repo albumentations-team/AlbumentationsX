@@ -733,24 +733,23 @@ class RGBShift(AdditiveNoise):
 
 
 class HEStain(ImageOnlyTransform):
-    """H&E stain augmentation for histopathology. method: preset, random_preset, vahadane, macenko.
-    Simulates staining variation for robust pathology models.
+    """Perturb hematoxylin and eosin concentrations in H&E histology images to simulate stain variation across
+    laboratories and scanners.
 
     This transform simulates different H&E staining conditions using either:
     1. Predefined stain matrices (8 standard references)
     2. Vahadane method for stain extraction
     3. Macenko method for stain extraction
-    4. Custom stain matrices
 
     Args:
-        method(Literal['preset', 'random_preset', 'vahadane', 'macenko']): Method to use for stain augmentation:
+        method (Literal['preset', 'random_preset', 'vahadane', 'macenko']): Method to use for stain augmentation:
             - "preset": Use predefined stain matrices
             - "random_preset": Randomly select a preset matrix each time
             - "vahadane": Extract using Vahadane method
             - "macenko": Extract using Macenko method
-            Default: "preset"
+            Default: "random_preset"
 
-        preset(str | None): Preset stain matrix to use when method="preset":
+        preset (str | None): Preset stain matrix to use when method="preset":
             - "ruifrok": Standard reference from Ruifrok & Johnston
             - "macenko": Reference from Macenko's method
             - "standard": Typical bright-field microscopy
@@ -759,24 +758,22 @@ class HEStain(ImageOnlyTransform):
             - "e_heavy": Eosin dominant
             - "dark": Darker staining
             - "light": Lighter staining
-            Default: "standard"
+            When None with method="preset", "standard" is used. Default: None.
 
-        intensity_scale_range(tuple[float, float]): Range for multiplicative stain intensity variation.
-            Values are multipliers between 0.5 and 1.5. For example:
+        intensity_scale_range (tuple[float, float]): Non-negative multiplicative stain intensity range. For example:
             - (0.7, 1.3) means stain intensities will vary from 70% to 130%
             - (0.9, 1.1) gives subtle variations
             - (0.5, 1.5) gives dramatic variations
             Default: (0.7, 1.3)
 
-        intensity_shift_range(tuple[float, float]): Range for additive stain intensity variation.
-            Values between -0.3 and 0.3. For example:
+        intensity_shift_range (tuple[float, float]): Additive stain intensity range within [-1.0, 1.0]. For example:
             - (-0.2, 0.2) means intensities will be shifted by -20% to +20%
             - (-0.1, 0.1) gives subtle shifts
             - (-0.3, 0.3) gives dramatic shifts
             Default: (-0.2, 0.2)
 
-        augment_background(bool): Whether to apply augmentation to background regions.
-            Default: False
+        augment_background (bool): Whether to apply augmentation to background regions. Default: False.
+        p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
         image, volume
@@ -853,6 +850,11 @@ class HEStain(ImageOnlyTransform):
         ... ])
         >>> result = transform(image=image)
         >>> transformed_image = result['image']
+
+    See Also:
+        - ColorJitter: Perturb color directly in RGB space when stain separation is not needed.
+        - FDA: Transfer low-frequency appearance from a reference image.
+        - HistogramMatching: Match the color distribution of a reference image.
 
     """
 

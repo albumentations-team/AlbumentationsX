@@ -18,7 +18,16 @@ __all__ = ["AnnotationArtifacts"]
 
 AnnotationElementType = Literal["text", "rectangle", "arrow", "line", "callout"]
 LineStyle = Literal["solid", "dashed", "dotted"]
+LineGeometry = Literal["axis_aligned", "random_endpoints", "random_angle"]
 Point = tuple[int, int]
+ColorValue = Annotated[int, Field(ge=0, le=255)]
+ArtifactColor = Annotated[tuple[ColorValue, ...], Field(min_length=1)]
+ColorPalette = Annotated[tuple[ArtifactColor, ...], Field(min_length=1)]
+PixelLengthRange = Annotated[
+    tuple[int, int],
+    AfterValidator(check_range_bounds(1, None)),
+    AfterValidator(nondecreasing),
+]
 
 TEXT_ALPHABET = string.ascii_uppercase + string.digits
 FONT_OPTIONS = (
@@ -31,6 +40,22 @@ LINE_STYLE_WEIGHTS = (0.55, 0.35, 0.1)
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
+
+
+def _validate_choice_weights(
+    choices: tuple[Any, ...],
+    weights: tuple[float, ...],
+    choices_name: str,
+    weights_name: str,
+) -> None:
+    if len(choices) != len(weights):
+        raise ValueError(f"{choices_name} and {weights_name} must have the same length.")
+
+    if any(not np.isfinite(weight) or weight < 0 for weight in weights):
+        raise ValueError(f"{weights_name} must contain finite non-negative values.")
+
+    if sum(weights) <= 0:
+        raise ValueError(f"At least one weight in {weights_name} must be positive.")
 
 
 class AnnotationArtifacts(ImageOnlyTransform):
@@ -66,6 +91,23 @@ class AnnotationArtifacts(ImageOnlyTransform):
             of uniformly inside the image. Default: 0.6.
         black_white_prob (float): Probability of choosing black or white instead of red for an artifact.
             Default: 0.85.
+        line_geometry (Literal["axis_aligned", "random_endpoints", "random_angle"]): Geometry used for line
+            artifacts. `"axis_aligned"` preserves horizontal and vertical lines. `"random_endpoints"` samples
+            both endpoints independently. `"random_angle"` samples a start point, angle, and length.
+            Default: `"axis_aligned"`.
+        line_styles (tuple[Literal["solid", "dashed", "dotted"], ...]): Line styles sampled for lines, arrows,
+            and callouts. Default: ("solid", "dashed", "dotted").
+        line_style_probabilities (tuple[float, ...]): Sampling weights matching `line_styles`. Values must be
+            non-negative and at least one value must be positive. Default: (0.55, 0.35, 0.1).
+        random_color_prob (float): Probability of sampling every image channel independently and uniformly from
+            `[0, 255]`. The remaining probability uses `color_palette` when provided, otherwise the legacy
+            black/white/red policy. Default: 0.0.
+        color_palette (tuple[tuple[int, ...], ...] | None): Optional artifact colors in `[0, 255]`. Colors are
+            truncated or extended using their last value to match the image channels. Default: None.
+        color_palette_probabilities (tuple[float, ...] | None): Optional sampling weights matching
+            `color_palette`. When omitted, palette colors are sampled uniformly. Default: None.
+        line_length_range (tuple[int, int] | None): Optional length range in pixels for `"random_angle"` lines.
+            When omitted, `line_length_ratio_range` controls their length. Default: None.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -81,6 +123,8 @@ class AnnotationArtifacts(ImageOnlyTransform):
         - This is an image-only transform: masks, bounding boxes, and keypoints are not modified.
         - Colors are adapted to the number of channels; black and white affect all channels,
           while red maps to the first channel and pads remaining channels with zero.
+        - Palette and uniformly sampled colors use uint8-scale values. Float32 images are rendered through the
+          transform's dtype adapter, which maps those values to `[0, 1]`.
         - Random values are sampled before drawing, so replay and deterministic pipelines preserve
           the exact generated artifacts.
 
@@ -154,17 +198,42 @@ class AnnotationArtifacts(ImageOnlyTransform):
         ]
         corner_prob: float = Field(ge=0, le=1)
         black_white_prob: float = Field(ge=0, le=1)
+        line_geometry: LineGeometry
+        line_styles: tuple[LineStyle, ...] = Field(min_length=1)
+        line_style_probabilities: tuple[float, ...] = Field(min_length=1)
+        random_color_prob: float = Field(ge=0, le=1)
+        color_palette: ColorPalette | None
+        color_palette_probabilities: tuple[float, ...] | None
+        line_length_range: PixelLengthRange | None
 
         @model_validator(mode="after")
-        def _validate_element_probabilities(self) -> Self:
-            if len(self.element_types) != len(self.element_probabilities):
-                raise ValueError("element_types and element_probabilities must have the same length.")
+        def _validate_sampling_policies(self) -> Self:
+            _validate_choice_weights(
+                self.element_types,
+                self.element_probabilities,
+                "element_types",
+                "element_probabilities",
+            )
+            _validate_choice_weights(
+                self.line_styles,
+                self.line_style_probabilities,
+                "line_styles",
+                "line_style_probabilities",
+            )
 
-            if any(probability < 0 for probability in self.element_probabilities):
-                raise ValueError("element_probabilities must be non-negative.")
+            if self.line_length_range is not None and self.line_geometry != "random_angle":
+                raise ValueError("line_length_range requires line_geometry='random_angle'.")
 
-            if sum(self.element_probabilities) <= 0:
-                raise ValueError("At least one element probability must be positive.")
+            if self.color_palette_probabilities is not None:
+                if self.color_palette is None:
+                    raise ValueError("color_palette must be provided with color_palette_probabilities.")
+
+                _validate_choice_weights(
+                    self.color_palette,
+                    self.color_palette_probabilities,
+                    "color_palette",
+                    "color_palette_probabilities",
+                )
 
             return self
 
@@ -182,6 +251,14 @@ class AnnotationArtifacts(ImageOnlyTransform):
         corner_prob: float = 0.6,
         black_white_prob: float = 0.85,
         p: float = 0.5,
+        *,
+        line_geometry: LineGeometry = "axis_aligned",
+        line_styles: tuple[LineStyle, ...] = LINE_STYLES,
+        line_style_probabilities: tuple[float, ...] = LINE_STYLE_WEIGHTS,
+        random_color_prob: float = 0.0,
+        color_palette: ColorPalette | None = None,
+        color_palette_probabilities: tuple[float, ...] | None = None,
+        line_length_range: PixelLengthRange | None = None,
     ):
         super().__init__(p=p)
         self.element_types = element_types
@@ -195,6 +272,14 @@ class AnnotationArtifacts(ImageOnlyTransform):
         self.tip_length_range = tip_length_range
         self.corner_prob = corner_prob
         self.black_white_prob = black_white_prob
+        self.line_geometry = line_geometry
+        self.line_styles = line_styles
+        self.line_style_probabilities = line_style_probabilities
+        self.random_color_prob = random_color_prob
+        self.color_palette = color_palette
+        self.color_palette_probabilities = color_palette_probabilities
+        self.line_length_range = line_length_range
+        self._use_legacy_color_policy = random_color_prob == 0 and color_palette is None
 
     def apply(
         self,
@@ -209,9 +294,17 @@ class AnnotationArtifacts(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        image_height, image_width = params["shape"][:2]
-        artifacts = self._generate_artifacts(image_height, image_width)
-        self.applied_config = self._get_applied_config(artifacts, image_height, image_width)
+        image_height, image_width, num_channels = params["shape"]
+        artifacts = self._generate_artifacts(image_height, image_width, num_channels)
+        record_line_length_ratio = self.line_geometry != "random_endpoints" and not (
+            self.line_geometry == "random_angle" and self.line_length_range is not None
+        )
+        self.applied_config = self._get_applied_config(
+            artifacts,
+            image_height,
+            image_width,
+            record_line_length_ratio=record_line_length_ratio,
+        )
         return {"artifacts": artifacts}
 
     @staticmethod
@@ -219,6 +312,8 @@ class AnnotationArtifacts(ImageOnlyTransform):
         artifacts: list[dict[str, Any]],
         image_height: int,
         image_width: int,
+        *,
+        record_line_length_ratio: bool,
     ) -> dict[str, Any]:
         def bounds(values: list[Any]) -> tuple[Any, Any] | None:
             flattened = [item for value in values for item in (value if isinstance(value, tuple) else (value,))]
@@ -237,15 +332,19 @@ class AnnotationArtifacts(ImageOnlyTransform):
                 for artifact in artifacts
                 if artifact["type"] in {"rectangle", "callout"}
             ],
-            "line_length_ratio_range": [
-                np.hypot(
-                    artifact["end"][0] - artifact["start"][0],
-                    artifact["end"][1] - artifact["start"][1],
-                )
-                / min_dimension
-                for artifact in artifacts
-                if artifact["type"] in {"arrow", "line"} and min_dimension > 0
-            ],
+            "line_length_ratio_range": (
+                [
+                    np.hypot(
+                        artifact["end"][0] - artifact["start"][0],
+                        artifact["end"][1] - artifact["start"][1],
+                    )
+                    / min_dimension
+                    for artifact in artifacts
+                    if artifact["type"] in {"arrow", "line"} and min_dimension > 0
+                ]
+                if record_line_length_ratio
+                else []
+            ),
             "tip_length_range": [artifact["tip_length"] for artifact in artifacts if artifact["type"] == "arrow"],
         }
         result: dict[str, Any] = {"count_range": len(artifacts)}
@@ -256,7 +355,12 @@ class AnnotationArtifacts(ImageOnlyTransform):
         )
         return result
 
-    def _generate_artifacts(self, image_height: int, image_width: int) -> list[dict[str, Any]]:
+    def _generate_artifacts(
+        self,
+        image_height: int,
+        image_width: int,
+        num_channels: int,
+    ) -> list[dict[str, Any]]:
         if image_height <= 1 or image_width <= 1:
             return []
 
@@ -269,7 +373,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
 
         artifacts = []
         for artifact_type in artifact_types:
-            artifact = self._generate_artifact(artifact_type, image_height, image_width)
+            artifact = self._generate_artifact(artifact_type, image_height, image_width, num_channels)
             if artifact is not None:
                 artifacts.append(artifact)
 
@@ -280,6 +384,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
         artifact_type: AnnotationElementType,
         image_height: int,
         image_width: int,
+        num_channels: int,
     ) -> dict[str, Any] | None:
         generators = {
             "text": self._generate_text_artifact,
@@ -288,9 +393,9 @@ class AnnotationArtifacts(ImageOnlyTransform):
             "line": self._generate_line_artifact,
             "callout": self._generate_callout_artifact,
         }
-        return generators[artifact_type](image_height, image_width)
+        return generators[artifact_type](image_height, image_width, num_channels)
 
-    def _generate_text_artifact(self, image_height: int, image_width: int) -> dict[str, Any]:
+    def _generate_text_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
         text_length = self.py_random.randint(*self.text_length_range)
         text = "".join(self.py_random.choices(TEXT_ALPHABET, k=text_length))
         font = self.py_random.choice(FONT_OPTIONS)
@@ -307,11 +412,11 @@ class AnnotationArtifacts(ImageOnlyTransform):
             "origin": origin,
             "font": font,
             "font_scale": font_scale,
-            "color": self._sample_color(),
+            "color": self._sample_color(num_channels),
             "thickness": thickness,
         }
 
-    def _generate_rectangle_artifact(self, image_height: int, image_width: int) -> dict[str, Any]:
+    def _generate_rectangle_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
         box_width, box_height = self._sample_box_size(image_height, image_width)
         top_left = self._sample_box_origin(image_height, image_width, box_width, box_height)
         top_left_col, top_left_row = top_left
@@ -321,46 +426,68 @@ class AnnotationArtifacts(ImageOnlyTransform):
             "type": "rectangle",
             "top_left": top_left,
             "bottom_right": bottom_right,
-            "color": self._sample_color(),
+            "color": self._sample_color(num_channels),
             "thickness": self.py_random.randint(*self.thickness_range),
             "filled": False,
         }
 
-    def _generate_callout_artifact(self, image_height: int, image_width: int) -> dict[str, Any]:
-        artifact = self._generate_rectangle_artifact(image_height, image_width)
+    def _generate_callout_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
+        artifact = self._generate_rectangle_artifact(image_height, image_width, num_channels)
         artifact["type"] = "callout"
         artifact["style"] = self._sample_line_style()
         artifact["lines"] = self._sample_callout_lines(artifact, image_height, image_width)
         return artifact
 
-    def _generate_line_artifact(self, image_height: int, image_width: int) -> dict[str, Any]:
-        margin = self._sample_margin(image_height, image_width)
-        is_vertical = self.py_random.choice([True, False])
-        line_length = self._sample_line_length(image_height, image_width, margin, is_vertical)
+    def _generate_line_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
+        if self.line_geometry == "axis_aligned":
+            margin = self._sample_margin(image_height, image_width)
+            is_vertical = self.py_random.choice([True, False])
+            line_length = self._sample_line_length(image_height, image_width, margin, is_vertical)
 
-        if is_vertical:
-            min_row = margin
-            max_row = max(margin, image_height - 1 - margin)
-            start_row = self.py_random.randint(min_row, max_row - line_length)
-            line_col = self.py_random.randint(margin, max(margin, image_width - 1 - margin))
-            start = (line_col, start_row)
-            end = (line_col, start_row + line_length)
+            if is_vertical:
+                min_row = margin
+                max_row = max(margin, image_height - 1 - margin)
+                start_row = self.py_random.randint(min_row, max_row - line_length)
+                line_col = self.py_random.randint(margin, max(margin, image_width - 1 - margin))
+                start = (line_col, start_row)
+                end = (line_col, start_row + line_length)
+            else:
+                min_col = margin
+                max_col = max(margin, image_width - 1 - margin)
+                start_col = self.py_random.randint(min_col, max_col - line_length)
+                line_row = self.py_random.randint(margin, max(margin, image_height - 1 - margin))
+                start = (start_col, line_row)
+                end = (start_col + line_length, line_row)
+        elif self.line_geometry == "random_endpoints":
+            start, end = self._sample_random_endpoints(image_height, image_width)
         else:
-            min_col = margin
-            max_col = max(margin, image_width - 1 - margin)
-            start_col = self.py_random.randint(min_col, max_col - line_length)
-            line_row = self.py_random.randint(margin, max(margin, image_height - 1 - margin))
-            start = (start_col, line_row)
-            end = (start_col + line_length, line_row)
+            start, end = self._sample_random_angle_line(image_height, image_width)
 
         return {
             "type": "line",
             "start": start,
             "end": end,
-            "color": self._sample_color(),
+            "color": self._sample_color(num_channels),
             "thickness": self.py_random.randint(*self.thickness_range),
             "style": self._sample_line_style(),
         }
+
+    def _sample_random_endpoints(self, image_height: int, image_width: int) -> tuple[Point, Point]:
+        return (
+            (self.py_random.randint(0, image_width - 1), self.py_random.randint(0, image_height - 1)),
+            (self.py_random.randint(0, image_width - 1), self.py_random.randint(0, image_height - 1)),
+        )
+
+    def _sample_random_angle_line(self, image_height: int, image_width: int) -> tuple[Point, Point]:
+        start_col = self.py_random.randint(0, image_width - 1)
+        start_row = self.py_random.randint(0, image_height - 1)
+        angle = self.py_random.uniform(0, 2 * np.pi)
+        line_length = self._sample_unbounded_line_length(image_height, image_width)
+        end = (
+            int(start_col + line_length * np.cos(angle)),
+            int(start_row + line_length * np.sin(angle)),
+        )
+        return (start_col, start_row), end
 
     def _sample_line_length(
         self,
@@ -373,7 +500,13 @@ class AnnotationArtifacts(ImageOnlyTransform):
         sampled_length = round(self.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width))
         return min(max_length, max(1, sampled_length))
 
-    def _generate_arrow_artifact(self, image_height: int, image_width: int) -> dict[str, Any]:
+    def _sample_unbounded_line_length(self, image_height: int, image_width: int) -> int:
+        if self.line_length_range is not None:
+            return self.py_random.randint(*self.line_length_range)
+
+        return round(self.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width))
+
+    def _generate_arrow_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
         start = self._sample_arrow_start(image_height, image_width)
         end = self._sample_arrow_end(start, image_height, image_width)
 
@@ -381,20 +514,41 @@ class AnnotationArtifacts(ImageOnlyTransform):
             "type": "arrow",
             "start": start,
             "end": end,
-            "color": self._sample_color(),
+            "color": self._sample_color(num_channels),
             "thickness": self.py_random.randint(*self.thickness_range),
             "tip_length": self.py_random.uniform(*self.tip_length_range),
             "style": self._sample_line_style(),
         }
 
-    def _sample_color(self) -> tuple[int, ...]:
+    def _sample_color(self, num_channels: int) -> tuple[int, ...]:
+        if self._use_legacy_color_policy:
+            if self.py_random.random() < self.black_white_prob:
+                return self.py_random.choice([BLACK, WHITE])
+
+            return RED
+
+        if self.random_color_prob == 1 or (
+            self.random_color_prob > 0 and self.py_random.random() < self.random_color_prob
+        ):
+            return tuple(self.py_random.randint(0, 255) for _ in range(num_channels))
+
+        if self.color_palette is not None:
+            if self.color_palette_probabilities is None:
+                return self.py_random.choice(self.color_palette)
+
+            return self.py_random.choices(
+                self.color_palette,
+                weights=self.color_palette_probabilities,
+                k=1,
+            )[0]
+
         if self.py_random.random() < self.black_white_prob:
             return self.py_random.choice([BLACK, WHITE])
 
         return RED
 
     def _sample_line_style(self) -> LineStyle:
-        return self.py_random.choices(LINE_STYLES, weights=LINE_STYLE_WEIGHTS, k=1)[0]
+        return self.py_random.choices(self.line_styles, weights=self.line_style_probabilities, k=1)[0]
 
     def _sample_margin(self, image_height: int, image_width: int) -> int:
         max_margin = max(1, min(10, min(image_height, image_width) // 8))

@@ -801,6 +801,14 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("rotated-fixed-fill", A.GridMask, {"rotation_range": (10, 20), "fill": 7, "fill_mask": 3}),
     ("asymmetric-grid", A.GridShuffle3D, {"grid_zyx": (1, 2, 2)}),
     ("explicit-preset", A.HEStain, {"method": "preset", "preset": "dark"}),
+    (
+        "custom-matrix",
+        A.HEStain,
+        {
+            "method": "custom",
+            "stain_matrix": np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32),
+        },
+    ),
     ("custom-reference", A.HistogramMatching, {"blend_ratio": (0.2, 0.4), "metadata_key": "references"}),
     (
         "gaussian-darken",

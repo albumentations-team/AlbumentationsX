@@ -16,6 +16,7 @@ from ._color_shared import (
     VolumeType,
     batch_transform,
     check_range_bounds,
+    field_validator,
     fpixel,
     is_grayscale_image,
     is_rgb_image,
@@ -733,50 +734,46 @@ class RGBShift(AdditiveNoise):
 
 
 class HEStain(ImageOnlyTransform):
-    """H&E stain augmentation for histopathology. method: preset, random_preset, vahadane, macenko.
-    Simulates staining variation for robust pathology models.
+    """Perturb hematoxylin and eosin concentrations in H&E histology images to simulate stain variation across
+    laboratories, scanners, and protocols.
 
-    This transform simulates different H&E staining conditions using either:
-    1. Predefined stain matrices (8 standard references)
-    2. Vahadane method for stain extraction
-    3. Macenko method for stain extraction
-    4. Custom stain matrices
+    Use this transform to train pathology models against expected staining variation. It converts RGB values to
+    optical density, separates hematoxylin and eosin with the selected stain basis, perturbs both concentrations, and
+    reconstructs the RGB image.
 
     Args:
-        method(Literal['preset', 'random_preset', 'vahadane', 'macenko']): Method to use for stain augmentation:
-            - "preset": Use predefined stain matrices
-            - "random_preset": Randomly select a preset matrix each time
-            - "vahadane": Extract using Vahadane method
-            - "macenko": Extract using Macenko method
-            Default: "preset"
+        method (Literal["preset", "random_preset", "vahadane", "macenko", "custom"]): Selects the stain basis:
+            - "preset": Use the matrix named by `preset`.
+            - "random_preset": Select one of the eight preset matrices for each call.
+            - "vahadane": Extract the matrix from the input with the Vahadane method.
+            - "macenko": Extract the matrix from the input with the Macenko method.
+            - "custom": Use the fixed matrix supplied through `stain_matrix`.
+            Default: "random_preset".
 
-        preset(str | None): Preset stain matrix to use when method="preset":
-            - "ruifrok": Standard reference from Ruifrok & Johnston
-            - "macenko": Reference from Macenko's method
-            - "standard": Typical bright-field microscopy
-            - "high_contrast": Enhanced contrast
-            - "h_heavy": Hematoxylin dominant
-            - "e_heavy": Eosin dominant
-            - "dark": Darker staining
-            - "light": Lighter staining
-            Default: "standard"
+        preset (str | None): Preset stain matrix used when `method="preset"`:
+            - "ruifrok": Standard reference from Ruifrok and Johnston.
+            - "macenko": Reference from the Macenko method.
+            - "standard": Typical bright-field microscopy.
+            - "high_contrast": Enhanced contrast.
+            - "h_heavy": Hematoxylin-dominant staining.
+            - "e_heavy": Eosin-dominant staining.
+            - "dark": Darker staining.
+            - "light": Lighter staining.
+            When None with `method="preset"`, "standard" is used. Default: None.
 
-        intensity_scale_range(tuple[float, float]): Range for multiplicative stain intensity variation.
-            Values are multipliers between 0.5 and 1.5. For example:
-            - (0.7, 1.3) means stain intensities will vary from 70% to 130%
-            - (0.9, 1.1) gives subtle variations
-            - (0.5, 1.5) gives dramatic variations
-            Default: (0.7, 1.3)
+        intensity_scale_range (tuple[float, float]): Non-negative range for the multiplicative concentration factor
+            sampled independently for hematoxylin and eosin. For example, `(0.7, 1.3)` varies each concentration from
+            70% to 130%. Default: (0.7, 1.3).
 
-        intensity_shift_range(tuple[float, float]): Range for additive stain intensity variation.
-            Values between -0.3 and 0.3. For example:
-            - (-0.2, 0.2) means intensities will be shifted by -20% to +20%
-            - (-0.1, 0.1) gives subtle shifts
-            - (-0.3, 0.3) gives dramatic shifts
-            Default: (-0.2, 0.2)
+        intensity_shift_range (tuple[float, float]): Range within `[-1.0, 1.0]` for the additive concentration shift
+            sampled independently for hematoxylin and eosin. Default: (-0.2, 0.2).
 
-        augment_background(bool): Whether to apply augmentation to background regions.
-            Default: False
+        augment_background (bool): Whether to perturb background pixels along with tissue pixels. Default: False.
+        p (float): Probability of applying the transform. Default: 0.5.
+        stain_matrix (np.ndarray | None): Fixed H&E stain basis used when `method="custom"`. The matrix must have
+            shape `(2, 3)`: row 0 is the hematoxylin RGB optical-density vector and row 1 is the eosin vector. Both
+            rows must contain finite values, be non-zero, and be linearly independent. The transform copies the
+            matrix as `float32` and uses its values without row normalization. Default: None.
 
     Targets:
         image, volume
@@ -787,6 +784,12 @@ class HEStain(ImageOnlyTransform):
     Image types:
         uint8, float32
 
+    Note:
+        - Let `M` be the `(2, 3)` stain matrix and `C` the per-pixel stain concentrations. The transform solves
+          `OD ~= C @ M`, samples `scale` and `shift` for each stain, then reconstructs
+          `RGB = exp(-(C * scale + shift) @ M)`.
+        - A custom matrix is fixed for the lifetime of the transform. Per-image callable extraction is not supported.
+
     References:
         - A. C. Ruifrok and D. A. Johnston, "Quantification of histochemical": Analytical and quantitative
             cytology and histology, 2001.
@@ -796,7 +799,6 @@ class HEStain(ImageOnlyTransform):
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
-        >>> import cv2
         >>>
         >>> # Create a sample H&E stained histopathology image
         >>> # For real use cases, load an actual H&E stained image
@@ -805,59 +807,71 @@ class HEStain(ImageOnlyTransform):
         >>> image[50:150, 50:150] = np.array([120, 140, 180], dtype=np.uint8)  # Hematoxylin-rich region
         >>> image[150:250, 150:250] = np.array([140, 160, 120], dtype=np.uint8)  # Eosin-rich region
         >>>
-        >>> # Example 1: Using a specific preset stain matrix
+        >>> # Example 1: Using a custom stain matrix calibrated for an acquisition pipeline
+        >>> stain_matrix = np.array(
+        ...     [
+        ...         [0.71, 0.65, 0.27],  # Hematoxylin
+        ...         [0.18, 0.91, 0.37],  # Eosin
+        ...     ],
+        ...     dtype=np.float32,
+        ... )
+        >>> transform = A.HEStain(
+        ...     method="custom",
+        ...     stain_matrix=stain_matrix,
+        ...     intensity_scale_range=(0.8, 1.2),
+        ...     intensity_shift_range=(-0.1, 0.1),
+        ...     p=1.0,
+        ... )
+        >>> transformed_image = transform(image=image)["image"]
+        >>>
+        >>> # Example 2: Using a specific preset stain matrix
         >>> transform = A.HEStain(
         ...     method="preset",
         ...     preset="standard",
         ...     intensity_scale_range=(0.8, 1.2),
         ...     intensity_shift_range=(-0.1, 0.1),
         ...     augment_background=False,
-        ...     p=1.0
+        ...     p=1.0,
         ... )
-        >>> result = transform(image=image)
-        >>> transformed_image = result['image']
+        >>> transformed_image = transform(image=image)["image"]
         >>>
-        >>> # Example 2: Using random preset selection
+        >>> # Example 3: Using random preset selection
         >>> transform = A.HEStain(
         ...     method="random_preset",
         ...     intensity_scale_range=(0.7, 1.3),
         ...     intensity_shift_range=(-0.15, 0.15),
-        ...     p=1.0
+        ...     p=1.0,
         ... )
-        >>> result = transform(image=image)
-        >>> transformed_image = result['image']
+        >>> transformed_image = transform(image=image)["image"]
         >>>
-        >>> # Example 3: Using Vahadane method (requires H&E stained input)
+        >>> # Example 4: Using Vahadane extraction (requires an H&E stained input)
         >>> transform = A.HEStain(
         ...     method="vahadane",
         ...     intensity_scale_range=(0.7, 1.3),
-        ...     p=1.0
+        ...     p=1.0,
         ... )
-        >>> result = transform(image=image)
-        >>> transformed_image = result['image']
+        >>> transformed_image = transform(image=image)["image"]
         >>>
-        >>> # Example 4: Using Macenko method (requires H&E stained input)
+        >>> # Example 5: Using Macenko extraction (requires an H&E stained input)
         >>> transform = A.HEStain(
         ...     method="macenko",
         ...     intensity_scale_range=(0.7, 1.3),
         ...     intensity_shift_range=(-0.2, 0.2),
-        ...     p=1.0
+        ...     p=1.0,
         ... )
-        >>> result = transform(image=image)
-        >>> transformed_image = result['image']
+        >>> transformed_image = transform(image=image)["image"]
         >>>
-        >>> # Example 5: Combining with other transforms in a pipeline
+        >>> # Example 6: Combining stain and brightness variation in one pipeline
         >>> transform = A.Compose([
         ...     A.HEStain(method="preset", preset="high_contrast", p=1.0),
         ...     A.RandomBrightnessContrast(p=0.5),
         ... ])
-        >>> result = transform(image=image)
-        >>> transformed_image = result['image']
+        >>> transformed_image = transform(image=image)["image"]
 
     """
 
     class InitSchema(BaseTransformInitSchema):
-        method: Literal["preset", "random_preset", "vahadane", "macenko"]
+        method: Literal["preset", "random_preset", "vahadane", "macenko", "custom"]
         preset: (
             Literal[
                 "ruifrok",
@@ -871,6 +885,7 @@ class HEStain(ImageOnlyTransform):
             ]
             | None
         )
+        stain_matrix: np.ndarray | None
         intensity_scale_range: Annotated[
             tuple[float, float],
             AfterValidator(nondecreasing),
@@ -883,17 +898,40 @@ class HEStain(ImageOnlyTransform):
         ]
         augment_background: bool
 
+        @field_validator("stain_matrix", mode="before")
+        @classmethod
+        def _convert_stain_matrix(cls, value: Any) -> np.ndarray | None:
+            if value is None:
+                return None
+            try:
+                stain_matrix = np.array(value, dtype=np.float32, copy=True)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("stain_matrix must contain numeric values") from exc
+            if stain_matrix.shape != (2, 3):
+                raise ValueError(f"stain_matrix must have shape (2, 3), got {stain_matrix.shape}")
+            if not np.isfinite(stain_matrix).all():
+                raise ValueError("stain_matrix must contain only finite values")
+            if np.any(np.linalg.norm(stain_matrix, axis=1) == 0):
+                raise ValueError("stain_matrix rows must be non-zero stain vectors")
+            if np.linalg.matrix_rank(stain_matrix) < 2:
+                raise ValueError("stain_matrix rows must be linearly independent")
+            return stain_matrix
+
         @model_validator(mode="after")
         def _validate_matrix_selection(self) -> Self:
+            if self.method == "custom" and self.stain_matrix is None:
+                raise ValueError("stain_matrix is required when method='custom'")
+            if self.method != "custom" and self.stain_matrix is not None:
+                raise ValueError("stain_matrix is only valid when method='custom'")
             if self.method == "preset" and self.preset is None:
                 self.preset = "standard"
-            elif self.method == "random_preset" and self.preset is not None:
-                raise ValueError("preset should not be specified when method='random_preset'")
+            elif self.method in {"random_preset", "custom"} and self.preset is not None:
+                raise ValueError(f"preset should not be specified when method='{self.method}'")
             return self
 
     def __init__(
         self,
-        method: Literal["preset", "random_preset", "vahadane", "macenko"] = "random_preset",
+        method: Literal["preset", "random_preset", "vahadane", "macenko", "custom"] = "random_preset",
         preset: Literal[
             "ruifrok",
             "macenko",
@@ -909,6 +947,8 @@ class HEStain(ImageOnlyTransform):
         intensity_shift_range: tuple[float, float] = (-0.2, 0.2),
         augment_background: bool = False,
         p: float = 0.5,
+        *,
+        stain_matrix: np.ndarray | None = None,
     ):
         super().__init__(p=p)
         self.method = method
@@ -916,7 +956,7 @@ class HEStain(ImageOnlyTransform):
         self.intensity_scale_range = intensity_scale_range
         self.intensity_shift_range = intensity_shift_range
         self.augment_background = augment_background
-        self.stain_normalizer = None
+        self.stain_matrix = stain_matrix
 
         # Initialize stain extractor here if needed
         if method in ["vahadane", "macenko"]:
@@ -933,15 +973,23 @@ class HEStain(ImageOnlyTransform):
             "light",
         ]
 
-    def _get_stain_matrix(self, img: ImageType) -> np.ndarray:
-        """Return stain matrix for HEStain: from preset, random_preset, or vahadane/macenko
-        extraction from img. Determines per-call stain appearance.
+    def get_transform_init_args(self) -> dict[str, Any]:
+        """Return constructor arguments with a custom stain matrix converted to nested lists so JSON and YAML
+        serialization can reconstruct HEStain.
         """
+        args = super().get_transform_init_args()
+        if isinstance(args.get("stain_matrix"), np.ndarray):
+            args["stain_matrix"] = args["stain_matrix"].tolist()
+        return args
+
+    def _get_stain_matrix(self, img: ImageType) -> np.ndarray:
         if self.method == "preset" and self.preset is not None:
             return fpixel.STAIN_MATRICES[self.preset]
         if self.method == "random_preset":
             random_preset = self.py_random.choice(self.preset_names)
             return fpixel.STAIN_MATRICES[random_preset]
+        if self.method == "custom":
+            return cast("np.ndarray", self.stain_matrix)
         # vahadane or macenko
         self.stain_extractor.fit(img)
         stain_matrix = self.stain_extractor.stain_matrix_target

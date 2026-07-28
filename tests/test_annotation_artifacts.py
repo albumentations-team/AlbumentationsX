@@ -126,6 +126,29 @@ def test_annotation_artifacts_dtype_and_channels(dtype: type[np.generic], num_ch
     assert not np.array_equal(result, image)
 
 
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [("image", (32, 32)), ("images", (2, 32, 32))],
+)
+def test_annotation_artifacts_direct_grayscale_inputs(target: str, shape: tuple[int, ...]) -> None:
+    data = np.full(shape, 137, dtype=np.uint8)
+    transform = A.AnnotationArtifacts(
+        element_types=("line",),
+        element_probabilities=(1.0,),
+        count_range=(4, 4),
+        random_color_prob=1.0,
+        p=1,
+    )
+    transform.set_random_seed(137)
+
+    result = transform(**{target: data})[target]
+
+    assert result.shape == data.shape
+    assert result.dtype == data.dtype
+    assert all(len(artifact["color"]) == 1 for artifact in transform.params["artifacts"])
+    assert not np.array_equal(result, data)
+
+
 @pytest.mark.parametrize("shape", [(2, 2, 1), (2, 2, 3), (4, 3, 5)])
 def test_annotation_artifacts_tiny_images_do_not_fail(shape: tuple[int, int, int]) -> None:
     image = np.full(shape, 137, dtype=np.uint8)
@@ -303,6 +326,22 @@ def test_annotation_artifacts_random_angle_supports_pixel_lengths() -> None:
     ]
 
     assert all(18.5 <= length <= 21.5 for length in lengths)
+
+
+def test_annotation_artifacts_random_angle_has_nonzero_relative_length() -> None:
+    image = np.full((4, 4, 1), 137, dtype=np.uint8)
+    transform = A.AnnotationArtifacts(
+        element_types=("line",),
+        element_probabilities=(1.0,),
+        count_range=(10, 10),
+        line_geometry="random_angle",
+        line_length_ratio_range=(0.1, 0.1),
+        p=1,
+    )
+
+    A.Compose([transform], seed=137, strict=True)(image=image)
+
+    assert all(artifact["start"] != artifact["end"] for artifact in transform.params["artifacts"])
 
 
 @pytest.mark.parametrize(

@@ -294,7 +294,9 @@ class AnnotationArtifacts(ImageOnlyTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        image_height, image_width, num_channels = params["shape"]
+        shape = params["shape"]
+        image_height, image_width = shape[:2]
+        num_channels = shape[2] if len(shape) > 2 else 1
         artifacts = self._generate_artifacts(image_height, image_width, num_channels)
         record_line_length_ratio = self.line_geometry != "random_endpoints" and not (
             self.line_geometry == "random_angle" and self.line_length_range is not None
@@ -484,8 +486,8 @@ class AnnotationArtifacts(ImageOnlyTransform):
         angle = self.py_random.uniform(0, 2 * np.pi)
         line_length = self._sample_unbounded_line_length(image_height, image_width)
         end = (
-            int(start_col + line_length * np.cos(angle)),
-            int(start_row + line_length * np.sin(angle)),
+            round(start_col + line_length * np.cos(angle)),
+            round(start_row + line_length * np.sin(angle)),
         )
         return (start_col, start_row), end
 
@@ -504,7 +506,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
         if self.line_length_range is not None:
             return self.py_random.randint(*self.line_length_range)
 
-        return round(self.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width))
+        return max(1, round(self.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width)))
 
     def _generate_arrow_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
         start = self._sample_arrow_start(image_height, image_width)

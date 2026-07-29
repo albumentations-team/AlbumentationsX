@@ -675,6 +675,32 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
             "tip_length_range": (0.1, 0.3),
             "corner_prob": 0.2,
             "black_white_prob": 0.3,
+            "line_styles": ("solid", "dotted"),
+            "line_style_probabilities": (0.4, 0.6),
+            "random_color_prob": 0.25,
+            "color_palette": ((255, 255, 255), (12, 34, 56)),
+            "color_palette_probabilities": (0.7, 0.3),
+        },
+    ),
+    (
+        "random-angle",
+        A.AnnotationArtifacts,
+        {
+            "element_types": ("line",),
+            "element_probabilities": (1.0,),
+            "count_range": (2, 4),
+            "line_geometry": "random_angle",
+            "line_length_range": (8, 24),
+        },
+    ),
+    (
+        "random-endpoints",
+        A.AnnotationArtifacts,
+        {
+            "element_types": ("line",),
+            "element_probabilities": (1.0,),
+            "count_range": (2, 4),
+            "line_geometry": "random_endpoints",
         },
     ),
     ("diagonal-colored", A.AtmosphericFog, {"fog_color": (180, 190, 200), "depth_mode": "diagonal"}),
@@ -809,6 +835,14 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("rotated-fixed-fill", A.GridMask, {"rotation_range": (10, 20), "fill": 7, "fill_mask": 3}),
     ("asymmetric-grid", A.GridShuffle3D, {"grid_zyx": (1, 2, 2)}),
     ("explicit-preset", A.HEStain, {"method": "preset", "preset": "dark"}),
+    (
+        "custom-matrix",
+        A.HEStain,
+        {
+            "method": "custom",
+            "stain_matrix": np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32),
+        },
+    ),
     ("custom-reference", A.HistogramMatching, {"blend_ratio": (0.2, 0.4), "metadata_key": "references"}),
     (
         "gaussian-darken",

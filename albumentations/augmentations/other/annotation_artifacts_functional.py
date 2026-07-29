@@ -52,14 +52,34 @@ def _draw_solid_line(
     color: tuple[int, ...],
     thickness: int,
 ) -> None:
-    image_shape = image.shape[:2]
-    clipped_start = _clip_point(start, image_shape)
-    clipped_end = _clip_point(end, image_shape)
-
     def draw(channel: np.ndarray, channel_color: int) -> None:
-        cv2.line(channel, clipped_start, clipped_end, channel_color, thickness, cv2.LINE_AA)
+        cv2.line(channel, start, end, channel_color, thickness, cv2.LINE_AA)
 
     _draw_channelwise(image, color, draw)
+
+
+def _get_visible_distance_range(
+    image_shape: tuple[int, int],
+    start: Point,
+    end: Point,
+    distance: int,
+) -> tuple[int, int] | None:
+    image_height, image_width = image_shape
+    is_visible, clipped_start, clipped_end = cv2.clipLine((0, 0, image_width, image_height), start, end)
+    if not is_visible:
+        return None
+
+    delta_col = end[0] - start[0]
+    delta_row = end[1] - start[1]
+    distance_squared = delta_col**2 + delta_row**2
+    clipped_distances = (
+        round(
+            ((point[0] - start[0]) * delta_col + (point[1] - start[1]) * delta_row) * distance / distance_squared,
+        )
+        for point in (clipped_start, clipped_end)
+    )
+    visible_start, visible_end = sorted(clipped_distances)
+    return max(0, visible_start), min(distance, visible_end)
 
 
 def _draw_dashed_line(
@@ -71,17 +91,22 @@ def _draw_dashed_line(
     dash_length: int = 8,
     gap_length: int = 6,
 ) -> None:
-    image_shape = image.shape[:2]
-    clipped_start = _clip_point(start, image_shape)
-    clipped_end = _clip_point(end, image_shape)
-    start_col, start_row = clipped_start
-    end_col, end_row = clipped_end
+    start_col, start_row = start
+    end_col, end_row = end
     distance = int(np.hypot(end_col - start_col, end_row - start_row))
 
     if distance == 0:
         return
 
-    for segment_start in range(0, distance, dash_length + gap_length):
+    visible_range = _get_visible_distance_range(image.shape[:2], start, end, distance)
+    if visible_range is None:
+        return
+
+    visible_start, visible_end = visible_range
+    period = dash_length + gap_length
+    first_segment = max(0, ((visible_start - dash_length) // period) * period)
+    last_segment = min(distance, visible_end + thickness + 1)
+    for segment_start in range(first_segment, last_segment + 1, period):
         start_fraction = segment_start / distance
         end_fraction = min(segment_start + dash_length, distance) / distance
 
@@ -105,17 +130,19 @@ def _draw_dotted_line(
     thickness: int,
     dot_spacing: int = 8,
 ) -> None:
-    image_shape = image.shape[:2]
-    clipped_start = _clip_point(start, image_shape)
-    clipped_end = _clip_point(end, image_shape)
-    start_col, start_row = clipped_start
-    end_col, end_row = clipped_end
+    start_col, start_row = start
+    end_col, end_row = end
     distance = int(np.hypot(end_col - start_col, end_row - start_row))
 
     if distance == 0:
         return
 
     radius = max(1, thickness // 2)
+    visible_range = _get_visible_distance_range(image.shape[:2], start, end, distance)
+    if visible_range is None:
+        return
+
+    visible_start, visible_end = visible_range
 
     def draw_dot(center: Point) -> None:
         def draw(channel: np.ndarray, channel_color: int) -> None:
@@ -123,7 +150,9 @@ def _draw_dotted_line(
 
         _draw_channelwise(image, color, draw)
 
-    for dot_position in range(0, distance, dot_spacing):
+    first_dot = max(0, ((visible_start - radius - 1) // dot_spacing) * dot_spacing)
+    last_dot = min(distance - 1, visible_end + radius + 1)
+    for dot_position in range(first_dot, last_dot + 1, dot_spacing):
         dot_fraction = dot_position / distance
         dot_center = (
             int(start_col + (end_col - start_col) * dot_fraction),

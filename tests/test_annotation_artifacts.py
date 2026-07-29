@@ -179,6 +179,26 @@ def test_annotation_artifacts_white_color_affects_extra_channels() -> None:
     assert np.any(result[..., 4] > 0)
 
 
+@pytest.mark.parametrize("style", ["solid", "dashed", "dotted"])
+def test_annotation_artifacts_line_geometry_is_preserved_at_image_border(style: str) -> None:
+    artifact = {
+        "type": "line",
+        "start": (50, 20),
+        "end": (123, 93),
+        "color": (255,),
+        "thickness": 1,
+        "style": style,
+    }
+
+    small_result = fannotation.draw_annotation_artifacts(np.zeros((100, 100, 1), dtype=np.uint8), [artifact])
+    large_result = fannotation.draw_annotation_artifacts(np.zeros((150, 150, 1), dtype=np.uint8), [artifact])
+
+    np.testing.assert_array_equal(
+        small_result[1:-1, 1:-1] > 0,
+        large_result[1:99, 1:99] > 0,
+    )
+
+
 def test_annotation_artifacts_line_length_range_controls_lines() -> None:
     image = np.full((100, 100, 3), 137, dtype=np.uint8)
     transform = A.AnnotationArtifacts(

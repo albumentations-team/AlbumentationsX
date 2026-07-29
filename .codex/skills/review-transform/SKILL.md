@@ -88,6 +88,10 @@ Flag any violations with a concrete speedup suggestion.
 - [ ] Every configurable public constructor parameter except `p` and `strict` has a non-default case
 - [ ] Behaviorally distinct and mutually exclusive modes have separate cases
 - [ ] Special targets or metadata use a deterministic factory, not a generic-test class-name branch
+- [ ] Every registered mode collects against all applicable core profiles in the generated target cluster
+- [ ] Target applicability comes from declared targets, bbox types, prerequisites, and channel capabilities
+- [ ] Target profiles and runners contain no transform-class lists, class-name skips, or duplicated constructor kwargs
+- [ ] Transform-required metadata lives in the case `context_factory`; target-dependent sampling uses `required_targets`
 - [ ] Realized `applied_config` survives strict JSON, public reconstruction, and fresh-data execution
 - [ ] Conflicting stochastic-policy fields are cleared when sampled fields are emitted
 - [ ] Exact replay is asserted only when the applied configuration captures all relevant randomness

@@ -491,12 +491,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         res: dict[str, Any] = {}
         for key, arg in kwargs.items():
             if key in self._key2func and arg is not None:
-                # Handle empty lists for mask-like keys
-                if key in {"masks", "masks3d"} and isinstance(arg, (list, tuple)) and not arg:
-                    res[key] = arg  # Keep empty list as is
-                else:
-                    target_function = self._key2func[key]
-                    res[key] = target_function(arg, **params)
+                target_function = self._key2func[key]
+                res[key] = target_function(arg, **params)
             else:
                 res[key] = arg
         return res
@@ -673,13 +669,13 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
     # used by get_params_dependent_on_data implementations. Order encodes lookup priority.
     _SHAPE_TARGETS_TUPLE: ClassVar[tuple[tuple[str, Callable[[Any], tuple[int, ...]]], ...]] = (
         ("image", lambda v: v.shape),
-        ("images", lambda v: v[0].shape),
-        ("volume", lambda v: v[0].shape),  # first slice handles DHW or DHWC
-        ("volumes", lambda v: v[0][0].shape),  # first slice of first volume
+        ("images", lambda v: v.shape[1:]),
+        ("volume", lambda v: v.shape[1:]),
+        ("volumes", lambda v: v.shape[2:]),
         ("mask", lambda v: v.shape),
-        ("masks", lambda v: v[0].shape),
-        ("mask3d", lambda v: v[0].shape),
-        ("masks3d", lambda v: v[0][0].shape),
+        ("masks", lambda v: v.shape[1:]),
+        ("mask3d", lambda v: v.shape[1:]),
+        ("masks3d", lambda v: v.shape[2:]),
     )
 
     def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
@@ -1075,8 +1071,20 @@ class DualTransform(BasicTransform):
         return self.apply_to_mask(mask3d, *args, **params)
 
     @batch_transform("spatial")
+    def _apply_to_masks3d_via_mask(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
+        return self.apply_to_mask(masks3d, *args, **params)
+
     def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self._apply_to_batch(masks3d, lambda mask3d: self.apply_to_mask3d(mask3d, **params))
+        if self.__class__.apply_to_mask3d is DualTransform.apply_to_mask3d:
+            return self._apply_to_masks3d_via_mask(masks3d, *args, **params)
+        if len(masks3d) == 0:
+            empty_mask3d = np.zeros(masks3d.shape[1:], dtype=masks3d.dtype)
+            transformed = self.apply_to_mask3d(empty_mask3d, *args, **params)
+            return np.empty((0, *transformed.shape), dtype=transformed.dtype)
+        return self._apply_to_batch(
+            masks3d,
+            lambda mask3d: self.apply_to_mask3d(mask3d, *args, **params),
+        )
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping. For most transforms returns class

@@ -6,11 +6,11 @@ import pytest
 import albumentations as A
 from albumentations.core.composition import _normalize_config_for_replay
 from tests.helpers.applied_config import run_applied_config_contract
-from tests.helpers.transform_cases import TRANSFORM_CONTRACT_CASES
+from tests.helpers.transform_cases import TRANSFORM_CONTRACT_CASES, TransformContractCase
 
 
 @pytest.mark.parametrize("case", TRANSFORM_CONTRACT_CASES, ids=lambda case: case.case_id)
-def test_applied_config_contract(case) -> None:
+def test_applied_config_contract(case: TransformContractCase) -> None:
     for seed in case.seeds:
         run_applied_config_contract(case, seed)
 

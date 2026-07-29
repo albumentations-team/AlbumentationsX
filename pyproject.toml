@@ -178,13 +178,13 @@ ci-quality = [
   "pillow>=12.3.0",
   "pre-commit>=4.6.0",
   "pytest>=9.1.1",
-  "ruff>=0.15.21",
+  "ruff>=0.16.0",
   "tomli>=2.4.1",
 ]
 ci-types = [
   "mypy>=2.3.0",
   "opencv-python-headless>=5.0.0.93",
-  "pyrefly>=1.2.0.dev2",
+  "pyrefly>=1.2.0.dev3",
   "types-PyYAML>=6.0.12.20260518",
   "types-setuptools>=83.0.0.20260706",
 ]
@@ -305,6 +305,7 @@ lint.ignore = [
   "B008",
   "B027",
   "COM812",
+  "CPY001",  # The repository carries one canonical AGPL notice instead of per-module copyright headers.
   "D102",    # We handle method docstrings with custom hook
   "D104",
   "D105",
@@ -327,6 +328,7 @@ lint.ignore = [
   "PLC0415",
   "PLR0911",
   "PLR0913",
+  "PLR0917", # Preserve the positional compatibility of existing public transforms and functional APIs.
   "PLR2004",
   "S310",
   "S311",

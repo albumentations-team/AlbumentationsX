@@ -4,7 +4,7 @@ import pytest
 
 import albumentations as A
 from albumentations.core.type_definitions import Targets
-from tests.utils import get_3d_transforms
+from tests.utils import get_primary_3d_transform_params
 
 
 def extract_targets_from_docstring(cls):
@@ -78,7 +78,7 @@ str2target = {
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_3d_transforms(
+    get_primary_3d_transform_params(
         custom_arguments={
             A.PadIfNeeded3D: {"min_zyx": (4, 250, 230), "position": "center", "fill": 0, "fill_mask": 0},
             A.Pad3D: {"padding": 10},

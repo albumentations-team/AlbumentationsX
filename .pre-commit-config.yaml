@@ -150,7 +150,7 @@ repos:
         pass_filenames: false
         files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.21
+    rev: v0.16.0
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -169,7 +169,7 @@ repos:
       - id: python-check-blanket-noqa
       - id: text-unicode-replacement-char
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: v2.4.3
     hooks:
       - id: codespell
         additional_dependencies: ["tomli>=2.4.1"]
@@ -185,7 +185,7 @@ repos:
         args:
           [ --config-file=pyproject.toml ]
   - repo: https://github.com/facebook/pyrefly-pre-commit
-    rev: 1.2.0.dev2
+    rev: 1.2.0.dev3
     hooks:
       - id: pyrefly-check
         name: Pyrefly type check

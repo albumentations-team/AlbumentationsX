@@ -5,7 +5,7 @@ import pytest
 import albumentations as A
 from albumentations.core.type_definitions import ALL_TARGETS, Targets
 
-from .utils import get_dual_transforms, get_image_only_transforms
+from .utils import get_primary_dual_transform_params, get_primary_image_only_transform_params
 
 
 def get_targets_from_methods(cls):
@@ -64,7 +64,7 @@ str2target = {
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_image_only_transforms(
+    get_primary_image_only_transform_params(
         custom_arguments={
             A.TextImage: dict(font_path="./tests/filesLiberationSerif-Bold.ttf"),
         },
@@ -77,7 +77,7 @@ def test_image_only(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={
             A.Crop: {"y_min": 0, "y_max": 10, "x_min": 0, "x_max": 10},
             A.CenterCrop: {"height": 10, "width": 10},

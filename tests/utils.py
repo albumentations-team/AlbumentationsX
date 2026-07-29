@@ -136,18 +136,19 @@ def _get_all_valid_transforms():
     return valid_transforms
 
 
-def get_filtered_transforms(
+def get_primary_filtered_transform_params(
     base_classes,
     custom_arguments=None,
     except_augmentations=None,
     exclude_base_classes=None,
 ):
-    from tests.helpers.transform_cases import PRIMARY_TRANSFORM_CASE_BY_CLASS
+    from tests.helpers.transform_cases import PRIMARY_TRANSFORM_CONTRACT_CASES
 
     custom_arguments = custom_arguments or {}
     except_augmentations = except_augmentations or set()
     exclude_base_classes = exclude_base_classes or ()
 
+    primary_case_by_class = {case.transform_cls: case for case in PRIMARY_TRANSFORM_CONTRACT_CASES}
     result = []
     for cls in get_all_valid_transforms():
         # Skip checks...
@@ -168,8 +169,8 @@ def get_filtered_transforms(
             for param_set in params:
                 # Wrap in FrozenParams to prevent mutation across tests
                 result.append((cls, FrozenParams(param_set)))
-        elif cls in PRIMARY_TRANSFORM_CASE_BY_CLASS:
-            case = PRIMARY_TRANSFORM_CASE_BY_CLASS[cls]
+        elif cls in primary_case_by_class:
+            case = primary_case_by_class[cls]
             result.append((cls, FrozenParams(case.init_kwargs)))
         else:
             result.append((cls, FrozenParams({})))
@@ -177,19 +178,23 @@ def get_filtered_transforms(
     return result
 
 
-def get_image_only_transforms(
+def get_primary_image_only_transform_params(
     custom_arguments: dict[type[albumentations.ImageOnlyTransform], dict] | None = None,
     except_augmentations: set[type[albumentations.ImageOnlyTransform]] | None = None,
 ) -> list[tuple[type, dict]]:
-    return get_filtered_transforms((albumentations.ImageOnlyTransform,), custom_arguments, except_augmentations)
+    return get_primary_filtered_transform_params(
+        (albumentations.ImageOnlyTransform,),
+        custom_arguments,
+        except_augmentations,
+    )
 
 
-def get_dual_transforms(
+def get_primary_dual_transform_params(
     custom_arguments: dict[type[albumentations.DualTransform], dict] | None = None,
     except_augmentations: set[type[albumentations.DualTransform]] | None = None,
 ) -> list[tuple[type, dict]]:
     """Get all 2D dual transforms, excluding 3D transforms."""
-    return get_filtered_transforms(
+    return get_primary_filtered_transform_params(
         base_classes=(albumentations.DualTransform,),
         custom_arguments=custom_arguments,
         except_augmentations=except_augmentations,
@@ -197,24 +202,24 @@ def get_dual_transforms(
     )
 
 
-def get_transforms(
+def get_primary_public_transform_params(
     custom_arguments: dict[type[albumentations.BasicTransform], dict] | None = None,
     except_augmentations: set[type[albumentations.BasicTransform]] | None = None,
 ) -> list[tuple[type, dict]]:
     """Get all transforms (2D and 3D)."""
-    return get_filtered_transforms(
+    return get_primary_filtered_transform_params(
         base_classes=(albumentations.ImageOnlyTransform, albumentations.DualTransform, albumentations.Transform3D),
         custom_arguments=custom_arguments,
         except_augmentations=except_augmentations,
     )
 
 
-def get_2d_transforms(
+def get_primary_2d_transform_params(
     custom_arguments: dict[type[albumentations.BasicTransform], dict] | None = None,
     except_augmentations: set[type[albumentations.BasicTransform]] | None = None,
 ) -> list[tuple[type, dict]]:
     """Get all 2D transforms (both ImageOnly and Dual transforms), excluding 3D transforms."""
-    return get_filtered_transforms(
+    return get_primary_filtered_transform_params(
         base_classes=(albumentations.ImageOnlyTransform, albumentations.DualTransform),
         custom_arguments=custom_arguments,
         except_augmentations=except_augmentations,
@@ -222,12 +227,12 @@ def get_2d_transforms(
     )
 
 
-def get_3d_transforms(
+def get_primary_3d_transform_params(
     custom_arguments: dict[type[albumentations.Transform3D], dict] | None = None,
     except_augmentations: set[type[albumentations.Transform3D]] | None = None,
 ) -> list[tuple[type, dict]]:
     """Get all 3D transforms."""
-    return get_filtered_transforms(
+    return get_primary_filtered_transform_params(
         base_classes=(albumentations.Transform3D,),
         custom_arguments=custom_arguments,
         except_augmentations=except_augmentations,

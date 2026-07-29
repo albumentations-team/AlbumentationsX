@@ -4,8 +4,7 @@ This test file verifies:
 1. OBB format preservation through crops
 2. Correct handling of partially cropped OBBs (refitting via cv2.minAreaRect)
 3. Unchanged OBBs keep original angle/dimensions
-4. All crop transforms support OBB
-5. Helper functions for clipped/unclipped OBB processing
+4. Helper functions for clipped/unclipped OBB processing
 """
 
 import numpy as np
@@ -136,80 +135,6 @@ def test_obb_completely_outside_crop_filtered() -> None:
 
     # Box should be filtered out
     assert len(result["bboxes"]) == 0
-
-
-@pytest.mark.parametrize(
-    "transform_class,transform_kwargs",
-    [
-        pytest.param(A.Crop, {"x_min": 10, "y_min": 10, "x_max": 90, "y_max": 90}, id="Crop"),
-        pytest.param(A.CenterCrop, {"height": 60, "width": 60}, id="CenterCrop"),
-        pytest.param(A.RandomCrop, {"height": 60, "width": 60}, id="RandomCrop"),
-        pytest.param(A.RandomResizedCrop, {"size": (50, 50), "scale": (0.5, 1.0)}, id="RandomResizedCrop"),
-        pytest.param(A.RandomSizedCrop, {"min_max_height": (40, 60), "size": (50, 50)}, id="RandomSizedCrop"),
-        pytest.param(A.RandomCropFromBorders, {}, id="RandomCropFromBorders"),
-        pytest.param(A.CropNonEmptyMaskIfExists, {"height": 50, "width": 50}, id="CropNonEmptyMaskIfExists"),
-        pytest.param(A.BBoxSafeRandomCrop, {"erosion_rate": 0.0}, id="BBoxSafeRandomCrop"),
-        pytest.param(
-            A.AtLeastOneBBoxRandomCrop,
-            {"height": 50, "width": 50, "erosion_factor": 0.0},
-            id="AtLeastOneBBoxRandomCrop",
-        ),
-    ],
-)
-@pytest.mark.obb
-def test_crop_transforms_support_obb(transform_class, transform_kwargs) -> None:
-    """Test that all crop transforms support OBB."""
-    image = np.zeros((100, 100, 3), dtype=np.uint8)
-    mask = np.zeros((100, 100), dtype=np.uint8)
-    mask[40:60, 40:60] = 1  # For CropNonEmptyMaskIfExists
-
-    # OBB in the middle
-    bbox = [0.3, 0.3, 0.7, 0.7, 25.0]
-
-    transform = transform_class(**transform_kwargs, p=1.0)
-
-    # Verify _supported_bbox_types includes "obb"
-    if hasattr(transform, "_supported_bbox_types"):
-        assert "obb" in transform._supported_bbox_types, f"{transform_class.__name__} does not declare OBB support"
-
-    aug = A.Compose(
-        [transform],
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
-    )
-
-    np.random.seed(137)
-    result = aug(image=image, mask=mask, bboxes=[bbox])
-
-    # Should not raise an error and should return transformed data
-    assert "image" in result
-    assert "bboxes" in result
-
-    # If bbox survived, it should still have 5 elements
-    if len(result["bboxes"]) > 0:
-        assert len(result["bboxes"][0]) == 5
-
-
-@pytest.mark.obb
-def test_crop_and_pad_with_obb() -> None:
-    """Test CropAndPad transform with OBB."""
-    image = np.zeros((100, 100, 3), dtype=np.uint8)
-
-    # OBB in the middle
-    bbox = [0.3, 0.3, 0.7, 0.7, 30.0]
-
-    transform = A.Compose(
-        [A.CropAndPad(px=10, p=1.0)],  # Pad 10px on each side (negative values crop)
-        bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
-    )
-
-    result = transform(image=image, bboxes=[bbox])
-
-    # Should not raise an error
-    assert "bboxes" in result
-
-    # If bbox survived, it should still have 5 elements
-    if len(result["bboxes"]) > 0:
-        assert len(result["bboxes"][0]) == 5
 
 
 @pytest.mark.obb

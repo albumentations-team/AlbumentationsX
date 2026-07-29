@@ -210,21 +210,17 @@ class CopyAndPaste(DualTransform):
         return [self.metadata_key]
 
     @staticmethod
-    def _instance_masks_to_3d(masks: Any) -> np.ndarray | None:
-        """Normalize masks to (N, H, W) for CopyAndPaste visibility from a stacked ndarray (4D ok) or a sequence of
-        per-instance (H, W) arrays.
+    def _instance_masks_to_3d(masks: np.ndarray | None) -> np.ndarray | None:
+        """Normalize a stacked masks array to `(N, H, W)` so CopyAndPaste can calculate
+        the visible fraction of every existing instance after applying the paste footprint.
         """
         if masks is None:
             return None
-        if isinstance(masks, np.ndarray):
-            if masks.size == 0:
-                return None
-            return masks.squeeze(-1) if masks.ndim == 4 else masks
-        if isinstance(masks, Sequence) and not isinstance(masks, (str, bytes, np.ndarray)):
-            if len(masks) == 0:
-                return None
-            return np.stack([np.asarray(m) for m in masks], axis=0)
-        return None
+        if not isinstance(masks, np.ndarray):
+            raise TypeError("masks must be numpy array type")
+        if masks.size == 0:
+            return None
+        return masks.squeeze(-1) if masks.ndim == 4 else masks
 
     def _compute_surviving_indices(
         self,
@@ -1191,19 +1187,15 @@ class CopyAndPaste(DualTransform):
     def _normalize_existing_masks(
         masks: ImageType,
         paste_instance_masks: np.ndarray,
-    ) -> tuple[np.ndarray | None, np.ndarray]:
-        """Coerce existing masks and the pasted instance-masks scratch array into the canonical
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Normalize existing masks and the pasted instance-masks scratch array to the canonical
         `(N, H, W, C)` 4-D shape that the rest of the paste path assumes.
 
         Existing masks under instance binding arrive 4-D from `Compose._add_grayscale_channels`;
-        list/tuple input from non-binding callers gets stacked then expanded if needed. The pasted
-        scratch array is built internally as `(N, H, W)` and always grows a trailing singleton here
-        so downstream concat / `_zero_out_paste_region` can stay branchless.
+        direct callers may provide a 3-D stacked array. The pasted scratch array is built internally
+        as `(N, H, W)` and always grows a trailing singleton here so downstream concatenation and
+        `_zero_out_paste_region` can stay branchless.
         """
-        if isinstance(masks, (list, tuple)):
-            if len(masks) == 0:
-                return None, paste_instance_masks[..., np.newaxis]
-            masks = np.stack([np.asarray(m) for m in masks], axis=0)
         if masks.ndim == 3:
             masks = masks[..., np.newaxis]
         pasted = paste_instance_masks[..., np.newaxis]
@@ -1247,7 +1239,7 @@ class CopyAndPaste(DualTransform):
             return masks
 
         existing, pasted = self._normalize_existing_masks(masks, paste_instance_masks)
-        if existing is None or existing.size == 0:
+        if existing.size == 0:
             return StackedMasks4D(pasted)
 
         # ID-driven path (instance binding active): index masks by surviving _bbox_instance_id values

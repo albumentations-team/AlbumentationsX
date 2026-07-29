@@ -190,8 +190,10 @@ def test_sdist_rejects_nested_distribution_artifact(tmp_path: Path) -> None:
     errors = collect_artifact_errors(sdist, expected_files)
 
     assert errors == [
-        f"{sdist.name}: nested distribution artifact leaked into sdist as "
-        f"albumentationsx-{FIRST_ONLY_RELEASE}/unexpected/albumentationsx-2.3.1-py3-none-any.whl",
+        (
+            f"{sdist.name}: nested distribution artifact leaked into sdist as "
+            f"albumentationsx-{FIRST_ONLY_RELEASE}/unexpected/albumentationsx-2.3.1-py3-none-any.whl"
+        ),
     ]
 
 
@@ -219,8 +221,10 @@ def test_wheel_rejects_missing_license_file_metadata(tmp_path: Path) -> None:
     errors = collect_artifact_errors(wheel, expected_files)
 
     assert errors == [
-        f"{wheel.name}: wheel METADATA License-File entries must be exactly LICENSE, "
-        "LICENSING.md, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
+        (
+            f"{wheel.name}: wheel METADATA License-File entries must be exactly LICENSE, "
+            "LICENSING.md, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt"
+        ),
     ]
 
 
@@ -248,8 +252,10 @@ def test_sdist_rejects_missing_license_file_metadata(tmp_path: Path) -> None:
     errors = collect_artifact_errors(sdist, expected_files)
 
     assert errors == [
-        f"{sdist.name}: sdist PKG-INFO License-File entries must be exactly LICENSE, "
-        "LICENSING.md, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
+        (
+            f"{sdist.name}: sdist PKG-INFO License-File entries must be exactly LICENSE, "
+            "LICENSING.md, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt"
+        ),
     ]
 
 
@@ -261,6 +267,8 @@ def test_artifact_rejects_reuse_of_published_or_later_version(tmp_path: Path) ->
     errors = collect_artifact_errors(wheel, expected_files)
 
     assert errors == [
-        f"{wheel.name}: wheel METADATA reuses published version 2.3.1; "
-        f"AGPL-3.0-only artifacts start at {FIRST_ONLY_RELEASE}",
+        (
+            f"{wheel.name}: wheel METADATA reuses published version 2.3.1; "
+            f"AGPL-3.0-only artifacts start at {FIRST_ONLY_RELEASE}"
+        ),
     ]

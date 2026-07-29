@@ -741,6 +741,16 @@ def test_apply_affine_to_points(points, matrix, expected):
     np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-8)
 
 
+def test_apply_affine_to_points_replaces_zero_homogeneous_coordinate():
+    points = np.array([[1.0, 2.0]])
+    matrix = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]])
+    epsilon = np.finfo(np.float64).eps
+
+    result = fgeometric.apply_affine_to_points(points, matrix)
+
+    np.testing.assert_array_equal(result, np.array([[1.0 / epsilon, 2.0 / epsilon]]))
+
+
 @pytest.mark.parametrize(
     "points, matrix",
     [

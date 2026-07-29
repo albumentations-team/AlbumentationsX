@@ -8,10 +8,10 @@ from typing import Any
 
 from tests.helpers.transforms import TransformTestHelper
 from tests.utils import (
-    get_2d_transforms,
-    get_dual_transforms,
-    get_image_only_transforms,
-    get_transforms,
+    get_primary_2d_transform_params,
+    get_primary_dual_transform_params,
+    get_primary_image_only_transform_params,
+    get_primary_public_transform_params,
 )
 
 
@@ -68,13 +68,13 @@ def get_transforms_with_categories(
     """
     # Get base transforms
     if transform_type == "2d":
-        transforms = get_2d_transforms(custom_arguments=custom_arguments)
+        transforms = get_primary_2d_transform_params(custom_arguments=custom_arguments)
     elif transform_type == "dual":
-        transforms = get_dual_transforms(custom_arguments=custom_arguments)
+        transforms = get_primary_dual_transform_params(custom_arguments=custom_arguments)
     elif transform_type == "image_only":
-        transforms = get_image_only_transforms(custom_arguments=custom_arguments)
+        transforms = get_primary_image_only_transform_params(custom_arguments=custom_arguments)
     elif transform_type == "all":
-        transforms = get_transforms(custom_arguments=custom_arguments)
+        transforms = get_primary_public_transform_params(custom_arguments=custom_arguments)
     else:
         raise ValueError(f"Unknown transform_type: {transform_type}")
 

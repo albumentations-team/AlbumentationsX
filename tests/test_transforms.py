@@ -21,7 +21,11 @@ from tests.conftest import (
 )
 from tests.helpers import TransformTestHelper
 
-from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms
+from .utils import (
+    get_primary_2d_transform_params,
+    get_primary_dual_transform_params,
+    get_primary_image_only_transform_params,
+)
 
 
 def test_transpose_both_image_and_mask():
@@ -80,7 +84,7 @@ def test_morphological_dilates_bboxes():
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={
             A.GridDropout: {"fill_mask": 0},
         },
@@ -130,7 +134,7 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={
             A.GridDropout: {"holes_number_xy": (10, 10), "fill_mask": 64},
         },
@@ -189,7 +193,7 @@ def __test_multiprocessing_support_proc(args):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={},
         except_augmentations={
             A.RandomCropNearBBox,
@@ -269,7 +273,7 @@ def test_force_apply():
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_image_only_transforms(
+    get_primary_image_only_transform_params(
         except_augmentations={
             A.TextImage,
             A.FDA,
@@ -1337,7 +1341,7 @@ def test_random_crop_from_borders(
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         except_augmentations={
             A.RandomCropNearBBox,
             A.RandomSizedBBoxSafeCrop,
@@ -1404,7 +1408,7 @@ def test_change_image(augmentation_cls, params, image):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={
             A.AdvancedBlur: {
                 "blur_range": (5, 7),
@@ -1553,55 +1557,6 @@ def test_pad_if_needed_functionality(params, expected):
     # Assert each expected key/value pair
     for key, value in expected.items():
         assert aug_dict[key] == value, f"Failed on {key} with value {value}"
-
-
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_dual_transforms(
-        except_augmentations={
-            A.RandomSizedBBoxSafeCrop,
-            A.RandomCropNearBBox,
-            A.BBoxSafeRandomCrop,
-            A.CropNonEmptyMaskIfExists,
-            A.OverlayElements,
-            A.MaskDropout,
-            A.TextImage,
-            A.Mosaic,
-            A.CopyAndPaste,
-        },
-    ),
-)
-def test_dual_transforms_methods(augmentation_cls, params):
-    """Checks whether transformations based on DualTransform dont has abstract methods."""
-    aug = A.Compose(
-        [augmentation_cls(p=1, **params)],
-        bbox_params=A.BboxParams(coord_format="albumentations"),
-        keypoint_params=A.KeypointParams(coord_format="xyas"),
-    )
-    aug.set_random_seed(42)
-
-    image = SQUARE_UINT8_IMAGE
-    mask = cv2.randu(np.zeros((100, 100, 1), dtype=np.uint8), 0, 4) * 64
-
-    arg = {
-        "images": np.stack([image] * 4),
-        "mask": mask,
-        "masks": np.stack([mask] * 2),
-        "bboxes": np.array([[0, 0, 0.1, 0.1, 1]]),
-        "keypoints": np.array([(0, 0, 1, 0, 0), (1, 1, 1, 0, 0)]),
-    }
-
-    for target in aug.transforms[0].targets:
-        if target in arg:
-            kwarg = {target: arg[target]}
-            try:
-                _ = aug(image=image.copy(), **kwarg)
-            except Exception as e:
-                if isinstance(e, NotImplementedError):
-                    raise NotImplementedError(
-                        f"{target} error at: {augmentation_cls},  {e}",
-                    )
-                raise
 
 
 @pytest.mark.parametrize(
@@ -2173,7 +2128,7 @@ def test_random_sun_flare_invalid_input(params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         except_augmentations={
             A.RandomCropNearBBox,
             A.RandomSizedBBoxSafeCrop,
@@ -2287,7 +2242,7 @@ def test_padding_color(transform, num_channels):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.RandomCropNearBBox,
@@ -2368,7 +2323,7 @@ def test_mask_dropout_bboxes(remove_invisible, expected_keypoints):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={},
         except_augmentations={
             A.XYMasking,

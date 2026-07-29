@@ -6,7 +6,11 @@ import pytest
 
 import albumentations as A
 from tests.conftest import RECTANGULAR_UINT8_IMAGE
-from tests.utils import get_2d_transforms, get_3d_transforms, get_dual_transforms
+from tests.utils import (
+    get_primary_2d_transform_params,
+    get_primary_3d_transform_params,
+    get_primary_dual_transform_params,
+)
 
 
 @pytest.mark.parametrize(
@@ -35,6 +39,17 @@ def test_pad_if_needed_3d_shapes(volume_shape, min_zyx, pad_divisor_zyx, expecte
     )
     transformed = transform(volume=volume)
     assert transformed["volume"].shape == expected_shape
+
+
+@pytest.mark.parametrize("target", ["volumes", "masks3d"])
+def test_pad_if_needed_3d_preserves_empty_batch(target: str) -> None:
+    value = np.empty((0, 2, 8, 9, 1), dtype=np.uint8)
+    transform = A.PadIfNeeded3D(min_zyx=(4, 10, 12), position="center", p=1.0)
+
+    result = transform(**{target: value})
+
+    assert result[target].shape == (0, 4, 10, 12, 1)
+    assert result[target].dtype == value.dtype
 
 
 @pytest.mark.parametrize("position", ["center", "random"])
@@ -105,7 +120,7 @@ def test_pad_if_needed_3d_fill_values():
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_3d_transforms(
+    get_primary_3d_transform_params(
         custom_arguments={
             A.PadIfNeeded3D: {"min_zyx": (4, 250, 230), "position": "center", "fill": 0, "fill_mask": 0},
         },
@@ -265,7 +280,7 @@ def test_pad3d_2d_equivalence(pad3d_padding, pad2d_padding):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_3d_transforms(
+    get_primary_3d_transform_params(
         custom_arguments={},
         except_augmentations={},
     ),
@@ -473,7 +488,7 @@ def test_crop_3d_different_shapes(volume_shape):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_3d_transforms(
+    get_primary_3d_transform_params(
         custom_arguments={},
         except_augmentations={},
     ),
@@ -503,7 +518,7 @@ def test2d_3d(volume, mask3d):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={},
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
@@ -555,7 +570,7 @@ def test_image_volume_matching(image, augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={},
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
@@ -600,7 +615,7 @@ def test_image_transforms_matching(image, augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.MaskDropout,
@@ -909,7 +924,7 @@ def test_center_crop3d_keypoints(
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_3d_transforms(
+    get_primary_3d_transform_params(
         custom_arguments={
             A.PadIfNeeded3D: {"min_zyx": (8, 8, 8), "position": "center"},
             A.Pad3D: {"padding": 2},

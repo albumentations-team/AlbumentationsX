@@ -50,18 +50,19 @@ __all__ = [
 
 
 class Normalize(ImageOnlyTransform):
-    """Applies various normalization techniques to an image. The specific normalization technique can be selected
-        with the `normalization` parameter.
+    """Normalize image intensities with fixed statistics or values computed from each image, with optional clipping
+    for bounded model inputs.
 
     Standard normalization is applied using the formula:
         `img = (img - mean * max_pixel_value) / (std * max_pixel_value)`.
         Other normalization techniques adjust the image based on global or per-channel statistics,
         or scale pixel values to a specified range.
+        If `clip_range` is provided, the transform clips the normalized float32 output to those bounds.
 
     Args:
-        mean (tuple[float, float] | float | None): Mean values for standard normalization.
+        mean (tuple[float, ...] | float | None): Mean values for standard normalization.
             For "standard" normalization, the default values are ImageNet mean values: (0.485, 0.456, 0.406).
-        std (tuple[float, float] | float | None): Standard deviation values for standard normalization.
+        std (tuple[float, ...] | float | None): Standard deviation values for standard normalization.
             For "standard" normalization, the default values are ImageNet standard deviation :(0.229, 0.224, 0.225).
         max_pixel_value (float | None): Maximum possible pixel value, used for scaling in standard normalization.
             Defaults to 255.0.
@@ -77,6 +78,9 @@ class Normalize(ImageOnlyTransform):
             - "min_max_per_channel": Scales each channel of the image pixel values to a [0, 1]
                 range based on the per-channel minimum and maximum pixel values.
 
+        clip_range (tuple[float, float] | None): Lower and upper bounds for the normalized output. The transform
+            clips after applying the selected normalization method. `None` leaves the normalized values unchanged.
+            Defaults to `None`.
         p (float): Probability of applying the transform. Defaults to 1.0.
 
     Targets:
@@ -88,6 +92,12 @@ class Normalize(ImageOnlyTransform):
     Note:
         - For "standard" normalization, `mean`, `std`, and `max_pixel_value` must be provided.
         - For other normalization types, these parameters are ignored.
+        - `normalization="min_max"` and `normalization="min_max_per_channel"` calculate bounds from the current input.
+          Keep `normalization="standard"` when using fixed bounds calculated from the whole dataset.
+        - For [0, 1] output, set `mean` to each channel's dataset minimum and `std` to that channel's range
+          (dataset maximum minus minimum). Set `max_pixel_value=1.0` and `clip_range=(0.0, 1.0)`.
+        - For [-1, 1] output, set `mean` to the midpoint between each channel's dataset minimum and maximum and
+          `std` to half of that range. Set `max_pixel_value=1.0` and `clip_range=(-1.0, 1.0)`.
         - For inception normalization, use mean values of (0.5, 0.5, 0.5).
         - For YOLO normalization, use mean values of (0, 0, 0) and std values of (1, 1, 1).
         - This transform is often used as a final step in image preprocessing pipelines to
@@ -106,7 +116,20 @@ class Normalize(ImageOnlyTransform):
         ... )
         >>> normalized_image = transform(image=image)["image"]
         >>>
-        >>> # Min-max normalization
+        >>> # Fixed dataset-level min-max normalization with clipping
+        >>> dataset_min = (0.1, 0.2, 0.3)
+        >>> dataset_max = (0.8, 0.9, 1.0)
+        >>> dataset_range = tuple(maximum - minimum for minimum, maximum in zip(dataset_min, dataset_max))
+        >>> transform_fixed_minmax = A.Normalize(
+        ...     mean=dataset_min,
+        ...     std=dataset_range,
+        ...     max_pixel_value=1.0,
+        ...     clip_range=(0.0, 1.0),
+        ...     p=1.0,
+        ... )
+        >>> normalized_image_fixed = transform_fixed_minmax(image=image.astype(np.float32) / 255.0)["image"]
+        >>>
+        >>> # Per-image min-max normalization derives new extrema from this image
         >>> transform_minmax = A.Normalize(normalization="min_max", p=1.0)
         >>> normalized_image_minmax = transform_minmax(image=image)["image"]
 
@@ -127,6 +150,14 @@ class Normalize(ImageOnlyTransform):
             "min_max",
             "min_max_per_channel",
         ]
+        clip_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)] | None
+
+        @field_validator("clip_range")
+        @classmethod
+        def _validate_clip_range(cls, value: tuple[float, float] | None) -> tuple[float, float] | None:
+            if value is not None and not np.isfinite(value).all():
+                raise ValueError(f"clip_range bounds must be finite. Got {value}")
+            return value
 
         @model_validator(mode="after")
         def _validate_normalization(self) -> Self:
@@ -153,6 +184,8 @@ class Normalize(ImageOnlyTransform):
             "min_max_per_channel",
         ] = "standard",
         p: float = 1.0,
+        *,
+        clip_range: tuple[float, float] | None = None,
     ):
         super().__init__(p=p)
         self.mean = mean
@@ -167,15 +200,23 @@ class Normalize(ImageOnlyTransform):
             self.denominator = np.array([], dtype=np.float32)
         self.max_pixel_value = max_pixel_value
         self.normalization = normalization
+        self.clip_range = clip_range
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         if self.normalization == "standard":
-            return normalize(
+            normalized = normalize(
                 img,
                 self.mean_np,
                 self.denominator,
             )
-        return normalize_per_image(img, self.normalization)
+        else:
+            normalized = normalize_per_image(img, self.normalization)
+
+        if self.clip_range is None:
+            return normalized
+        if normalized is img:
+            return np.clip(normalized, *self.clip_range)
+        return np.clip(normalized, *self.clip_range, out=normalized)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)

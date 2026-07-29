@@ -906,6 +906,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         {"allow_shifted": False, "angle_range": (30, 60), "direction_range": (-0.5, 0.5)},
     ),
     ("per-image", A.Normalize, {"normalization": "image"}),
+    ("clipped-output", A.Normalize, {"clip_range": (-1.0, 1.0)}),
     (
         "fisheye-direct",
         A.OpticalDistortion,

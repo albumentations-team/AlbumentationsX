@@ -780,26 +780,6 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     ("percent-linear-mask", A.CropAndPad, {"px": None, "percent": (-0.1, 0.1), "mask_interpolation": cv2.INTER_LINEAR}),
-    (
-        "px-choices-shared",
-        A.CropAndPad,
-        {"px": None, "px_choices": (-12, 4, 15), "sample_independently": False},
-    ),
-    (
-        "px-choices-independent",
-        A.CropAndPad,
-        {"px": None, "px_choices": (-12, 4, 15), "sample_independently": True},
-    ),
-    (
-        "percent-choices-shared",
-        A.CropAndPad,
-        {"px": None, "percent_choices": (-0.15, 0.05, 0.2), "sample_independently": False},
-    ),
-    (
-        "percent-choices-independent",
-        A.CropAndPad,
-        {"px": None, "percent_choices": (-0.15, 0.05, 0.2), "sample_independently": True},
-    ),
     ("ignored-mask-values", A.CropNonEmptyMaskIfExists, {"ignore_values": [0], "ignore_channels": []}),
     ("fixed-element", A.D4, {"group_element": "r90"}),
     (

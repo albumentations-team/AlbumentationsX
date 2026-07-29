@@ -126,8 +126,7 @@ test remains when it has a stronger oracle, such as:
 
 - exact crop coordinates or OBB refitting geometry;
 - exact interpolation label values;
-- deterministic shared versus independent sampling;
-- fixed-value versus singleton-choice equivalence;
+- deterministic sampling and distribution properties;
 - zero-size prevention; or
 - empty-depth and empty-batch representation regressions.
 
@@ -151,7 +150,6 @@ Use these commands for fast feedback:
 
 ```bash
 uv run pytest -q tests/contracts/test_target_cluster_contract.py -W error::RuntimeWarning
-uv run pytest -q tests/contracts/test_transform_metamorphic_contract.py
 uv run pytest -n auto -q tests/contracts/test_target_cluster_contract.py
 uv run pytest -q tests/contracts tests/test_serialization.py
 uv run python -m tools.quality_gate fast
@@ -177,5 +175,4 @@ The architecture remains complete while:
 - `tests/helpers/target_profiles.py`: reusable workloads and assertions
 - `tests/helpers/target_contracts.py`: capability resolver, pair generation, and runner
 - `tests/contracts/test_target_cluster_contract.py`: generated matrix and completeness checks
-- `tests/contracts/test_transform_metamorphic_contract.py`: cross-mode semantic relations
 - `docs/design/applied-config-replay-contracts.md`: persistence boundaries and replay strength

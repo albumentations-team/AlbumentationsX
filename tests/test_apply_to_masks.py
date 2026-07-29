@@ -16,6 +16,16 @@ class _SpecializedMask3DTransform(A.DualTransform):
         return mask3d + 1
 
 
+class _ValueDependentMask3DTransform(A.DualTransform):
+    """Change output shape when the empty-batch shape probe contains nonzero values."""
+
+    def apply(self, img: np.ndarray, **params: object) -> np.ndarray:
+        return img
+
+    def apply_to_mask3d(self, mask3d: np.ndarray, **params: object) -> np.ndarray:
+        return mask3d[:, :-1] if np.any(mask3d) else mask3d
+
+
 def test_inherited_apply_to_masks3d_uses_specialized_mask3d_dispatch() -> None:
     masks3d = np.zeros((2, 3, 8, 12), dtype=np.uint8)
     pipeline = A.Compose([_SpecializedMask3DTransform(p=1.0)])
@@ -34,6 +44,24 @@ def test_inherited_apply_to_masks3d_preserves_transformed_empty_shape() -> None:
     result = pipeline(image=np.zeros((100, 120, 3), dtype=np.uint8), masks3d=masks3d)
 
     assert result["masks3d"].shape == (0, 3, 40, 50, 1)
+
+
+def test_empty_specialized_masks3d_shape_probe_is_zero_initialized(monkeypatch: pytest.MonkeyPatch) -> None:
+    masks3d = np.empty((0, 3, 8, 12, 1), dtype=np.uint8)
+    original_empty = np.empty
+
+    def dirty_empty(shape: tuple[int, ...], *args: object, **kwargs: object) -> np.ndarray:
+        result = original_empty(shape, *args, **kwargs)
+        if shape == masks3d.shape[1:]:
+            result.fill(1)
+        return result
+
+    monkeypatch.setattr(np, "empty", dirty_empty)
+    pipeline = A.Compose([_ValueDependentMask3DTransform(p=1.0)])
+
+    result = pipeline(image=np.zeros((8, 12, 3), dtype=np.uint8), masks3d=masks3d)
+
+    assert result["masks3d"].shape == masks3d.shape
 
 
 # Test crops with single mask (empty and non-empty)

@@ -1078,7 +1078,7 @@ class DualTransform(BasicTransform):
         if self.__class__.apply_to_mask3d is DualTransform.apply_to_mask3d:
             return self._apply_to_masks3d_via_mask(masks3d, *args, **params)
         if len(masks3d) == 0:
-            empty_mask3d = np.empty(masks3d.shape[1:], dtype=masks3d.dtype)
+            empty_mask3d = np.zeros(masks3d.shape[1:], dtype=masks3d.dtype)
             transformed = self.apply_to_mask3d(empty_mask3d, *args, **params)
             return np.empty((0, *transformed.shape), dtype=transformed.dtype)
         return self._apply_to_batch(

@@ -27,13 +27,12 @@ from tests.conftest import (
     SQUARE_UINT8_IMAGE,
 )
 from tests.helpers import TransformTestHelper
-from tests.utils import get_dual_transforms, get_image_only_transforms
 
 from .utils import (
-    get_2d_transforms,
-    get_dual_transforms,
-    get_filtered_transforms,
-    get_image_only_transforms,
+    get_primary_2d_transform_params,
+    get_primary_dual_transform_params,
+    get_primary_filtered_transform_params,
+    get_primary_image_only_transform_params,
     set_seed,
 )
 
@@ -295,6 +294,16 @@ def test_named_args():
     [
         [{"image": None}, None, "image must be numpy array type"],
         [{"image": np.empty([100, 100, 3], np.uint8), "mask": None}, None, "mask must be numpy array type"],
+        [
+            {"images": [np.empty([100, 100, 3], np.uint8)]},
+            None,
+            "images must be numpy array type",
+        ],
+        [
+            {"masks": [np.empty([100, 100], np.uint8)]},
+            None,
+            "masks must be numpy array type",
+        ],
         [
             {"image": np.empty([100, 100, 3], np.uint8), "image1": None},
             {"image1": "image"},
@@ -690,14 +699,14 @@ def test_bbox_params_is_not_set(image, bboxes):
 
 @pytest.mark.parametrize(
     "compose_transform",
-    get_filtered_transforms((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
+    get_primary_filtered_transform_params((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
 )
 @pytest.mark.parametrize(
     "inner_transform",
     [
         (A.Normalize, {}),
         (A.Resize, {"height": 100, "width": 100}),
-        *get_filtered_transforms((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
+        *get_primary_filtered_transform_params((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
     ],  # type: ignore
 )
 def test_single_transform_compose(
@@ -715,7 +724,7 @@ def test_single_transform_compose(
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.FDA,
@@ -762,7 +771,7 @@ def test_non_contiguous_input_dual(augmentation_cls, params):
     assert isinstance(data["mask"], np.ndarray)
 
 
-NON_CONTIGUOUS_VOLUMETRIC_CASES = get_dual_transforms(
+NON_CONTIGUOUS_VOLUMETRIC_CASES = get_primary_dual_transform_params(
     custom_arguments={},
     except_augmentations={
         A.FDA,
@@ -849,7 +858,7 @@ def test_compose_preserves_non_contiguous_mask3d(mask3d_shape):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_image_only_transforms(
+    get_primary_image_only_transform_params(
         except_augmentations={
             A.Lambda,
             A.RandomSizedBBoxSafeCrop,
@@ -1070,7 +1079,7 @@ def test_compose_non_available_keys() -> None:
     image = np.empty([10, 10, 3], dtype=np.uint8)
     mask = np.empty([10, 10], dtype=np.uint8)
     _ = transform(image=image, mask=mask)
-    _ = transform(image=image, masks=[mask])
+    _ = transform(image=image, masks=np.stack([mask]))
     with pytest.raises(ValueError) as exc_info:
         _ = transform(image=image, image_2=mask)
 
@@ -1083,7 +1092,7 @@ def test_compose_non_available_keys() -> None:
         strict=False,
     )
     _ = transform(image=image, mask=mask)
-    _ = transform(image=image, masks=[mask])
+    _ = transform(image=image, masks=np.stack([mask]))
     _ = transform(image=image, image_2=mask)
 
 
@@ -1120,7 +1129,7 @@ def test_compose_additional_targets_in_available_keys() -> None:
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={},
         except_augmentations={
             A.Lambda,
@@ -1202,7 +1211,7 @@ def test_images_as_target(augmentation_cls, params, shape):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         except_augmentations={
             A.RandomCropNearBBox,
             A.MaskDropout,
@@ -1284,7 +1293,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         except_augmentations={
             A.Lambda,
             A.RandomSizedBBoxSafeCrop,
@@ -1332,7 +1341,7 @@ def test_masks_as_target(augmentation_cls, params, masks):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.PixelDropout,
@@ -1845,7 +1854,7 @@ def test_transform_strict_with_valid_params():
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.PixelDropout,
@@ -2165,7 +2174,7 @@ def test_keypoint_hflip_idempotence_property():
 
 
 def test_compose_with_empty_masks():
-    """Test that Compose can handle empty masks list."""
+    """Test that Compose can handle an empty masks array."""
     transform = Compose(
         [
             A.Resize(288, 384),
@@ -2174,7 +2183,7 @@ def test_compose_with_empty_masks():
     )
     image = np.zeros((288, 384, 3), dtype=np.uint8)
     result = transform(image=image, masks=np.array([]))
-    # Verify that the result contains an empty masks list
+    # Verify that the result contains an empty masks array
     assert "masks" in result
     assert isinstance(result["masks"], np.ndarray)
     assert len(result["masks"]) == 0
@@ -2783,7 +2792,7 @@ def test_user_data_with_keypoints() -> None:
 
 def test_user_data_batch_images() -> None:
     """Single user_data value applies to whole batch of images."""
-    images = [np.zeros((50, 50, 3), dtype=np.uint8) for _ in range(3)]
+    images = np.zeros((3, 50, 50, 3), dtype=np.uint8)
 
     class BatchMutator(A.NoOp):
         def apply_to_user_data(self, data: dict, **params: Any) -> dict:

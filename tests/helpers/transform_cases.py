@@ -16,20 +16,21 @@ import numpy as np
 import albumentations as A
 from tests.helpers.applied_config import ReplayProfile
 from tests.helpers.contract_data import (
+    ContractContextFactory,
     ContractDataFactory,
-    make_copy_and_paste_data,
-    make_crop_near_bbox_data,
+    make_copy_and_paste_context,
+    make_crop_near_bbox_context,
+    make_empty_context,
     make_float_image_data,
     make_grayscale_image_data,
     make_hbb_data,
     make_image_data,
     make_mask_data,
-    make_mosaic_data,
-    make_overlay_data,
-    make_reference_data,
-    make_text_data,
+    make_mosaic_context,
+    make_overlay_context,
+    make_reference_context,
+    make_text_context,
     make_volume_data,
-    remap_data_key,
 )
 
 
@@ -40,10 +41,12 @@ class TransformContractCase:
     case_id: str
     transform_cls: type[A.BasicTransform]
     init_kwargs: Mapping[str, Any] = field(default_factory=dict)
-    data_factory: ContractDataFactory = make_image_data
-    compose_kwargs: Mapping[str, Any] = field(default_factory=dict)
+    primary_data_factory: ContractDataFactory = make_image_data
+    context_factory: ContractContextFactory = make_empty_context
+    primary_compose_kwargs: Mapping[str, Any] = field(default_factory=dict)
     replay_profile: ReplayProfile = ReplayProfile.RUNNABLE
     metadata_keys: frozenset[str] = frozenset()
+    required_targets: frozenset[str] = frozenset()
     seeds: tuple[int, ...] = (137,)
 
     def __post_init__(self) -> None:
@@ -65,7 +68,25 @@ class TransformContractCase:
         if not self.seeds:
             raise ValueError(f"{self.case_id}: at least one deterministic seed is required")
         object.__setattr__(self, "init_kwargs", MappingProxyType(copy.deepcopy(dict(self.init_kwargs))))
-        object.__setattr__(self, "compose_kwargs", MappingProxyType(copy.deepcopy(dict(self.compose_kwargs))))
+        object.__setattr__(
+            self,
+            "primary_compose_kwargs",
+            MappingProxyType(copy.deepcopy(dict(self.primary_compose_kwargs))),
+        )
+
+    def make_data(
+        self,
+        rng: np.random.Generator,
+        data_factory: ContractDataFactory | None = None,
+    ) -> dict[str, Any]:
+        """Build fresh targets and merge transform-specific context without collisions."""
+        data = (data_factory or self.primary_data_factory)(rng)
+        context = self.context_factory(rng, data)
+        collisions = set(data) & set(context)
+        if collisions:
+            raise ValueError(f"{self.case_id}: context collides with targets: {sorted(collisions)}")
+        data.update(context)
+        return data
 
 
 _BASE_CASE_SPECS: list[list[Any]] = [
@@ -1161,9 +1182,9 @@ _EXACT_TRANSFORMS = {
 def _case_data(
     transform_cls: type[A.BasicTransform],
     init_kwargs: Mapping[str, Any],
-) -> tuple[ContractDataFactory, dict[str, Any], frozenset[str]]:
+) -> tuple[ContractDataFactory, ContractContextFactory, dict[str, Any], frozenset[str]]:
     if issubclass(transform_cls, A.Transform3D):
-        return make_volume_data, {}, frozenset()
+        return make_volume_data, make_empty_context, {}, frozenset()
     if transform_cls in _BBOX_TRANSFORMS:
         compose_kwargs = {
             "bbox_params": A.BboxParams(
@@ -1173,9 +1194,8 @@ def _case_data(
         }
         if transform_cls is A.RandomCropNearBBox:
             key = init_kwargs.get("cropping_bbox_key", "cropping_bbox")
-            factory = remap_data_key(make_crop_near_bbox_data, "cropping_bbox", key)
-            return factory, compose_kwargs, frozenset({key})
-        return make_hbb_data, compose_kwargs, frozenset()
+            return make_hbb_data, make_crop_near_bbox_context(key), compose_kwargs, frozenset({key})
+        return make_hbb_data, make_empty_context, compose_kwargs, frozenset()
     if transform_cls in _MASK_TRANSFORMS:
         if transform_cls is A.ConstrainedCoarseDropout and init_kwargs.get("bbox_labels") is not None:
             compose_kwargs = {
@@ -1184,35 +1204,50 @@ def _case_data(
                     label_fields=["bbox_labels"],
                 ),
             }
-            return make_hbb_data, compose_kwargs, frozenset()
-        return make_mask_data, {}, frozenset()
+            return make_hbb_data, make_empty_context, compose_kwargs, frozenset()
+        return make_mask_data, make_empty_context, {}, frozenset()
     if transform_cls in _REFERENCE_METADATA_KEYS:
         key = init_kwargs.get("metadata_key", _REFERENCE_METADATA_KEYS[transform_cls])
-        return make_reference_data(key), {}, frozenset({key})
+        return make_image_data, make_reference_context(key), {}, frozenset({key})
     if transform_cls is A.Mosaic:
         key = init_kwargs.get("metadata_key", "mosaic_metadata")
-        return remap_data_key(make_mosaic_data, "mosaic_metadata", key), {}, frozenset({key})
+        return make_mask_data, make_mosaic_context(key), {}, frozenset({key})
     if transform_cls is A.CopyAndPaste:
         key = init_kwargs.get("metadata_key", "copy_paste_metadata")
-        return remap_data_key(make_copy_and_paste_data, "copy_paste_metadata", key), {}, frozenset({key})
+        return make_mask_data, make_copy_and_paste_context(key), {}, frozenset({key})
     if transform_cls is A.OverlayElements:
         key = init_kwargs.get("metadata_key", "overlay_metadata")
-        return remap_data_key(make_overlay_data, "overlay_metadata", key), {}, frozenset({key})
+        return make_image_data, make_overlay_context(key), {}, frozenset({key})
     if transform_cls is A.TextImage:
         key = init_kwargs.get("metadata_key", "textimage_metadata")
-        return remap_data_key(make_text_data, "textimage_metadata", key), {}, frozenset({key})
+        return make_image_data, make_text_context(key), {}, frozenset({key})
     if transform_cls in {A.Colorize, A.ToRGB}:
-        return make_grayscale_image_data, {}, frozenset()
+        return make_grayscale_image_data, make_empty_context, {}, frozenset()
     if transform_cls is A.FromFloat:
-        return make_float_image_data, {}, frozenset()
+        return make_float_image_data, make_empty_context, {}, frozenset()
     if transform_cls is A.Equalize and init_kwargs.get("mask_params"):
-        return make_mask_data, {}, frozenset()
-    return make_image_data, {}, frozenset()
+        return make_mask_data, make_empty_context, {}, frozenset()
+    return make_image_data, make_empty_context, {}, frozenset()
 
 
 def _slugify(name: str) -> str:
     words = re.sub(r"(.)([A-Z][a-z]+)", r"\1-\2", name)
     return re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", words).replace("_", "-").lower()
+
+
+def _required_targets(
+    transform_cls: type[A.BasicTransform],
+    init_kwargs: Mapping[str, Any],
+) -> frozenset[str]:
+    if transform_cls in {A.Mosaic, A.CopyAndPaste}:
+        return frozenset({"image"})
+    if transform_cls in {A.AtLeastOneBBoxRandomCrop, A.BBoxSafeRandomCrop, A.RandomSizedBBoxSafeCrop}:
+        return frozenset({"bboxes"})
+    if transform_cls is A.ConstrainedCoarseDropout:
+        return frozenset({"bboxes" if init_kwargs.get("bbox_labels") is not None else "mask"})
+    if transform_cls in {A.CropNonEmptyMaskIfExists, A.MaskDropout}:
+        return frozenset({"mask"})
+    return frozenset()
 
 
 def _iter_base_cases() -> list[TransformContractCase]:
@@ -1222,7 +1257,7 @@ def _iter_base_cases() -> list[TransformContractCase]:
         parameter_sets = raw_params if isinstance(raw_params, list) else [raw_params]
         variants = _VARIANT_NAMES.get(transform_cls)
         for params in parameter_sets:
-            data_factory, compose_kwargs, metadata_keys = _case_data(transform_cls, params)
+            primary_data_factory, context_factory, compose_kwargs, metadata_keys = _case_data(transform_cls, params)
             index = seen_counts.get(transform_cls, 0)
             seen_counts[transform_cls] = index + 1
             if variants is not None and index >= len(variants):
@@ -1234,12 +1269,14 @@ def _iter_base_cases() -> list[TransformContractCase]:
                     case_id=case_id,
                     transform_cls=transform_cls,
                     init_kwargs=params,
-                    data_factory=data_factory,
-                    compose_kwargs=compose_kwargs,
+                    primary_data_factory=primary_data_factory,
+                    context_factory=context_factory,
+                    primary_compose_kwargs=compose_kwargs,
                     replay_profile=(
                         ReplayProfile.EXACT if transform_cls in _EXACT_TRANSFORMS else ReplayProfile.RUNNABLE
                     ),
                     metadata_keys=metadata_keys,
+                    required_targets=_required_targets(transform_cls, params),
                 ),
             )
     for transform_cls, variants in _VARIANT_NAMES.items():
@@ -1265,16 +1302,18 @@ def _iter_parameter_mode_cases() -> list[TransformContractCase]:
     for variant, transform_cls, overrides in _PARAMETER_MODE_SPECS:
         params = _first_base_kwargs(transform_cls)
         params.update(copy.deepcopy(overrides))
-        data_factory, compose_kwargs, metadata_keys = _case_data(transform_cls, params)
+        primary_data_factory, context_factory, compose_kwargs, metadata_keys = _case_data(transform_cls, params)
         cases.append(
             TransformContractCase(
                 case_id=f"{_slugify(transform_cls.__name__)}-{variant}",
                 transform_cls=transform_cls,
                 init_kwargs=params,
-                data_factory=data_factory,
-                compose_kwargs=compose_kwargs,
+                primary_data_factory=primary_data_factory,
+                context_factory=context_factory,
+                primary_compose_kwargs=compose_kwargs,
                 replay_profile=ReplayProfile.EXACT if transform_cls in _EXACT_TRANSFORMS else ReplayProfile.RUNNABLE,
                 metadata_keys=metadata_keys,
+                required_targets=_required_targets(transform_cls, params),
             ),
         )
     return cases
@@ -1295,4 +1334,10 @@ PRIMARY_TRANSFORM_CONTRACT_CASES = tuple(
     for transform_cls in dict.fromkeys(case.transform_cls for case in TRANSFORM_CONTRACT_CASES)
 )
 
-PRIMARY_TRANSFORM_CASE_BY_CLASS = {case.transform_cls: case for case in PRIMARY_TRANSFORM_CONTRACT_CASES}
+ALL_DUAL_TRANSFORM_CONTRACT_CASES = tuple(
+    case for case in TRANSFORM_CONTRACT_CASES if issubclass(case.transform_cls, A.DualTransform)
+)
+
+PRIMARY_DUAL_TRANSFORM_CONTRACT_CASES = tuple(
+    case for case in PRIMARY_TRANSFORM_CONTRACT_CASES if issubclass(case.transform_cls, A.DualTransform)
+)

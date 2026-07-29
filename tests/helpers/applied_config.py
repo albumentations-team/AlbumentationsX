@@ -13,6 +13,7 @@ import numpy as np
 
 import albumentations as A
 from albumentations.core.serialization import SERIALIZABLE_REGISTRY
+from tests.helpers.contract_assertions import assert_contract_values_equal, find_contract_difference
 
 if TYPE_CHECKING:
     from tests.helpers.transform_cases import TransformContractCase
@@ -199,47 +200,6 @@ def _assert_execution_result(
             )
 
 
-def _find_input_mutation(current: Any, snapshot: Any, path: str) -> str | None:
-    """Return the first changed fixture path, limited to stable transport types."""
-    if isinstance(snapshot, np.ndarray):
-        if not isinstance(current, np.ndarray):
-            return f"{path} changed type from ndarray to {type(current).__name__}"
-        if current.dtype != snapshot.dtype or current.shape != snapshot.shape:
-            return (
-                f"{path} changed array metadata from {snapshot.dtype}/{snapshot.shape} "
-                f"to {current.dtype}/{current.shape}"
-            )
-        if not np.array_equal(current, snapshot):
-            return f"{path} array contents changed"
-        return None
-
-    if isinstance(snapshot, dict):
-        if not isinstance(current, dict):
-            return f"{path} changed type from dict to {type(current).__name__}"
-        if current.keys() != snapshot.keys():
-            return f"{path} keys changed from {sorted(snapshot)} to {sorted(current)}"
-        for key in snapshot:
-            mutation = _find_input_mutation(current[key], snapshot[key], f"{path}.{key}")
-            if mutation is not None:
-                return mutation
-        return None
-
-    if isinstance(snapshot, (list, tuple)):
-        if not isinstance(current, type(snapshot)):
-            return f"{path} changed type from {type(snapshot).__name__} to {type(current).__name__}"
-        if len(current) != len(snapshot):
-            return f"{path} length changed from {len(snapshot)} to {len(current)}"
-        for index, (current_item, snapshot_item) in enumerate(zip(current, snapshot, strict=True)):
-            mutation = _find_input_mutation(current_item, snapshot_item, f"{path}[{index}]")
-            if mutation is not None:
-                return mutation
-        return None
-
-    if isinstance(snapshot, (str, bytes, int, float, bool, type(None))) and current != snapshot:
-        return f"{path} changed from {snapshot!r} to {current!r}"
-    return None
-
-
 def _assert_input_unchanged(
     case: TransformContractCase,
     seed: int,
@@ -248,7 +208,7 @@ def _assert_input_unchanged(
     applied_record: Any,
     transported_record: Any,
 ) -> None:
-    mutation = _find_input_mutation(current, snapshot, "input")
+    mutation = find_contract_difference(current, snapshot, "input")
     if mutation is not None:
         _raise_contract_error(
             level=ContractLevel.EXECUTION,
@@ -268,7 +228,7 @@ def _assert_repeated_capture_is_independent(
     applied_record: list[tuple[str, dict[str, Any]]],
 ) -> None:
     first_record_snapshot = copy.deepcopy(applied_record)
-    second_data = case.data_factory(np.random.default_rng(seed + 1))
+    second_data = case.make_data(np.random.default_rng(seed + 1))
     second_snapshot = copy.deepcopy(second_data)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
@@ -297,12 +257,7 @@ def _assert_exact_targets(
     comparable_keys = (set(original_result) & set(replay_result)) - {"applied_transforms"} - case.metadata_keys
     try:
         for key in comparable_keys:
-            original = original_result[key]
-            replayed = replay_result[key]
-            if isinstance(original, np.ndarray):
-                np.testing.assert_array_equal(replayed, original, err_msg=f"target {key!r} differs")
-            else:
-                assert replayed == original, f"target {key!r} differs: {replayed!r} != {original!r}"
+            assert_contract_values_equal(replay_result[key], original_result[key], f"target.{key}")
     except (AssertionError, ValueError) as exc:
         _raise_contract_error(
             level=ContractLevel.EQUIVALENCE,
@@ -317,8 +272,8 @@ def _assert_exact_targets(
 
 def run_applied_config_contract(case: TransformContractCase, seed: int) -> AppliedConfigContractResult:
     """Run one case through capture, JSON transport, reconstruction, and execution."""
-    original_data = case.data_factory(np.random.default_rng(seed))
-    replay_data = case.data_factory(np.random.default_rng(seed))
+    original_data = case.make_data(np.random.default_rng(seed))
+    replay_data = case.make_data(np.random.default_rng(seed))
     original_snapshot = copy.deepcopy(original_data)
     replay_snapshot = copy.deepcopy(replay_data)
     applied_record: list[tuple[str, dict[str, Any]]] | None = None
@@ -331,7 +286,7 @@ def run_applied_config_contract(case: TransformContractCase, seed: int) -> Appli
             save_applied_params=True,
             seed=seed,
             strict=True,
-            **copy.deepcopy(dict(case.compose_kwargs)),
+            **copy.deepcopy(dict(case.primary_compose_kwargs)),
         )
         with warnings.catch_warnings():
             warnings.simplefilter("error")
@@ -371,7 +326,7 @@ def run_applied_config_contract(case: TransformContractCase, seed: int) -> Appli
             warnings.simplefilter("error")
             replay = A.Compose.from_applied_transforms(
                 transported_record,
-                **copy.deepcopy(dict(case.compose_kwargs)),
+                **copy.deepcopy(dict(case.primary_compose_kwargs)),
             )
     except Exception as exc:
         _raise_contract_error(

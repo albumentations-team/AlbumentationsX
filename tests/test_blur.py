@@ -118,8 +118,10 @@ class MockValidationInfo:
             (0, 5),
             [
                 "test_field: Non-zero kernel sizes must be odd. Range (0, 4) automatically adjusted to (0, 5)",
-                "test_field: Invalid kernel size range (-1, 4). "
-                "Values less than 0 are not allowed. Range automatically adjusted to (0, 4).",
+                (
+                    "test_field: Invalid kernel size range (-1, 4). "
+                    "Values less than 0 are not allowed. Range automatically adjusted to (0, 4)."
+                ),
             ],
         ),
         # Adjust non-odd values
@@ -155,8 +157,10 @@ class MockValidationInfo:
             3,
             (3, 5),
             [
-                "test_field: Invalid kernel size range (2, 4). "
-                "Values less than 3 are not allowed. Range automatically adjusted to (3, 4).",
+                (
+                    "test_field: Invalid kernel size range (2, 4). "
+                    "Values less than 3 are not allowed. Range automatically adjusted to (3, 4)."
+                ),
                 "test_field: Non-zero kernel sizes must be odd. Range (3, 4) automatically adjusted to (3, 5).",
             ],
         ),

@@ -23,14 +23,14 @@ from albu_spec import (
     get_type_mismatch,
 )
 
-from tests.utils import get_transforms
+from tests.utils import get_primary_public_transform_params
 
 
 def get_transforms_with_init_schema():
     """Get all transforms that have InitSchema."""
     # Deduplicate transform classes while preserving order in case
-    # get_transforms() returns multiple parameter sets per transform.
-    return list(dict.fromkeys(transform_cls for transform_cls, _ in get_transforms()))
+    # The primary parameter view may still contain explicit custom variants.
+    return list(dict.fromkeys(transform_cls for transform_cls, _ in get_primary_public_transform_params()))
 
 
 @pytest.mark.parametrize("transform_class", get_transforms_with_init_schema())

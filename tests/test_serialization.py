@@ -3,7 +3,6 @@ import inspect
 import io
 from io import StringIO
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pytest
@@ -14,6 +13,7 @@ import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.core.serialization import SERIALIZABLE_REGISTRY, shorten_class_name
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from tests.conftest import IMAGES, SQUARE_FLOAT_IMAGE, SQUARE_UINT8_IMAGE
+from tests.helpers.contract_assertions import assert_contract_values_equal
 from tests.helpers.transform_cases import (
     PRIMARY_TRANSFORM_CONTRACT_CASES,
     TRANSFORM_CONTRACT_CASES,
@@ -32,25 +32,8 @@ def _make_case_pipeline(case: TransformContractCase, seed: int) -> A.Compose:
     return A.Compose(
         [transform],
         seed=seed,
-        **copy.deepcopy(dict(case.compose_kwargs)),
+        **copy.deepcopy(dict(case.primary_compose_kwargs)),
     )
-
-
-def _assert_data_equal(actual: Any, expected: Any, path: str = "result") -> None:
-    if isinstance(actual, np.ndarray) or isinstance(expected, np.ndarray):
-        np.testing.assert_array_equal(actual, expected, err_msg=path)
-        return
-    if isinstance(actual, dict) and isinstance(expected, dict):
-        assert actual.keys() == expected.keys(), path
-        for key in actual:
-            _assert_data_equal(actual[key], expected[key], f"{path}.{key}")
-        return
-    if isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple)):
-        assert len(actual) == len(expected), path
-        for index, (actual_item, expected_item) in enumerate(zip(actual, expected, strict=True)):
-            _assert_data_equal(actual_item, expected_item, f"{path}[{index}]")
-        return
-    assert actual == expected, path
 
 
 def _assert_case_roundtrip(
@@ -61,9 +44,9 @@ def _assert_case_roundtrip(
 ) -> None:
     original.set_random_seed(seed)
     restored.set_random_seed(seed)
-    original_data = case.data_factory(np.random.default_rng(seed))
-    restored_data = case.data_factory(np.random.default_rng(seed))
-    _assert_data_equal(original(**original_data), restored(**restored_data))
+    original_data = case.make_data(np.random.default_rng(seed))
+    restored_data = case.make_data(np.random.default_rng(seed))
+    assert_contract_values_equal(original(**original_data), restored(**restored_data), "result")
 
 
 @pytest.mark.parametrize("case", TRANSFORM_CONTRACT_CASES, ids=lambda case: case.case_id)
@@ -128,7 +111,7 @@ def test_augmentations_for_bboxes_serialization(
         bbox_params={"coord_format": "pascal_voc"},
     )
     aug.set_random_seed(seed)
-    data = case.data_factory(np.random.default_rng(seed))
+    data = case.make_data(np.random.default_rng(seed))
     data.update(image=image, bboxes=albumentations_bboxes)
     data.pop("bbox_labels", None)
     if "mask" in data:
@@ -169,7 +152,7 @@ def test_augmentations_for_keypoints_serialization(
     image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
     aug = augmentation_cls(p=p, **copy.deepcopy(dict(case.init_kwargs)))
     aug.set_random_seed(seed)
-    data = case.data_factory(np.random.default_rng(seed))
+    data = case.make_data(np.random.default_rng(seed))
     data.update(image=image, keypoints=keypoints)
     if "mask" in data:
         data["mask"] = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
@@ -391,7 +374,7 @@ def test_additional_targets_for_image_only_serialization(
     seed,
 ):
     augmentation_cls = case.transform_cls
-    data = case.data_factory(np.random.default_rng(seed))
+    data = case.make_data(np.random.default_rng(seed))
     image = data["image"]
     aug = A.Compose(
         [augmentation_cls(p=1.0, **copy.deepcopy(dict(case.init_kwargs)))],

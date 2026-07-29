@@ -1099,6 +1099,8 @@ class GridElasticDeform(DualTransform):
 
     _targets = ALL_TARGETS
 
+    _supported_channel_counts: frozenset[int] = frozenset({1, 3})
+
     class InitSchema(BaseTransformInitSchema):
         num_grid_xy: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
         magnitude: int = Field(gt=0)

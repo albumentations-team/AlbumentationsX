@@ -325,12 +325,12 @@ class TestCopyAndPasteMasks:
         assert paste_region.sum() > 0
         assert np.sum(surviving_mask[paste_region]) == 0
 
-    def test_primary_masks_as_list_of_arrays(self):
-        """CopyAndPaste should accept masks as a list of (H, W) arrays like other targets."""
+    def test_primary_masks_as_stacked_array(self):
+        """CopyAndPaste should accept the canonical stacked masks array."""
         image = np.zeros((100, 100, 3), dtype=np.uint8)
         m = np.zeros((100, 100), dtype=np.uint8)
         m[20:40, 20:40] = 1
-        primary_masks_list = [m]
+        primary_masks = np.stack([m])
 
         obj = _make_full_cover_object(137)
 
@@ -340,7 +340,7 @@ class TestCopyAndPasteMasks:
             ],
             seed=137,
         )
-        result = transform(image=image, masks=primary_masks_list, copy_paste_metadata=[obj])
+        result = transform(image=image, masks=primary_masks, copy_paste_metadata=[obj])
         assert result["masks"].shape[0] == 1
 
     def test_warns_when_mask_target_present_but_no_semantic_mask(self):

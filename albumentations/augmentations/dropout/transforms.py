@@ -30,6 +30,34 @@ __all__ = ["PixelDropout"]
 
 DropoutFillValue = tuple[float, ...] | float | FillValueLiteral
 
+_PIXEL_DROPOUT_REFERENCE_TARGETS = (
+    ("image", 0),
+    ("images", 1),
+    ("volume", 1),
+    ("volumes", 2),
+    ("mask", 0),
+    ("masks", 1),
+    ("mask3d", 1),
+    ("masks3d", 2),
+)
+
+
+def _get_pixel_dropout_reference(data: dict[str, Any]) -> np.ndarray:
+    """Return one spatial target for PixelDropout parameter sampling while preserving shape and dtype metadata for
+    empty batches and zero-depth volumes.
+    """
+    for key, leading_dimensions in _PIXEL_DROPOUT_REFERENCE_TARGETS:
+        if key not in data:
+            continue
+        target = data[key]
+        if leading_dimensions == 0:
+            return target
+        if all(size > 0 for size in target.shape[:leading_dimensions]):
+            return target[(0,) * leading_dimensions]
+        return np.empty(target.shape[leading_dimensions:], dtype=target.dtype)
+
+    raise RuntimeError("PixelDropout requires at least one image, volume, or mask target")
+
 
 class BaseDropoutInitSchema(BaseTransformInitSchema):
     fill: DropoutFillValue
@@ -167,10 +195,10 @@ class BaseDropout(DualTransform):
             return mask
         return cutout_on_volume(mask, holes, self.fill_mask, np.random.default_rng(seed))
 
-    def apply_to_masks3d(self, mask: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
+    def apply_to_masks3d(self, masks3d: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
         if self.fill_mask is None or holes.size == 0:
-            return mask
-        return cutout_on_volumes(mask, holes, self.fill_mask, np.random.default_rng(seed))
+            return masks3d
+        return cutout_on_volumes(masks3d, holes, self.fill_mask, np.random.default_rng(seed))
 
     def apply_to_mask(self, mask: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if self.fill_mask is None or holes.size == 0:
@@ -325,11 +353,11 @@ class PixelDropout(DualTransform):
     def apply_to_mask(
         self,
         mask: ImageType,
-        mask_drop_mask: np.ndarray,
-        mask_drop_values: np.ndarray,
+        mask_drop_mask: np.ndarray | None,
+        mask_drop_values: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
-        if self.mask_drop_value is None:
+        if self.mask_drop_value is None or mask_drop_mask is None or mask_drop_values is None:
             return mask
 
         return fpixel.pixel_dropout(mask, mask_drop_mask, mask_drop_values)
@@ -384,7 +412,7 @@ class PixelDropout(DualTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        reference_array = data["image"] if "image" in data else data["images"][0]
+        reference_array = _get_pixel_dropout_reference(data)
 
         # Generate drop mask and values for all targets
         drop_mask = fpixel.get_drop_mask(

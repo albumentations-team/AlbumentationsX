@@ -16,7 +16,7 @@ from tests.helpers.transform_cases import (
     TRANSFORM_CONTRACT_CASES,
     TransformContractCase,
 )
-from tests.utils import get_transforms
+from tests.utils import get_primary_public_transform_params
 
 POSITIONAL_PARAMETERS_SNAPSHOT = Path(__file__).parents[1] / "files" / "public_transform_positional_parameters.json"
 
@@ -39,7 +39,7 @@ def _has_non_default_value(transform_cls: type[A.BasicTransform], name: str, par
 def test_every_serializable_transform_has_a_contract_case() -> None:
     public_transforms = {
         transform_cls
-        for transform_cls, _ in get_transforms(except_augmentations={A.Lambda})
+        for transform_cls, _ in get_primary_public_transform_params(except_augmentations={A.Lambda})
         if transform_cls.is_serializable()
     }
     registered_transforms = {case.transform_cls for case in TRANSFORM_CONTRACT_CASES}

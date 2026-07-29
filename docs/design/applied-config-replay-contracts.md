@@ -23,6 +23,15 @@ fields, mode selectors, custom metadata keys, scalar-or-range behavior, or anoth
 The harness catches records whose individual values are valid but whose realized combination cannot be passed back
 through the public constructor.
 
+```mermaid
+flowchart LR
+    C["Construct public mode"] --> A["Capture applied configuration"]
+    A --> J["Strict JSON transport"]
+    J --> R["Public reconstruction"]
+    R --> E["Execute on fresh data"]
+    E --> Q["Check declared replay strength"]
+```
+
 ## Keep the persistence contracts separate
 
 | Contract | State preserved | Required assertion |
@@ -40,10 +49,14 @@ tests/
 ├── contracts/
 │   ├── test_applied_config_contract.py
 │   ├── test_constructor_parameter_coverage.py
-│   └── test_contract_harness.py
+│   ├── test_contract_harness.py
+│   └── test_target_cluster_contract.py
 ├── helpers/
 │   ├── applied_config.py
+│   ├── contract_assertions.py
 │   ├── contract_data.py
+│   ├── target_contracts.py
+│   ├── target_profiles.py
 │   └── transform_cases.py
 ├── property/
 │   └── test_applied_config_replay.py
@@ -53,12 +66,16 @@ tests/
 - `transform_cases.py` is the single typed source of truth for public transform configurations.
 - `contract_data.py` provides deterministic fresh data for ordinary and special targets.
 - `applied_config.py` owns the five-level public-path runner and failure diagnostics.
+- `target_profiles.py` owns reusable target workloads without transform-specific lists.
+- `target_contracts.py` derives applicable case/profile pairs from declared capabilities.
+- `contract_assertions.py` provides one exact structural comparison for replay and mutation checks.
 - `test_constructor_parameter_coverage.py` rejects missing classes, duplicate IDs, and uncovered public parameters.
 - `test_contract_harness.py` contains one deliberately broken transform for every contract level.
 - `test_serialization.py` consumes the same cases for dict, JSON, and YAML constructor round trips.
 - `test_applied_config_replay.py` adds bounded generated coverage for normalization and high-risk mode interactions.
 
-General test helpers derive their parameter sets directly from `TRANSFORM_CASES_BY_CLASS`.
+See [Generated Transform Target Contracts](transform-target-contracts.md) for the target-cluster matrix and its
+all-mode versus primary-mode policy.
 
 ## The typed case registry
 
@@ -70,10 +87,12 @@ class TransformContractCase:
     case_id: str
     transform_cls: type[A.BasicTransform]
     init_kwargs: Mapping[str, Any] = field(default_factory=dict)
-    data_factory: ContractDataFactory = make_image_data
-    compose_kwargs: Mapping[str, Any] = field(default_factory=dict)
+    primary_data_factory: ContractDataFactory = make_image_data
+    context_factory: ContractContextFactory = make_empty_context
+    primary_compose_kwargs: Mapping[str, Any] = field(default_factory=dict)
     replay_profile: ReplayProfile = ReplayProfile.RUNNABLE
     metadata_keys: frozenset[str] = frozenset()
+    required_targets: frozenset[str] = frozenset()
     seeds: tuple[int, ...] = (137,)
 ```
 
@@ -87,12 +106,14 @@ Registry invariants are enforced:
 - every configurable public constructor parameter except `p` and `strict` has a non-default case;
 - singleton `Literal` parameters are proven to have no legal non-default value rather than exempted;
 - there are no coverage exemptions;
-- custom target names and metadata keys are paired with matching data factories;
-- cases needing bbox or keypoint processors carry them in `compose_kwargs`.
+- transform-required metadata is built by `context_factory` and merged without key collisions;
+- `required_targets` prevents target-dependent modes from collecting against incomplete profiles;
+- cases needing bbox or keypoint processors carry them in `primary_compose_kwargs`.
 
-`PRIMARY_TRANSFORM_CONTRACT_CASES` and `PRIMARY_TRANSFORM_CASE_BY_CLASS` provide one canonical case per class for broad
-target-oriented sweeps that must not repeat every parameter mode. `TRANSFORM_CASES_BY_CLASS` retains the complete mode
-index for focused consumers without maintaining another parameter inventory.
+`TRANSFORM_CASES_BY_CLASS` retains the complete mode index. `ALL_DUAL_TRANSFORM_CONTRACT_CASES` makes mode-sensitive
+coverage explicit. `PRIMARY_TRANSFORM_CONTRACT_CASES` and `PRIMARY_DUAL_TRANSFORM_CONTRACT_CASES` provide one
+canonical mode per class for mode-independent dtype, layout, and batch workloads. No compatibility class-to-kwargs map
+exists beside the registry.
 
 ## Deterministic data factories
 
@@ -104,10 +125,10 @@ factories cover:
 - horizontal and oriented bounding boxes with labels;
 - keypoints with labels;
 - volumes and `mask3d`;
-- image and volume batches;
+- image, mask, volume, and `masks3d` batches;
 - reference-image metadata;
 - mosaic, copy-and-paste, overlay, and text metadata;
-- configurable metadata and target key remapping.
+- configurable metadata keys.
 
 The harness creates original and replay inputs from separate generators with the same seed. This makes equality useful
 without allowing in-place mutation of one call to contaminate the other.
@@ -229,7 +250,7 @@ Local commands:
 uv run pytest -q tests/contracts
 uv run pytest -q tests/property/test_applied_config_replay.py --hypothesis-profile=ci-fast
 uv run pytest -q tests/test_serialization.py
-uv run python tools/quality_gate.py fast
+uv run python -m tools.quality_gate fast
 ```
 
 ## Contributor workflow
@@ -238,13 +259,14 @@ When adding or changing a transform:
 
 1. add or update its cases in `tests/helpers/transform_cases.py`;
 2. give every public parameter a non-default registered value;
-3. add a data factory or key-remapping wrapper instead of a class-name branch in a generic test;
+3. separate standard target data from transform-required context instead of adding class-name branches in runners;
 4. set `ReplayProfile.EXACT` only when applied configuration resolves all relevant randomness;
 5. write `self.applied_config` overrides for every realized constructor field;
 6. clear source policy fields that conflict with those realized values;
 7. declare `_applied_replay_class` only when the emitted state belongs to a different canonical constructor;
-8. keep mathematical, dtype, target-alignment, and distribution tests alongside the transform; and
-9. run the contract, property, serialization, and fast quality commands above.
+8. confirm every declared target collects through the generated target-cluster matrix;
+9. keep mathematical, dtype, target-alignment, and distribution tests alongside the transform; and
+10. run the contract, target-cluster, property, serialization, and fast quality commands above.
 
 The review question is concrete: **which named registry case exercises the final applied configuration through strict
 JSON and `Compose.from_applied_transforms()`?**
@@ -267,7 +289,7 @@ This is enough to reproduce a failure without temporary tests or debug prints.
 ## Non-goals
 
 - Applied-configuration replay is not a replacement for `ReplayCompose` parameter replay.
-- The harness does not infer special external data from arbitrary signatures; the registry declares factories.
+- The harness does not infer special external data from arbitrary signatures; the registry declares context factories.
 - Production does not instantiate a second transform on every application merely to revalidate the record.
 - The contract suite does not replace mathematical, dtype, alignment, regression-vector, or distribution tests.
 - Broad class-level skips and class-wide `xfail` entries are not accepted.
@@ -280,7 +302,8 @@ The implementation remains complete only while all of these statements are true:
 - every configurable public constructor parameter has a non-default case, with no exemptions;
 - all cases pass emission, strict JSON transport, reconstruction, and execution;
 - exact cases compare all supplied targets;
-- image, mask, HBB, OBB, keypoint, volume, `mask3d`, image-batch, and volume-batch replay paths are represented;
+- image, mask, HBB, OBB, keypoint, volume, `mask3d`, image-, mask-, volume-, and `masks3d`-batch replay paths are
+  represented;
 - negative controls cover all five contract levels and fail at their intended levels;
 - dict, JSON, and YAML constructor serialization consume the same registry;
 - deterministic contracts run in the required PR gate;
@@ -294,6 +317,8 @@ The implementation remains complete only while all of these statements are true:
 - `tests/helpers/transform_cases.py`: canonical configuration registry
 - `tests/helpers/contract_data.py`: deterministic special-data factories
 - `tests/helpers/applied_config.py`: five-level harness
+- `tests/helpers/target_profiles.py`: reusable target workloads and shared assertions
+- `tests/helpers/target_contracts.py`: capability resolver, pair generation, and public-path runner
 - `tests/contracts/`: deterministic contracts and negative controls
 - `tests/property/test_applied_config_replay.py`: bounded generated cases
 - `tests/test_serialization.py`: constructor round trips from the same registry

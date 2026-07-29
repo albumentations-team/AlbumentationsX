@@ -15,12 +15,17 @@ from tests.conftest import (
 )
 from tests.helpers import TransformTestHelper
 
-from .utils import get_2d_transforms, get_dual_transforms, get_image_only_transforms, set_seed
+from .utils import (
+    get_primary_2d_transform_params,
+    get_primary_dual_transform_params,
+    get_primary_image_only_transform_params,
+    set_seed,
+)
 
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_image_only_transforms(
+    get_primary_image_only_transform_params(
         except_augmentations={
             A.FromFloat,
             A.Normalize,
@@ -54,7 +59,7 @@ def test_image_only_augmentations_mask_persists(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_image_only_transforms(
+    get_primary_image_only_transform_params(
         except_augmentations={
             A.FromFloat,
         },
@@ -97,7 +102,7 @@ def test_image_only_augmentations(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
@@ -125,7 +130,7 @@ def test_dual_augmentations(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
@@ -153,7 +158,7 @@ def test_dual_augmentations_with_float_values(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
@@ -198,7 +203,7 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
@@ -244,7 +249,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         except_augmentations={
             A.RandomCropNearBBox,
             A.RandomSizedBBoxSafeCrop,
@@ -364,7 +369,7 @@ def test_mask_fill_value(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={
             A.ToGray: {
                 "method": "pca",
@@ -440,7 +445,7 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={
             A.Normalize: {
                 "mean": (0.5, 0.5, 0.5, 0.5, 0.5),
@@ -518,7 +523,7 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={
             A.ToGray: {
                 "method": "pca",
@@ -597,7 +602,7 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={
             A.Normalize: {
                 "mean": (0.5, 0.5, 0.5, 0.5, 0.5),
@@ -837,7 +842,7 @@ def test_pad_if_needed_position(params, image_shape):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={
             A.ShiftScaleRotate: {
                 "fill": 0,
@@ -1253,6 +1258,29 @@ def test_pixel_dropout_multiple_images():
     result = transform.apply_to_images(images, drop_mask, drop_values)
     assert result.shape == images.shape  # Check that original shape is preserved
     assert np.all([np.any(image == 0) for image in result])  # Each image should have some dropped pixels
+
+
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("images", (0, 8, 12, 3)),
+        ("masks", (0, 8, 12)),
+        ("volume", (0, 8, 12, 1)),
+        ("volumes", (0, 2, 8, 12, 1)),
+        ("mask3d", (0, 8, 12)),
+        ("masks3d", (0, 2, 8, 12, 1)),
+    ],
+)
+def test_pixel_dropout_preserves_empty_targets(target: str, shape: tuple[int, ...]) -> None:
+    value = np.empty(shape, dtype=np.uint8)
+    pipeline = A.Compose(
+        [A.PixelDropout(dropout_prob=1.0, drop_value=0, mask_drop_value=1, p=1.0)],
+    )
+
+    result = pipeline(**{target: value})
+
+    assert result[target].shape == shape
+    assert result[target].dtype == value.dtype
 
 
 @pytest.mark.parametrize(

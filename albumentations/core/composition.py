@@ -1098,8 +1098,6 @@ class Compose(BaseCompose, HubMixin):
         self._set_processors_for_transforms(self.transforms)
 
         self.save_applied_params = save_applied_params
-        self._images_was_list = False
-        self._masks_was_list = False
 
         # Telemetry runs after nested composes so main_compose=False is already set on them.
         self._maybe_send_telemetry(telemetry)
@@ -2258,30 +2256,19 @@ class Compose(BaseCompose, HubMixin):
         """Check and process a single argument from _check_args. Validates type and shape
         for image, mask, images, volume, etc.; appends to shapes/volume_shapes.
         """
-        # For single items (image, mask), we must validate even if None
-        if internal_name in {"image", "mask"}:
-            if not isinstance(data, np.ndarray):
-                raise TypeError(f"{data_name} must be numpy array type")
-            shapes.append(data.shape[:2])
-            return
-
-        # List of targets to check shapes for
         shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks", "masks3d"}
-
-        # Skip if not in our check list
-        if data_name not in shape_check_targets:
+        if internal_name not in shape_check_targets:
             return
 
-        # Skip empty data or non-array inputs
-        if data is None or not isinstance(data, np.ndarray):
-            return
+        if not isinstance(data, np.ndarray):
+            raise TypeError(f"{data_name} must be numpy array type")
 
         # Skip arrays with size 0 (empty arrays)
         if data.size == 0:
             return
 
         # Process the shape based on data type
-        self._process_data_shape(data_name, data, shapes, volume_shapes)
+        self._process_data_shape(internal_name, data, shapes, volume_shapes)
 
     def _check_shape_consistency(self, shapes: list[tuple[int, ...]], volume_shapes: list[tuple[int, ...]]) -> None:
         """Check consistency of shapes. When is_check_shapes, ensures all 2D shapes match

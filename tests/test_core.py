@@ -295,6 +295,11 @@ def test_named_args():
         [{"image": None}, None, "image must be numpy array type"],
         [{"image": np.empty([100, 100, 3], np.uint8), "mask": None}, None, "mask must be numpy array type"],
         [
+            {"images": [np.empty([100, 100, 3], np.uint8)]},
+            None,
+            "images must be numpy array type",
+        ],
+        [
             {"image": np.empty([100, 100, 3], np.uint8), "image1": None},
             {"image1": "image"},
             "image1 must be numpy array type",
@@ -1069,7 +1074,7 @@ def test_compose_non_available_keys() -> None:
     image = np.empty([10, 10, 3], dtype=np.uint8)
     mask = np.empty([10, 10], dtype=np.uint8)
     _ = transform(image=image, mask=mask)
-    _ = transform(image=image, masks=[mask])
+    _ = transform(image=image, masks=np.stack([mask]))
     with pytest.raises(ValueError) as exc_info:
         _ = transform(image=image, image_2=mask)
 
@@ -1082,7 +1087,7 @@ def test_compose_non_available_keys() -> None:
         strict=False,
     )
     _ = transform(image=image, mask=mask)
-    _ = transform(image=image, masks=[mask])
+    _ = transform(image=image, masks=np.stack([mask]))
     _ = transform(image=image, image_2=mask)
 
 
@@ -2782,7 +2787,7 @@ def test_user_data_with_keypoints() -> None:
 
 def test_user_data_batch_images() -> None:
     """Single user_data value applies to whole batch of images."""
-    images = [np.zeros((50, 50, 3), dtype=np.uint8) for _ in range(3)]
+    images = np.zeros((3, 50, 50, 3), dtype=np.uint8)
 
     class BatchMutator(A.NoOp):
         def apply_to_user_data(self, data: dict, **params: Any) -> dict:

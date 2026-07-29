@@ -673,13 +673,13 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
     # used by get_params_dependent_on_data implementations. Order encodes lookup priority.
     _SHAPE_TARGETS_TUPLE: ClassVar[tuple[tuple[str, Callable[[Any], tuple[int, ...]]], ...]] = (
         ("image", lambda v: v.shape),
-        ("images", lambda v: v.shape[1:] if isinstance(v, np.ndarray) else v[0].shape),
-        ("volume", lambda v: v.shape[1:] if isinstance(v, np.ndarray) else v[0].shape),
-        ("volumes", lambda v: v.shape[2:] if isinstance(v, np.ndarray) else v[0][0].shape),
+        ("images", lambda v: v.shape[1:]),
+        ("volume", lambda v: v.shape[1:]),
+        ("volumes", lambda v: v.shape[2:]),
         ("mask", lambda v: v.shape),
-        ("masks", lambda v: v.shape[1:] if isinstance(v, np.ndarray) else v[0].shape),
-        ("mask3d", lambda v: v.shape[1:] if isinstance(v, np.ndarray) else v[0].shape),
-        ("masks3d", lambda v: v.shape[2:] if isinstance(v, np.ndarray) else v[0][0].shape),
+        ("masks", lambda v: v.shape[1:]),
+        ("mask3d", lambda v: v.shape[1:]),
+        ("masks3d", lambda v: v.shape[2:]),
     )
 
     def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:

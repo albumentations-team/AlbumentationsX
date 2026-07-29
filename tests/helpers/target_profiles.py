@@ -125,7 +125,7 @@ def _assert_volume_mask3d(
     if not issubclass(case.transform_cls, A.Transform3D):
         assert volume.shape[0] == source["volume"].shape[0]
         assert mask3d.shape[0] == source["mask3d"].shape[0]
-    assert volume.shape[1:3] == mask3d.shape[1:3]
+    assert volume.shape[:3] == mask3d.shape[:3]
     assert volume.dtype == source["volume"].dtype
     assert mask3d.dtype == source["mask3d"].dtype
 

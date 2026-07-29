@@ -293,19 +293,13 @@ def make_mosaic_context(metadata_key: str) -> ContractContextFactory:
     def factory(rng: np.random.Generator, data: dict[str, Any]) -> dict[str, Any]:
         image = _first_image(data)
         mask = _first_mask(data)
-        context: dict[str, Any] = {}
-        if "image" not in data:
-            context["image"] = image.copy()
-        if mask is not None and "mask" not in data:
-            context["mask"] = mask.copy()
         sources = []
         for _ in range(3):
             source = {"image": rng.integers(0, 256, image.shape, dtype=np.uint8)}
             if mask is not None:
                 source["mask"] = rng.integers(0, 4, mask.shape, dtype=np.uint8)
             sources.append(source)
-        context[metadata_key] = sources
-        return context
+        return {metadata_key: sources}
 
     return factory
 
@@ -315,12 +309,8 @@ def make_copy_and_paste_context(metadata_key: str) -> ContractContextFactory:
 
     def factory(rng: np.random.Generator, data: dict[str, Any]) -> dict[str, Any]:
         image = _first_image(data)
-        context: dict[str, Any] = {}
-        if "image" not in data:
-            context["image"] = image.copy()
         if "bboxes" in data and len(data["bboxes"]) == 0:
-            context[metadata_key] = []
-            return context
+            return {metadata_key: []}
         source_height = max(8, image.shape[0] // 3)
         source_width = max(8, image.shape[1] // 3)
         source = rng.integers(0, 256, (source_height, source_width, image.shape[-1]), dtype=np.uint8)
@@ -329,8 +319,7 @@ def make_copy_and_paste_context(metadata_key: str) -> ContractContextFactory:
         donor: dict[str, Any] = {"image": source, "mask": source_mask, "semantic_mask": source_mask}
         if "bboxes" in data:
             donor["bbox_labels"] = {"bbox_labels": 41, "bbox_scores": 0.5}
-        context[metadata_key] = [donor]
-        return context
+        return {metadata_key: [donor]}
 
     return factory
 

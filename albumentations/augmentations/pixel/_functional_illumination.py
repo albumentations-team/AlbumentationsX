@@ -846,11 +846,13 @@ def get_mask_array(data: dict[str, Any]) -> np.ndarray | None:
     """
     if "mask" in data:
         return data["mask"]
-    if "masks" in data:
+    if "masks" in data and data["masks"].shape[0] > 0:
         return data["masks"][0]
-    if "mask3d" in data:
+    if "mask3d" in data and data["mask3d"].shape[0] > 0:
         return data["mask3d"][0]
-    return data["masks3d"][0, 0] if "masks3d" in data else None
+    if "masks3d" in data and all(size > 0 for size in data["masks3d"].shape[:2]):
+        return data["masks3d"][0, 0]
+    return None
 
 
 STAIN_MATRICES = {

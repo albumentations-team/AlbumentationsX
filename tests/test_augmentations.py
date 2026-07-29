@@ -1261,6 +1261,29 @@ def test_pixel_dropout_multiple_images():
 
 
 @pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("images", (0, 8, 12, 3)),
+        ("masks", (0, 8, 12)),
+        ("volume", (0, 8, 12, 1)),
+        ("volumes", (0, 2, 8, 12, 1)),
+        ("mask3d", (0, 8, 12)),
+        ("masks3d", (0, 2, 8, 12, 1)),
+    ],
+)
+def test_pixel_dropout_preserves_empty_targets(target: str, shape: tuple[int, ...]) -> None:
+    value = np.empty(shape, dtype=np.uint8)
+    pipeline = A.Compose(
+        [A.PixelDropout(dropout_prob=1.0, drop_value=0, mask_drop_value=1, p=1.0)],
+    )
+
+    result = pipeline(**{target: value})
+
+    assert result[target].shape == shape
+    assert result[target].dtype == value.dtype
+
+
+@pytest.mark.parametrize(
     ["drop_value", "channels", "expected_values"],
     [
         # Matching dimensions

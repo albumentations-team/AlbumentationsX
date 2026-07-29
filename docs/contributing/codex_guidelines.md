@@ -207,7 +207,7 @@ Run `uv run pytest -q tests/contracts` and the relevant constructor serializatio
 Every `DualTransform` case also collects against applicable reusable profiles from `tests/helpers/target_profiles.py`.
 Core profiles run every registered mode; dtype, channel, batch, empty-target, non-contiguous, and read-only profiles run
 one explicitly selected primary mode per class. Add transform-required metadata through the case's `context_factory`,
-and add `required_targets` when parameter generation needs a non-empty mask or bbox collection. Keep transform classes
+and add `required_targets` when parameter generation needs a non-empty mask or bbox collection. Keep transform class
 lists and constructor kwargs out of profile definitions. See `docs/design/transform-target-contracts.md`.
 
 #### Test Helper Utilities (tests/helpers/)

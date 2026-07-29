@@ -6,6 +6,36 @@ import pytest
 import albumentations as A
 
 
+class _SpecializedMask3DTransform(A.DualTransform):
+    """Expose whether inherited masks3d dispatch honors apply_to_mask3d overrides."""
+
+    def apply(self, img: np.ndarray, **params: object) -> np.ndarray:
+        return img
+
+    def apply_to_mask3d(self, mask3d: np.ndarray, **params: object) -> np.ndarray:
+        return mask3d + 1
+
+
+def test_inherited_apply_to_masks3d_uses_specialized_mask3d_dispatch() -> None:
+    masks3d = np.zeros((2, 3, 8, 12), dtype=np.uint8)
+    pipeline = A.Compose([_SpecializedMask3DTransform(p=1.0)])
+
+    result = pipeline(image=np.zeros((8, 12, 3), dtype=np.uint8), masks3d=masks3d)
+
+    np.testing.assert_array_equal(result["masks3d"], np.ones_like(masks3d))
+
+
+def test_inherited_apply_to_masks3d_preserves_transformed_empty_shape() -> None:
+    masks3d = np.empty((0, 3, 100, 120, 1), dtype=np.uint8)
+    pipeline = A.Compose(
+        [A.RandomSizedCrop(min_max_height=(80, 80), size=(40, 50), p=1.0)],
+    )
+
+    result = pipeline(image=np.zeros((100, 120, 3), dtype=np.uint8), masks3d=masks3d)
+
+    assert result["masks3d"].shape == (0, 3, 40, 50, 1)
+
+
 # Test crops with single mask (empty and non-empty)
 @pytest.mark.parametrize(
     "transform_class,init_params,expected_shape",

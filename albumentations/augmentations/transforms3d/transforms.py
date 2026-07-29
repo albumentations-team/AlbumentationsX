@@ -33,19 +33,26 @@ __all__ = [
 NUM_DIMENSIONS = 3
 
 
-def _get_reference_volume(data: dict[str, Any]) -> np.ndarray:
-    """Return a representative 3D volume from singular or batched image and mask targets for consistent spatial
-    parameter sampling across every supported input form.
+def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
+    """Return one volume's complete shape from singular or batched image and mask targets without indexing into
+    possibly empty arrays.
     """
     if "volume" in data:
-        return data["volume"]
+        return data["volume"].shape
     if "volumes" in data:
-        return data["volumes"][0]
+        return data["volumes"].shape[1:]
     if "mask3d" in data:
-        return data["mask3d"]
+        return data["mask3d"].shape
     if "masks3d" in data:
-        return data["masks3d"][0]
+        return data["masks3d"].shape[1:]
     raise ValueError("No volume, volumes, mask3d, or masks3d found in data")
+
+
+def _get_volume_spatial_shape(data: dict[str, Any]) -> tuple[int, int, int]:
+    """Return the depth, height, and width of one singular or batched volume target while retaining support for empty
+    leading dimensions.
+    """
+    return cast("tuple[int, int, int]", _get_volume_shape(data)[:3])
 
 
 class _BaseCropAndPad3DInitSchema(BaseTransformInitSchema):
@@ -428,7 +435,7 @@ class PadIfNeeded3D(BasePad3D):
             dict[str, Any]: Dictionary containing calculated padding parameters
 
         """
-        depth, height, width = _get_reference_volume(data).shape[:3]
+        depth, height, width = _get_volume_spatial_shape(data)
         sizes = (depth, height, width)
 
         paddings = [
@@ -849,8 +856,7 @@ class CenterCrop3D(BaseCropAndPad3D):
             dict[str, Any]: Dictionary containing crop coordinates and optional padding parameters
 
         """
-        volume = _get_reference_volume(data)
-        z, h, w = volume.shape[:3]
+        z, h, w = _get_volume_spatial_shape(data)
         target_z, target_h, target_w = self.size
 
         # Get padding params if needed
@@ -993,8 +999,7 @@ class RandomCrop3D(BaseCropAndPad3D):
             dict[str, Any]: Dictionary containing randomly generated crop coordinates and optional padding parameters
 
         """
-        volume = _get_reference_volume(data)
-        z, h, w = volume.shape[:3]
+        z, h, w = _get_volume_spatial_shape(data)
         target_z, target_h, target_w = self.size
 
         # Get padding params if needed
@@ -1196,7 +1201,7 @@ class CoarseDropout3D(Transform3D):
             dict[str, Any]: Dictionary containing generated hole parameters for dropout
 
         """
-        volume_shape = _get_reference_volume(data).shape[:3]
+        volume_shape = _get_volume_spatial_shape(data)
 
         num_holes = self.py_random.randint(*self.num_holes_range)
 
@@ -1334,7 +1339,7 @@ class CubicSymmetry(Transform3D):
 
         """
         # Randomly select one of 48 possible transformations
-        volume_shape = _get_reference_volume(data).shape
+        volume_shape = _get_volume_shape(data)
         return {"index": self.py_random.randint(0, 47), "volume_shape": volume_shape}
 
     def apply_to_volume(self, volume: VolumeType, index: int, **params: Any) -> VolumeType:
@@ -1443,7 +1448,7 @@ class GridShuffle3D(Transform3D):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, np.ndarray | list[int]]:
-        volume_shape = _get_reference_volume(data).shape[:3]
+        volume_shape = _get_volume_spatial_shape(data)
 
         original_tiles = f3d.split_uniform_grid_3d(
             volume_shape,

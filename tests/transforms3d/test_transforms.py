@@ -41,6 +41,17 @@ def test_pad_if_needed_3d_shapes(volume_shape, min_zyx, pad_divisor_zyx, expecte
     assert transformed["volume"].shape == expected_shape
 
 
+@pytest.mark.parametrize("target", ["volumes", "masks3d"])
+def test_pad_if_needed_3d_preserves_empty_batch(target: str) -> None:
+    value = np.empty((0, 2, 8, 9, 1), dtype=np.uint8)
+    transform = A.PadIfNeeded3D(min_zyx=(4, 10, 12), position="center", p=1.0)
+
+    result = transform(**{target: value})
+
+    assert result[target].shape == (0, 4, 10, 12, 1)
+    assert result[target].dtype == value.dtype
+
+
 @pytest.mark.parametrize("position", ["center", "random"])
 def test_pad_if_needed_3d_positions(position):
     volume = np.ones((5, 50, 50), dtype=np.uint8)

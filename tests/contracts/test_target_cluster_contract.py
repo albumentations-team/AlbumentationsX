@@ -1,5 +1,7 @@
+import numpy as np
 import pytest
 
+import albumentations as A
 from tests.helpers.target_contracts import (
     CORE_TARGET_CONTRACT_PAIRS,
     EXTENDED_TARGET_CONTRACT_PAIRS,
@@ -42,3 +44,33 @@ def test_every_target_profile_is_collected() -> None:
     }
 
     assert collected_profile_ids == set(TARGET_PROFILES_BY_ID)
+
+
+@pytest.mark.parametrize("transform_cls", [A.Mosaic, A.CopyAndPaste])
+def test_image_required_transforms_exclude_profiles_without_image(transform_cls: type[A.DualTransform]) -> None:
+    cases = [case for case in ALL_DUAL_TRANSFORM_CONTRACT_CASES if case.transform_cls is transform_cls]
+    assert cases
+    assert all("image" in case.required_targets for case in cases)
+
+    invalid_pairs = [
+        pair.pair_id
+        for pair in (*CORE_TARGET_CONTRACT_PAIRS, *EXTENDED_TARGET_CONTRACT_PAIRS)
+        if pair.case.transform_cls is transform_cls and "image" not in pair.profile.required_targets
+    ]
+    assert not invalid_pairs
+
+
+def test_volume_profile_rejects_mismatched_transformed_depth() -> None:
+    case = next(case for case in ALL_DUAL_TRANSFORM_CONTRACT_CASES if case.transform_cls is A.Pad3D)
+    profile = TARGET_PROFILES_BY_ID["volume-mask3d"]
+    source = {
+        "volume": np.zeros((2, 8, 12, 1), dtype=np.uint8),
+        "mask3d": np.zeros((2, 8, 12), dtype=np.uint8),
+    }
+    result = {
+        "volume": np.zeros((3, 8, 12, 1), dtype=np.uint8),
+        "mask3d": np.zeros((4, 8, 12), dtype=np.uint8),
+    }
+
+    with pytest.raises(AssertionError):
+        profile.assert_result(case, source, result)

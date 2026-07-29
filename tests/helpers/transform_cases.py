@@ -1239,6 +1239,8 @@ def _required_targets(
     transform_cls: type[A.BasicTransform],
     init_kwargs: Mapping[str, Any],
 ) -> frozenset[str]:
+    if transform_cls in {A.Mosaic, A.CopyAndPaste}:
+        return frozenset({"image"})
     if transform_cls in {A.AtLeastOneBBoxRandomCrop, A.BBoxSafeRandomCrop, A.RandomSizedBBoxSafeCrop}:
         return frozenset({"bboxes"})
     if transform_cls is A.ConstrainedCoarseDropout:

@@ -300,6 +300,11 @@ def test_named_args():
             "images must be numpy array type",
         ],
         [
+            {"masks": [np.empty([100, 100], np.uint8)]},
+            None,
+            "masks must be numpy array type",
+        ],
+        [
             {"image": np.empty([100, 100, 3], np.uint8), "image1": None},
             {"image1": "image"},
             "image1 must be numpy array type",
@@ -2169,7 +2174,7 @@ def test_keypoint_hflip_idempotence_property():
 
 
 def test_compose_with_empty_masks():
-    """Test that Compose can handle empty masks list."""
+    """Test that Compose can handle an empty masks array."""
     transform = Compose(
         [
             A.Resize(288, 384),
@@ -2178,7 +2183,7 @@ def test_compose_with_empty_masks():
     )
     image = np.zeros((288, 384, 3), dtype=np.uint8)
     result = transform(image=image, masks=np.array([]))
-    # Verify that the result contains an empty masks list
+    # Verify that the result contains an empty masks array
     assert "masks" in result
     assert isinstance(result["masks"], np.ndarray)
     assert len(result["masks"]) == 0

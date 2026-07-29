@@ -92,11 +92,12 @@ class Normalize(ImageOnlyTransform):
     Note:
         - For "standard" normalization, `mean`, `std`, and `max_pixel_value` must be provided.
         - For other normalization types, these parameters are ignored.
-        - `normalization="min_max"` and `normalization="min_max_per_channel"` compute extrema from each input.
-          For fixed dataset bounds and [0, 1] output, use standard normalization with `mean=minimums`,
-          `std=maximums - minimums`, `max_pixel_value=1.0`, and `clip_range=(0.0, 1.0)`.
-        - For fixed dataset bounds and [-1, 1] output, use `mean=(minimums + maximums) / 2`,
-          `std=(maximums - minimums) / 2`, `max_pixel_value=1.0`, and `clip_range=(-1.0, 1.0)`.
+        - `normalization="min_max"` and `normalization="min_max_per_channel"` calculate bounds from the current input.
+          Keep `normalization="standard"` when using fixed bounds calculated from the whole dataset.
+        - For [0, 1] output, set `mean` to each channel's dataset minimum and `std` to that channel's range
+          (dataset maximum minus minimum). Set `max_pixel_value=1.0` and `clip_range=(0.0, 1.0)`.
+        - For [-1, 1] output, set `mean` to the midpoint between each channel's dataset minimum and maximum and
+          `std` to half of that range. Set `max_pixel_value=1.0` and `clip_range=(-1.0, 1.0)`.
         - For inception normalization, use mean values of (0.5, 0.5, 0.5).
         - For YOLO normalization, use mean values of (0, 0, 0) and std values of (1, 1, 1).
         - This transform is often used as a final step in image preprocessing pipelines to

@@ -347,29 +347,6 @@ def test_d4_empty_masks3d_batch_dimension_handling(group_element, expected_swap)
     assert result_masks3d.dtype == np.uint8
 
 
-# Test crops with mask3d (empty and non-empty)
-@pytest.mark.parametrize(
-    "transform_class,init_params",
-    [
-        (A.RandomCrop, {"height": 50, "width": 50}),
-        (A.CenterCrop, {"height": 50, "width": 50}),
-        (A.Crop, {"x_min": 10, "y_min": 10, "x_max": 60, "y_max": 60}),
-    ],
-)
-def test_crop_apply_to_mask3d(transform_class, init_params):
-    """Test that apply_to_mask3d works correctly for crops."""
-    transform = transform_class(**init_params, p=1.0)
-    # mask3d has shape (D, H, W) or (D, H, W, C)
-    mask3d = np.random.randint(0, 2, (10, 100, 100), dtype=np.uint8)
-
-    # Apply the transform through Compose
-    aug = A.Compose([transform])
-    result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), mask3d=mask3d)
-
-    # Check that mask3d was cropped (depth preserved, H and W cropped)
-    assert result["mask3d"].shape == (10, 50, 50)
-
-
 def test_crop_apply_to_mask3d_empty():
     """Test that apply_to_mask3d handles empty mask correctly."""
     transform = A.Crop(x_min=10, y_min=10, x_max=60, y_max=60, p=1.0)
@@ -383,30 +360,6 @@ def test_crop_apply_to_mask3d_empty():
     # Check correct shape
     assert result["mask3d"].shape == (0, 50, 50)
     assert result["mask3d"].dtype == np.uint8
-
-
-# Test crops with masks3d batch (empty and non-empty)
-@pytest.mark.parametrize(
-    "transform_class,init_params",
-    [
-        (A.RandomCrop, {"height": 50, "width": 50}),
-        (A.CenterCrop, {"height": 50, "width": 50}),
-        (A.Crop, {"x_min": 10, "y_min": 10, "x_max": 60, "y_max": 60}),
-    ],
-)
-@pytest.mark.parametrize("num_masks3d", [1, 3])
-def test_crop_apply_to_masks3d_batch(transform_class, init_params, num_masks3d):
-    """Test that apply_to_masks3d works correctly for batch processing."""
-    transform = transform_class(**init_params, p=1.0)
-    # masks3d has shape (N, D, H, W)
-    masks3d = np.random.randint(0, 2, (num_masks3d, 10, 100, 100), dtype=np.uint8)
-
-    # Apply the transform through Compose
-    aug = A.Compose([transform])
-    result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), masks3d=masks3d)
-
-    # Check that all masks3d were cropped
-    assert result["masks3d"].shape == (num_masks3d, 10, 50, 50)
 
 
 def test_crop_apply_to_masks3d_empty_batch():

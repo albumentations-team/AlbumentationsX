@@ -384,7 +384,25 @@ class PixelDropout(DualTransform):
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        reference_array = data["image"] if "image" in data else data["images"][0]
+        if "image" in data:
+            reference_array = data["image"]
+        elif "images" in data:
+            reference_array = data["images"][0]
+        elif "volume" in data:
+            reference_array = data["volume"][0]
+        elif "volumes" in data:
+            reference_array = data["volumes"][0, 0]
+        elif "mask" in data:
+            reference_array = data["mask"]
+        elif "masks" in data:
+            reference_array = data["masks"][0]
+        elif "mask3d" in data:
+            reference_array = data["mask3d"][0]
+        elif "masks3d" in data:
+            reference_array = data["masks3d"][0, 0]
+        else:
+            msg = "PixelDropout requires at least one image, volume, or mask target"
+            raise RuntimeError(msg)
 
         # Generate drop mask and values for all targets
         drop_mask = fpixel.get_drop_mask(

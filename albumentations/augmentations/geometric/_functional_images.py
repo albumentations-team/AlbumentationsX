@@ -559,14 +559,15 @@ def apply_affine_to_points(points: np.ndarray, matrix: np.ndarray) -> np.ndarray
 
     """
     homogeneous_points = np.column_stack([points, np.ones(points.shape[0])])
-    transformed_points = homogeneous_points @ matrix.T
+    transformed_points = np.dot(homogeneous_points, matrix.T)
 
     # Handle potential division by zero
     epsilon = np.finfo(transformed_points.dtype).eps
+    homogeneous_coordinates = transformed_points[:, 2]
     transformed_points[:, 2] = np.where(
-        np.abs(transformed_points[:, 2]) < epsilon,
-        np.sign(transformed_points[:, 2]) * epsilon,
-        transformed_points[:, 2],
+        np.abs(homogeneous_coordinates) < epsilon,
+        np.copysign(epsilon, homogeneous_coordinates),
+        homogeneous_coordinates,
     )
 
     return transformed_points[:, :2] / transformed_points[:, 2:]

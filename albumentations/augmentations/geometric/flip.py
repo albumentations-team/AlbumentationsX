@@ -548,7 +548,10 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> VolumeType:
-        return fgeometric.d4_images(volumes, group_element)
+        batch_size, depth = volumes.shape[:2]
+        flattened = volumes.reshape(batch_size * depth, *volumes.shape[2:])
+        transformed = fgeometric.d4_images(flattened, group_element)
+        return cast("VolumeType", transformed.reshape(batch_size, depth, *transformed.shape[1:]))
 
     def apply_to_mask3d(
         self,

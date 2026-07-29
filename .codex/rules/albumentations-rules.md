@@ -20,6 +20,10 @@ always_apply: true
 - Applied configurations must survive strict JSON transport, public reconstruction through
   `Compose.from_applied_transforms()`, and execution on fresh data. Clear constructor policy fields that conflict with
   realized sampled fields. See `docs/design/applied-config-replay-contracts.md`.
+- Every registered `DualTransform` mode must collect against all applicable core profiles. Put reusable workloads in
+  `tests/helpers/target_profiles.py`, transform-required metadata in the case `context_factory`, and target prerequisites
+  in `required_targets`. Profiles and runners must not contain transform-class lists or class-name skip branches. See
+  `docs/design/transform-target-contracts.md`.
 - Within `Compose`, images and volumes always have an explicit channel dimension:
   `(H, W, C)`, `(N, H, W, C)`, `(D, H, W, C)`, or `(N, D, H, W, C)`
 - Grayscale in Compose is `(H, W, 1)`, not `(H, W)`; do not add 2D grayscale compatibility branches to
@@ -60,3 +64,4 @@ See these documents for comprehensive guidelines:
 - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 - `docs/design/mosaic.md` - Mosaic transform technical specification
 - `docs/design/applied-config-replay-contracts.md` - Applied configuration replay contract architecture
+- `docs/design/transform-target-contracts.md` - Generated transform/target contract architecture

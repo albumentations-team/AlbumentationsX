@@ -1076,7 +1076,7 @@ class DualTransform(BasicTransform):
 
     @batch_transform("spatial")
     def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self._apply_to_batch(masks3d, lambda mask3d: self.apply_to_mask3d(mask3d, **params))
+        return self.apply_to_mask(masks3d, *args, **params)
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping. For most transforms returns class

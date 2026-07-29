@@ -190,11 +190,18 @@ Register the transform in `tests/helpers/transform_cases.py`:
 - Give every configurable public constructor parameter except `p` and `strict` a non-default case. A singleton `Literal`
   equal to its default is non-configurable and needs no artificial mode.
 - Add distinct cases for mutually exclusive fields or behaviorally different modes.
-- Select or add a deterministic factory in `tests/helpers/contract_data.py` for masks, bboxes, keypoints, volumes,
-  batches, or custom metadata.
+- Select a primary target factory and add transform-required metadata through `context_factory`; do not combine standard
+  targets and external metadata in a second transform-specific data inventory.
+- Declare `required_targets` when parameter sampling needs a non-empty mask or bbox collection.
 - Use `ReplayProfile.EXACT` only when `applied_config` resolves all randomness required to reproduce every supplied
   target; otherwise use `RUNNABLE`.
 - Do not add another class/parameter inventory, compatibility adapter, broad skip, or coverage exemption.
+
+Every registered `DualTransform` mode automatically collects against applicable core profiles from
+`tests/helpers/target_profiles.py`. Confirm the new mode covers each declared target, bbox type, and volume path. Add a
+new profile only when the same workload should apply to a cluster of transforms; profiles must contain no transform
+class inventories or constructor kwargs. Keep exact geometry, sampling, validation, and metamorphic semantics in
+focused tests.
 
 If the transform samples constructor fields, write the realized values to `self.applied_config`. Clear any original
 policy field that becomes mutually exclusive with the realized value. If a convenience alias emits the canonical
@@ -220,7 +227,10 @@ Check edge cases: uint8, float32, single channel, multichannel.
 - [ ] Tests added (parametrized, seed=137, `np.testing` assertions)
 - [ ] Named cases added to `tests/helpers/transform_cases.py`
 - [ ] Every configurable public constructor parameter has a non-default case
+- [ ] Every `DualTransform` mode collects against all applicable core target profiles
+- [ ] Transform context and target prerequisites are declared on the case without runner branches
 - [ ] Applied configuration passes `uv run pytest -q tests/contracts`
+- [ ] Generated targets pass `uv run pytest -n auto -q tests/contracts/test_target_cluster_contract.py`
 - [ ] Constructor dict/JSON/YAML round trips pass in `tests/test_serialization.py`
 - [ ] Pre-commit passes: `pre-commit run --all-files`
 - [ ] Tests pass: `uv run pytest -m "not slow"`

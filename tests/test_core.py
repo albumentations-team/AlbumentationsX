@@ -27,13 +27,12 @@ from tests.conftest import (
     SQUARE_UINT8_IMAGE,
 )
 from tests.helpers import TransformTestHelper
-from tests.utils import get_dual_transforms, get_image_only_transforms
 
 from .utils import (
-    get_2d_transforms,
-    get_dual_transforms,
-    get_filtered_transforms,
-    get_image_only_transforms,
+    get_primary_2d_transform_params,
+    get_primary_dual_transform_params,
+    get_primary_filtered_transform_params,
+    get_primary_image_only_transform_params,
     set_seed,
 )
 
@@ -690,14 +689,14 @@ def test_bbox_params_is_not_set(image, bboxes):
 
 @pytest.mark.parametrize(
     "compose_transform",
-    get_filtered_transforms((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
+    get_primary_filtered_transform_params((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
 )
 @pytest.mark.parametrize(
     "inner_transform",
     [
         (A.Normalize, {}),
         (A.Resize, {"height": 100, "width": 100}),
-        *get_filtered_transforms((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
+        *get_primary_filtered_transform_params((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
     ],  # type: ignore
 )
 def test_single_transform_compose(
@@ -715,7 +714,7 @@ def test_single_transform_compose(
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.FDA,
@@ -762,7 +761,7 @@ def test_non_contiguous_input_dual(augmentation_cls, params):
     assert isinstance(data["mask"], np.ndarray)
 
 
-NON_CONTIGUOUS_VOLUMETRIC_CASES = get_dual_transforms(
+NON_CONTIGUOUS_VOLUMETRIC_CASES = get_primary_dual_transform_params(
     custom_arguments={},
     except_augmentations={
         A.FDA,
@@ -849,7 +848,7 @@ def test_compose_preserves_non_contiguous_mask3d(mask3d_shape):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_image_only_transforms(
+    get_primary_image_only_transform_params(
         except_augmentations={
             A.Lambda,
             A.RandomSizedBBoxSafeCrop,
@@ -1120,7 +1119,7 @@ def test_compose_additional_targets_in_available_keys() -> None:
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         custom_arguments={},
         except_augmentations={
             A.Lambda,
@@ -1202,7 +1201,7 @@ def test_images_as_target(augmentation_cls, params, shape):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_2d_transforms(
+    get_primary_2d_transform_params(
         except_augmentations={
             A.RandomCropNearBBox,
             A.MaskDropout,
@@ -1284,7 +1283,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         except_augmentations={
             A.Lambda,
             A.RandomSizedBBoxSafeCrop,
@@ -1332,7 +1331,7 @@ def test_masks_as_target(augmentation_cls, params, masks):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.PixelDropout,
@@ -1845,7 +1844,7 @@ def test_transform_strict_with_valid_params():
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_dual_transforms(
+    get_primary_dual_transform_params(
         custom_arguments={},
         except_augmentations={
             A.PixelDropout,

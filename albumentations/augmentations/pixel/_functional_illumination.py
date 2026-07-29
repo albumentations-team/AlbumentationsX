@@ -841,12 +841,16 @@ def prepare_drop_values(
 
 
 def get_mask_array(data: dict[str, Any]) -> np.ndarray | None:
-    """Get mask array from input data if it exists. Returns data['mask'] or None;
-    helper for transforms that accept optional mask.
+    """Return the first usable 2D mask plane from singular or batched 2D and 3D targets when no image data is available
+    during parameter sampling.
     """
     if "mask" in data:
         return data["mask"]
-    return data["masks"][0] if "masks" in data else None
+    if "masks" in data:
+        return data["masks"][0]
+    if "mask3d" in data:
+        return data["mask3d"][0]
+    return data["masks3d"][0, 0] if "masks3d" in data else None
 
 
 STAIN_MATRICES = {

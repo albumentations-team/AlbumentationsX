@@ -16,6 +16,7 @@
 > - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 > - `docs/design/mosaic.md` - Mosaic transform technical specification
 > - `docs/design/applied-config-replay-contracts.md` - Applied configuration and replay contracts
+> - `docs/design/transform-target-contracts.md` - Generated target profiles and capability-driven coverage
 >
 > **Important**: Do NOT create summary documents like `.codex/rules/<topic>.md` for every fix.
 > These are only created for significant architectural changes or complex features that need design documentation.
@@ -203,6 +204,12 @@ its constructor changes:
 Run `uv run pytest -q tests/contracts` and the relevant constructor serialization tests. See
 `docs/design/applied-config-replay-contracts.md` for the five contract levels and production replay rules.
 
+Every `DualTransform` case also collects against applicable reusable profiles from `tests/helpers/target_profiles.py`.
+Core profiles run every registered mode; dtype, channel, batch, empty-target, non-contiguous, and read-only profiles run
+one explicitly selected primary mode per class. Add transform-required metadata through the case's `context_factory`,
+and add `required_targets` when parameter generation needs a non-empty mask or bbox collection. Keep transform classes
+lists and constructor kwargs out of profile definitions. See `docs/design/transform-target-contracts.md`.
+
 #### Test Helper Utilities (tests/helpers/)
 
 Use the helper modules to simplify test code and ensure consistency:
@@ -246,11 +253,11 @@ Use the helper modules to simplify test code and ensure consistency:
 - **Immutable params**: Test parameters derived from `TRANSFORM_CONTRACT_CASES` are wrapped in `FrozenParams` to prevent
   accidental mutation
   ```python
-  from tests.utils import get_dual_transforms
+  from tests.utils import get_primary_dual_transform_params
   import copy
 
   # FrozenParams prevents mutation
-  for aug_cls, params in get_dual_transforms():
+  for aug_cls, params in get_primary_dual_transform_params():
       # params["new_key"] = value  # Would raise RuntimeError
 
       # Use deepcopy to get a mutable copy

@@ -158,6 +158,8 @@ PercentType = (
     ]
 )
 
+PercentChoiceType = tuple[float, ...]
+
 
 PxType = (
     int
@@ -170,6 +172,8 @@ PxType = (
         int | tuple[int, int],
     ]
 )
+
+PxChoiceType = tuple[int, ...]
 
 
 REFLECT_BORDER_MODES = {

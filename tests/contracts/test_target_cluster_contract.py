@@ -1,0 +1,44 @@
+import pytest
+
+from tests.helpers.target_contracts import (
+    CORE_TARGET_CONTRACT_PAIRS,
+    EXTENDED_TARGET_CONTRACT_PAIRS,
+    TargetContractPair,
+    run_target_cluster_contract,
+)
+from tests.helpers.target_profiles import TARGET_PROFILES_BY_ID
+from tests.helpers.transform_cases import ALL_DUAL_TRANSFORM_CONTRACT_CASES
+
+
+@pytest.mark.parametrize("pair", CORE_TARGET_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
+def test_core_target_cluster_contract(pair: TargetContractPair) -> None:
+    for seed in pair.case.seeds:
+        run_target_cluster_contract(pair.case, pair.profile, seed)
+
+
+@pytest.mark.parametrize("pair", EXTENDED_TARGET_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
+def test_extended_target_cluster_contract(pair: TargetContractPair) -> None:
+    run_target_cluster_contract(pair.case, pair.profile, seed=137)
+
+
+def test_target_contract_ids_are_unique() -> None:
+    profile_ids = list(TARGET_PROFILES_BY_ID)
+    pair_ids = [pair.pair_id for pair in (*CORE_TARGET_CONTRACT_PAIRS, *EXTENDED_TARGET_CONTRACT_PAIRS)]
+
+    assert len(profile_ids) == len(set(profile_ids))
+    assert len(pair_ids) == len(set(pair_ids))
+
+
+def test_every_dual_transform_case_has_core_target_coverage() -> None:
+    covered_case_ids = {pair.case.case_id for pair in CORE_TARGET_CONTRACT_PAIRS}
+    missing = {case.case_id for case in ALL_DUAL_TRANSFORM_CONTRACT_CASES} - covered_case_ids
+
+    assert not missing, f"DualTransform cases without core target coverage: {sorted(missing)}"
+
+
+def test_every_target_profile_is_collected() -> None:
+    collected_profile_ids = {
+        pair.profile.profile_id for pair in (*CORE_TARGET_CONTRACT_PAIRS, *EXTENDED_TARGET_CONTRACT_PAIRS)
+    }
+
+    assert collected_profile_ids == set(TARGET_PROFILES_BY_ID)

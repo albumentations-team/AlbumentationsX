@@ -17,7 +17,9 @@ from ._transforms_shared import (
     Field,
     FullInterpolationType,
     ImageType,
+    PercentChoiceType,
     PercentType,
+    PxChoiceType,
     PxType,
     fcrops,
     fgeometric,
@@ -593,12 +595,13 @@ class Crop(BaseCropAndPad):
 
 
 class CropAndPad(DualTransform):
-    """Crop or pad each side by pixels (px) or fractions (percent). Positive pad, negative crop.
-    Per-side control via tuples. Good for letterboxing or trimming.
+    """Crop or pad each image side by a fixed, ranged, or discrete pixel or percentage amount.
+    Use it to trim borders, add context, or letterbox samples.
 
     This transform allows for simultaneous cropping and padding of images. Cropping removes pixels from the sides
     (i.e., extracts a subimage), while padding adds pixels to the sides (e.g., black pixels). The amount of
     cropping/padding can be specified either in absolute pixels or as a fraction of the image size.
+    Exactly one of `px`, `percent`, `px_choices`, or `percent_choices` must be set.
 
     Args:
         px (int, tuple of int, tuple of tuples of int, or None):
@@ -619,6 +622,14 @@ class CropAndPad(DualTransform):
             - Each float can also be a tuple of 2 floats for a range.
             Default: None.
 
+        px_choices (tuple[int, ...] | None):
+            A non-empty tuple of discrete pixel amounts. One value is sampled for all sides when
+            `sample_independently=False`; otherwise, one value is sampled per side. Default: None.
+
+        percent_choices (tuple[float, ...] | None):
+            A non-empty tuple of discrete fractions. One value is sampled for all sides when
+            `sample_independently=False`; otherwise, one value is sampled per side. Default: None.
+
         border_mode (int):
             OpenCV border mode used for padding. Default: cv2.BORDER_CONSTANT.
 
@@ -634,8 +645,8 @@ class CropAndPad(DualTransform):
             Default: True.
 
         sample_independently (bool):
-            If True and ranges are used for px/percent, sample a value for each side independently.
-            If False, sample one value and use it for all sides. Default: True.
+            If True, sample ranges or discrete choices independently for each side. If False, sample
+            one value and use it for all sides. Four-value fixed tuples remain per-side values. Default: True.
 
         interpolation (int):
             OpenCV interpolation flag used for resizing if keep_size is True.
@@ -756,6 +767,15 @@ class CropAndPad(DualTransform):
         ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Result dimensions will vary based on the random padding values chosen
+        >>>
+        >>> # Example 4: Pick only from approved pixel offsets
+        >>> transform_discrete = A.CropAndPad(
+        ...     px_choices=(-16, 0, 24),
+        ...     sample_independently=False,
+        ...     keep_size=False,
+        ...     p=1.0,
+        ... )
+        >>> transformed_image = transform_discrete(image=image)["image"]
 
     """
 
@@ -765,6 +785,8 @@ class CropAndPad(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         px: PxType | None
         percent: PercentType | None
+        px_choices: PxChoiceType | None
+        percent_choices: PercentChoiceType | None
         keep_size: bool
         sample_independently: bool
         interpolation: FullInterpolationType
@@ -774,12 +796,16 @@ class CropAndPad(DualTransform):
         border_mode: BorderModeType
 
         @model_validator(mode="after")
-        def _check_px_percent(self) -> Self:
-            if self.px is None and self.percent is None:
-                msg = "Both px and percent parameters cannot be None simultaneously."
+        def _check_amount_source(self) -> Self:
+            amount_sources = (self.px, self.percent, self.px_choices, self.percent_choices)
+            if sum(value is not None for value in amount_sources) != 1:
+                msg = "exactly one of px, percent, px_choices, or percent_choices must be set"
                 raise ValueError(msg)
-            if self.px is not None and self.percent is not None:
-                msg = "Only px or percent may be set!"
+            if self.px_choices is not None and not self.px_choices:
+                msg = "px_choices must be non-empty"
+                raise ValueError(msg)
+            if self.percent_choices is not None and not self.percent_choices:
+                msg = "percent_choices must be non-empty"
                 raise ValueError(msg)
 
             return self
@@ -796,11 +822,16 @@ class CropAndPad(DualTransform):
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         p: float = 1.0,
+        *,
+        px_choices: PxChoiceType | None = None,
+        percent_choices: PercentChoiceType | None = None,
     ):
         super().__init__(p=p)
 
         self.px = px
         self.percent = percent
+        self.px_choices = px_choices
+        self.percent_choices = percent_choices
 
         self.border_mode = border_mode
         self.fill = fill
@@ -904,20 +935,24 @@ class CropAndPad(DualTransform):
         remaining_width = width - (left + right)
 
         if remaining_height < 1:
-            top, bottom = CropAndPad.__prevent_zero(top, bottom, height)
+            top, bottom = CropAndPad.__prevent_zero(top, bottom, remaining_height)
         if remaining_width < 1:
-            left, right = CropAndPad.__prevent_zero(left, right, width)
+            left, right = CropAndPad.__prevent_zero(left, right, remaining_width)
 
         return [max(top, 0), max(right, 0), max(bottom, 0), max(left, 0)]
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         height, width = params["shape"][:2]
-        percent_params: list[float] | None = None
+        percent_params: list[float] = []
 
         if self.px is not None:
             new_params = self._get_px_params()
+        elif self.px_choices is not None:
+            new_params = self._get_px_choice_params()
         else:
-            percent_params = self._get_percent_params()
+            percent_params = (
+                self._get_percent_choice_params() if self.percent_choices is not None else self._get_percent_params()
+            )
             new_params = [
                 int(percent_params[0] * height),
                 int(percent_params[1] * width),
@@ -950,12 +985,14 @@ class CropAndPad(DualTransform):
         )
 
         applied_config: dict[str, Any] = {}
-        if self.px is not None:
+        if self.px is not None or self.px_choices is not None:
             applied_config["px"] = tuple(new_params)
+            if self.px_choices is not None:
+                applied_config["px_choices"] = None
         else:
-            if percent_params is None:
-                raise RuntimeError("percent_params must be initialized when px is not set")
             applied_config["percent"] = tuple(percent_params)
+            if self.percent_choices is not None:
+                applied_config["percent_choices"] = None
         if sampled_fill is not None:
             applied_config["fill"] = sampled_fill
         if sampled_fill_mask is not None:
@@ -1007,6 +1044,24 @@ class CropAndPad(DualTransform):
             params = [self.py_random.uniform(*cast("tuple[float, float]", i)) for i in self.percent]
 
         return params  # params = [top, right, bottom, left]
+
+    def _get_px_choice_params(self) -> list[int]:
+        if self.px_choices is None:
+            msg = "px_choices is not set"
+            raise ValueError(msg)
+        if self.sample_independently:
+            return [self.py_random.choice(self.px_choices) for _ in range(4)]
+        value = self.py_random.choice(self.px_choices)
+        return [value] * 4
+
+    def _get_percent_choice_params(self) -> list[float]:
+        if self.percent_choices is None:
+            msg = "percent_choices is not set"
+            raise ValueError(msg)
+        if self.sample_independently:
+            return [self.py_random.choice(self.percent_choices) for _ in range(4)]
+        value = self.py_random.choice(self.percent_choices)
+        return [value] * 4
 
     def _get_pad_value(
         self,

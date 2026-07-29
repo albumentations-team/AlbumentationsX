@@ -40,3 +40,24 @@ pytest -n 4
 ```
 
 Ensure tests are independent and don't share mutable global state so they can run safely in parallel.
+
+## Use the Generated Target Cluster
+
+Register every public constructor mode once in `tests/helpers/transform_cases.py`. A `DualTransform` case automatically
+collects against applicable core profiles for image/mask, HBB, OBB, keypoints, and volume/`mask3d`. One explicit primary
+mode per class collects against extended dtype, channel, batch, empty-target, layout, and read-only profiles.
+
+- Put reusable input workloads and structural assertions in `tests/helpers/target_profiles.py`.
+- Put transform-required metadata in the case `context_factory`.
+- Declare `required_targets` when sampling needs a non-empty mask or bbox collection.
+- Derive applicability from `_targets`, `_supported_bbox_types`, and genuine channel-count capabilities.
+- Do not add hard-coded transform lists, compatibility adapters, class-name branches, or target smoke tests whose only
+  assertion is successful execution.
+- Keep focused tests for exact geometry, interpolation, sampling, validation, empty representation, and metamorphic
+  semantics that shared profiles cannot express.
+
+See `docs/design/transform-target-contracts.md` and run:
+
+```bash
+uv run pytest -n auto -q tests/contracts/test_target_cluster_contract.py
+```

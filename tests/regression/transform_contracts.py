@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import albumentations as A
-from tests.utils import get_all_valid_transforms, get_transforms
+from tests.utils import get_all_valid_transforms, get_primary_public_transform_params
 
 StabilityMode = Literal["exact", "tolerance", "digest", "structural"]
 InputRecipe = Literal["image_mask", "hbb_keypoints", "volume_mask3d"]
@@ -90,7 +90,7 @@ def transform_sweep_names() -> set[str]:
     """Names exercised by the established parameterized transform sweeps."""
     return {
         transform.__name__
-        for transform, _ in get_transforms(
+        for transform, _ in get_primary_public_transform_params(
             except_augmentations={
                 A.Lambda,
             },

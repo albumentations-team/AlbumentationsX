@@ -26,7 +26,7 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
     assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 11
-    assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 6
+    assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 7
 
 
 def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:

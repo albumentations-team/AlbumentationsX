@@ -108,6 +108,18 @@ PARAMETER_SENSITIVITY_TRANSFORMS: Mapping[str, ParameterSensitivitySpec] = {
         params={"quality_range": (95, 95)},
         dtypes=("uint8",),
     ),
+    "random_brightness_contrast_torchvision": ParameterSensitivitySpec(
+        factory=lambda: albumentations.RandomBrightnessContrast(brightness_by_max=False, p=1.0),
+        public_transform="RandomBrightnessContrast",
+        parameter_scenario="torchvision_model",
+        params={"brightness_by_max": False},
+    ),
+    "random_brightness_contrast_opencv": ParameterSensitivitySpec(
+        factory=lambda: albumentations.RandomBrightnessContrast(brightness_by_max=True, p=1.0),
+        public_transform="RandomBrightnessContrast",
+        parameter_scenario="opencv_model",
+        params={"brightness_by_max": True},
+    ),
     "superpixels_segments_32": ParameterSensitivitySpec(
         factory=lambda: albumentations.Superpixels(n_segments_range=(32, 32), max_size=128, p=1.0),
         public_transform="Superpixels",

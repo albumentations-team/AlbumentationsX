@@ -34,6 +34,7 @@
   "Enhance": ["mode", "alpha_range", "p"],
   "Equalize": ["mode", "by_channels", "mask", "mask_params", "p"],
   "Erasing": ["scale", "ratio", "fill", "fill_mask", "p"],
+  "ExposureMatching": ["target_mean_range", "gain_range", "p"],
   "FDA": ["beta_range", "metadata_key", "p"],
   "FancyPCA": ["alpha", "p"],
   "FilmGrain": ["intensity_range", "grain_size_range", "p"],

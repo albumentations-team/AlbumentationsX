@@ -41,6 +41,10 @@ class BatchSpec:
 IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     "channel_dropout": BatchSpec(lambda: albumentations.ChannelDropout(p=1.0), channels=(3, 5)),
     "coarse_dropout": BatchSpec(lambda: albumentations.CoarseDropout(p=1.0)),
+    "exposure_matching": BatchSpec(
+        lambda: albumentations.ExposureMatching(p=1.0),
+        sizes=("small", "medium", "large"),
+    ),
     "gauss_noise": BatchSpec(lambda: albumentations.GaussNoise(p=1.0)),
     "horizontal_flip": BatchSpec(lambda: albumentations.HorizontalFlip(p=1.0)),
     "normalize": BatchSpec(lambda: albumentations.Normalize(p=1.0)),

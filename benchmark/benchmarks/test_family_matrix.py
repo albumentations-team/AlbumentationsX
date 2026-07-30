@@ -96,6 +96,7 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "random_brightness_contrast": PixelSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
     "random_gamma": PixelSpec(lambda: albumentations.RandomGamma(p=1.0)),
     "auto_contrast": PixelSpec(lambda: albumentations.AutoContrast(p=1.0), dtypes=("uint8",)),
+    "exposure_matching": PixelSpec(lambda: albumentations.ExposureMatching(p=1.0)),
     "equalize": PixelSpec(lambda: albumentations.Equalize(p=1.0), channels=(1, 3), dtypes=("uint8",)),
     "clahe": PixelSpec(lambda: albumentations.CLAHE(p=1.0), channels=(1, 3), dtypes=("uint8",)),
     "chromatic_aberration": PixelSpec(lambda: albumentations.ChromaticAberration(p=1.0), channels=(3,)),

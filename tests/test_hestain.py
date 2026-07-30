@@ -133,6 +133,74 @@ def test_hestain_default_project_mode_preserves_seeded_parameter_sequence() -> N
     np.testing.assert_array_equal(result, explicit_project)
 
 
+@pytest.mark.parametrize("residual_mode", ["preserve", "augment"])
+def test_hestain_degenerate_extracted_residual_basis_falls_back_to_project(residual_mode: str) -> None:
+    image = np.full((32, 32, 3), 32, dtype=np.uint8)
+    project = A.Compose(
+        [A.HEStain(method="macenko", residual_mode="project", p=1.0)],
+        seed=137,
+        strict=True,
+    )(image=image)["image"]
+    residual = A.Compose(
+        [A.HEStain(method="macenko", residual_mode=residual_mode, p=1.0)],
+        seed=137,
+        strict=True,
+    )(image=image)["image"]
+
+    np.testing.assert_array_equal(residual, project)
+
+
+def test_apply_he_stain_augmentation_nearly_collinear_residual_basis_falls_back_to_project() -> None:
+    image = np.random.default_rng(137).uniform(0.05, 1.0, size=(12, 10, 3)).astype(np.float32)
+    nearly_collinear_matrix = np.array([[1.0, 0.0, 0.0], [1.0, 5e-7, 0.0]], dtype=np.float32)
+    scale_factors = np.array([1.2, 0.8, 1.5], dtype=np.float32)
+    shift_values = np.array([0.1, -0.05, 0.2], dtype=np.float32)
+
+    residual = fpixel.apply_he_stain_augmentation(
+        image,
+        nearly_collinear_matrix,
+        scale_factors,
+        shift_values,
+        augment_background=True,
+        residual_mode="augment",
+    )
+    project = fpixel.apply_he_stain_augmentation(
+        image,
+        nearly_collinear_matrix,
+        scale_factors[:2],
+        shift_values[:2],
+        augment_background=True,
+        residual_mode="project",
+    )
+
+    np.testing.assert_array_equal(residual, project)
+
+
+@pytest.mark.parametrize(
+    ("scale_factors", "shift_values", "invalid_parameter"),
+    [
+        (np.ones(2, dtype=np.float32), np.zeros(3, dtype=np.float32), "scale_factors"),
+        (np.ones(3, dtype=np.float32), np.zeros(2, dtype=np.float32), "shift_values"),
+    ],
+)
+def test_apply_he_stain_augmentation_rejects_mismatched_residual_parameters(
+    scale_factors: np.ndarray,
+    shift_values: np.ndarray,
+    invalid_parameter: str,
+) -> None:
+    image = np.full((8, 8, 3), 0.5, dtype=np.float32)
+
+    with pytest.raises(ValueError, match=rf"{invalid_parameter} must have shape \(3,\)"):
+        fpixel.apply_he_stain_augmentation(
+            image,
+            CUSTOM_STAIN_MATRIX,
+            scale_factors,
+            shift_values,
+            augment_background=True,
+            residual_mode="augment",
+        )
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize("augment_background", [False, True])
 def test_hestain_project_mode_stays_within_accepted_legacy_tolerance(
@@ -203,9 +271,14 @@ def test_hestain_augment_residual_replay_reuses_all_sampled_parameters(
 
 
 @pytest.mark.parametrize("residual_mode", ["preserve", "augment"])
-def test_hestain_residual_modes_respect_tissue_mask(residual_mode: str) -> None:
-    image = np.ones((12, 10, 3), dtype=np.float32)
-    image[3:9, 2:8] = np.array([0.2, 0.3, 0.4], dtype=np.float32)
+@pytest.mark.parametrize("dense_tissue", [False, True])
+def test_hestain_residual_modes_respect_tissue_mask(residual_mode: str, dense_tissue: bool) -> None:
+    if dense_tissue:
+        image = np.full((12, 10, 3), np.array([0.2, 0.3, 0.4]), dtype=np.float32)
+        image[:2] = 1.0
+    else:
+        image = np.ones((12, 10, 3), dtype=np.float32)
+        image[3:9, 2:8] = np.array([0.2, 0.3, 0.4], dtype=np.float32)
     transform = A.HEStain(
         method="custom",
         stain_matrix=CUSTOM_STAIN_MATRIX,
@@ -217,9 +290,10 @@ def test_hestain_residual_modes_respect_tissue_mask(residual_mode: str) -> None:
     )
 
     result = transform(image=image)["image"]
+    tissue_mask = fpixel.get_tissue_mask(image).reshape(image.shape[:2])
 
-    np.testing.assert_allclose(result[:3], image[:3], rtol=1e-5, atol=1e-6)
-    assert not np.allclose(result[3:9, 2:8], image[3:9, 2:8])
+    np.testing.assert_array_equal(result[~tissue_mask], image[~tissue_mask])
+    assert not np.allclose(result[tissue_mask], image[tissue_mask])
 
 
 def test_hestain_uses_custom_stain_matrix() -> None:

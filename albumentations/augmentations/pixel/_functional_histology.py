@@ -16,6 +16,7 @@ from ._functional_shared import (
 )
 
 _Cv2InPlaceOp = Callable[..., np.ndarray]
+_SPARSE_TISSUE_MAX_FRACTION = 0.4
 
 
 def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
@@ -443,9 +444,121 @@ def _build_stain_affine_matrix(
 
 def _apply_stain_affine(optical_density: np.ndarray, affine_matrix: np.ndarray) -> np.ndarray:
     result = cv2.transform(optical_density.reshape(-1, 1, 3), affine_matrix).reshape(-1, 3)
-    multiply = cast("_Cv2InPlaceOp", cv2.multiply)
-    multiply(result, -1.0, dst=result)
+    result *= -1.0
     cv2.exp(result, dst=result)
+    return result
+
+
+def _validate_stain_augmentation_inputs(
+    stain_matrix: np.ndarray,
+    scale_factors: np.ndarray,
+    shift_values: np.ndarray,
+    residual_mode: Literal["project", "preserve", "augment"],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    stain_matrix = np.ascontiguousarray(stain_matrix, dtype=np.float32)
+    if stain_matrix.shape != (2, 3):
+        raise ValueError(f"stain_matrix must have shape (2, 3), got {stain_matrix.shape}")
+    if not np.isfinite(stain_matrix).all():
+        raise ValueError("stain_matrix must contain only finite values")
+    if residual_mode not in {"project", "preserve", "augment"}:
+        raise ValueError(f"Invalid residual_mode: {residual_mode}")
+
+    component_count = 2 if residual_mode == "project" else 3
+    scale_factors = np.asarray(scale_factors)
+    shift_values = np.asarray(shift_values)
+    if scale_factors.shape != (component_count,):
+        raise ValueError(f"scale_factors must have shape ({component_count},), got {scale_factors.shape}")
+    if shift_values.shape != (component_count,):
+        raise ValueError(f"shift_values must have shape ({component_count},), got {shift_values.shape}")
+    return stain_matrix, scale_factors, shift_values
+
+
+def _build_residual_stain_matrix(stain_matrix: np.ndarray, tolerance: float) -> np.ndarray | None:
+    residual_vector = np.cross(stain_matrix[0], stain_matrix[1])
+    residual_norm = np.linalg.norm(residual_vector)
+    stain_norm_product = np.linalg.norm(stain_matrix[0]) * np.linalg.norm(stain_matrix[1])
+    if (
+        not np.isfinite(residual_norm)
+        or not np.isfinite(stain_norm_product)
+        or residual_norm <= tolerance * stain_norm_product
+    ):
+        return None
+
+    residual_vector /= residual_norm
+    reconstruction_matrix = np.empty((3, 3), dtype=np.float32)
+    reconstruction_matrix[:2] = stain_matrix
+    reconstruction_matrix[2] = residual_vector
+    return reconstruction_matrix
+
+
+def _apply_project_stain_affine(
+    img: ImageType,
+    optical_density: np.ndarray,
+    stain_matrix: np.ndarray,
+    scale_factors: np.ndarray,
+    shift_values: np.ndarray,
+    augment_background: bool,
+    regularization: float,
+) -> np.ndarray:
+    stain_correlation = stain_matrix @ stain_matrix.T + regularization * np.eye(2)
+    deconvolution_matrix = np.linalg.solve(stain_correlation, stain_matrix)
+    augmented_affine = _build_stain_affine_matrix(
+        stain_matrix,
+        deconvolution_matrix,
+        scale_factors,
+        shift_values,
+    )
+    if augment_background:
+        return _apply_stain_affine(optical_density, augmented_affine)
+
+    tissue_mask = get_tissue_mask(img)
+    if np.all(tissue_mask):
+        return _apply_stain_affine(optical_density, augmented_affine)
+
+    base_affine = _build_stain_affine_matrix(
+        stain_matrix,
+        deconvolution_matrix,
+        np.ones_like(scale_factors),
+        np.zeros_like(shift_values),
+    )
+    result = _apply_stain_affine(optical_density, base_affine)
+    if np.any(tissue_mask):
+        result[tissue_mask] = _apply_stain_affine(optical_density[tissue_mask], augmented_affine)
+    return result
+
+
+def _apply_residual_stain_affine(
+    img: ImageType,
+    optical_density: np.ndarray,
+    reconstruction_matrix: np.ndarray,
+    scale_factors: np.ndarray,
+    shift_values: np.ndarray,
+    augment_background: bool,
+) -> np.ndarray:
+    deconvolution_matrix = np.linalg.inv(reconstruction_matrix).T
+    augmented_affine = _build_stain_affine_matrix(
+        reconstruction_matrix,
+        deconvolution_matrix,
+        scale_factors,
+        shift_values,
+    )
+    if augment_background:
+        return _apply_stain_affine(optical_density, augmented_affine)
+
+    tissue_mask = get_tissue_mask(img)
+    tissue_count = np.count_nonzero(tissue_mask)
+    image_matrix = img.reshape(-1, 3)
+    if tissue_count == tissue_mask.size:
+        return _apply_stain_affine(optical_density, augmented_affine)
+    if tissue_count <= tissue_mask.size * _SPARSE_TISSUE_MAX_FRACTION:
+        result = image_matrix.copy()
+        if tissue_count:
+            result[tissue_mask] = _apply_stain_affine(optical_density[tissue_mask], augmented_affine)
+        return result
+
+    result = _apply_stain_affine(optical_density, augmented_affine)
+    background_mask = ~tissue_mask
+    result[background_mask] = image_matrix[background_mask]
     return result
 
 
@@ -478,9 +591,13 @@ def apply_he_stain_augmentation(
     Returns:
         ImageType: RGB image with the input shape and dtype.
 
+    Raises:
+        ValueError: If the stain matrix, residual mode, or adjustment-vector shapes are invalid.
+
     Note:
         - `"project"` solves the regularized two-stain model used by earlier releases.
         - The residual modes use `R = normalize(cross(H, E))` and solve the full H&E+R basis.
+        - If H and E are nearly collinear, residual modes fall back to the regularized `"project"` model.
 
     Examples:
         >>> import numpy as np
@@ -497,64 +614,40 @@ def apply_he_stain_augmentation(
         ... )
 
     """
-    # Step 1: Convert RGB to optical density space
-    optical_density = rgb_to_optical_density(img)
-
-    # Step 2: Calculate stain concentrations using regularized pseudo-inverse
-    stain_matrix = np.ascontiguousarray(stain_matrix, dtype=np.float32)
-
-    # Add small regularization term for numerical stability.
+    stain_matrix, scale_factors, shift_values = _validate_stain_augmentation_inputs(
+        stain_matrix,
+        scale_factors,
+        shift_values,
+        residual_mode,
+    )
     regularization = 1e-6
+    reconstruction_matrix = (
+        None if residual_mode == "project" else _build_residual_stain_matrix(stain_matrix, regularization)
+    )
+    optical_density = rgb_to_optical_density(img)
 
     # Suppress numerical warnings for edge cases with extreme optical densities
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-        if residual_mode == "project":
-            stain_correlation = stain_matrix @ stain_matrix.T + regularization * np.eye(2)
-            deconvolution_matrix = np.linalg.solve(stain_correlation, stain_matrix)
-            augmented_affine = _build_stain_affine_matrix(
+        if reconstruction_matrix is None:
+            component_slice = slice(None) if residual_mode == "project" else slice(2)
+            rgb_result = _apply_project_stain_affine(
+                img,
+                optical_density,
                 stain_matrix,
-                deconvolution_matrix,
-                scale_factors,
-                shift_values,
+                scale_factors[component_slice],
+                shift_values[component_slice],
+                augment_background,
+                regularization,
             )
-            if augment_background:
-                rgb_result = _apply_stain_affine(optical_density, augmented_affine)
-            else:
-                tissue_mask = get_tissue_mask(img)
-                if np.all(tissue_mask):
-                    rgb_result = _apply_stain_affine(optical_density, augmented_affine)
-                else:
-                    base_affine = _build_stain_affine_matrix(
-                        stain_matrix,
-                        deconvolution_matrix,
-                        np.ones_like(scale_factors),
-                        np.zeros_like(shift_values),
-                    )
-                    rgb_result = _apply_stain_affine(optical_density, base_affine)
-                    if np.any(tissue_mask):
-                        rgb_result[tissue_mask] = _apply_stain_affine(
-                            optical_density[tissue_mask],
-                            augmented_affine,
-                        )
         else:
-            residual_vector = np.cross(stain_matrix[0], stain_matrix[1])
-            residual_vector /= np.linalg.norm(residual_vector)
-            reconstruction_matrix = np.empty((3, 3), dtype=np.float32)
-            reconstruction_matrix[:2] = stain_matrix
-            reconstruction_matrix[2] = residual_vector
-            deconvolution_matrix = np.linalg.inv(reconstruction_matrix).T
-            augmented_affine = _build_stain_affine_matrix(
+            rgb_result = _apply_residual_stain_affine(
+                img,
+                optical_density,
                 reconstruction_matrix,
-                deconvolution_matrix,
                 scale_factors,
                 shift_values,
+                augment_background,
             )
-            rgb_result = _apply_stain_affine(optical_density, augmented_affine)
-            if not augment_background:
-                background_mask = ~get_tissue_mask(img)
-                if np.any(background_mask):
-                    image_matrix = img.reshape(-1, 3)
-                    rgb_result[background_mask] = image_matrix[background_mask]
 
     return rgb_result.reshape(img.shape)
 

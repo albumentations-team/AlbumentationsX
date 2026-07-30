@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pytest
-from albucore import to_float
+from albucore import from_float, to_float
 
 import albumentations as A
 from albumentations.augmentations.pixel import functional as fpixel
@@ -1735,26 +1735,81 @@ def test_to_sepia_rgb_multiple_images():
     "kernel",
     [3, 5, 7],
 )
-def test_median_blur_apply_to_images(dtype: np.dtype, num_channels: int, kernel: int):
-    """Test that MedianBlur batch processing via images= produces the same results as per-image."""
+def test_median_blur_compose_target_routes(
+    dtype: type[np.uint8 | np.float32],
+    num_channels: int,
+    kernel: int,
+) -> None:
+    """MedianBlur preserves its dtype route across image, batch, and volume targets."""
     rng = np.random.default_rng(137)
 
     if dtype == np.uint8:
-        images = rng.integers(0, 256, size=(3, 50, 50, num_channels), dtype=np.uint8)
+        image = rng.integers(0, 256, size=(31, 37, num_channels), dtype=np.uint8)
     else:
-        images = rng.random((3, 50, 50, num_channels), dtype=np.float32)
+        image = rng.random((31, 37, num_channels), dtype=np.float32)
 
-    transform = A.Compose([A.MedianBlur(blur_range=(kernel, kernel), p=1.0)])
+    images = np.stack([image, np.flip(image, axis=0)], axis=0)
+    volume = np.stack([image, np.flip(image, axis=1)], axis=0)
+    volumes = np.stack([volume, np.flip(volume, axis=1)], axis=0)
+    transform = A.Compose(
+        [A.MedianBlur(blur_range=(kernel, kernel), p=1.0)],
+        save_applied_params=True,
+        seed=137,
+    )
 
-    # Batch result via images= key
-    batch_result = transform(images=images)["images"]
+    image_result = transform(image=image)
+    images_result = transform(images=images)
+    volume_result = transform(volume=volume)
+    volumes_result = transform(volumes=volumes)
 
-    # Per-image results via image= key
-    per_image_results = np.stack([transform(image=img)["image"] for img in images])
+    def reference(item: np.ndarray) -> np.ndarray:
+        working = from_float(item, np.dtype(np.uint8)) if item.dtype == np.float32 and kernel >= 7 else item
+        if kernel in (3, 5) or num_channels <= 4:
+            filtered = cv2.medianBlur(working, kernel)
+            if filtered.ndim == 2:
+                filtered = filtered[..., np.newaxis]
+        else:
+            filtered = np.concatenate(
+                [cv2.medianBlur(working[..., index], kernel)[..., np.newaxis] for index in range(num_channels)],
+                axis=-1,
+            )
+        return to_float(filtered) if item.dtype == np.float32 and kernel >= 7 else filtered
 
-    assert batch_result.shape == images.shape
-    assert batch_result.dtype == images.dtype
-    np.testing.assert_array_equal(batch_result, per_image_results)
+    expected_image = reference(image)
+    expected_images = np.stack([reference(item) for item in images])
+    expected_volume = np.stack([reference(item) for item in volume])
+    expected_volumes = np.stack(
+        [[reference(item) for item in item_volume] for item_volume in volumes],
+    )
+
+    if dtype == np.float32 and kernel in (3, 5):
+        legacy = to_float(
+            np.stack(
+                [
+                    cv2.medianBlur(from_float(image, np.dtype(np.uint8))[..., index], kernel)
+                    for index in range(num_channels)
+                ],
+                axis=-1,
+            ),
+        )
+        assert not np.array_equal(expected_image, legacy)
+
+    for result, target_name, source, expected in (
+        (image_result, "image", image, expected_image),
+        (images_result, "images", images, expected_images),
+        (volume_result, "volume", volume, expected_volume),
+        (volumes_result, "volumes", volumes, expected_volumes),
+    ):
+        transformed = result[target_name]
+        assert transformed.shape == source.shape
+        assert transformed.dtype == source.dtype
+        np.testing.assert_array_equal(transformed, expected)
+        assert result["applied_transforms"] == [("MedianBlur", {"p": 1.0, "blur_range": kernel})]
+
+    per_image_results = np.stack([transform(image=item)["image"] for item in images])
+    per_volume_results = np.stack([transform(volume=item)["volume"] for item in volumes])
+    np.testing.assert_array_equal(images_result["images"], per_image_results)
+    np.testing.assert_array_equal(volumes_result["volumes"], per_volume_results)
 
 
 @pytest.mark.parametrize(

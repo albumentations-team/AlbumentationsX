@@ -62,9 +62,12 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
         ),
         frozenset(
             {
+                "PeakMemory",
                 "TimeFunctionalBlurKernels",
                 "TimeFunctionalPixelKernels",
                 "TimeBatch",
+                "TimeMedianBlurDirectBatch",
+                "TimeMedianBlurTargetRoutes",
                 "TimeParameterSensitivity",
                 "TimePixelFullMatrix",
             },
@@ -100,6 +103,8 @@ PATTERN_ORDER = (
     "Time",
     "PeakMemory",
     "TimeBatch",
+    "TimeMedianBlurDirectBatch",
+    "TimeMedianBlurTargetRoutes",
     "TimeCatalogTransformSmoke",
     "TimeCorePipeline",
     "TimeParameterSensitivity",

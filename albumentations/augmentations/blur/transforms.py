@@ -467,6 +467,9 @@ class MedianBlur(Blur):
         - For color images, the median is calculated independently for each channel.
         - Larger kernel sizes result in stronger blurring effects but may also remove
           fine details from the image.
+        - Float32 images use native full-precision OpenCV filtering for kernel sizes 3 and 5. Larger kernels are
+          converted to uint8 for filtering and then converted back to float32 because OpenCV does not support native
+          CV_32F median filtering for those aperture sizes.
 
     Examples:
         >>> import numpy as np

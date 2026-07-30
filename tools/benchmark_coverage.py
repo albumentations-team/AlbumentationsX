@@ -35,6 +35,8 @@ from benchmarks.test_batch_matrix import (  # noqa: E402
     IMAGE_BATCH_TRANSFORMS,
     MASK_BATCH_CASES,
     MASK_BATCH_TRANSFORMS,
+    MEDIAN_BLUR_DIRECT_BATCH_CASES,
+    MEDIAN_BLUR_TARGET_CASES,
     SPATTER_DIRECT_CASES,
     VOLUME_BATCH_CASES,
     VOLUME_BATCH_TRANSFORMS,
@@ -163,6 +165,8 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "lambda": "Lambda",
     "lens_flare": "LensFlare",
     "median_blur": "MedianBlur",
+    "median_blur_k5": "MedianBlur",
+    "median_blur_k7": "MedianBlur",
     "mode_filter": "ModeFilter",
     "motion_blur": "MotionBlur",
     "multiplicative_noise": "MultiplicativeNoise",
@@ -244,6 +248,7 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "d4": "D4",
     "gauss_noise": "GaussNoise",
     "horizontal_flip": "HorizontalFlip",
+    "median_blur": "MedianBlur",
     "normalize": "Normalize",
     "random_brightness_contrast": "RandomBrightnessContrast",
     "random_rotate90": "RandomRotate90",
@@ -275,6 +280,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "HorizontalFlip",
         "HueSaturationValue",
         "ImageCompression",
+        "MedianBlur",
         "ModeFilter",
         "Normalize",
         "Pad",
@@ -297,6 +303,7 @@ MEMORY_BENCHMARKS = (
     "peakmem_batch_pipeline_medium_rgb",
     "peakmem_copy_paste_small_rgb",
     "peakmem_mosaic_small_rgb",
+    "peakmem_median_blur_large_float32",
     "peakmem_normalize_large_rgb",
     "peakmem_resize_large_rgb",
     "peakmem_spatter_batch_large_rgb",
@@ -310,6 +317,7 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
         "GaussianBlur",
         "HorizontalFlip",
         "Mosaic",
+        "MedianBlur",
         "Normalize",
         "PadIfNeeded3D",
         "RandomBrightnessContrast",
@@ -338,6 +346,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "HorizontalFlip": ("hflip",),
     "HueSaturationValue": ("shift_hsv",),
     "ImageCompression": ("image_compression",),
+    "MedianBlur": ("median_blur_k3", "median_blur_k5", "median_blur_k7"),
     "ModeFilter": ("mode_filter",),
     "Normalize": ("normalize_per_image",),
     "Pad": ("pad_with_params",),
@@ -360,6 +369,7 @@ MEMORY_CASES_BY_TRANSFORM = {
     "GaussianBlur": ("peakmem_batch_pipeline_medium_rgb",),
     "HorizontalFlip": ("peakmem_batch_pipeline_medium_rgb",),
     "Mosaic": ("peakmem_mosaic_small_rgb",),
+    "MedianBlur": ("peakmem_median_blur_large_float32",),
     "Normalize": ("peakmem_normalize_large_rgb",),
     "PadIfNeeded3D": ("peakmem_volume_pad_medium",),
     "RandomBrightnessContrast": ("peakmem_batch_pipeline_medium_rgb",),
@@ -371,6 +381,8 @@ ASV_BENCHMARKS = {
     "annotation_scaling": "benchmarks.test_family_matrix.TimeAnnotationTargets.time_transform",
     "batch_image": "benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform",
     "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
+    "batch_median_blur_direct": "benchmarks.test_batch_matrix.TimeMedianBlurDirectBatch.time_apply_to_images",
+    "batch_median_blur_targets": "benchmarks.test_batch_matrix.TimeMedianBlurTargetRoutes.time_transform",
     "batch_spatter_direct": "benchmarks.test_batch_matrix.TimeSpatterDirectBatchMatrix.time_apply_to_images",
     "batch_volume": "benchmarks.test_batch_matrix.TimeVolumeBatchMatrix.time_transform",
     "catalog_smoke": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
@@ -492,6 +504,7 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
     batch_matrix = _mapped_names(BATCH_ALIAS_TO_TRANSFORM, IMAGE_BATCH_TRANSFORMS)
     batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, MASK_BATCH_TRANSFORMS)
     batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, VOLUME_BATCH_TRANSFORMS)
+    batch_matrix.add("MedianBlur")
     parameter_sensitivity = _mapped_names(
         PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM,
         PARAMETER_SENSITIVITY_TRANSFORMS,
@@ -684,11 +697,13 @@ def _parse_pytorch_case(case_id: str) -> dict[str, Any]:
 
 def _parse_batch_case(case_id: str) -> dict[str, Any]:
     """Parse a batch matrix benchmark case id."""
-    name, target_route, size_name, channels, dtype_name, batch_size = case_id.split("|")
+    name, target_route, size_name, channels, dtype_name, batch_size, *_ = case_id.split("|")
     targets = {
         "direct_images": ["images"],
         "images": ["images"],
         "images_and_masks": ["images", "masks"],
+        "volume": ["volume"],
+        "volumes": ["volumes"],
         "volumes_and_masks3d": ["masks3d", "volumes"],
     }[target_route]
     scenario = {
@@ -699,7 +714,7 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
         "target_route": target_route,
         "targets": targets,
     }
-    if target_route == "volumes_and_masks3d":
+    if target_route in {"volume", "volumes", "volumes_and_masks3d"}:
         scenario["volume_size"] = size_name
     else:
         scenario["size"] = size_name
@@ -1075,6 +1090,20 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         cases,
         benchmark=ASV_BENCHMARKS["batch_spatter_direct"],
         case_ids=SPATTER_DIRECT_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_median_blur_targets"],
+        case_ids=MEDIAN_BLUR_TARGET_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_median_blur_direct"],
+        case_ids=MEDIAN_BLUR_DIRECT_BATCH_CASES,
         layer="batch_matrix",
         name_map=BATCH_ALIAS_TO_TRANSFORM,
     )

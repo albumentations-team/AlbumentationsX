@@ -25,6 +25,7 @@ BATCH_SIZES = (4, 8)
 VOLUME_BATCH_SIZES = (2, 4)
 SPATTER_BATCH_SIZES = (2, 4, 8, 16)
 SPATTER_SIZES = ("small", "medium", "large")
+MEDIAN_BLUR_KERNELS = (3, 5, 7)
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,17 @@ SPATTER_DIRECT_CASES = tuple(
 )
 MASK_BATCH_CASES = _cases(MASK_BATCH_TRANSFORMS, "images_and_masks")
 VOLUME_BATCH_CASES = _cases(VOLUME_BATCH_TRANSFORMS, "volumes_and_masks3d")
+MEDIAN_BLUR_TARGET_CASES = tuple(
+    f"median_blur|{route}|small|5|{dtype_name}|{batch_size}|{kernel_size}"
+    for route, batch_size in (("images", 4), ("volume", 1), ("volumes", 2))
+    for kernel_size in MEDIAN_BLUR_KERNELS
+    for dtype_name in DTYPES
+)
+MEDIAN_BLUR_DIRECT_BATCH_CASES = tuple(
+    f"median_blur|direct_images|small|5|{dtype_name}|4|{kernel_size}"
+    for kernel_size in MEDIAN_BLUR_KERNELS
+    for dtype_name in DTYPES
+)
 
 
 def _parse_batch_case(case_id: str) -> tuple[str, str, str, int, str, int]:
@@ -184,6 +196,51 @@ class TimeSpatterDirectBatchMatrix:
 
     def time_apply_to_images(self, case_id: str) -> None:
         self.transform.apply_to_images(self.images, **self.params)
+
+
+class TimeMedianBlurTargetRoutes:
+    """Benchmark representative public image-batch and volume routes for MedianBlur."""
+
+    params = (MEDIAN_BLUR_TARGET_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        _, route, _, _, dtype_name, _, kernel_size_text = case_id.split("|")
+        dtype = dtype_from_name(dtype_name)
+        kernel_size = int(kernel_size_text)
+        self.transform = albumentations.Compose(
+            [albumentations.MedianBlur(blur_range=(kernel_size, kernel_size), p=1.0)],
+            seed=137,
+            strict=True,
+        )
+        if route == "images":
+            self.data = {"images": _make_image_batch("small", 5, dtype, 4)}
+        elif route == "volume":
+            self.data = {"volume": make_volume("small", 5, dtype)}
+        else:
+            self.data = {"volumes": _make_volume_batch("small", 5, dtype, 2)}
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
+
+
+class TimeMedianBlurDirectBatch:
+    """Benchmark the direct apply_to_images dispatch used by public batch routes."""
+
+    params = (MEDIAN_BLUR_DIRECT_BATCH_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        _, _, _, _, dtype_name, _, kernel_size_text = case_id.split("|")
+        self.kernel_size = int(kernel_size_text)
+        self.transform = albumentations.MedianBlur(
+            blur_range=(self.kernel_size, self.kernel_size),
+            p=1.0,
+        )
+        self.images = _make_image_batch("small", 5, dtype_from_name(dtype_name), 4)
+
+    def time_apply_to_images(self, case_id: str) -> None:
+        self.transform.apply_to_images(self.images, kernel=self.kernel_size)
 
 
 class PeakMemorySpatterBatchMatrix:

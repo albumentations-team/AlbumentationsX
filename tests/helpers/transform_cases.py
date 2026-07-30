@@ -103,6 +103,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     ],
     [A.RGBShift, {"r_shift_range": (-70, 70), "g_shift_range": (-80, 80), "b_shift_range": (-40, 40)}],
     [A.RandomBrightnessContrast, {"brightness_range": (-0.5, 0.5), "contrast_range": (-0.8, 0.8)}],
+    [A.ExposureMatching, {"target_mean_range": (0.2, 0.6), "gain_range": (0.5, 3.0)}],
     [A.Blur, {"blur_range": (3, 5)}],
     [A.MotionBlur, {"blur_range": (3, 5)}],
     [A.MedianBlur, {"blur_range": (3, 5)}],
@@ -914,6 +915,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         {"allow_shifted": False, "angle_range": (30, 60), "direction_range": (-0.5, 0.5)},
     ),
     ("per-image", A.Normalize, {"normalization": "image"}),
+    ("clipped-output", A.Normalize, {"clip_range": (-1.0, 1.0)}),
     (
         "fisheye-direct",
         A.OpticalDistortion,
@@ -992,7 +994,9 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("small-plasma", A.PlasmaBrightnessContrast, {"plasma_size": 64, "roughness": 2.0}),
     ("small-plasma", A.PlasmaShadow, {"shadow_intensity_range": (0.2, 0.5), "plasma_size": 64, "roughness": 2.0}),
-    ("safe-output", A.RandomBrightnessContrast, {"brightness_by_max": False, "ensure_safe_output": True}),
+    ("safe-output", A.RandomBrightnessContrast, {"ensure_safe_output": True}),
+    ("opencv-max", A.RandomBrightnessContrast, {"brightness_by_max": True}),
+    ("unbounded-gain", A.ExposureMatching, {"gain_range": None}),
     (
         "padded-bottom-right",
         A.RandomCrop,
@@ -1178,6 +1182,7 @@ _REFERENCE_METADATA_KEYS = {
 _EXACT_TRANSFORMS = {
     A.Blur,
     A.CropAndPad,
+    A.ExposureMatching,
     A.HorizontalFlip,
     A.NoOp,
     A.Pad,

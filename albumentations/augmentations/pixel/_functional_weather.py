@@ -9,6 +9,7 @@ from ._functional_color import (
 )
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
+    ImageFloat32,
     ImageType,
     ImageUInt8,
     add,
@@ -17,11 +18,13 @@ from ._functional_shared import (
     clipped,
     cv2,
     float32_io,
+    from_float,
     maybe_process_in_chunks,
     non_rgb_error,
     np,
     preserve_channel_dim,
     reduce_sum,
+    to_float,
     uint8_io,
 )
 from ._functional_sharpness import (
@@ -725,6 +728,50 @@ def spatter_mud(img: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageTy
     return add(img * non_mud, mud, inplace=False)
 
 
+def _prepare_spatter_batch(images: ImageType) -> ImageFloat32:
+    return to_float(images) if images.dtype == np.uint8 else cast("ImageFloat32", images.copy(order="C"))
+
+
+def spatter_rain_batch(images: ImageType, rain: np.ndarray) -> ImageType:
+    """Apply a shared rain pattern to an RGB image batch using one vectorized float32 buffer for faster multi-image
+    processing while preserving the original dtype.
+
+    Args:
+        images (ImageType): RGB image batch in `(N, H, W, 3)` format.
+        rain (np.ndarray): Shared rain pattern in `(H, W, 3)` format.
+
+    Returns:
+        ImageType: Rain-spattered batch with the same dtype and shape as the input.
+
+    """
+    input_dtype = images.dtype
+    result = _prepare_spatter_batch(images)
+    np.add(result, rain, out=result)
+    np.clip(result, 0, 1, out=result)
+    return from_float(result, target_dtype=input_dtype) if input_dtype == np.uint8 else result
+
+
+def spatter_mud_batch(images: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageType:
+    """Apply shared mud layers to an RGB image batch using one vectorized float32 buffer for faster multi-image
+    processing while preserving the original dtype.
+
+    Args:
+        images (ImageType): RGB image batch in `(N, H, W, 3)` format.
+        non_mud (np.ndarray): Shared multiplicative background layer in `(H, W, 3)` format.
+        mud (np.ndarray): Shared additive mud layer in `(H, W, 3)` format.
+
+    Returns:
+        ImageType: Mud-spattered batch with the same dtype and shape as the input.
+
+    """
+    input_dtype = images.dtype
+    result = _prepare_spatter_batch(images)
+    np.multiply(result, non_mud, out=result)
+    np.add(result, mud, out=result)
+    np.clip(result, 0, 1, out=result)
+    return from_float(result, target_dtype=input_dtype) if input_dtype == np.uint8 else result
+
+
 def get_rain_params(
     liquid_layer: np.ndarray,
     color: np.ndarray,
@@ -936,5 +983,7 @@ __all__ = [
     "get_mud_params",
     "get_rain_params",
     "spatter_mud",
+    "spatter_mud_batch",
     "spatter_rain",
+    "spatter_rain_batch",
 ]

@@ -23,6 +23,8 @@ Factory = Callable[[], object]
 
 BATCH_SIZES = (4, 8)
 VOLUME_BATCH_SIZES = (2, 4)
+SPATTER_BATCH_SIZES = (2, 4, 8, 16)
+SPATTER_SIZES = ("small", "medium", "large")
 
 
 @dataclass(frozen=True)
@@ -39,11 +41,27 @@ class BatchSpec:
 IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     "channel_dropout": BatchSpec(lambda: albumentations.ChannelDropout(p=1.0), channels=(3, 5)),
     "coarse_dropout": BatchSpec(lambda: albumentations.CoarseDropout(p=1.0)),
+    "exposure_matching": BatchSpec(
+        lambda: albumentations.ExposureMatching(p=1.0),
+        sizes=("small", "medium", "large"),
+    ),
     "gauss_noise": BatchSpec(lambda: albumentations.GaussNoise(p=1.0)),
     "horizontal_flip": BatchSpec(lambda: albumentations.HorizontalFlip(p=1.0)),
     "normalize": BatchSpec(lambda: albumentations.Normalize(p=1.0)),
     "random_brightness_contrast": BatchSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
     "resize": BatchSpec(lambda: albumentations.Resize(height=128, width=128, p=1.0)),
+    "spatter_mud": BatchSpec(
+        lambda: albumentations.Spatter(mode="mud", p=1.0),
+        channels=(3,),
+        sizes=SPATTER_SIZES,
+        batch_sizes=SPATTER_BATCH_SIZES,
+    ),
+    "spatter_rain": BatchSpec(
+        lambda: albumentations.Spatter(mode="rain", p=1.0),
+        channels=(3,),
+        sizes=SPATTER_SIZES,
+        batch_sizes=SPATTER_BATCH_SIZES,
+    ),
 }
 
 MASK_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
@@ -98,6 +116,11 @@ def _cases(transforms: Mapping[str, BatchSpec], target_route: str) -> tuple[str,
 
 
 IMAGE_BATCH_CASES = _cases(IMAGE_BATCH_TRANSFORMS, "images")
+SPATTER_DIRECT_CASES = tuple(
+    case_id.replace("|images|", "|direct_images|", 1)
+    for case_id in IMAGE_BATCH_CASES
+    if case_id.startswith(("spatter_mud|", "spatter_rain|"))
+)
 MASK_BATCH_CASES = _cases(MASK_BATCH_TRANSFORMS, "images_and_masks")
 VOLUME_BATCH_CASES = _cases(VOLUME_BATCH_TRANSFORMS, "volumes_and_masks3d")
 
@@ -142,6 +165,57 @@ class TimeImageBatchMatrix:
 
     def time_transform(self, case_id: str) -> None:
         self.transform(**self.data)
+
+
+class TimeSpatterDirectBatchMatrix:
+    """Benchmark Spatter's direct `apply_to_images` route over the issue #40 matrix."""
+
+    params = (SPATTER_DIRECT_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        mode = "mud" if name == "spatter_mud" else "rain"
+        self.transform = albumentations.Spatter(mode=mode, p=1.0)
+        self.transform.set_random_seed(137)
+        self.images = _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)
+        self.transform(image=self.images[0])
+        self.params = self.transform.get_applied_params()
+
+    def time_apply_to_images(self, case_id: str) -> None:
+        self.transform.apply_to_images(self.images, **self.params)
+
+
+class PeakMemorySpatterBatchMatrix:
+    """Measure the largest Spatter batch working set for direct and Compose routes."""
+
+    params = (
+        tuple(
+            f"{route}|{mode}|{dtype_name}"
+            for route in ("direct", "compose")
+            for mode in ("rain", "mud")
+            for dtype_name in DTYPES
+        ),
+    )
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        route, mode, dtype_name = case_id.split("|")
+        self.route = route
+        self.images = _make_image_batch("large", 3, dtype_from_name(dtype_name), 16)
+        self.transform = albumentations.Spatter(mode=mode, p=1.0)
+        if route == "compose":
+            self.compose = albumentations.Compose([self.transform], seed=137, strict=True)
+        else:
+            self.transform.set_random_seed(137)
+            self.transform(image=self.images[0])
+            self.params = self.transform.get_applied_params()
+
+    def peakmem_spatter_batch_large_rgb(self, case_id: str) -> None:
+        if self.route == "compose":
+            self.compose(images=self.images)
+        else:
+            self.transform.apply_to_images(self.images, **self.params)
 
 
 class TimeMaskBatchMatrix:

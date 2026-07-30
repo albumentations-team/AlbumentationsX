@@ -43,6 +43,12 @@ __all__ = [
     "Spatter",
 ]
 
+_SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES = {
+    ("rain", "uint8"): 3 * 1024 * 1024,
+    ("mud", "uint8"): 6 * 1024 * 1024,
+    ("mud", "float32"): 24 * 1024 * 1024,
+}
+
 
 class RandomSnow(ImageOnlyTransform):
     """Add snow overlay via bleach (brightness threshold) or texture (noise-based overlay).
@@ -1351,6 +1357,24 @@ class Spatter(ImageOnlyTransform):
             return fpixel.spatter_rain(img, params["drops"])
 
         return fpixel.spatter_mud(img, params["non_mud"], params["mud"])
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        if len(images) == 0:
+            return images
+
+        if images.ndim != 4:
+            raise ValueError("This transformation expects 3-channel images")
+
+        non_rgb_error(images)
+        fallback_threshold = _SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES.get((params["mode"], images.dtype.name))
+        working_set = images.size * np.dtype(np.float32).itemsize
+        if fallback_threshold is not None and working_set >= fallback_threshold:
+            return ImageOnlyTransform.apply_to_images(self, images, **params)
+
+        if params["mode"] == "rain":
+            return fpixel.spatter_rain_batch(images, params["drops"])
+
+        return fpixel.spatter_mud_batch(images, params["non_mud"], params["mud"])
 
     def get_params_dependent_on_data(
         self,

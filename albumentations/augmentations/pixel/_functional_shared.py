@@ -42,6 +42,7 @@ from albucore import (
     restore_xhwc_channel,
     std,
     sz_lut,
+    to_float,
     uint8_io,
 )
 
@@ -54,6 +55,7 @@ from albumentations.core.type_definitions import (
     MONO_CHANNEL_DIMENSIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
+    ImageFloat32,
     ImageType,
     ImageUInt8,
 )
@@ -82,6 +84,7 @@ __all__ = [
     "NUM_RGB_CHANNELS",
     "PCA",
     "Any",
+    "ImageFloat32",
     "ImageType",
     "ImageUInt8",
     "Literal",
@@ -123,6 +126,7 @@ __all__ = [
     "restore_xhwc_channel",
     "std",
     "sz_lut",
+    "to_float",
     "uint8_io",
     "warn",
 ]

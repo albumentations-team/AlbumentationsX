@@ -60,6 +60,22 @@ PARAMETER_SENSITIVITY_TRANSFORMS: Mapping[str, ParameterSensitivitySpec] = {
         parameter_scenario="32_small_holes",
         params={"hole_height_range": (8, 8), "hole_width_range": (8, 8), "num_holes_range": (32, 32)},
     ),
+    "exposure_matching_unbounded": ParameterSensitivitySpec(
+        factory=lambda: albumentations.ExposureMatching(target_mean_range=(0.4, 0.4), p=1.0),
+        public_transform="ExposureMatching",
+        parameter_scenario="unbounded_gain",
+        params={"gain_range": None, "target_mean_range": (0.4, 0.4)},
+    ),
+    "exposure_matching_bounded": ParameterSensitivitySpec(
+        factory=lambda: albumentations.ExposureMatching(
+            target_mean_range=(0.4, 0.4),
+            gain_range=(1.0, 3.0),
+            p=1.0,
+        ),
+        public_transform="ExposureMatching",
+        parameter_scenario="bounded_gain",
+        params={"gain_range": (1.0, 3.0), "target_mean_range": (0.4, 0.4)},
+    ),
     "gaussian_blur_kernel_3": ParameterSensitivitySpec(
         factory=lambda: albumentations.GaussianBlur(blur_range=(3, 3), sigma_range=(0.8, 0.8), p=1.0),
         public_transform="GaussianBlur",
@@ -107,6 +123,18 @@ PARAMETER_SENSITIVITY_TRANSFORMS: Mapping[str, ParameterSensitivitySpec] = {
         parameter_scenario="jpeg_quality_95",
         params={"quality_range": (95, 95)},
         dtypes=("uint8",),
+    ),
+    "random_brightness_contrast_torchvision": ParameterSensitivitySpec(
+        factory=lambda: albumentations.RandomBrightnessContrast(brightness_by_max=False, p=1.0),
+        public_transform="RandomBrightnessContrast",
+        parameter_scenario="torchvision_model",
+        params={"brightness_by_max": False},
+    ),
+    "random_brightness_contrast_opencv": ParameterSensitivitySpec(
+        factory=lambda: albumentations.RandomBrightnessContrast(brightness_by_max=True, p=1.0),
+        public_transform="RandomBrightnessContrast",
+        parameter_scenario="opencv_model",
+        params={"brightness_by_max": True},
     ),
     "superpixels_segments_32": ParameterSensitivitySpec(
         factory=lambda: albumentations.Superpixels(n_segments_range=(32, 32), max_size=128, p=1.0),

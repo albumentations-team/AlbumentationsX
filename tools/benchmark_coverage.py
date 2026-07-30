@@ -35,6 +35,7 @@ from benchmarks.test_batch_matrix import (  # noqa: E402
     IMAGE_BATCH_TRANSFORMS,
     MASK_BATCH_CASES,
     MASK_BATCH_TRANSFORMS,
+    SPATTER_DIRECT_CASES,
     VOLUME_BATCH_CASES,
     VOLUME_BATCH_TRANSFORMS,
 )
@@ -141,6 +142,7 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "emboss": "Emboss",
     "enhance": "Enhance",
     "erasing": "Erasing",
+    "exposure_matching": "ExposureMatching",
     "fancy_pca": "FancyPCA",
     "film_grain": "FilmGrain",
     "defocus": "Defocus",
@@ -238,6 +240,7 @@ VOLUME_ALIAS_TO_TRANSFORM = {
 BATCH_ALIAS_TO_TRANSFORM = {
     "channel_dropout": "ChannelDropout",
     "coarse_dropout": "CoarseDropout",
+    "exposure_matching": "ExposureMatching",
     "d4": "D4",
     "gauss_noise": "GaussNoise",
     "horizontal_flip": "HorizontalFlip",
@@ -245,6 +248,8 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "random_brightness_contrast": "RandomBrightnessContrast",
     "random_rotate90": "RandomRotate90",
     "resize": "Resize",
+    "spatter_mud": "Spatter",
+    "spatter_rain": "Spatter",
     "transpose": "Transpose",
     "vertical_flip": "VerticalFlip",
 }
@@ -264,6 +269,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "D4",
         "Defocus",
         "Equalize",
+        "ExposureMatching",
         "GaussianBlur",
         "GlassBlur",
         "HorizontalFlip",
@@ -293,6 +299,7 @@ MEMORY_BENCHMARKS = (
     "peakmem_mosaic_small_rgb",
     "peakmem_normalize_large_rgb",
     "peakmem_resize_large_rgb",
+    "peakmem_spatter_batch_large_rgb",
     "peakmem_volume_pad_medium",
 )
 
@@ -307,6 +314,7 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
         "PadIfNeeded3D",
         "RandomBrightnessContrast",
         "Resize",
+        "Spatter",
     },
 )
 
@@ -324,6 +332,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "D4": ("d4", "bboxes_d4", "keypoints_d4"),
     "Defocus": ("defocus",),
     "Equalize": ("equalize",),
+    "ExposureMatching": ("exposure_match_batch",),
     "GaussianBlur": ("convolve",),
     "GlassBlur": ("glass_blur",),
     "HorizontalFlip": ("hflip",),
@@ -355,12 +364,14 @@ MEMORY_CASES_BY_TRANSFORM = {
     "PadIfNeeded3D": ("peakmem_volume_pad_medium",),
     "RandomBrightnessContrast": ("peakmem_batch_pipeline_medium_rgb",),
     "Resize": ("peakmem_resize_large_rgb",),
+    "Spatter": ("peakmem_spatter_batch_large_rgb",),
 }
 
 ASV_BENCHMARKS = {
     "annotation_scaling": "benchmarks.test_family_matrix.TimeAnnotationTargets.time_transform",
     "batch_image": "benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform",
     "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
+    "batch_spatter_direct": "benchmarks.test_batch_matrix.TimeSpatterDirectBatchMatrix.time_apply_to_images",
     "batch_volume": "benchmarks.test_batch_matrix.TimeVolumeBatchMatrix.time_transform",
     "catalog_smoke": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
     "direct_kernel_3d": "benchmarks.test_functional_kernels.TimeFunctional3DKernels.time_kernel",
@@ -373,6 +384,7 @@ ASV_BENCHMARKS = {
     "family_matrix_geometry": "benchmarks.test_family_matrix.TimeGeometryFullMatrix.time_transform",
     "family_matrix_pixel": "benchmarks.test_family_matrix.TimePixelFullMatrix.time_transform",
     "memory": "benchmarks.test_family_matrix.PeakMemoryHotPaths",
+    "memory_spatter": "benchmarks.test_batch_matrix.PeakMemorySpatterBatchMatrix",
     "parameter_sensitivity": "benchmarks.test_parameter_sensitivity.TimeParameterSensitivity.time_transform",
     "pytorch_tensor_2d": "pytorch_benchmarks.test_tensor.TimeToTensorV2",
     "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
@@ -427,6 +439,7 @@ VOLUME_SIZE_ORDER = tuple(VOLUME_SIZES)
 DTYPE_ORDER = tuple(DTYPES)
 CHANNEL_ORDER = CHANNELS
 ANNOTATION_COUNT_ORDER = (10, 100, 1000)
+BATCH_SIZE_ORDER = (2, 4, 8, 16)
 
 AXIS_ORDERS: Mapping[str, tuple[Any, ...]] = {
     "annotation_counts": ANNOTATION_COUNT_ORDER,
@@ -673,6 +686,7 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
     """Parse a batch matrix benchmark case id."""
     name, target_route, size_name, channels, dtype_name, batch_size = case_id.split("|")
     targets = {
+        "direct_images": ["images"],
         "images": ["images"],
         "images_and_masks": ["images", "masks"],
         "volumes_and_masks3d": ["masks3d", "volumes"],
@@ -730,7 +744,9 @@ def _target_matrix_scenario(case: Mapping[str, str], route: str, transform_name:
 
 def _batch_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a batch matrix case."""
-    return {**_parse_batch_case(case["case_id"]), "scope": "compose_batch"}
+    scenario = _parse_batch_case(case["case_id"])
+    scope = "direct_batch" if scenario["target_route"] == "direct_images" else "compose_batch"
+    return {**scenario, "scope": scope}
 
 
 def _parameter_sensitivity_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
@@ -880,7 +896,7 @@ def _scenario_contract(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "annotation_counts": _ordered(axes["annotation_counts"]),
-        "batch_sizes": _ordered(batch_sizes),
+        "batch_sizes": _ordered(batch_sizes, BATCH_SIZE_ORDER),
         "case_count": case_count,
         "channels": _ordered(axes["channels"], CHANNEL_ORDER),
         "configs": _ordered(axes["configs"]),
@@ -1057,6 +1073,13 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
     )
     _add_matrix_cases(
         cases,
+        benchmark=ASV_BENCHMARKS["batch_spatter_direct"],
+        case_ids=SPATTER_DIRECT_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
         benchmark=ASV_BENCHMARKS["batch_volume"],
         case_ids=VOLUME_BATCH_CASES,
         layer="batch_matrix",
@@ -1079,11 +1102,12 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         )
     _add_direct_kernel_cases(cases)
     for transform_name, case_ids in MEMORY_CASES_BY_TRANSFORM.items():
+        memory_benchmark = ASV_BENCHMARKS["memory_spatter"] if transform_name == "Spatter" else ASV_BENCHMARKS["memory"]
         for case_id in case_ids:
             _add_asv_case(
                 cases,
                 transform_name,
-                benchmark=f"{ASV_BENCHMARKS['memory']}.{case_id}",
+                benchmark=f"{memory_benchmark}.{case_id}",
                 case_id=case_id,
                 layer="memory",
             )

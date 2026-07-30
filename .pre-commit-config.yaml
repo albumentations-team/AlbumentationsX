@@ -111,6 +111,13 @@ repos:
       types: [python]
       files: ^albumentations/
       pass_filenames: true
+    - id: check-transform-names
+      name: Check new transform names do not use the Random prefix
+      entry: python tools/check_transform_names.py
+      language: python
+      types: [python]
+      files: ^albumentations/
+      pass_filenames: true
     - id: check-apply-no-defaults
       name: Check apply_* methods have no default argument values
       entry: python tools/check_apply_no_defaults.py

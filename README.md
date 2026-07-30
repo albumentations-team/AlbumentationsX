@@ -218,6 +218,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [Emboss](https://albumentations.ai/explore/transform/Emboss/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Enhance](https://albumentations.ai/explore/transform/Enhance/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Equalize](https://albumentations.ai/explore/transform/Equalize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [ExposureMatching](https://albumentations.ai/explore/transform/ExposureMatching/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [FDA](https://albumentations.ai/explore/transform/FDA/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [FancyPCA](https://albumentations.ai/explore/transform/FancyPCA/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [FilmGrain](https://albumentations.ai/explore/transform/FilmGrain/?utm_source=github&utm_medium=referral&utm_campaign=readme)

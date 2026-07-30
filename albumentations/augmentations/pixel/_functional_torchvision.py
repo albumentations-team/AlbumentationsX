@@ -278,7 +278,9 @@ def apply_brightness_contrast_torchvision(
     (clipped to valid range). This avoids re-reading the image after brightness is applied.
 
     For uint8 images the composition is pre-computed over all 256 input values into a single
-    256-entry LUT applied in one `cv2.LUT` call. For float32, two sequential clipped passes are used.
+    256-entry LUT. Contrast-then-brightness quantizes the intermediate contrast result before
+    composing the brightness LUT, matching torchvision's sequential uint8 operations. For float32,
+    two sequential clipped passes are used.
 
     Args:
         img (ImageType): Input image (uint8 or float32).
@@ -291,12 +293,9 @@ def apply_brightness_contrast_torchvision(
 
     """
     # Compute original grayscale mean once, normalised to [0, 1].
-    gray_for_mean = (
-        img
-        if is_grayscale_image(img)
-        else (to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img))
-    )
-    img_mean = float(mean(gray_for_mean))
+    # For non-RGB inputs, the global mean is unchanged by first averaging each
+    # pixel's channels, so no intermediate grayscale array is needed.
+    img_mean = float(mean(to_gray_weighted_average(img))) if is_rgb_image(img) else float(mean(img))
     if img.dtype == np.uint8:
         img_mean /= 255.0
 
@@ -310,6 +309,8 @@ def apply_brightness_contrast_torchvision(
             lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
         else:
             lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+            # Values are non-negative after clipping, so floor matches the uint8 cast between torchvision operations.
+            np.floor(lut, out=lut)
             lut = np.clip(lut * brightness_factor, 0.0, 255.0)
         return sz_lut(img, lut.astype(np.uint8), inplace=False)
 

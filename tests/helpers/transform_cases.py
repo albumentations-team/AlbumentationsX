@@ -985,7 +985,8 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("small-plasma", A.PlasmaBrightnessContrast, {"plasma_size": 64, "roughness": 2.0}),
     ("small-plasma", A.PlasmaShadow, {"shadow_intensity_range": (0.2, 0.5), "plasma_size": 64, "roughness": 2.0}),
-    ("safe-output", A.RandomBrightnessContrast, {"brightness_by_max": False, "ensure_safe_output": True}),
+    ("safe-output", A.RandomBrightnessContrast, {"ensure_safe_output": True}),
+    ("opencv-max", A.RandomBrightnessContrast, {"brightness_by_max": True}),
     (
         "padded-bottom-right",
         A.RandomCrop,

@@ -1371,18 +1371,10 @@ class Spatter(ImageOnlyTransform):
         if fallback_threshold is not None and working_set >= fallback_threshold:
             return ImageOnlyTransform.apply_to_images(self, images, **params)
 
-        result = images.astype(np.float32, order="C", copy=True)
-        if images.dtype == np.uint8:
-            np.divide(result, 255, out=result)
-
         if params["mode"] == "rain":
-            np.add(result, params["drops"], out=result)
-        else:
-            np.multiply(result, params["non_mud"], out=result)
-            np.add(result, params["mud"], out=result)
+            return fpixel.spatter_rain_batch(images, params["drops"])
 
-        np.clip(result, 0, 1, out=result)
-        return albucore.from_float(result, target_dtype=images.dtype) if images.dtype == np.uint8 else result
+        return fpixel.spatter_mud_batch(images, params["non_mud"], params["mud"])
 
     def get_params_dependent_on_data(
         self,

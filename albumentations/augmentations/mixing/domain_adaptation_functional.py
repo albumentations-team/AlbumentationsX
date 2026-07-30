@@ -646,5 +646,5 @@ def _match_cumulative_cdf(source: np.ndarray, template: np.ndarray) -> np.ndarra
     src_quantiles = np.cumsum(src_counts) / source.size
     tmpl_quantiles = np.cumsum(tmpl_counts) / template.size
 
-    interp_a_values = np.interp(src_quantiles, tmpl_quantiles, tmpl_values)
+    interp_a_values = cast("np.ndarray", np.interp(src_quantiles, tmpl_quantiles, tmpl_values))
     return interp_a_values[src_lookup].reshape(source.shape).astype(np.uint8)

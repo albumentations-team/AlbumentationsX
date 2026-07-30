@@ -25,7 +25,7 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
-    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 11
+    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 12
     assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 7
 
 
@@ -97,6 +97,30 @@ def test_benchmark_coverage_details_map_batch_matrix_to_public_transforms() -> N
         ("batch_matrix", "horizontal_flip|images_and_masks|small|1|uint8|4"),
         ("batch_matrix", "horizontal_flip|volumes_and_masks3d|small|1|uint8|2"),
     }.issubset({(case["layer"], case["case_id"]) for case in horizontal_flip["asv_cases"]})
+
+
+def test_benchmark_coverage_details_map_spatter_modes_to_batch_matrix() -> None:
+    spatter = _coverage_for("Spatter")
+
+    assert spatter["performance_contract"]["batch"]["status"] == "covered"
+    assert spatter["scenario_contract"]["channels"] == [3]
+    assert spatter["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert spatter["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
+    assert spatter["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert {"compose_batch", "direct_batch"}.issubset(spatter["scenario_contract"]["scopes"])
+    assert "peakmem_spatter_batch_large_rgb" in spatter["scenario_contract"]["memory_cases"]
+    assert (
+        "memory",
+        "benchmarks.test_batch_matrix.PeakMemorySpatterBatchMatrix.peakmem_spatter_batch_large_rgb",
+    ) in {(case["layer"], case["benchmark"]) for case in spatter["asv_cases"]}
+    assert {
+        "spatter_mud|direct_images|large|3|float32|16",
+        "spatter_mud|images|small|3|uint8|4",
+        "spatter_rain|direct_images|small|3|uint8|2",
+        "spatter_mud|images|medium|3|float32|8",
+        "spatter_rain|images|small|3|uint8|4",
+        "spatter_rain|images|large|3|float32|16",
+    }.issubset({case["case_id"] for case in spatter["asv_cases"] if case["layer"] == "batch_matrix"})
 
 
 def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transforms() -> None:

@@ -1039,7 +1039,7 @@ def to_gray_max(img: ImageType) -> ImageType:
         any
 
     """
-    return np.max(img, axis=-1)
+    return cast("ImageType", np.max(img, axis=-1))
 
 
 @clipped

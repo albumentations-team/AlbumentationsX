@@ -5,6 +5,7 @@ from albucore import to_float
 
 import albumentations as A
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.transforms_interface import ImageOnlyTransform
 from tests.conftest import (
     IMAGES,
     RECTANGULAR_UINT8_IMAGE,
@@ -1960,6 +1961,200 @@ def test_enhance_apply_to_images_matches_per_image(mode, dtype):
     assert batched.shape == images.shape
     assert batched.dtype == images.dtype
     np.testing.assert_array_equal(batched, per_image)
+
+
+@pytest.mark.parametrize("mode", ["rain", "mud"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("seed", [137, 138, 139])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
+def test_spatter_apply_to_images_matches_inherited_fallback(mode, dtype, seed, batch_size):
+    rng = np.random.default_rng(seed)
+    source_shape = (batch_size, 37, 82, 3)
+    if dtype == np.uint8:
+        source = rng.integers(0, 256, source_shape, dtype=np.uint8)
+    else:
+        source = rng.random(source_shape, dtype=np.float32)
+
+    images = source[:, :, ::2, :]
+    images.setflags(write=False)
+    images_before = images.copy()
+    transform = A.Spatter(mode=mode, color=(137, 89, 211), p=1.0)
+    compose_result = A.Compose([transform], seed=seed, strict=True)(images=images)["images"]
+    params = transform.get_applied_params()
+    expected = ImageOnlyTransform.apply_to_images(transform, images, **params)
+    direct_result = transform.apply_to_images(images, **params)
+
+    assert direct_result.shape == images.shape
+    assert direct_result.dtype == images.dtype
+    assert direct_result.flags.c_contiguous
+    assert direct_result.flags.writeable
+    assert not np.shares_memory(direct_result, images)
+    assert not np.shares_memory(compose_result, images)
+    np.testing.assert_array_equal(images, images_before)
+    if dtype == np.uint8:
+        np.testing.assert_array_equal(direct_result, expected)
+        np.testing.assert_array_equal(compose_result, expected)
+    else:
+        np.testing.assert_allclose(direct_result, expected, rtol=1e-6, atol=1e-6)
+        np.testing.assert_allclose(compose_result, expected, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    ("mode", "effect_params"),
+    [
+        (
+            "rain",
+            {
+                "drops": np.array(
+                    [[[-1 / 255, 0.5 / 255, 1.5 / 255], [254.5 / 255, 255.5 / 255, 2]]],
+                    dtype=np.float32,
+                ),
+            },
+        ),
+        (
+            "mud",
+            {
+                "non_mud": np.array([[[1, 0.5, 2], [-1, 1, 1]]], dtype=np.float32),
+                "mud": np.array(
+                    [[[-1 / 255, 0.5 / 255, -0.5 / 255], [2, -0.5 / 255, 0.5 / 255]]],
+                    dtype=np.float32,
+                ),
+            },
+        ),
+    ],
+)
+def test_spatter_apply_to_images_uint8_clipping_and_half_rounding_boundaries(mode, effect_params):
+    images = np.array([[[[0, 0, 1], [255, 255, 254]]]], dtype=np.uint8)
+    transform = A.Spatter(mode=mode, p=1.0)
+    params = {"mode": mode, **effect_params}
+
+    expected = ImageOnlyTransform.apply_to_images(transform, images, **params)
+    actual = transform.apply_to_images(images, **params)
+
+    np.testing.assert_array_equal(actual, expected)
+    if mode == "rain":
+        np.testing.assert_array_equal(actual, np.array([[[[0, 0, 2], [255, 255, 255]]]], dtype=np.uint8))
+    else:
+        np.testing.assert_array_equal(actual, np.array([[[[0, 0, 2], [255, 254, 254]]]], dtype=np.uint8))
+
+
+@pytest.mark.parametrize("mode", ["rain", "mud"])
+def test_spatter_apply_to_images_float32_clipping_vectors(mode):
+    images = np.array([[[[-0.25, 0.25, 1.25]]]], dtype=np.float32)
+    transform = A.Spatter(mode=mode, p=1.0)
+    if mode == "rain":
+        params = {"mode": mode, "drops": np.array([[[-0.5, 0.5, 0.5]]], dtype=np.float32)}
+    else:
+        params = {
+            "mode": mode,
+            "non_mud": np.array([[[2, 2, 2]]], dtype=np.float32),
+            "mud": np.array([[[-0.5, 0.25, -0.25]]], dtype=np.float32),
+        }
+
+    expected = ImageOnlyTransform.apply_to_images(transform, images, **params)
+    actual = transform.apply_to_images(images, **params)
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
+    np.testing.assert_array_equal(actual, np.array([[[[0, 0.75, 1]]]], dtype=np.float32))
+
+
+@pytest.mark.parametrize(
+    ("mode", "dtype", "height", "width", "batch_at_threshold"),
+    [
+        ("rain", np.uint8, 256, 256, 4),
+        ("mud", np.uint8, 256, 256, 8),
+        ("mud", np.float32, 512, 512, 8),
+    ],
+)
+def test_spatter_apply_to_images_switches_at_working_set_guard(
+    monkeypatch,
+    mode,
+    dtype,
+    height,
+    width,
+    batch_at_threshold,
+):
+    fallback_calls = 0
+
+    def fallback(transform, images, *args, **params):
+        nonlocal fallback_calls
+        fallback_calls += 1
+        return np.full_like(images, 137 if dtype == np.uint8 else 0.5)
+
+    monkeypatch.setattr(ImageOnlyTransform, "apply_to_images", fallback)
+    transform = A.Spatter(mode=mode, p=1.0)
+    if mode == "rain":
+        params = {"mode": mode, "drops": np.zeros((height, width, 3), dtype=np.float32)}
+    else:
+        params = {
+            "mode": mode,
+            "non_mud": np.ones((height, width, 3), dtype=np.float32),
+            "mud": np.zeros((height, width, 3), dtype=np.float32),
+        }
+
+    below = np.zeros((batch_at_threshold - 1, height, width, 3), dtype=dtype)
+    below_result = transform.apply_to_images(below, **params)
+    assert fallback_calls == 0
+    np.testing.assert_array_equal(below_result, below)
+
+    at_threshold = np.zeros((batch_at_threshold, height, width, 3), dtype=dtype)
+    threshold_result = transform.apply_to_images(at_threshold, **params)
+    assert fallback_calls == 1
+    np.testing.assert_array_equal(
+        threshold_result,
+        np.full_like(at_threshold, 137 if dtype == np.uint8 else 0.5),
+    )
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_spatter_apply_to_images_preserves_empty_batch_identity(dtype):
+    images = np.empty((0, 17, 19, 3), dtype=dtype)
+    transform = A.Spatter(p=1.0)
+
+    assert transform.apply_to_images(images) is images
+    assert A.Compose([transform], seed=137, strict=True)(images=images)["images"] is images
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        pytest.param((2, 17, 19, 1), id="one-channel"),
+        pytest.param((2, 17, 19, 5), id="five-channel"),
+        pytest.param((2, 17, 19), id="raw-grayscale"),
+        pytest.param((3, 3, 3), id="raw-grayscale-width-three"),
+    ],
+)
+def test_spatter_apply_to_images_rejects_non_rgb_batches(shape):
+    images = np.zeros(shape, dtype=np.uint8)
+    transform = A.Spatter(p=1.0)
+
+    with pytest.raises(ValueError, match="This transformation expects 3-channel images"):
+        transform.apply_to_images(images, mode="rain", drops=np.zeros((*shape[1:3], 3), dtype=np.float32))
+
+
+@pytest.mark.parametrize("mode", ["rain", "mud"])
+@pytest.mark.parametrize("target", ["volume", "volumes"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_spatter_batch_path_preserves_volume_routing(mode, target, dtype):
+    rng = np.random.default_rng(137)
+    if dtype == np.uint8:
+        volume = rng.integers(0, 256, (3, 17, 19, 3), dtype=np.uint8)
+    else:
+        volume = rng.random((3, 17, 19, 3), dtype=np.float32)
+    data = volume if target == "volume" else np.stack([volume, volume[::-1]], axis=0)
+    transform = A.Spatter(mode=mode, p=1.0)
+
+    actual = A.Compose([transform], seed=137, strict=True)(**{target: data})[target]
+    params = transform.get_applied_params()
+    if target == "volume":
+        expected = ImageOnlyTransform.apply_to_images(transform, data, **params)
+    else:
+        expected = np.stack([ImageOnlyTransform.apply_to_images(transform, item, **params) for item in data])
+
+    if dtype == np.uint8:
+        np.testing.assert_array_equal(actual, expected)
+    else:
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
 def test_enhance_invalid_mode_raises():

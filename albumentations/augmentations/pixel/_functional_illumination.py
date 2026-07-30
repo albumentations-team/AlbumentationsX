@@ -110,7 +110,7 @@ def generate_plasma_pattern(
 
     # Recursively apply diamond-square steps
     for noise_scale in noise_scales:
-        plasma_grid = one_diamond_square_step(plasma_grid, noise_scale)
+        plasma_grid = one_diamond_square_step(plasma_grid, cast("float", noise_scale))
 
     return np.clip(
         _normalize_minmax_float32(plasma_grid[: target_shape[0], : target_shape[1]]),

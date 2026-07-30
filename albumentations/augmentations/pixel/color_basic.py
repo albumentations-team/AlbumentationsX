@@ -12,6 +12,7 @@ from ._color_shared import (
     Field,
     ImageOnlyTransform,
     ImageType,
+    Self,
     VolumeType,
     albucore,
     batch_transform,
@@ -21,6 +22,7 @@ from ._color_shared import (
     is_grayscale_image,
     is_rgb_image,
     mean,
+    model_validator,
     nondecreasing,
     np,
 )
@@ -665,32 +667,22 @@ class Equalize(ImageOnlyTransform):
 
 
 class RandomBrightnessContrast(ImageOnlyTransform):
-    """Randomly adjust brightness and contrast with separate ranges. Simple and fast;
-    good baseline color augmentation for classification and detection.
-
-    This transform adjusts the brightness and contrast of an image simultaneously, allowing for
-    a wide range of lighting and contrast variations. It's particularly useful for data augmentation
-    in computer vision tasks, helping models become more robust to different lighting conditions.
+    """Adjust brightness and contrast with a torchvision-compatible default or an OpenCV-style model.
+    Useful for training models robust to lighting variation.
 
     Args:
-        brightness_range (tuple[float, float]): Factor range for changing brightness, sampled
-            per image. Values should typically be in the range [-1.0, 1.0], where 0 means no
-            change, 1.0 means maximum brightness, and -1.0 means minimum brightness.
-            Default: (-0.2, 0.2).
-
-        contrast_range (tuple[float, float]): Factor range for changing contrast, sampled per
-            image. Values should typically be in the range [-1.0, 1.0], where 0 means no change,
-            1.0 means maximum increase in contrast, and -1.0 means maximum decrease in contrast.
-            Default: (-0.2, 0.2).
-
-        brightness_by_max (bool): If True, adjusts brightness by scaling pixel values up to the
-            maximum value of the image's dtype. If False, uses the mean pixel value for adjustment.
-            Default: True.
-
-        ensure_safe_output (bool): If True, adjusts alpha and beta to prevent overflow/underflow.
-            This keeps output values inside the valid range for the image dtype without clipping.
-            Default: False.
-
+        brightness_range (tuple[float, float]): Range from which the brightness adjustment is
+            sampled. In the default torchvision-compatible mode, the multiplicative brightness
+            factor is `1 + adjustment`; both endpoints must be at least -1. In the OpenCV-style
+            mode, the adjustment is an additive fraction of the dtype maximum. Default: (-0.2, 0.2).
+        contrast_range (tuple[float, float]): Range from which the contrast adjustment is sampled.
+            The contrast factor is `1 + adjustment`. In the default torchvision-compatible mode,
+            both endpoints must be at least -1. Default: (-0.2, 0.2).
+        brightness_by_max (bool): Selects the photometric model. If False, use torchvision-compatible
+            multiplicative brightness and mean-centered contrast. If True, use the legacy OpenCV-style
+            affine formula with additive brightness scaled by the dtype maximum. Default: False.
+        ensure_safe_output (bool): If True, reduce the combined affine gain and offset as needed so
+            the complete input dtype range maps inside the output range without clipping. Default: False.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -703,55 +695,64 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         Any
 
     Note:
-        - The order of operation is: contrast adjustment, then brightness adjustment.
-        - For uint8 images, the output is clipped to [0, 255] range.
-        - For float32 images, the output is clipped to [0, 1] range.
-        - The `brightness_by_max` parameter affects how brightness is adjusted:
-          * If True, brightness adjustment is more pronounced and can lead to more saturated results.
-          * If False, brightness adjustment is more subtle and preserves the overall lighting better.
-        - This transform is useful for:
-          * Simulating different lighting conditions
-          * Enhancing low-light or overexposed images
-          * Data augmentation to improve model robustness
+        - The default mode applies contrast first and brightness second, matching the corresponding
+          torchvision operations in that fixed order. `ColorJitter` randomizes operation order.
+        - RGB contrast uses the mean BT.601 grayscale luminance. Other multichannel inputs use the
+          mean of their per-pixel channel averages.
+        - A batch uses one sampled pair of factors but computes the contrast mean independently for
+          each image. Volumes compute it independently for each slice.
+        - Outputs are clipped to [0, 255] for uint8 and [0, 1] for float32 unless
+          `ensure_safe_output=True` first reduces the affine coefficients to avoid clipping.
 
     Mathematical Formulation:
-        Let a be the contrast adjustment factor and β be the brightness adjustment factor.
-        For each pixel value x:
-        1. Contrast adjustment: x' = clip((x - mean) * (1 + a) + mean)
-        2. Brightness adjustment:
-           If brightness_by_max is True:  x'' = clip(x' * (1 + β))
-           If brightness_by_max is False: x'' = clip(x' + β * max_value)
-        Where clip() ensures values stay within the valid range for the image dtype.
+        Let `delta_b` and `delta_c` be the sampled brightness and contrast adjustments,
+        `b = 1 + delta_b`, `c = 1 + delta_c`, `M` the dtype maximum, and `mu` the image's
+        grayscale mean.
+
+        With `brightness_by_max=False`:
+
+        1. `x_contrast = clip(c * x + (1 - c) * mu)`
+        2. `x_out = clip(b * x_contrast)`
+
+        With `brightness_by_max=True`:
+
+        `x_out = clip(c * x + delta_b * M)`
+
+        With `ensure_safe_output=True`, the default mode first combines its operations as
+        `gain = b * c` and `offset = b * (1 - c) * mu`, then reduces `gain` and `offset` so
+        `gain * x + offset` remains in range for every valid input value.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, [100, 100, 3], dtype=np.uint8)
 
-        # Default usage
+        # Torchvision-compatible brightness and mean-centered contrast
         >>> transform = A.RandomBrightnessContrast(p=1.0)
         >>> augmented_image = transform(image=image)["image"]
 
-        # Custom brightness and contrast limits
+        # Stronger torchvision-compatible factors: brightness 0.7-1.3, contrast 0.6-1.4
         >>> transform = A.RandomBrightnessContrast(
         ...     brightness_range=(-0.3, 0.3),
-        ...     contrast_range=(-0.3, 0.3),
+        ...     contrast_range=(-0.4, 0.4),
         ...     p=1.0,
         ... )
         >>> augmented_image = transform(image=image)["image"]
 
-        # Adjust brightness based on mean value
+        # Legacy OpenCV-style affine model with additive brightness
         >>> transform = A.RandomBrightnessContrast(
         ...     brightness_range=(-0.2, 0.2),
         ...     contrast_range=(-0.2, 0.2),
-        ...     brightness_by_max=False,
+        ...     brightness_by_max=True,
         ...     p=1.0,
         ... )
         >>> augmented_image = transform(image=image)["image"]
 
     References:
-        - Brightness: https://en.wikipedia.org/wiki/Brightness
-        - Contrast: https://en.wikipedia.org/wiki/Contrast_(vision)
+        - Torchvision brightness and contrast implementation:
+          https://docs.pytorch.org/vision/main/_modules/torchvision/transforms/v2/functional/_color.html
+        - OpenCV basic linear transformations:
+          https://docs.opencv.org/4.x/d3/dc1/tutorial_basic_linear_transform.html
 
     """
 
@@ -761,11 +762,24 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         brightness_by_max: bool
         ensure_safe_output: bool
 
+        @model_validator(mode="after")
+        def validate_torchvision_factors(self) -> Self:
+            """Validate non-negative torchvision brightness and contrast factors. Reject adjustments
+            below -1 because they produce invalid negative multiplicative factors.
+            """
+            if not self.brightness_by_max:
+                for field_name in ("brightness_range", "contrast_range"):
+                    if getattr(self, field_name)[0] < -1:
+                        raise ValueError(
+                            f"{field_name} values must be greater than or equal to -1 when brightness_by_max=False",
+                        )
+            return self
+
     def __init__(
         self,
         brightness_range: tuple[float, float] = (-0.2, 0.2),
         contrast_range: tuple[float, float] = (-0.2, 0.2),
-        brightness_by_max: bool = True,
+        brightness_by_max: bool = False,
         ensure_safe_output: bool = False,
         p: float = 0.5,
     ):
@@ -783,8 +797,22 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         **params: Any,
     ) -> ImageType:
         max_value = MAX_VALUES_BY_DTYPE[img.dtype]
-        # Scale beta according to brightness_by_max setting
-        beta = beta * max_value if self.brightness_by_max else beta * float(mean(img))
+
+        if not self.brightness_by_max:
+            brightness_factor = 1.0 + beta
+            if not self.ensure_safe_output:
+                return fpixel.apply_brightness_contrast_torchvision(
+                    img,
+                    brightness_factor=brightness_factor,
+                    contrast_factor=alpha,
+                    brightness_first=False,
+                )
+
+            image_mean = float(mean(fpixel.to_gray_weighted_average(img))) if is_rgb_image(img) else float(mean(img))
+            beta = brightness_factor * (1.0 - alpha) * image_mean
+            alpha *= brightness_factor
+        else:
+            beta *= max_value
 
         if self.ensure_safe_output:
             alpha, beta = fpixel.get_safe_brightness_contrast_params(
@@ -796,9 +824,16 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         return albucore.multiply_add(img, alpha, beta, inplace=False)
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+        if not self.brightness_by_max:
+            return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, *args, **params))
         return self.apply(images, *args, **params)
 
     def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
+        if not self.brightness_by_max:
+            return self._apply_to_batch_same_shape(
+                volumes,
+                lambda volume: self.apply_to_volume(volume, *args, **params),
+            )
         return self.apply(volumes, *args, **params)
 
     def get_params_dependent_on_data(

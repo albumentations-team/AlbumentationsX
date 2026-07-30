@@ -734,6 +734,135 @@ def test_color_jitter_float_uint8_equal(brightness, contrast, saturation, hue):
         assert _max <= 2, f"Max: {_max}"
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_random_brightness_contrast_torchvision_mode_matches_expected_formula(dtype):
+    if dtype == np.uint8:
+        image = np.array([[[50], [100], [150]]], dtype=dtype)
+        expected = np.array([[[30], [120], [210]]], dtype=dtype)
+    else:
+        image = np.array([[[0.2], [0.4], [0.6]]], dtype=dtype)
+        expected = np.array([[[0.12], [0.48], [0.84]]], dtype=dtype)
+
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(0.2, 0.2),
+        contrast_range=(0.5, 0.5),
+        brightness_by_max=False,
+        p=1,
+    )
+
+    result = transform(image=image)["image"]
+
+    np.testing.assert_allclose(result, expected, atol=1e-6)
+
+
+def test_random_brightness_contrast_defaults_to_torchvision_semantics():
+    image = np.array([[[50], [100], [150]]], dtype=np.uint8)
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(0.2, 0.2),
+        contrast_range=(0.5, 0.5),
+        p=1,
+    )
+
+    result = transform(image=image)["image"]
+
+    np.testing.assert_array_equal(result, np.array([[[30], [120], [210]]], dtype=np.uint8))
+
+
+def test_random_brightness_contrast_torchvision_mode_uses_per_image_batch_means():
+    images = np.array(
+        [
+            [[[0], [100]]],
+            [[[100], [200]]],
+        ],
+        dtype=np.uint8,
+    )
+    expected = np.array(
+        [
+            [[[50], [50]]],
+            [[[150], [150]]],
+        ],
+        dtype=np.uint8,
+    )
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(0, 0),
+        contrast_range=(-1, -1),
+        brightness_by_max=False,
+        p=1,
+    )
+
+    result = transform(images=images)["images"]
+
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_random_brightness_contrast_torchvision_mode_uses_per_slice_volume_means():
+    volumes = np.array(
+        [
+            [[[[0], [100]]]],
+            [[[[100], [200]]]],
+        ],
+        dtype=np.uint8,
+    )
+    expected = np.array(
+        [
+            [[[[50], [50]]]],
+            [[[[150], [150]]]],
+        ],
+        dtype=np.uint8,
+    )
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(0, 0),
+        contrast_range=(-1, -1),
+        brightness_by_max=False,
+        p=1,
+    )
+
+    result = transform(volumes=volumes)["volumes"]
+
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_random_brightness_contrast_torchvision_mode_safe_output_uses_combined_coefficients():
+    image = np.array([[[50], [100], [150]]], dtype=np.uint8)
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(0.2, 0.2),
+        contrast_range=(0.5, 0.5),
+        brightness_by_max=False,
+        ensure_safe_output=True,
+        p=1,
+    )
+
+    result = transform(image=image)["image"]
+
+    np.testing.assert_array_equal(result, image)
+
+
+def test_random_brightness_contrast_max_mode_preserves_opencv_formula():
+    image = np.full((2, 2, 3), 100, dtype=np.uint8)
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(0.2, 0.2),
+        contrast_range=(0, 0),
+        brightness_by_max=True,
+        p=1,
+    )
+
+    result = transform(image=image)["image"]
+
+    np.testing.assert_array_equal(result, np.full_like(image, 151))
+
+
+@pytest.mark.parametrize(
+    "transform_kwargs",
+    [
+        {"brightness_range": (-1.1, 0.2)},
+        {"contrast_range": (-1.1, 0.2)},
+    ],
+)
+def test_random_brightness_contrast_torchvision_mode_rejects_negative_factors(transform_kwargs):
+    with pytest.raises(ValueError, match="must be greater than or equal to -1"):
+        A.RandomBrightnessContrast(**transform_kwargs)
+
+
 def test_perspective_keep_size():
     height, width = 100, 100
     img = np.zeros([height, width, 3], dtype=np.uint8)

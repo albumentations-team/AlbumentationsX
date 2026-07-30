@@ -291,12 +291,9 @@ def apply_brightness_contrast_torchvision(
 
     """
     # Compute original grayscale mean once, normalised to [0, 1].
-    gray_for_mean = (
-        img
-        if is_grayscale_image(img)
-        else (to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img))
-    )
-    img_mean = float(mean(gray_for_mean))
+    # For non-RGB inputs, the global mean is unchanged by first averaging each
+    # pixel's channels, so no intermediate grayscale array is needed.
+    img_mean = float(mean(to_gray_weighted_average(img))) if is_rgb_image(img) else float(mean(img))
     if img.dtype == np.uint8:
         img_mean /= 255.0
 

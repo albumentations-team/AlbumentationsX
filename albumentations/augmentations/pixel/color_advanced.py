@@ -769,6 +769,12 @@ class HEStain(ImageOnlyTransform):
             sampled independently for hematoxylin and eosin. Default: (-0.2, 0.2).
 
         augment_background (bool): Whether to perturb background pixels along with tissue pixels. Default: False.
+        residual_mode (Literal["project", "preserve", "augment"]): Controls the optical-density component orthogonal
+            to the H&E plane:
+            - `"project"`: Reconstruct from H&E only, retaining the two-stain model from earlier releases.
+            - `"preserve"`: Derive the residual basis vector and keep its concentration unchanged.
+            - `"augment"`: Independently perturb the derived residual along with H&E.
+            Default: `"project"`.
         p (float): Probability of applying the transform. Default: 0.5.
         stain_matrix (np.ndarray | None): Fixed H&E stain basis used when `method="custom"`. The matrix must have
             shape `(2, 3)`: row 0 is the hematoxylin RGB optical-density vector and row 1 is the eosin vector. Both
@@ -785,9 +791,10 @@ class HEStain(ImageOnlyTransform):
         uint8, float32
 
     Note:
-        - Let `M` be the `(2, 3)` stain matrix and `C` the per-pixel stain concentrations. The transform solves
-          `OD ~= C @ M`, samples `scale` and `shift` for each stain, then reconstructs
-          `RGB = exp(-(C * scale + shift) @ M)`.
+        - Let `M` be the `(2, 3)` H&E matrix and `C` the per-pixel concentrations. `"project"` solves
+          `OD ~= C @ M`, perturbs H&E, and reconstructs `RGB = exp(-(C * scale + shift) @ M)`.
+        - `"preserve"` and `"augment"` derive `R = normalize(cross(H, E))`, solve the full H&E+R basis, and either
+          retain or perturb the residual concentration.
         - A custom matrix is fixed for the lifetime of the transform. Per-image callable extraction is not supported.
 
     References:
@@ -795,6 +802,8 @@ class HEStain(ImageOnlyTransform):
             cytology and histology, 2001.
         - M. Macenko et al., "A method for normalizing histology slides for: 2009 IEEE International Symposium on
             quantitative analysis," 2009 IEEE International Symposium on Biomedical Imaging, 2009.
+        - D. Tellez et al., "H&E stain augmentation improves generalization of convolutional networks for
+            histopathological mitosis detection": Medical Imaging, 2018.
 
     Examples:
         >>> import numpy as np
@@ -818,6 +827,7 @@ class HEStain(ImageOnlyTransform):
         >>> transform = A.HEStain(
         ...     method="custom",
         ...     stain_matrix=stain_matrix,
+        ...     residual_mode="augment",
         ...     intensity_scale_range=(0.8, 1.2),
         ...     intensity_shift_range=(-0.1, 0.1),
         ...     p=1.0,
@@ -897,6 +907,7 @@ class HEStain(ImageOnlyTransform):
             AfterValidator(check_range_bounds(-1, 1)),
         ]
         augment_background: bool
+        residual_mode: Literal["project", "preserve", "augment"]
 
         @field_validator("stain_matrix", mode="before")
         @classmethod
@@ -948,6 +959,7 @@ class HEStain(ImageOnlyTransform):
         augment_background: bool = False,
         p: float = 0.5,
         *,
+        residual_mode: Literal["project", "preserve", "augment"] = "project",
         stain_matrix: np.ndarray | None = None,
     ):
         super().__init__(p=p)
@@ -956,6 +968,7 @@ class HEStain(ImageOnlyTransform):
         self.intensity_scale_range = intensity_scale_range
         self.intensity_shift_range = intensity_shift_range
         self.augment_background = augment_background
+        self.residual_mode = residual_mode
         self.stain_matrix = stain_matrix
 
         # Initialize stain extractor here if needed
@@ -1012,6 +1025,7 @@ class HEStain(ImageOnlyTransform):
             scale_factors=scale_factors,
             shift_values=shift_values,
             augment_background=self.augment_background,
+            residual_mode=self.residual_mode,
         )
 
     @batch_transform("channel")
@@ -1043,12 +1057,29 @@ class HEStain(ImageOnlyTransform):
         shift_h = self.py_random.uniform(*self.intensity_shift_range)
         shift_e = self.py_random.uniform(*self.intensity_shift_range)
 
-        scale_factors = np.array([scale_h, scale_e])
-        shift_values = np.array([shift_h, shift_e])
+        sampled_scales: tuple[float, ...]
+        sampled_shifts: tuple[float, ...]
+        if self.residual_mode == "preserve":
+            scale_factors = np.array([scale_h, scale_e, 1.0], dtype=np.float32)
+            shift_values = np.array([shift_h, shift_e, 0.0], dtype=np.float32)
+            sampled_scales = (scale_h, scale_e)
+            sampled_shifts = (shift_h, shift_e)
+        elif self.residual_mode == "augment":
+            scale_residual = self.py_random.uniform(*self.intensity_scale_range)
+            shift_residual = self.py_random.uniform(*self.intensity_shift_range)
+            scale_factors = np.array([scale_h, scale_e, scale_residual], dtype=np.float32)
+            shift_values = np.array([shift_h, shift_e, shift_residual], dtype=np.float32)
+            sampled_scales = (scale_h, scale_e, scale_residual)
+            sampled_shifts = (shift_h, shift_e, shift_residual)
+        else:
+            scale_factors = np.array([scale_h, scale_e])
+            shift_values = np.array([shift_h, shift_e])
+            sampled_scales = (scale_h, scale_e)
+            sampled_shifts = (shift_h, shift_e)
 
         self.applied_config = {
-            "intensity_scale_range": (min(scale_h, scale_e), max(scale_h, scale_e)),
-            "intensity_shift_range": (min(shift_h, shift_e), max(shift_h, shift_e)),
+            "intensity_scale_range": (min(sampled_scales), max(sampled_scales)),
+            "intensity_shift_range": (min(sampled_shifts), max(sampled_shifts)),
         }
 
         return {

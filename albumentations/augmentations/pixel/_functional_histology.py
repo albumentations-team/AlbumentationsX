@@ -429,6 +429,26 @@ def get_tissue_mask(img: ImageType, threshold: float = 0.85) -> np.ndarray:
     return mask.reshape(-1)
 
 
+def _build_stain_affine_matrix(
+    stain_matrix: np.ndarray,
+    deconvolution_matrix: np.ndarray,
+    scale_factors: np.ndarray,
+    shift_values: np.ndarray,
+) -> np.ndarray:
+    affine_matrix = np.empty((3, 4), dtype=np.float32)
+    affine_matrix[:, :3] = stain_matrix.T @ (scale_factors[:, None] * deconvolution_matrix)
+    affine_matrix[:, 3] = stain_matrix.T @ shift_values
+    return affine_matrix
+
+
+def _apply_stain_affine(optical_density: np.ndarray, affine_matrix: np.ndarray) -> np.ndarray:
+    result = cv2.transform(optical_density.reshape(-1, 1, 3), affine_matrix).reshape(-1, 3)
+    multiply = cast("_Cv2InPlaceOp", cv2.multiply)
+    multiply(result, -1.0, dst=result)
+    cv2.exp(result, dst=result)
+    return result
+
+
 @clipped
 @float32_io
 def apply_he_stain_augmentation(
@@ -437,21 +457,44 @@ def apply_he_stain_augmentation(
     scale_factors: np.ndarray,
     shift_values: np.ndarray,
     augment_background: bool,
+    residual_mode: Literal["project", "preserve", "augment"] = "project",
 ) -> ImageType:
-    """Apply HE (hematoxylin-eosin) stain augmentation. Shifts stain concentrations;
-    params control strength. Used for histology augmentation. Returns RGB image.
+    """Perturb H&E concentrations in optical-density space, with an optional residual channel
+    for stain-variation augmentation in histology pipelines.
 
-    This function applies HE stain augmentation to an image.
+    The two-row stain matrix always defines hematoxylin and eosin. Residual modes derive a normalized third vector
+    from their cross product, so callers do not need to provide a redundant three-row matrix.
 
     Args:
-        img (ImageType): Input image.
-        stain_matrix (np.ndarray): Stain matrix.
-        scale_factors (np.ndarray): Scale factors.
-        shift_values (np.ndarray): Shift values.
-        augment_background (bool): Whether to augment the background.
+        img (ImageType): RGB image with values in the dtype's standard range.
+        stain_matrix (np.ndarray): H&E optical-density basis with shape `(2, 3)`.
+        scale_factors (np.ndarray): Per-component multiplicative factors. Supply two values for `"project"` and
+            three values for the residual modes.
+        shift_values (np.ndarray): Per-component additive shifts, with the same length as `scale_factors`.
+        augment_background (bool): Whether to adjust concentrations outside the tissue mask.
+        residual_mode (Literal['project', 'preserve', 'augment']): Residual-channel policy. `"project"` reconstructs
+            from H&E only; `"preserve"` keeps the residual unchanged; `"augment"` adjusts all three components.
 
     Returns:
-        ImageType: Augmented image.
+        ImageType: RGB image with the input shape and dtype.
+
+    Note:
+        - `"project"` solves the regularized two-stain model used by earlier releases.
+        - The residual modes use `R = normalize(cross(H, E))` and solve the full H&E+R basis.
+
+    Examples:
+        >>> import numpy as np
+        >>> from albumentations.augmentations.pixel import functional as fpixel
+        >>> image = np.full((8, 8, 3), 0.5, dtype=np.float32)
+        >>> stain_matrix = np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32)
+        >>> result = fpixel.apply_he_stain_augmentation(
+        ...     image,
+        ...     stain_matrix,
+        ...     scale_factors=np.array([1.05, 0.95, 1.02]),
+        ...     shift_values=np.array([0.02, -0.01, 0.01]),
+        ...     augment_background=True,
+        ...     residual_mode="augment",
+        ... )
 
     """
     # Step 1: Convert RGB to optical density space
@@ -460,37 +503,58 @@ def apply_he_stain_augmentation(
     # Step 2: Calculate stain concentrations using regularized pseudo-inverse
     stain_matrix = np.ascontiguousarray(stain_matrix, dtype=np.float32)
 
-    # Add small regularization term for numerical stability
+    # Add small regularization term for numerical stability.
     regularization = 1e-6
 
     # Suppress numerical warnings for edge cases with extreme optical densities
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-        stain_correlation = stain_matrix @ stain_matrix.T + regularization * np.eye(2)
-        density_projection = stain_matrix @ optical_density.T
-
-        try:
-            # Solve for stain concentrations
-            stain_concentrations = np.linalg.solve(stain_correlation, density_projection).T
-        except np.linalg.LinAlgError:
-            # Fallback to pseudo-inverse if direct solve fails
-            stain_concentrations = np.linalg.lstsq(
-                stain_matrix.T,
-                optical_density,
-                rcond=regularization,
-            )[0].T
-
-        # Step 3: Apply concentration adjustments
-        if not augment_background:
-            # Only modify tissue regions
-            tissue_mask = get_tissue_mask(img).reshape(-1)
-            stain_concentrations[tissue_mask] = stain_concentrations[tissue_mask] * scale_factors + shift_values
+        if residual_mode == "project":
+            stain_correlation = stain_matrix @ stain_matrix.T + regularization * np.eye(2)
+            deconvolution_matrix = np.linalg.solve(stain_correlation, stain_matrix)
+            augmented_affine = _build_stain_affine_matrix(
+                stain_matrix,
+                deconvolution_matrix,
+                scale_factors,
+                shift_values,
+            )
+            if augment_background:
+                rgb_result = _apply_stain_affine(optical_density, augmented_affine)
+            else:
+                tissue_mask = get_tissue_mask(img)
+                if np.all(tissue_mask):
+                    rgb_result = _apply_stain_affine(optical_density, augmented_affine)
+                else:
+                    base_affine = _build_stain_affine_matrix(
+                        stain_matrix,
+                        deconvolution_matrix,
+                        np.ones_like(scale_factors),
+                        np.zeros_like(shift_values),
+                    )
+                    rgb_result = _apply_stain_affine(optical_density, base_affine)
+                    if np.any(tissue_mask):
+                        rgb_result[tissue_mask] = _apply_stain_affine(
+                            optical_density[tissue_mask],
+                            augmented_affine,
+                        )
         else:
-            # Modify all pixels
-            stain_concentrations = stain_concentrations * scale_factors + shift_values
-
-        # Step 4: Reconstruct RGB image
-        optical_density_result = stain_concentrations @ stain_matrix
-        rgb_result = np.exp(-optical_density_result)
+            residual_vector = np.cross(stain_matrix[0], stain_matrix[1])
+            residual_vector /= np.linalg.norm(residual_vector)
+            reconstruction_matrix = np.empty((3, 3), dtype=np.float32)
+            reconstruction_matrix[:2] = stain_matrix
+            reconstruction_matrix[2] = residual_vector
+            deconvolution_matrix = np.linalg.inv(reconstruction_matrix).T
+            augmented_affine = _build_stain_affine_matrix(
+                reconstruction_matrix,
+                deconvolution_matrix,
+                scale_factors,
+                shift_values,
+            )
+            rgb_result = _apply_stain_affine(optical_density, augmented_affine)
+            if not augment_background:
+                background_mask = ~get_tissue_mask(img)
+                if np.any(background_mask):
+                    image_matrix = img.reshape(-1, 3)
+                    rgb_result[background_mask] = image_matrix[background_mask]
 
     return rgb_result.reshape(img.shape)
 

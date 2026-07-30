@@ -961,13 +961,13 @@ class ExposureMatching(ImageOnlyTransform):
         self.gain_range = gain_range
 
     def apply(self, img: ImageType, gain: float, **params: Any) -> ImageType:
-        return fpixel.exposure_match(img, gain)
+        return albucore.multiply(img, gain, inplace=False)
 
     def apply_to_images(self, images: ImageType, image_gains: list[float], **params: Any) -> ImageType:
-        return fpixel.exposure_match_batch(images, image_gains)
+        return fpixel.exposure_match_batch(images, np.asarray(image_gains, dtype=np.float32))
 
     def apply_to_volume(self, volume: VolumeType, volume_gains: list[float], **params: Any) -> VolumeType:
-        return fpixel.exposure_match_batch(volume, volume_gains)
+        return fpixel.exposure_match_batch(volume, np.asarray(volume_gains, dtype=np.float32))
 
     def apply_to_volumes(
         self,
@@ -975,13 +975,7 @@ class ExposureMatching(ImageOnlyTransform):
         volumes_gains: list[list[float]],
         **params: Any,
     ) -> VolumeType:
-        if len(volumes) != len(volumes_gains):
-            raise ValueError(f"Expected gains for {len(volumes)} volumes, got {len(volumes_gains)}")
-
-        result = np.empty_like(volumes)
-        for index, (volume, volume_gains) in enumerate(zip(volumes, volumes_gains, strict=True)):
-            result[index] = fpixel.exposure_match_batch(volume, volume_gains)
-        return result
+        return fpixel.exposure_match_batch(volumes, np.asarray(volumes_gains, dtype=np.float32))
 
     def get_params(self) -> dict[str, float]:
         target_mean = self.py_random.uniform(*self.target_mean_range)
@@ -997,24 +991,22 @@ class ExposureMatching(ImageOnlyTransform):
         gains: dict[str, float | list[float] | list[list[float]]] = {}
 
         if "image" in data:
-            gains["gain"] = fpixel.get_exposure_gain(
-                data["image"],
-                target_mean,
-                self.gain_range,
+            gains["gain"] = float(
+                fpixel.get_exposure_gains(
+                    data["image"],
+                    target_mean,
+                    self.gain_range,
+                ),
             )
         if "images" in data:
-            gains["image_gains"] = [
-                fpixel.get_exposure_gain(image, target_mean, self.gain_range) for image in data["images"]
-            ]
+            image_gains = fpixel.get_exposure_gains(data["images"], target_mean, self.gain_range)
+            gains["image_gains"] = np.asarray(image_gains).tolist()
         if "volume" in data:
-            gains["volume_gains"] = [
-                fpixel.get_exposure_gain(image, target_mean, self.gain_range) for image in data["volume"]
-            ]
+            volume_gains = fpixel.get_exposure_gains(data["volume"], target_mean, self.gain_range)
+            gains["volume_gains"] = np.asarray(volume_gains).tolist()
         if "volumes" in data:
-            gains["volumes_gains"] = [
-                [fpixel.get_exposure_gain(image, target_mean, self.gain_range) for image in volume]
-                for volume in data["volumes"]
-            ]
+            volumes_gains = fpixel.get_exposure_gains(data["volumes"], target_mean, self.gain_range)
+            gains["volumes_gains"] = np.asarray(volumes_gains).tolist()
         if not gains:
             raise RuntimeError("Expected image, images, volume, or volumes data for exposure matching")
 

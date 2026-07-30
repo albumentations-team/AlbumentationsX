@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Literal, cast
 
+import numkong as nk
+
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS,
@@ -26,7 +28,6 @@ from ._functional_shared import (
     is_grayscale_image,
     is_rgb_image,
     mean,
-    multiply,
     non_rgb_error,
     normalize_per_image,
     np,
@@ -663,71 +664,76 @@ def volumes_channel_shuffle(volumes: np.ndarray, channels_shuffled: Sequence[int
     return volumes.copy()[..., channels_shuffled] if volumes.ndim == 5 else volumes
 
 
-def get_exposure_gain(
-    img: ImageType,
+def get_exposure_gains(
+    images: ImageType,
     target_mean: float,
     gain_range: tuple[float, float] | None,
-) -> float:
-    """Calculate the multiplicative gain that moves an image's normalized global mean toward a target, with optional
-    lower and upper gain bounds.
+) -> float | np.ndarray:
+    """Compute exposure gains from normalized global means for one image or a tensor of images,
+    enabling batch-aware brightness scaling without per-image dispatch.
 
     Args:
-        img (ImageType): Input image with values in the range defined by its dtype.
-        target_mean (float): Desired normalized global mean in the range [0, 1].
-        gain_range (tuple[float, float] | None): Optional lower and upper gain bounds.
+        images (ImageType): Image or tensor of images. The final three dimensions must be `(H, W, C)`.
+        target_mean (float): Desired normalized mean in [0, 1].
+        gain_range (tuple[float, float] | None): Optional inclusive lower and upper gain bounds.
 
     Returns:
-        float: Multiplicative gain derived from the image mean.
+        float | np.ndarray: One scalar gain for an image or an array matching the leading batch dimensions.
 
     """
-    max_value = MAX_VALUES_BY_DTYPE[img.dtype]
-    normalized_mean = float(mean(img)) / max_value
-    gain = target_mean / max(normalized_mean, 1e-6)
+    image_axes = tuple(range(images.ndim - 3, images.ndim))
+    values_per_image = images.shape[-3] * images.shape[-2] * images.shape[-1]
+
+    if images.dtype == np.uint8:
+        image_sums = nk.sum(images, axis=image_axes)
+        if image_sums is None:
+            raise RuntimeError("NumKong did not return exposure sums")
+    else:
+        image_sums = np.sum(images, axis=image_axes, dtype=np.float64)
+
+    normalized_means = np.asarray(image_sums, dtype=np.float64) / (values_per_image * MAX_VALUES_BY_DTYPE[images.dtype])
+    gains = np.asarray(target_mean / np.maximum(normalized_means, 1e-6), dtype=np.float64)
 
     if gain_range is not None:
-        gain = min(max(gain, gain_range[0]), gain_range[1])
+        np.clip(gains, gain_range[0], gain_range[1], out=gains)
 
-    return gain
-
-
-def exposure_match(img: ImageType, gain: float) -> ImageType:
-    """Scale every pixel by a precomputed exposure gain through Albucore's dtype-preserving multiplication path,
-    clipping values to the valid range.
-
-    Args:
-        img (ImageType): Input image.
-        gain (float): Multiplicative exposure gain.
-
-    Returns:
-        ImageType: Scaled image with the input shape and dtype.
-
-    """
-    return multiply(img, gain, inplace=False)
+    return float(gains) if gains.ndim == 0 else gains
 
 
-def exposure_match_batch(images: ImageType, gains: Sequence[float]) -> ImageType:
-    """Apply one precomputed exposure gain to each image or volume slice, preserving batch shape and dtype with
-    preallocated output storage.
+def exposure_match_batch(images: ImageType, gains: np.ndarray) -> ImageType:
+    """Scale an image tensor by per-image exposure gains in one vectorized operation, covering image
+    batches, volumes, and volume batches without per-image dispatch.
 
     Args:
-        images (ImageType): Image batch or volume with shape `(N, H, W, C)`.
-        gains (Sequence[float]): One gain for each item along the leading axis.
+        images (ImageType): Image batch, volume, or volume batch ending in `(H, W, C)`.
+        gains (np.ndarray): Gain array matching every leading dimension before `(H, W, C)`.
 
     Returns:
-        ImageType: Scaled batch with the input shape and dtype.
+        ImageType: Scaled tensor with the input shape and dtype.
 
     Raises:
-        ValueError: If the number of gains does not match the number of items.
+        ValueError: If the gain shape does not match the image tensor's leading dimensions.
 
     """
-    if len(images) != len(gains):
-        raise ValueError(f"Expected {len(images)} exposure gains, got {len(gains)}")
+    expected_shape = images.shape[:-3]
+    if gains.shape != expected_shape:
+        raise ValueError(f"Expected exposure gains with shape {expected_shape}, got {gains.shape}")
 
-    result = np.empty_like(images)
-    for index, (image, gain) in enumerate(zip(images, gains, strict=True)):
-        result[index] = exposure_match(image, gain)
+    if gains.size == 0:
+        return images.copy()
 
-    return result
+    if images.dtype == np.uint8:
+        flattened_images = images.reshape(gains.size, -1)
+        gain_matrix = np.broadcast_to(gains.reshape(-1, 1), flattened_images.shape)
+        return cast(
+            "ImageType",
+            cv2.multiply(flattened_images, gain_matrix, dtype=cv2.CV_8U).reshape(images.shape),
+        )
+
+    gain_shape = (*gains.shape, 1, 1, 1)
+    result = np.multiply(images, gains.reshape(gain_shape), dtype=np.float32)
+    np.clip(result, 0, MAX_VALUES_BY_DTYPE[images.dtype], out=result)
+    return cast("ImageType", result)
 
 
 def gamma_transform(img: ImageType, gamma: float) -> ImageType:
@@ -1396,10 +1402,9 @@ __all__ = [
     "downscale",
     "equalize",
     "evaluate_bez",
-    "exposure_match",
     "exposure_match_batch",
     "gamma_transform",
-    "get_exposure_gain",
+    "get_exposure_gains",
     "grayscale_to_multichannel",
     "image_compression",
     "invert",

@@ -70,7 +70,7 @@ class KernelSupport:
 
 
 FUNCTIONAL_PIXEL_KERNELS: Mapping[str, KernelSupport] = {
-    "exposure_match": KernelSupport(),
+    "exposure_match_batch": KernelSupport(),
     "gamma_transform": KernelSupport(),
     "multiply_add": KernelSupport(),
     "add_weighted": KernelSupport(),
@@ -277,9 +277,9 @@ def _call_gamma_transform(benchmark: Any) -> np.ndarray:
     return fpixel.gamma_transform(benchmark.image, 1.2)
 
 
-def _call_exposure_match(benchmark: Any) -> np.ndarray:
-    gain = fpixel.get_exposure_gain(benchmark.image, 0.4, None)
-    return fpixel.exposure_match(benchmark.image, gain)
+def _call_exposure_match_batch(benchmark: Any) -> np.ndarray:
+    gains = np.asarray(fpixel.get_exposure_gains(benchmark.exposure_images, 0.4, None), dtype=np.float32)
+    return fpixel.exposure_match_batch(benchmark.exposure_images, gains)
 
 
 def _call_multiply_add(benchmark: Any) -> np.ndarray:
@@ -335,7 +335,7 @@ def _call_posterize(benchmark: Any) -> np.ndarray:
 
 
 PIXEL_CALLS: Mapping[str, ImageKernelCall] = {
-    "exposure_match": _call_exposure_match,
+    "exposure_match_batch": _call_exposure_match_batch,
     "gamma_transform": _call_gamma_transform,
     "multiply_add": _call_multiply_add,
     "add_weighted": _call_add_weighted,
@@ -475,6 +475,8 @@ class TimeFunctionalPixelKernels:
         name, size_name, channels, dtype_name = _parse_image_case(case_id)
         self.name = name
         self.image = make_image(size_name, channels, dtype_from_name(dtype_name))
+        if name == "exposure_match_batch":
+            self.exposure_images = np.broadcast_to(self.image, (4, *self.image.shape)).copy()
         self.image_b = np.flipud(self.image).copy()
         self.add_value = 3 if self.image.dtype == np.uint8 else 0.05
         self.rgb_matrix = np.array(

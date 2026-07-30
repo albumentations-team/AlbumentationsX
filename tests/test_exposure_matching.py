@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.augmentations.pixel import functional as fpixel
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -149,6 +150,32 @@ def test_exposure_matching_keeps_gains_separate_for_simultaneous_target_routes()
     np.testing.assert_allclose(params["image_gains"], [2.0, 1.0])
     np.testing.assert_allclose(params["volume_gains"], [2.0, 0.5, 1.0])
     np.testing.assert_allclose(params["volumes_gains"], [[2.0, 0.5, 1.0], [4.0, 4.0, 4.0]])
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_get_exposure_gains_vectorizes_across_all_leading_dimensions(dtype: type[np.generic]) -> None:
+    values = (
+        np.array([[0, 51, 102], [204, 255, 25]], dtype=np.uint8)
+        if dtype == np.uint8
+        else np.array([[0.0, 0.2, 0.4], [0.8, 1.0, 0.1]], dtype=np.float32)
+    )
+    images = np.empty((2, 3, 4, 5, 2), dtype=dtype)
+    images[...] = values[..., None, None, None]
+
+    gains = fpixel.get_exposure_gains(images, target_mean=0.4, gain_range=(0.5, 3.0))
+
+    normalized_values = values.astype(np.float64) / (255 if dtype == np.uint8 else 1)
+    expected = np.clip(0.4 / np.maximum(normalized_values, 1e-6), 0.5, 3.0)
+    assert isinstance(gains, np.ndarray)
+    assert gains.shape == values.shape
+    np.testing.assert_allclose(gains, expected, rtol=0, atol=1e-15)
+
+
+def test_exposure_match_batch_validates_gain_shape() -> None:
+    images = np.zeros((2, 3, 4, 5, 1), dtype=np.float32)
+
+    with pytest.raises(ValueError, match=r"Expected exposure gains with shape \(2, 3\), got \(2,\)"):
+        fpixel.exposure_match_batch(images, np.ones(2, dtype=np.float32))
 
 
 def test_exposure_matching_records_sampled_target_and_gains_for_replay() -> None:

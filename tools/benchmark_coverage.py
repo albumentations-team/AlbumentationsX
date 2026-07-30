@@ -332,7 +332,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "D4": ("d4", "bboxes_d4", "keypoints_d4"),
     "Defocus": ("defocus",),
     "Equalize": ("equalize",),
-    "ExposureMatching": ("exposure_match",),
+    "ExposureMatching": ("exposure_match_batch",),
     "GaussianBlur": ("convolve",),
     "GlassBlur": ("glass_blur",),
     "HorizontalFlip": ("hflip",),

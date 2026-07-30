@@ -898,14 +898,40 @@ class ExposureMatching(ImageOnlyTransform):
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
+        >>> # Prepare sample data
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> transform = A.ExposureMatching(
-        ...     target_mean_range=(0.3, 0.5),
-        ...     gain_range=(1.0, 3.0),
-        ...     p=1.0,
+        >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
+        >>> bboxes = np.array([[10, 10, 50, 50]], dtype=np.float32)
+        >>> bbox_labels = [1]
+        >>> keypoints = np.array([[20, 30]], dtype=np.float32)
+        >>> keypoint_labels = [0]
+        >>> # Define the exposure-matching pipeline
+        >>> transform = A.Compose(
+        ...     [
+        ...         A.ExposureMatching(
+        ...             target_mean_range=(0.3, 0.5),
+        ...             gain_range=(1.0, 3.0),
+        ...             p=1.0,
+        ...         ),
+        ...     ],
+        ...     bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        ...     keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
         ... )
-        >>> result = transform(image=image)
-        >>> matched_image = result["image"]
+        >>> # Apply the transform to the image while preserving annotation targets
+        >>> transformed = transform(
+        ...     image=image,
+        ...     mask=mask,
+        ...     bboxes=bboxes,
+        ...     bbox_labels=bbox_labels,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels,
+        ... )
+        >>> matched_image = transformed["image"]
+        >>> transformed_mask = transformed["mask"]
+        >>> transformed_bboxes = transformed["bboxes"]
+        >>> transformed_bbox_labels = transformed["bbox_labels"]
+        >>> transformed_keypoints = transformed["keypoints"]
+        >>> transformed_keypoint_labels = transformed["keypoint_labels"]
 
     """
 

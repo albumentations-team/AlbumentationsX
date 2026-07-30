@@ -116,7 +116,7 @@ repos:
       entry: python tools/check_transform_names.py
       language: python
       types: [python]
-      files: ^albumentations/augmentations/
+      files: ^albumentations/
       pass_filenames: true
     - id: check-apply-no-defaults
       name: Check apply_* methods have no default argument values

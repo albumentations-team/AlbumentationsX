@@ -857,6 +857,26 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
             "stain_matrix": np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32),
         },
     ),
+    (
+        "preserve-residual",
+        A.HEStain,
+        {
+            "method": "custom",
+            "stain_matrix": np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32),
+            "residual_mode": "preserve",
+            "augment_background": True,
+        },
+    ),
+    (
+        "augment-residual",
+        A.HEStain,
+        {
+            "method": "custom",
+            "stain_matrix": np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32),
+            "residual_mode": "augment",
+            "augment_background": True,
+        },
+    ),
     ("custom-reference", A.HistogramMatching, {"blend_ratio": (0.2, 0.4), "metadata_key": "references"}),
     (
         "gaussian-darken",

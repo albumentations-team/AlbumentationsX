@@ -770,7 +770,7 @@ def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) ->
         result = cast("ImageType", cv2.rotate(cv2_input, rotate_code))
         return result[..., None] if num_channels == 1 else result
 
-    return cast("ImageType", np.rot90(img, rot90_count))
+    return np.rot90(img, rot90_count)
 
 
 def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
@@ -793,7 +793,7 @@ def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "
 
     """
     rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
-    return cast("ImageType", np.rot90(images, k=rot90_count, axes=(1, 2)))
+    return np.rot90(images, k=rot90_count, axes=(1, 2))
 
 
 @preserve_channel_dim

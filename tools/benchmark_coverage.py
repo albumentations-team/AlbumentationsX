@@ -35,6 +35,8 @@ from benchmarks.test_batch_matrix import (  # noqa: E402
     IMAGE_BATCH_TRANSFORMS,
     MASK_BATCH_CASES,
     MASK_BATCH_TRANSFORMS,
+    RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
+    RANDOM_TONE_CURVE_DIRECT_VOLUME_CASES,
     SPATTER_DIRECT_CASES,
     VOLUME_BATCH_CASES,
     VOLUME_BATCH_TRANSFORMS,
@@ -182,6 +184,7 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "random_snow": "RandomSnow",
     "random_sun_flare": "RandomSunFlare",
     "random_tone_curve": "RandomToneCurve",
+    "random_tone_curve_per_channel": "RandomToneCurve",
     "rgb_shift": "RGBShift",
     "ringing_overshoot": "RingingOvershoot",
     "salt_and_pepper": "SaltAndPepper",
@@ -247,6 +250,8 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "normalize": "Normalize",
     "random_brightness_contrast": "RandomBrightnessContrast",
     "random_rotate90": "RandomRotate90",
+    "random_tone_curve": "RandomToneCurve",
+    "random_tone_curve_per_channel": "RandomToneCurve",
     "resize": "Resize",
     "spatter_mud": "Spatter",
     "spatter_rain": "Spatter",
@@ -283,6 +288,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "PixelDropout",
         "Posterize",
         "RandomGamma",
+        "RandomToneCurve",
         "Resize",
         "Solarize",
         "ToGray",
@@ -346,6 +352,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "PixelDropout": ("pixel_dropout",),
     "Posterize": ("posterize",),
     "RandomGamma": ("gamma_transform",),
+    "RandomToneCurve": ("move_tone_curve_shared", "move_tone_curve_per_channel"),
     "Resize": ("resize", "resize_bboxes"),
     "Solarize": ("solarize",),
     "ToGray": ("to_gray",),
@@ -371,6 +378,12 @@ ASV_BENCHMARKS = {
     "annotation_scaling": "benchmarks.test_family_matrix.TimeAnnotationTargets.time_transform",
     "batch_image": "benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform",
     "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
+    "batch_random_tone_curve_direct_image": (
+        "benchmarks.test_batch_matrix.TimeRandomToneCurveDirectImageBatchMatrix.time_apply_to_images"
+    ),
+    "batch_random_tone_curve_direct_volume": (
+        "benchmarks.test_batch_matrix.TimeRandomToneCurveDirectVolumeBatchMatrix.time_apply_to_volumes"
+    ),
     "batch_spatter_direct": "benchmarks.test_batch_matrix.TimeSpatterDirectBatchMatrix.time_apply_to_images",
     "batch_volume": "benchmarks.test_batch_matrix.TimeVolumeBatchMatrix.time_transform",
     "catalog_smoke": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
@@ -451,7 +464,12 @@ AXIS_ORDERS: Mapping[str, tuple[Any, ...]] = {
 
 LAYER_AXIS_REFERENCES: Mapping[str, Mapping[str, tuple[Any, ...]]] = {
     "annotation_scaling": {"annotation_counts": ANNOTATION_COUNT_ORDER},
-    "batch_matrix": {"channels": CHANNEL_ORDER, "dtypes": DTYPE_ORDER, "sizes": SIZE_ORDER},
+    "batch_matrix": {
+        "channels": CHANNEL_ORDER,
+        "dtypes": DTYPE_ORDER,
+        "sizes": SIZE_ORDER,
+        "volume_sizes": VOLUME_SIZE_ORDER,
+    },
     "direct_kernel": {
         "annotation_counts": ANNOTATION_COUNT_ORDER,
         "channels": CHANNEL_ORDER,
@@ -687,6 +705,7 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
     name, target_route, size_name, channels, dtype_name, batch_size = case_id.split("|")
     targets = {
         "direct_images": ["images"],
+        "direct_volumes": ["volumes"],
         "images": ["images"],
         "images_and_masks": ["images", "masks"],
         "volumes_and_masks3d": ["masks3d", "volumes"],
@@ -699,7 +718,7 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
         "target_route": target_route,
         "targets": targets,
     }
-    if target_route == "volumes_and_masks3d":
+    if target_route in {"direct_volumes", "volumes_and_masks3d"}:
         scenario["volume_size"] = size_name
     else:
         scenario["size"] = size_name
@@ -745,7 +764,7 @@ def _target_matrix_scenario(case: Mapping[str, str], route: str, transform_name:
 def _batch_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a batch matrix case."""
     scenario = _parse_batch_case(case["case_id"])
-    scope = "direct_batch" if scenario["target_route"] == "direct_images" else "compose_batch"
+    scope = "direct_batch" if scenario["target_route"].startswith("direct_") else "compose_batch"
     return {**scenario, "scope": scope}
 
 
@@ -1068,6 +1087,20 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         cases,
         benchmark=ASV_BENCHMARKS["batch_mask"],
         case_ids=MASK_BATCH_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_random_tone_curve_direct_image"],
+        case_ids=RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_random_tone_curve_direct_volume"],
+        case_ids=RANDOM_TONE_CURVE_DIRECT_VOLUME_CASES,
         layer="batch_matrix",
         name_map=BATCH_ALIAS_TO_TRANSFORM,
     )

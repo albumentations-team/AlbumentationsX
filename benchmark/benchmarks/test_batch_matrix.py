@@ -25,6 +25,8 @@ BATCH_SIZES = (4, 8)
 VOLUME_BATCH_SIZES = (2, 4)
 SPATTER_BATCH_SIZES = (2, 4, 8, 16)
 SPATTER_SIZES = ("small", "medium", "large")
+RANDOM_TONE_CURVE_NAMES = ("random_tone_curve", "random_tone_curve_per_channel")
+RANDOM_TONE_CURVE_CASE_PREFIXES = tuple(f"{name}|" for name in RANDOM_TONE_CURVE_NAMES)
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,10 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     "horizontal_flip": BatchSpec(lambda: albumentations.HorizontalFlip(p=1.0)),
     "normalize": BatchSpec(lambda: albumentations.Normalize(p=1.0)),
     "random_brightness_contrast": BatchSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
+    "random_tone_curve": BatchSpec(lambda: albumentations.RandomToneCurve(p=1.0)),
+    "random_tone_curve_per_channel": BatchSpec(
+        lambda: albumentations.RandomToneCurve(per_channel=True, p=1.0),
+    ),
     "resize": BatchSpec(lambda: albumentations.Resize(height=128, width=128, p=1.0)),
     "spatter_mud": BatchSpec(
         lambda: albumentations.Spatter(mode="mud", p=1.0),
@@ -89,6 +95,16 @@ VOLUME_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
         sizes=tuple(VOLUME_SIZES),
         batch_sizes=VOLUME_BATCH_SIZES,
     ),
+    "random_tone_curve": BatchSpec(
+        lambda: albumentations.RandomToneCurve(p=1.0),
+        sizes=tuple(VOLUME_SIZES),
+        batch_sizes=VOLUME_BATCH_SIZES,
+    ),
+    "random_tone_curve_per_channel": BatchSpec(
+        lambda: albumentations.RandomToneCurve(per_channel=True, p=1.0),
+        sizes=tuple(VOLUME_SIZES),
+        batch_sizes=VOLUME_BATCH_SIZES,
+    ),
     "transpose": BatchSpec(
         lambda: albumentations.Transpose(p=1.0),
         channels=(1, 3),
@@ -116,6 +132,11 @@ def _cases(transforms: Mapping[str, BatchSpec], target_route: str) -> tuple[str,
 
 
 IMAGE_BATCH_CASES = _cases(IMAGE_BATCH_TRANSFORMS, "images")
+RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES = tuple(
+    case_id.replace("|images|", "|direct_images|", 1)
+    for case_id in IMAGE_BATCH_CASES
+    if case_id.startswith(RANDOM_TONE_CURVE_CASE_PREFIXES)
+)
 SPATTER_DIRECT_CASES = tuple(
     case_id.replace("|images|", "|direct_images|", 1)
     for case_id in IMAGE_BATCH_CASES
@@ -123,6 +144,11 @@ SPATTER_DIRECT_CASES = tuple(
 )
 MASK_BATCH_CASES = _cases(MASK_BATCH_TRANSFORMS, "images_and_masks")
 VOLUME_BATCH_CASES = _cases(VOLUME_BATCH_TRANSFORMS, "volumes_and_masks3d")
+RANDOM_TONE_CURVE_DIRECT_VOLUME_CASES = tuple(
+    case_id.replace("|volumes_and_masks3d|", "|direct_volumes|", 1)
+    for case_id in VOLUME_BATCH_CASES
+    if case_id.startswith(RANDOM_TONE_CURVE_CASE_PREFIXES)
+)
 
 
 def _parse_batch_case(case_id: str) -> tuple[str, str, str, int, str, int]:
@@ -184,6 +210,48 @@ class TimeSpatterDirectBatchMatrix:
 
     def time_apply_to_images(self, case_id: str) -> None:
         self.transform.apply_to_images(self.images, **self.params)
+
+
+class TimeRandomToneCurveDirectImageBatchMatrix:
+    """Benchmark RandomToneCurve's direct `apply_to_images` route for shared and per-channel curves."""
+
+    params = (RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = albumentations.RandomToneCurve(
+            per_channel=name == "random_tone_curve_per_channel",
+            p=1.0,
+        )
+        self.transform.set_random_seed(137)
+        self.images = _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)
+        self.transform(image=self.images[0])
+        self.applied_params = self.transform.get_applied_params()
+
+    def time_apply_to_images(self, case_id: str) -> None:
+        self.transform.apply_to_images(self.images, **self.applied_params)
+
+
+class TimeRandomToneCurveDirectVolumeBatchMatrix:
+    """Benchmark RandomToneCurve's direct `apply_to_volumes` route for shared and per-channel curves."""
+
+    params = (RANDOM_TONE_CURVE_DIRECT_VOLUME_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = albumentations.RandomToneCurve(
+            per_channel=name == "random_tone_curve_per_channel",
+            p=1.0,
+        )
+        self.transform.set_random_seed(137)
+        self.volumes = _make_volume_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)
+        self.transform(volume=self.volumes[0])
+        self.applied_params = self.transform.get_applied_params()
+
+    def time_apply_to_volumes(self, case_id: str) -> None:
+        self.transform.apply_to_volumes(self.volumes, **self.applied_params)
 
 
 class PeakMemorySpatterBatchMatrix:

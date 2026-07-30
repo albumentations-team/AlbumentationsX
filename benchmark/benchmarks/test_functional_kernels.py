@@ -83,6 +83,8 @@ FUNCTIONAL_PIXEL_KERNELS: Mapping[str, KernelSupport] = {
     "pixel_dropout": KernelSupport(),
     "channel_shuffle": KernelSupport(channels=(3, 5)),
     "image_compression": KernelSupport(dtypes=("uint8",)),
+    "move_tone_curve_shared": KernelSupport(),
+    "move_tone_curve_per_channel": KernelSupport(),
     "solarize": KernelSupport(),
     "posterize": KernelSupport(),
 }
@@ -326,6 +328,19 @@ def _call_image_compression(benchmark: Any) -> np.ndarray:
     return fpixel.image_compression(benchmark.image, 90, ".jpg")
 
 
+def _call_move_tone_curve_shared(benchmark: Any) -> np.ndarray:
+    return fpixel.move_tone_curve(benchmark.image, 0.17, 0.83, benchmark.image.shape[-1])
+
+
+def _call_move_tone_curve_per_channel(benchmark: Any) -> np.ndarray:
+    return fpixel.move_tone_curve(
+        benchmark.image,
+        benchmark.tone_curve_low_y,
+        benchmark.tone_curve_high_y,
+        benchmark.image.shape[-1],
+    )
+
+
 def _call_solarize(benchmark: Any) -> np.ndarray:
     return fpixel.solarize(benchmark.image, benchmark.solarize_threshold)
 
@@ -348,6 +363,8 @@ PIXEL_CALLS: Mapping[str, ImageKernelCall] = {
     "pixel_dropout": _call_pixel_dropout,
     "channel_shuffle": _call_channel_shuffle,
     "image_compression": _call_image_compression,
+    "move_tone_curve_shared": _call_move_tone_curve_shared,
+    "move_tone_curve_per_channel": _call_move_tone_curve_per_channel,
     "solarize": _call_solarize,
     "posterize": _call_posterize,
 }
@@ -488,6 +505,8 @@ class TimeFunctionalPixelKernels:
         self.drop_values = np.zeros((channels,), dtype=self.image.dtype)
         self.channels_shuffled = list(reversed(range(channels)))
         self.solarize_threshold = 128 if self.image.dtype == np.uint8 else 0.5
+        self.tone_curve_low_y = np.linspace(0.11, 0.31, channels, dtype=np.float64)
+        self.tone_curve_high_y = np.linspace(0.69, 0.89, channels, dtype=np.float64)
 
     def time_kernel(self, case_id: str) -> None:
         PIXEL_CALLS[self.name](self)

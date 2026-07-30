@@ -919,7 +919,7 @@ def test_random_tone_curve(image, num_channels):
         num_channels,
     )
 
-    np.testing.assert_allclose(result_float_value, result_array_value)
+    np.testing.assert_array_equal(result_float_value, result_array_value)
 
     assert result_float_value.dtype == image.dtype
     assert result_float_value.shape == image.shape

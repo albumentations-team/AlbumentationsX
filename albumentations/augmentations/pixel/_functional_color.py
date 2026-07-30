@@ -13,6 +13,7 @@ from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
     PCA,
+    ImageFloat32,
     ImageType,
     ImageUInt8,
     add_array,
@@ -388,13 +389,12 @@ def evaluate_bez(
     low_y: float | np.ndarray,
     high_y: float | np.ndarray,
 ) -> np.ndarray:
-    """Evaluate the Bezier curve at the given t values. Used for tone-curve control points;
-    returns y coordinates for input t in [0, 1].
+    """Build a 256-entry cubic Bezier tone curve from shared or per-channel control points for fast lookup-table
+    evaluation of uint8 images.
 
     Args:
-        t (np.ndarray): The t values to evaluate the Bezier curve at.
-        low_y (float | np.ndarray): The low y values to evaluate the Bezier curve at.
-        high_y (float | np.ndarray): The high y values to evaluate the Bezier curve at.
+        low_y (float | np.ndarray): The first inner control ordinate of the Bezier curve.
+        high_y (float | np.ndarray): The second inner control ordinate of the Bezier curve.
 
     Returns:
         np.ndarray: The Bezier curve values.
@@ -406,15 +406,43 @@ def evaluate_bez(
     return (3 * one_minus_t**2 * t * low_y + 3 * one_minus_t * t**2 * high_y + t**3) * 255
 
 
-@uint8_io
+def _move_tone_curve_float32(
+    img: ImageFloat32,
+    low_y: float | np.ndarray,
+    high_y: float | np.ndarray,
+) -> ImageFloat32:
+    """Evaluate a cubic Bezier tone curve continuously in float32 while reusing one image-sized output buffer for
+    memory-efficient processing.
+    """
+    low_y_float32 = np.asarray(low_y, dtype=np.float32)
+    high_y_float32 = np.asarray(high_y, dtype=np.float32)
+
+    coefficient_1 = np.float32(3) * low_y_float32
+    coefficient_2 = np.float32(3) * high_y_float32 - np.float32(6) * low_y_float32
+    coefficient_3 = np.float32(3) * low_y_float32 - np.float32(3) * high_y_float32 + np.float32(1)
+
+    result = np.empty_like(img)
+    np.multiply(img, coefficient_3, out=result)
+    np.add(result, coefficient_2, out=result)
+    np.multiply(result, img, out=result)
+    np.add(result, coefficient_1, out=result)
+    np.multiply(result, img, out=result)
+    np.clip(result, np.float32(0), np.float32(1), out=result)
+    # Float32 coefficient rounding can undershoot the cubic curve's exact t=1 endpoint.
+    result[img == np.float32(1)] = np.float32(1)
+    return result
+
+
 def move_tone_curve(
     img: ImageType,
     low_y: float | np.ndarray,
     high_y: float | np.ndarray,
     num_channels: int,
 ) -> ImageType:
-    """Rescale bright/dark via Bezier tone curve. low_y, high_y (per-channel or scalar), num_channels
-    for per-channel curves. uint8 I/O.
+    """Apply a cubic Bezier tone curve with scalar or per-channel controls, dispatching to continuous float32
+    arithmetic or a uint8 lookup table.
+
+    Float32 images are evaluated continuously. Uint8 images retain the rounded 256-entry LUT path.
 
     Args:
         img (ImageType): Any number of channels
@@ -431,6 +459,12 @@ def move_tone_curve(
     if np.isscalar(low_y) and np.isscalar(high_y):
         low_y_scalar = cast("Any", low_y)
         high_y_scalar = cast("Any", high_y)
+        if img.dtype == np.float32:
+            return _move_tone_curve_float32(
+                cast("ImageFloat32", img),
+                float(low_y_scalar),
+                float(high_y_scalar),
+            )
         lut = cast(
             "ImageUInt8",
             clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8), inplace=False),
@@ -438,6 +472,8 @@ def move_tone_curve(
         return sz_lut(cast("ImageUInt8", img), lut, inplace=False)
 
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
+        if img.dtype == np.float32:
+            return _move_tone_curve_float32(cast("ImageFloat32", img), low_y, high_y)
         luts = cast(
             "ImageUInt8",
             clip(

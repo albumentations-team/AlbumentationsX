@@ -855,12 +855,27 @@ def test_random_brightness_contrast_max_mode_preserves_opencv_formula():
     "transform_kwargs",
     [
         {"brightness_range": (-1.1, 0.2)},
+        {"brightness_range": (0.2, -1.1)},
         {"contrast_range": (-1.1, 0.2)},
+        {"contrast_range": (0.2, -1.1)},
     ],
 )
-def test_random_brightness_contrast_torchvision_mode_rejects_negative_factors(transform_kwargs):
+def test_random_brightness_contrast_torchvision_mode_rejects_negative_factors(
+    transform_kwargs: dict[str, tuple[float, float]],
+) -> None:
     with pytest.raises(ValueError, match="must be greater than or equal to -1"):
         A.RandomBrightnessContrast(**transform_kwargs)
+
+
+def test_random_brightness_contrast_max_mode_allows_adjustments_below_negative_one() -> None:
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(-1.2, -1.1),
+        contrast_range=(-1.4, -1.3),
+        brightness_by_max=True,
+    )
+
+    assert transform.brightness_range == (-1.2, -1.1)
+    assert transform.contrast_range == (-1.4, -1.3)
 
 
 def test_perspective_keep_size():

@@ -213,6 +213,31 @@ def test_random_brightness_contrast_matches_torchvision_brightness_and_contrast(
     assert np.abs(result.astype(np.int16) - expected.astype(np.int16)).max() <= 1
 
 
+def test_random_brightness_contrast_preserves_intermediate_uint8_quantization() -> None:
+    image = np.array(
+        [
+            [[17, 23, 35], [47, 7, 10]],
+            [[46, 37, 20], [14, 16, 18]],
+        ],
+        dtype=np.uint8,
+    )
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(9.0, 9.0),
+        contrast_range=(-0.9, -0.9),
+        p=1,
+    )
+
+    result = transform(image=image)["image"]
+    expected = np.asarray(
+        adjust_brightness(
+            adjust_contrast(Image.fromarray(image), 0.1),
+            10.0,
+        ),
+    )
+
+    np.testing.assert_array_equal(result, expected)
+
+
 def test_post_data_check():
     img = np.empty([100, 100, 3], dtype=np.uint8)
     bboxes = np.array(

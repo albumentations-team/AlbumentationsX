@@ -769,7 +769,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             """
             if not self.brightness_by_max:
                 for field_name in ("brightness_range", "contrast_range"):
-                    if getattr(self, field_name)[0] < -1:
+                    if min(getattr(self, field_name)) < -1:
                         raise ValueError(
                             f"{field_name} values must be greater than or equal to -1 when brightness_by_max=False",
                         )

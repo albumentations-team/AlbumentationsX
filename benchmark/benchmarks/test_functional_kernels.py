@@ -70,6 +70,7 @@ class KernelSupport:
 
 
 FUNCTIONAL_PIXEL_KERNELS: Mapping[str, KernelSupport] = {
+    "exposure_match": KernelSupport(),
     "gamma_transform": KernelSupport(),
     "multiply_add": KernelSupport(),
     "add_weighted": KernelSupport(),
@@ -276,6 +277,11 @@ def _call_gamma_transform(benchmark: Any) -> np.ndarray:
     return fpixel.gamma_transform(benchmark.image, 1.2)
 
 
+def _call_exposure_match(benchmark: Any) -> np.ndarray:
+    gain = fpixel.get_exposure_gain(benchmark.image, 0.4, None)
+    return fpixel.exposure_match(benchmark.image, gain)
+
+
 def _call_multiply_add(benchmark: Any) -> np.ndarray:
     return fpixel.multiply_add(benchmark.image, 1.08, benchmark.add_value)
 
@@ -329,6 +335,7 @@ def _call_posterize(benchmark: Any) -> np.ndarray:
 
 
 PIXEL_CALLS: Mapping[str, ImageKernelCall] = {
+    "exposure_match": _call_exposure_match,
     "gamma_transform": _call_gamma_transform,
     "multiply_add": _call_multiply_add,
     "add_weighted": _call_add_weighted,

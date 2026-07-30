@@ -856,6 +856,145 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         }
 
 
+class ExposureMatching(ImageOnlyTransform):
+    """Scale each image toward a sampled global mean while preserving pixel ratios. Use it to
+    model exposure changes whose strength depends on the input brightness.
+
+    The transform samples one normalized target mean per call and computes the multiplicative gain
+    from each image's global mean. Image batches and volumes share the sampled target while deriving
+    one gain per image or depth slice. Values that exceed the dtype range are clipped, so saturation
+    can keep the resulting mean below the sampled target. A zero image remains zero.
+
+    Args:
+        target_mean_range (tuple[float, float]): Lower and upper bounds for the normalized target mean.
+            Both values must be in [0, 1]. Default: (0.3, 0.5).
+        gain_range (tuple[float, float] | None): Optional lower and upper bounds for the derived gain.
+            Both values must be non-negative. Use `None` to leave the gain unbounded. Default: None.
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Note:
+        - The global mean includes every pixel and channel.
+        - For `images`, `volume`, and `volumes`, each image or slice gets its own gain.
+        - Clipping saturated pixels is a one-pass operation; the transform does not compensate for
+          the resulting difference between the requested and achieved means.
+
+    Mathematical Formulation:
+        For dtype maximum `M`, sampled target `t`, and image mean `mu`:
+
+        `gain = t / max(mu / M, 1e-6)`
+
+        The optional `gain_range` clips this gain before the transform computes
+        `output = clip(image * gain, 0, M)`.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.ExposureMatching(
+        ...     target_mean_range=(0.3, 0.5),
+        ...     gain_range=(1.0, 3.0),
+        ...     p=1.0,
+        ... )
+        >>> result = transform(image=image)
+        >>> matched_image = result["image"]
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        target_mean_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        gain_range: (
+            Annotated[
+                tuple[float, float],
+                AfterValidator(check_range_bounds(0, None)),
+                AfterValidator(nondecreasing),
+            ]
+            | None
+        )
+
+    def __init__(
+        self,
+        target_mean_range: tuple[float, float] = (0.3, 0.5),
+        gain_range: tuple[float, float] | None = None,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.target_mean_range = target_mean_range
+        self.gain_range = gain_range
+
+    def apply(self, img: ImageType, gain: float, **params: Any) -> ImageType:
+        return fpixel.exposure_match(img, gain)
+
+    def apply_to_images(self, images: ImageType, image_gains: list[float], **params: Any) -> ImageType:
+        return fpixel.exposure_match_batch(images, image_gains)
+
+    def apply_to_volume(self, volume: VolumeType, volume_gains: list[float], **params: Any) -> VolumeType:
+        return fpixel.exposure_match_batch(volume, volume_gains)
+
+    def apply_to_volumes(
+        self,
+        volumes: VolumeType,
+        volumes_gains: list[list[float]],
+        **params: Any,
+    ) -> VolumeType:
+        if len(volumes) != len(volumes_gains):
+            raise ValueError(f"Expected gains for {len(volumes)} volumes, got {len(volumes_gains)}")
+
+        result = np.empty_like(volumes)
+        for index, (volume, volume_gains) in enumerate(zip(volumes, volumes_gains, strict=True)):
+            result[index] = fpixel.exposure_match_batch(volume, volume_gains)
+        return result
+
+    def get_params(self) -> dict[str, float]:
+        target_mean = self.py_random.uniform(*self.target_mean_range)
+        self.applied_config = {"target_mean_range": target_mean}
+        return {"target_mean": target_mean}
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float | list[float] | list[list[float]]]:
+        target_mean = params["target_mean"]
+        gains: dict[str, float | list[float] | list[list[float]]] = {}
+
+        if "image" in data:
+            gains["gain"] = fpixel.get_exposure_gain(
+                data["image"],
+                target_mean,
+                self.gain_range,
+            )
+        if "images" in data:
+            gains["image_gains"] = [
+                fpixel.get_exposure_gain(image, target_mean, self.gain_range) for image in data["images"]
+            ]
+        if "volume" in data:
+            gains["volume_gains"] = [
+                fpixel.get_exposure_gain(image, target_mean, self.gain_range) for image in data["volume"]
+            ]
+        if "volumes" in data:
+            gains["volumes_gains"] = [
+                [fpixel.get_exposure_gain(image, target_mean, self.gain_range) for image in volume]
+                for volume in data["volumes"]
+            ]
+        if not gains:
+            raise RuntimeError("Expected image, images, volume, or volumes data for exposure matching")
+
+        return gains
+
+
 class CLAHE(ImageOnlyTransform):
     """Contrast Limited Adaptive Histogram Equalization: local contrast with clip_range and
     tile_grid_size. Good for non-uniform lighting; preserves detail.
@@ -1132,6 +1271,7 @@ __all__ = [
     "CLAHE",
     "AutoContrast",
     "Equalize",
+    "ExposureMatching",
     "HueSaturationValue",
     "Posterize",
     "RandomBrightnessContrast",

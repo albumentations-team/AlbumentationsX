@@ -26,6 +26,7 @@ from ._functional_shared import (
     is_grayscale_image,
     is_rgb_image,
     mean,
+    multiply,
     non_rgb_error,
     normalize_per_image,
     np,
@@ -660,6 +661,73 @@ def volumes_channel_shuffle(volumes: np.ndarray, channels_shuffled: Sequence[int
 
     """
     return volumes.copy()[..., channels_shuffled] if volumes.ndim == 5 else volumes
+
+
+def get_exposure_gain(
+    img: ImageType,
+    target_mean: float,
+    gain_range: tuple[float, float] | None,
+) -> float:
+    """Calculate the multiplicative gain that moves an image's normalized global mean toward a target, with optional
+    lower and upper gain bounds.
+
+    Args:
+        img (ImageType): Input image with values in the range defined by its dtype.
+        target_mean (float): Desired normalized global mean in the range [0, 1].
+        gain_range (tuple[float, float] | None): Optional lower and upper gain bounds.
+
+    Returns:
+        float: Multiplicative gain derived from the image mean.
+
+    """
+    max_value = MAX_VALUES_BY_DTYPE[img.dtype]
+    normalized_mean = float(mean(img)) / max_value
+    gain = target_mean / max(normalized_mean, 1e-6)
+
+    if gain_range is not None:
+        gain = min(max(gain, gain_range[0]), gain_range[1])
+
+    return gain
+
+
+def exposure_match(img: ImageType, gain: float) -> ImageType:
+    """Scale every pixel by a precomputed exposure gain through Albucore's dtype-preserving multiplication path,
+    clipping values to the valid range.
+
+    Args:
+        img (ImageType): Input image.
+        gain (float): Multiplicative exposure gain.
+
+    Returns:
+        ImageType: Scaled image with the input shape and dtype.
+
+    """
+    return multiply(img, gain, inplace=False)
+
+
+def exposure_match_batch(images: ImageType, gains: Sequence[float]) -> ImageType:
+    """Apply one precomputed exposure gain to each image or volume slice, preserving batch shape and dtype with
+    preallocated output storage.
+
+    Args:
+        images (ImageType): Image batch or volume with shape `(N, H, W, C)`.
+        gains (Sequence[float]): One gain for each item along the leading axis.
+
+    Returns:
+        ImageType: Scaled batch with the input shape and dtype.
+
+    Raises:
+        ValueError: If the number of gains does not match the number of items.
+
+    """
+    if len(images) != len(gains):
+        raise ValueError(f"Expected {len(images)} exposure gains, got {len(gains)}")
+
+    result = np.empty_like(images)
+    for index, (image, gain) in enumerate(zip(images, gains, strict=True)):
+        result[index] = exposure_match(image, gain)
+
+    return result
 
 
 def gamma_transform(img: ImageType, gamma: float) -> ImageType:
@@ -1328,7 +1396,10 @@ __all__ = [
     "downscale",
     "equalize",
     "evaluate_bez",
+    "exposure_match",
+    "exposure_match_batch",
     "gamma_transform",
+    "get_exposure_gain",
     "grayscale_to_multichannel",
     "image_compression",
     "invert",

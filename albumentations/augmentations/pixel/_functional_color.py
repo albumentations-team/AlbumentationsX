@@ -422,11 +422,22 @@ def _move_tone_curve_float32(
     coefficient_3 = np.float32(3) * low_y_float32 - np.float32(3) * high_y_float32 + np.float32(1)
 
     result = np.empty_like(img)
-    np.multiply(img, coefficient_3, out=result)
-    np.add(result, coefficient_2, out=result)
-    np.multiply(result, img, out=result)
-    np.add(result, coefficient_1, out=result)
-    np.multiply(result, img, out=result)
+    if coefficient_1.shape == (3,) and img.shape[-1] == 3:
+        # Avoid slow last-axis coefficient broadcasting for the common per-channel RGB path.
+        for channel_idx in range(3):
+            image_channel = img[..., channel_idx]
+            result_channel = result[..., channel_idx]
+            np.multiply(image_channel, coefficient_3[channel_idx], out=result_channel)
+            np.add(result_channel, coefficient_2[channel_idx], out=result_channel)
+            np.multiply(result_channel, image_channel, out=result_channel)
+            np.add(result_channel, coefficient_1[channel_idx], out=result_channel)
+            np.multiply(result_channel, image_channel, out=result_channel)
+    else:
+        np.multiply(img, coefficient_3, out=result)
+        np.add(result, coefficient_2, out=result)
+        np.multiply(result, img, out=result)
+        np.add(result, coefficient_1, out=result)
+        np.multiply(result, img, out=result)
     np.clip(result, np.float32(0), np.float32(1), out=result)
     # Float32 coefficient rounding can undershoot the cubic curve's exact t=1 endpoint.
     result[img == np.float32(1)] = np.float32(1)

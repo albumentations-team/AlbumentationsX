@@ -33,6 +33,28 @@ def _cubic_tone_curve(
     return np.clip(result, np.float32(0), np.float32(1))
 
 
+def _broadcast_horner_tone_curve(
+    image: np.ndarray,
+    low_y: np.ndarray,
+    high_y: np.ndarray,
+) -> np.ndarray:
+    low_y_float32 = np.asarray(low_y, dtype=np.float32)
+    high_y_float32 = np.asarray(high_y, dtype=np.float32)
+    coefficient_1 = np.float32(3) * low_y_float32
+    coefficient_2 = np.float32(3) * high_y_float32 - np.float32(6) * low_y_float32
+    coefficient_3 = np.float32(3) * low_y_float32 - np.float32(3) * high_y_float32 + np.float32(1)
+
+    result = np.empty_like(image)
+    np.multiply(image, coefficient_3, out=result)
+    np.add(result, coefficient_2, out=result)
+    np.multiply(result, image, out=result)
+    np.add(result, coefficient_1, out=result)
+    np.multiply(result, image, out=result)
+    np.clip(result, np.float32(0), np.float32(1), out=result)
+    result[image == np.float32(1)] = np.float32(1)
+    return result
+
+
 @pytest.mark.parametrize(("rank_name", "shape_prefix"), FLOAT_SHAPE_PREFIXES.items())
 @pytest.mark.parametrize("num_channels", [1, 3, 5])
 @pytest.mark.parametrize("per_channel", [False, True])
@@ -63,6 +85,26 @@ def test_move_tone_curve_float32_matches_cubic_formula(
     assert result.dtype == np.float32
     assert result.shape == image.shape
     assert np.all((result >= 0) & (result <= 1)), rank_name
+
+
+@pytest.mark.parametrize(("rank_name", "shape_prefix"), FLOAT_SHAPE_PREFIXES.items())
+def test_move_tone_curve_float32_rgb_channel_loop_matches_broadcast(
+    rank_name: str,
+    shape_prefix: tuple[int, ...],
+) -> None:
+    expanded_shape = (*shape_prefix[:-1], shape_prefix[-1] * 2, 3)
+    image = _make_float_input(expanded_shape)[..., ::2, :]
+    original = image.copy()
+    low_y = np.array([0.08, 0.25, 0.42], dtype=np.float64)
+    high_y = np.array([0.53, 0.72, 0.91], dtype=np.float64)
+
+    assert not image.flags.c_contiguous, rank_name
+    result = fpixel.move_tone_curve(image, low_y, high_y, 3)
+    expected = _broadcast_horner_tone_curve(image, low_y, high_y)
+
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(image, original)
+    assert not np.shares_memory(result, image)
 
 
 def test_move_tone_curve_uint8_shared_golden_vector() -> None:

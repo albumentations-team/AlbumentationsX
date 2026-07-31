@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from collections import Counter
 from typing import Any
 
 import pytest
@@ -25,7 +26,7 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
-    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 13
+    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 14
     assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 8
 
 
@@ -160,6 +161,55 @@ def test_benchmark_coverage_details_map_expanded_pixel_matrix_to_public_transfor
 
     assert random_rain["smoke_only"] is False
     assert "family_matrix" in random_rain["layers"]
+
+
+def test_benchmark_coverage_details_map_both_random_tone_curve_modes() -> None:
+    random_tone_curve = _coverage_for("RandomToneCurve")
+    family_case_ids = {case["case_id"] for case in random_tone_curve["asv_cases"] if case["layer"] == "family_matrix"}
+    direct_case_ids = {case["case_id"] for case in random_tone_curve["asv_cases"] if case["layer"] == "direct_kernel"}
+    batch_cases = [case for case in random_tone_curve["asv_cases"] if case["layer"] == "batch_matrix"]
+    batch_case_ids = {case["case_id"] for case in batch_cases}
+
+    assert {case_id.split("|", maxsplit=1)[0] for case_id in family_case_ids} == {
+        "random_tone_curve",
+        "random_tone_curve_per_channel",
+    }
+    assert {case_id.split("|", maxsplit=1)[0] for case_id in direct_case_ids} == {
+        "move_tone_curve_shared",
+        "move_tone_curve_per_channel",
+    }
+    assert len(family_case_ids) == 36
+    assert len(direct_case_ids) == 36
+    assert {case_id.split("|", maxsplit=1)[0] for case_id in batch_case_ids} == {
+        "random_tone_curve",
+        "random_tone_curve_per_channel",
+    }
+    assert len(batch_cases) == len(batch_case_ids) == 192
+    assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
+        "direct_images": 48,
+        "direct_volumes": 48,
+        "images": 48,
+        "volumes_and_masks3d": 48,
+    }
+    assert {
+        "random_tone_curve|images|small|1|uint8|4",
+        "random_tone_curve|direct_images|medium|5|float32|8",
+        "random_tone_curve_per_channel|volumes_and_masks3d|small|3|uint8|2",
+        "random_tone_curve_per_channel|direct_volumes|medium|5|float32|4",
+    }.issubset(batch_case_ids)
+    assert random_tone_curve["performance_contract"]["batch"]["status"] == "covered"
+    assert {"compose_batch", "direct_batch"}.issubset(random_tone_curve["scenario_contract"]["scopes"])
+    assert {"images", "masks3d", "volumes"}.issubset(random_tone_curve["scenario_contract"]["targets"])
+    assert random_tone_curve["scenario_axis_contracts"]["batch_matrix"] == {
+        "covered": {
+            "channels": [1, 3, 5],
+            "dtypes": ["uint8", "float32"],
+            "sizes": ["small", "medium"],
+            "volume_sizes": ["small", "medium"],
+        },
+        "skip_reason": "batch matrix omits large image batches to keep CI evidence stable and affordable",
+        "skipped": {"sizes": ["large"]},
+    }
 
 
 def test_benchmark_coverage_details_require_family_matrix_for_image_transforms() -> None:

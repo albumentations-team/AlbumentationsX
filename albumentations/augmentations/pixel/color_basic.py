@@ -29,15 +29,15 @@ from ._color_shared import (
 
 
 class RandomToneCurve(ImageOnlyTransform):
-    """Randomly warp the tone curve to change contrast and tonal distribution. scale and
-    scale_upper control strength. Good for exposure variation.
+    """Randomly warp image tone curves to create natural nonlinear changes in contrast, brightness, and tonal
+    distribution for realistic exposure variation.
 
     This transform applies a random S-curve to the image's tone curve, adjusting the brightness and contrast
     in a non-linear manner. It can be applied to the entire image or to each channel separately.
 
     Args:
-        scale (float): Standard deviation of the normal distribution used to sample random distances
-            to move two control points that modify the image's curve. Values should be in range [0, 1].
+        scale (float): Standard deviation of the normal distributions used to sample the two inner control
+            ordinates that modify the image's curve. Values should be in range [0, 1].
             Higher values will result in more dramatic changes to the image. Default: 0.1
         per_channel (bool): If True, the tone curve will be applied to each channel of the input image separately,
             which can lead to color distortion. If False, the same curve is applied to all channels,
@@ -55,7 +55,8 @@ class RandomToneCurve(ImageOnlyTransform):
 
     Note:
         - This transform modifies the image's histogram by applying a smooth, S-shaped curve to it.
-        - The S-curve is defined by moving two control points of a quadratic Bézier curve.
+        - The S-curve is defined by sampling the two inner control ordinates of a cubic Bézier curve.
+        - Float32 images use continuous curve evaluation, while uint8 images use a 256-entry lookup table.
         - When per_channel is False, the same curve is applied to all channels, maintaining color balance.
         - When per_channel is True, different curves are applied to each channel, which can create color shifts.
         - This transform can be used to adjust image contrast and brightness in a more natural way than linear
@@ -63,11 +64,12 @@ class RandomToneCurve(ImageOnlyTransform):
         - The effect can range from subtle contrast adjustments to more dramatic "vintage" or "faded" looks.
 
     Mathematical Formulation:
-        1. Two control points are randomly moved from their default positions (0.25, 0.25) and (0.75, 0.75).
-        2. The new positions are sampled from a normal distribution: N(μ, σ²), where μ is the original position
-        and alpha is the scale parameter.
-        3. These points, along with fixed points at (0, 0) and (1, 1), define a quadratic Bézier curve.
-        4. The curve is applied as a lookup table to the image intensities:
+        1. The two inner control ordinates start at 0.25 and 0.75.
+        2. Their values are sampled independently from normal distributions centered at 0.25 and 0.75, with
+           standard deviation given by `scale`, then clipped to [0, 1].
+        3. Together with fixed endpoint ordinates 0 and 1, they define the scalar cubic Bézier function `y(t)`;
+           the normalized input intensity is used directly as `t`.
+        4. The function is evaluated continuously for float32 images and through a lookup table for uint8 images:
            new_intensity = curve(original_intensity)
 
     Examples:
@@ -86,7 +88,7 @@ class RandomToneCurve(ImageOnlyTransform):
     References:
         - "What Else Can Fool Deep Learning? Addressing Color Constancy Errors on Deep Neural Network Performance":
           https://arxiv.org/abs/1912.06960
-        - Bézier curve: https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B%C3%A9zier_curves
+        - Bézier curve: https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Cubic_B%C3%A9zier_curves
         - Tone mapping: https://en.wikipedia.org/wiki/Tone_mapping
 
     """

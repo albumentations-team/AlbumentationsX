@@ -423,7 +423,8 @@ def _move_tone_curve_float32(
 
     result = np.empty_like(img)
     if coefficient_1.shape == (3,) and img.shape[-1] == 3:
-        # Avoid slow last-axis coefficient broadcasting for the common per-channel RGB path.
+        # The loop wins at the measured 256/512/1024 single-image C=3 sizes but loses at
+        # the measured 1x1-32x32 sizes; the single-machine crossover does not establish a stable cutoff.
         for channel_idx in range(3):
             image_channel = img[..., channel_idx]
             result_channel = result[..., channel_idx]

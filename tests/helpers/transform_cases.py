@@ -1155,6 +1155,21 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     ("fixed-fill", A.XYMasking, {"fill": 7}),
+    (
+        "float-float-ranges",
+        A.XYMasking,
+        {"mask_x_length_range": (0.1, 0.2), "mask_y_length_range": (0.2, 0.3)},
+    ),
+    (
+        "float-int-ranges",
+        A.XYMasking,
+        {"mask_x_length_range": (0.1, 0.2), "mask_y_length_range": (10, 20)},
+    ),
+    (
+        "int-float-ranges",
+        A.XYMasking,
+        {"mask_x_length_range": (10, 20), "mask_y_length_range": (0.2, 0.3)},
+    ),
 ]
 
 

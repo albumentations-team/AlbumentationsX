@@ -11,6 +11,7 @@ from albucore import MAX_VALUES_BY_DTYPE, clip, to_float
 import albumentations as A
 import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel.functional as fpixel
+from albumentations.augmentations.pixel import _functional_noise as fnoise
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import (
     IMAGES,
@@ -1934,6 +1935,23 @@ def test_additive_noise_spatial_map_is_float32(noise_type, noise_params, spatial
     )
 
     assert apply_params["noise_map"].dtype == np.float32
+
+
+def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
+    image = np.full((4, 6, 3), 128, dtype=np.uint8)
+    noise = np.ones((4, 6, 1), dtype=np.float32)
+    captured_noise: list[np.ndarray] = []
+
+    def capture_add_array(image: np.ndarray, noise: np.ndarray) -> np.ndarray:
+        captured_noise.append(noise)
+        return image
+
+    monkeypatch.setattr(fnoise, "add_array", capture_add_array)
+    fnoise.add_noise(image, noise)
+
+    assert len(captured_noise) == 1
+    assert captured_noise[0].shape == image.shape
+    assert captured_noise[0].flags.c_contiguous
 
 
 @pytest.mark.parametrize(

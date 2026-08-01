@@ -47,9 +47,9 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
         except ValueError:
             n_tiles = np.prod(img.shape) // np.prod(noise.shape)
             noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
-    elif img.dtype == np.uint8:
-        # Shared spatial noise is a zero-stride broadcast view. NumKong's dense uint8 route
-        # requires contiguous input and is faster than letting it materialize that view internally.
+
+    if img.dtype == np.uint8 and not noise.flags.c_contiguous:
+        # NumKong's dense uint8 route is faster with a dense array than with a zero-stride broadcast view.
         noise = np.ascontiguousarray(noise)
 
     return add_array(img, noise)

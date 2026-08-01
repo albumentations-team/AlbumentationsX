@@ -1174,6 +1174,34 @@ def test_slic_handles_more_segments_than_pixels(channels):
     assert np.all(labels >= 0)
 
 
+@pytest.mark.parametrize("n_segments", [0, -1])
+def test_slic_rejects_nonpositive_segment_count(n_segments):
+    image = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="n_segments must be positive"):
+        fpixel.slic(image, n_segments=n_segments)
+
+
+@pytest.mark.parametrize("shape", [(1, 32, 1), (24, 4, 3), (4, 24, 5)])
+def test_slic_assigns_labels_for_narrow_images(shape):
+    image = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
+
+    labels = fpixel.slic(image, n_segments=1)
+    result = fpixel.superpixels(
+        image,
+        n_segments=1,
+        replace_samples=[True],
+        max_size=None,
+        interpolation=cv2.INTER_NEAREST,
+    )
+
+    assert labels.shape == image.shape[:2]
+    assert labels.dtype == np.int32
+    assert np.all(labels >= 0)
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+
+
 @pytest.mark.parametrize("channels", [1, 3, 5])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 def test_superpixels_segment_mean_replacement(monkeypatch, channels, dtype):

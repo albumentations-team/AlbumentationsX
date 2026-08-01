@@ -35,10 +35,24 @@ from ._functional_shared import (
 def _initialize_slic_centers(height: int, width: int, grid_step: int) -> np.ndarray:
     x_range = np.arange(grid_step // 2, width, grid_step, dtype=np.float32)
     y_range = np.arange(grid_step // 2, height, grid_step, dtype=np.float32)
+    if x_range.size == 0:
+        x_range = np.array([width // 2], dtype=np.float32)
+    if y_range.size == 0:
+        y_range = np.array([height // 2], dtype=np.float32)
+
     centers = np.empty((x_range.size * y_range.size, 2), dtype=np.float32)
     centers[:, 0] = np.tile(x_range, y_range.size)
     centers[:, 1] = np.repeat(y_range, x_range.size)
     return centers
+
+
+def _validate_slic_params(n_segments: int, max_iterations: int) -> None:
+    if n_segments <= 0:
+        msg = "n_segments must be positive"
+        raise ValueError(msg)
+    if max_iterations <= 0:
+        msg = "max_iterations must be positive"
+        raise ValueError(msg)
 
 
 def _update_slic_centers(
@@ -427,7 +441,12 @@ def slic(
     Returns:
         np.ndarray: Segmentation mask where each superpixel has a unique label.
 
+    Raises:
+        ValueError: If n_segments or max_iterations is not positive.
+
     """
+    _validate_slic_params(n_segments, max_iterations)
+
     height, width = image.shape[:2]
     grid_step = max(1, int((height * width / n_segments) ** 0.5))
 
@@ -442,8 +461,6 @@ def slic(
 
     # Initialize labels and distances
     labels = np.full((height, width), -1, dtype=np.int32)
-    if len(centers) == 0 or max_iterations <= 0:
-        return labels
 
     x_coordinates_flat = np.tile(np.arange(width, dtype=np.float32), height)
     y_coordinates_flat = np.repeat(np.arange(height, dtype=np.float32), width)

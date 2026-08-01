@@ -548,11 +548,11 @@ def remap_keypoints_via_mask(
 
     # Remap the mask
     transformed_kp_mask = remap(
-        kp_mask,
+        kp_mask[..., np.newaxis],
         map_x.astype(np.float32),
         map_y.astype(np.float32),
         interpolation=cv2.INTER_NEAREST,
-    )
+    )[..., 0]
 
     # Extract transformed keypoints
     new_points = []

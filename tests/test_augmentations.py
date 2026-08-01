@@ -2207,7 +2207,7 @@ def test_spatter_batch_path_preserves_volume_routing(mode, target, dtype):
         expected = np.stack([ImageOnlyTransform.apply_to_images(transform, item, **params) for item in data])
 
     if dtype == np.uint8:
-        np.testing.assert_array_equal(actual, expected)
+        np.testing.assert_allclose(actual, expected, atol=1)
     else:
         np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 

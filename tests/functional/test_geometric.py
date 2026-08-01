@@ -100,7 +100,7 @@ def test_from_distance_maps(
 )
 def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
     keypoints_with_extra = [(x, y, 0, 1) for x, y in keypoints]
-    distance_maps = to_distance_maps(keypoints, image_shape, inverted)
+    distance_maps = to_distance_maps(keypoints_with_extra, image_shape, inverted)
 
     assert distance_maps.shape == (*image_shape, len(keypoints))
     assert distance_maps.dtype == np.float32
@@ -110,6 +110,104 @@ def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
             assert np.isclose(distance_maps[int(y), int(x), i], 1.0)
         else:
             assert np.isclose(distance_maps[int(y), int(x), i], 0.0)
+
+
+@pytest.mark.parametrize("inverted", [False, True])
+def test_to_distance_maps_many_keypoints_matches_float32_reference(inverted: bool) -> None:
+    height, width = 24, 32
+    keypoints = (
+        np.random.default_rng(137)
+        .uniform(
+            [0, 0, 0, 0],
+            [width - 1, height - 1, 2 * np.pi, 1],
+            size=(33, 4),
+        )
+        .astype(np.float32)
+    )
+
+    distance_maps = to_distance_maps(keypoints, (height, width), inverted)
+
+    y_coordinates, x_coordinates = np.mgrid[:height, :width]
+    expected = np.sqrt(
+        (x_coordinates[..., np.newaxis] - keypoints[:, 0]) ** 2
+        + (y_coordinates[..., np.newaxis] - keypoints[:, 1]) ** 2,
+    ).astype(np.float32)
+    if inverted:
+        expected = (1 / (expected + 1)).astype(np.float32)
+
+    assert distance_maps.shape == (height, width, len(keypoints))
+    assert distance_maps.dtype == np.float32
+    np.testing.assert_allclose(distance_maps, expected, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize(("image_shape", "k"), [((24, 32), -0.2), ((33, 25), 0.3)])
+def test_fisheye_distortion_maps_match_radial_model(image_shape: tuple[int, int], k: float) -> None:
+    height, width = image_shape
+    center_x, center_y = width / 2, height / 2
+    y_coordinates, x_coordinates = np.mgrid[:height, :width].astype(np.float32)
+    x_coordinates -= center_x
+    y_coordinates -= center_y
+    radius = np.sqrt(x_coordinates * x_coordinates + y_coordinates * y_coordinates)
+    max_radius = np.hypot(
+        max(center_x, width - center_x),
+        max(center_y, height - center_y),
+    )
+    distorted_radius = radius * (1 + k * (radius / max_radius) ** 2)
+    angle = np.arctan2(y_coordinates, x_coordinates)
+    expected_x = distorted_radius * np.cos(angle) + center_x
+    expected_y = distorted_radius * np.sin(angle) + center_y
+
+    map_x, map_y = fgeometric.get_fisheye_distortion_maps(image_shape, k)
+
+    assert map_x.dtype == np.float32
+    assert map_y.dtype == np.float32
+    np.testing.assert_allclose(map_x, expected_x, rtol=1e-6, atol=1e-5)
+    np.testing.assert_allclose(map_y, expected_y, rtol=1e-6, atol=1e-5)
+
+
+@pytest.mark.parametrize("num_control_points", [2, 3, 4, 5])
+def test_tps_interpolates_control_points(num_control_points: int) -> None:
+    src_points = fgeometric.generate_control_points(num_control_points)
+    dst_points = src_points + np.random.default_rng(137).uniform(
+        -0.08,
+        0.08,
+        size=src_points.shape,
+    ).astype(np.float32)
+
+    nonlinear_weights, affine_weights = fgeometric.compute_tps_weights(src_points, dst_points)
+    transformed_points = fgeometric.tps_transform(
+        src_points,
+        src_points,
+        nonlinear_weights,
+        affine_weights,
+    )
+
+    assert transformed_points.dtype == np.float32
+    np.testing.assert_allclose(transformed_points, dst_points, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_tps_transform_dense_map_emits_no_runtime_warnings() -> None:
+    src_points = fgeometric.generate_control_points(4)
+    dst_points = src_points + np.random.default_rng(137).uniform(
+        -0.08,
+        0.08,
+        size=src_points.shape,
+    ).astype(np.float32)
+    nonlinear_weights, affine_weights = fgeometric.compute_tps_weights(src_points, dst_points)
+    axis = np.linspace(0, 1, 64, dtype=np.float32)
+    target_points = np.stack(np.meshgrid(axis, axis), axis=-1).reshape(-1, 2)
+
+    transformed_points = fgeometric.tps_transform(
+        target_points,
+        src_points,
+        nonlinear_weights,
+        affine_weights,
+    )
+
+    assert transformed_points.shape == target_points.shape
+    assert transformed_points.dtype == np.float32
+    assert np.isfinite(transformed_points).all()
 
 
 @pytest.mark.parametrize(

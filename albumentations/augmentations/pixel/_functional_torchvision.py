@@ -32,37 +32,65 @@ from ._functional_shared import (
 )
 
 
+def _initialize_slic_centers(height: int, width: int, grid_step: int) -> np.ndarray:
+    x_range = np.arange(grid_step // 2, width, grid_step, dtype=np.float32)
+    y_range = np.arange(grid_step // 2, height, grid_step, dtype=np.float32)
+    centers = np.empty((x_range.size * y_range.size, 2), dtype=np.float32)
+    centers[:, 0] = np.tile(x_range, y_range.size)
+    centers[:, 1] = np.repeat(y_range, x_range.size)
+    return centers
+
+
+def _update_slic_centers(
+    labels: np.ndarray,
+    centers: np.ndarray,
+    x_coordinates: np.ndarray,
+    y_coordinates: np.ndarray,
+) -> None:
+    labels_flat = labels.reshape(-1)
+    counts = np.bincount(labels_flat, minlength=len(centers))
+    nonempty = counts > 0
+    x_sums = np.bincount(labels_flat, weights=x_coordinates, minlength=len(centers))
+    y_sums = np.bincount(labels_flat, weights=y_coordinates, minlength=len(centers))
+    np.divide(x_sums, counts, out=centers[:, 0], where=nonempty)
+    np.divide(y_sums, counts, out=centers[:, 1], where=nonempty)
+
+
 def _replace_segments_with_mean(
     image: np.ndarray,
     segments: np.ndarray,
     replace_samples: Sequence[bool],
 ) -> np.ndarray:
-    unique_labels, inverse_labels = np.unique(segments, return_inverse=True)
-    inverse_labels = inverse_labels.reshape(-1)
+    unique_labels = np.unique(segments)
     replace_start = 1 if unique_labels[0] == 0 else 0
     num_replaceable = len(unique_labels) - replace_start
     if num_replaceable == 0:
         return image.copy()
 
-    replace_by_label = np.zeros(len(unique_labels), dtype=bool)
-    replace_by_label[replace_start:] = np.resize(
+    num_labels = int(unique_labels[-1]) + 1
+    replace_by_label = np.zeros(num_labels, dtype=bool)
+    replace_by_label[unique_labels[replace_start:]] = np.resize(
         np.asarray(replace_samples, dtype=bool),
         num_replaceable,
     )
-    replace_mask = replace_by_label[inverse_labels]
+    labels_flat = segments.reshape(-1)
+    replace_mask = replace_by_label[labels_flat]
+    replace_labels = labels_flat[replace_mask]
 
     result = image.copy()
     result_flat = result.reshape(-1, result.shape[-1])
-    counts = np.bincount(inverse_labels, minlength=len(unique_labels))
+    counts = np.bincount(labels_flat, minlength=num_labels)
+    nonempty = counts > 0
+    segment_means = np.empty(num_labels, dtype=np.uint8)
 
     for channel_index in range(result.shape[-1]):
         sums = np.bincount(
-            inverse_labels,
+            labels_flat,
             weights=result_flat[:, channel_index],
-            minlength=len(unique_labels),
+            minlength=num_labels,
         )
-        segment_means = np.rint(sums / counts).astype(np.uint8)
-        result_flat[replace_mask, channel_index] = segment_means[inverse_labels[replace_mask]]
+        segment_means[nonempty] = np.rint(sums[nonempty] / counts[nonempty]).astype(np.uint8)
+        result_flat[replace_mask, channel_index] = segment_means[replace_labels]
 
     return result
 
@@ -401,77 +429,88 @@ def slic(
 
     """
     height, width = image.shape[:2]
-    num_pixels = height * width
+    grid_step = max(1, int((height * width / n_segments) ** 0.5))
 
     # Normalize image to [0, 1] range
-    max_val = np.float32(image.max())
-    image_normalized = image.astype(np.float32) / (max_val + np.float32(1e-6))
+    max_value = np.float32(image.max())
+    image_normalized = image.astype(np.float32)
+    np.divide(image_normalized, max_value + np.float32(1e-6), out=image_normalized)
     single_channel = image_normalized.shape[-1] == 1
 
-    # Initialize cluster centers via meshgrid
-    grid_step = int((num_pixels / n_segments) ** 0.5)
-    x_range = np.arange(grid_step // 2, width, grid_step)
-    y_range = np.arange(grid_step // 2, height, grid_step)
-    xx_grid, yy_grid = np.meshgrid(x_range, y_range)
-    centers = np.column_stack([xx_grid.ravel(), yy_grid.ravel()]).astype(np.float32)
-    y_coordinates, x_coordinates = np.indices((height, width), dtype=np.float64)
-    x_coordinates_flat = x_coordinates.reshape(-1)
-    y_coordinates_flat = y_coordinates.reshape(-1)
+    # Initialize cluster centers on a regular grid.
+    centers = _initialize_slic_centers(height, width, grid_step)
 
     # Initialize labels and distances
     labels = np.full((height, width), -1, dtype=np.int32)
-    if len(centers) == 0:
+    if len(centers) == 0 or max_iterations <= 0:
         return labels
 
-    distances = np.full((height, width), np.inf, dtype=np.float32)
+    x_coordinates_flat = np.tile(np.arange(width, dtype=np.float32), height)
+    y_coordinates_flat = np.repeat(np.arange(height, dtype=np.float32), width)
+    distances = np.empty((height, width), dtype=np.float32)
 
-    inv_grid_step_sq = np.float32(1.0 / (grid_step * grid_step))
+    max_window_height = min(height, 2 * grid_step + 1)
+    max_window_width = min(width, 2 * grid_step + 1)
+    color_diff_buffer = (
+        np.empty(0, dtype=np.float32)
+        if single_channel
+        else np.empty((max_window_height, max_window_width, image.shape[-1]), dtype=np.float32)
+    )
+    distance_buffer = np.empty((max_window_height, max_window_width), dtype=np.float32)
+    update_mask_buffer = np.empty((max_window_height, max_window_width), dtype=bool)
 
-    for _ in range(max_iterations):
-        for i, center in enumerate(centers):
-            y, x = int(center[1]), int(center[0])
+    offsets_squared = np.arange(-grid_step, grid_step + 1, dtype=np.float32)
+    np.square(offsets_squared, out=offsets_squared)
+    spatial_distances = np.add.outer(offsets_squared, offsets_squared)
+    spatial_distances *= np.float32(compactness / (grid_step * grid_step))
 
-            y_low, y_high = max(0, y - grid_step), min(height, y + grid_step + 1)
-            x_low, x_high = max(0, x - grid_step), min(width, x + grid_step + 1)
+    for iteration in range(max_iterations):
+        # Compare pixels only with the cluster centers from the current k-means iteration.
+        distances.fill(np.inf)
+        for center_index, center in enumerate(centers):
+            center_y, center_x = int(center[1]), int(center[0])
+
+            y_low, y_high = max(0, center_y - grid_step), min(height, center_y + grid_step + 1)
+            x_low, x_high = max(0, center_x - grid_step), min(width, center_x + grid_step + 1)
+            window_height = y_high - y_low
+            window_width = x_high - x_low
 
             crop = image_normalized[y_low:y_high, x_low:x_high]
-            color_diff = crop - image_normalized[y, x]
+            distance = distance_buffer[:window_height, :window_width]
             if single_channel:
-                color_distance = color_diff[..., 0] ** 2
+                np.subtract(crop[..., 0], image_normalized[center_y, center_x, 0], out=distance)
+                np.square(distance, out=distance)
             else:
-                color_distance = np.einsum(
+                color_diff = color_diff_buffer[:window_height, :window_width]
+                np.subtract(crop, image_normalized[center_y, center_x], out=color_diff)
+                np.einsum(
                     "...c,...c->...",
                     color_diff,
                     color_diff,
                     dtype=np.float32,
                     optimize=False,
+                    out=distance,
                 )
 
-            yy, xx = np.ogrid[y_low:y_high, x_low:x_high]
-            spatial_distance = ((yy - y) ** 2 + (xx - x) ** 2) * inv_grid_step_sq
+            offset_y_low = y_low - center_y + grid_step
+            offset_x_low = x_low - center_x + grid_step
+            spatial_distance = spatial_distances[
+                offset_y_low : offset_y_low + window_height,
+                offset_x_low : offset_x_low + window_width,
+            ]
+            np.add(distance, spatial_distance, out=distance)
 
-            distance = color_distance + compactness * spatial_distance
+            distance_slice = distances[y_low:y_high, x_low:x_high]
+            update_mask = update_mask_buffer[:window_height, :window_width]
+            np.less(distance, distance_slice, out=update_mask)
+            np.minimum(distance, distance_slice, out=distance_slice)
+            label_slice = labels[y_low:y_high, x_low:x_high]
+            label_slice[update_mask] = center_index
 
-            dist_slice = distances[y_low:y_high, x_low:x_high]
-            mask = distance < dist_slice
-            dist_slice[mask] = distance[mask]
-            labels[y_low:y_high, x_low:x_high][mask] = i
+        if iteration == max_iterations - 1:
+            break
 
-        labels_flat = labels.reshape(-1)
-        counts = np.bincount(labels_flat, minlength=len(centers))
-        nonempty = counts > 0
-        x_sums = np.bincount(
-            labels_flat,
-            weights=x_coordinates_flat,
-            minlength=len(centers),
-        )
-        y_sums = np.bincount(
-            labels_flat,
-            weights=y_coordinates_flat,
-            minlength=len(centers),
-        )
-        centers[nonempty, 0] = x_sums[nonempty] / counts[nonempty]
-        centers[nonempty, 1] = y_sums[nonempty] / counts[nonempty]
+        _update_slic_centers(labels, centers, x_coordinates_flat, y_coordinates_flat)
 
     return labels
 

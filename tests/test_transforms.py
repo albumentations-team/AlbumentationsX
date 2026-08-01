@@ -1910,6 +1910,33 @@ def test_gauss_noise(mean, image):
 
 
 @pytest.mark.parametrize(
+    ("noise_type", "noise_params"),
+    [
+        ("uniform", {"ranges": [(-0.2, 0.2)]}),
+        ("gaussian", {"mean_range": (0.0, 0.0), "std_range": (0.1, 0.1)}),
+        ("laplace", {"mean_range": (0.0, 0.0), "scale_range": (0.1, 0.1)}),
+        ("beta", {"alpha_range": (0.5, 1.5), "beta_range": (0.5, 1.5), "scale_range": (0.1, 0.3)}),
+    ],
+)
+@pytest.mark.parametrize("spatial_mode", ["per_pixel", "shared"])
+def test_additive_noise_spatial_map_is_float32(noise_type, noise_params, spatial_mode):
+    image = np.full((32, 48, 3), 128, dtype=np.uint8)
+    aug = A.AdditiveNoise(
+        noise_type=noise_type,
+        spatial_mode=spatial_mode,
+        noise_params=noise_params,
+        p=1,
+    )
+
+    apply_params = aug.get_params_dependent_on_data(
+        params={"shape": image.shape},
+        data={"image": image},
+    )
+
+    assert apply_params["noise_map"].dtype == np.float32
+
+
+@pytest.mark.parametrize(
     "params",
     [
         ({"flare_roi": (1.2, 0.2, 0.8, 0.9)}),  # Invalid flare_roi -> x_min out of bounds

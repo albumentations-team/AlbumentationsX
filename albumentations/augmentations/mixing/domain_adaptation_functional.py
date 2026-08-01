@@ -120,8 +120,8 @@ class MinMaxScaler(BaseScaler):
             When data_min equals data_max for a feature, the range is set to 1 to avoid division by zero.
 
         """
-        self.data_min = np.min(x, axis=0)
-        self.data_max = np.max(x, axis=0)
+        self.data_min = np.asarray(np.min(x, axis=0), dtype=np.float32)
+        self.data_max = np.asarray(np.max(x, axis=0), dtype=np.float32)
         self.data_range = self.data_max - self.data_min
         # Handle case where data_min equals data_max
         self.data_range[self.data_range == 0] = 1
@@ -146,10 +146,10 @@ class MinMaxScaler(BaseScaler):
                 "Call 'fit' with appropriate arguments before using this estimator.",
             )
 
-        x_std = np.subtract(x, self.data_min).astype(float)
+        x_std = np.subtract(x, self.data_min, dtype=np.float32)
         np.divide(x_std, self.data_range, out=x_std)
-        np.multiply(x_std, (self.max - self.min), out=x_std)
-        np.add(x_std, self.min, out=x_std)
+        np.multiply(x_std, np.float32(self.max - self.min), out=x_std)
+        np.add(x_std, np.float32(self.min), out=x_std)
 
         return x_std
 
@@ -172,8 +172,11 @@ class MinMaxScaler(BaseScaler):
                 "This MinMaxScaler instance is not fitted yet. "
                 "Call 'fit' with appropriate arguments before using this estimator.",
             )
-        x_std = ((x - self.min) / (self.max - self.min)).astype(float)
-        return x_std * self.data_range + self.data_min
+        x_std = np.subtract(x, np.float32(self.min), dtype=np.float32)
+        np.divide(x_std, np.float32(self.max - self.min), out=x_std)
+        np.multiply(x_std, self.data_range, out=x_std)
+        np.add(x_std, self.data_min, out=x_std)
+        return x_std
 
 
 class StandardScaler(BaseScaler):
@@ -192,8 +195,8 @@ class StandardScaler(BaseScaler):
 
         """
         mean, scale = mean_std(x, axis=0, eps=0)
-        self.mean = np.asarray(mean)
-        self.scale = np.asarray(scale)
+        self.mean = np.asarray(mean, dtype=np.float32)
+        self.scale = np.asarray(scale, dtype=np.float32)
         # Handle case where std is zero
         self.scale[self.scale == 0] = 1
 
@@ -216,7 +219,9 @@ class StandardScaler(BaseScaler):
                 "This StandardScaler instance is not fitted yet. "
                 "Call 'fit' with appropriate arguments before using this estimator.",
             )
-        return (x - self.mean) / self.scale
+        result = np.subtract(x, self.mean, dtype=np.float32)
+        np.divide(result, self.scale, out=result)
+        return result
 
     def inverse_transform(self, x: np.ndarray) -> np.ndarray:
         """Reverse standardization: x = z * std + mean using fitted mean and scale. Raises
@@ -237,7 +242,9 @@ class StandardScaler(BaseScaler):
                 "This StandardScaler instance is not fitted yet. "
                 "Call 'fit' with appropriate arguments before using this estimator.",
             )
-        return (x * self.scale) + self.mean
+        result = np.multiply(x, self.scale, dtype=np.float32)
+        np.add(result, self.mean, out=result)
+        return result
 
 
 class TransformerInterface(Protocol):
@@ -351,13 +358,11 @@ class DomainAdapter:
             width (int): The width of the output image.
 
         Returns:
-            np.ndarray: The reconstructed image with shape (height, width) for grayscale
-                or (height, width, n_channels) for color images.
+            np.ndarray: The reconstructed image with shape (height, width, n_channels), including
+                an explicit singleton channel dimension for grayscale images.
 
         """
         pixels = clip(pixels, np.dtype(np.uint8), inplace=True)
-        if self.num_channels == 1:
-            return self.from_colorspace(pixels.reshape(height, width))
         return self.from_colorspace(pixels.reshape(height, width, self.num_channels))
 
     @staticmethod
@@ -418,10 +423,6 @@ def adapt_pixel_distribution(
     if img_num_channels != ref_num_channels:
         raise ValueError("Input image and reference image must have the same number of channels.")
 
-    if img_num_channels == 1:
-        img = cast("ImageType", np.squeeze(img))
-        ref = cast("ImageType", np.squeeze(ref))
-
     if img.shape != ref.shape:
         ref = fgeometric.resize(ref, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_AREA)
 
@@ -429,13 +430,13 @@ def adapt_pixel_distribution(
 
     if original_dtype == np.float32:
         img = from_float(cast("np.ndarray", img), np.dtype(np.uint8))
-        ref = from_float(cast("np.ndarray", ref), np.dtype(np.uint8))
+        ref = from_float(ref, np.dtype(np.uint8))
 
     transformer = {"pca": PCA, "standard": StandardScaler, "minmax": MinMaxScaler}[transform_type]()
     adapter = DomainAdapter(transformer=transformer, ref_img=ref)
     transformed = adapter(img).astype(np.float32)
 
-    result = img.astype(np.float32) * (1 - weight) + transformed * weight
+    result = add_weighted(img.astype(np.float32), 1 - weight, transformed, weight)
 
     return result if original_dtype == np.uint8 else to_float(result)
 

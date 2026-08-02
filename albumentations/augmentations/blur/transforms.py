@@ -152,7 +152,11 @@ class Blur(ImageOnlyTransform):
     def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return fblur.box_blur(img, kernel)
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         kernel = fblur.sample_odd_from_range(
             self.py_random,
             self.blur_range[0],
@@ -405,7 +409,11 @@ class MotionBlur(Blur):
             return fblur.box_blur(img, kernel)
         return fpixel.convolve(img, kernel=kernel)
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         ksize = fblur.sample_odd_from_range(
             self.py_random,
             self.blur_range[0],
@@ -645,7 +653,11 @@ class ModeFilter(ImageOnlyTransform):
     def apply(self, img: ImageType, kernel_size: int, **params: Any) -> ImageType:
         return fblur.mode_filter(img, kernel_size)
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         kernel_size = fblur.sample_odd_from_range(
             self.py_random,
             self.kernel_range[0],
@@ -1290,7 +1302,11 @@ class AdvancedBlur(ImageOnlyTransform):
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel=kernel)
 
-    def get_params(self) -> dict[str, np.ndarray]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         ksize = fblur.sample_odd_from_range(
             self.py_random,
             self.blur_range[0],
@@ -1484,7 +1500,11 @@ class Defocus(ImageOnlyTransform):
         kernel = fblur.create_defocus_kernel(params["radius"], params["alias_blur"])
         return self._apply_to_batch(images, lambda img: fpixel.convolve(img, kernel))
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         radius = self.py_random.randint(*self.radius_range)
         alias_blur = self.py_random.uniform(*self.alias_blur_range)
         self.applied_config = {"radius_range": radius, "alias_blur_range": alias_blur}
@@ -1611,7 +1631,11 @@ class ZoomBlur(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         step_factor = self.py_random.uniform(*self.step_factor_range)
         max_factor = max(1 + step_factor, self.py_random.uniform(*self.max_factor_range))
         self.applied_config = {"step_factor_range": step_factor, "max_factor_range": max_factor}

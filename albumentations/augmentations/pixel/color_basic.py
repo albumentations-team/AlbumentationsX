@@ -264,7 +264,11 @@ class HueSaturationValue(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.shift_hsv_images(images, hue_shift, sat_shift, val_shift)
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         hue_shift = self.py_random.uniform(*self.hue_shift_range)
         sat_shift = self.py_random.uniform(*self.sat_shift_range)
         val_shift = self.py_random.uniform(*self.val_shift_range)
@@ -374,7 +378,11 @@ class Solarize(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         threshold = self.py_random.uniform(*self.threshold_range)
 
         self.applied_config = {"threshold_range": threshold}
@@ -487,7 +495,11 @@ class Posterize(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         if isinstance(self.num_bits, list):
             num_bits_list = [self.py_random.randint(*i) for i in self.num_bits]
             self.applied_config = {"num_bits": num_bits_list}
@@ -948,17 +960,13 @@ class ExposureMatching(ImageOnlyTransform):
     def apply_to_volume(self, volume: VolumeType, volume_gains: list[float], **params: Any) -> VolumeType:
         return fpixel.exposure_match_batch(volume, np.asarray(volume_gains, dtype=np.float32))
 
-    def get_params(self) -> dict[str, float]:
-        target_mean = self.py_random.uniform(*self.target_mean_range)
-        self.applied_config = {"target_mean_range": target_mean}
-        return {"target_mean": target_mean}
-
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, float | list[float]]:
-        target_mean = params["target_mean"]
+        target_mean = self.py_random.uniform(*self.target_mean_range)
+        self.applied_config = {"target_mean_range": target_mean}
         gains: dict[str, float | list[float]] = {}
 
         if "image" in data:
@@ -978,7 +986,7 @@ class ExposureMatching(ImageOnlyTransform):
         if not gains:
             raise RuntimeError("Expected image, images, or volume data for exposure matching")
 
-        return gains
+        return {"target_mean": target_mean, **gains}
 
 
 class CLAHE(ImageOnlyTransform):
@@ -1058,7 +1066,11 @@ class CLAHE(ImageOnlyTransform):
 
         return fpixel.clahe(img, clip_limit, self.tile_grid_size)
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         clip_limit = self.py_random.uniform(*self.clip_range)
 
         self.applied_config = {"clip_range": clip_limit}

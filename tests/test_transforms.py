@@ -941,8 +941,7 @@ def test_affine_scale_ratio(params):
     image = SQUARE_UINT8_IMAGE
 
     data = {"image": image}
-    call_params = aug.get_params()
-    call_params = aug.update_transform_params(call_params, data)
+    call_params = aug.update_transform_params({}, data)
 
     apply_params = aug.get_params_dependent_on_data(params=call_params, data=data)
 
@@ -978,8 +977,7 @@ def test_affine_default_keep_ratio_behavior():
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
-    params = transform.get_params()
-    params = transform.update_transform_params(params, data)
+    params = transform.update_transform_params({}, data)
     apply_params = transform.get_params_dependent_on_data(params=params, data=data)
 
     assert apply_params["scale"]["x"] == apply_params["scale"]["y"], (
@@ -996,8 +994,7 @@ def test_affine_explicit_keep_ratio_false():
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
-    params = transform.get_params()
-    params = transform.update_transform_params(params, data)
+    params = transform.update_transform_params({}, data)
     apply_params = transform.get_params_dependent_on_data(params=params, data=data)
 
     # With keep_ratio=False, x and y can be different (not always will be, but can be)
@@ -1005,8 +1002,7 @@ def test_affine_explicit_keep_ratio_false():
     found_different = False
     for seed in range(10):
         transform.set_random_seed(seed)
-        params = transform.get_params()
-        params = transform.update_transform_params(params, data)
+        params = transform.update_transform_params({}, data)
         apply_params = transform.get_params_dependent_on_data(params=params, data=data)
         if apply_params["scale"]["x"] != apply_params["scale"]["y"]:
             found_different = True
@@ -1025,8 +1021,7 @@ def test_affine_with_dict_scale_keep_ratio_true():
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
-    params = transform.get_params()
-    params = transform.update_transform_params(params, data)
+    params = transform.update_transform_params({}, data)
     apply_params = transform.get_params_dependent_on_data(params=params, data=data)
 
     assert apply_params["scale"]["x"] == apply_params["scale"]["y"], (
@@ -1047,8 +1042,7 @@ def test_affine_keep_ratio_with_single_scale_value():
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
-    params = transform.get_params()
-    params = transform.update_transform_params(params, data)
+    params = transform.update_transform_params({}, data)
     apply_params = transform.get_params_dependent_on_data(params=params, data=data)
 
     # With a single scale value, both x and y should be that value
@@ -1308,7 +1302,7 @@ def test_motion_blur_allow_shifted():
         direction_range=(0, 0),  # Symmetric direction
         blur_range=(7, 7),  # Fixed kernel size
     )
-    kernel = transform.get_params()["kernel"]
+    kernel = transform.get_params_dependent_on_data(params={}, data={})["kernel"]
 
     center = kernel.shape[0] / 2 - 0.5
 
@@ -1344,7 +1338,7 @@ def test_motion_blur_allow_shifted_true():
     # Generate multiple kernels with same transform instance
     kernels = []
     for _ in range(10):
-        kernel = transform.get_params()["kernel"]
+        kernel = transform.get_params_dependent_on_data(params={}, data={})["kernel"]
         kernels.append(kernel)
 
     # Check that not all kernels are identical (shifting should cause variation)

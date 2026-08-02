@@ -542,7 +542,11 @@ class D4(DualTransform):
             return mask3d
         return self.apply_to_images(mask3d, group_element)
 
-    def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
         if self.group_element is not None:
             group_element = self.group_element
         else:

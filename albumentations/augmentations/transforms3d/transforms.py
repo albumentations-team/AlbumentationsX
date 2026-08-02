@@ -1425,7 +1425,11 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         self.axis_pair = axis_pair
         self.group_element = group_element
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         axis_pair = self.axis_pair if self.axis_pair is not None else self.py_random.choice(self.axis_pairs)
         if self.group_element is not None:
             group_element = self.group_element
@@ -1435,14 +1439,11 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         rotation_count = cast("RotationCount3D", fgeometric.C4_GROUP_ELEMENT_TO_K[group_element])
 
         self.applied_config = {"axis_pair": axis_pair, "group_element": group_element}
-        return {"axis_pair": axis_pair, "rotation_count": rotation_count}
-
-    def get_params_dependent_on_data(
-        self,
-        params: dict[str, Any],
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
-        return {"volume_shape": _get_volume_spatial_shape(data)}
+        return {
+            "axis_pair": axis_pair,
+            "rotation_count": rotation_count,
+            "volume_shape": _get_volume_spatial_shape(data),
+        }
 
     def apply_to_volume(
         self,

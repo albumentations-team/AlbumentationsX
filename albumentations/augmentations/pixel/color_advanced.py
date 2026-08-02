@@ -135,7 +135,11 @@ class ColorJitter(ImageOnlyTransform):
         self.saturation_range = saturation_range
         self.hue_range = hue_range
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         brightness = self.py_random.uniform(*self.brightness_range)
         contrast = self.py_random.uniform(*self.contrast_range)
         saturation = self.py_random.uniform(*self.saturation_range)
@@ -315,7 +319,11 @@ class ChromaticAberration(ImageOnlyTransform):
             self.interpolation,
         )
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         primary_distortion_red = self.py_random.uniform(*self.primary_distortion_range)
         secondary_distortion_red = self.py_random.uniform(
             *self.secondary_distortion_range,
@@ -545,7 +553,11 @@ class PlanckianJitter(ImageOnlyTransform):
         non_rgb_error(images)
         return self.apply(images, temperature, **params)
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         sampling_prob_boundary = PLANKIAN_JITTER_CONST["SAMPLING_TEMP_PROB"]
         sampling_temp_boundary = PLANKIAN_JITTER_CONST["WHITE_TEMP"]
 

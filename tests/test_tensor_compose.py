@@ -38,7 +38,11 @@ class _NumpyOnlyProbe(_TensorProbe):
 
     _supports_cpu_tensor = False
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         pytest.fail("Compose must reject an unsupported Tensor transform before parameter sampling")
 
 

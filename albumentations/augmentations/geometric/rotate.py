@@ -190,7 +190,11 @@ class RandomRotate90(DualTransform):
     ) -> ImageType:
         return fgeometric.rot90(img, group_element)
 
-    def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270"]]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Literal["e", "r90", "r180", "r270"]]:
         if self.group_element is not None:
             group_element = self.group_element
         elif self.group_elements is not None:

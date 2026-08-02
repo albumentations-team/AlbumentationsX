@@ -2899,6 +2899,15 @@ class _MaskRowDroppingDualTransform(A.DualTransform):
         return keypoints
 
 
+class _PackedMaskChannelDroppingDualTransform(_MaskRowDroppingDualTransform):
+    """Deliberately drop one packed mask channel without dropping its bbox row."""
+
+    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+        if mask.ndim < 3 or mask.shape[-1] <= 1:
+            return mask
+        return mask[..., :-1]
+
+
 class TestStructuralInvariantContract:
     """Phase 6b: a transform whose `apply_to_masks` violates the row-alignment contract
     must surface as a `RuntimeError` from `_resync_instance_ids` in strict mode (the
@@ -2923,6 +2932,18 @@ class TestStructuralInvariantContract:
             seed=0,
         )
         with pytest.raises(RuntimeError, match="Instance-binding invariant violated"):
+            aug(image=image, instances=instances)
+
+    def test_strict_mode_raises_runtime_error_on_packed_mask_channel_drop(self) -> None:
+        image, instances = self._instances()
+        aug = A.Compose(
+            [_PackedMaskChannelDroppingDualTransform(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["mask", "bboxes"],
+            seed=0,
+        )
+
+        with pytest.raises(RuntimeError, match=r"packed mask instance count=1 != len\(bboxes\)=2"):
             aug(image=image, instances=instances)
 
     def test_legacy_mode_warns_instead_of_raising(self) -> None:

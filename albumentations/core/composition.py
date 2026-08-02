@@ -1847,8 +1847,9 @@ class Compose(BaseCompose, HubMixin):
         `check_data_post_transform` mirrors any bbox-processor drop onto masks (positional)
         and keypoints (by surviving id). All this method has to do is:
 
-        1. Assert `len(masks) == len(bboxes)` (raises `RuntimeError` in strict mode,
-           `UserWarning` in legacy mode for one minor version's worth of grace).
+        1. Assert that the bound `masks` row count or packed `mask` instance-axis count
+           equals `len(bboxes)` (raises `RuntimeError` in strict mode, `UserWarning` in
+           legacy mode for one minor version's worth of grace).
         2. Translate `_kp_instance_id` from old bbox ids to the new positional ids.
         3. Stamp `_bbox_instance_id = arange(N)` so the next transform sees a dense namespace.
 
@@ -1867,10 +1868,7 @@ class Compose(BaseCompose, HubMixin):
         n = bboxes_arr.shape[0]
         old_ids = bboxes_arr[:, -1].astype(np.int64, copy=True)
 
-        if "masks" in binding:
-            masks = data.get("masks")
-            if masks is not None and (isinstance(masks, np.ndarray) or _is_torch_tensor(masks)) and len(masks) != n:
-                self._raise_or_warn_invariant_violation(len(masks), n)
+        self._validate_bound_mask_alignment(data, binding, n)
 
         if "keypoints" in binding:
             kp_arr = data.get("keypoints")
@@ -1898,14 +1896,53 @@ class Compose(BaseCompose, HubMixin):
 
         bboxes_arr[:, -1] = np.arange(n, dtype=bboxes_arr.dtype)
 
-    def _raise_or_warn_invariant_violation(self, masks_len: int, bboxes_len: int) -> None:
-        msg = (
-            f"Instance-binding invariant violated: len(masks)={masks_len} != "
-            f"len(bboxes)={bboxes_len}. The last transform's `apply_to_masks` must keep "
-            "masks positionally aligned with bboxes (one mask row per bbox row, in order). "
-            "If this is custom transform code, share the per-row keep-mask across "
-            "`apply_to_{bboxes,masks,keypoints}` instead of filtering each independently."
-        )
+    def _validate_bound_mask_alignment(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        bboxes_len: int,
+    ) -> None:
+        """Validate that stacked mask rows or packed mask channels remain aligned with bbox rows after each transform
+        and before instance IDs are rebased.
+        """
+        if "masks" in binding:
+            masks = data.get("masks")
+            if (
+                masks is not None
+                and (isinstance(masks, np.ndarray) or _is_torch_tensor(masks))
+                and len(masks) != bboxes_len
+            ):
+                self._raise_or_warn_invariant_violation(len(masks), bboxes_len)
+        elif "mask" in binding:
+            mask = data.get("mask")
+            instance_axis = self._mask_instance_axis(data, mask)
+            mask_count = None if mask is None or instance_axis is None else int(mask.shape[instance_axis])
+            if mask_count != bboxes_len:
+                self._raise_or_warn_invariant_violation(mask_count, bboxes_len, target_name="mask")
+
+    def _raise_or_warn_invariant_violation(
+        self,
+        mask_count: int | None,
+        bboxes_len: int,
+        *,
+        target_name: str = "masks",
+    ) -> None:
+        if target_name == "masks":
+            mismatch = f"len(masks)={mask_count} != len(bboxes)={bboxes_len}"
+            guidance = (
+                "The last transform's `apply_to_masks` must keep masks positionally aligned with bboxes "
+                "(one mask row per bbox row, in order). If this is custom transform code, share the per-row "
+                "keep-mask across `apply_to_{bboxes,masks,keypoints}` instead of filtering each independently."
+            )
+        else:
+            actual = "unresolved" if mask_count is None else str(mask_count)
+            mismatch = f"packed mask instance count={actual} != len(bboxes)={bboxes_len}"
+            guidance = (
+                "The last transform's `apply_to_mask` must keep one packed mask channel per bbox row, in order. "
+                "If this is custom transform code, share the instance keep-mask between `apply_to_bboxes` and "
+                "`apply_to_mask` instead of filtering them independently."
+            )
+        msg = f"Instance-binding invariant violated: {mismatch}. {guidance}"
         if getattr(self, "_strict_instance_invariant", True):
             raise RuntimeError(msg)
         warnings.warn(

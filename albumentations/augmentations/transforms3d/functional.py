@@ -162,7 +162,7 @@ def rotate90_3d(
     """Rotate a 3D or channel-last 4D volume by 90-degree increments along a selected spatial axis pair, preserving
     dtype and channel order.
     """
-    if rot90_count % 4 == 0:
+    if rot90_count == 0:
         return volume
 
     return cast("VolumeType", np.rot90(volume, k=rot90_count, axes=axis_pair))

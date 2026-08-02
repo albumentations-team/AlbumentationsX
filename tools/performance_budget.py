@@ -56,7 +56,7 @@ BENCHMARK_POLICIES = (
         "batch_matrix",
         "stable",
         True,
-        "batch target routes are user-facing performance paths for images, masks, volumes, and masks3d",
+        "batch target routes are user-facing performance paths for images and masks",
     ),
     BenchmarkPolicy(
         "TimeParameterSensitivity",

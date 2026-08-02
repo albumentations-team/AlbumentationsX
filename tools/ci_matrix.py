@@ -71,7 +71,7 @@ LOWER_BOUND_REQUIREMENTS = (
     "numpy==2.2.6",
     "scipy==1.15.3",
     "pydantic==2.12.4",
-    "albucore==0.2.5",
+    "albucore==0.2.9",
     "opencv-python-headless==5.0.0.93",
 )
 CI_DEPENDENCY_GROUPS = {

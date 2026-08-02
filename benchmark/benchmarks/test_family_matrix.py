@@ -154,6 +154,9 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "random_snow": PixelSpec(lambda: albumentations.RandomSnow(p=1.0), channels=(3,)),
     "random_sun_flare": PixelSpec(lambda: albumentations.RandomSunFlare(p=1.0), channels=(3,)),
     "random_tone_curve": PixelSpec(lambda: albumentations.RandomToneCurve(p=1.0)),
+    "random_tone_curve_per_channel": PixelSpec(
+        lambda: albumentations.RandomToneCurve(per_channel=True, p=1.0),
+    ),
     "ringing_overshoot": PixelSpec(lambda: albumentations.RingingOvershoot(p=1.0)),
     "salt_and_pepper": PixelSpec(lambda: albumentations.SaltAndPepper(p=1.0)),
     "sharpen": PixelSpec(lambda: albumentations.Sharpen(p=1.0)),

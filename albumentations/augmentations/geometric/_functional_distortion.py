@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
+from albucore import pairwise_distances_squared
+
 from ._functional_shared import (
     cv2,
-    math,
     np,
-    reduce_sum,
 )
 
 
@@ -369,33 +369,9 @@ def create_piecewise_affine_maps(
     return map_x, map_y
 
 
-def compute_pairwise_distances(
-    points1: np.ndarray,
-    points2: np.ndarray,
-) -> np.ndarray:
-    """Compute pairwise Euclidean squared distances between points1 (N, 2) and points2 (M, 2).
-    Returns (N, M) matrix. For TPS and nearest-neighbor. Uses cv2.gemm.
-
-    Args:
-        points1 (np.ndarray): First set of points with shape (N, 2)
-        points2 (np.ndarray): Second set of points with shape (M, 2)
-
-    Returns:
-        np.ndarray: Matrix of pairwise distances with shape (N, M)
-
-    """
-    points1 = np.ascontiguousarray(points1, dtype=np.float32)
-    points2 = np.ascontiguousarray(points2, dtype=np.float32)
-
-    # Compute squared terms
-    p1_squared = reduce_sum(cv2.multiply(points1, points1), axis=1, keepdims=True)
-    p2_squared = np.asarray(reduce_sum(cv2.multiply(points2, points2), axis=1))[None, :]
-
-    # Compute dot product
-    empty_matrix = np.empty((0,), dtype=np.float32)
-    dot_product = cast("np.ndarray", cv2.gemm(points1, points2.T, 1.0, empty_matrix, 0.0))
-
-    return p1_squared + p2_squared - 2 * dot_product
+def _compute_tps_kernel(distances: np.ndarray) -> np.ndarray:
+    log_distances = cv2.log(distances + np.float32(1e-6))
+    return np.multiply(distances, log_distances, out=log_distances)
 
 
 def compute_tps_weights(
@@ -424,13 +400,8 @@ def compute_tps_weights(
     num_points = src_points.shape[0]
 
     # Compute pairwise distances
-    distances = compute_pairwise_distances(src_points, src_points)
-
-    kernel_matrix = np.where(
-        distances > 0,
-        distances * distances * cv2.log(distances + 1e-6),
-        0,
-    ).astype(np.float32)
+    distances = pairwise_distances_squared(src_points, src_points)
+    kernel_matrix = _compute_tps_kernel(distances)
 
     # Build system matrix efficiently
     affine_terms = np.empty((num_points, 3), dtype=np.float32)
@@ -467,14 +438,8 @@ def tps_transform(
     nonlinear_weights = np.ascontiguousarray(nonlinear_weights, dtype=np.float32)
     affine_weights = np.ascontiguousarray(affine_weights, dtype=np.float32)
 
-    distances = compute_pairwise_distances(target_points, control_points)
-
-    # Ensure kernel matrix is float32
-    kernel_matrix = np.where(
-        distances > 0,
-        distances * cv2.log(distances + 1e-6),
-        0,
-    ).astype(np.float32)
+    distances = pairwise_distances_squared(target_points, control_points)
+    kernel_matrix = _compute_tps_kernel(distances)
 
     # Prepare affine terms
     num_points = len(target_points)
@@ -544,26 +509,16 @@ def get_fisheye_distortion_maps(
     height, width = image_shape[:2]
 
     center_x, center_y = width / 2, height / 2
-    # Create coordinate grid
-    y, x = np.mgrid[:height, :width].astype(np.float32)
+    x = np.arange(width, dtype=np.float32)[np.newaxis, :] - center_x
+    y = np.arange(height, dtype=np.float32)[:, np.newaxis] - center_y
 
-    x = x - center_x
-    y = y - center_y
+    max_radius_squared = max(center_x, width - center_x) ** 2 + max(center_y, height - center_y) ** 2
+    distortion_scale = x * x + y * y
+    distortion_scale *= np.float32(k / max_radius_squared)
+    distortion_scale += 1
 
-    # Calculate polar coordinates
-    r = np.sqrt(x * x + y * y)
-    theta = np.arctan2(y, x)
-
-    # Normalize radius by the maximum possible radius to keep distortion in check
-    max_radius = math.sqrt(max(center_x, width - center_x) ** 2 + max(center_y, height - center_y) ** 2)
-    r_norm = r / max_radius
-
-    # Apply fisheye distortion to normalized radius
-    r_dist = r * (1 + k * r_norm * r_norm)
-
-    # Convert back to cartesian coordinates
-    map_x = r_dist * np.cos(theta) + center_x
-    map_y = r_dist * np.sin(theta) + center_y
+    map_x = x * distortion_scale + center_x
+    map_y = y * distortion_scale + center_y
 
     return map_x, map_y
 
@@ -599,7 +554,6 @@ def generate_control_points(num_control_points: int) -> np.ndarray:
 
 
 __all__ = [
-    "compute_pairwise_distances",
     "compute_tps_weights",
     "create_piecewise_affine_maps",
     "generate_control_points",

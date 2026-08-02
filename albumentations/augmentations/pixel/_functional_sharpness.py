@@ -338,16 +338,20 @@ def planckian_jitter(
     img = img.copy()
     red_multiplier, blue_multiplier = _get_planckian_coeffs(mode, temperature)
 
-    img[..., 0] = multiply_by_constant(
-        img[..., 0],
-        red_multiplier,
-        inplace=True,
-    )
-    img[..., 2] = multiply_by_constant(
-        img[..., 2],
-        blue_multiplier,
-        inplace=True,
-    )
+    if img.dtype == np.float32:
+        np.multiply(img[..., 0], red_multiplier, out=img[..., 0])
+        np.multiply(img[..., 2], blue_multiplier, out=img[..., 2])
+    else:
+        img[..., 0] = multiply_by_constant(
+            img[..., 0],
+            red_multiplier,
+            inplace=True,
+        )
+        img[..., 2] = multiply_by_constant(
+            img[..., 2],
+            blue_multiplier,
+            inplace=True,
+        )
 
     return img
 

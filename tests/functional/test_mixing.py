@@ -521,10 +521,10 @@ def test_process_cell_geometry_pad(small_item_geom) -> None:
     assert not np.all(processed["mask"][y_slice_img, x_slice_img] == mask_fill_value)
 
     # Check padding values in corners (or other known padded areas)
-    assert np.all(processed["image"][:pad_top, :pad_left] == fill_value)
-    assert np.all(processed["image"][pad_top + resized_h :, pad_left + resized_w :] == fill_value)
-    assert np.all(processed["mask"][:pad_top, :pad_left] == mask_fill_value)
-    assert np.all(processed["mask"][pad_top + resized_h :, pad_left + resized_w :] == mask_fill_value)
+    np.testing.assert_array_equal(processed["image"][:pad_top, :pad_left], fill_value)
+    np.testing.assert_array_equal(processed["image"][pad_top + resized_h :, pad_left + resized_w :], fill_value)
+    np.testing.assert_array_equal(processed["mask"][:pad_top, :pad_left], mask_fill_value)
+    np.testing.assert_array_equal(processed["mask"][pad_top + resized_h :, pad_left + resized_w :], mask_fill_value)
 
 
 # Note: Annotations (bboxes, keypoints) are not directly tested here
@@ -644,10 +644,13 @@ def test_process_all_geometry_pad(small_item_geom) -> None:
     assert not np.all(processed_item["mask"][y_slice_img, x_slice_img] == mask_fill_value)
 
     # Check padding values in corners
-    assert np.all(processed_item["image"][:pad_top, :pad_left] == fill_value)
-    assert np.all(processed_item["image"][pad_top + resized_h :, pad_left + resized_w :] == fill_value)
-    assert np.all(processed_item["mask"][:pad_top, :pad_left] == mask_fill_value)
-    assert np.all(processed_item["mask"][pad_top + resized_h :, pad_left + resized_w :] == mask_fill_value)
+    np.testing.assert_array_equal(processed_item["image"][:pad_top, :pad_left], fill_value)
+    np.testing.assert_array_equal(processed_item["image"][pad_top + resized_h :, pad_left + resized_w :], fill_value)
+    np.testing.assert_array_equal(processed_item["mask"][:pad_top, :pad_left], mask_fill_value)
+    np.testing.assert_array_equal(
+        processed_item["mask"][pad_top + resized_h :, pad_left + resized_w :],
+        mask_fill_value,
+    )
 
 
 def test_process_all_geometry_multiple_cells(items_list_geom) -> None:
@@ -793,9 +796,9 @@ def test_assemble_multiple_non_overlapping(processed_cell_data_1, processed_cell
     # Check content of cell 2
     np.testing.assert_array_equal(canvas_img[60:120, 50:110], processed_cell_data_2["image"])
     # Check empty areas are zero (or fill_value if non-zero)
-    assert np.all(canvas_img[50:60, :] == fill_value)
-    assert np.all(canvas_img[0:60, 110:] == fill_value)
-    assert np.all(canvas_img[110:, 0:50] == fill_value)
+    np.testing.assert_array_equal(canvas_img[50:60, :], fill_value)
+    np.testing.assert_array_equal(canvas_img[0:60, 110:], fill_value)
+    np.testing.assert_array_equal(canvas_img[110:, 0:50], fill_value)
     # Ensure total non-zero area matches sum of cell areas (only if fill_value is 0)
     if fill_value == 0:
         expected_img_pixels = np.count_nonzero(processed_cell_data_1["image"]) + np.count_nonzero(
@@ -814,9 +817,9 @@ def test_assemble_multiple_non_overlapping(processed_cell_data_1, processed_cell
     assert canvas_mask.shape == target_shape_mask
     np.testing.assert_array_equal(canvas_mask[0:50, 0:50], processed_cell_data_1["mask"])
     np.testing.assert_array_equal(canvas_mask[60:120, 50:110], processed_cell_data_2["mask"])
-    assert np.all(canvas_mask[50:60, :] == fill_value)
-    assert np.all(canvas_mask[0:60, 110:] == fill_value)
-    assert np.all(canvas_mask[110:, 0:50] == fill_value)
+    np.testing.assert_array_equal(canvas_mask[50:60, :], fill_value)
+    np.testing.assert_array_equal(canvas_mask[0:60, 110:], fill_value)
+    np.testing.assert_array_equal(canvas_mask[110:, 0:50], fill_value)
     # Ensure total non-zero area matches sum of cell areas (only if fill_value is 0)
     if fill_value == 0:
         expected_mask_pixels = np.count_nonzero(processed_cell_data_1["mask"]) + np.count_nonzero(

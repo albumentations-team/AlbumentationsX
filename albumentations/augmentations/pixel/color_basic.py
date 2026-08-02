@@ -29,15 +29,15 @@ from ._color_shared import (
 
 
 class RandomToneCurve(ImageOnlyTransform):
-    """Randomly warp the tone curve to change contrast and tonal distribution. scale and
-    scale_upper control strength. Good for exposure variation.
+    """Randomly warp image tone curves to create natural nonlinear changes in contrast, brightness, and tonal
+    distribution for realistic exposure variation.
 
     This transform applies a random S-curve to the image's tone curve, adjusting the brightness and contrast
     in a non-linear manner. It can be applied to the entire image or to each channel separately.
 
     Args:
-        scale (float): Standard deviation of the normal distribution used to sample random distances
-            to move two control points that modify the image's curve. Values should be in range [0, 1].
+        scale (float): Standard deviation of the normal distributions used to sample the two inner control
+            ordinates that modify the image's curve. Values should be in range [0, 1].
             Higher values will result in more dramatic changes to the image. Default: 0.1
         per_channel (bool): If True, the tone curve will be applied to each channel of the input image separately,
             which can lead to color distortion. If False, the same curve is applied to all channels,
@@ -55,7 +55,8 @@ class RandomToneCurve(ImageOnlyTransform):
 
     Note:
         - This transform modifies the image's histogram by applying a smooth, S-shaped curve to it.
-        - The S-curve is defined by moving two control points of a quadratic Bézier curve.
+        - The S-curve is defined by sampling the two inner control ordinates of a cubic Bézier curve.
+        - Float32 images use continuous curve evaluation, while uint8 images use a 256-entry lookup table.
         - When per_channel is False, the same curve is applied to all channels, maintaining color balance.
         - When per_channel is True, different curves are applied to each channel, which can create color shifts.
         - This transform can be used to adjust image contrast and brightness in a more natural way than linear
@@ -63,11 +64,12 @@ class RandomToneCurve(ImageOnlyTransform):
         - The effect can range from subtle contrast adjustments to more dramatic "vintage" or "faded" looks.
 
     Mathematical Formulation:
-        1. Two control points are randomly moved from their default positions (0.25, 0.25) and (0.75, 0.75).
-        2. The new positions are sampled from a normal distribution: N(μ, σ²), where μ is the original position
-        and alpha is the scale parameter.
-        3. These points, along with fixed points at (0, 0) and (1, 1), define a quadratic Bézier curve.
-        4. The curve is applied as a lookup table to the image intensities:
+        1. The two inner control ordinates start at 0.25 and 0.75.
+        2. Their values are sampled independently from normal distributions centered at 0.25 and 0.75, with
+           standard deviation given by `scale`, then clipped to [0, 1].
+        3. Together with fixed endpoint ordinates 0 and 1, they define the scalar cubic Bézier function `y(t)`;
+           the normalized input intensity is used directly as `t`.
+        4. The function is evaluated continuously for float32 images and through a lookup table for uint8 images:
            new_intensity = curve(original_intensity)
 
     Examples:
@@ -86,7 +88,7 @@ class RandomToneCurve(ImageOnlyTransform):
     References:
         - "What Else Can Fool Deep Learning? Addressing Color Constancy Errors on Deep Neural Network Performance":
           https://arxiv.org/abs/1912.06960
-        - Bézier curve: https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B%C3%A9zier_curves
+        - Bézier curve: https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Cubic_B%C3%A9zier_curves
         - Tone mapping: https://en.wikipedia.org/wiki/Tone_mapping
 
     """
@@ -127,16 +129,6 @@ class RandomToneCurve(ImageOnlyTransform):
         **params: Any,
     ) -> ImageType:
         return fpixel.move_tone_curve(images, low_y, high_y, num_channels)
-
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        low_y: float | np.ndarray,
-        high_y: float | np.ndarray,
-        num_channels: int,
-        **params: Any,
-    ) -> VolumeType:
-        return fpixel.move_tone_curve(volumes, low_y, high_y, num_channels)
 
     def get_params_dependent_on_data(
         self,
@@ -382,9 +374,6 @@ class Solarize(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
     def get_params(self) -> dict[str, float]:
         threshold = self.py_random.uniform(*self.threshold_range)
 
@@ -497,9 +486,6 @@ class Posterize(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
     def get_params(self) -> dict[str, Any]:
         if isinstance(self.num_bits, list):
@@ -700,7 +686,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         - RGB contrast uses the mean BT.601 grayscale luminance. Other multichannel inputs use the
           mean of their per-pixel channel averages.
         - A batch uses one sampled pair of factors but computes the contrast mean independently for
-          each image. Volumes compute it independently for each slice.
+          each image. The `volume` target computes it independently for each slice.
         - Outputs are clipped to [0, 255] for uint8 and [0, 1] for float32 unless
           `ensure_safe_output=True` first reduces the affine coefficients to avoid clipping.
 
@@ -828,14 +814,6 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, *args, **params))
         return self.apply(images, *args, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        if not self.brightness_by_max:
-            return self._apply_to_batch_same_shape(
-                volumes,
-                lambda volume: self.apply_to_volume(volume, *args, **params),
-            )
-        return self.apply(volumes, *args, **params)
-
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
@@ -861,7 +839,7 @@ class ExposureMatching(ImageOnlyTransform):
     model exposure changes whose strength depends on the input brightness.
 
     The transform samples one normalized target mean per call and computes the multiplicative gain
-    from each image's global mean. Image batches and volumes share the sampled target while deriving
+    from each image's global mean. Image batches and the `volume` target share the sampled target while deriving
     one gain per image or depth slice. Values that exceed the dtype range are clipped, so saturation
     can keep the resulting mean below the sampled target. A zero image remains zero.
 
@@ -883,7 +861,7 @@ class ExposureMatching(ImageOnlyTransform):
 
     Note:
         - The global mean includes every pixel and channel.
-        - For `images`, `volume`, and `volumes`, each image or slice gets its own gain.
+        - For `images` and `volume`, each image or slice gets its own gain.
         - Clipping saturated pixels is a one-pass operation; the transform does not compensate for
           the resulting difference between the requested and achieved means.
 
@@ -961,21 +939,14 @@ class ExposureMatching(ImageOnlyTransform):
         self.gain_range = gain_range
 
     def apply(self, img: ImageType, gain: float, **params: Any) -> ImageType:
-        return albucore.multiply(img, gain, inplace=False)
+        result = albucore.multiply(img, gain, inplace=False)
+        return fpixel.clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
     def apply_to_images(self, images: ImageType, image_gains: list[float], **params: Any) -> ImageType:
         return fpixel.exposure_match_batch(images, np.asarray(image_gains, dtype=np.float32))
 
     def apply_to_volume(self, volume: VolumeType, volume_gains: list[float], **params: Any) -> VolumeType:
         return fpixel.exposure_match_batch(volume, np.asarray(volume_gains, dtype=np.float32))
-
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        volumes_gains: list[list[float]],
-        **params: Any,
-    ) -> VolumeType:
-        return fpixel.exposure_match_batch(volumes, np.asarray(volumes_gains, dtype=np.float32))
 
     def get_params(self) -> dict[str, float]:
         target_mean = self.py_random.uniform(*self.target_mean_range)
@@ -986,9 +957,9 @@ class ExposureMatching(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, float | list[float] | list[list[float]]]:
+    ) -> dict[str, float | list[float]]:
         target_mean = params["target_mean"]
-        gains: dict[str, float | list[float] | list[list[float]]] = {}
+        gains: dict[str, float | list[float]] = {}
 
         if "image" in data:
             gains["gain"] = float(
@@ -1004,11 +975,8 @@ class ExposureMatching(ImageOnlyTransform):
         if "volume" in data:
             volume_gains = fpixel.get_exposure_gains(data["volume"], target_mean, self.gain_range)
             gains["volume_gains"] = np.asarray(volume_gains).tolist()
-        if "volumes" in data:
-            volumes_gains = fpixel.get_exposure_gains(data["volumes"], target_mean, self.gain_range)
-            gains["volumes_gains"] = np.asarray(volumes_gains).tolist()
         if not gains:
-            raise RuntimeError("Expected image, images, volume, or volumes data for exposure matching")
+            raise RuntimeError("Expected image, images, or volume data for exposure matching")
 
         return gains
 
@@ -1186,9 +1154,6 @@ class RandomGamma(ImageOnlyTransform):
     def apply(self, img: ImageType, gamma: float, **params: Any) -> ImageType:
         return fpixel.gamma_transform(img, gamma=gamma)
 
-    def apply_to_volumes(self, volumes: VolumeType, gamma: float, **params: Any) -> VolumeType:
-        return self.apply(volumes, gamma=gamma)
-
     def apply_to_images(self, images: ImageType, gamma: float, **params: Any) -> ImageType:
         return self.apply(images, gamma=gamma)
 
@@ -1279,10 +1244,6 @@ class AutoContrast(ImageOnlyTransform):
     @batch_transform("channel")
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    @batch_transform("channel")
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 __all__ = [

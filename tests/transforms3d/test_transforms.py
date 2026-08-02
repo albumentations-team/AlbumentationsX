@@ -41,17 +41,6 @@ def test_pad_if_needed_3d_shapes(volume_shape, min_zyx, pad_divisor_zyx, expecte
     assert transformed["volume"].shape == expected_shape
 
 
-@pytest.mark.parametrize("target", ["volumes", "masks3d"])
-def test_pad_if_needed_3d_preserves_empty_batch(target: str) -> None:
-    value = np.empty((0, 2, 8, 9, 1), dtype=np.uint8)
-    transform = A.PadIfNeeded3D(min_zyx=(4, 10, 12), position="center", p=1.0)
-
-    result = transform(**{target: value})
-
-    assert result[target].shape == (0, 4, 10, 12, 1)
-    assert result[target].dtype == value.dtype
-
-
 @pytest.mark.parametrize("position", ["center", "random"])
 def test_pad_if_needed_3d_positions(position):
     volume = np.ones((5, 50, 50), dtype=np.uint8)
@@ -114,8 +103,8 @@ def test_pad_if_needed_3d_fill_values():
     transformed = transform(volume=volume, mask3d=mask3d)
 
     # Check fill values in padded regions
-    assert np.all(transformed["volume"][:, :25, :] == 255)  # top padding
-    assert np.all(transformed["mask3d"][:, :25, :] == 128)  # top padding in mask
+    np.testing.assert_array_equal(transformed["volume"][:, :25, :], 255)  # top padding
+    np.testing.assert_array_equal(transformed["mask3d"][:, :25, :], 128)  # top padding in mask
 
 
 @pytest.mark.parametrize(
@@ -185,8 +174,8 @@ def test_pad3d_fill_values(fill, fill_mask):
     padded_mask = transformed["mask3d"]
 
     # Check fill values in padded regions
-    assert np.all(padded_volume[0, :, :] == fill)  # front slice
-    assert np.all(padded_mask[0, :, :] == fill_mask)  # front slice of mask
+    np.testing.assert_array_equal(padded_volume[0, :, :], fill)  # front slice
+    np.testing.assert_array_equal(padded_mask[0, :, :], fill_mask)  # front slice of mask
 
 
 @pytest.mark.parametrize(
@@ -438,8 +427,8 @@ def test_crop_3d_fill_values(transform_cls, size, fill, fill_mask):
         assert np.any(is_padding_mask[0, 0, :])
 
     # Check that padding values are consistent
-    assert np.all(padded_volume[is_padding_volume] == fill)
-    assert np.all(padded_mask[is_padding_mask] == fill_mask)
+    np.testing.assert_array_equal(padded_volume[is_padding_volume], fill)
+    np.testing.assert_array_equal(padded_mask[is_padding_mask], fill_mask)
 
 
 def test_random_crop_3d_reproducibility():
@@ -542,11 +531,8 @@ def test_image_volume_matching(image, augmentation_cls, params):
     volume = np.stack([image.copy()] * 4, axis=0)
     images = np.stack([image.copy()] * 5, axis=0)
 
-    volumes = np.stack([volume.copy()] * 2, axis=0)
-
     call_kw: dict[str, Any] = {
         "image": image,
-        "volumes": volumes,
         "volume": volume,
         "images": images,
     }
@@ -561,10 +547,6 @@ def test_image_volume_matching(image, augmentation_cls, params):
     (
         np.testing.assert_allclose(transformed["image"], transformed["volume"][0], atol=4, rtol=1e-1),
         f"Image shape = {transformed['image'].shape}, Volume shape = {transformed['volume'].shape}",
-    )
-    (
-        np.testing.assert_allclose(transformed["volume"], transformed["volumes"][0], atol=1, rtol=1e-3),
-        f"Volume shape = {transformed['volume'].shape}, Volumes shape = {transformed['volumes'].shape}",
     )
 
 

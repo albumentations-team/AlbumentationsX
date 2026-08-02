@@ -1,4 +1,4 @@
-"""Batch-route benchmarks for image, mask, and volume targets."""
+"""Batch-route benchmarks for image and mask targets."""
 
 from __future__ import annotations
 
@@ -11,20 +11,18 @@ import albumentations
 from benchmarks.common import (
     CHANNELS,
     DTYPES,
-    VOLUME_SIZES,
     dtype_from_name,
     make_image,
-    make_mask3d,
     make_masks,
-    make_volume,
 )
 
 Factory = Callable[[], object]
 
 BATCH_SIZES = (4, 8)
-VOLUME_BATCH_SIZES = (2, 4)
 SPATTER_BATCH_SIZES = (2, 4, 8, 16)
 SPATTER_SIZES = ("small", "medium", "large")
+RANDOM_TONE_CURVE_NAMES = ("random_tone_curve", "random_tone_curve_per_channel")
+RANDOM_TONE_CURVE_CASE_PREFIXES = tuple(f"{name}|" for name in RANDOM_TONE_CURVE_NAMES)
 
 
 @dataclass(frozen=True)
@@ -49,6 +47,10 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     "horizontal_flip": BatchSpec(lambda: albumentations.HorizontalFlip(p=1.0)),
     "normalize": BatchSpec(lambda: albumentations.Normalize(p=1.0)),
     "random_brightness_contrast": BatchSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
+    "random_tone_curve": BatchSpec(lambda: albumentations.RandomToneCurve(p=1.0)),
+    "random_tone_curve_per_channel": BatchSpec(
+        lambda: albumentations.RandomToneCurve(per_channel=True, p=1.0),
+    ),
     "resize": BatchSpec(lambda: albumentations.Resize(height=128, width=128, p=1.0)),
     "spatter_mud": BatchSpec(
         lambda: albumentations.Spatter(mode="mud", p=1.0),
@@ -70,39 +72,6 @@ MASK_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     "resize": BatchSpec(lambda: albumentations.Resize(height=128, width=128, p=1.0)),
 }
 
-VOLUME_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
-    "d4": BatchSpec(
-        lambda: albumentations.D4(p=1.0),
-        channels=(1, 3),
-        sizes=tuple(VOLUME_SIZES),
-        batch_sizes=VOLUME_BATCH_SIZES,
-    ),
-    "horizontal_flip": BatchSpec(
-        lambda: albumentations.HorizontalFlip(p=1.0),
-        channels=(1, 3),
-        sizes=tuple(VOLUME_SIZES),
-        batch_sizes=VOLUME_BATCH_SIZES,
-    ),
-    "random_rotate90": BatchSpec(
-        lambda: albumentations.RandomRotate90(p=1.0),
-        channels=(1, 3),
-        sizes=tuple(VOLUME_SIZES),
-        batch_sizes=VOLUME_BATCH_SIZES,
-    ),
-    "transpose": BatchSpec(
-        lambda: albumentations.Transpose(p=1.0),
-        channels=(1, 3),
-        sizes=tuple(VOLUME_SIZES),
-        batch_sizes=VOLUME_BATCH_SIZES,
-    ),
-    "vertical_flip": BatchSpec(
-        lambda: albumentations.VerticalFlip(p=1.0),
-        channels=(1, 3),
-        sizes=tuple(VOLUME_SIZES),
-        batch_sizes=VOLUME_BATCH_SIZES,
-    ),
-}
-
 
 def _cases(transforms: Mapping[str, BatchSpec], target_route: str) -> tuple[str, ...]:
     return tuple(
@@ -116,13 +85,17 @@ def _cases(transforms: Mapping[str, BatchSpec], target_route: str) -> tuple[str,
 
 
 IMAGE_BATCH_CASES = _cases(IMAGE_BATCH_TRANSFORMS, "images")
+RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES = tuple(
+    case_id.replace("|images|", "|direct_images|", 1)
+    for case_id in IMAGE_BATCH_CASES
+    if case_id.startswith(RANDOM_TONE_CURVE_CASE_PREFIXES)
+)
 SPATTER_DIRECT_CASES = tuple(
     case_id.replace("|images|", "|direct_images|", 1)
     for case_id in IMAGE_BATCH_CASES
     if case_id.startswith(("spatter_mud|", "spatter_rain|"))
 )
 MASK_BATCH_CASES = _cases(MASK_BATCH_TRANSFORMS, "images_and_masks")
-VOLUME_BATCH_CASES = _cases(VOLUME_BATCH_TRANSFORMS, "volumes_and_masks3d")
 
 
 def _parse_batch_case(case_id: str) -> tuple[str, str, str, int, str, int]:
@@ -137,19 +110,6 @@ def _make_image_batch(
     batch_size: int,
 ) -> np.ndarray:
     return np.stack([make_image(size_name, channels, dtype) for _ in range(batch_size)], axis=0)
-
-
-def _make_volume_batch(
-    size_name: str,
-    channels: int,
-    dtype: type[np.generic],
-    batch_size: int,
-) -> np.ndarray:
-    return np.stack([make_volume(size_name, channels, dtype) for _ in range(batch_size)], axis=0)
-
-
-def _make_masks3d_batch(size_name: str, batch_size: int) -> np.ndarray:
-    return np.stack([make_mask3d(size_name) for _ in range(batch_size)], axis=0)
 
 
 class TimeImageBatchMatrix:
@@ -184,6 +144,27 @@ class TimeSpatterDirectBatchMatrix:
 
     def time_apply_to_images(self, case_id: str) -> None:
         self.transform.apply_to_images(self.images, **self.params)
+
+
+class TimeRandomToneCurveDirectImageBatchMatrix:
+    """Benchmark RandomToneCurve's direct `apply_to_images` route for shared and per-channel curves."""
+
+    params = (RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = albumentations.RandomToneCurve(
+            per_channel=name == "random_tone_curve_per_channel",
+            p=1.0,
+        )
+        self.transform.set_random_seed(137)
+        self.images = _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)
+        self.transform(image=self.images[0])
+        self.applied_params = self.transform.get_applied_params()
+
+    def time_apply_to_images(self, case_id: str) -> None:
+        self.transform.apply_to_images(self.images, **self.applied_params)
 
 
 class PeakMemorySpatterBatchMatrix:
@@ -230,24 +211,6 @@ class TimeMaskBatchMatrix:
         self.data = {
             "images": _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size),
             "masks": make_masks(size_name, count=batch_size),
-        }
-
-    def time_transform(self, case_id: str) -> None:
-        self.transform(**self.data)
-
-
-class TimeVolumeBatchMatrix:
-    """Benchmark public `volumes` plus `masks3d` batch routes."""
-
-    params = (VOLUME_BATCH_CASES,)
-    param_names = ("case_id",)
-
-    def setup(self, case_id: str) -> None:
-        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
-        self.transform = albumentations.Compose([VOLUME_BATCH_TRANSFORMS[name].factory()], seed=137, strict=True)
-        self.data = {
-            "masks3d": _make_masks3d_batch(size_name, batch_size),
-            "volumes": _make_volume_batch(size_name, channels, dtype_from_name(dtype_name), batch_size),
         }
 
     def time_transform(self, case_id: str) -> None:

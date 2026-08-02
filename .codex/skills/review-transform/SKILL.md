@@ -19,8 +19,8 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 - Off-by-one errors in coordinate handling
 - Incorrect dtype preservation (uint8 in → uint8 out, float32 in → float32 out)
 - BBox/keypoint coordinate correctness after spatial transforms
-- Do not request 2D grayscale compatibility for Compose paths: images and volumes are channel-last with explicit channels
-  (`(H,W,C)`, `(N,H,W,C)`, `(D,H,W,C)`, `(N,D,H,W,C)`), and grayscale is `(H,W,1)`.
+- Do not request 2D grayscale compatibility for Compose paths: images and volume data are channel-last with explicit
+  channels (`(H,W,C)`, `(N,H,W,C)`, `(D,H,W,C)`), and grayscale is `(H,W,1)`.
 - **Never auto-detect bbox type from column count** — type comes from `BboxParams.bbox_type`
 - For OBB: never use raw `cv2.minAreaRect` output; use `cv2.boxPoints` then `polygons_to_obb`
 

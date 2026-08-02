@@ -7,7 +7,7 @@ name = "albumentationsx"
 
 version = "2.3.8"
 
-description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volumes, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Licensed under AGPL-3.0-only; alternative commercial terms are also available."
+description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volume data, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Licensed under AGPL-3.0-only; alternative commercial terms are also available."
 readme = "README.md"
 keywords = [
   "2D augmentation",
@@ -68,7 +68,6 @@ keywords = [
   "satellite imagery",
   "semantic segmentation",
   "tensorflow",
-  "volumes",
   "volumetric data",
   "volumetric masks",
 
@@ -127,7 +126,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "albucore==0.2.5",
+  "albucore==0.2.9",
   "numkong!=7.7.1",
   "numpy>=2.2.6",
   "pydantic>=2.12.4",

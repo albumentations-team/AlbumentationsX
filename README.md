@@ -197,7 +197,7 @@ AlbumentationsX collects anonymous usage statistics to improve the library. This
 
 ### Pixel-level transforms
 
-Pixel-level transforms will change just an input image and will leave any additional targets such as masks, bounding boxes, and keypoints unchanged. For volumetric data (volumes and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The list of pixel-level transforms:
+Pixel-level transforms will change just an input image and will leave any additional targets such as masks, bounding boxes, and keypoints unchanged. For volumetric data (a volume and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The list of pixel-level transforms:
 
 - [AdditiveNoise](https://albumentations.ai/explore/transform/AdditiveNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [AdvancedBlur](https://albumentations.ai/explore/transform/AdvancedBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
@@ -274,7 +274,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 
 ### Spatial-level transforms
 
-Spatial-level transforms will simultaneously change both an input image as well as additional targets such as masks, bounding boxes, and keypoints. For volumetric data (volumes and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The following table shows which additional targets are supported by each transform:
+Spatial-level transforms will simultaneously change both an input image as well as additional targets such as masks, bounding boxes, and keypoints. For volumetric data (a volume and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The following table shows which additional targets are supported by each transform:
 
 - Volume: 3D array of shape (D, H, W) or (D, H, W, C) where D is depth, H is height, W is width, and C is number of channels (optional)
 - Mask3D: Binary or multi-class 3D mask of shape (D, H, W) where each slice represents segmentation for the corresponding volume slice

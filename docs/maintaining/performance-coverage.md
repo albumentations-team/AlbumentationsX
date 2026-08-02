@@ -188,9 +188,7 @@ This layer covers:
 - `images` routes for representative geometry, pixel, noise, dropout, and
   normalization transforms
 - `images` plus `masks` routes for transforms that exercise mask batch routing
-- `volumes` plus `masks3d` routes for batch-capable volume transforms
 - batch sizes `4` and `8` for image/mask routes
-- batch sizes `2` and `4` for volume routes
 
 The benchmark detail artifact also inventories transforms that declare custom
 batch methods but are not yet promoted to dedicated batch-matrix cases. Those

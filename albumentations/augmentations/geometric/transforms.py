@@ -1365,10 +1365,6 @@ class RandomGridShuffle(DualTransform):
         return self.apply(images, **params)
 
     @batch_transform("spatial")
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
-    @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return self.apply(mask3d, **params)
 

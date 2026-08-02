@@ -156,7 +156,7 @@ def cutout3d(volume: ImageType, holes: np.ndarray, fill: tuple[float, ...] | flo
 
 def rotate90_3d(
     volume: VolumeType,
-    rot90_count: int,
+    rot90_count: Literal[0, 1, 2, 3],
     axis_pair: tuple[int, int],
 ) -> VolumeType:
     """Rotate a 3D or channel-last 4D volume by 90-degree increments along a selected spatial axis pair, preserving
@@ -170,14 +170,13 @@ def rotate90_3d(
 
 def keypoints_rotate90_3d(
     keypoints: np.ndarray,
-    rot90_count: int,
+    rot90_count: Literal[0, 1, 2, 3],
     axis_pair: tuple[int, int],
     volume_shape: tuple[int, int, int],
 ) -> np.ndarray:
     """Rotate XYZ keypoints to match `rotate90_3d` on a volume, keeping their additional attributes and mapping the
     chosen axis pair exactly.
     """
-    rot90_count %= 4
     if rot90_count == 0 or len(keypoints) == 0:
         return keypoints
 

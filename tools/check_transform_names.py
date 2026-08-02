@@ -35,6 +35,8 @@ LEGACY_RANDOM_TRANSFORM_NAMES = frozenset(
         "RandomRain",
         "RandomResizedCrop",
         "RandomRotate90",
+        # Public API name required by https://github.com/albumentations-team/AlbumentationsX/issues/388.
+        "RandomRotate90_3D",
         "RandomScale",
         "RandomShadow",
         "RandomSizedBBoxSafeCrop",

@@ -24,6 +24,7 @@ class RandomNewTransform(ImageOnlyTransform):
     [
         ("RandomBrightnessContrast", "ImageOnlyTransform"),
         ("RandomOrder", "BaseCompose"),
+        ("RandomRotate90_3D", "Transform3D"),
     ],
 )
 def test_legacy_random_transform_name_remains_allowed(class_name: str, base_class_name: str) -> None:

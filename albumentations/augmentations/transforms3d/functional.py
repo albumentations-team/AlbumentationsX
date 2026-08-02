@@ -154,6 +154,55 @@ def cutout3d(volume: ImageType, holes: np.ndarray, fill: tuple[float, ...] | flo
     return volume
 
 
+def rotate90_3d(
+    volume: VolumeType,
+    rot90_count: int,
+    axis_pair: tuple[int, int],
+) -> VolumeType:
+    """Rotate a 3D or channel-last 4D volume by 90-degree increments along a selected spatial axis pair, preserving
+    dtype and channel order.
+    """
+    if rot90_count % 4 == 0:
+        return volume
+
+    return cast("VolumeType", np.rot90(volume, k=rot90_count, axes=axis_pair))
+
+
+def keypoints_rotate90_3d(
+    keypoints: np.ndarray,
+    rot90_count: int,
+    axis_pair: tuple[int, int],
+    volume_shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Rotate XYZ keypoints to match `rotate90_3d` on a volume, keeping their additional attributes and mapping the
+    chosen axis pair exactly.
+    """
+    rot90_count %= 4
+    if rot90_count == 0 or len(keypoints) == 0:
+        return keypoints
+
+    result = keypoints.copy()
+    first_axis, second_axis = axis_pair
+    first_coordinate = 2 - first_axis
+    second_coordinate = 2 - second_axis
+    first_coordinate_values = result[:, first_coordinate].copy()
+    second_coordinate_values = result[:, second_coordinate].copy()
+    first_axis_length = volume_shape[first_axis]
+    second_axis_length = volume_shape[second_axis]
+
+    if rot90_count == 1:
+        result[:, first_coordinate] = second_axis_length - 1 - second_coordinate_values
+        result[:, second_coordinate] = first_coordinate_values
+    elif rot90_count == 2:
+        result[:, first_coordinate] = first_axis_length - 1 - first_coordinate_values
+        result[:, second_coordinate] = second_axis_length - 1 - second_coordinate_values
+    else:
+        result[:, first_coordinate] = second_coordinate_values
+        result[:, second_coordinate] = first_axis_length - 1 - first_coordinate_values
+
+    return result
+
+
 def transform_cube(cube: np.ndarray, index: int) -> np.ndarray:
     """Transform cube by index (0-47). One of 48 cubic symmetries; no interpolation. For
     CubicSymmetry; inverse via inverse index.

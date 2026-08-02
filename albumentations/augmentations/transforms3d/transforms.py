@@ -28,9 +28,13 @@ __all__ = [
     "Pad3D",
     "PadIfNeeded3D",
     "RandomCrop3D",
+    "RandomRotate90_3D",
 ]
 
 NUM_DIMENSIONS = 3
+AxisIndex3D = Literal[0, 1, 2]
+AxisPair3D = tuple[AxisIndex3D, AxisIndex3D]
+DEFAULT_ROTATION_AXIS_PAIRS: tuple[AxisPair3D, ...] = ((0, 1), (0, 2), (1, 2))
 
 
 def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
@@ -1343,6 +1347,157 @@ class CubicSymmetry(Transform3D):
 
     def apply_to_keypoints(self, keypoints: np.ndarray, index: int, **params: Any) -> np.ndarray:
         return f3d.transform_cube_keypoints(keypoints, index, volume_shape=params["volume_shape"])
+
+
+class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified by issue #388.
+    """Rotate a volume by a random 90-degree multiple across one spatial axis pair, rotating mask3d and XYZ keypoints
+    without reflections.
+
+    Quarter turns swap the selected depth, height, or width lengths while preserving the channel axis.
+
+    Axis indices always use `(depth, height, width)` order: `(0, 1)` rotates depth with height,
+    `(0, 2)` rotates depth with width, and `(1, 2)` rotates height with width. A 90-degree or
+    270-degree turn swaps the two selected lengths, so non-cubic input can change shape.
+    A 180-degree turn and the identity preserve the original shape. The transform does not reflect data.
+
+    Set both `axis_pair` and `rotation_count` for deterministic test-time augmentation. `inverse()`
+    then returns the rotation that restores the original voxel and keypoint coordinates.
+
+    Args:
+        axis_pairs (tuple[tuple[int, int], ...]): Non-empty set of axis pairs sampled in random mode.
+            Each pair must list two distinct axes in ascending `(depth, height, width)` order.
+            Default: `((0, 1), (0, 2), (1, 2))`.
+        axis_pair (tuple[int, int] | None): Fixed axis pair for deterministic use. Set together with
+            `rotation_count`. Default: None.
+        rotation_count (int | None): Fixed number of counterclockwise 90-degree turns for deterministic
+            use. Valid values are 0, 1, 2, and 3. Default: None.
+        p (float): Probability of applying the transform. Default: 1.0.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> volume = np.arange(2 * 3 * 5, dtype=np.uint8).reshape(2, 3, 5, 1)
+        >>> transform = A.RandomRotate90_3D(axis_pair=(0, 2), rotation_count=1, p=1.0)
+        >>> result = transform(volume=volume)
+        >>> result["volume"].shape
+        (5, 3, 2, 1)
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+
+    class InitSchema(BaseTransformInitSchema):
+        axis_pairs: tuple[AxisPair3D, ...]
+        axis_pair: AxisPair3D | None
+        rotation_count: Literal[0, 1, 2, 3] | None
+
+        @model_validator(mode="after")
+        def _validate_rotation_config(self) -> Self:
+            if not self.axis_pairs:
+                raise ValueError("axis_pairs must contain at least one spatial axis pair")
+            if len(self.axis_pairs) != len(set(self.axis_pairs)):
+                raise ValueError("axis_pairs must not contain duplicate axis pairs")
+            if (self.axis_pair is None) != (self.rotation_count is None):
+                raise ValueError("axis_pair and rotation_count must be set together for deterministic rotation")
+
+            pairs_to_validate = (*self.axis_pairs, *((self.axis_pair,) if self.axis_pair is not None else ()))
+            for axis_pair in pairs_to_validate:
+                if axis_pair[0] >= axis_pair[1]:
+                    raise ValueError(
+                        "Each axis pair must contain distinct axes in ascending (depth, height, width) order",
+                    )
+            return self
+
+    def __init__(
+        self,
+        axis_pairs: tuple[AxisPair3D, ...] = DEFAULT_ROTATION_AXIS_PAIRS,
+        axis_pair: AxisPair3D | None = None,
+        rotation_count: Literal[0, 1, 2, 3] | None = None,
+        p: float = 1.0,
+    ):
+        super().__init__(p=p)
+        self.axis_pairs = axis_pairs
+        self.axis_pair = axis_pair
+        self.rotation_count = rotation_count
+
+    @property
+    def targets(self) -> dict[str, Any]:
+        return {
+            "volume": self.apply_to_volume,
+            "mask3d": self.apply_to_mask3d,
+            "keypoints": self.apply_to_keypoints,
+            "user_data": self.apply_to_user_data,
+        }
+
+    def get_params(self) -> dict[str, Any]:
+        if self.axis_pair is not None:
+            axis_pair = self.axis_pair
+            rotation_count = cast("int", self.rotation_count)
+        else:
+            axis_pair = self.py_random.choice(self.axis_pairs)
+            rotation_count = self.py_random.randint(0, 3)
+
+        self.applied_config = {"axis_pair": axis_pair, "rotation_count": rotation_count}
+        return {"axis_pair": axis_pair, "rotation_count": rotation_count}
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {"volume_shape": _get_volume_spatial_shape(data)}
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        axis_pair: AxisPair3D,
+        rotation_count: int,
+        **params: Any,
+    ) -> VolumeType:
+        return f3d.rotate90_3d(volume, rotation_count, axis_pair)
+
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType,
+        axis_pair: AxisPair3D,
+        rotation_count: int,
+        **params: Any,
+    ) -> VolumeType:
+        return f3d.rotate90_3d(mask3d, rotation_count, axis_pair)
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        axis_pair: AxisPair3D,
+        rotation_count: int,
+        volume_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        return f3d.keypoints_rotate90_3d(keypoints, rotation_count, axis_pair, volume_shape)
+
+    def inverse(self) -> Self:
+        """Return a deterministic transform whose quarter turns undo this rotation. Use after inference in TTA
+        to restore predictions to the original orientation.
+
+        Raises:
+            ValueError: If this transform is configured in random mode.
+
+        """
+        if self.axis_pair is None or self.rotation_count is None:
+            raise ValueError(
+                "Cannot invert RandomRotate90_3D in random mode. Set axis_pair and rotation_count for TTA.",
+            )
+        return type(self)(
+            axis_pair=self.axis_pair,
+            rotation_count=cast("Literal[0, 1, 2, 3]", (-self.rotation_count) % 4),
+            p=1.0,
+        )
 
 
 class GridShuffle3D(Transform3D):

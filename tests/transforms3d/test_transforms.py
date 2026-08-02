@@ -270,7 +270,7 @@ def test_pad3d_2d_equivalence(pad3d_padding, pad2d_padding):
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_primary_3d_transform_params(
-        custom_arguments={},
+        custom_arguments={A.RandomRotate90_3D: {"axis_pair": (0, 2), "rotation_count": 1}},
         except_augmentations={},
     ),
 )
@@ -1114,3 +1114,81 @@ def test_grid_shuffle_3d_probability():
 
     # Should transform at least once (very high probability)
     assert transform_count > 0
+
+
+@pytest.mark.parametrize("axis_pair", [(0, 1), (0, 2), (1, 2)])
+@pytest.mark.parametrize("rotation_count", [0, 1, 2, 3])
+def test_random_rotate90_3d_rotates_volume_mask_and_keypoints(axis_pair, rotation_count):
+    volume = np.arange(3 * 4 * 5 * 2, dtype=np.uint8).reshape(3, 4, 5, 2)
+    mask3d = (volume[..., 0] % 2).astype(np.uint8)
+    keypoints = np.array([[1, 1, 0], [3, 2, 1], [4, 3, 2]], dtype=np.float32)
+    keypoint_labels = [7, 9, 11]
+    augmentation = A.RandomRotate90_3D(
+        axis_pair=axis_pair,
+        rotation_count=rotation_count,
+        p=1.0,
+    )
+    compose = A.Compose(
+        [augmentation],
+        keypoint_params=A.KeypointParams(coord_format="xyz", label_fields=["keypoint_labels"]),
+        strict=True,
+    )
+
+    result = compose(
+        volume=volume,
+        mask3d=mask3d,
+        keypoints=keypoints,
+        keypoint_labels=keypoint_labels,
+    )
+
+    np.testing.assert_array_equal(result["volume"], np.rot90(volume, k=rotation_count, axes=axis_pair))
+    np.testing.assert_array_equal(result["mask3d"], np.rot90(mask3d, k=rotation_count, axes=axis_pair))
+    assert result["volume"].dtype == volume.dtype
+    assert result["mask3d"].dtype == mask3d.dtype
+    assert result["keypoint_labels"] == keypoint_labels
+
+    restored = A.Compose(
+        [augmentation.inverse()],
+        keypoint_params=A.KeypointParams(coord_format="xyz", label_fields=["keypoint_labels"]),
+        strict=True,
+    )(**result)
+    np.testing.assert_array_equal(restored["volume"], volume)
+    np.testing.assert_array_equal(restored["mask3d"], mask3d)
+    np.testing.assert_array_equal(restored["keypoints"], keypoints)
+
+
+def test_random_rotate90_3d_seeded_replay_and_applied_configuration():
+    volume = np.arange(3 * 4 * 5, dtype=np.uint8).reshape(3, 4, 5, 1)
+    pipeline = A.Compose(
+        [A.RandomRotate90_3D(axis_pairs=((0, 2),), p=1.0)],
+        save_applied_params=True,
+        seed=137,
+        strict=True,
+    )
+
+    result = pipeline(volume=volume)
+    replay = A.Compose.from_applied_transforms(result["applied_transforms"], strict=True)
+    replayed = replay(volume=volume)
+
+    np.testing.assert_array_equal(replayed["volume"], result["volume"])
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"axis_pairs": ()},
+        {"axis_pairs": ((0, 0),)},
+        {"axis_pairs": ((0, 2), (0, 2))},
+        {"axis_pair": (0, 2)},
+        {"rotation_count": 1},
+        {"axis_pair": (0, 2), "rotation_count": 4},
+    ],
+)
+def test_random_rotate90_3d_rejects_invalid_configuration(kwargs):
+    with pytest.raises(ValueError):
+        A.RandomRotate90_3D(**kwargs)
+
+
+def test_random_rotate90_3d_random_mode_cannot_be_inverted():
+    with pytest.raises(ValueError, match="random mode"):
+        A.RandomRotate90_3D().inverse()

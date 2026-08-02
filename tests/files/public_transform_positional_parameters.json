@@ -98,6 +98,7 @@
   "RandomRain": ["slant_range", "drop_length", "drop_width", "drop_color", "blur_value", "brightness_coefficient", "rain_type", "p"],
   "RandomResizedCrop": ["size", "scale", "ratio", "interpolation", "mask_interpolation", "area_for_downscale", "p"],
   "RandomRotate90": ["p", "group_element", "group_elements"],
+  "RandomRotate90_3D": ["axis_pairs", "axis_pair", "rotation_count", "p"],
   "RandomScale": ["scale_range", "interpolation", "mask_interpolation", "area_for_downscale", "p"],
   "RandomShadow": ["shadow_roi", "num_shadows_range", "shadow_dimension", "shadow_intensity_range", "p"],
   "RandomSizedBBoxSafeCrop": ["height", "width", "erosion_rate", "interpolation", "mask_interpolation", "p"],

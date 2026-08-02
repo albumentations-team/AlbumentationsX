@@ -55,6 +55,7 @@ FUNCTIONAL_3D_KERNELS = (
     "crop3d",
     "pad_3d_with_params",
     "cutout3d",
+    "rotate90_3d",
     "transform_cube",
     "swap_tiles_on_volume",
 )
@@ -416,6 +417,10 @@ def _call_cutout3d(benchmark: Any) -> np.ndarray:
     return f3d.cutout3d(benchmark.volume, benchmark.holes, 0)
 
 
+def _call_rotate90_3d(benchmark: Any) -> np.ndarray:
+    return f3d.rotate90_3d(benchmark.volume, rot90_count=1, axis_pair=(0, 2))
+
+
 def _call_transform_cube(benchmark: Any) -> np.ndarray:
     return f3d.transform_cube(benchmark.volume, 7)
 
@@ -428,6 +433,7 @@ FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "crop3d": _call_crop3d,
     "pad_3d_with_params": _call_pad_3d_with_params,
     "cutout3d": _call_cutout3d,
+    "rotate90_3d": _call_rotate90_3d,
     "transform_cube": _call_transform_cube,
     "swap_tiles_on_volume": _call_swap_tiles_on_volume,
 }

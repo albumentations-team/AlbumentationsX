@@ -119,7 +119,11 @@ def test_image_only_transform(image):
     mask = image.copy()
     _height, _width = image.shape[:2]
     with mock.patch.object(ImageOnlyTransform, "apply") as mocked_apply:
-        with mock.patch.object(ImageOnlyTransform, "get_params", return_value={"interpolation": cv2.INTER_LINEAR}):
+        with mock.patch.object(
+            ImageOnlyTransform,
+            "get_params_dependent_on_data",
+            return_value={"interpolation": cv2.INTER_LINEAR},
+        ):
             aug = ImageOnlyTransform(p=1)
             data = aug(image=image, mask=mask)
             mocked_apply.assert_called_once_with(
@@ -135,7 +139,7 @@ def test_dual_transform(image):
     mask = image.copy()
 
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "get_params", return_value={}):  # Empty params
+        with mock.patch.object(DualTransform, "get_params_dependent_on_data", return_value={}):
             aug = DualTransform(p=1)
             aug(image=image, mask=mask)
 
@@ -170,7 +174,11 @@ def test_additional_targets(image):
         shape=mask.shape,
     )
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "get_params", return_value={"interpolation": cv2.INTER_LINEAR}):
+        with mock.patch.object(
+            DualTransform,
+            "get_params_dependent_on_data",
+            return_value={"interpolation": cv2.INTER_LINEAR},
+        ):
             aug = DualTransform(p=1)
             aug.add_targets({"image2": "image"})
             aug(image=image, image2=mask)
@@ -2880,7 +2888,7 @@ def test_applied_config_invalid_key_raises():
     """Transforms that set invalid applied_config keys must raise ValueError."""
 
     class BadTransform(A.NoOp):
-        def get_params(self):
+        def get_params_dependent_on_data(self, params, data):
             self.applied_config = {"not_a_real_constructor_param_xyz": 42}
             return {}
 
@@ -2994,7 +3002,7 @@ SINGLE_SAMPLE_RANGE_RESOLUTIONS: list[tuple[type, str, dict[str, Any]]] = [
 def test_applied_config_resolves_range_param_to_scalar(aug_cls, range_param, init_kwargs):
     """Single-sample `_range` params must be recorded as the sampled scalar in applied_config.
 
-    Catches the bug pattern where get_params samples from a range but forgets to record the
+    Catches the bug pattern where parameter generation samples from a range but forgets to record the
     scalar — leaving `applied_config[range]` as the original input tuple, which silently
     breaks replay/debug consumers of get_applied_config().
     """
@@ -3011,7 +3019,7 @@ def test_applied_config_resolves_range_param_to_scalar(aug_cls, range_param, ini
     assert sampled is not None, f"{aug_cls.__name__}.applied_config missing key {range_param!r}"
     assert not isinstance(sampled, (tuple, list)), (
         f"{aug_cls.__name__}.applied_config[{range_param!r}] is still a tuple {sampled!r}; "
-        f"get_params likely sampled but forgot to record the scalar via "
+        f"parameter generation likely sampled but forgot to record the scalar via "
         f"`self.applied_config = {{{range_param!r}: sampled_value, ...}}`"
     )
     assert isinstance(sampled, (int, float, np.integer, np.floating)), (

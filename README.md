@@ -347,15 +347,16 @@ Where:
 - Volume: 3D array of shape (D, H, W) or (D, H, W, C) where D is depth, H is height, W is width, and C is number of channels (optional)
 - Mask3D: Binary or multi-class 3D mask of shape (D, H, W) where each slice represents segmentation for the corresponding volume slice
 
-| Transform                                                                       | Volume | Mask3D | Keypoints |
-| ------------------------------------------------------------------------------- | :----: | :----: | :-------: |
-| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓      | ✓      | ✓         |
-| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓      | ✓      | ✓         |
-| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓      | ✓      | ✓         |
-| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓      | ✓      | ✓         |
+| Transform                                                                           | Volume | Mask3D | Keypoints |
+| ----------------------------------------------------------------------------------- | :----: | :----: | :-------: |
+| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)           | ✓      | ✓      | ✓         |
+| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)     | ✓      | ✓      | ✓         |
+| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)         | ✓      | ✓      | ✓         |
+| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)         | ✓      | ✓      | ✓         |
+| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                         | ✓      | ✓      | ✓         |
+| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)         | ✓      | ✓      | ✓         |
+| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)           | ✓      | ✓      | ✓         |
+| [RandomRotate90_3D](https://albumentations.ai/explore/transform/RandomRotate90_3D/) | ✓      | ✓      | ✓         |
 
 ## A few more examples of **augmentations**
 

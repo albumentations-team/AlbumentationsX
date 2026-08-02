@@ -109,7 +109,11 @@ class ImageCompression(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.image_compression(img, quality, image_type)
 
-    def get_params(self) -> dict[str, int | str]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, int | str]:
         image_type = ".jpg" if self.compression_type == "jpeg" else ".webp"
 
         quality = self.py_random.randint(*self.quality_range)
@@ -215,7 +219,11 @@ class Downscale(ImageOnlyTransform):
             up_interpolation=self.interpolation_pair["upscale"],
         )
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         scale = self.py_random.uniform(*self.scale_range)
 
         self.applied_config = {"scale_range": scale}

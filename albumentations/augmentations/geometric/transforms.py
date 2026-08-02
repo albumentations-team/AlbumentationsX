@@ -1520,7 +1520,11 @@ class Morphological(DualTransform):
     ) -> np.ndarray:
         return keypoints
 
-    def get_params(self) -> dict[str, np.ndarray]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         return {
             "kernel": cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.scale),
         }

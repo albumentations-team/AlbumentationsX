@@ -403,8 +403,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         self.applied_config = {}
 
         if self.should_apply(force_apply=force_apply):
-            params = self.get_params()
-            params = self.update_transform_params(params=params, data=kwargs)
+            params = self.update_transform_params(params={}, data=kwargs)
 
             if self.targets_as_params:
                 missing_keys = set(self.targets_as_params).difference(kwargs.keys())
@@ -436,7 +435,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         transport and public pipeline reconstruction.
 
         The result is empty when the transform was not applied. Realized values written by
-        get_params or get_params_dependent_on_data replace their source constructor policy,
+        get_params_dependent_on_data replaces its source constructor policy,
         and aliases expose the fields of their canonical replay class. Values are JSON-safe.
         """
         return self.applied_config
@@ -577,7 +576,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return f"{self.__class__.__name__}({format_args(state)})"
 
     def apply(self, img: ImageType, *args: Any, **params: Any) -> ImageType:
-        """Apply transform on image. Override in subclasses; receives params from get_params and
+        """Apply transform on image. Override in subclasses; receives parameters from
         get_params_dependent_on_data. Single image only.
         """
         raise NotImplementedError
@@ -683,15 +682,9 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         """
         return self.apply_to_images(volume, *args, **params)
 
-    def get_params(self) -> dict[str, Any]:
-        """Returns parameters independent of input data. Override in subclasses to add random
-        params (e.g. angle, crop size). Default returns {}.
-        """
-        return {}
-
     def update_transform_params(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Updates parameters with input shape and transform-specific params (interpolation, fill,
-        fill_mask, bbox_type). Merges get_params output.
+        """Update parameters with input shape and transform-specific settings (interpolation, fill,
+        fill_mask, bbox type) before data-aware parameter sampling.
 
         Args:
             params (dict[str, Any]): Parameters to be updated
@@ -782,10 +775,10 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             params["fill_mask"] = self.fill_mask
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Returns parameters dependent on input data (e.g. crop coordinates from image shape).
-        Override in subclasses; default returns params unchanged.
+        """Generate all transform parameters, including random values and data-dependent values.
+        Override in subclasses; default returns an empty mapping.
         """
-        return params
+        return {}
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
@@ -1458,7 +1451,7 @@ class CustomTransformsApplyMixin:
 
     Define methods named `apply_to_<key>` in your transform subclass; they are
     discovered at init time and routed through the standard `apply_with_params`
-    pipeline. Custom targets receive the same params from `get_params`, respect
+    pipeline. Custom targets receive the same parameters from `get_params_dependent_on_data`, respect
     the `p=` probability, and compose correctly with Compose and ReplayCompose.
 
     Placement in inheritance list
@@ -1482,7 +1475,7 @@ class CustomTransformsApplyMixin:
         >>> mask = np.random.randint(0, 2, (64, 64), dtype=np.uint8)
         >>>
         >>> class Rotate90WithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
-        ...     def get_params(self):
+        ...     def get_params_dependent_on_data(self, params, data):
         ...         return {"k": 1}
         ...     def apply(self, img, k=0, **p):
         ...         return np.rot90(img, k)

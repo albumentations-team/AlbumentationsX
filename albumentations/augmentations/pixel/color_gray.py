@@ -396,7 +396,11 @@ class Colorize(ImageOnlyTransform):
             self.py_random.randint(lo[2], hi[2]),
         )
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         black_color = self._sample_color(self.black_range)
         white_color = self._sample_color(self.white_range)
         mid_color = self._sample_color(self.mid_range) if self.mid_range is not None else None

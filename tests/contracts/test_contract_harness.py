@@ -39,7 +39,11 @@ class CrossFieldConflict(ImageOnlyTransform):
         self.choice = choice
         self.choices = choices
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         self.applied_config = {"choice": "a"}
         return {}
 
@@ -48,7 +52,11 @@ class CrossFieldConflict(ImageOnlyTransform):
 
 
 class UnknownEmittedKey(ImageOnlyTransform):
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         self.applied_config = {"unknown_key": 137}
         return {}
 
@@ -64,7 +72,11 @@ class NonJsonValue(ImageOnlyTransform):
         super().__init__(p=p)
         self.payload = payload
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         self.applied_config = {"payload": {1, 2}}
         return {}
 
@@ -80,7 +92,11 @@ class MutatesPreviousRecord(ImageOnlyTransform):
         super().__init__(p=p)
         self.history = [] if history is None else history
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         self.history.append(len(self.history) + 1)
         self.applied_config = {"history": self.history}
         return {}
@@ -97,7 +113,11 @@ class ReconstructsButCannotRun(ImageOnlyTransform):
         super().__init__(p=p)
         self.mode = mode
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         self.applied_config = {"mode": "replay"}
         return {}
 
@@ -115,7 +135,11 @@ class ReconstructsWithDifferentOutput(ImageOnlyTransform):
         super().__init__(p=p)
         self.mode = mode
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         self.applied_config = {"mode": "replay"}
         return {}
 

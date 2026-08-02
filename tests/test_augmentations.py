@@ -1006,7 +1006,7 @@ def test_zoom_blur_apply_to_images(dtype):
     else:
         images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
 
-    # Use fixed parameters so get_params produces deterministic zoom_factors
+    # Use fixed parameters so parameter generation produces deterministic zoom_factors
     transform = A.ZoomBlur(max_factor_range=(1.1, 1.1), step_factor_range=(0.01, 0.01), p=1.0)
 
     transformed = transform(images=images)["images"]

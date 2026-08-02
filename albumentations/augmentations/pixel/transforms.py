@@ -427,7 +427,11 @@ class Sharpen(ImageOnlyTransform):
 
         return (1 - alpha) * matrix_nochange + alpha * matrix_effect
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         alpha = self.py_random.uniform(*self.alpha_range)
 
         if self.method == "kernel":
@@ -545,7 +549,11 @@ class Emboss(ImageOnlyTransform):
         )
         return (1 - alpha_sample) * matrix_nochange + alpha_sample * matrix_effect
 
-    def get_params(self) -> dict[str, np.ndarray]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         alpha = self.py_random.uniform(*self.alpha_range)
         strength = self.py_random.uniform(*self.strength_range)
         emboss_matrix = self.__generate_emboss_matrix(
@@ -657,7 +665,11 @@ class Enhance(ImageOnlyTransform):
         self.mode = mode
         self.alpha_range = alpha_range
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         alpha = self.py_random.uniform(*self.alpha_range)
         # Record the resolved scalar (not the range) for replay/debug, per the
         # applied_config contract documented on get_applied_config.
@@ -794,7 +806,11 @@ class Superpixels(ImageOnlyTransform):
         self.max_size = max_size
         self.interpolation = interpolation
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         n_segments = self.py_random.randint(*self.n_segments_range)
         p = self.py_random.uniform(*self.p_replace_range)
         self.applied_config = {"n_segments_range": n_segments, "p_replace_range": p}
@@ -918,7 +934,11 @@ class RingingOvershoot(ImageOnlyTransform):
         self.blur_range = blur_range
         self.cutoff_range = cutoff_range
 
-    def get_params(self) -> dict[str, np.ndarray]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         ksize = self.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
         if ksize % 2 == 0:
             ksize += 1
@@ -1292,7 +1312,11 @@ class Dithering(ImageOnlyTransform):
             random_generator=self.random_generator,
         )
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         # noise_range is used as per-pixel uniform bounds inside apply_dithering — record the
         # bounds in applied_config so consumers can see the parameter that was used.
         self.applied_config["noise_range"] = self.noise_range
@@ -1378,7 +1402,11 @@ class Halftone(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         dot_size = self.py_random.randint(*self.dot_size_range)
         blend = self.py_random.uniform(*self.blend_range)
         self.applied_config = {"dot_size_range": dot_size, "blend_range": blend}

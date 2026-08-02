@@ -38,7 +38,11 @@ class _NumpyOnlyProbe(_TensorProbe):
 
     _supports_cpu_tensor = False
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         pytest.fail("Compose must reject an unsupported Tensor transform before parameter sampling")
 
 
@@ -378,6 +382,7 @@ def test_transpose_rejects_tensor_routes_outside_accepted_capability(
         A.RandomCrop3D(size=(3, 5, 7), pad_if_needed=False, p=1.0),
         A.CubicSymmetry(p=1.0),
         A.Pad3D(padding=(1, 2, 2), p=1.0),
+        A.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
     ],
 )
 def test_3d_transforms_remain_rejected_until_their_tensor_routes_pass_the_performance_gate(

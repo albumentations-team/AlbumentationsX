@@ -341,7 +341,7 @@ def test_image_invert(seed):
     r_int = fpixel.invert(fpixel.invert(image1))
     r_float = fpixel.invert(fpixel.invert(image2))
     r_to_float = to_float(r_int)
-    assert np.allclose(r_float, r_to_float, atol=0.01)
+    np.testing.assert_allclose(r_float, r_to_float, atol=0.01, rtol=1e-5, equal_nan=False)
 
 
 def test_lambda_transform():
@@ -422,19 +422,19 @@ def test_equalize():
     img = cv2.randu(np.zeros((256, 256, 3), dtype=np.uint8), 0, 255)
     a = aug(image=img)["image"]
     b = fpixel.equalize(img)
-    assert np.all(a == b)
+    np.testing.assert_array_equal(a, b)
 
     mask = cv2.randu(np.zeros((256, 256, 1), dtype=np.uint8), 0, 2)
     aug = A.Equalize(mask=mask, p=1)
     a = aug(image=img)["image"]
     b = fpixel.equalize(img, mask=mask)
-    assert np.all(a == b)
+    np.testing.assert_array_equal(a, b)
 
     def mask_func(image, test):
         return mask
 
     aug = A.Equalize(mask=mask_func, mask_params=["test"], p=1)
-    assert np.all(aug(image=img, test=mask)["image"] == fpixel.equalize(img, mask=mask))
+    np.testing.assert_array_equal(aug(image=img, test=mask)["image"], fpixel.equalize(img, mask=mask))
 
 
 @pytest.mark.parametrize("mode", ["linear", "corner", "gaussian"])
@@ -577,7 +577,7 @@ def test_multiplicative_noise_grayscale(image):
 
     expected = image.astype(np.float32) * params["multiplier"]
 
-    assert np.allclose(clip(expected, image.dtype), result_e)
+    np.testing.assert_allclose(clip(expected, image.dtype), result_e, rtol=1e-5, atol=1e-8, equal_nan=False)
 
     aug = A.MultiplicativeNoise((m, m), elementwise=True, p=1)
     params = aug.get_params_dependent_on_data(
@@ -588,7 +588,7 @@ def test_multiplicative_noise_grayscale(image):
 
     expected = image.astype(np.float32) * params["multiplier"]
 
-    assert np.allclose(clip(expected, image.dtype), result_ne)
+    np.testing.assert_allclose(clip(expected, image.dtype), result_ne, rtol=1e-5, atol=1e-8, equal_nan=False)
 
 
 @pytest.mark.parametrize(
@@ -618,7 +618,7 @@ def test_multiplicative_noise_rgb(image, elementwise):
 
     expected = image.astype(np.float32) * mul
 
-    assert np.allclose(clip(expected, dtype), result, atol=1e-5)
+    np.testing.assert_allclose(clip(expected, dtype), result, atol=1e-5, rtol=1e-5, equal_nan=False)
 
 
 def test_mask_dropout():
@@ -628,8 +628,8 @@ def test_mask_dropout():
 
     aug = A.MaskDropout(p=1)
     result = aug(image=img, mask=mask)
-    assert np.all(result["image"] == 0)
-    assert np.all(result["mask"] == 0)
+    np.testing.assert_array_equal(result["image"], 0)
+    np.testing.assert_array_equal(result["mask"], 0)
 
     # In this case we have mask with zeros , so MaskDropout will make no changes
     img = cv2.randu(np.zeros((50, 10, 3), dtype=np.uint8), 0, 255)
@@ -637,8 +637,8 @@ def test_mask_dropout():
 
     aug = A.MaskDropout(p=1)
     result = aug(image=img, mask=mask)
-    assert np.all(result["image"] == img)
-    assert np.all(result["mask"] == 0)
+    np.testing.assert_array_equal(result["image"], img)
+    np.testing.assert_array_equal(result["mask"], 0)
 
 
 @pytest.mark.parametrize("fill", ["inpaint_telea", "inpaint_ns"])
@@ -652,7 +652,7 @@ def test_mask_dropout_inpaint_fill(fill):
 
     assert result["image"].shape == img.shape
     assert result["image"].dtype == img.dtype
-    assert np.all(result["mask"] == 0)
+    np.testing.assert_array_equal(result["mask"], 0)
 
 
 @pytest.mark.parametrize("fill", ["inpaint_telea", "inpaint_ns"])
@@ -666,7 +666,7 @@ def test_mask_dropout_inpaint_fill_tiny_mask(fill):
 
     assert result["image"].shape == img.shape
     assert result["image"].dtype == img.dtype
-    assert np.all(result["mask"] == 0)
+    np.testing.assert_array_equal(result["mask"], 0)
 
 
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
@@ -796,33 +796,6 @@ def test_random_brightness_contrast_torchvision_mode_uses_per_image_batch_means(
     np.testing.assert_array_equal(result, expected)
 
 
-def test_random_brightness_contrast_torchvision_mode_uses_per_slice_volume_means():
-    volumes = np.array(
-        [
-            [[[[0], [100]]]],
-            [[[[100], [200]]]],
-        ],
-        dtype=np.uint8,
-    )
-    expected = np.array(
-        [
-            [[[[50], [50]]]],
-            [[[[150], [150]]]],
-        ],
-        dtype=np.uint8,
-    )
-    transform = A.RandomBrightnessContrast(
-        brightness_range=(0, 0),
-        contrast_range=(-1, -1),
-        brightness_by_max=False,
-        p=1,
-    )
-
-    result = transform(volumes=volumes)["volumes"]
-
-    np.testing.assert_array_equal(result, expected)
-
-
 def test_random_brightness_contrast_torchvision_mode_safe_output_uses_combined_coefficients():
     image = np.array([[[50], [100], [150]]], dtype=np.uint8)
     transform = A.RandomBrightnessContrast(
@@ -921,8 +894,8 @@ def test_perspective_keep_size():
         labels=[0] * len(bboxes),
     )
 
-    assert np.allclose(res_1["bboxes"], res_2["bboxes"], atol=0.2)
-    assert np.allclose(res_1["keypoints"], res_2["keypoints"])
+    np.testing.assert_allclose(res_1["bboxes"], res_2["bboxes"], atol=0.2, rtol=1e-5, equal_nan=False)
+    np.testing.assert_allclose(res_1["keypoints"], res_2["keypoints"], rtol=1e-5, atol=1e-8, equal_nan=False)
 
     assert res_1["image"].shape == img.shape
 
@@ -1865,7 +1838,7 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
                 pad_left : pad_left + image.shape[1],
                 :,
             ]
-            assert np.all(central_region == 255)
+            np.testing.assert_array_equal(central_region, 255)
         elif all(p <= 0 for p in px):  # Cropping
             crop_top, crop_right, crop_bottom, crop_left = (-p for p in px)
             cropped_region = image[
@@ -1873,7 +1846,7 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
                 crop_left : image.shape[1] - crop_right,
                 :,
             ]
-            assert np.all(transformed_image == cropped_region)
+            np.testing.assert_array_equal(transformed_image, cropped_region)
 
 
 @pytest.mark.parametrize(

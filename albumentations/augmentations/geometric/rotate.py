@@ -228,14 +228,6 @@ class RandomRotate90(DualTransform):
     ) -> ImageType:
         return fgeometric.rot90_images(images, group_element)
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        group_element: Literal["e", "r90", "r180", "r270"],
-        **params: Any,
-    ) -> VolumeType:
-        return fgeometric.rot90_volumes(volumes, group_element)
-
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
@@ -243,14 +235,6 @@ class RandomRotate90(DualTransform):
         **params: Any,
     ) -> VolumeType:
         return self.apply_to_images(mask3d, group_element, **params)
-
-    def apply_to_masks3d(
-        self,
-        masks3d: VolumeType,
-        group_element: Literal["e", "r90", "r180", "r270"],
-        **params: Any,
-    ) -> VolumeType:
-        return self.apply_to_volumes(masks3d, group_element, **params)
 
     def inverse(self) -> "RandomRotate90":
         """Return a new RandomRotate90 with the inverse group element to undo this transform. Use

@@ -29,7 +29,7 @@ class TestRandomScaleOBB:
         result = transform(image=image, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves normalized coordinates and angles
-        assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6, rtol=1e-5, equal_nan=False)
 
     def test_random_scale_with_multiple_obbs(self):
         """Test RandomScale with multiple OBB boxes."""
@@ -53,7 +53,7 @@ class TestRandomScaleOBB:
 
         # Check all boxes are preserved
         assert len(result["bboxes"]) == 3
-        assert np.allclose(result["bboxes"], obb_boxes, atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"], obb_boxes, atol=1e-6, rtol=1e-5, equal_nan=False)
 
     def test_random_scale_obb_with_extra_fields(self):
         """Test that extra fields beyond angle are preserved."""
@@ -75,7 +75,7 @@ class TestRandomScaleOBB:
 
         # Check all fields including extras are preserved
         assert result["bboxes"].shape == obb_boxes.shape
-        assert np.allclose(result["bboxes"][0], obb_boxes[0], atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"][0], obb_boxes[0], atol=1e-6, rtol=1e-5, equal_nan=False)
 
 
 @pytest.mark.slow
@@ -101,7 +101,7 @@ class TestLongestMaxSizeOBB:
         result = transform(image=large_image_1000x500, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves normalized coordinates and angles
-        assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6, rtol=1e-5, equal_nan=False)
 
     def test_longest_max_size_with_max_size_hw(self, large_image_1000x800):
         """Test LongestMaxSize with max_size_hw parameter."""
@@ -120,7 +120,7 @@ class TestLongestMaxSizeOBB:
         result = transform(image=large_image_1000x800, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves coordinates
-        assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6, rtol=1e-5, equal_nan=False)
 
 
 @pytest.mark.slow
@@ -146,7 +146,7 @@ class TestSmallestMaxSizeOBB:
         result = transform(image=large_image_500x1000, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves normalized coordinates and angles
-        assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6, rtol=1e-5, equal_nan=False)
 
     def test_smallest_max_size_with_max_size_hw(self, large_image_800x1000):
         """Test SmallestMaxSize with max_size_hw parameter."""
@@ -165,7 +165,7 @@ class TestSmallestMaxSizeOBB:
         result = transform(image=large_image_800x1000, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves coordinates
-        assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6, rtol=1e-5, equal_nan=False)
 
 
 class TestResizeOBB:
@@ -189,7 +189,7 @@ class TestResizeOBB:
         result = transform(image=image, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Uniform scaling preserves everything
-        assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6, rtol=1e-5, equal_nan=False)
 
     @pytest.mark.parametrize("angle", [0, 30, 45, 60, 90, -30, -45, -90, 135, 180])
     def test_resize_non_uniform_scaling_updates_angle(self, angle):
@@ -323,7 +323,7 @@ class TestResizeOBBEdgeCases:
         result = transform(image=image, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
         # Should preserve angle exactly
-        assert np.allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6)
+        np.testing.assert_allclose(result["bboxes"][0][:5], obb_boxes[0][:5], atol=1e-6, rtol=1e-5, equal_nan=False)
 
     @pytest.mark.parametrize("original_angle", [-180, -90, 0, 90, 180, 270, -270])
     def test_angle_normalization(self, original_angle):

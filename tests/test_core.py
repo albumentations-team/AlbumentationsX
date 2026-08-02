@@ -219,7 +219,7 @@ def test_deterministic_oneof() -> None:
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
-        assert np.array_equal(data["image"], data2["image"])
+        np.testing.assert_array_equal(data["image"], data2["image"])
 
     property_test()
 
@@ -238,7 +238,7 @@ def test_deterministic_one_or_other() -> None:
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
-        assert np.array_equal(data["image"], data2["image"])
+        np.testing.assert_array_equal(data["image"], data2["image"])
 
     property_test()
 
@@ -257,7 +257,7 @@ def test_deterministic_sequential() -> None:
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
-        assert np.array_equal(data["image"], data2["image"])
+        np.testing.assert_array_equal(data["image"], data2["image"])
 
     property_test()
 
@@ -939,8 +939,8 @@ def test_sequential_with_horizontal_flip_prob_1(image):
         result = transform(image=image, mask=mask)
         expected = expected_transform(image=image, mask=mask)
 
-    assert np.array_equal(result["image"], expected["image"])
-    assert np.array_equal(result["mask"], expected["mask"])
+    np.testing.assert_array_equal(result["image"], expected["image"])
+    np.testing.assert_array_equal(result["mask"], expected["mask"])
 
 
 # Test 2: Probability 0 with HorizontalFlip
@@ -952,8 +952,8 @@ def test_sequential_with_horizontal_flip_prob_0(image):
     with patch("random.random", return_value=0.99):  # Mocking probability greater than 0
         result = transform(image=image, mask=mask)
 
-    assert np.array_equal(result["image"], image)
-    assert np.array_equal(result["mask"], mask)
+    np.testing.assert_array_equal(result["image"], image)
+    np.testing.assert_array_equal(result["mask"], mask)
 
 
 # Test 3: Multiple flips and Transpose with probability 1
@@ -974,8 +974,8 @@ def test_sequential_multiple_transformations(image, aug):
         result = transform(image=image, mask=mask)
 
     # Since HorizontalFlip, VerticalFlip, and Transpose are all applied twice, the image should be the same
-    assert np.array_equal(result["image"], image)
-    assert np.array_equal(result["mask"], mask)
+    np.testing.assert_array_equal(result["image"], image)
+    np.testing.assert_array_equal(result["mask"], mask)
 
 
 @pytest.mark.parametrize(
@@ -2029,7 +2029,7 @@ def test_bbox_hflip_hflip_no_labels(bbox_format: str, bboxes: list[list[float]])
     )
     transformed = aug(image=image, bboxes=original_bboxes)
 
-    assert np.allclose(transformed["bboxes"], original_bboxes, atol=1e-6)
+    np.testing.assert_allclose(transformed["bboxes"], original_bboxes, atol=1e-6, rtol=1e-5, equal_nan=False)
 
 
 def test_bbox_hflip_idempotence_property():
@@ -2088,7 +2088,7 @@ def test_bbox_hflip_idempotence_property():
         )
         transformed = aug(image=image, bboxes=original_bboxes)
 
-        assert np.allclose(transformed["bboxes"], original_bboxes, atol=1e-6)
+        np.testing.assert_allclose(transformed["bboxes"], original_bboxes, atol=1e-6, rtol=1e-5, equal_nan=False)
 
     property_test()
 
@@ -2115,7 +2115,7 @@ def test_keypoint_hflip_hflip_no_labels(kp_format: str, keypoints: list[list[flo
     )
     transformed = aug(image=image, keypoints=original_keypoints)
 
-    assert np.allclose(transformed["keypoints"], original_keypoints, atol=1e-6)
+    np.testing.assert_allclose(transformed["keypoints"], original_keypoints, atol=1e-6, rtol=1e-5, equal_nan=False)
 
 
 def test_keypoint_hflip_idempotence_property():
@@ -2168,7 +2168,7 @@ def test_keypoint_hflip_idempotence_property():
         # Result keypoints should match original (idempotence)
         # Some might be filtered if invalid, but shape and values should match
         assert transformed["keypoints"].shape == original_keypoints.shape
-        assert np.allclose(transformed["keypoints"], original_keypoints, atol=1e-5)
+        np.testing.assert_allclose(transformed["keypoints"], original_keypoints, atol=1e-5, rtol=1e-5, equal_nan=False)
 
     property_test()
 
@@ -2233,14 +2233,14 @@ def test_grayscale_images_batch_handling():
 
 
 def test_grayscale_volume_handling():
-    """Test that grayscale volumes are handled correctly."""
+    """Test that grayscale volume data is handled correctly."""
     # Create grayscale volume (D, H, W)
     grayscale_volume = np.random.rand(50, 100, 200).astype(np.float32)
 
-    # Create a simple transform pipeline that works with volumes
+    # Create a simple transform pipeline that works with volume data
     transform = A.Compose(
         [
-            A.NoOp(p=1.0),  # NoOp supports all targets including volumes
+            A.NoOp(p=1.0),  # NoOp supports all canonical targets
         ],
     )
 
@@ -2250,27 +2250,6 @@ def test_grayscale_volume_handling():
     # Check that output has same shape as input
     assert result["volume"].shape == grayscale_volume.shape
     assert result["volume"].ndim == 3
-
-
-def test_grayscale_volumes_batch_handling():
-    """Test that batches of grayscale volumes are handled correctly."""
-    # Create batch of grayscale volumes (N, D, H, W)
-    batch_size = 4
-    grayscale_volumes = np.random.rand(batch_size, 50, 100, 200).astype(np.float32)
-
-    # Create a simple transform pipeline that works with volumes
-    transform = A.Compose(
-        [
-            A.NoOp(p=1.0),  # NoOp supports all targets including volumes
-        ],
-    )
-
-    # Apply transform
-    result = transform(volumes=grayscale_volumes)
-
-    # Check that output has same shape as input
-    assert result["volumes"].shape == grayscale_volumes.shape
-    assert result["volumes"].ndim == 4
 
 
 def test_mixed_grayscale_rgb_handling():
@@ -2507,27 +2486,6 @@ def test_grayscale_mask3d_handling():
     # Check that output has same shape as input
     assert result["mask3d"].shape == grayscale_mask3d.shape
     assert result["mask3d"].ndim == 3
-
-
-def test_grayscale_masks3d_batch_handling():
-    """Test that batches of grayscale 3D masks are handled correctly."""
-    # Create batch of grayscale 3D masks (N, D, H, W)
-    batch_size = 4
-    grayscale_masks3d = np.random.randint(0, 2, (batch_size, 50, 100, 200)).astype(np.uint8)
-
-    # Create a simple transform pipeline that works with 3D masks
-    transform = A.Compose(
-        [
-            A.NoOp(p=1.0),  # NoOp supports all targets including masks3d
-        ],
-    )
-
-    # Apply transform
-    result = transform(masks3d=grayscale_masks3d)
-
-    # Check that output has same shape as input
-    assert result["masks3d"].shape == grayscale_masks3d.shape
-    assert result["masks3d"].ndim == 4
 
 
 # --- user_data target tests ---

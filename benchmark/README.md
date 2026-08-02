@@ -59,7 +59,7 @@ The baseline image matrix follows the project performance rule:
 - 1024 x 1024 x 5
 
 Benchmarks cover public Compose paths, core pipeline dispatch/setup paths,
-direct functional kernels, image, mask, and volume batch routes,
+direct functional kernels, image and mask batch routes,
 representative volumetric transforms, annotation scaling paths, selected
 parameter-sensitive stress cases, memory checks, and reference-data transform
 paths. GitHub-hosted runner results are advisory until enough scheduled data
@@ -182,8 +182,8 @@ The current ASV suite includes these production coverage layers:
 - Core pipeline: single-transform Compose, multi-transform Compose,
   ReplayCompose, `p=0` skip dispatch, `additional_targets`, image batches,
   Compose setup, and bbox/keypoint processor overhead.
-- Batch matrix: `images`, `images` plus `masks`, and `volumes` plus `masks3d`
-  routes over bounded size, channel, dtype, and batch-size variants.
+- Batch matrix: `images` and `images` plus `masks` routes over bounded size,
+  channel, dtype, and batch-size variants.
 - Parameter sensitivity: representative transforms whose runtime changes
   materially with constructor parameters, such as blur kernel size, dropout
   hole count, grid map resolution, JPEG quality, and superpixel segment count.

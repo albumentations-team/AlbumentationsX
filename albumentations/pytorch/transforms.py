@@ -104,13 +104,13 @@ class ToTensorV2(_TensorTransform):
 
 
 class ToTensor3D(_TensorTransform):
-    """Convert 3D volumes and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
+    """Convert 3D volume data and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
     For 3D medical imaging pipelines; p=1.0 by default.
 
     This transform is designed for 3D medical imaging data. It converts numpy arrays
     to PyTorch tensors and ensures consistent channel positioning.
 
-    For all inputs (volumes and masks):
+    For all inputs (volume data and masks):
         - Input:  (D, H, W, C) or (D, H, W) - depth, height, width, [channels]
         - Output: (C, D, H, W) - channels first format for PyTorch
                  For single-channel input, adds C=1 dimension

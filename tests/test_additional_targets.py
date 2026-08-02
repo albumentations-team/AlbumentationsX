@@ -56,13 +56,6 @@ class TestGetImageData:
         assert meta["num_channels"] == 3
         assert meta["dtype"] == np.uint16
 
-    def test_canonical_volumes(self) -> None:
-        data = {"volumes": np.zeros((2, 5, 10, 20, 3), dtype=np.uint8)}
-        meta = get_image_data(data)
-        assert meta["height"] == 10
-        assert meta["width"] == 20
-        assert meta["num_channels"] == 3
-
     def test_aliased_image(self) -> None:
         data = {"custom_image_key": np.zeros((10, 20, 3), dtype=np.uint8)}
         meta = get_image_data(data, {"custom_image_key": "image"})
@@ -76,11 +69,6 @@ class TestGetImageData:
     def test_aliased_volume(self) -> None:
         data = {"my_vol": np.zeros((5, 10, 20, 3), dtype=np.uint8)}
         meta = get_image_data(data, {"my_vol": "volume"})
-        assert meta["height"] == 10 and meta["width"] == 20
-
-    def test_aliased_volumes(self) -> None:
-        data = {"my_vols": np.zeros((2, 5, 10, 20, 3), dtype=np.uint8)}
-        meta = get_image_data(data, {"my_vols": "volumes"})
         assert meta["height"] == 10 and meta["width"] == 20
 
     def test_priority_canonical_wins_over_alias(self) -> None:
@@ -149,7 +137,6 @@ class TestGetShape:
             ({"image": np.zeros((10, 20, 3), dtype=np.uint8)}, (10, 20)),
             ({"images": np.zeros((4, 10, 20, 3), dtype=np.uint8)}, (10, 20)),
             ({"volume": np.zeros((5, 10, 20, 3), dtype=np.uint8)}, (10, 20)),
-            ({"volumes": np.zeros((2, 5, 10, 20, 3), dtype=np.uint8)}, (10, 20)),
         ],
     )
     def test_canonical_keys(self, data: dict[str, Any], expected: tuple[int, int]) -> None:
@@ -161,7 +148,6 @@ class TestGetShape:
             ({"x_img": np.zeros((10, 20, 3), dtype=np.uint8)}, {"x_img": "image"}, (10, 20)),
             ({"x_imgs": np.zeros((4, 10, 20, 3), dtype=np.uint8)}, {"x_imgs": "images"}, (10, 20)),
             ({"x_vol": np.zeros((5, 10, 20, 3), dtype=np.uint8)}, {"x_vol": "volume"}, (10, 20)),
-            ({"x_vols": np.zeros((2, 5, 10, 20, 3), dtype=np.uint8)}, {"x_vols": "volumes"}, (10, 20)),
         ],
     )
     def test_aliased_keys(
@@ -198,10 +184,6 @@ class TestGetShape:
 class TestGetVolumeShape:
     def test_canonical_volume(self) -> None:
         data = {"volume": np.zeros((5, 10, 20, 3), dtype=np.uint8)}
-        assert get_volume_shape(data) == (5, 10, 20)
-
-    def test_canonical_volumes(self) -> None:
-        data = {"volumes": np.zeros((2, 5, 10, 20, 3), dtype=np.uint8)}
         assert get_volume_shape(data) == (5, 10, 20)
 
     def test_aliased_volume(self) -> None:
@@ -251,16 +233,10 @@ class _DummyDual(A.DualTransform):
         ("masks", (4, 10, 20), (10, 20)),
         ("volume", (5, 10, 20, 3), (10, 20, 3)),
         ("mask3d", (5, 10, 20), (10, 20)),
-        ("volumes", (2, 5, 10, 20, 3), (10, 20, 3)),
-        ("masks3d", (2, 5, 10, 20), (10, 20)),
         ("images", (0, 10, 20, 3), (10, 20, 3)),
         ("masks", (0, 10, 20), (10, 20)),
         ("volume", (0, 10, 20, 3), (10, 20, 3)),
         ("mask3d", (0, 10, 20), (10, 20)),
-        ("volumes", (0, 5, 10, 20, 3), (10, 20, 3)),
-        ("volumes", (2, 0, 10, 20, 3), (10, 20, 3)),
-        ("masks3d", (0, 5, 10, 20), (10, 20)),
-        ("masks3d", (2, 0, 10, 20), (10, 20)),
     ],
 )
 def test_extract_shape_aliased(

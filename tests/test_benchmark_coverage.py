@@ -26,7 +26,7 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
-    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 14
+    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 10
     assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 8
 
 
@@ -89,14 +89,11 @@ def test_benchmark_coverage_details_map_batch_matrix_to_public_transforms() -> N
     assert set(horizontal_flip["performance_contract"]["batch"]["implementation_methods"]) == {
         "apply_to_images",
         "apply_to_masks",
-        "apply_to_masks3d",
-        "apply_to_volumes",
     }
-    assert {"images", "masks", "masks3d", "volumes"}.issubset(horizontal_flip["scenario_contract"]["targets"])
+    assert {"images", "masks"}.issubset(horizontal_flip["scenario_contract"]["targets"])
     assert {
         ("batch_matrix", "horizontal_flip|images|small|1|uint8|4"),
         ("batch_matrix", "horizontal_flip|images_and_masks|small|1|uint8|4"),
-        ("batch_matrix", "horizontal_flip|volumes_and_masks3d|small|1|uint8|2"),
     }.issubset({(case["layer"], case["case_id"]) for case in horizontal_flip["asv_cases"]})
 
 
@@ -184,28 +181,23 @@ def test_benchmark_coverage_details_map_both_random_tone_curve_modes() -> None:
         "random_tone_curve",
         "random_tone_curve_per_channel",
     }
-    assert len(batch_cases) == len(batch_case_ids) == 192
+    assert len(batch_cases) == len(batch_case_ids) == 96
     assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
         "direct_images": 48,
-        "direct_volumes": 48,
         "images": 48,
-        "volumes_and_masks3d": 48,
     }
     assert {
         "random_tone_curve|images|small|1|uint8|4",
         "random_tone_curve|direct_images|medium|5|float32|8",
-        "random_tone_curve_per_channel|volumes_and_masks3d|small|3|uint8|2",
-        "random_tone_curve_per_channel|direct_volumes|medium|5|float32|4",
     }.issubset(batch_case_ids)
     assert random_tone_curve["performance_contract"]["batch"]["status"] == "covered"
     assert {"compose_batch", "direct_batch"}.issubset(random_tone_curve["scenario_contract"]["scopes"])
-    assert {"images", "masks3d", "volumes"}.issubset(random_tone_curve["scenario_contract"]["targets"])
+    assert {"images"}.issubset(random_tone_curve["scenario_contract"]["targets"])
     assert random_tone_curve["scenario_axis_contracts"]["batch_matrix"] == {
         "covered": {
             "channels": [1, 3, 5],
             "dtypes": ["uint8", "float32"],
             "sizes": ["small", "medium"],
-            "volume_sizes": ["small", "medium"],
         },
         "skip_reason": "batch matrix omits large image batches to keep CI evidence stable and affordable",
         "skipped": {"sizes": ["large"]},
@@ -353,7 +345,7 @@ def test_benchmark_coverage_details_track_batch_and_annotation_audit_paths() -> 
     crop_and_pad = _coverage_for("CropAndPad")
 
     assert auto_contrast["performance_contract"]["batch"] == {
-        "implementation_methods": ["apply_to_images", "apply_to_volumes"],
+        "implementation_methods": ["apply_to_images"],
         "reason": (
             "custom batch methods are inventoried for review; current release-critical evidence comes from "
             "catalog smoke, family matrices, direct kernels, and core batch dispatch until this route is promoted"

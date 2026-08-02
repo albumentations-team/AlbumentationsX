@@ -24,8 +24,8 @@ always_apply: true
   `tests/helpers/target_profiles.py`, transform-required metadata in the case `context_factory`, and target prerequisites
   in `required_targets`. Profiles and runners must not contain transform-class lists or class-name skip branches. See
   `docs/design/transform-target-contracts.md`.
-- Within `Compose`, images and volumes always have an explicit channel dimension:
-  `(H, W, C)`, `(N, H, W, C)`, `(D, H, W, C)`, or `(N, D, H, W, C)`
+- Within `Compose`, images and volume data always have an explicit channel dimension:
+  `(H, W, C)`, `(N, H, W, C)`, or `(D, H, W, C)`
 - Grayscale in Compose is `(H, W, 1)`, not `(H, W)`; do not add 2D grayscale compatibility branches to
   transform `apply_*` methods or functional kernels used by Compose
 - For performance work, benchmark before choosing `cv2`, `sz_lut`, or NumPy. Direct bitwise operations can beat

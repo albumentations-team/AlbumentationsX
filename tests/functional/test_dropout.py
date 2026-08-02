@@ -141,7 +141,7 @@ def test_cutout_with_various_fill_values(img, fill):
             expected_result[y1:y2, x1:x2] = expected_fill[: y2 - y1, : x2 - x1]
 
     # Check the filled values
-    assert np.all(result == expected_result), "The result does not match the expected output."
+    np.testing.assert_array_equal(result, expected_result, err_msg="The result does not match the expected output.")
 
 
 @pytest.mark.parametrize(
@@ -221,10 +221,10 @@ def test_cutout_various_types_and_fills(dtype, max_value, shape, fill_type):
 
         # Ensure the hole has the correct fill value
         if len(shape) == 2:  # Handle no channel dimension in grayscale
-            assert np.all(result_img[10:50, 10:50] == expected_fill[0])
+            np.testing.assert_array_equal(result_img[10:50, 10:50], expected_fill[0])
         else:
             for channel_index in range(result_img.shape[-1]):
-                assert np.all(result_img[10:50, 10:50, channel_index] == expected_fill[channel_index])
+                np.testing.assert_array_equal(result_img[10:50, 10:50, channel_index], expected_fill[channel_index])
 
 
 @pytest.mark.parametrize(
@@ -647,13 +647,13 @@ def test_sample_points_from_components(mask, num_points, expected):
             assert mask[y, x] > 0  # Any non-zero value is foreground
 
         # Check sizes are approximately correct (allowing for small numerical differences)
-        assert np.allclose(sizes, expected["approx_size"], rtol=0.1)
+        np.testing.assert_allclose(sizes, expected["approx_size"], rtol=0.1, atol=1e-8, equal_nan=False)
 
         # Check all sizes for same component are identical
         if len(sizes) > 1:
             # For masks with single component, all sizes should be the same
             if np.sum(np.unique(mask) > 0) == 1:
-                assert np.allclose(sizes, sizes[0])
+                np.testing.assert_allclose(sizes, sizes[0], rtol=1e-5, atol=1e-8, equal_nan=False)
 
 
 @pytest.mark.parametrize(
@@ -747,7 +747,7 @@ def test_sample_points_from_components_multiple_components(mask, num_points, exp
     if "component_area" in expected:
         # Single component case
         expected_size = np.sqrt(expected["component_area"])
-        assert np.allclose(sizes, expected_size, rtol=0.1)
+        np.testing.assert_allclose(sizes, expected_size, rtol=0.1, atol=1e-8, equal_nan=False)
     else:
         # Multiple components case
         expected_sizes = [np.sqrt(area) for area in expected["component_areas"]]

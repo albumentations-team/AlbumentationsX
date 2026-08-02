@@ -852,8 +852,6 @@ def get_mask_array(data: dict[str, Any]) -> np.ndarray | None:
         return data["masks"][0]
     if "mask3d" in data and data["mask3d"].shape[0] > 0:
         return data["mask3d"][0]
-    if "masks3d" in data and all(size > 0 for size in data["masks3d"].shape[:2]):
-        return data["masks3d"][0, 0]
     return None
 
 

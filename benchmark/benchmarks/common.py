@@ -166,9 +166,3 @@ def make_mask3d(size_name: str = "small") -> np.ndarray:
     """Create a deterministic 3D mask."""
     volume = make_volume(size_name, 1)
     return (volume[..., 0] > 127).astype(np.uint8)
-
-
-def make_volume_batch(size_name: str = "small", channels: int = 1, batch_size: int = 2) -> np.ndarray:
-    """Create a deterministic channel-last volume batch."""
-    volume = make_volume(size_name, channels)
-    return np.stack([volume.copy() for _ in range(batch_size)], axis=0)

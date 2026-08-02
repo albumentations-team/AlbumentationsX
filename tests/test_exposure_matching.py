@@ -119,37 +119,20 @@ def test_exposure_matching_derives_one_gain_per_image_or_slice(
     np.testing.assert_allclose(transform.get_applied_params()[gains_key], [2.0, 1.0, 0.5])
 
 
-def test_exposure_matching_derives_nested_gains_for_volumes() -> None:
-    volumes = np.array(
-        [
-            [np.full((3, 5, 2), 0.2, dtype=np.float32), np.full((3, 5, 2), 0.4, dtype=np.float32)],
-            [np.full((3, 5, 2), 0.8, dtype=np.float32), np.full((3, 5, 2), 0.1, dtype=np.float32)],
-        ],
-    )
-    transform = A.ExposureMatching(target_mean_range=(0.4, 0.4), p=1.0)
-
-    result = transform(volumes=volumes)["volumes"]
-
-    np.testing.assert_allclose(result, 0.4, rtol=0, atol=1e-6)
-    np.testing.assert_allclose(transform.get_applied_params()["volumes_gains"], [[2.0, 1.0], [0.5, 4.0]])
-
-
 def test_exposure_matching_keeps_gains_separate_for_simultaneous_target_routes() -> None:
     image = np.full((3, 5, 2), 0.2, dtype=np.float32)
     images = np.stack([image, np.full_like(image, 0.4)])
     volume = np.stack([image, np.full_like(image, 0.8), np.full_like(image, 0.4)])
-    volumes = np.stack([volume, np.full_like(volume, 0.1)])
     transform = A.ExposureMatching(target_mean_range=(0.4, 0.4), p=1.0)
 
-    result = transform(image=image, images=images, volume=volume, volumes=volumes)
+    result = transform(image=image, images=images, volume=volume)
     params = transform.get_applied_params()
 
-    for target in ("image", "images", "volume", "volumes"):
+    for target in ("image", "images", "volume"):
         np.testing.assert_allclose(result[target], 0.4, rtol=0, atol=1e-6)
     np.testing.assert_allclose(params["gain"], 2.0)
     np.testing.assert_allclose(params["image_gains"], [2.0, 1.0])
     np.testing.assert_allclose(params["volume_gains"], [2.0, 0.5, 1.0])
-    np.testing.assert_allclose(params["volumes_gains"], [[2.0, 0.5, 1.0], [4.0, 4.0, 4.0]])
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -208,7 +191,7 @@ def test_exposure_matching_records_sampled_target_and_gains_for_replay() -> None
 
 @pytest.mark.parametrize(
     ("target", "gains_key"),
-    [("images", "image_gains"), ("volume", "volume_gains"), ("volumes", "volumes_gains")],
+    [("images", "image_gains"), ("volume", "volume_gains")],
 )
 def test_exposure_matching_replay_compose_reuses_applied_gains(target: str, gains_key: str) -> None:
     images = np.stack(
@@ -217,7 +200,7 @@ def test_exposure_matching_replay_compose_reuses_applied_gains(target: str, gain
             np.full((4, 6, 3), 0.8, dtype=np.float32),
         ],
     )
-    data = np.expand_dims(images, axis=0) if target == "volumes" else images
+    data = images
     pipeline = A.ReplayCompose([A.ExposureMatching(target_mean_range=(0.3, 0.5), p=1.0)], seed=137)
 
     result = pipeline(**{target: data})

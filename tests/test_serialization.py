@@ -499,10 +499,11 @@ def test_serialization_conversion_without_totensor(
     image1 = transform(image=image)["image"]
     image2 = transform_from_buffer(image=image)["image"]
 
-    assert np.array_equal(
+    np.testing.assert_array_equal(
         image1,
         image2,
-    ), f"The transformed images are not equal {(image1 - image2).mean()}"
+        err_msg=f"The transformed images are not equal {(image1 - image2).mean()}",
+    )
 
 
 @pytest.mark.pytorch

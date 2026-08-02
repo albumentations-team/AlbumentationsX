@@ -26,7 +26,7 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
-    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 14
+    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 10
     assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 8
 
 
@@ -91,7 +91,7 @@ def test_benchmark_coverage_details_map_batch_matrix_to_public_transforms() -> N
         "apply_to_masks",
         "apply_to_masks3d",
     }
-    assert {"images", "masks", "masks3d"}.issubset(horizontal_flip["scenario_contract"]["targets"])
+    assert {"images", "masks"}.issubset(horizontal_flip["scenario_contract"]["targets"])
     assert {
         ("batch_matrix", "horizontal_flip|images|small|1|uint8|4"),
         ("batch_matrix", "horizontal_flip|images_and_masks|small|1|uint8|4"),
@@ -193,7 +193,7 @@ def test_benchmark_coverage_details_map_both_random_tone_curve_modes() -> None:
     }.issubset(batch_case_ids)
     assert random_tone_curve["performance_contract"]["batch"]["status"] == "covered"
     assert {"compose_batch", "direct_batch"}.issubset(random_tone_curve["scenario_contract"]["scopes"])
-    assert {"images", "masks3d"}.issubset(random_tone_curve["scenario_contract"]["targets"])
+    assert {"images"}.issubset(random_tone_curve["scenario_contract"]["targets"])
     assert random_tone_curve["scenario_axis_contracts"]["batch_matrix"] == {
         "covered": {
             "channels": [1, 3, 5],

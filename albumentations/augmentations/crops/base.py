@@ -203,23 +203,6 @@ class BaseCrop(DualTransform):
             )
         return self.apply_to_images(mask3d, crop_coords, **params)
 
-    def apply_to_masks3d(
-        self,
-        masks3d: VolumeType,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> VolumeType:
-        if masks3d.size == 0:
-            # Return empty array with cropped dimensions
-            # Assume masks3d shape is (N, D, H, W, C)
-            crop_height = crop_coords[3] - crop_coords[1]
-            crop_width = crop_coords[2] - crop_coords[0]
-            return cast(
-                "VolumeType",
-                np.empty((0, masks3d.shape[1], crop_height, crop_width, masks3d.shape[4]), dtype=masks3d.dtype),
-            )
-        return fcrops.masks3d_crop_yx(masks3d, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
-
     @staticmethod
     def _clip_bbox(bbox: tuple[int, int, int, int], image_shape: tuple[int, int]) -> tuple[int, int, int, int]:
         height, width = image_shape[:2]
@@ -489,27 +472,6 @@ class BaseCropAndPad(BaseCrop):
         **params: Any,
     ) -> VolumeType:
         return self.apply_to_images(mask3d, crop_coords, **params)
-
-    def apply_to_masks3d(
-        self,
-        masks3d: VolumeType,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> VolumeType:
-        pad_params = params.get("pad_params")
-        if pad_params is not None:
-            masks3d = fcrops.pad_along_axes(
-                masks3d,
-                pad_params["pad_top"],
-                pad_params["pad_bottom"],
-                pad_params["pad_left"],
-                pad_params["pad_right"],
-                h_axis=2,
-                w_axis=3,
-                border_mode=self.border_mode,
-                pad_value=self.fill,
-            )
-        return BaseCrop.apply_to_masks3d(self, masks3d, crop_coords, **params)
 
     def apply_to_bboxes(
         self,

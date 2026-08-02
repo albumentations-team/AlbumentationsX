@@ -23,7 +23,6 @@ from tests.helpers.contract_data import (
     make_target_image_batch_data,
     make_target_image_mask_data,
     make_target_keypoint_data,
-    make_target_mask3d_batch_data,
     make_target_mask_batch_data,
     make_target_multispectral_image_mask_data,
     make_target_noncontiguous_image_mask_data,
@@ -143,15 +142,6 @@ def _assert_masks(case: TransformContractCase, source: dict[str, Any], result: d
     assert masks.dtype == source["masks"].dtype
 
 
-def _assert_masks3d(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
-    masks3d = result["masks3d"]
-    assert masks3d.ndim == 4
-    assert masks3d.shape[0] == source["masks3d"].shape[0]
-    if not issubclass(case.transform_cls, A.Transform3D):
-        assert masks3d.shape[1] == source["masks3d"].shape[1]
-    assert masks3d.dtype == source["masks3d"].dtype
-
-
 @dataclass(frozen=True)
 class TargetProfile:
     """One reusable input workload and its shared output assertions."""
@@ -261,13 +251,6 @@ TARGET_CONTRACT_PROFILES = (
         required_targets=frozenset({"masks"}),
         data_factory=make_target_mask_batch_data,
         assert_result=_assert_masks,
-        cost=ProfileCost.EXTENDED,
-    ),
-    TargetProfile(
-        profile_id="masks3d-batch",
-        required_targets=frozenset({"masks3d"}),
-        data_factory=make_target_mask3d_batch_data,
-        assert_result=_assert_masks3d,
         cost=ProfileCost.EXTENDED,
     ),
     TargetProfile(

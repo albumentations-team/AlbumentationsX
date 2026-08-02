@@ -71,7 +71,7 @@ The HBB and OBB profiles use separate `BboxParams`. A case collects only for bbo
 Extended profiles run one primary mode per class:
 
 - float32, one-channel, and five-channel image/mask data;
-- `images`, `masks`, and `masks3d` batches;
+- `images` and `masks` batches;
 - empty HBB and keypoint collections;
 - non-contiguous image/mask views; and
 - read-only image/mask arrays.

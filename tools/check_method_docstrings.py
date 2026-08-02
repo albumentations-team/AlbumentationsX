@@ -12,7 +12,6 @@ OPTIONAL_DOCSTRING_METHODS: set[str] = {
     "apply_to_mask",
     "apply_to_masks",
     "apply_to_mask3d",
-    "apply_to_masks3d",
     "apply_to_bboxes",
     "apply_to_keypoints",
     "get_params_dependent_on_data",

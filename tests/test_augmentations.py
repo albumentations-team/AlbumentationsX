@@ -1220,7 +1220,6 @@ def test_pixel_dropout_multiple_images():
         ("masks", (0, 8, 12)),
         ("volume", (0, 8, 12, 1)),
         ("mask3d", (0, 8, 12)),
-        ("masks3d", (0, 2, 8, 12, 1)),
     ],
 )
 def test_pixel_dropout_preserves_empty_targets(target: str, shape: tuple[int, ...]) -> None:

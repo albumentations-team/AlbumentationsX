@@ -15,7 +15,6 @@ from albumentations.augmentations.dropout import functional as fdropout
 from albumentations.augmentations.dropout.functional import (
     FillValueLiteral,
     cutout,
-    cutout_on_masks3d,
     cutout_on_volume,
     filter_bboxes_by_holes,
     filter_keypoints_in_holes,
@@ -37,7 +36,6 @@ _PIXEL_DROPOUT_REFERENCE_TARGETS = (
     ("mask", 0),
     ("masks", 1),
     ("mask3d", 1),
-    ("masks3d", 2),
 )
 
 
@@ -187,11 +185,6 @@ class BaseDropout(DualTransform):
         if self.fill_mask is None or holes.size == 0:
             return mask
         return cutout_on_volume(mask, holes, self.fill_mask, np.random.default_rng(seed))
-
-    def apply_to_masks3d(self, masks3d: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
-        if self.fill_mask is None or holes.size == 0:
-            return masks3d
-        return cutout_on_masks3d(masks3d, holes, self.fill_mask, np.random.default_rng(seed))
 
     def apply_to_mask(self, mask: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if self.fill_mask is None or holes.size == 0:

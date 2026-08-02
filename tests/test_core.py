@@ -2488,27 +2488,6 @@ def test_grayscale_mask3d_handling():
     assert result["mask3d"].ndim == 3
 
 
-def test_grayscale_masks3d_batch_handling():
-    """Test that batches of grayscale 3D masks are handled correctly."""
-    # Create batch of grayscale 3D masks (N, D, H, W)
-    batch_size = 4
-    grayscale_masks3d = np.random.randint(0, 2, (batch_size, 50, 100, 200)).astype(np.uint8)
-
-    # Create a simple transform pipeline that works with 3D masks
-    transform = A.Compose(
-        [
-            A.NoOp(p=1.0),  # NoOp supports all targets including masks3d
-        ],
-    )
-
-    # Apply transform
-    result = transform(masks3d=grayscale_masks3d)
-
-    # Check that output has same shape as input
-    assert result["masks3d"].shape == grayscale_masks3d.shape
-    assert result["masks3d"].ndim == 4
-
-
 # --- user_data target tests ---
 
 

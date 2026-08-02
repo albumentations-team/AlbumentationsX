@@ -49,8 +49,6 @@ def _supports_profile(case: TransformContractCase, profile: TargetProfile) -> bo
         declared_targets.add("images")
     if "mask" in declared_targets:
         declared_targets.add("masks")
-    if "mask3d" in declared_targets:
-        declared_targets.add("masks3d")
     if not profile.required_targets <= declared_targets:
         return False
     supported_channel_counts = getattr(transform, "_supported_channel_counts", None)

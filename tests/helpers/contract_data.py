@@ -157,12 +157,6 @@ def make_target_mask_batch_data(rng: np.random.Generator) -> dict[str, Any]:
     return {"masks": np.stack(masks)}
 
 
-def make_target_mask3d_batch_data(rng: np.random.Generator) -> dict[str, Any]:
-    """Return a batch of slice-dependent 3D masks."""
-    masks3d = [make_target_volume_data(rng)["mask3d"] for _ in range(2)]
-    return {"masks3d": np.stack(masks3d)}
-
-
 def make_target_empty_hbb_data(rng: np.random.Generator) -> dict[str, Any]:
     """Return image data with typed empty horizontal-box fields."""
     data = make_target_image_mask_data(rng)
@@ -241,9 +235,6 @@ def _first_image(data: dict[str, Any]) -> np.ndarray:
     if "mask3d" in data:
         mask = data["mask3d"][0]
         return np.repeat(mask[..., None], 3, axis=-1) if mask.ndim == 2 else mask
-    if "masks3d" in data:
-        mask = data["masks3d"][0, 0]
-        return np.repeat(mask[..., None], 3, axis=-1) if mask.ndim == 2 else mask
     raise ValueError(f"Cannot derive an image from data keys: {sorted(data)}")
 
 
@@ -254,8 +245,6 @@ def _first_mask(data: dict[str, Any]) -> np.ndarray | None:
         return data["masks"][0]
     if "mask3d" in data:
         return data["mask3d"][0]
-    if "masks3d" in data:
-        return data["masks3d"][0, 0]
     return None
 
 

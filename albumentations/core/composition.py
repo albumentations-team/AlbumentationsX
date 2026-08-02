@@ -151,7 +151,6 @@ AVAILABLE_KEYS = (
     "keypoints",
     "volume",
     "mask3d",
-    "masks3d",
     "user_data",
 )
 
@@ -159,7 +158,6 @@ MASK_KEYS = (
     "mask",  # 2D mask
     "masks",  # Multiple 2D masks
     "mask3d",  # 3D mask
-    "masks3d",  # Multiple 3D masks
 )
 
 # Keys related to image data
@@ -1412,7 +1410,7 @@ class Compose(BaseCompose, HubMixin):
         volume_shapes: list[tuple[int, ...]] = []  # For D,H,W checks
 
         # List of targets to check shapes for
-        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks", "masks3d"}
+        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks"}
 
         for data_name, data_value in data.items():
             # Resolve aliases via additional_targets so e.g. {'custom_image_key': 'image'}
@@ -1459,13 +1457,6 @@ class Compose(BaseCompose, HubMixin):
                 raise TypeError(f"{data_name} must be 3D or 4D array")
             shapes.append(data_value.shape[1:3])  # H,W
             volume_shapes.append(data_value.shape[:3])  # D,H,W
-
-        # Handle 3D batch data
-        elif data_name == "masks3d":
-            if data_value.ndim not in {4, 5}:  # (N,D,H,W) or (N,D,H,W,C)
-                raise TypeError(f"{data_name} must be 4D or 5D array")
-            shapes.append(data_value.shape[2:4])  # H,W from (N,D,H,W)
-            volume_shapes.append(data_value.shape[1:4])  # D,H,W from (N,D,H,W)
 
     def _validate_data(self, data: dict[str, Any]) -> None:
         """Validate input data keys and arguments. When strict, checks every key is in
@@ -1522,7 +1513,6 @@ class Compose(BaseCompose, HubMixin):
         "masks": 3,  # (N, H, W) => (N, H, W, 1)
         "volume": 3,  # (D, H, W) => (D, H, W, 1)
         "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
-        "masks3d": 4,  # (N, D, H, W) => (N, D, H, W, 1)
     }
 
     def _add_grayscale_channels(self, data: dict[str, Any]) -> None:
@@ -1630,7 +1620,7 @@ class Compose(BaseCompose, HubMixin):
                         if canonical in {"image", "images"} and len(value.shape) >= 3 and value.shape[0] == 1:
                             # Image tensor with shape (1, H, W) -> (H, W) is not typical, skip
                             pass
-                        elif canonical in {"mask", "masks", "mask3d", "masks3d"} and value.shape[-1] == 1:
+                        elif canonical in {"mask", "masks", "mask3d"} and value.shape[-1] == 1:
                             # Mask tensor with shape (..., H, W, 1) -> (..., H, W)
                             data[key] = torch.squeeze(value, dim=-1)
 
@@ -2254,7 +2244,7 @@ class Compose(BaseCompose, HubMixin):
         """Check and process a single argument from _check_args. Validates type and shape
         for image, mask, images, volume, etc.; appends to shapes/volume_shapes.
         """
-        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks", "masks3d"}
+        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks"}
         if internal_name not in shape_check_targets:
             return
 
@@ -2278,7 +2268,7 @@ class Compose(BaseCompose, HubMixin):
         # Check D,H,W consistency for volume data and 3D masks
         if self.is_check_shapes and volume_shapes and volume_shapes.count(volume_shapes[0]) != len(volume_shapes):
             raise ValueError(
-                "Depth, Height and Width of volume, mask3d, and masks3d should be equal. "
+                "Depth, Height and Width of volume and mask3d should be equal. "
                 "You can disable shapes check by setting is_check_shapes=False.",
             )
 

@@ -41,9 +41,7 @@ def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
         return data["volume"].shape
     if "mask3d" in data:
         return data["mask3d"].shape
-    if "masks3d" in data:
-        return data["masks3d"].shape[1:]
-    raise ValueError("No volume, mask3d, or masks3d found in data")
+    raise ValueError("No volume or mask3d found in data")
 
 
 def _get_volume_spatial_shape(data: dict[str, Any]) -> tuple[int, int, int]:

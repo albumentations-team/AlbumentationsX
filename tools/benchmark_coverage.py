@@ -76,7 +76,6 @@ def unavailable_optional_transform_names() -> set[str]:
 BATCH_METHOD_NAMES = (
     "apply_to_images",
     "apply_to_masks",
-    "apply_to_masks3d",
 )
 ANNOTATION_METHOD_NAMES = (
     "apply_to_bboxes",

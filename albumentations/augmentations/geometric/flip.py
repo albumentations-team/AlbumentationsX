@@ -148,12 +148,6 @@ class VerticalFlip(DualTransform):
             return mask3d
         return self.apply_to_images(mask3d, **params)
 
-    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
-        if masks3d.size == 0:
-            # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
-            return masks3d
-        return fgeometric.vflip_masks3d(masks3d)
-
     def inverse(self) -> VerticalFlip:
         """Return a new VerticalFlip that undoes the flip (vertical flip is self-inverse). Use after
         inference in TTA to restore predictions to original orientation.
@@ -251,12 +245,6 @@ class HorizontalFlip(DualTransform):
             # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
             return mask3d
         return self.apply_to_images(mask3d, **params)
-
-    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
-        if masks3d.size == 0:
-            # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
-            return masks3d
-        return fgeometric.hflip_masks3d(masks3d)
 
     def inverse(self) -> HorizontalFlip:
         """Return a new HorizontalFlip that undoes the flip (horizontal flip is self-inverse). Use
@@ -366,19 +354,6 @@ class Transpose(DualTransform):
                 np.empty((mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]), dtype=mask3d.dtype),
             )
         return self.apply_to_images(mask3d, **params)
-
-    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
-        if masks3d.size == 0:
-            # Transpose swaps H and W
-            # Assume masks3d shape is (N, D, H, W, C) -> (N, D, W, H, C)
-            return cast(
-                "VolumeType",
-                np.empty(
-                    (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
-                    dtype=masks3d.dtype,
-                ),
-            )
-        return fgeometric.transpose_masks3d(masks3d)
 
     def inverse(self) -> Transpose:
         """Return a new Transpose that undoes the transpose (transpose is self-inverse). Use after
@@ -554,31 +529,6 @@ class D4(DualTransform):
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return mask3d
         return self.apply_to_images(mask3d, group_element)
-
-    def apply_to_masks3d(
-        self,
-        masks3d: VolumeType,
-        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
-        **params: Any,
-    ) -> VolumeType:
-        if masks3d.size == 0:
-            # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
-            # Assume masks3d shape is (N, D, H, W, C)
-            if group_element in {"r90", "r270", "t", "hvt"}:
-                # These swap H and W: (N, D, H, W, C) -> (N, D, W, H, C)
-                return cast(
-                    "VolumeType",
-                    np.empty(
-                        (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
-                        dtype=masks3d.dtype,
-                    ),
-                )
-            # Other elements preserve dimensions: "e", "r180", "v", "h"
-            return masks3d
-        batch_size, depth = masks3d.shape[:2]
-        flattened = masks3d.reshape(batch_size * depth, *masks3d.shape[2:])
-        transformed = fgeometric.d4_images(flattened, group_element)
-        return cast("VolumeType", transformed.reshape(batch_size, depth, *transformed.shape[1:]))
 
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
         if self.group_element is not None:

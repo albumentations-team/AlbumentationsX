@@ -716,31 +716,6 @@ def transpose_images(images: ImageType) -> ImageType:
     return images.transpose(new_axes)
 
 
-def transpose_masks3d(masks3d: np.ndarray) -> np.ndarray:
-    """Transpose height and width axes of 3D masks in one batch while preserving batch, channel axes, dtype, and layout.
-    Preserves output layout.
-
-    Args:
-        masks3d (np.ndarray): 3D-mask batch to transpose with shape:
-            - (N, D, H, W) for grayscale data
-            - (N, D, H, W, C) for multi-channel data
-            where N is the batch size, D is depth, H is height, W is width, C is channels
-
-    Returns:
-        np.ndarray: Transposed 3D-mask batch with shape:
-            - (N, D, W, H) for grayscale data
-            - (N, D, W, H, C) for multi-channel data
-
-    """
-    # Generate the new axes order
-    new_axes = list(range(masks3d.ndim))
-    # Swap dimensions 2 and 3 (Height and Width), preserving batch, depth and channels
-    new_axes[2], new_axes[3] = 3, 2
-
-    # Transpose the array using the new axes order
-    return masks3d.transpose(new_axes)
-
-
 def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
     """Rotate image 90° counterclockwise. group_element: e, r90, r180, r270. Same as np.rot90.
     Use for D4-style augmentation. Same dtype and shape.
@@ -1295,61 +1270,6 @@ def vflip_images(volume: np.ndarray) -> np.ndarray:
     return np.flip(volume, axis=1)
 
 
-def hflip_masks3d(masks3d: np.ndarray) -> np.ndarray:
-    """Flip every 3D mask in a batch across the horizontal axis while preserving batch, channel axes, dtype, and layout.
-    Preserves output layout.
-
-    Flips the data along the width axis (axis=3). Handles inputs with
-    shapes (B, D, H, W) or (B, D, H, W, C).
-
-    Args:
-        masks3d (np.ndarray): Input 3D-mask batch.
-
-    Returns:
-        np.ndarray: Horizontally flipped 3D-mask batch.
-
-    """
-    # Width axis is 3 for both (B, D, H, W) and (B, D, H, W, C)
-    return np.flip(masks3d, axis=3)
-
-
-def vflip_masks3d(masks3d: np.ndarray) -> np.ndarray:
-    """Flip every 3D mask in one batch across the vertical axis while preserving batch, channel axes, dtype, and layout.
-    Preserves output layout.
-
-    Flips the data along the height axis (axis=2). Handles inputs with
-    shapes (B, D, H, W) or (B, D, H, W, C).
-
-    Args:
-        masks3d (np.ndarray): Input 3D-mask batch.
-
-    Returns:
-        np.ndarray: Vertically flipped 3D-mask batch.
-
-    """
-    # Height axis is 2 for both (B, D, H, W) and (B, D, H, W, C)
-    return np.flip(masks3d, axis=2)
-
-
-def rot90_masks3d(masks3d: np.ndarray, group_element: Literal["e", "r90", "r180", "r270"]) -> np.ndarray:
-    """Rotate all 3D masks in a batch counterclockwise by 90° in the height-width plane while retaining batch and dtype.
-    Preserves output layout.
-
-    Rotates the data in the height-width plane (axes 2 and 3).
-    Handles inputs with shapes (B, D, H, W) or (B, D, H, W, C).
-
-    Args:
-        masks3d (np.ndarray): Input 3D-mask batch.
-        group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
-
-    Returns:
-        np.ndarray: Rotated 3D-mask batch.
-
-    """
-    rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
-    return np.rot90(masks3d, k=rot90_count, axes=(2, 3))
-
-
 @preserve_channel_dim
 def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
     """One iteration of morphological erosion. Shrinks bright regions. Use for mask/bbox
@@ -1482,7 +1402,6 @@ __all__ = [
     "erode",
     "get_pad_grid_dimensions",
     "hflip_images",
-    "hflip_masks3d",
     "is_identity_matrix",
     "morphology",
     "pad",
@@ -1496,13 +1415,10 @@ __all__ = [
     "resize_pyvips",
     "rot90",
     "rot90_images",
-    "rot90_masks3d",
     "rotation2d_matrix_to_euler_angles",
     "scale",
     "scale_xy",
     "transpose",
     "transpose_images",
-    "transpose_masks3d",
     "vflip_images",
-    "vflip_masks3d",
 ]

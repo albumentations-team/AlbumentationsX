@@ -668,7 +668,6 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         ("mask", lambda v: v.shape),
         ("masks", lambda v: v.shape[1:]),
         ("mask3d", lambda v: v.shape[1:]),
-        ("masks3d", lambda v: v.shape[2:]),
     )
 
     def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
@@ -965,14 +964,6 @@ class DualTransform(BasicTransform):
 
             Returns Transformed 3D mask in the same format as input.
 
-        apply_to_masks3d(masks: VolumeType, **params: Any) -> VolumeType:
-            Apply the transform to multiple 3D masks.
-
-            masks: Input 3D masks of shape (N, D, H, W) or (N, D, H, W, C)
-            **params: Additional parameters specific to the transform.
-
-            Returns Transformed 3D masks in the same format as input.
-
     Note:
         - All `apply_*` methods should maintain the input shape and format of the data.
         - When applying transforms to masks, ensure that discrete values (e.g., class labels) are preserved.
@@ -1003,7 +994,6 @@ class DualTransform(BasicTransform):
             "mask": self.apply_to_mask,
             "masks": self.apply_to_masks,
             "mask3d": self.apply_to_mask3d,
-            "masks3d": self.apply_to_masks3d,
             "bboxes": self.apply_to_bboxes,
             "keypoints": self.apply_to_keypoints,
             "volume": self.apply_to_images,
@@ -1053,22 +1043,6 @@ class DualTransform(BasicTransform):
     @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self.apply_to_mask(mask3d, *args, **params)
-
-    @batch_transform("spatial")
-    def _apply_to_masks3d_via_mask(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self.apply_to_mask(masks3d, *args, **params)
-
-    def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        if self.__class__.apply_to_mask3d is DualTransform.apply_to_mask3d:
-            return self._apply_to_masks3d_via_mask(masks3d, *args, **params)
-        if len(masks3d) == 0:
-            empty_mask3d = np.zeros(masks3d.shape[1:], dtype=masks3d.dtype)
-            transformed = self.apply_to_mask3d(empty_mask3d, *args, **params)
-            return np.empty((0, *transformed.shape), dtype=transformed.dtype)
-        return self._apply_to_batch(
-            masks3d,
-            lambda mask3d: self.apply_to_mask3d(mask3d, *args, **params),
-        )
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping. For most transforms returns class
@@ -1356,21 +1330,17 @@ class NoOp(DualTransform):
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return mask3d
 
-    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
-        return masks3d
-
 
 class Transform3D(DualTransform):
     """Base class for all 3D transforms. Inherits from DualTransform; applies to volume data,
-    masks3d, keypoints. Override apply_to_volume and apply_to_mask3d.
+    mask3d, keypoints. Override apply_to_volume and apply_to_mask3d.
 
     Transform3D inherits from DualTransform because 3D transforms can be applied to both
     volume data and masks, similar to how 2D DualTransforms work with images and masks.
 
     Targets:
         volume: 3D numpy array of shape (D, H, W, C)
-        mask: 3D numpy array of shape (D, H, W) or (D, H, W, C)
-        masks: Batch of 3D arrays of shape (N, D, H, W) or (N, D, H, W, C)
+        mask3d: 3D numpy array of shape (D, H, W) or (D, H, W, C)
         keypoints: 3D numpy array of shape (N, 3)
     """
 
@@ -1386,19 +1356,11 @@ class Transform3D(DualTransform):
         """
         return self.apply_to_volume(mask3d, *args, **params)
 
-    @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_masks3d(self, masks3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to batch of 3D masks. Uses batch_transform with keep_depth_dim;
-        each mask passed to apply_to_mask3d. Same shape.
-        """
-        return self.apply_to_mask3d(masks3d, *args, **params)
-
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
         return {
             "volume": self.apply_to_volume,
             "mask3d": self.apply_to_mask3d,
-            "masks3d": self.apply_to_masks3d,
             "keypoints": self.apply_to_keypoints,
             "user_data": self.apply_to_user_data,
         }

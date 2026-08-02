@@ -27,7 +27,7 @@ composition/tensor route, or a deliberate golden compatibility contract.
 - Transform class and family: image-only, dual 2D, 3D, mixing/reference-data,
   or composition helper.
 - Target support: image, images, mask, masks, bboxes, keypoints, volume,
-  mask3d, masks3d, and additional targets.
+  mask3d, and additional targets.
 - Shape contract: Compose-routed images and volume data are channel-last with an
   explicit channel dimension.
 - Dtype contract: outputs preserve documented dtype semantics for the tested

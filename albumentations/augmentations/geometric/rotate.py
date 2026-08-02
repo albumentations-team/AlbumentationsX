@@ -236,14 +236,6 @@ class RandomRotate90(DualTransform):
     ) -> VolumeType:
         return self.apply_to_images(mask3d, group_element, **params)
 
-    def apply_to_masks3d(
-        self,
-        masks3d: VolumeType,
-        group_element: Literal["e", "r90", "r180", "r270"],
-        **params: Any,
-    ) -> VolumeType:
-        return fgeometric.rot90_masks3d(masks3d, group_element)
-
     def inverse(self) -> "RandomRotate90":
         """Return a new RandomRotate90 with the inverse group element to undo this transform. Use
         after inference in TTA to restore predictions to original orientation.

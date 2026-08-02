@@ -89,7 +89,6 @@ def test_benchmark_coverage_details_map_batch_matrix_to_public_transforms() -> N
     assert set(horizontal_flip["performance_contract"]["batch"]["implementation_methods"]) == {
         "apply_to_images",
         "apply_to_masks",
-        "apply_to_masks3d",
     }
     assert {"images", "masks"}.issubset(horizontal_flip["scenario_contract"]["targets"])
     assert {

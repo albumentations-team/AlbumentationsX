@@ -1425,15 +1425,6 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         self.axis_pair = axis_pair
         self.group_element = group_element
 
-    @property
-    def targets(self) -> dict[str, Any]:
-        return {
-            "volume": self.apply_to_volume,
-            "mask3d": self.apply_to_mask3d,
-            "keypoints": self.apply_to_keypoints,
-            "user_data": self.apply_to_user_data,
-        }
-
     def get_params(self) -> dict[str, Any]:
         axis_pair = self.axis_pair if self.axis_pair is not None else self.py_random.choice(self.axis_pairs)
         if self.group_element is not None:

@@ -1,8 +1,7 @@
 """PyTorch tensor transform benchmarks.
 
-These benchmarks live outside the default ASV benchmark directory so the
-headless benchmark suite remains importable without the optional PyTorch
-dependency.
+These benchmarks live outside the default ASV benchmark directory so Tensor
+conversion evidence remains separately reviewable from the general catalog.
 """
 
 from __future__ import annotations
@@ -10,6 +9,9 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+
+import numpy as np
+import torch
 
 import albumentations
 
@@ -35,6 +37,9 @@ IMAGE_CASES = tuple(
 )
 VOLUME_CASES = tuple(
     f"{size_name}|{channels}|{dtype_name}" for size_name in VOLUME_SIZES for channels in (1, 3) for dtype_name in DTYPES
+)
+TENSOR_NATIVE_IMAGE_CASES = tuple(
+    f"{size_name}|{channels}|{dtype_name}" for size_name in SIZES for channels in (1, 3) for dtype_name in DTYPES
 )
 
 
@@ -98,3 +103,37 @@ class TimeToTensor3D:
 
     def peakmem_volume(self, case_id: str) -> None:
         self.transform(volume=self.volume)
+
+
+class TimeTensorNativeTranspose:
+    """Benchmark the accepted Tensor `Transpose(image=...)` capability.
+
+    The route is intentionally bounded to the accepted C=1 and C=3 image
+    contract. `images` and `volume` Tensor targets remain unsupported.
+    """
+
+    params = (TENSOR_NATIVE_IMAGE_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        size_name, channels, dtype_name = _parse_image_case(case_id)
+        self.image = make_image(size_name, channels, dtype_from_name(dtype_name))
+        self.tensor = torch.from_numpy(np.ascontiguousarray(self.image.transpose(2, 0, 1)))
+        self.numpy_direct = albumentations.Compose([albumentations.Transpose(p=1.0)], strict=True)
+        self.numpy_model_ready = albumentations.Compose(
+            [albumentations.Transpose(p=1.0), albumentations.ToTensorV2(p=1.0)],
+            strict=True,
+        )
+        self.tensor_direct = albumentations.Compose([albumentations.Transpose(p=1.0)], strict=True)
+
+    def time_numpy_direct(self, case_id: str) -> None:
+        self.numpy_direct(image=self.image)
+
+    def time_numpy_model_ready(self, case_id: str) -> None:
+        self.numpy_model_ready(image=self.image)
+
+    def time_tensor_direct(self, case_id: str) -> None:
+        self.tensor_direct(image=self.tensor)
+
+    def peakmem_tensor_direct(self, case_id: str) -> None:
+        self.tensor_direct(image=self.tensor)

@@ -18,7 +18,7 @@ which limitations are known.
 5. Known limitations: dependency-sensitive exactness, advisory optional-extra
    coverage, and platform caveats.
 6. Performance summary: benchmark status, coverage-contract status,
-   performance-budget status, optional PyTorch tensor benchmark evidence, ASV
+   performance-budget status, dedicated PyTorch Tensor benchmark evidence, ASV
    comparison triage where available, and memory observations.
 7. Security posture: runtime audit, workflow audit, OpenSSF Scorecard, CodeQL
    status, SBOM, checksums, and PyPI provenance.

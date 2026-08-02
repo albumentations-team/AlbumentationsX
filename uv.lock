@@ -55,6 +55,7 @@ dependencies = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "torch" },
     { name = "typing-extensions" },
 ]
 
@@ -76,9 +77,6 @@ hub = [
 ]
 pillow = [
     { name = "pillow" },
-]
-pytorch = [
-    { name = "torch" },
 ]
 pyvips = [
     { name = "pyvips", extra = ["binary"] },
@@ -247,10 +245,10 @@ requires-dist = [
     { name = "pyvips", extras = ["binary"], marker = "extra == 'pyvips'" },
     { name = "pyyaml" },
     { name = "scipy", specifier = ">=1.15.3" },
-    { name = "torch", marker = "extra == 'pytorch'" },
+    { name = "torch", specifier = ">=2.13.0" },
     { name = "typing-extensions", specifier = ">=4.9.0" },
 ]
-provides-extras = ["contrib", "contrib-headless", "gui", "headless", "hub", "pillow", "pytorch", "pyvips", "text"]
+provides-extras = ["contrib", "contrib-headless", "gui", "headless", "hub", "pillow", "pyvips", "text"]
 
 [package.metadata.requires-dev]
 ci-benchmark = [

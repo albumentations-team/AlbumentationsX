@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any, Literal, cast
 
 import numpy as np
+import torch
 from albucore import hflip, vflip
 
 from albumentations.core.transforms_interface import (
@@ -317,8 +318,13 @@ class Transpose(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"image", "mask", "masks", "mask3d"})
+    _cpu_tensor_channels = frozenset({1, 3})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
+        if isinstance(img, torch.Tensor):
+            return cast("ImageType", img.mT)
         return fgeometric.transpose(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
@@ -329,6 +335,8 @@ class Transpose(DualTransform):
         return fgeometric.keypoints_transpose(keypoints)
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
+        if isinstance(mask, torch.Tensor):
+            return cast("ImageType", mask.mT)
         if mask.size == 0:
             # Transpose swaps H and W
             # Assume mask shape is (H, W, C) -> (W, H, C)
@@ -336,6 +344,8 @@ class Transpose(DualTransform):
         return self.apply(mask, **params)
 
     def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
+        if isinstance(masks, torch.Tensor):
+            return cast("StackedMasks4D", masks.transpose(-1, -2))
         if masks.size == 0:
             return StackedMasks4D(
                 np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype),
@@ -346,6 +356,8 @@ class Transpose(DualTransform):
         return fgeometric.transpose_images(images)
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
+        if isinstance(mask3d, torch.Tensor):
+            return cast("VolumeType", mask3d.transpose(-1, -2))
         if mask3d.size == 0:
             # Transpose swaps H and W
             # Assume mask3d shape is (D, H, W, C) -> (D, W, H, C)

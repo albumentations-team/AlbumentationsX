@@ -4,7 +4,7 @@
   "project_url": "https://github.com/albumentations-team/AlbumentationsX",
   "repo": "..",
   "environment_type": "virtualenv",
-  "install_command": "python -m pip install {build_dir}[headless,pytorch]",
+  "install_command": "python -m pip install {build_dir}[headless]",
   "benchmark_dir": "pytorch_benchmarks",
   "env_dir": ".asv/pytorch-env",
   "results_dir": ".asv/pytorch-results",

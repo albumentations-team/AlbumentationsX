@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from typing import Any, Generic, Literal, TypeVar
 
 import numpy as np
+import torch
 
 from albumentations.core.label_manager import LabelManager
 
@@ -113,15 +114,23 @@ def get_image_data(
             continue
         arr = data[key]
         shape = arr.shape
-        if target == "image":
+        if isinstance(arr, torch.Tensor):
+            if target == "image":
+                height, width = shape[1], shape[2]
+            else:
+                height, width = shape[2], shape[3]
+            num_channels = int(shape[0])
+        elif target == "image":
             height, width = shape[0], shape[1]
+            num_channels = shape[-1]
         else:
             height, width = shape[1], shape[2]
+            num_channels = shape[-1]
         return {
             "dtype": arr.dtype,
             "height": height,
             "width": width,
-            "num_channels": shape[-1],
+            "num_channels": num_channels,
         }
     raise ValueError("No valid image/volume data found in data dict")
 
@@ -148,11 +157,8 @@ def _volume_shape_from_array(vol: Any) -> tuple[int, int, int]:
     """Return (D, H, W) from a single volume array, handling both torch CDHW/DHW layouts
     and numpy DHWC/DHW layouts. Private helper for `get_volume_shape`.
     """
-    if _is_torch_tensor(vol):
-        if len(vol.shape) == 4:  # (C, D, H, W)
-            return int(vol.shape[1]), int(vol.shape[2]), int(vol.shape[3])
-        if len(vol.shape) == 3:  # (D, H, W)
-            return int(vol.shape[0]), int(vol.shape[1]), int(vol.shape[2])
+    if isinstance(vol, torch.Tensor):
+        return vol.shape[1], vol.shape[2], vol.shape[3]
     return vol.shape[0], vol.shape[1], vol.shape[2]
 
 
@@ -184,39 +190,22 @@ def get_volume_shape(
     return None
 
 
-def _is_torch_tensor(obj: Any) -> bool:
-    """Return True if obj is a PyTorch tensor (by __module__). Private helper for get_shape and
-    get_volume_shape when resolving layout.
-    """
-    return hasattr(obj, "__module__") and "torch" in obj.__module__
-
-
 def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
     """Extract (height, width) from a single image. Handles numpy HWC or PyTorch CHW. Private
     helper for get_shape when data has 'image' key.
     """
-    # Check if it's a torch tensor that has been transposed to CHW format
-    if _is_torch_tensor(img):
-        # PyTorch tensor in CHW format
-        if len(img.shape) == 3:  # (C, H, W)
-            return int(img.shape[1]), int(img.shape[2])
-        if len(img.shape) == 2:  # (H, W) - grayscale without channel
-            return int(img.shape[0]), int(img.shape[1])
+    if isinstance(img, torch.Tensor):
+        return img.shape[1], img.shape[2]
     # Regular numpy array in HWC format
     return img.shape[0], img.shape[1]
 
 
 def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
-    """Extract (height, width) from batch of images. Uses first image. NHWC or NCHW. Private
-    helper for get_shape when data has 'images' key.
+    """Extract height and width from either a NumPy NHWC batch or a CPU Tensor C,L,H,W
+    sequence while retaining the public layout contract of each representation.
     """
-    # Check if it's a torch tensor batch
-    if _is_torch_tensor(imgs):
-        # PyTorch tensor batch in NCHW format
-        if len(imgs.shape) == 4:  # (N, C, H, W)
-            return int(imgs.shape[2]), int(imgs.shape[3])
-        if len(imgs.shape) == 3:  # (N, H, W) - grayscale batch without channel
-            return int(imgs.shape[1]), int(imgs.shape[2])
+    if isinstance(imgs, torch.Tensor):
+        return imgs.shape[2], imgs.shape[3]
     # Regular numpy array batch in NHWC format - take first image
     return imgs[0].shape[0], imgs[0].shape[1]
 
@@ -225,13 +214,8 @@ def _get_shape_from_volume(vol: np.ndarray) -> tuple[int, int]:
     """Extract (height, width) from a single volume (D,H,W or D,H,W,C). Private helper for
     get_shape when data has 'volume' key.
     """
-    # Check if it's a torch tensor
-    if _is_torch_tensor(vol):
-        # PyTorch 3D tensor in CDHW format
-        if len(vol.shape) == 4:  # (C, D, H, W)
-            return int(vol.shape[2]), int(vol.shape[3])
-        if len(vol.shape) == 3:  # (D, H, W) - grayscale volume without channel
-            return int(vol.shape[1]), int(vol.shape[2])
+    if isinstance(vol, torch.Tensor):
+        return vol.shape[2], vol.shape[3]
     # Regular numpy array in DHWC format
     return vol.shape[1], vol.shape[2]
 

@@ -132,6 +132,7 @@ dependencies = [
   "pydantic>=2.12.4",
   "pyyaml",
   "scipy>=1.15.3",
+  "torch>=2.13.0",
   "typing-extensions>=4.9.0",
 ]
 
@@ -142,7 +143,6 @@ gui = ["opencv-python>=5.0.0.93"]
 headless = ["opencv-python-headless>=5.0.0.93"]
 hub = ["huggingface-hub"]
 pillow = ["pillow"]
-pytorch = ["torch"]
 pyvips = ["pyvips[binary]"]
 text = ["pillow"]
 

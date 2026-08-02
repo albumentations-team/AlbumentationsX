@@ -292,27 +292,31 @@ def test_named_args():
 @pytest.mark.parametrize(
     ["targets", "additional_targets", "err_message"],
     [
-        [{"image": None}, None, "image must be numpy array type"],
-        [{"image": np.empty([100, 100, 3], np.uint8), "mask": None}, None, "mask must be numpy array type"],
+        [{"image": None}, None, "image must be a NumPy array or torch.Tensor"],
+        [
+            {"image": np.empty([100, 100, 3], np.uint8), "mask": None},
+            None,
+            "mask must be a NumPy array or torch.Tensor",
+        ],
         [
             {"images": [np.empty([100, 100, 3], np.uint8)]},
             None,
-            "images must be numpy array type",
+            "images must be a NumPy array or torch.Tensor",
         ],
         [
             {"masks": [np.empty([100, 100], np.uint8)]},
             None,
-            "masks must be numpy array type",
+            "masks must be a NumPy array or torch.Tensor",
         ],
         [
             {"image": np.empty([100, 100, 3], np.uint8), "image1": None},
             {"image1": "image"},
-            "image1 must be numpy array type",
+            "image1 must be a NumPy array or torch.Tensor",
         ],
         [
             {"image": np.empty([100, 100, 3], np.uint8), "mask1": None},
             {"mask1": "mask"},
-            "mask1 must be numpy array type",
+            "mask1 must be a NumPy array or torch.Tensor",
         ],
     ],
 )

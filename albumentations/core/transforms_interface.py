@@ -16,6 +16,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
+import torch
 from albucore import batch_transform
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -107,6 +108,61 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BasicTransformInitSchema
     _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
     _applied_replay_class: ClassVar[type["BasicTransform"] | None] = None
+    _supports_cpu_tensor: ClassVar[bool] = False
+    _cpu_tensor_targets: ClassVar[frozenset[str] | None] = None
+    _cpu_tensor_channels: ClassVar[frozenset[int] | None] = None
+
+    @property
+    def supports_cpu_tensor(self) -> bool:
+        """Return whether this transform exposes an accepted CPU Tensor capability
+        route rather than relying on an unsupported implicit representation conversion.
+        """
+        return self._supports_cpu_tensor
+
+    @property
+    def cpu_tensor_targets(self) -> frozenset[str] | None:
+        """Return canonical Compose targets covered by this Tensor capability so callers can
+        reject unsupported target combinations before sampling transform parameters.
+        """
+        return self._cpu_tensor_targets
+
+    @property
+    def cpu_tensor_channels(self) -> frozenset[int] | None:
+        """Return image channel counts covered by this Tensor capability, or `None` when
+        the accepted Tensor route is independent of the channel count.
+        """
+        return self._cpu_tensor_channels
+
+    def supports_cpu_tensor_targets(self, targets: frozenset[str]) -> bool:
+        """Return whether accepted Tensor capability routes cover every caller-provided
+        canonical target before Compose samples parameters or enters transform dispatch.
+
+        `None` means that this transform's accepted Tensor route is target
+        agnostic. Transforms with a narrower first capability declare the
+        canonical target names explicitly, so Compose rejects unsupported Tensor
+        targets before sampling parameters.
+        """
+        return self.supports_cpu_tensor and (
+            self._cpu_tensor_targets is None or targets.issubset(self._cpu_tensor_targets)
+        )
+
+    def supports_cpu_tensor_inputs(self, tensor_inputs: tuple[tuple[str, Any], ...]) -> bool:
+        """Return whether the accepted Tensor route covers every supplied target and image
+        channel count before Compose samples parameters or calls transform helpers.
+
+        Compose calls this before transform parameter sampling. Capability records
+        may be deliberately narrow while a route is being introduced; callers get
+        a boundary error instead of an unsupported helper receiving a Tensor.
+        """
+        targets = frozenset(target for target, _ in tensor_inputs)
+        if not self.supports_cpu_tensor_targets(targets):
+            return False
+        if self._cpu_tensor_channels is None:
+            return True
+        return all(
+            target not in {"image", "images", "volume"} or value.shape[0] in self._cpu_tensor_channels
+            for target, value in tensor_inputs
+        )
 
     def __init__(self, p: float = 0.5):
         self.p = p
@@ -692,7 +748,13 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             chosen = resolved.get(target)
             if chosen is None:
                 continue
-            return extractor(data[chosen])
+            value = data[chosen]
+            if isinstance(value, torch.Tensor):
+                if target == "image":
+                    return value.shape[1], value.shape[2], value.shape[0]
+                if target in {"images", "volume"}:
+                    return value.shape[2], value.shape[3], value.shape[0]
+            return extractor(value)
         return None
 
     def get_image_data(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -1311,6 +1373,24 @@ class NoOp(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types
+    _supports_cpu_tensor = True
+
+    @property
+    def targets(self) -> dict[str, Callable[..., Any]]:
+        """Return identity handlers that preserve every Tensor target without the NumPy batch
+        dispatch inherited by `DualTransform` for the volume route.
+        """
+        return {
+            "image": self.apply,
+            "images": self.apply_to_images,
+            "mask": self.apply_to_mask,
+            "masks": self.apply_to_masks,
+            "mask3d": self.apply_to_mask3d,
+            "bboxes": self.apply_to_bboxes,
+            "keypoints": self.apply_to_keypoints,
+            "volume": self.apply_to_volume,
+            "user_data": self.apply_to_user_data,
+        }
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return keypoints
@@ -1321,8 +1401,14 @@ class NoOp(DualTransform):
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
 
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        return images
+
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         return mask
+
+    def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
+        return masks
 
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return volume

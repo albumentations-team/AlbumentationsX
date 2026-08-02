@@ -161,7 +161,7 @@ BENCHMARK_POLICIES = (
         "pytorch_tensor",
         "advisory",
         False,
-        "optional PyTorch tensor transforms are tracked in a separate dependency lane",
+        "PyTorch Tensor transforms are tracked in a dedicated benchmark lane",
     ),
 )
 
@@ -189,7 +189,7 @@ def classify_benchmark(benchmark_name: str) -> BenchmarkPolicy:
 def _coverage_issue_summary(
     coverage_detail: dict[str, Any],
     *,
-    require_optional: bool,
+    require_tensor: bool,
 ) -> tuple[list[str], dict[str, Any]]:
     detail_summary = coverage_detail.get("summary", {})
     layer_counts = coverage_detail.get("layer_counts", {})
@@ -200,7 +200,7 @@ def _coverage_issue_summary(
     if detail_summary.get("smoke_only_transforms", 0) != 0:
         issues.append(f"{detail_summary.get('smoke_only_transforms')} runnable smoke-only transform(s)")
 
-    required_layers = REQUIRED_COVERAGE_LAYERS if require_optional else REQUIRED_COVERAGE_LAYERS[:-1]
+    required_layers = REQUIRED_COVERAGE_LAYERS if require_tensor else REQUIRED_COVERAGE_LAYERS[:-1]
     missing_layers = [layer for layer in required_layers if layer_counts.get(layer, 0) <= 0]
     if missing_layers:
         issues.append("missing required benchmark coverage layer(s): " + ", ".join(missing_layers))
@@ -209,7 +209,7 @@ def _coverage_issue_summary(
         "contract_failures": detail_summary.get("contract_failures", 0),
         "deep_coverage_transforms": detail_summary.get("deep_coverage_transforms", 0),
         "layer_counts": {layer: layer_counts.get(layer, 0) for layer in REQUIRED_COVERAGE_LAYERS},
-        "optional_transforms": detail_summary.get("optional_transforms", 0),
+        "dedicated_tensor_transforms": detail_summary.get("dedicated_tensor_transforms", 0),
         "public_transforms": coverage_detail.get("public_transforms", 0),
         "smoke_only_transforms": detail_summary.get("smoke_only_transforms", 0),
     }
@@ -219,7 +219,7 @@ def _coverage_summary_issues(
     coverage_summary: dict[str, Any],
     coverage_detail: dict[str, Any],
     *,
-    require_optional: bool,
+    require_tensor: bool,
 ) -> list[str]:
     issues: list[str] = []
     summary_public = coverage_summary.get("public_transforms")
@@ -234,8 +234,8 @@ def _coverage_summary_issues(
         issues.append("benchmark coverage summary reports contract failures")
     if coverage_summary.get("memory_benchmarks", 0) <= 0:
         issues.append("benchmark coverage summary reports no memory benchmarks")
-    if require_optional and coverage_summary.get("pytorch_tensor_benchmark_cases", 0) <= 0:
-        issues.append("benchmark coverage summary reports no optional PyTorch tensor benchmark cases")
+    if require_tensor and coverage_summary.get("pytorch_tensor_benchmark_cases", 0) <= 0:
+        issues.append("benchmark coverage summary reports no PyTorch Tensor benchmark cases")
     return issues
 
 
@@ -322,13 +322,13 @@ def build_budget(
     asv_summary: dict[str, Any] | None = None,
     *,
     require_comparison: bool = False,
-    require_optional: bool = True,
+    require_tensor: bool = True,
 ) -> dict[str, Any]:
     """Build machine-readable performance budget evidence."""
-    detail_issues, coverage = _coverage_issue_summary(coverage_detail, require_optional=require_optional)
+    detail_issues, coverage = _coverage_issue_summary(coverage_detail, require_tensor=require_tensor)
     coverage_issues = [
         *detail_issues,
-        *_coverage_summary_issues(coverage_summary, coverage_detail, require_optional=require_optional),
+        *_coverage_summary_issues(coverage_summary, coverage_detail, require_tensor=require_tensor),
     ]
     comparison = _classify_regressions(asv_summary)
     status = _budget_status(coverage_issues, comparison, require_comparison=require_comparison)
@@ -366,7 +366,7 @@ def _summarize(args: argparse.Namespace) -> int:
         _read_json(args.coverage_detail),
         asv_summary,
         require_comparison=args.require_comparison,
-        require_optional=not args.core_only,
+        require_tensor=not args.core_only,
     )
     _write_budget(args.output, budget)
     print(f"Wrote performance budget to {args.output}: {budget['status']}")
@@ -388,7 +388,7 @@ def _check_current() -> int:
     budget = build_budget(
         summary,
         detail,
-        require_optional=not _benchmark_coverage.unavailable_optional_transform_names(),
+        require_tensor=True,
     )
     if budget["status"] != "ok":
         print("Performance budget validation failed:")
@@ -419,7 +419,7 @@ def parse_args() -> argparse.Namespace:
     summarize_parser.add_argument(
         "--core-only",
         action="store_true",
-        help="Validate the core benchmark lane without requiring optional PyTorch evidence.",
+        help="Validate the core benchmark lane without requiring the dedicated PyTorch Tensor evidence.",
     )
     summarize_parser.add_argument(
         "--require-comparison",

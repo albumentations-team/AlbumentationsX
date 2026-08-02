@@ -94,7 +94,7 @@ def test_only_pypi_job_receives_oidc_permission() -> None:
     assert jobs["publish_to_pypi"]["permissions"]["id-token"] == "write"
 
 
-def test_release_candidate_core_profiles_do_not_require_optional_pytorch_coverage() -> None:
+def test_release_candidate_core_profiles_do_not_require_dedicated_tensor_coverage() -> None:
     text = RELEASE_CANDIDATE_PATH.read_text(encoding="utf-8")
 
     assert text.count("python -m tools.performance_budget summarize") == 2

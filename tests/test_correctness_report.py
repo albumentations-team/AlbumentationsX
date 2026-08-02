@@ -52,7 +52,7 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
             "summary": {
                 "contract_failures": 0,
                 "deep_coverage_transforms": 1,
-                "optional_transforms": 0,
+                "dedicated_tensor_transforms": 0,
                 "performance_contract_status_counts": {
                     "batch": {"covered": 1, "tracked_without_dedicated_matrix": 2},
                     "memory": {"covered_advisory": 1},
@@ -150,7 +150,7 @@ def test_generate_report_rejects_incomplete_or_failing_pytest_evidence(tmp_path,
         {
             "kind": "benchmark-coverage-detail",
             "layer_counts": {},
-            "summary": {"contract_failures": 0, "deep_coverage_transforms": 1, "optional_transforms": 0},
+            "summary": {"contract_failures": 0, "deep_coverage_transforms": 1, "dedicated_tensor_transforms": 0},
         },
     )
     _write_json(

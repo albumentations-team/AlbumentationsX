@@ -29,6 +29,7 @@ def normalize_package_name(name: str) -> str:
     # Common package name mappings between pip and conda
     mappings = {
         "opencv-python-headless": "opencv-python-headless",
+        "torch": "pytorch",
         "typing-extensions": "typing_extensions",
     }
     return mappings.get(name, name)

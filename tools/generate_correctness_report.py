@@ -160,7 +160,7 @@ def _format_benchmark_summary(summaries: list[dict[str, Any]]) -> str:
                 "- Benchmark coverage detail "
                 f"{index}: {coverage_depth.get('deep_coverage_transforms', 0)} transform(s) with deep coverage, "
                 f"{coverage_depth.get('smoke_only_transforms', 0)} smoke-only transform(s), "
-                f"{coverage_depth.get('optional_transforms', 0)} optional transform(s); "
+                f"{coverage_depth.get('dedicated_tensor_transforms', 0)} dedicated Tensor transform(s); "
                 f"{coverage_depth.get('contract_failures', 0)} coverage contract failure(s); "
                 f"{layer_counts.get('alias_coverage', 0)} alias-covered, "
                 f"{layer_counts.get('family_matrix', 0)} family-matrix, "

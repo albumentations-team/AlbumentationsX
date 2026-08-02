@@ -23,8 +23,9 @@ uv tool run --from asv asv --config asv.conf.json continuous \
   <candidate-ref>
 ```
 
-Optional PyTorch tensor transforms are benchmarked with a separate ASV config so
-the default headless suite stays importable without torch:
+PyTorch Tensor routes are benchmarked with a separate ASV config so terminal
+conversion and accepted Tensor-native capability matrices remain independently
+reviewable:
 
 ```bash
 cd benchmark
@@ -103,7 +104,7 @@ The detail artifact is intended for review, not only for automation. Each
 record includes the public class module/qualname, catalog benchmark route,
 constructor parameters, family labels, required coverage contract, and exact
 ASV case IDs for the transform's smoke, family-matrix, direct-kernel, memory,
-reference-data, volumetric, target, or optional PyTorch evidence.
+reference-data, volumetric, target, or dedicated PyTorch Tensor evidence.
 Each ASV case also includes parsed scenario metadata, and each transform record
 includes a `scenario_contract` summary of covered sizes, channels, dtypes,
 annotation counts, batch sizes, targets, memory cases, direct-kernel groups,
@@ -116,7 +117,7 @@ Each transform also has a `performance_contract` section for batch,
 annotation, direct-kernel, parameter-sensitivity, and memory expectations. This
 section records required benchmark layers, directly declared implementation
 methods, and the reason a dedicated layer is covered, advisory, tracked for
-audit, optional, or not required.
+audit, or not required.
 The diff artifact is intended for PR and release review. It reports added or
 removed public transforms and coverage changes such as layer, ASV case, or
 axis-contract, performance-contract, or benchmark-policy drift.
@@ -145,11 +146,10 @@ The check fails when a public transform is missing from coverage accounting,
 when a configured transform no longer exists, when a benchmark transform cannot
 be constructed, or when the representative smoke route no longer runs. The ASV
 suite includes `TimeCatalogTransformSmoke`, which executes one valid
-`Compose` path for every runnable public transform. Optional PyTorch tensor
+`Compose` path for every runnable public transform. Explicit terminal Tensor
 transforms are accounted separately and benchmarked by the dedicated
-`asv-pytorch.conf.json` lane because the default performance environment
-installs only headless package extras. The detail artifact records the expected
-coverage contract and actual coverage layers for each public transform.
+`asv-pytorch.conf.json` lane. The detail artifact records the expected coverage
+contract and actual coverage layers for each public transform.
 
 Catalog smoke coverage is not the whole performance policy. It proves that
 every transform has at least one measured route. Hot families still need richer
@@ -159,8 +159,8 @@ memory checks.
 
 The current ASV suite includes these production coverage layers:
 
-- Catalog smoke: one runnable `Compose` path for every public transform that
-  does not require optional PyTorch.
+- Catalog smoke: one runnable `Compose` path for every public transform except
+  explicit terminal Tensor transforms, which have a dedicated matrix.
 - Full-matrix geometry: representative crop, resize, pad, symmetry, rotate,
   affine, perspective, distortion, spline, and refraction transforms across
   size, channel, and dtype matrices.
@@ -177,8 +177,10 @@ The current ASV suite includes these production coverage layers:
 - Volumetric paths: all public 3D transforms over size and dtype variants.
 - Alias coverage: warning aliases mapped to their canonical benchmarked
   implementation while catalog smoke still validates public construction.
-- Optional PyTorch tensor paths: `ToTensorV2` and `ToTensor3D` in a separate
-  ASV environment with torch installed.
+- Dedicated PyTorch Tensor paths: `ToTensorV2`, `ToTensor3D`, and accepted
+  Tensor-native capabilities such as `Transpose(image=...)` in a separate ASV
+  environment. The Tensor-native `Transpose` matrix currently covers C=1 and
+  C=3 image Tensors only.
 - Core pipeline: single-transform Compose, multi-transform Compose,
   ReplayCompose, `p=0` skip dispatch, `additional_targets`, image batches,
   Compose setup, and bbox/keypoint processor overhead.

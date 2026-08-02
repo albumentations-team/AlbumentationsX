@@ -18,6 +18,7 @@ from typing import Any, ClassVar, Union, cast
 
 import cv2
 import numpy as np
+import torch
 from numpy.typing import NDArray
 from pydantic import PydanticSchemaGenerationError, PydanticUserError, TypeAdapter, ValidationError
 
@@ -43,9 +44,16 @@ from .serialization import (
     instantiate_nonserializable,
     register_additional_transforms,
 )
+from .tensor import (
+    TENSOR_ANNOTATION_TARGETS,
+    TENSOR_SPATIAL_TARGETS,
+    numpy_to_tensor_annotation,
+    tensor_to_numpy_annotation,
+    validate_tensor_input,
+)
 from .transforms_interface import BasicTransform
 from .type_definitions import StackedMasks4D
-from .utils import DataProcessor, _is_torch_tensor, format_args, get_shape
+from .utils import DataProcessor, format_args, get_shape
 
 __all__ = [
     "BaseCompose",
@@ -257,6 +265,15 @@ class BaseCompose(Serializable):
     _transforms_dict: dict[int, BasicTransform] | None = None
     check_each_transform: tuple[DataProcessor[Any], ...] | None = None
     main_compose: bool = True
+    _tensor_capability_is_transparent: bool = True
+    _tensor_annotation_targets: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def tensor_capability_is_transparent(self) -> bool:
+        """Return whether this composition only delegates accepted CPU Tensor work to child
+        transforms and therefore introduces no representation boundary of its own.
+        """
+        return self._tensor_capability_is_transparent
 
     def __init__(
         self,
@@ -677,11 +694,7 @@ class BaseCompose(Serializable):
         """
         if "masks" in binding:
             masks_pre = data.get("masks")
-            if (
-                masks_pre is not None
-                and (isinstance(masks_pre, np.ndarray) or _is_torch_tensor(masks_pre))
-                and len(masks_pre) > n_pre
-            ):
+            if masks_pre is not None and isinstance(masks_pre, (np.ndarray, torch.Tensor)) and len(masks_pre) > n_pre:
                 valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < len(masks_pre))]
                 data["masks"] = self._index_axis(masks_pre, valid, 0)
         elif "mask" in binding:
@@ -739,7 +752,7 @@ class BaseCompose(Serializable):
         """
         if "masks" in binding:
             masks = data.get("masks")
-            if masks is not None and (isinstance(masks, np.ndarray) or _is_torch_tensor(masks)) and len(masks) == n_pre:
+            if masks is not None and isinstance(masks, (np.ndarray, torch.Tensor)) and len(masks) == n_pre:
                 data["masks"] = self._index_axis(masks, keep_mask, 0)
         elif "mask" in binding:
             mask = data.get("mask")
@@ -832,11 +845,7 @@ class BaseCompose(Serializable):
         """
         if "masks" in binding:
             masks = data.get("masks")
-            if (
-                masks is not None
-                and (isinstance(masks, np.ndarray) or _is_torch_tensor(masks))
-                and len(masks) == instance_count
-            ):
+            if masks is not None and isinstance(masks, (np.ndarray, torch.Tensor)) and len(masks) == instance_count:
                 return masks, 0
         elif "mask" in binding:
             mask = data.get("mask")
@@ -849,7 +858,7 @@ class BaseCompose(Serializable):
         """Identify whether a packed instance mask stores instances on the trailing NumPy axis or the leading axis
         produced by transposed tensor output.
         """
-        if not (isinstance(mask, np.ndarray) or _is_torch_tensor(mask)) or mask.ndim < 3:
+        if not isinstance(mask, (np.ndarray, torch.Tensor)) or mask.ndim < 3:
             return None
         if isinstance(mask, np.ndarray):
             return -1
@@ -892,7 +901,7 @@ class BaseCompose(Serializable):
         """Select instance rows or channels along one axis while preserving the input array type and using safe index
         tensors for PyTorch values.
         """
-        if _is_torch_tensor(array) and isinstance(index, np.ndarray):
+        if isinstance(array, torch.Tensor) and isinstance(index, np.ndarray):
             if np.issubdtype(index.dtype, np.bool_):
                 index = np.flatnonzero(index)
             index_tensor = array.new_tensor(index.tolist()).long()
@@ -1455,6 +1464,8 @@ class Compose(BaseCompose, HubMixin):
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
             raise KeyError(msg)
 
+        self._validate_tensor_inputs(data)
+
         # Initialize applied_transforms only in top-level Compose if requested
         if self.save_applied_params and self.main_compose:
             data["applied_transforms"] = []
@@ -1473,17 +1484,108 @@ class Compose(BaseCompose, HubMixin):
                 if resync is not None:
                     resync(data)
 
-            return self.postprocess(data)
+            result = self.postprocess(data)
+            self._restore_tensor_annotations(result)
+            return result
         finally:
             # Clear per-call unpack/repack flags if preprocess or a transform raised mid-call.
             if self.main_compose and self._instance_binding:
                 self._clear_instance_binding_call_state_if_pending()
+            self._tensor_annotation_targets = ()
 
     def _clear_instance_binding_call_state_if_pending(self) -> None:
         if getattr(self, "_repack_after_processors", False):
             del self._repack_after_processors
         if hasattr(self, "_instance_count"):
             delattr(self, "_instance_count")
+
+    def _validate_tensor_inputs(self, data: dict[str, Any]) -> None:
+        """Validate Tensor boundary contracts before Compose samples probability or parameters,
+        ensuring each spatial target uses a single representation.
+
+        Tensor execution is opt-in at the capability level. This prevents a NumPy-only
+        helper from receiving a Tensor and performing an ad hoc representation bridge.
+        """
+        tensor_targets: list[tuple[str, str, torch.Tensor]] = []
+        spatial_representations: set[str] = set()
+        annotation_targets: list[tuple[str, str]] = []
+        self._tensor_annotation_targets = ()
+
+        for data_name, value in data.items():
+            canonical_name = self._additional_targets.get(data_name, data_name)
+            if isinstance(value, torch.Tensor):
+                if canonical_name in TENSOR_SPATIAL_TARGETS:
+                    tensor_targets.append((data_name, canonical_name, value))
+                    spatial_representations.add("tensor")
+                    if canonical_name in TENSOR_ANNOTATION_TARGETS:
+                        annotation_targets.append((data_name, canonical_name))
+            elif (
+                canonical_name in TENSOR_SPATIAL_TARGETS
+                and value is not None
+                and (self.main_compose or canonical_name not in TENSOR_ANNOTATION_TARGETS)
+            ):
+                spatial_representations.add("numpy")
+
+        if not tensor_targets:
+            return
+
+        for data_name, canonical_name, value in tensor_targets:
+            validate_tensor_input(value, data_name, canonical_name)
+
+        if len(spatial_representations) != 1:
+            raise TypeError(
+                "NumPy arrays or sequences and torch.Tensors cannot be mixed across spatial targets; "
+                "when Compose receives a Tensor image, masks, bboxes, and keypoints must also be Tensors",
+            )
+
+        self._tensor_annotation_targets = tuple(annotation_targets)
+
+        tensor_image_inputs = tuple(
+            (canonical_name, value)
+            for _, canonical_name, value in tensor_targets
+            if canonical_name not in TENSOR_ANNOTATION_TARGETS
+        )
+        self._validate_tensor_pipeline(self.transforms, tensor_image_inputs)
+
+    def _validate_tensor_pipeline(
+        self,
+        transforms: TransformsSeqType,
+        tensor_inputs: tuple[tuple[str, torch.Tensor], ...],
+    ) -> None:
+        """Require every selectable transform branch to declare CPU Tensor capability before a
+        caller-provided Tensor can reach any helper or fallback implementation.
+        """
+        for transform in transforms:
+            if isinstance(transform, BaseCompose):
+                if not transform.tensor_capability_is_transparent:
+                    raise TypeError(f"{transform.__class__.__name__} does not support CPU Tensor input")
+                self._validate_tensor_pipeline(transform.transforms, tensor_inputs)
+                continue
+            if getattr(transform, "_is_tensor_terminal", False):
+                raise TypeError(
+                    "Tensor input is already model-ready; remove ToTensorV2 or ToTensor3D from this Compose pipeline",
+                )
+            if not transform.supports_cpu_tensor_inputs(tensor_inputs):
+                supported_targets = transform.cpu_tensor_targets
+                supported_channels = transform.cpu_tensor_channels
+                tensor_targets = frozenset(target for target, _ in tensor_inputs)
+                target_note = (
+                    ""
+                    if supported_targets is None
+                    else f" for Tensor target(s) {', '.join(sorted(tensor_targets))}; accepted targets are "
+                    f"{', '.join(sorted(supported_targets))}"
+                )
+                channel_note = (
+                    ""
+                    if supported_channels is None
+                    else "; accepted channel counts are "
+                    + ", ".join(str(channel) for channel in sorted(supported_channels))
+                )
+                raise TypeError(
+                    f"{transform.__class__.__name__} does not yet declare CPU Tensor capability"
+                    f"{target_note}{channel_note}; "
+                    "use a NumPy input until its Tensor route is accepted",
+                )
 
     @staticmethod
     def from_applied_transforms(
@@ -1551,7 +1653,17 @@ class Compose(BaseCompose, HubMixin):
 
         # Add channel dimensions first, before processors run
         self._preprocess_arrays(data)
+        self._bridge_tensor_annotations_to_numpy(data)
         self._preprocess_processors(data)
+
+    def _bridge_tensor_annotations_to_numpy(self, data: dict[str, Any]) -> None:
+        """Convert accepted Tensor bbox and keypoint matrices once for existing NumPy-only
+        processors, keeping all public annotations Tensor at Compose entry and exit.
+        """
+        for data_name, canonical_name in self._tensor_annotation_targets:
+            value = data.get(data_name)
+            if isinstance(value, torch.Tensor):
+                data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
 
     def _gather_shapes_from_data(self, data: dict[str, Any]) -> tuple[list[tuple[int, ...]], list[tuple[int, ...]]]:
         """Gather shapes from data for validation. Collects (H,W) or (D,H,W) from
@@ -1578,11 +1690,13 @@ class Compose(BaseCompose, HubMixin):
                 continue
 
             # Skip empty data
-            if data_value is None or not isinstance(data_value, np.ndarray):
+            if data_value is None or not isinstance(data_value, (np.ndarray, torch.Tensor)):
                 continue
 
             # Skip arrays with size 0 (empty arrays)
-            if data_value.size == 0:
+            if (isinstance(data_value, np.ndarray) and data_value.size == 0) or (
+                isinstance(data_value, torch.Tensor) and data_value.numel() == 0
+            ):
                 continue
 
             self._process_data_shape(canonical, data_value, shapes, volume_shapes)
@@ -1592,13 +1706,17 @@ class Compose(BaseCompose, HubMixin):
     def _process_data_shape(
         self,
         data_name: str,
-        data_value: np.ndarray,
+        data_value: np.ndarray | torch.Tensor,
         shapes: list[tuple[int, ...]],
         volume_shapes: list[tuple[int, ...]],
     ) -> None:
         """Process shape of a single data item. Appends (H,W) or (D,H,W) to shapes or
         volume_shapes depending on data_name (image, mask, images, volume, etc.).
         """
+        if isinstance(data_value, torch.Tensor):
+            self._process_tensor_data_shape(data_name, data_value, shapes, volume_shapes)
+            return
+
         # Handle 2D single data
         if data_name in {"image", "mask"}:
             shapes.append(data_value.shape[:2])  # H,W
@@ -1615,6 +1733,31 @@ class Compose(BaseCompose, HubMixin):
                 raise TypeError(f"{data_name} must be 3D or 4D array")
             shapes.append(data_value.shape[1:3])  # H,W
             volume_shapes.append(data_value.shape[:3])  # D,H,W
+
+    @staticmethod
+    def _process_tensor_data_shape(
+        data_name: str,
+        data_value: torch.Tensor,
+        shapes: list[tuple[int, ...]],
+        volume_shapes: list[tuple[int, ...]],
+    ) -> None:
+        """Append shape metadata for a validated Tensor target without converting its public
+        channel-first image or channel-free mask layout to a NumPy representation.
+        """
+        if data_name == "image":
+            shapes.append((data_value.shape[1], data_value.shape[2]))
+        elif data_name == "images":
+            shapes.append((data_value.shape[2], data_value.shape[3]))
+        elif data_name == "volume":
+            shapes.append((data_value.shape[2], data_value.shape[3]))
+            volume_shapes.append((data_value.shape[1], data_value.shape[2], data_value.shape[3]))
+        elif data_name == "mask":
+            shapes.append(data_value.shape[:2])
+        elif data_name == "masks":
+            shapes.append(data_value.shape[1:3])
+        elif data_name == "mask3d":
+            shapes.append(data_value.shape[1:3])
+            volume_shapes.append(data_value.shape[:3])
 
     def _validate_data(self, data: dict[str, Any]) -> None:
         """Validate input data keys and arguments. When strict, checks every key is in
@@ -1728,6 +1871,15 @@ class Compose(BaseCompose, HubMixin):
 
         return data
 
+    def _restore_tensor_annotations(self, data: dict[str, Any]) -> None:
+        """Restore Tensor bbox and keypoint matrices after NumPy processing so all spatial
+        targets in the public Compose result remain Tensors.
+        """
+        for data_name, canonical_name in self._tensor_annotation_targets:
+            value = data.get(data_name)
+            if isinstance(value, np.ndarray):
+                data[data_name] = numpy_to_tensor_annotation(value, canonical_name)
+
     def _filter_bound_bboxes_before_postprocess(self, data: dict[str, Any]) -> None:
         """Filter bound bboxes at the final boundary and mirror their keep mask before postprocessing removes internal
         instance ids required to align masks and keypoints.
@@ -1746,12 +1898,8 @@ class Compose(BaseCompose, HubMixin):
         self._resync_instance_ids(data)
 
     def _remove_grayscale_channels(self, data: dict[str, Any]) -> None:
-        """Strip the trailing channel dimension that `_add_grayscale_channels` added,
-        for both numpy arrays and torch tensors, using the bookkeeping from preprocess.
-
-        Uses `_added_channel_dim` to squeeze only where we added a dim, and
-        `_added_channel_canonical` to dispatch torch logic by canonical role so aliased
-        keys are handled the same as their canonical counterparts.
+        """Strip a trailing grayscale channel added by NumPy preprocessing while leaving Tensor
+        masks in their public H,W or N,H,W layout unchanged.
         """
         if not hasattr(self, "_added_channel_dim"):
             return
@@ -1763,25 +1911,16 @@ class Compose(BaseCompose, HubMixin):
                 value = data[key]
                 canonical = canonical_map.get(key, key)
 
-                # Handle numpy arrays
                 if isinstance(value, np.ndarray):
                     if value.shape[-1] == 1:
                         data[key] = np.squeeze(value, axis=-1)
-
-                # Handle torch tensors
-                elif hasattr(value, "__module__") and "torch" in value.__module__:
-                    # Import torch only if we have a torch tensor
-                    import torch
-
-                    if isinstance(value, torch.Tensor):
-                        # For torch tensors, we need to handle different cases
-                        # ToTensorV2 transposes image tensors but not mask tensors
-                        if canonical in {"image", "images"} and len(value.shape) >= 3 and value.shape[0] == 1:
-                            # Image tensor with shape (1, H, W) -> (H, W) is not typical, skip
-                            pass
-                        elif canonical in {"mask", "masks", "mask3d"} and value.shape[-1] == 1:
-                            # Mask tensor with shape (..., H, W, 1) -> (..., H, W)
-                            data[key] = torch.squeeze(value, dim=-1)
+                elif (
+                    isinstance(value, torch.Tensor)
+                    and canonical in {"mask", "masks", "mask3d"}
+                    and value.shape[-1] == 1
+                ):
+                    # Legacy terminal ToTensorV2/ToTensor3D transforms keep mask axis behavior unchanged.
+                    data[key] = torch.squeeze(value, dim=-1)
 
     def _get_user_bbox_label_fields(self) -> list[str]:
         return list(self._bbox_label_map.values())
@@ -1908,11 +2047,7 @@ class Compose(BaseCompose, HubMixin):
         """
         if "masks" in binding:
             masks = data.get("masks")
-            if (
-                masks is not None
-                and (isinstance(masks, np.ndarray) or _is_torch_tensor(masks))
-                and len(masks) != bboxes_len
-            ):
+            if masks is not None and isinstance(masks, (np.ndarray, torch.Tensor)) and len(masks) != bboxes_len:
                 self._raise_or_warn_invariant_violation(len(masks), bboxes_len)
         elif "mask" in binding:
             mask = data.get("mask")
@@ -2449,11 +2584,11 @@ class Compose(BaseCompose, HubMixin):
         if internal_name not in shape_check_targets:
             return
 
-        if not isinstance(data, np.ndarray):
-            raise TypeError(f"{data_name} must be numpy array type")
+        if not isinstance(data, (np.ndarray, torch.Tensor)):
+            raise TypeError(f"{data_name} must be a NumPy array or torch.Tensor")
 
         # Skip arrays with size 0 (empty arrays)
-        if data.size == 0:
+        if (isinstance(data, np.ndarray) and data.size == 0) or (isinstance(data, torch.Tensor) and data.numel() == 0):
             return
 
         # Process the shape based on data type
@@ -2829,6 +2964,8 @@ class SelectiveChannelTransform(BaseCompose):
         - Only the transform list is modified while maintaining the same channel selection behavior.
 
     """
+
+    _tensor_capability_is_transparent = False
 
     def __init__(
         self,

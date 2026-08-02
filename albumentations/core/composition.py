@@ -45,7 +45,7 @@ from .serialization import (
 )
 from .transforms_interface import BasicTransform
 from .type_definitions import StackedMasks4D
-from .utils import DataProcessor, format_args, get_shape
+from .utils import DataProcessor, _is_torch_tensor, format_args, get_shape
 
 __all__ = [
     "BaseCompose",
@@ -677,15 +677,20 @@ class BaseCompose(Serializable):
         """
         if "masks" in binding:
             masks_pre = data.get("masks")
-            if isinstance(masks_pre, np.ndarray) and len(masks_pre) > n_pre:
+            if (
+                masks_pre is not None
+                and (isinstance(masks_pre, np.ndarray) or _is_torch_tensor(masks_pre))
+                and len(masks_pre) > n_pre
+            ):
                 valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < len(masks_pre))]
-                data["masks"] = masks_pre[valid] if valid.shape[0] > 0 else masks_pre[:0]
+                data["masks"] = self._index_axis(masks_pre, valid, 0)
         elif "mask" in binding:
             mask_pre = data.get("mask")
-            if isinstance(mask_pre, np.ndarray) and mask_pre.ndim >= 3 and mask_pre.shape[-1] > n_pre:
-                channel_count = mask_pre.shape[-1]
+            instance_axis = self._mask_instance_axis(data, mask_pre)
+            if mask_pre is not None and instance_axis is not None and mask_pre.shape[instance_axis] > n_pre:
+                channel_count = mask_pre.shape[instance_axis]
                 valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < channel_count)]
-                data["mask"] = mask_pre[..., valid] if valid.shape[0] > 0 else mask_pre[..., :0]
+                data["mask"] = self._index_axis(mask_pre, valid, instance_axis)
         if "keypoints" in binding:
             kps_pre = data.get("keypoints")
             if isinstance(kps_pre, np.ndarray) and kps_pre.shape[0] > 0:
@@ -734,12 +739,13 @@ class BaseCompose(Serializable):
         """
         if "masks" in binding:
             masks = data.get("masks")
-            if isinstance(masks, np.ndarray) and len(masks) == n_pre:
-                data["masks"] = masks[keep_mask]
+            if masks is not None and (isinstance(masks, np.ndarray) or _is_torch_tensor(masks)) and len(masks) == n_pre:
+                data["masks"] = self._index_axis(masks, keep_mask, 0)
         elif "mask" in binding:
             mask = data.get("mask")
-            if isinstance(mask, np.ndarray) and mask.ndim >= 3 and mask.shape[-1] == n_pre:
-                data["mask"] = mask[..., keep_mask]
+            instance_axis = self._mask_instance_axis(data, mask)
+            if mask is not None and instance_axis is not None and mask.shape[instance_axis] == n_pre:
+                data["mask"] = self._index_axis(mask, keep_mask, instance_axis)
         if "keypoints" in binding:
             kps = data.get("keypoints")
             if isinstance(kps, np.ndarray) and kps.shape[0] > 0:
@@ -761,16 +767,22 @@ class BaseCompose(Serializable):
             return
 
         keep_mask = self._nonempty_bound_mask_rows(data, binding, bboxes.shape[0])
-        if keep_mask is None or keep_mask.all():
+        if keep_mask is None:
+            return
+        if keep_mask.all():
+            return
+
+        instance_axis = 0 if "masks" in binding else self._mask_instance_axis(data, data.get("mask"))
+        if instance_axis is None:
             return
 
         bbox_instance_ids = bboxes[:, -1].astype(np.int64, copy=False)
         surviving_instance_ids = bbox_instance_ids[keep_mask]
         data["bboxes"] = bboxes[keep_mask]
         if "masks" in binding:
-            data["masks"] = data["masks"][keep_mask]
+            data["masks"] = self._index_axis(data["masks"], keep_mask, instance_axis)
         else:
-            data["mask"] = data["mask"][..., keep_mask]
+            data["mask"] = self._index_axis(data["mask"], keep_mask, instance_axis)
 
         if "keypoints" in binding:
             keypoints = data.get("keypoints")
@@ -782,8 +794,8 @@ class BaseCompose(Serializable):
                 if not keypoint_keep_mask.all():
                     data["keypoints"] = keypoints[keypoint_keep_mask]
 
-    @staticmethod
     def _nonempty_bound_mask_rows(
+        self,
         data: dict[str, Any],
         binding: frozenset[str],
         instance_count: int,
@@ -799,7 +811,94 @@ class BaseCompose(Serializable):
             mask = data.get("mask")
             if isinstance(mask, np.ndarray) and mask.ndim >= 3 and mask.shape[-1] == instance_count:
                 return np.any(mask, axis=tuple(range(mask.ndim - 1)))
+
+        mask_with_axis = self._bound_mask_with_instance_axis(data, binding, instance_count)
+        if mask_with_axis is None:
+            return None
+
+        mask, instance_axis = mask_with_axis
+        mask_array = mask.detach().cpu().numpy()
+        reduction_axes = tuple(axis for axis in range(mask_array.ndim) if axis != instance_axis % mask_array.ndim)
+        return np.any(mask_array, axis=reduction_axes)
+
+    def _bound_mask_with_instance_axis(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        instance_count: int,
+    ) -> tuple[Any, int] | None:
+        """Locate the bound mask container and identify its instance axis across NumPy layouts and terminal PyTorch
+        tensor layouts for aligned filtering.
+        """
+        if "masks" in binding:
+            masks = data.get("masks")
+            if (
+                masks is not None
+                and (isinstance(masks, np.ndarray) or _is_torch_tensor(masks))
+                and len(masks) == instance_count
+            ):
+                return masks, 0
+        elif "mask" in binding:
+            mask = data.get("mask")
+            instance_axis = self._mask_instance_axis(data, mask)
+            if mask is not None and instance_axis is not None and mask.shape[instance_axis] == instance_count:
+                return mask, instance_axis
         return None
+
+    def _mask_instance_axis(self, data: dict[str, Any], mask: Any) -> int | None:
+        """Identify whether a packed instance mask stores instances on the trailing NumPy axis or the leading axis
+        produced by transposed tensor output.
+        """
+        if not (isinstance(mask, np.ndarray) or _is_torch_tensor(mask)) or mask.ndim < 3:
+            return None
+        if isinstance(mask, np.ndarray):
+            return -1
+
+        shape = get_shape(data, self._additional_targets)
+        spatial_shape = tuple(shape[:2])
+        trailing_layout = tuple(mask.shape[:2]) == spatial_shape
+        leading_layout = tuple(mask.shape[-2:]) == spatial_shape
+        if trailing_layout and not leading_layout:
+            return -1
+        if leading_layout and not trailing_layout:
+            return 0
+        if trailing_layout and leading_layout:
+            configured_axis = self._configured_tensor_mask_instance_axis(self.transforms)
+            return -1 if configured_axis is None else configured_axis
+        return None
+
+    @staticmethod
+    def _configured_tensor_mask_instance_axis(transforms: Sequence[Any]) -> int | None:
+        """Inspect nested transforms to disambiguate whether terminal ToTensorV2 places packed mask instances on the
+        leading or trailing axis.
+        """
+        for transform in reversed(transforms):
+            transform_type = type(transform)
+            if (
+                transform_type.__name__ == "ToTensorV2"
+                and transform_type.__module__ == "albumentations.pytorch.transforms"
+            ):
+                return 0 if transform.transpose_mask else -1
+            nested_transforms = getattr(transform, "transforms", None)
+            if isinstance(nested_transforms, Sequence):
+                nested_axis = BaseCompose._configured_tensor_mask_instance_axis(nested_transforms)
+                if nested_axis is not None:
+                    return nested_axis
+        return None
+
+    @staticmethod
+    def _index_axis(array: Any, index: Any, axis: int) -> Any:
+        """Select instance rows or channels along one axis while preserving the input array type and using safe index
+        tensors for PyTorch values.
+        """
+        if _is_torch_tensor(array) and isinstance(index, np.ndarray):
+            if np.issubdtype(index.dtype, np.bool_):
+                index = np.flatnonzero(index)
+            index_tensor = array.new_tensor(index.tolist()).long()
+            return array.index_select(axis, index_tensor)
+        selection = [slice(None)] * array.ndim
+        selection[axis] = index
+        return array[tuple(selection)]
 
     def _validate_transforms(self, transforms: list[Any]) -> None:
         """Validate that all elements are BasicTransform instances. Raises TypeError if any
@@ -1770,7 +1869,7 @@ class Compose(BaseCompose, HubMixin):
 
         if "masks" in binding:
             masks = data.get("masks")
-            if isinstance(masks, np.ndarray) and len(masks) != n:
+            if masks is not None and (isinstance(masks, np.ndarray) or _is_torch_tensor(masks)) and len(masks) != n:
                 self._raise_or_warn_invariant_violation(len(masks), n)
 
         if "keypoints" in binding:
@@ -2046,6 +2145,8 @@ class Compose(BaseCompose, HubMixin):
         # to range(N) by the resync hook). For masks-or-keypoints-only bindings (no bbox-driven
         # filter exists), fall back to the unpack-time count.
         n = len(bbox_ids) if "bboxes" in binding else self._instance_count
+        bound_mask = self._bound_mask_with_instance_axis(data, binding, n)
+        mask_instance_axis = bound_mask[1] if bound_mask is not None else None
 
         data["instances"] = [
             self._repack_one_instance(
@@ -2055,6 +2156,7 @@ class Compose(BaseCompose, HubMixin):
                 mask_row_idx=row_idx,
                 kp_group_id=row_idx,
                 kp_ids=kp_ids,
+                mask_instance_axis=mask_instance_axis,
             )
             for row_idx in range(n)
         ]
@@ -2069,9 +2171,10 @@ class Compose(BaseCompose, HubMixin):
         mask_row_idx: int,
         kp_group_id: int,
         kp_ids: np.ndarray,
+        mask_instance_axis: int | None,
     ) -> dict[str, Any]:
         inst: dict[str, Any] = {}
-        self._repack_mask_into(inst, data, binding, mask_row_idx)
+        self._repack_mask_into(inst, data, binding, mask_row_idx, mask_instance_axis)
         self._repack_bbox_into(inst, data, binding, bbox_row_idx)
         self._repack_keypoints_into(inst, data, binding, kp_group_id, kp_ids)
         self._repack_bbox_labels_into(inst, data, bbox_row_idx)
@@ -2084,15 +2187,16 @@ class Compose(BaseCompose, HubMixin):
         data: dict[str, Any],
         binding: frozenset[str],
         original_instance_idx: int,
+        mask_instance_axis: int | None,
     ) -> None:
         if "masks" in binding and "masks" in data:
             mask = data["masks"][original_instance_idx]
             added = hasattr(self, "_added_channel_dim") and self._added_channel_dim.get("masks")
             if added and mask.shape[-1] == 1:
-                mask = np.squeeze(mask, axis=-1)
+                mask = mask.squeeze(-1)
             inst["mask"] = mask
-        elif "mask" in binding and "mask" in data:
-            inst["mask"] = data["mask"][:, :, original_instance_idx]
+        elif "mask" in binding and "mask" in data and mask_instance_axis is not None:
+            inst["mask"] = self._index_axis(data["mask"], original_instance_idx, mask_instance_axis)
 
     def _repack_bbox_into(
         self,

@@ -817,7 +817,7 @@ class BaseCompose(Serializable):
             return None
 
         mask, instance_axis = mask_with_axis
-        mask_array = mask.detach().cpu().numpy()
+        mask_array = mask.numpy()
         reduction_axes = tuple(axis for axis in range(mask_array.ndim) if axis != instance_axis % mask_array.ndim)
         return np.any(mask_array, axis=reduction_axes)
 
@@ -827,8 +827,8 @@ class BaseCompose(Serializable):
         binding: frozenset[str],
         instance_count: int,
     ) -> tuple[Any, int] | None:
-        """Locate the bound mask container and identify its instance axis across NumPy layouts and terminal PyTorch
-        tensor layouts for aligned filtering.
+        """Locate the bound mask container and identify its instance axis across NumPy layouts and terminal CPU
+        tensors produced by `ToTensorV2` for aligned filtering.
         """
         if "masks" in binding:
             masks = data.get("masks")

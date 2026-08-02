@@ -874,10 +874,11 @@ class BaseCompose(Serializable):
         """
         for transform in reversed(transforms):
             transform_type = type(transform)
-            if (
-                transform_type.__name__ == "ToTensorV2"
-                and transform_type.__module__ == "albumentations.pytorch.transforms"
-            ):
+            is_to_tensor_v2 = any(
+                base_type.__name__ == "ToTensorV2" and base_type.__module__ == "albumentations.pytorch.transforms"
+                for base_type in transform_type.__mro__
+            )
+            if is_to_tensor_v2:
                 return 0 if transform.transpose_mask else -1
             nested_transforms = getattr(transform, "transforms", None)
             if isinstance(nested_transforms, Sequence):
@@ -895,7 +896,7 @@ class BaseCompose(Serializable):
             if np.issubdtype(index.dtype, np.bool_):
                 index = np.flatnonzero(index)
             index_tensor = array.new_tensor(index.tolist()).long()
-            return array.index_select(axis, index_tensor)
+            return array.index_select(axis % array.ndim, index_tensor)
         selection = [slice(None)] * array.ndim
         selection[axis] = index
         return array[tuple(selection)]

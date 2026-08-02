@@ -225,6 +225,30 @@ class TestBboxFiltering:
         assert result_mask.sum() == 4
 
     @pytest.mark.pytorch
+    @pytest.mark.parametrize("transpose_mask", [False, True])
+    def test_tensor_mask_axis_with_to_tensor_subclass(self, transpose_mask: bool) -> None:
+        class CustomToTensorV2(A.ToTensorV2):
+            pass
+
+        transform = A.Compose(
+            [CustomToTensorV2(transpose_mask=transpose_mask)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["mask", "bboxes"],
+            telemetry=False,
+        )
+        instances = [
+            {"mask": np.zeros((2, 2), dtype=np.uint8), "bbox": np.array([0, 0, 1, 1], dtype=np.float32)},
+            {"mask": np.ones((2, 2), dtype=np.uint8), "bbox": np.array([0, 0, 2, 2], dtype=np.float32)},
+        ]
+
+        result = transform(image=np.zeros((2, 2, 3), dtype=np.uint8), instances=instances)
+
+        assert len(result["instances"]) == 1
+        result_mask = result["instances"][0]["mask"]
+        assert result_mask.shape == (2, 2)
+        assert result_mask.sum() == 4
+
+    @pytest.mark.pytorch
     @pytest.mark.parametrize("mask_target", ["masks", "mask"])
     @pytest.mark.parametrize("transpose_mask", [False, True])
     def test_tensor_empty_masks_remove_all_bound_instances(

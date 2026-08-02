@@ -133,8 +133,161 @@ class TestUnpackRepack:
 
 
 class TestBboxFiltering:
+    @pytest.mark.parametrize(
+        ("mask_target", "transpose_mask"),
+        [
+            ("masks", None),
+            ("mask", None),
+            pytest.param("masks", False, marks=pytest.mark.pytorch),
+            pytest.param("mask", False, marks=pytest.mark.pytorch),
+            pytest.param("masks", True, marks=pytest.mark.pytorch),
+            pytest.param("mask", True, marks=pytest.mark.pytorch),
+        ],
+    )
+    def test_empty_mask_after_affine_removes_bound_instance(
+        self,
+        mask_target: str,
+        transpose_mask: bool | None,
+    ) -> None:
+        image = np.zeros((128, 128, 3), dtype=np.uint8)
+        y_coordinates, x_coordinates = np.ogrid[:128, :128]
+        mask = ((x_coordinates - 104) ** 2 + (y_coordinates - 64) ** 2 <= 12**2).astype(np.uint8)
+        surviving_mask = ((x_coordinates - 64) ** 2 + (y_coordinates - 64) ** 2 <= 12**2).astype(np.uint8)
+        instances = [
+            {
+                "mask": mask,
+                "bbox": np.array([92, 52, 117, 77], dtype=np.float32),
+                "keypoints": np.array([[104, 64]], dtype=np.float32),
+                "bbox_labels": {"class_id": "disk"},
+            },
+            {
+                "mask": surviving_mask,
+                "bbox": np.array([52, 52, 77, 77], dtype=np.float32),
+                "keypoints": np.array([[64, 64]], dtype=np.float32),
+                "bbox_labels": {"class_id": "survivor"},
+            },
+        ]
+        transforms: list[A.BasicTransform] = [
+            A.Affine(
+                rotate=(-80, -80),
+                translate_px={"x": (-20, -20), "y": (36, 36)},
+                p=1,
+            ),
+        ]
+        if transpose_mask is not None:
+            transforms.append(A.ToTensorV2(transpose_mask=transpose_mask))
+
+        transform = A.Compose(
+            transforms,
+            bbox_params=A.BboxParams(
+                coord_format="pascal_voc",
+                label_fields=["class_id"],
+                min_area=0,
+                min_visibility=0,
+            ),
+            keypoint_params=A.KeypointParams(coord_format="xy"),
+            instance_binding=[mask_target, "bboxes", "keypoints"],
+            telemetry=False,
+        )
+
+        result = transform(image=image, instances=instances)
+
+        assert len(result["instances"]) == 1
+        assert result["instances"][0]["bbox_labels"]["class_id"] == "survivor"
+        result_mask = result["instances"][0]["mask"]
+        assert bool(result_mask.any())
+        if transpose_mask is not None:
+            import torch
+
+            assert isinstance(result_mask, torch.Tensor)
+            expected_shape = (1, 128, 128) if mask_target == "masks" and transpose_mask else (128, 128)
+            assert result_mask.shape == expected_shape
+
+    @pytest.mark.pytorch
+    @pytest.mark.parametrize("transpose_mask", [False, True])
+    def test_tensor_mask_axis_when_instance_count_matches_spatial_shape(self, transpose_mask: bool) -> None:
+        transform = A.Compose(
+            [A.ToTensorV2(transpose_mask=transpose_mask)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["mask", "bboxes"],
+            telemetry=False,
+        )
+        instances = [
+            {"mask": np.zeros((2, 2), dtype=np.uint8), "bbox": np.array([0, 0, 1, 1], dtype=np.float32)},
+            {"mask": np.ones((2, 2), dtype=np.uint8), "bbox": np.array([0, 0, 2, 2], dtype=np.float32)},
+        ]
+
+        result = transform(image=np.zeros((2, 2, 3), dtype=np.uint8), instances=instances)
+
+        assert len(result["instances"]) == 1
+        result_mask = result["instances"][0]["mask"]
+        assert result_mask.shape == (2, 2)
+        assert result_mask.sum() == 4
+
+    @pytest.mark.pytorch
+    @pytest.mark.parametrize("transpose_mask", [False, True])
+    def test_tensor_mask_axis_with_to_tensor_subclass(self, transpose_mask: bool) -> None:
+        class CustomToTensorV2(A.ToTensorV2):
+            pass
+
+        transform = A.Compose(
+            [CustomToTensorV2(transpose_mask=transpose_mask)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["mask", "bboxes"],
+            telemetry=False,
+        )
+        instances = [
+            {"mask": np.zeros((2, 2), dtype=np.uint8), "bbox": np.array([0, 0, 1, 1], dtype=np.float32)},
+            {"mask": np.ones((2, 2), dtype=np.uint8), "bbox": np.array([0, 0, 2, 2], dtype=np.float32)},
+        ]
+
+        result = transform(image=np.zeros((2, 2, 3), dtype=np.uint8), instances=instances)
+
+        assert len(result["instances"]) == 1
+        result_mask = result["instances"][0]["mask"]
+        assert result_mask.shape == (2, 2)
+        assert result_mask.sum() == 4
+
+    @pytest.mark.pytorch
+    @pytest.mark.parametrize("mask_target", ["masks", "mask"])
+    @pytest.mark.parametrize("transpose_mask", [False, True])
+    def test_tensor_empty_masks_remove_all_bound_instances(
+        self,
+        mask_target: str,
+        transpose_mask: bool,
+    ) -> None:
+        transform = A.Compose(
+            [A.ToTensorV2(transpose_mask=transpose_mask)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=[mask_target, "bboxes"],
+            telemetry=False,
+        )
+        empty_mask = np.zeros((8, 8), dtype=np.uint8)
+        instances = [
+            {"mask": empty_mask, "bbox": np.array([0, 0, 2, 2], dtype=np.float32)},
+            {"mask": empty_mask, "bbox": np.array([4, 4, 6, 6], dtype=np.float32)},
+        ]
+
+        result = transform(image=np.zeros((8, 8, 3), dtype=np.uint8), instances=instances)
+
+        assert result["instances"] == []
+
     @pytest.mark.parametrize("check_each_transform", [True, False])
-    def test_final_bbox_filter_keeps_bound_instance_targets_aligned(self, check_each_transform: bool) -> None:
+    @pytest.mark.parametrize("mask_target", ["masks", "mask"])
+    @pytest.mark.parametrize(
+        "transpose_mask",
+        [
+            None,
+            pytest.param(False, marks=pytest.mark.pytorch),
+            pytest.param(True, marks=pytest.mark.pytorch),
+        ],
+    )
+    def test_final_bbox_filter_keeps_bound_instance_targets_aligned(
+        self,
+        check_each_transform: bool,
+        mask_target: str,
+        transpose_mask: bool | None,
+    ) -> None:
         image = np.zeros((128, 128, 3), dtype=np.uint8)
         outside_mask = np.zeros((128, 128), dtype=np.uint8)
         outside_mask[:4, :4] = 1
@@ -154,8 +307,12 @@ class TestBboxFiltering:
                 "bbox_labels": {"class_id": 33},
             },
         ]
+        transforms: list[A.BasicTransform] = [A.Crop(x_min=32, y_min=32, x_max=96, y_max=96, p=1)]
+        if transpose_mask is not None:
+            transforms.append(A.ToTensorV2(transpose_mask=transpose_mask))
+
         transform = A.Compose(
-            [A.Crop(x_min=32, y_min=32, x_max=96, y_max=96, p=1)],
+            transforms,
             bbox_params=A.BboxParams(
                 coord_format="pascal_voc",
                 label_fields=["class_id"],
@@ -163,7 +320,7 @@ class TestBboxFiltering:
                 check_each_transform=check_each_transform,
             ),
             keypoint_params=A.KeypointParams(coord_format="xy"),
-            instance_binding=["masks", "bboxes", "keypoints"],
+            instance_binding=[mask_target, "bboxes", "keypoints"],
             telemetry=False,
         )
 
@@ -175,6 +332,8 @@ class TestBboxFiltering:
         np.testing.assert_array_equal(instance["bbox"], [8, 8, 48, 48])
         assert instance["mask"].sum() == 4800
         assert instance["mask"].max() == 3
+        expected_mask_shape = (1, 64, 64) if mask_target == "masks" and transpose_mask else (64, 64)
+        assert instance["mask"].shape == expected_mask_shape
         np.testing.assert_array_equal(instance["keypoints"], [[18, 18]])
 
     def test_removed_bbox_removes_mask_and_keypoints(self) -> None:
@@ -714,7 +873,7 @@ class TestNestedComposeInstanceBinding:
             image=image,
             instances=[
                 {
-                    "mask": _make_mask(),
+                    "mask": _make_mask(region=(10, 50, 10, 50)),
                     "bbox": np.array([10, 10, 50, 50], dtype=np.float32),
                 },
             ],
@@ -1923,8 +2082,8 @@ class TestCopyPasteBindingRegression:
         assert set(by_cid) == {"PASTED"}
         np.testing.assert_array_equal(by_cid["PASTED"]["keypoint_labels"]["vis"], np.array([9]))
 
-    def test_copy_paste_min_visibility_zero_keeps_all_primaries_with_binding(self) -> None:
-        """min_visibility_after_paste=0.0 means every primary survives regardless of overlap; pasted appended."""
+    def test_copy_paste_min_visibility_zero_drops_fully_occluded_primaries_with_binding(self) -> None:
+        """Empty primary masks remove their bound instances even when the visibility threshold is zero."""
         side = 64
         image, instances = _three_instance_payload(side)
         paste_mask = np.ones((side, side), dtype=np.uint8)
@@ -1942,7 +2101,7 @@ class TestCopyPasteBindingRegression:
         )
         result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
         cids = [inst["bbox_labels"]["cid"] for inst in result["instances"]]
-        assert cids == ["A", "B", "C", "PASTED"]
+        assert cids == ["PASTED"]
 
     def test_copy_paste_min_visibility_one_drops_all_primaries_with_binding(self) -> None:
         """min_visibility_after_paste=1.0 with any overlap removes all primaries; only pasted survives."""
@@ -2764,6 +2923,15 @@ class _MaskRowDroppingDualTransform(A.DualTransform):
         return keypoints
 
 
+class _PackedMaskChannelDroppingDualTransform(_MaskRowDroppingDualTransform):
+    """Deliberately drop one packed mask channel without dropping its bbox row."""
+
+    def apply_to_mask(self, mask: np.ndarray, **params: Any) -> np.ndarray:
+        if mask.ndim < 3 or mask.shape[-1] <= 1:
+            return mask
+        return mask[..., :-1]
+
+
 class TestStructuralInvariantContract:
     """Phase 6b: a transform whose `apply_to_masks` violates the row-alignment contract
     must surface as a `RuntimeError` from `_resync_instance_ids` in strict mode (the
@@ -2788,6 +2956,18 @@ class TestStructuralInvariantContract:
             seed=0,
         )
         with pytest.raises(RuntimeError, match="Instance-binding invariant violated"):
+            aug(image=image, instances=instances)
+
+    def test_strict_mode_raises_runtime_error_on_packed_mask_channel_drop(self) -> None:
+        image, instances = self._instances()
+        aug = A.Compose(
+            [_PackedMaskChannelDroppingDualTransform(p=1.0)],
+            bbox_params=A.BboxParams(coord_format="pascal_voc"),
+            instance_binding=["mask", "bboxes"],
+            seed=0,
+        )
+
+        with pytest.raises(RuntimeError, match=r"packed mask instance count=1 != len\(bboxes\)=2"):
             aug(image=image, instances=instances)
 
     def test_legacy_mode_warns_instead_of_raising(self) -> None:

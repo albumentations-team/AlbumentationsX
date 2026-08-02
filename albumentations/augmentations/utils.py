@@ -138,6 +138,8 @@ class PCA:
             - If None: Keep all components (min of n_samples and n_features)
             - If int: Keep the specified number of components
             Must be greater than 0 if specified.
+        dtype (np.dtype | type[np.generic]): Computation dtype. OpenCV PCA supports
+            np.float32 and np.float64. Default: np.float64.
 
     Raises:
         ValueError: If n_components is specified and is less than or equal to 0.
@@ -161,9 +163,16 @@ class PCA:
 
     """
 
-    def __init__(self, n_components: int | None = None) -> None:
+    def __init__(
+        self,
+        n_components: int | None = None,
+        dtype: np.dtype | type[np.generic] = np.float64,
+    ) -> None:
         if n_components is not None and n_components <= 0:
             raise ValueError("Number of components must be greater than zero.")
+        self.dtype = np.dtype(dtype)
+        if self.dtype not in {np.dtype(np.float32), np.dtype(np.float64)}:
+            raise ValueError("PCA dtype must be np.float32 or np.float64.")
         self.n_components = n_components
         self.mean: np.ndarray | None = None
         self.components_: np.ndarray | None = None
@@ -187,7 +196,7 @@ class PCA:
 
         Args:
             x (np.ndarray): Training data of shape (n_samples, n_features).
-                Data will be automatically converted to float64 for computation.
+                Data will be converted to the configured computation dtype.
 
         Note:
             - The data is automatically centered (mean-subtracted) during fitting
@@ -203,15 +212,15 @@ class PCA:
             >>> print(pca.components_.shape)  # (3, 10)
 
         """
-        x = x.astype(np.float64, copy=False)  # avoid unnecessary copy if already float64
-        n_samples, n_features = x.shape
+        x_float = cast("np.ndarray[Any, np.dtype[np.floating[Any]]]", x.astype(self.dtype, copy=False))
+        n_samples, n_features = x_float.shape
 
         # Determine the number of components if not set
         if self.n_components is None:
             self.n_components = min(n_samples, n_features)
 
-        mean = np.empty((0,), dtype=np.float64)
-        computed_mean, eigenvectors, eigenvalues = cv2.PCACompute2(x, mean=mean, maxComponents=self.n_components)
+        mean = cast("np.ndarray[Any, np.dtype[np.floating[Any]]]", np.empty((0,), dtype=self.dtype))
+        computed_mean, eigenvectors, eigenvalues = cv2.PCACompute2(x_float, mean=mean, maxComponents=self.n_components)
         self.mean = cast("np.ndarray", computed_mean)
         self.components_ = cast("np.ndarray", eigenvectors)
         self.explained_variance_ = cast("np.ndarray", eigenvalues).flatten()
@@ -226,7 +235,7 @@ class PCA:
         Args:
             x (np.ndarray): Data to transform of shape (n_samples, n_features).
                 Must have the same number of features as the data used for fitting.
-                Data will be automatically converted to float64 for computation.
+                Data will be converted to the fitted PCA dtype.
 
         Returns:
             np.ndarray: Transformed data of shape (n_samples, n_components).
@@ -249,7 +258,7 @@ class PCA:
 
         """
         mean, components = self._require_fitted()
-        x = x.astype(np.float64, copy=False)  # avoid unnecessary copy if already float64
+        x = x.astype(mean.dtype, copy=False)
         return cast("np.ndarray", cv2.PCAProject(x, mean, components))
 
     def fit_transform(self, x: np.ndarray) -> np.ndarray:
@@ -262,7 +271,7 @@ class PCA:
 
         Args:
             x (np.ndarray): Data to fit and transform of shape (n_samples, n_features).
-                Data will be automatically converted to float64 for computation.
+                Data will be converted to the configured computation dtype.
 
         Returns:
             np.ndarray: Transformed data of shape (n_samples, n_components).
@@ -318,7 +327,7 @@ class PCA:
 
         """
         mean, components = self._require_fitted()
-        return cast("np.ndarray", cv2.PCABackProject(x, mean, components))
+        return cast("np.ndarray", cv2.PCABackProject(x.astype(mean.dtype, copy=False), mean, components))
 
     def explained_variance_ratio(self) -> np.ndarray:
         """Return fraction of total variance explained by each component (shape (n_components,),

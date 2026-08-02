@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from albucore import exp as albucore_exp
+from albucore import sqrt as albucore_sqrt
+
 from ._functional_color import (
     equalize,
 )
@@ -126,7 +129,7 @@ def generate_snow_textures(
 
     """
     # Generate base snow texture
-    snow_texture = random_generator.normal(size=img_shape[:2], loc=0.5, scale=0.3)
+    snow_texture = random_generator.normal(size=img_shape[:2], loc=0.5, scale=0.3).astype(np.float32)
     snow_texture = cv2.GaussianBlur(snow_texture, (0, 0), sigmaX=1, sigmaY=1)
 
     # Generate sparkle mask
@@ -211,7 +214,7 @@ def add_snow_texture(
     # This simulates natural snow distribution on surfaces
     # The effect is achieved using a linear gradient from 1 (full snow) to 0.2 (less snow)
     rows = img.shape[0]
-    depth_effect = np.linspace(1, 0.2, rows)[:, np.newaxis]
+    depth_effect = np.linspace(1, 0.2, rows, dtype=np.float32)[:, np.newaxis]
     snow_texture *= depth_effect
 
     # Apply snow texture
@@ -589,13 +592,16 @@ def add_sun_flare_physics_based(
     flare_layer = cv2.GaussianBlur(flare_layer, (0, 0), sigmaX=15, sigmaY=15)
 
     # Create a radial gradient mask
-    y, x = np.ogrid[:height, :width]
-    mask = np.sqrt((x - flare_center[0]) ** 2 + (y - flare_center[1]) ** 2)
-    mask = 1 - np.clip(mask / (max(width, height) * 0.7), 0, 1)
-    mask = np.dstack([mask] * 3)
+    y = np.arange(height, dtype=np.float32)[:, np.newaxis] - flare_center[1]
+    x = np.arange(width, dtype=np.float32)[np.newaxis, :] - flare_center[0]
+    mask = x * x + y * y
+    mask = albucore_sqrt(mask, inplace=True)
+    mask *= np.float32(1 / (max(width, height) * 0.7))
+    np.clip(mask, 0, 1, out=mask)
+    np.subtract(1, mask, out=mask)
 
     # Apply the mask to the flare layer
-    flare_layer *= mask
+    flare_layer *= mask[..., np.newaxis]
 
     # Add chromatic aberration
     channels = list(cv2.split(flare_layer))
@@ -614,7 +620,7 @@ def add_sun_flare_physics_based(
     flare_layer = cv2.merge(channels)
 
     # Blend the flare with the original image using screen blending
-    return 255 - ((255 - output) * (255 - flare_layer) / 255)
+    return cast("ImageType", 255 - ((255 - output) * (255 - flare_layer) / 255))
 
 
 @uint8_io
@@ -848,7 +854,7 @@ def get_rain_params(
         m = np.zeros_like(m)
 
     # Apply color with adjusted intensity for more natural look
-    drops = m[:, :, None] * color * (intensity * 0.9)  # Slightly reduced intensity
+    drops = m[:, :, None] * color.astype(np.float32, copy=False) * np.float32(intensity * 0.9)
 
     return {
         "drops": drops,
@@ -956,14 +962,20 @@ def apply_atmospheric_fog(
 
     """
     num_channels = img.shape[-1]
-    transmission = np.exp(-density * depth_map).astype(np.float32)[:, :, np.newaxis]
+    transmission = np.multiply(depth_map, np.float32(-density), dtype=np.float32)
+    transmission = albucore_exp(transmission, inplace=True)[:, :, np.newaxis]
 
     fog_array = np.array(fog_color, dtype=np.float32)
     if len(fog_array) < num_channels:
         fog_array = np.pad(fog_array, (0, num_channels - len(fog_array)), mode="edge")
     fog_array = fog_array[:num_channels].reshape(1, 1, -1)
 
-    result = img.astype(np.float32) * transmission + fog_array * (1.0 - transmission)
+    if img.dtype == np.float32:
+        result = np.multiply(img, transmission, dtype=np.float32)
+        np.subtract(np.float32(1.0), transmission, out=transmission)
+        np.add(result, fog_array * transmission, out=result)
+    else:
+        result = img.astype(np.float32) * transmission + fog_array * (1.0 - transmission)
 
     return clip(result, img.dtype)
 

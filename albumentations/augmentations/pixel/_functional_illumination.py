@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from typing import Any, Literal, cast
 
 import numkong as nk
+from albucore import exp as albucore_exp
+from albucore import sqrt as albucore_sqrt
 
 from ._functional_noise import (
     DIAMOND_KERNEL,
@@ -300,7 +302,7 @@ def create_corner_illumination_gradient(
     x = np.arange(width, dtype=np.float32)[np.newaxis, :] - corner_x
 
     pattern = x * x + y * y
-    cv2.sqrt(pattern, dst=pattern)
+    pattern = albucore_sqrt(pattern, inplace=True)
     _multiply_scalar_inplace(pattern, -intensity / math.sqrt(height * height + width * width))
     _add_scalar_inplace(pattern, 1.0)
     return pattern
@@ -345,7 +347,7 @@ def create_illumination_gradient(
     cv2.multiply(y, y, dst=y)
     x = x + y
     _multiply_scalar_inplace(x, -1 / sigma2)
-    cv2.exp(x, dst=x)
+    x = albucore_exp(x, inplace=True)
     _multiply_scalar_inplace(x, intensity)
     _add_scalar_inplace(x, 1.0)
     return x
@@ -458,7 +460,7 @@ def apply_gaussian_illumination(
 
     # Calculate gaussian directly into x array
     _multiply_scalar_inplace(x, -1 / sigma2)
-    cv2.exp(x, dst=x)
+    x = albucore_exp(x, inplace=True)
 
     # Scale by intensity
     _multiply_scalar_inplace(x, intensity)
@@ -994,7 +996,8 @@ def apply_film_grain(
 
     modulated = (grain * inv_lum * intensity * max_val).astype(np.float32)
 
-    return add_array(img, modulated[..., np.newaxis])
+    result = add_array(img, modulated[..., np.newaxis])
+    return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
 
 @uint8_io

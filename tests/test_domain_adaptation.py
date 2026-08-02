@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from albucore import to_float
 from skimage.exposure import match_histograms as skimage_match_histograms
 from skimage.metrics import structural_similarity as ssim
 
@@ -89,7 +90,20 @@ def test_standard_inverse_transform(data, data_scaled, expected):
     scaler = StandardScaler()
     scaler.fit(data)
     result = scaler.inverse_transform(data_scaled)
-    np.testing.assert_almost_equal(result, expected)
+    np.testing.assert_allclose(result, expected, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize("scaler_cls", [MinMaxScaler, StandardScaler])
+def test_scalers_use_float32_working_arrays(scaler_cls):
+    data = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.uint8)
+    scaler = scaler_cls()
+
+    transformed = scaler.fit_transform(data)
+    reconstructed = scaler.inverse_transform(transformed)
+
+    assert transformed.dtype == np.float32
+    assert reconstructed.dtype == np.float32
+    np.testing.assert_allclose(reconstructed, data)
 
 
 @pytest.mark.parametrize(
@@ -138,6 +152,20 @@ def test_pca_transform(n_components, data, expected_shape):
     transformed = pca.fit_transform(data)
     assert transformed.shape == expected_shape
     assert np.all(np.isfinite(transformed)), "Transformed data contains non-finite values"
+
+
+def test_pca_configurable_computation_dtype():
+    data = np.random.default_rng(137).random((32, 3), dtype=np.float32)
+
+    default_pca = PCA(n_components=2)
+    default_result = default_pca.fit_transform(data)
+    float32_pca = PCA(n_components=2, dtype=np.float32)
+    float32_result = float32_pca.fit_transform(data)
+
+    assert default_result.dtype == np.float64
+    assert float32_result.dtype == np.float32
+    assert float32_pca.mean is not None and float32_pca.mean.dtype == np.float32
+    assert float32_pca.components_ is not None and float32_pca.components_.dtype == np.float32
 
 
 @pytest.mark.parametrize(
@@ -465,6 +493,32 @@ def test_adapt_pixel_distribution_5plus_channels(num_channels, transform_type):
     result = adapt_pixel_distribution(img, ref, transform_type=transform_type, weight=0.5)
     assert result.shape == img.shape
     assert result.dtype == img.dtype
+
+
+@pytest.mark.parametrize("transform_type", ["pca", "standard", "minmax"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_pixel_distribution_adaptation_single_channel(transform_type, dtype):
+    rng = np.random.default_rng(137)
+    image_uint8 = rng.integers(0, 256, (17, 23, 1), dtype=np.uint8)
+    reference_uint8 = rng.integers(0, 256, (13, 19, 1), dtype=np.uint8)
+    image = image_uint8 if dtype == np.uint8 else to_float(image_uint8)
+    reference = reference_uint8 if dtype == np.uint8 else to_float(reference_uint8)
+    transform = A.Compose(
+        [
+            A.PixelDistributionAdaptation(
+                blend_ratio=(0.5, 0.5),
+                transform_type=transform_type,
+                metadata_key="pda_metadata",
+                p=1.0,
+            ),
+        ],
+        seed=137,
+    )
+
+    result = transform(image=image, pda_metadata=[reference])["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
 
 
 @pytest.mark.parametrize("num_channels", [5, 6])

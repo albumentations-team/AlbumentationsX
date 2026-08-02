@@ -963,7 +963,8 @@ class ExposureMatching(ImageOnlyTransform):
         self.gain_range = gain_range
 
     def apply(self, img: ImageType, gain: float, **params: Any) -> ImageType:
-        return albucore.multiply(img, gain, inplace=False)
+        result = albucore.multiply(img, gain, inplace=False)
+        return fpixel.clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
     def apply_to_images(self, images: ImageType, image_gains: list[float], **params: Any) -> ImageType:
         return fpixel.exposure_match_batch(images, np.asarray(image_gains, dtype=np.float32))

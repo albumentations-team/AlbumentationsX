@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 from albucore import (
     MAX_VALUES_BY_DTYPE,
+    clip,
     multiply,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -353,7 +354,8 @@ class MultiplicativeNoise(ImageOnlyTransform):
         multiplier: float | np.ndarray,
         **kwargs: Any,
     ) -> ImageType:
-        return multiply(img, multiplier)
+        result = multiply(img, multiplier)
+        return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
     def apply_to_images(self, images: ImageType, multiplier: float | np.ndarray, **kwargs: Any) -> ImageType:
         return self.apply(images, multiplier, **kwargs)

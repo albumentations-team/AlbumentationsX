@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal, cast
 
+from albucore import exp as albucore_exp
+
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     ImageType,
@@ -443,10 +445,9 @@ def _build_stain_affine_matrix(
 
 
 def _apply_stain_affine(optical_density: np.ndarray, affine_matrix: np.ndarray) -> np.ndarray:
-    result = cv2.transform(optical_density.reshape(-1, 1, 3), affine_matrix).reshape(-1, 3)
+    result = cv2.transform(optical_density.reshape(-1, 1, 3), affine_matrix)
     result *= -1.0
-    cv2.exp(result, dst=result)
-    return result
+    return albucore_exp(result, inplace=True).reshape(-1, 3)
 
 
 def _validate_stain_augmentation_inputs(

@@ -1150,9 +1150,9 @@ def test_fancy_pca_zero_alpha(shape, dtype):
 @pytest.mark.parametrize(
     ("channels", "expected_hash"),
     [
-        (1, "3f7d5fd9af229099078be43a5119cc70a1ffb3487e0fb933e89db31ac667a1a0"),
-        (3, "f1e44bb1c912d89a4393343f0caec246d12707511a3099d450591f9e24b1879c"),
-        (5, "3b074bf63f9fe72f4c5839ab24b0e15fc49fe091697ab1cec2299117a8db63f4"),
+        (1, "782589b0420c6c4c3da9edb8aa262c23bb6083be3cc8f2daa41a464518f69bd0"),
+        (3, "a686ba8aa835095757718232e7b343a9bd2926aa13b0f85cc5f136b6d925cef8"),
+        (5, "2bb1fa123dfe7a1d2e33f2436b9a5b303a4783a80891a6c4213fb1a4c8dee3e3"),
     ],
 )
 def test_slic_output_regression(channels, expected_hash):
@@ -1164,14 +1164,53 @@ def test_slic_output_regression(channels, expected_hash):
 
 
 @pytest.mark.parametrize("channels", [1, 3, 5])
+def test_slic_handles_more_segments_than_pixels(channels):
+    image = np.random.default_rng(137).integers(0, 256, (4, 4, channels), dtype=np.uint8)
+
+    labels = fpixel.slic(image, n_segments=17)
+
+    assert labels.shape == image.shape[:2]
+    assert labels.dtype == np.int32
+    assert np.all(labels >= 0)
+
+
+@pytest.mark.parametrize("n_segments", [0, -1])
+def test_slic_rejects_nonpositive_segment_count(n_segments):
+    image = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="n_segments must be positive"):
+        fpixel.slic(image, n_segments=n_segments)
+
+
+@pytest.mark.parametrize("shape", [(1, 32, 1), (24, 4, 3), (4, 24, 5)])
+def test_slic_assigns_labels_for_narrow_images(shape):
+    image = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
+
+    labels = fpixel.slic(image, n_segments=1)
+    result = fpixel.superpixels(
+        image,
+        n_segments=1,
+        replace_samples=[True],
+        max_size=None,
+        interpolation=cv2.INTER_NEAREST,
+    )
+
+    assert labels.shape == image.shape[:2]
+    assert labels.dtype == np.int32
+    assert np.all(labels >= 0)
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+
+
+@pytest.mark.parametrize("channels", [1, 3, 5])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 def test_superpixels_segment_mean_replacement(monkeypatch, channels, dtype):
     image_uint8 = np.arange(2 * 4 * channels, dtype=np.uint8).reshape(2, 4, channels)
     image = image_uint8 if dtype == np.uint8 else image_uint8.astype(np.float32) / 255
     segments = np.array(
         [
-            [0, 0, 1, 1],
-            [2, 2, 3, 3],
+            [0, 0, 2, 2],
+            [5, 5, 9, 9],
         ],
         dtype=np.int32,
     )
@@ -1186,7 +1225,7 @@ def test_superpixels_segment_mean_replacement(monkeypatch, channels, dtype):
     )
 
     expected_uint8 = image_uint8.copy()
-    for segment_label in (1, 3):
+    for segment_label in (2, 9):
         segment_mask = segments == segment_label
         expected_uint8[segment_mask] = np.rint(image_uint8[segment_mask].mean(axis=0)).astype(np.uint8)
     expected = expected_uint8 if dtype == np.uint8 else expected_uint8.astype(np.float32) / 255
@@ -2760,7 +2799,7 @@ def test_rain_params_different_inputs(liquid_layer):
     result = fpixel.get_rain_params(liquid_layer, color, intensity)
 
     assert isinstance(result["drops"], np.ndarray)
-    assert result["drops"].dtype in [np.float32, np.float64]
+    assert result["drops"].dtype == np.float32
 
 
 def test_rain_params_deterministic():

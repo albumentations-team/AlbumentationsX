@@ -32,6 +32,7 @@ from ._functional_shared import (
     non_rgb_error,
     normalize_per_image,
     np,
+    power,
     preserve_channel_dim,
     reduce_sum,
     reshape_ndhwc_channel,
@@ -803,7 +804,7 @@ def gamma_transform(img: ImageType, gamma: float) -> ImageType:
         table = (np.arange(0, 256.0 / 255, 1.0 / 255) ** gamma) * 255
         return sz_lut(img, table.astype(np.uint8), inplace=False)
 
-    return np.power(img, gamma)
+    return power(img, gamma)
 
 
 @float32_io
@@ -1202,7 +1203,7 @@ def to_gray_pca(img: ImageType) -> ImageType:
     pixels = img.reshape(-1, img.shape[-1])
 
     # Perform PCA
-    pca = PCA(n_components=1)
+    pca = PCA(n_components=1, dtype=np.float32)
     pca_result = pca.fit_transform(pixels)
 
     # Reshape back to image dimensions and scale to 0-255

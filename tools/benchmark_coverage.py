@@ -36,10 +36,7 @@ from benchmarks.test_batch_matrix import (  # noqa: E402
     MASK_BATCH_CASES,
     MASK_BATCH_TRANSFORMS,
     RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
-    RANDOM_TONE_CURVE_DIRECT_VOLUME_CASES,
     SPATTER_DIRECT_CASES,
-    VOLUME_BATCH_CASES,
-    VOLUME_BATCH_TRANSFORMS,
 )
 from benchmarks.test_family_matrix import (  # noqa: E402
     ANNOTATION_CASES,
@@ -79,8 +76,6 @@ def unavailable_optional_transform_names() -> set[str]:
 BATCH_METHOD_NAMES = (
     "apply_to_images",
     "apply_to_masks",
-    "apply_to_volumes",
-    "apply_to_masks3d",
 )
 ANNOTATION_METHOD_NAMES = (
     "apply_to_bboxes",
@@ -381,11 +376,7 @@ ASV_BENCHMARKS = {
     "batch_random_tone_curve_direct_image": (
         "benchmarks.test_batch_matrix.TimeRandomToneCurveDirectImageBatchMatrix.time_apply_to_images"
     ),
-    "batch_random_tone_curve_direct_volume": (
-        "benchmarks.test_batch_matrix.TimeRandomToneCurveDirectVolumeBatchMatrix.time_apply_to_volumes"
-    ),
     "batch_spatter_direct": "benchmarks.test_batch_matrix.TimeSpatterDirectBatchMatrix.time_apply_to_images",
-    "batch_volume": "benchmarks.test_batch_matrix.TimeVolumeBatchMatrix.time_transform",
     "catalog_smoke": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
     "direct_kernel_3d": "benchmarks.test_functional_kernels.TimeFunctional3DKernels.time_kernel",
     "direct_kernel_blur": "benchmarks.test_functional_kernels.TimeFunctionalBlurKernels.time_kernel",
@@ -509,7 +500,6 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
     annotation_scaling = _mapped_names(ANNOTATION_ALIAS_TO_TRANSFORM, ANNOTATION_TRANSFORMS)
     batch_matrix = _mapped_names(BATCH_ALIAS_TO_TRANSFORM, IMAGE_BATCH_TRANSFORMS)
     batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, MASK_BATCH_TRANSFORMS)
-    batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, VOLUME_BATCH_TRANSFORMS)
     parameter_sensitivity = _mapped_names(
         PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM,
         PARAMETER_SENSITIVITY_TRANSFORMS,
@@ -705,10 +695,8 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
     name, target_route, size_name, channels, dtype_name, batch_size = case_id.split("|")
     targets = {
         "direct_images": ["images"],
-        "direct_volumes": ["volumes"],
         "images": ["images"],
         "images_and_masks": ["images", "masks"],
-        "volumes_and_masks3d": ["masks3d", "volumes"],
     }[target_route]
     scenario = {
         "batch_size": int(batch_size),
@@ -718,10 +706,7 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
         "target_route": target_route,
         "targets": targets,
     }
-    if target_route in {"direct_volumes", "volumes_and_masks3d"}:
-        scenario["volume_size"] = size_name
-    else:
-        scenario["size"] = size_name
+    scenario["size"] = size_name
     return scenario
 
 
@@ -1099,22 +1084,8 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
     )
     _add_matrix_cases(
         cases,
-        benchmark=ASV_BENCHMARKS["batch_random_tone_curve_direct_volume"],
-        case_ids=RANDOM_TONE_CURVE_DIRECT_VOLUME_CASES,
-        layer="batch_matrix",
-        name_map=BATCH_ALIAS_TO_TRANSFORM,
-    )
-    _add_matrix_cases(
-        cases,
         benchmark=ASV_BENCHMARKS["batch_spatter_direct"],
         case_ids=SPATTER_DIRECT_CASES,
-        layer="batch_matrix",
-        name_map=BATCH_ALIAS_TO_TRANSFORM,
-    )
-    _add_matrix_cases(
-        cases,
-        benchmark=ASV_BENCHMARKS["batch_volume"],
-        case_ids=VOLUME_BATCH_CASES,
         layer="batch_matrix",
         name_map=BATCH_ALIAS_TO_TRANSFORM,
     )
@@ -1480,7 +1451,6 @@ def _spec_summary() -> dict[str, Any]:
             "annotations": len(ANNOTATION_CASES),
             "batch_image": len(IMAGE_BATCH_CASES),
             "batch_mask": len(MASK_BATCH_CASES),
-            "batch_volume": len(VOLUME_BATCH_CASES),
             "geometry": len(GEOMETRY_CASES),
             "parameter_sensitivity": len(PARAMETER_SENSITIVITY_CASES),
             "pixel": len(PIXEL_CASES),
@@ -1598,7 +1568,6 @@ def _validate_registry() -> list[str]:
                 "annotation": ANNOTATION_CASES,
                 "batch_image": IMAGE_BATCH_CASES,
                 "batch_mask": MASK_BATCH_CASES,
-                "batch_volume": VOLUME_BATCH_CASES,
                 "geometry": GEOMETRY_CASES,
                 "parameter_sensitivity": PARAMETER_SENSITIVITY_CASES,
                 "pixel": PIXEL_CASES,

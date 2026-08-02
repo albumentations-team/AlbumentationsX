@@ -8,7 +8,6 @@ from ._color_shared import (
     Field,
     ImageOnlyTransform,
     ImageType,
-    VolumeType,
     albucore,
     batch_transform,
     check_range_bounds,
@@ -218,10 +217,6 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
 
 class PlasmaShadow(ImageOnlyTransform):
     """Plasma fractal (Diamond-Square) shadow: organic darkening. shadow_intensity_range, roughness.
@@ -374,10 +369,6 @@ class PlasmaShadow(ImageOnlyTransform):
     @batch_transform("spatial")
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 class Illumination(ImageOnlyTransform):

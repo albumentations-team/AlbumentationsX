@@ -224,9 +224,6 @@ class Normalize(ImageOnlyTransform):
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volume, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
 
 class InvertImg(ImageOnlyTransform):
     """Invert the input image by subtracting pixel values from max values of the image types,
@@ -272,9 +269,6 @@ class InvertImg(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self.apply(images, *args, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self.apply(volumes, *args, **params)
 
 
 class Sharpen(ImageOnlyTransform):

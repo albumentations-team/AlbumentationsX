@@ -8,7 +8,6 @@ FLOAT_SHAPE_PREFIXES = {
     "image": (2, 3),
     "images": (2, 2, 3),
     "volume": (3, 2, 3),
-    "volumes": (2, 3, 2, 3),
 }
 
 

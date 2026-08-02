@@ -31,7 +31,6 @@ __all__ = [
     "get_crop_coords",
     "pad_along_axes",
     "volume_crop_yx",
-    "volumes_crop_yx",
 ]
 
 
@@ -387,51 +386,6 @@ def volume_crop_yx(
 
     # Crop along H (axis 1) and W (axis 2)
     return volume[:, y_min:y_max, x_min:x_max]
-
-
-def volumes_crop_yx(
-    volumes: np.ndarray,
-    x_min: int,
-    y_min: int,
-    x_max: int,
-    y_max: int,
-) -> np.ndarray:
-    """Crop a batch of volumes (B, D, H, W[, C]) along Y and X axes only; depth unchanged.
-    Pixel bounds validated; returns volumes[:, :, y_min:y_max, x_min:x_max].
-
-    Args:
-        volumes (np.ndarray): Input batch of volumes with shape (B, D, H, W) or (B, D, H, W, C).
-        x_min (int): Minimum width coordinate.
-        y_min (int): Minimum height coordinate.
-        x_max (int): Maximum width coordinate.
-        y_max (int): Maximum height coordinate.
-
-    Returns:
-        np.ndarray: Cropped batch of volumes (B, D, H_new, W_new, [C]).
-
-    Raises:
-        ValueError: If crop coordinates are invalid or volumes shape is incorrect.
-
-    """
-    if not 4 <= volumes.ndim <= 5:
-        raise ValueError(f"Input volumes should have 4 or 5 dimensions, got {volumes.ndim}")
-
-    depth, height, width = volumes.shape[1:4]
-    if x_max <= x_min or y_max <= y_min:
-        raise ValueError(
-            "Crop coordinates must satisfy min < max. Got: "
-            f"(x_min={x_min}, y_min={y_min}, x_max={x_max}, y_max={y_max})",
-        )
-
-    if x_min < 0 or y_min < 0 or x_max > width or y_max > height:
-        raise ValueError(
-            "Crop coordinates must be within image dimensions (H, W). Got: "
-            f"(x_min={x_min}, y_min={y_min}, x_max={x_max}, y_max={y_max}) "
-            f"for volume shape {(depth, height, width)}",
-        )
-
-    # Crop along H (axis 2) and W (axis 3)
-    return volumes[:, :, y_min:y_max, x_min:x_max]
 
 
 def pad_along_axes(

@@ -10,7 +10,7 @@ Any change that might affect the speed of transforms (functional layer, apply me
 
 ## When to Benchmark
 
-- Changes to `apply`, `apply_to_images`, `apply_to_masks`, `apply_to_volumes`, or any `apply_*` method
+- Changes to `apply`, `apply_to_images`, `apply_to_masks`, or any `apply_*` method
 - Changes to functions in `functional.py` files
 - Changes to `get_params` or `get_params_dependent_on_data`
 - Changes to core pipeline code (`composition.py`, `transforms_interface.py`)

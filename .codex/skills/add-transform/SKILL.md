@@ -118,8 +118,8 @@ class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
 - Prefer **relative parameters** (fractions of image size) over fixed pixel values
 - Use **`ImageType`** for image/mask/volume type hints, `np.ndarray` only for bboxes/keypoints
 - **Use descriptive variable names** — avoid single-letter or generic names like `x`, `y`, `dx`, `dy`, `cx`, `cy`. Prefer `pixel_cols`, `norm_x`, `center_col`, `run_starts`, `col_x`, etc. Names should read like documentation.
-- **Images and volumes under Compose always have channels** — images are `(H, W, C)`, image batches are
-  `(N, H, W, C)`, volumes are `(D, H, W, C)`, and volume batches are `(N, D, H, W, C)`.
+- **Images and volume data under Compose always have channels** — images are `(H, W, C)`, image batches are
+  `(N, H, W, C)`, and a volume is `(D, H, W, C)`.
 - **Grayscale under Compose is `(H, W, 1)`**, not `(H, W)`. Do not add functional-layer compatibility branches for
   2D grayscale images in code reached through `Compose`.
 - Branch on `ndim` to distinguish image vs batch vs volume paths when needed, not to infer whether channels exist.

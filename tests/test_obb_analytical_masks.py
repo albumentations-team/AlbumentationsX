@@ -637,8 +637,8 @@ def test_obb_identity_transform_analytical() -> None:
     output_mask = obb_to_mask(output_obb, image_shape)
 
     # For identity transform, masks should be identical
-    assert np.array_equal(input_mask, output_image_mask), "Identity transform should not change mask"
-    assert np.array_equal(input_mask, output_mask), "Output OBB mask should match input mask"
+    np.testing.assert_array_equal(input_mask, output_image_mask, err_msg="Identity transform should not change mask")
+    np.testing.assert_array_equal(input_mask, output_mask, err_msg="Output OBB mask should match input mask")
 
 
 @pytest.mark.obb

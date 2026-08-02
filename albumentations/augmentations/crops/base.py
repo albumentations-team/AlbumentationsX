@@ -471,7 +471,20 @@ class BaseCropAndPad(BaseCrop):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> VolumeType:
-        return self.apply_to_images(mask3d, crop_coords, **params)
+        pad_params = params.get("pad_params")
+        if pad_params is not None:
+            mask3d = fcrops.pad_along_axes(
+                mask3d,
+                pad_params["pad_top"],
+                pad_params["pad_bottom"],
+                pad_params["pad_left"],
+                pad_params["pad_right"],
+                h_axis=1,
+                w_axis=2,
+                border_mode=self.border_mode,
+                pad_value=cast("tuple[float, ...] | float", self.fill_mask),
+            )
+        return BaseCrop.apply_to_images(self, mask3d, crop_coords, **params)
 
     def apply_to_bboxes(
         self,

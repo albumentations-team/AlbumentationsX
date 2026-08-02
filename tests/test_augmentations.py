@@ -1018,6 +1018,47 @@ def test_zoom_blur_apply_to_images(dtype):
     np.testing.assert_array_equal(transformed, expected)
 
 
+@pytest.mark.parametrize(
+    ("transform_cls", "kwargs"),
+    [
+        (A.ZoomBlur, {"max_factor_range": (1.1, 1.1), "step_factor_range": (0.01, 0.01)}),
+        (A.UnsharpMask, {"blur_range": (3, 3), "sigma_range": (0.5, 0.5), "alpha_range": (0.3, 0.3), "threshold": 10}),
+        (
+            A.Sharpen,
+            {
+                "alpha_range": (0.3, 0.3),
+                "lightness_range": (0.7, 0.7),
+                "method": "kernel",
+                "kernel_size": 5,
+                "sigma": 1.0,
+            },
+        ),
+        (
+            A.Sharpen,
+            {
+                "alpha_range": (0.3, 0.3),
+                "lightness_range": (0.7, 0.7),
+                "method": "gaussian",
+                "kernel_size": 5,
+                "sigma": 1.0,
+            },
+        ),
+    ],
+)
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_image_only_transforms_apply_to_volume(transform_cls, kwargs, dtype):
+    shape = (4, 32, 32, 3)
+    if dtype == np.uint8:
+        volume = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
+    else:
+        volume = np.random.RandomState(137).random(shape).astype(np.float32)
+
+    actual = A.Compose([transform_cls(**kwargs, p=1.0)], strict=True)(volume=volume)["volume"]
+    expected = A.Compose([transform_cls(**kwargs, p=1.0)], strict=True)(images=volume)["images"]
+
+    np.testing.assert_array_equal(actual, expected)
+
+
 def test_constrained_coarse_dropout_with_mask():
     """Test ConstrainedCoarseDropout with segmentation mask."""
     # Create test data

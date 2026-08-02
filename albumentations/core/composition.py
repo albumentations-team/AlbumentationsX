@@ -751,6 +751,59 @@ class BaseCompose(Serializable):
                 if not kp_keep.all():
                     data["keypoints"] = kps[kp_keep]
 
+    def _drop_instances_with_empty_bound_masks(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+    ) -> None:
+        """Remove bbox-bound instances whose transformed masks contain no non-zero pixels, including their bboxes,
+        labels, and keypoints.
+        """
+        bboxes = data.get("bboxes")
+        if not isinstance(bboxes, np.ndarray) or bboxes.shape[0] == 0:
+            return
+
+        keep_mask = self._nonempty_bound_mask_rows(data, binding, bboxes.shape[0])
+        if keep_mask is None or keep_mask.all():
+            return
+
+        bbox_instance_ids = bboxes[:, -1].astype(np.int64, copy=False)
+        surviving_instance_ids = bbox_instance_ids[keep_mask]
+        data["bboxes"] = bboxes[keep_mask]
+        if "masks" in binding:
+            data["masks"] = data["masks"][keep_mask]
+        else:
+            data["mask"] = data["mask"][..., keep_mask]
+
+        if "keypoints" in binding:
+            keypoints = data.get("keypoints")
+            if isinstance(keypoints, np.ndarray) and keypoints.shape[0] > 0:
+                keypoint_keep_mask = np.isin(
+                    keypoints[:, -1].astype(np.int64, copy=False),
+                    surviving_instance_ids,
+                )
+                if not keypoint_keep_mask.all():
+                    data["keypoints"] = keypoints[keypoint_keep_mask]
+
+    @staticmethod
+    def _nonempty_bound_mask_rows(
+        data: dict[str, Any],
+        binding: frozenset[str],
+        instance_count: int,
+    ) -> np.ndarray | None:
+        """Return one boolean per bound instance indicating whether its transformed mask contains at least one non-zero
+        pixel after augmentation.
+        """
+        if "masks" in binding:
+            masks = data.get("masks")
+            if isinstance(masks, np.ndarray) and len(masks) == instance_count:
+                return np.any(masks, axis=tuple(range(1, masks.ndim)))
+        elif "mask" in binding:
+            mask = data.get("mask")
+            if isinstance(mask, np.ndarray) and mask.ndim >= 3 and mask.shape[-1] == instance_count:
+                return np.any(mask, axis=tuple(range(mask.ndim - 1)))
+        return None
+
     def _validate_transforms(self, transforms: list[Any]) -> None:
         """Validate that all elements are BasicTransform instances. Raises TypeError if any
         element is not. Used before __add__/__radd__ and in __init__.
@@ -1005,6 +1058,11 @@ class Compose(BaseCompose, HubMixin):
             and common parameter patterns. No image data or personal information is collected.
             Telemetry can be disabled globally via settings.telemetry_enabled = False or by
             setting the environment variable ALBUMENTATIONS_NO_TELEMETRY=1. Default is True.
+        instance_binding (Sequence[str] | None): Targets that describe the same object in each
+            `instances` item. Supported targets are `mask` or `masks`, `bboxes`, and `keypoints`.
+            Compose transforms these targets together and removes all fields for an instance when
+            its bbox fails bbox filtering. When masks and bboxes are bound, Compose also removes
+            the instance if its transformed mask contains no non-zero pixels. Default is None.
 
     Examples:
         >>> # Basic usage:
@@ -1596,6 +1654,7 @@ class Compose(BaseCompose, HubMixin):
 
         shape = get_shape(data, self._additional_targets)
         self._bbox_filter_with_mirror(bbox_processor, data, shape, binding)
+        self._drop_instances_with_empty_bound_masks(data, binding)
         self._resync_instance_ids(data)
 
     def _remove_grayscale_channels(self, data: dict[str, Any]) -> None:

@@ -133,6 +133,51 @@ class TestUnpackRepack:
 
 
 class TestBboxFiltering:
+    @pytest.mark.parametrize("mask_target", ["masks", "mask"])
+    def test_empty_mask_after_affine_removes_bound_instance(self, mask_target: str) -> None:
+        image = np.zeros((128, 128, 3), dtype=np.uint8)
+        y_coordinates, x_coordinates = np.ogrid[:128, :128]
+        mask = ((x_coordinates - 104) ** 2 + (y_coordinates - 64) ** 2 <= 12**2).astype(np.uint8)
+        surviving_mask = ((x_coordinates - 64) ** 2 + (y_coordinates - 64) ** 2 <= 12**2).astype(np.uint8)
+        instances = [
+            {
+                "mask": mask,
+                "bbox": np.array([92, 52, 117, 77], dtype=np.float32),
+                "keypoints": np.array([[104, 64]], dtype=np.float32),
+                "bbox_labels": {"class_id": "disk"},
+            },
+            {
+                "mask": surviving_mask,
+                "bbox": np.array([52, 52, 77, 77], dtype=np.float32),
+                "keypoints": np.array([[64, 64]], dtype=np.float32),
+                "bbox_labels": {"class_id": "survivor"},
+            },
+        ]
+        transform = A.Compose(
+            [
+                A.Affine(
+                    rotate=(-80, -80),
+                    translate_px={"x": (-20, -20), "y": (36, 36)},
+                    p=1,
+                ),
+            ],
+            bbox_params=A.BboxParams(
+                coord_format="pascal_voc",
+                label_fields=["class_id"],
+                min_area=0,
+                min_visibility=0,
+            ),
+            keypoint_params=A.KeypointParams(coord_format="xy"),
+            instance_binding=[mask_target, "bboxes", "keypoints"],
+            telemetry=False,
+        )
+
+        result = transform(image=image, instances=instances)
+
+        assert len(result["instances"]) == 1
+        assert result["instances"][0]["bbox_labels"]["class_id"] == "survivor"
+        assert np.any(result["instances"][0]["mask"])
+
     @pytest.mark.parametrize("check_each_transform", [True, False])
     def test_final_bbox_filter_keeps_bound_instance_targets_aligned(self, check_each_transform: bool) -> None:
         image = np.zeros((128, 128, 3), dtype=np.uint8)
@@ -714,7 +759,7 @@ class TestNestedComposeInstanceBinding:
             image=image,
             instances=[
                 {
-                    "mask": _make_mask(),
+                    "mask": _make_mask(region=(10, 50, 10, 50)),
                     "bbox": np.array([10, 10, 50, 50], dtype=np.float32),
                 },
             ],
@@ -1923,8 +1968,8 @@ class TestCopyPasteBindingRegression:
         assert set(by_cid) == {"PASTED"}
         np.testing.assert_array_equal(by_cid["PASTED"]["keypoint_labels"]["vis"], np.array([9]))
 
-    def test_copy_paste_min_visibility_zero_keeps_all_primaries_with_binding(self) -> None:
-        """min_visibility_after_paste=0.0 means every primary survives regardless of overlap; pasted appended."""
+    def test_copy_paste_min_visibility_zero_drops_fully_occluded_primaries_with_binding(self) -> None:
+        """Empty primary masks remove their bound instances even when the visibility threshold is zero."""
         side = 64
         image, instances = _three_instance_payload(side)
         paste_mask = np.ones((side, side), dtype=np.uint8)
@@ -1942,7 +1987,7 @@ class TestCopyPasteBindingRegression:
         )
         result = transform(image=image, instances=instances, copy_paste_metadata=[donor])
         cids = [inst["bbox_labels"]["cid"] for inst in result["instances"]]
-        assert cids == ["A", "B", "C", "PASTED"]
+        assert cids == ["PASTED"]
 
     def test_copy_paste_min_visibility_one_drops_all_primaries_with_binding(self) -> None:
         """min_visibility_after_paste=1.0 with any overlap removes all primaries; only pasted survives."""

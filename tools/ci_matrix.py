@@ -107,7 +107,7 @@ SUPPORT_POLICY_TABLE_ROWS = (
         "Nightly and release gate |"
     ),
     (
-        "| `optional-extras` | Smoke-tests extras such as `pillow`, `pytorch`, `text`, `hub`, "
+        "| `optional-extras` | Smoke-tests extras such as `pillow`, `text`, `hub`, "
         "and OpenCV variants. | Advisory until stable |"
     ),
     (

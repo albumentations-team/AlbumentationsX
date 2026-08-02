@@ -45,6 +45,15 @@ parameter.
 **Status**: Implemented
 **Phase**: Complete
 
+### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
+
+Plan for making Torch a required dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
+the existing `Compose`. The route planner can cross the representation boundary in either direction when the complete
+measured path does not regress.
+
+**Status**: Proposed
+**Phase**: Planning
+
 ## Creating New Design Documents
 
 When creating a new design document:

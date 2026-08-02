@@ -4,8 +4,6 @@ import copy
 from collections import Counter
 from typing import Any
 
-import pytest
-
 from tools import benchmark_coverage
 from tools.benchmark_coverage import coverage_details, coverage_diff
 
@@ -19,10 +17,11 @@ def _coverage_for(transform_name: str) -> dict[str, Any]:
 def test_benchmark_coverage_details_account_for_every_public_transform() -> None:
     details = coverage_details()
 
-    assert details["schema_version"] == 5
+    assert details["schema_version"] == 6
     assert details["public_transforms"] == len(details["transforms"])
     assert (
-        details["layer_counts"]["catalog_smoke"] + details["layer_counts"]["optional"] == details["public_transforms"]
+        details["layer_counts"]["catalog_smoke"] + details["summary"]["dedicated_tensor_transforms"]
+        == details["public_transforms"]
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
@@ -261,8 +260,7 @@ def test_benchmark_coverage_details_explain_warning_aliases() -> None:
     assert shift_scale_rotate["performance_contract"]["direct_kernel"]["status"] == "not_required"
 
 
-@pytest.mark.pytorch
-def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
+def test_benchmark_coverage_details_keep_dedicated_tensor_transforms_explicit() -> None:
     to_tensor = _coverage_for("ToTensorV2")
 
     assert to_tensor["benchmark"] is False
@@ -271,12 +269,13 @@ def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
         "public_api": "albumentations.ToTensorV2",
         "qualname": "ToTensorV2",
     }
-    assert to_tensor["layers"] == ["optional", "pytorch_tensor"]
+    assert to_tensor["benchmark_spec"]["route"] == "dedicated_tensor"
+    assert to_tensor["layers"] == ["pytorch_tensor"]
     assert to_tensor["families"] == ["pytorch_tensor"]
     assert to_tensor["coverage_contract"]["status"] == "ok"
-    assert to_tensor["coverage_contract"]["required_layers"] == ["optional", "pytorch_tensor"]
-    assert to_tensor["performance_contract"]["batch"]["status"] == "covered_optional"
-    assert "PyTorch" in str(to_tensor["optional_reason"])
+    assert to_tensor["coverage_contract"]["required_layers"] == ["pytorch_tensor"]
+    assert to_tensor["performance_contract"]["batch"]["status"] == "covered_dedicated_tensor"
+    assert "PyTorch" in str(to_tensor["benchmark_reason"])
     assert {
         ("pytorch", "pytorch_tensor", "small|1|uint8"),
         ("pytorch", "pytorch_tensor", "large|5|float32"),
@@ -286,22 +285,40 @@ def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     assert to_tensor["scenario_contract"]["targets"] == ["image", "images", "mask", "masks"]
 
 
-def test_registry_allows_optional_transforms_only_when_their_dependency_is_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    optional = set(benchmark_coverage.OPTIONAL_BENCHMARK_TRANSFORMS)
-    spec_names = set(benchmark_coverage.benchmark_specs()) - optional
-    public_names = set(benchmark_coverage.public_transform_names()) - optional
+def test_benchmark_coverage_details_keep_native_tensor_capabilities_beside_numpy_coverage() -> None:
+    transpose = _coverage_for("Transpose")
 
-    monkeypatch.setattr(benchmark_coverage, "unavailable_optional_transform_names", lambda: optional)
-    assert benchmark_coverage._validate_public_registry(public_names, spec_names) == []
-    assert benchmark_coverage._validate_coverage_layers(spec_names) == []
+    assert transpose["benchmark"] is True
+    assert {"catalog_smoke", "family_matrix", "pytorch_tensor"}.issubset(transpose["layers"])
+    assert transpose["coverage_contract"]["required_layers"] == ["catalog_smoke", "family_matrix", "pytorch_tensor"]
+    tensor_cases = [case for case in transpose["asv_cases"] if case["layer"] == "pytorch_tensor"]
+    assert {case["case_id"] for case in tensor_cases} == {
+        "small|1|uint8",
+        "small|1|float32",
+        "small|3|uint8",
+        "small|3|float32",
+        "medium|1|uint8",
+        "medium|1|float32",
+        "medium|3|uint8",
+        "medium|3|float32",
+        "large|1|uint8",
+        "large|1|float32",
+        "large|3|uint8",
+        "large|3|float32",
+    }
+    assert all(case["scenario"]["scope"] == "tensor_native_compose" for case in tensor_cases)
+    assert all(case["scenario"]["targets"] == ["image"] for case in tensor_cases)
 
-    monkeypatch.setattr(benchmark_coverage, "unavailable_optional_transform_names", set)
+
+def test_registry_requires_dedicated_tensor_transforms_as_runtime_public_apis() -> None:
+    dedicated = set(benchmark_coverage.DEDICATED_TENSOR_BENCHMARK_TRANSFORMS)
+    spec_names = set(benchmark_coverage.benchmark_specs()) - dedicated
+    public_names = set(benchmark_coverage.public_transform_names())
+
     registry_errors = benchmark_coverage._validate_public_registry(public_names, spec_names)
     layer_errors = benchmark_coverage._validate_coverage_layers(spec_names)
 
-    assert registry_errors == ["Optional benchmark transform is not public: ToTensor3D, ToTensorV2"]
+    assert registry_errors == ["Missing benchmark specs: ToTensor3D, ToTensorV2"]
     assert layer_errors == ["Benchmark coverage layers reference unknown transforms: ToTensor3D, ToTensorV2"]
 
 
@@ -312,7 +329,7 @@ def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_lay
         assert transform["class"]["module"].startswith("albumentations.")
         assert transform["class"]["public_api"] == f"albumentations.{transform['name']}"
         assert transform["benchmark_spec"]["route"] == transform["route"]
-        assert transform["asv_cases"] or transform["layers"] == ["optional"]
+        assert transform["asv_cases"]
         assert transform["scenario_contract"]["case_count"] == len(transform["asv_cases"])
         assert set(transform["scenario_contract"]["layers"]).issubset(transform["layers"])
         assert set(transform["scenario_axis_contracts"]).issubset(transform["layers"])

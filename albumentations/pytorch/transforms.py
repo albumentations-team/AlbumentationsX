@@ -30,6 +30,8 @@ class _TensorTransform(BasicTransform):
     the core array-return contract.
     """
 
+    _is_tensor_terminal = True
+
     def apply(self, img: ImageType, *args: Any, **params: Any) -> Any:
         raise NotImplementedError
 

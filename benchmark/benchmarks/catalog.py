@@ -7,7 +7,6 @@ staying small enough for scheduled CI.
 
 from __future__ import annotations
 
-import importlib.util
 import inspect
 import warnings
 from collections.abc import Callable, Mapping
@@ -33,13 +32,9 @@ ABSTRACT_TRANSFORM_NAMES = frozenset(
     },
 )
 
-OPTIONAL_BENCHMARK_TRANSFORMS = {
-    "ToTensor3D": "requires optional PyTorch dependency; covered by the dedicated PyTorch ASV lane",
-    "ToTensorV2": "requires optional PyTorch dependency; covered by the dedicated PyTorch ASV lane",
-}
-OPTIONAL_BENCHMARK_DEPENDENCIES = {
-    "ToTensor3D": "torch",
-    "ToTensorV2": "torch",
+DEDICATED_TENSOR_BENCHMARK_TRANSFORMS = {
+    "ToTensor3D": "covered by the dedicated PyTorch Tensor ASV lane",
+    "ToTensorV2": "covered by the dedicated PyTorch Tensor ASV lane",
 }
 
 EXPECTED_INIT_WARNINGS = (
@@ -156,18 +151,9 @@ def public_transform_names() -> tuple[str, ...]:
     return tuple(_public_transform_classes())
 
 
-def unavailable_optional_transform_names() -> set[str]:
-    """Return optional transforms whose runtime dependency is not installed."""
-    return {
-        name
-        for name, dependency in OPTIONAL_BENCHMARK_DEPENDENCIES.items()
-        if importlib.util.find_spec(dependency) is None
-    }
-
-
 def _route_for_transform(name: str, transform_cls: type[BasicTransform]) -> str:
-    if name in OPTIONAL_BENCHMARK_TRANSFORMS:
-        return "optional"
+    if name in DEDICATED_TENSOR_BENCHMARK_TRANSFORMS:
+        return "dedicated_tensor"
     if issubclass(transform_cls, Transform3D):
         return "volume"
     if name in BBOX_ROUTE_TRANSFORMS:
@@ -190,14 +176,14 @@ def benchmark_specs() -> dict[str, TransformBenchmarkSpec]:
     specs: dict[str, TransformBenchmarkSpec] = {}
     for name, transform_cls in _public_transform_classes().items():
         route = _route_for_transform(name, transform_cls)
-        benchmark = route != "optional"
+        benchmark = route != "dedicated_tensor"
         specs[name] = TransformBenchmarkSpec(
             name=name,
             route=route,
             params=PARAM_OVERRIDES.get(name, {}),
             channels=CHANNEL_OVERRIDES.get(name, 3),
             benchmark=benchmark,
-            reason=OPTIONAL_BENCHMARK_TRANSFORMS.get(name, ""),
+            reason=DEDICATED_TENSOR_BENCHMARK_TRANSFORMS.get(name, ""),
         )
     return specs
 

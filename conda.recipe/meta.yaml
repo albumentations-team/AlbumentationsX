@@ -22,7 +22,7 @@ requirements:
     - numpy>=2.2.6
     - scipy
     - pydantic>=2.9
-    - pytorch
+    - pytorch>=2.13.0
     - typing_extensions
     - opencv-python-headless
 
@@ -36,9 +36,9 @@ requirements:
     - opencv-python-headless>=5.0.0.93
     - albucore==0.2.9
     - numkong!=7.7.1
+    - pytorch>=2.13.0
 
 suggests:
-  - pytorch
   - huggingface-hub
   - pillow
 

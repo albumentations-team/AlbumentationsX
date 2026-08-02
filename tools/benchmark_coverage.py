@@ -18,16 +18,13 @@ BENCHMARK_ROOT = REPO_ROOT / "benchmark"
 sys.path.insert(0, str(BENCHMARK_ROOT))
 
 from benchmarks.catalog import (  # noqa: E402
-    OPTIONAL_BENCHMARK_TRANSFORMS,
+    DEDICATED_TENSOR_BENCHMARK_TRANSFORMS,
     asv_case_ids,
     benchmark_specs,
     instantiate_transform,
     make_compose,
     make_data,
     public_transform_names,
-)
-from benchmarks.catalog import (  # noqa: E402
-    unavailable_optional_transform_names as _unavailable_optional_transform_names,
 )
 from benchmarks.common import CHANNELS, DTYPES, SIZES, VOLUME_SIZES  # noqa: E402
 from benchmarks.test_batch_matrix import (  # noqa: E402
@@ -66,12 +63,6 @@ from benchmarks.test_parameter_sensitivity import (  # noqa: E402
     PARAMETER_SENSITIVITY_TRANSFORMS,
 )
 from pytorch_benchmarks import test_tensor as pytorch_tensor_benchmarks  # noqa: E402
-
-
-def unavailable_optional_transform_names() -> set[str]:
-    """Return optional transforms unavailable in the current environment."""
-    return _unavailable_optional_transform_names()
-
 
 BATCH_METHOD_NAMES = (
     "apply_to_images",
@@ -319,9 +310,12 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
     },
 )
 
-PYTORCH_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
+PYTORCH_TERMINAL_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
+PYTORCH_NATIVE_TENSOR_TRANSFORMS = frozenset({"Transpose"})
+PYTORCH_TENSOR_TRANSFORMS = PYTORCH_TERMINAL_TENSOR_TRANSFORMS | PYTORCH_NATIVE_TENSOR_TRANSFORMS
 PYTORCH_IMAGE_CASES = pytorch_tensor_benchmarks.IMAGE_CASES
 PYTORCH_VOLUME_CASES = pytorch_tensor_benchmarks.VOLUME_CASES
+PYTORCH_NATIVE_IMAGE_CASES = pytorch_tensor_benchmarks.TENSOR_NATIVE_IMAGE_CASES
 
 DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "Affine": ("bboxes_affine", "keypoints_affine"),
@@ -392,6 +386,7 @@ ASV_BENCHMARKS = {
     "parameter_sensitivity": "benchmarks.test_parameter_sensitivity.TimeParameterSensitivity.time_transform",
     "pytorch_tensor_2d": "pytorch_benchmarks.test_tensor.TimeToTensorV2",
     "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
+    "pytorch_tensor_native": "pytorch_benchmarks.test_tensor.TimeTensorNativeTranspose",
     "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
     "target_matrix": "benchmarks.test_family_matrix.TimeSpecialTargetMatrix.time_transform",
     "volumetric_matrix": "benchmarks.test_family_matrix.TimeVolumetricFullMatrix.time_transform",
@@ -482,7 +477,7 @@ LAYER_SKIP_REASONS: Mapping[str, str] = {
     "direct_kernel": "direct-kernel cases cover the axes exercised by each shared functional hot path",
     "family_matrix": "family matrix uses the transform's supported or representative size/channel/dtype axes",
     "parameter_sensitivity": "parameter stress cases are bounded to representative axes for scheduled evidence",
-    "pytorch_tensor": "optional PyTorch tensor benchmarks follow supported tensor conversion axes",
+    "pytorch_tensor": "dedicated PyTorch Tensor benchmarks follow supported tensor conversion axes",
     "reference_data": "reference-data benchmarks are bounded to small/medium metadata-heavy cases",
     "target_matrix": "target matrix uses the standard image axes for target-specialized transforms",
     "volumetric_matrix": "volumetric matrix uses the supported volume size and dtype axes",
@@ -525,10 +520,15 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
 
 def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
     """Return the expected benchmark coverage layers for a public transform."""
-    if name in PYTORCH_TENSOR_TRANSFORMS:
+    if name in PYTORCH_TERMINAL_TENSOR_TRANSFORMS:
         return CoverageExpectation(
-            required_layers=frozenset({"optional", "pytorch_tensor"}),
-            reason="optional PyTorch tensor transforms are benchmarked in the dedicated PyTorch ASV lane",
+            required_layers=frozenset({"pytorch_tensor"}),
+            reason="PyTorch Tensor transforms are benchmarked in the dedicated Tensor ASV lane",
+        )
+    if name in PYTORCH_NATIVE_TENSOR_TRANSFORMS:
+        return CoverageExpectation(
+            required_layers=frozenset({"catalog_smoke", "family_matrix", "pytorch_tensor"}),
+            reason="the retained NumPy route and accepted CPU Tensor route both have dedicated Compose evidence",
         )
     if name in ALIAS_COVERAGE_TRANSFORMS:
         return CoverageExpectation(
@@ -681,7 +681,7 @@ def _parse_volume_case(case_id: str) -> dict[str, Any]:
 
 
 def _parse_pytorch_case(case_id: str) -> dict[str, Any]:
-    """Parse an optional PyTorch tensor benchmark case id."""
+    """Parse a dedicated PyTorch Tensor benchmark case id."""
     size_name, channels, dtype_name = case_id.split("|")
     return {
         "channels": int(channels),
@@ -781,12 +781,18 @@ def _memory_scenario(case: Mapping[str, str], route: str, transform_name: str) -
 
 
 def _pytorch_tensor_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
-    """Return scenario metadata for an optional PyTorch tensor case."""
+    """Return scenario metadata for a dedicated PyTorch Tensor case."""
+    if transform_name in PYTORCH_NATIVE_TENSOR_TRANSFORMS:
+        return {
+            **_parse_pytorch_case(case["case_id"]),
+            "scope": "tensor_native_compose",
+            "targets": ["image"],
+        }
     targets = ["mask3d", "volume"] if transform_name == "ToTensor3D" else ["image", "images", "mask", "masks"]
     return {
         **_parse_pytorch_case(case["case_id"]),
         "batch_size": 8,
-        "scope": "optional_pytorch",
+        "scope": "pytorch_tensor",
         "targets": targets,
     }
 
@@ -1133,6 +1139,15 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
             config="pytorch",
             layer="pytorch_tensor",
         )
+    for case_id in PYTORCH_NATIVE_IMAGE_CASES:
+        _add_asv_case(
+            cases,
+            "Transpose",
+            benchmark=ASV_BENCHMARKS["pytorch_tensor_native"],
+            case_id=case_id,
+            config="pytorch",
+            layer="pytorch_tensor",
+        )
     return {
         name: sorted(items, key=lambda item: (item["layer"], item["benchmark"], item["case_id"]))
         for name, items in cases.items()
@@ -1140,7 +1155,7 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
 
 
 def _family_labels(name: str, layers: Iterable[str]) -> list[str]:
-    families = set(layers) - {"catalog_smoke", "optional"}
+    families = set(layers) - {"catalog_smoke"}
     if name in _mapped_names(GEOMETRY_ALIAS_TO_TRANSFORM, GEOMETRY_TRANSFORMS):
         families.add("geometry")
     if name in _mapped_names(PIXEL_ALIAS_TO_TRANSFORM, PIXEL_TRANSFORMS):
@@ -1193,12 +1208,12 @@ def _performance_contract_entry(
 def _batch_performance_contract(name: str, layers: set[str]) -> dict[str, Any]:
     """Return batch-route performance expectations for one transform."""
     methods = _declared_transform_methods(name, BATCH_METHOD_NAMES)
-    if name in PYTORCH_TENSOR_TRANSFORMS:
+    if name in PYTORCH_TERMINAL_TENSOR_TRANSFORMS:
         return _performance_contract_entry(
             implementation_methods=methods,
-            reason="optional tensor batch routes are measured in the dedicated PyTorch benchmark lane",
+            reason="Tensor batch routes are measured in the dedicated PyTorch benchmark lane",
             required_layers=("pytorch_tensor",),
-            status="covered_optional",
+            status="covered_dedicated_tensor",
         )
     if "batch_matrix" in layers:
         return _performance_contract_entry(
@@ -1355,7 +1370,7 @@ def coverage_details() -> dict[str, Any]:
     transforms: list[dict[str, Any]] = []
 
     for name, spec in specs.items():
-        layers = ["optional"] if not spec.benchmark else ["catalog_smoke"]
+        layers = [] if not spec.benchmark else ["catalog_smoke"]
         for layer_name, transform_names in layer_sets.items():
             if name in transform_names:
                 layers.append(layer_name)
@@ -1386,7 +1401,7 @@ def coverage_details() -> dict[str, Any]:
                 "families": _family_labels(name, layers),
                 "layers": layers,
                 "name": name,
-                "optional_reason": spec.reason,
+                "benchmark_reason": spec.reason,
                 "performance_contract": performance_contract,
                 "route": spec.route,
                 "scenario_axis_contracts": _scenario_axis_contracts(transform_cases),
@@ -1412,7 +1427,6 @@ def coverage_details() -> dict[str, Any]:
                 "memory",
                 "parameter_sensitivity",
                 "pytorch_tensor",
-                "optional",
             )
         },
     )
@@ -1423,12 +1437,12 @@ def coverage_details() -> dict[str, Any]:
         "kind": "benchmark-coverage-detail",
         "layer_counts": dict(sorted(layer_counts.items())),
         "public_transforms": len(transforms),
-        "schema_version": 5,
+        "schema_version": 6,
         "smoke_only_transforms": smoke_only,
         "summary": {
             "contract_failures": len(contract_failures),
-            "deep_coverage_transforms": len(transforms) - len(smoke_only) - layer_counts["optional"],
-            "optional_transforms": layer_counts["optional"],
+            "deep_coverage_transforms": len(transforms) - len(smoke_only),
+            "dedicated_tensor_transforms": len(PYTORCH_TERMINAL_TENSOR_TRANSFORMS),
             "performance_contract_status_counts": _performance_contract_status_counts(transforms),
             "smoke_only_transforms": len(smoke_only),
         },
@@ -1440,7 +1454,7 @@ def _spec_summary() -> dict[str, Any]:
     specs = benchmark_specs()
     route_counts = Counter(spec.route for spec in specs.values())
     runnable = [spec.name for spec in specs.values() if spec.benchmark]
-    optional = {spec.name: spec.reason for spec in specs.values() if not spec.benchmark}
+    dedicated = {spec.name: spec.reason for spec in specs.values() if not spec.benchmark}
     details = coverage_details()
     return {
         "annotation_matrix_cases": len(ANNOTATION_CASES),
@@ -1469,7 +1483,7 @@ def _spec_summary() -> dict[str, Any]:
         "pytorch_tensor_benchmark_cases": len(PYTORCH_TENSOR_TRANSFORMS),
         "registered_specs": len(specs),
         "asv_cases": len(asv_case_ids()),
-        "optional_cases": optional,
+        "dedicated_tensor_cases": dedicated,
         "performance_contract_status_counts": details["summary"]["performance_contract_status_counts"],
         "route_counts": dict(sorted(route_counts.items())),
         "runnable_transforms": runnable,
@@ -1484,18 +1498,16 @@ def _validate_public_registry(public_names: set[str], spec_names: set[str]) -> l
         errors.append("Missing benchmark specs: " + ", ".join(missing))
     if unexpected:
         errors.append("Benchmark specs reference unknown transforms: " + ", ".join(unexpected))
-    unknown_optional = sorted(
-        set(OPTIONAL_BENCHMARK_TRANSFORMS) - public_names - unavailable_optional_transform_names(),
-    )
-    if unknown_optional:
-        errors.append("Optional benchmark transform is not public: " + ", ".join(unknown_optional))
+    unknown_dedicated = sorted(set(DEDICATED_TENSOR_BENCHMARK_TRANSFORMS) - public_names)
+    if unknown_dedicated:
+        errors.append("Dedicated Tensor benchmark transform is not public: " + ", ".join(unknown_dedicated))
     return errors
 
 
 def _validate_transform_construction(specs: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
     for spec in specs.values():
-        if spec.route == "optional":
+        if spec.route == "dedicated_tensor":
             continue
         try:
             instantiate_transform(spec)
@@ -1515,7 +1527,7 @@ def _validate_case_groups(groups: Mapping[str, tuple[str, ...]], message: str) -
 def _validate_coverage_layers(spec_names: set[str]) -> list[str]:
     layer_sets = _coverage_layer_sets()
     referenced = set().union(*layer_sets.values())
-    unknown = sorted(referenced - spec_names - unavailable_optional_transform_names())
+    unknown = sorted(referenced - spec_names)
     if unknown:
         return ["Benchmark coverage layers reference unknown transforms: " + ", ".join(unknown)]
     return []
@@ -1632,7 +1644,7 @@ def check(*, run_smoke: bool, output: Path | None) -> int:
     print(
         "Benchmark coverage ok: "
         f"{summary['asv_cases']} ASV cases, "
-        f"{len(summary['optional_cases'])} optional cases, "
+        f"{len(summary['dedicated_tensor_cases'])} dedicated Tensor cases, "
         f"{summary['public_transforms']} public transforms accounted.",
     )
     return 0

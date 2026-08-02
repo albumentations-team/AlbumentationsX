@@ -29,9 +29,9 @@ __all__ = [
     "crop_keypoints_by_coords",
     "get_center_crop_coords",
     "get_crop_coords",
+    "masks3d_crop_yx",
     "pad_along_axes",
     "volume_crop_yx",
-    "volumes_crop_yx",
 ]
 
 
@@ -389,34 +389,34 @@ def volume_crop_yx(
     return volume[:, y_min:y_max, x_min:x_max]
 
 
-def volumes_crop_yx(
-    volumes: np.ndarray,
+def masks3d_crop_yx(
+    masks3d: np.ndarray,
     x_min: int,
     y_min: int,
     x_max: int,
     y_max: int,
 ) -> np.ndarray:
-    """Crop a batch of volumes (B, D, H, W[, C]) along Y and X axes only; depth unchanged.
-    Pixel bounds validated; returns volumes[:, :, y_min:y_max, x_min:x_max].
+    """Crop a 3D-mask batch (N, D, H, W[, C]) along Y and X axes only; depth unchanged.
+    Pixel bounds validated; returns masks3d[:, :, y_min:y_max, x_min:x_max].
 
     Args:
-        volumes (np.ndarray): Input batch of volumes with shape (B, D, H, W) or (B, D, H, W, C).
+        masks3d (np.ndarray): Input 3D-mask batch with shape (N, D, H, W) or (N, D, H, W, C).
         x_min (int): Minimum width coordinate.
         y_min (int): Minimum height coordinate.
         x_max (int): Maximum width coordinate.
         y_max (int): Maximum height coordinate.
 
     Returns:
-        np.ndarray: Cropped batch of volumes (B, D, H_new, W_new, [C]).
+        np.ndarray: Cropped 3D-mask batch (N, D, H_new, W_new, [C]).
 
     Raises:
-        ValueError: If crop coordinates are invalid or volumes shape is incorrect.
+        ValueError: If crop coordinates are invalid or the mask-batch shape is incorrect.
 
     """
-    if not 4 <= volumes.ndim <= 5:
-        raise ValueError(f"Input volumes should have 4 or 5 dimensions, got {volumes.ndim}")
+    if not 4 <= masks3d.ndim <= 5:
+        raise ValueError(f"Input masks3d should have 4 or 5 dimensions, got {masks3d.ndim}")
 
-    depth, height, width = volumes.shape[1:4]
+    depth, height, width = masks3d.shape[1:4]
     if x_max <= x_min or y_max <= y_min:
         raise ValueError(
             "Crop coordinates must satisfy min < max. Got: "
@@ -431,7 +431,7 @@ def volumes_crop_yx(
         )
 
     # Crop along H (axis 2) and W (axis 3)
-    return volumes[:, :, y_min:y_max, x_min:x_max]
+    return masks3d[:, :, y_min:y_max, x_min:x_max]
 
 
 def pad_along_axes(

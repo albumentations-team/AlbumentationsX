@@ -1142,7 +1142,7 @@ def test_bbox_processor_roundtrip(bbox_format, bboxes, labels):
     processed_data = processor.postprocess(data)
 
     # Check that the original bboxes and labels are recovered
-    assert np.allclose(processed_data["bboxes"], bboxes, atol=1e-6)
+    np.testing.assert_allclose(processed_data["bboxes"], bboxes, atol=1e-6, rtol=1e-5, equal_nan=False)
     assert processed_data["labels"] == labels
 
 
@@ -1174,7 +1174,7 @@ def test_bbox_processor_roundtrip_multiple_labels(bbox_format, bboxes, labels1, 
     processed_data = processor.postprocess(data)
 
     # Check that the original bboxes and labels are recovered
-    assert np.allclose(processed_data["bboxes"], bboxes, atol=1e-6)
+    np.testing.assert_allclose(processed_data["bboxes"], bboxes, atol=1e-6, rtol=1e-5, equal_nan=False)
     assert processed_data["labels1"] == labels1
     assert processed_data["labels2"] == labels2
 
@@ -1208,8 +1208,8 @@ def test_compose_with_bbox_noop(
     else:
         aug = Compose([NoOp(p=1.0)], bbox_params={"coord_format": bbox_format}, strict=True)
         transformed = aug(image=image, bboxes=bboxes)
-    assert np.array_equal(transformed["image"], image)
-    assert np.all(np.isclose(transformed["bboxes"], bboxes))
+    np.testing.assert_array_equal(transformed["image"], image)
+    np.testing.assert_allclose(transformed["bboxes"], bboxes, rtol=1e-5, atol=1e-8, equal_nan=False)
 
 
 @pytest.mark.parametrize(
@@ -1245,12 +1245,12 @@ def test_compose_with_bbox_noop_label_outside(
         strict=True,
     )
     transformed = aug(image=image, bboxes=bboxes, **labels)
-    assert np.array_equal(transformed["image"], image)
+    np.testing.assert_array_equal(transformed["image"], image)
     # Handle comparison when input is empty list vs output is empty array with shape
     if len(bboxes) == 0:
         assert len(transformed["bboxes"]) == 0
     else:
-        assert np.allclose(transformed["bboxes"], bboxes)
+        np.testing.assert_allclose(transformed["bboxes"], bboxes, rtol=1e-5, atol=1e-8, equal_nan=False)
     for k, v in labels.items():
         assert transformed[k] == v
 
@@ -1621,7 +1621,7 @@ def test_bboxes_vflip_inplace():
     original_bboxes = bboxes.copy()
     flipped_bboxes = fgeometric.bboxes_vflip(bboxes, bbox_type="hbb")
     assert not np.array_equal(flipped_bboxes, original_bboxes)
-    assert np.array_equal(bboxes, original_bboxes)
+    np.testing.assert_array_equal(bboxes, original_bboxes)
 
 
 @pytest.mark.parametrize(
@@ -1665,7 +1665,7 @@ def test_bboxes_hflip_inplace():
     original_bboxes = bboxes.copy()
     flipped_bboxes = fgeometric.bboxes_hflip(bboxes, bbox_type="hbb")
     assert not np.array_equal(flipped_bboxes, original_bboxes)
-    assert np.array_equal(bboxes, original_bboxes)  # Original array should not be modified
+    np.testing.assert_array_equal(bboxes, original_bboxes)  # Original array should not be modified
 
 
 def test_bboxes_hflip_symmetry():
@@ -1746,10 +1746,16 @@ def test_bboxes_rot90():
 
 def test_bboxes_transpose():
     bboxes = np.array([[0.7, 0.1, 0.8, 0.4]])
-    assert np.allclose(fgeometric.bboxes_transpose(bboxes, bbox_type="hbb"), (0.1, 0.7, 0.4, 0.8))
+    np.testing.assert_allclose(
+        fgeometric.bboxes_transpose(bboxes, bbox_type="hbb"),
+        [(0.1, 0.7, 0.4, 0.8)],
+        rtol=1e-5,
+        atol=1e-8,
+        equal_nan=False,
+    )
     rot90 = fgeometric.bboxes_rot90(bboxes, "r180", bbox_type="hbb")
     reflected_anti_diagonal = fgeometric.bboxes_transpose(rot90, bbox_type="hbb")
-    assert np.allclose(reflected_anti_diagonal, (0.6, 0.2, 0.9, 0.3))
+    np.testing.assert_allclose(reflected_anti_diagonal, [(0.6, 0.2, 0.9, 0.3)], rtol=1e-5, atol=1e-8, equal_nan=False)
 
 
 @pytest.mark.parametrize(
@@ -2145,7 +2151,7 @@ def test_bboxes_grid_shuffle_with_extra_fields():
     result = fgeometric.bboxes_grid_shuffle(bboxes, tiles, mapping, image_shape, None, None, bbox_type="hbb")
 
     assert result.shape[1] == 6  # Should preserve extra fields
-    assert np.all(result[:, 4:] == [1, 0.9])  # Extra fields should remain unchanged
+    np.testing.assert_array_equal(result[:, 4:], np.broadcast_to([1, 0.9], result[:, 4:].shape))
 
 
 def test_bboxes_grid_shuffle_empty_input():
@@ -2325,7 +2331,7 @@ def test_mask_to_bboxes(test_case):
 
     # Check extra fields preservation
     if original_bboxes.shape[1] > 4:
-        assert np.all(result[:, 4:] == original_bboxes[:, 4:])
+        np.testing.assert_array_equal(result[:, 4:], original_bboxes[:, 4:])
 
 
 @pytest.mark.parametrize(

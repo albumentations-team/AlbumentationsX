@@ -29,7 +29,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import PAIR, ImageType, VolumeType
+from albumentations.core.type_definitions import PAIR, ImageType
 
 __all__ = [
     "AdditiveNoise",
@@ -123,9 +123,6 @@ class GaussNoise(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, noise_map: np.ndarray, **params: Any) -> ImageType:
         return fpixel.add_noise(images, noise_map)
-
-    def apply_to_volumes(self, volumes: VolumeType, noise_map: np.ndarray, **params: Any) -> VolumeType:
-        return fpixel.add_noise(volumes, noise_map)
 
     def get_params_dependent_on_data(
         self,
@@ -705,9 +702,6 @@ class AdditiveNoise(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
@@ -882,9 +876,6 @@ class SaltAndPepper(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 class FilmGrain(ImageOnlyTransform):

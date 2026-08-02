@@ -17,7 +17,7 @@ These transforms are particularly useful for:
 - Exploiting symmetries in the problem domain
 
 All transforms support various target types including images, masks, bounding boxes,
-keypoints, volumes, and 3D masks, ensuring consistent transformation across
+keypoints, volume data, and 3D masks, ensuring consistent transformation across
 different data modalities.
 """
 
@@ -142,9 +142,6 @@ class VerticalFlip(DualTransform):
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return fgeometric.vflip_images(volume)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return fgeometric.vflip_volumes(volumes)
-
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
@@ -155,7 +152,7 @@ class VerticalFlip(DualTransform):
         if masks3d.size == 0:
             # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
             return masks3d
-        return self.apply_to_volumes(masks3d, **params)
+        return fgeometric.vflip_masks3d(masks3d)
 
     def inverse(self) -> VerticalFlip:
         """Return a new VerticalFlip that undoes the flip (vertical flip is self-inverse). Use after
@@ -249,9 +246,6 @@ class HorizontalFlip(DualTransform):
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return fgeometric.hflip_images(volume)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return fgeometric.hflip_volumes(volumes)
-
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
@@ -262,7 +256,7 @@ class HorizontalFlip(DualTransform):
         if masks3d.size == 0:
             # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
             return masks3d
-        return self.apply_to_volumes(masks3d, **params)
+        return fgeometric.hflip_masks3d(masks3d)
 
     def inverse(self) -> HorizontalFlip:
         """Return a new HorizontalFlip that undoes the flip (horizontal flip is self-inverse). Use
@@ -363,9 +357,6 @@ class Transpose(DualTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return fgeometric.transpose_images(images)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return fgeometric.transpose_volumes(volumes)
-
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Transpose swaps H and W
@@ -387,7 +378,7 @@ class Transpose(DualTransform):
                     dtype=masks3d.dtype,
                 ),
             )
-        return self.apply_to_volumes(masks3d, **params)
+        return fgeometric.transpose_masks3d(masks3d)
 
     def inverse(self) -> Transpose:
         """Return a new Transpose that undoes the transpose (transpose is self-inverse). Use after
@@ -542,17 +533,6 @@ class D4(DualTransform):
     ) -> ImageType:
         return fgeometric.d4_images(images, group_element)
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
-        **params: Any,
-    ) -> VolumeType:
-        batch_size, depth = volumes.shape[:2]
-        flattened = volumes.reshape(batch_size * depth, *volumes.shape[2:])
-        transformed = fgeometric.d4_images(flattened, group_element)
-        return cast("VolumeType", transformed.reshape(batch_size, depth, *transformed.shape[1:]))
-
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
@@ -595,7 +575,10 @@ class D4(DualTransform):
                 )
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return masks3d
-        return self.apply_to_volumes(masks3d, group_element)
+        batch_size, depth = masks3d.shape[:2]
+        flattened = masks3d.reshape(batch_size * depth, *masks3d.shape[2:])
+        transformed = fgeometric.d4_images(flattened, group_element)
+        return cast("VolumeType", transformed.reshape(batch_size, depth, *transformed.shape[1:]))
 
     def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
         if self.group_element is not None:

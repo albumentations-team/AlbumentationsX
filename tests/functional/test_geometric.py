@@ -81,12 +81,15 @@ def test_from_distance_maps(
                 np.testing.assert_allclose(original, recovered, atol=1)
             elif if_not_found_coords is not None:
                 if isinstance(if_not_found_coords, dict):
-                    assert np.allclose(
+                    np.testing.assert_allclose(
                         recovered,
                         [if_not_found_coords["x"], if_not_found_coords["y"]],
+                        rtol=1e-5,
+                        atol=1e-8,
+                        equal_nan=False,
                     )
                 else:
-                    assert np.allclose(recovered, if_not_found_coords)
+                    np.testing.assert_allclose(recovered, if_not_found_coords, rtol=1e-5, atol=1e-8, equal_nan=False)
             else:
                 np.testing.assert_allclose(original, recovered, atol=1)
 

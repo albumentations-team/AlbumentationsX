@@ -23,7 +23,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageFloat32, ImageType, VolumeType
+from albumentations.core.type_definitions import ImageFloat32, ImageType
 
 __all__ = [
     "FromFloat",
@@ -95,9 +95,6 @@ class ToFloat(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageFloat32:
         return to_float(images, self.max_value)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> ImageFloat32:
-        return to_float(volumes, self.max_value)
-
 
 class FromFloat(ImageOnlyTransform):
     """Convert image from float [0, 1] to discrete type (e.g. uint8 [0, 255]). Inverse of
@@ -162,6 +159,3 @@ class FromFloat(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return from_float(cast("ImageFloat32", images), np.dtype(self.dtype), self.max_value)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply_to_images(volumes, **params)

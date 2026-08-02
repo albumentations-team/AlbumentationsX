@@ -29,7 +29,6 @@ from tests.helpers.contract_data import (
     make_target_noncontiguous_image_mask_data,
     make_target_obb_data,
     make_target_readonly_image_mask_data,
-    make_target_volume_batch_data,
     make_target_volume_data,
 )
 
@@ -142,15 +141,6 @@ def _assert_masks(case: TransformContractCase, source: dict[str, Any], result: d
     assert masks.ndim == 3
     assert masks.shape[0] > 0
     assert masks.dtype == source["masks"].dtype
-
-
-def _assert_volumes(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
-    volumes = result["volumes"]
-    assert volumes.ndim == 5
-    assert volumes.shape[0] == source["volumes"].shape[0]
-    if not issubclass(case.transform_cls, A.Transform3D):
-        assert volumes.shape[1] == source["volumes"].shape[1]
-    assert volumes.dtype == source["volumes"].dtype
 
 
 def _assert_masks3d(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
@@ -271,13 +261,6 @@ TARGET_CONTRACT_PROFILES = (
         required_targets=frozenset({"masks"}),
         data_factory=make_target_mask_batch_data,
         assert_result=_assert_masks,
-        cost=ProfileCost.EXTENDED,
-    ),
-    TargetProfile(
-        profile_id="volumes-batch",
-        required_targets=frozenset({"volumes"}),
-        data_factory=make_target_volume_batch_data,
-        assert_result=_assert_volumes,
         cost=ProfileCost.EXTENDED,
     ),
     TargetProfile(

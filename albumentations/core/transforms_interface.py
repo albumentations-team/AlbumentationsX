@@ -627,12 +627,6 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         """
         return self.apply_to_images(volume, *args, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to multiple volumes. Uses _apply_to_batch; each volume is processed via
-        apply_to_volume. Returns same format.
-        """
-        return self._apply_to_batch(volumes, lambda vol: self.apply_to_volume(vol, *args, **params))
-
     def get_params(self) -> dict[str, Any]:
         """Returns parameters independent of input data. Override in subclasses to add random
         params (e.g. angle, crop size). Default returns {}.
@@ -645,7 +639,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         Args:
             params (dict[str, Any]): Parameters to be updated
-            data (dict[str, Any]): Input data dictionary containing images/volumes
+            data (dict[str, Any]): Input data dictionary containing images and volume data
 
         Returns:
             dict[str, Any]: Updated parameters dictionary with shape and transform-specific params
@@ -671,7 +665,6 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         ("image", lambda v: v.shape),
         ("images", lambda v: v.shape[1:]),
         ("volume", lambda v: v.shape[1:]),
-        ("volumes", lambda v: v.shape[2:]),
         ("mask", lambda v: v.shape),
         ("masks", lambda v: v.shape[1:]),
         ("mask3d", lambda v: v.shape[1:]),
@@ -964,14 +957,6 @@ class DualTransform(BasicTransform):
 
             Returns Transformed volume of the same shape as input.
 
-        apply_to_volumes(volumes: VolumeType, **params: Any) -> VolumeType:
-            Apply the transform to multiple volumes.
-
-            volumes: Input volumes of shape (N, D, H, W, C).
-            **params: Additional parameters specific to the transform.
-
-            Returns Transformed volumes in the same format as input.
-
         apply_to_mask3d(mask: VolumeType, **params: Any) -> VolumeType:
             Apply the transform to a 3D mask.
 
@@ -1022,7 +1007,6 @@ class DualTransform(BasicTransform):
             "bboxes": self.apply_to_bboxes,
             "keypoints": self.apply_to_keypoints,
             "volume": self.apply_to_images,
-            "volumes": self.apply_to_volumes,
             "user_data": self.apply_to_user_data,
         }
 
@@ -1279,7 +1263,7 @@ class ImageOnlyTransform(BasicTransform):
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
         """Get mapping of target keys to their corresponding processing functions for
-        ImageOnlyTransform (image, images, volume, volumes, user_data).
+        ImageOnlyTransform (image, images, volume, user_data).
 
         Returns:
             dict[str, Callable[..., Any]]: Dictionary mapping target keys to their processing functions.
@@ -1289,7 +1273,6 @@ class ImageOnlyTransform(BasicTransform):
             "image": self.apply,
             "images": self.apply_to_images,
             "volume": self.apply_to_volume,
-            "volumes": self.apply_to_volumes,
             "user_data": self.apply_to_user_data,
         }
 
@@ -1370,9 +1353,6 @@ class NoOp(DualTransform):
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return volume
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return volumes
-
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return mask3d
 
@@ -1381,15 +1361,14 @@ class NoOp(DualTransform):
 
 
 class Transform3D(DualTransform):
-    """Base class for all 3D transforms. Inherits from DualTransform; applies to volumes,
+    """Base class for all 3D transforms. Inherits from DualTransform; applies to volume data,
     masks3d, keypoints. Override apply_to_volume and apply_to_mask3d.
 
     Transform3D inherits from DualTransform because 3D transforms can be applied to both
-    volumes and masks, similar to how 2D DualTransforms work with images and masks.
+    volume data and masks, similar to how 2D DualTransforms work with images and masks.
 
     Targets:
         volume: 3D numpy array of shape (D, H, W, C)
-        volumes: Batch of 3D arrays of shape (N, D, H, W, C)
         mask: 3D numpy array of shape (D, H, W) or (D, H, W, C)
         masks: Batch of 3D arrays of shape (N, D, H, W) or (N, D, H, W, C)
         keypoints: 3D numpy array of shape (N, 3)
@@ -1400,13 +1379,6 @@ class Transform3D(DualTransform):
         or (D, H, W). Returns same shape and dtype.
         """
         raise NotImplementedError
-
-    @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        """Apply transform to batch of 3D volumes. Uses batch_transform with keep_depth_dim;
-        each volume passed to apply_to_volume.
-        """
-        return self.apply_to_volume(volumes, *args, **params)
 
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to a single 3D mask. Delegates to apply_to_volume. Input shape (D, H, W) or
@@ -1425,7 +1397,6 @@ class Transform3D(DualTransform):
     def targets(self) -> dict[str, Callable[..., Any]]:
         return {
             "volume": self.apply_to_volume,
-            "volumes": self.apply_to_volumes,
             "mask3d": self.apply_to_mask3d,
             "masks3d": self.apply_to_masks3d,
             "keypoints": self.apply_to_keypoints,

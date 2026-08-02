@@ -251,7 +251,7 @@ def adjust_saturation_torchvision(
     to_gray (weighted_average for RGB). Torchvision-compatible.
 
     Uses to_gray for conversion: weighted_average for RGB (matches OpenCV), average for
-    arbitrary channels. Works on batches (4D) and volumes (5D).
+    arbitrary channels. Works on four- and five-dimensional batch data.
 
     Args:
         img (ImageType): Input image as a numpy array.

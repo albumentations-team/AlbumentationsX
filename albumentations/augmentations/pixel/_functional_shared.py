@@ -65,7 +65,7 @@ MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS = 1024 * 1024
 
 
 def apply_multichannel_lut(img: ImageType, luts: np.ndarray, num_channels: int) -> ImageType:
-    """Apply channel-specific uint8 LUTs in one OpenCV pass for images, batches, and volumes while
+    """Apply channel-specific uint8 LUTs in one OpenCV pass for images, batches, and volume data while
     preserving original shape and channel order.
     """
     lut = np.ascontiguousarray(luts.T.reshape(256, 1, num_channels))

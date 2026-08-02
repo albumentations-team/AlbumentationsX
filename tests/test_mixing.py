@@ -1020,17 +1020,25 @@ class TestCopyAndPasteCropExpansion:
 
         out_bbox = np.asarray(result["bboxes"][0], dtype=np.float32)
         if coord_format == "pascal_voc":
-            assert np.allclose(out_bbox[:4], [actual_x_min, actual_y_min, actual_x_max, actual_y_max], atol=1.0)
+            np.testing.assert_allclose(
+                out_bbox[:4],
+                [actual_x_min, actual_y_min, actual_x_max, actual_y_max],
+                atol=1.0,
+                rtol=1e-5,
+                equal_nan=False,
+            )
         else:  # yolo: convert returned cxcywh-normalized to pascal pixels for comparison
             cx, cy, w, h = out_bbox[:4]
             x_min = (cx - w / 2) * 100
             y_min = (cy - h / 2) * 100
             x_max = (cx + w / 2) * 100
             y_max = (cy + h / 2) * 100
-            assert np.allclose(
+            np.testing.assert_allclose(
                 [x_min, y_min, x_max, y_max],
                 [actual_x_min, actual_y_min, actual_x_max, actual_y_max],
                 atol=1.0,
+                rtol=1e-5,
+                equal_nan=False,
             )
 
 

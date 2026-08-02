@@ -514,8 +514,8 @@ def linear_transformation_rgb(
     to the RGB channels of either a single image or a batch of images.
 
     Args:
-        img (ImageType): A single RGB image of shape (H, W, 3), or a batch of images (B, H, W, 3),
-            or a batch of volumes (B, D, H, W, 3).
+        img (ImageType): A single RGB image of shape (H, W, 3), a batch of images (B, H, W, 3),
+            or a five-dimensional tensor (B, D, H, W, 3).
         transformation_matrix (np.ndarray): A 3x3 matrix
 
     Returns:
@@ -698,21 +698,6 @@ def volume_channel_shuffle(volume: np.ndarray, channels_shuffled: Sequence[int])
     return volume.copy()[..., channels_shuffled] if volume.ndim == 4 else volume
 
 
-def volumes_channel_shuffle(volumes: np.ndarray, channels_shuffled: Sequence[int]) -> np.ndarray:
-    """Shuffle channels of a batch of volumes (B, D, H, W, C) or (B, D, H, W).
-    Per-volume shuffle; used for 3D batch augmentation.
-
-    Args:
-        volumes (np.ndarray): Input batch of volumes.
-        channels_shuffled (Sequence[int]): New channel order.
-
-    Returns:
-        np.ndarray: Batch of volumes with channels shuffled.
-
-    """
-    return volumes.copy()[..., channels_shuffled] if volumes.ndim == 5 else volumes
-
-
 def get_exposure_gains(
     images: ImageType,
     target_mean: float,
@@ -750,11 +735,11 @@ def get_exposure_gains(
 
 
 def exposure_match_batch(images: ImageType, gains: np.ndarray) -> ImageType:
-    """Scale an image tensor by per-image exposure gains in one vectorized operation, covering image
-    batches, volumes, and volume batches without per-image dispatch.
+    """Scale an image tensor by per-image exposure gains in one vectorized operation for image batches
+    and the `volume` target without per-image dispatch.
 
     Args:
-        images (ImageType): Image batch, volume, or volume batch ending in `(H, W, C)`.
+        images (ImageType): Image batch or `volume` data ending in `(H, W, C)`.
         gains (np.ndarray): Gain array matching every leading dimension before `(H, W, C)`.
 
     Returns:
@@ -926,7 +911,7 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
     which applies the following formula:
     Y = 0.299*R + 0.587*G + 0.114*B
 
-    The function efficiently handles batches and volumes by reshaping them into
+    The function efficiently handles batches and the `volume` target by reshaping them into
     a tall 2D image for processing, then restoring the original shape structure.
 
     Args:
@@ -934,7 +919,7 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
             - Single image: (H, W, 3)
             - Batch of images: (N, H, W, 3)
             - Volume: (D, H, W, 3)
-            - Batch of volumes: (N, D, H, W, 3)
+            - Five-dimensional tensor: (N, D, H, W, 3)
 
     Returns:
         ImageType: Grayscale image as a 2D numpy array.
@@ -974,11 +959,11 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
 
     This function converts RGB images to grayscale by first converting to LAB color space
     and then extracting the L (lightness) channel. It uses albucore's reshape utilities
-    to efficiently handle batches/volumes by processing them as a single tall image.
+    to efficiently handle batches and the `volume` target by processing them as a single tall image.
 
     Implementation Details:
         The function uses albucore's reshape_for_channel and restore_from_channel functions:
-        - reshape_for_channel: Flattens batches/volumes to 2D format for OpenCV processing
+        - reshape_for_channel: Flattens batches and the `volume` target to 2D format for OpenCV processing
         - restore_from_channel: Restores the original shape after processing
 
         This enables processing all images in a single OpenCV call
@@ -989,7 +974,7 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
             - Single image: (H, W, 3)
             - Batch of images: (N, H, W, 3)
             - Volume: (D, H, W, 3)
-            - Batch of volumes: (N, D, H, W, 3)
+            - Five-dimensional tensor: (N, D, H, W, 3)
 
             Supported dtypes:
             - np.uint8: Values in range [0, 255]
@@ -1000,7 +985,7 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
             - Single image: (H, W)
             - Batch of images: (N, H, W)
             - Volume: (D, H, W)
-            - Batch of volumes: (N, D, H, W)
+            - Five-dimensional tensor: (N, D, H, W)
 
         The output dtype matches the input dtype. For float inputs, the L channel
         is normalized to [0, 1] by dividing by 100.
@@ -1179,7 +1164,7 @@ def to_gray_pca(img: ImageType) -> ImageType:
             - Single multi-channel image: (H, W, C)
             - Batch of multi-channel images: (N, H, W, C)
             - Single multi-channel volume: (D, H, W, C)
-            - Batch of multi-channel volumes: (N, D, H, W, C)
+            - Five-dimensional multi-channel tensor: (N, D, H, W, C)
 
     Returns:
         ImageType: Grayscale image with the same spatial dimensions as input.
@@ -1474,5 +1459,4 @@ __all__ = [
     "to_gray_pca",
     "to_gray_weighted_average",
     "volume_channel_shuffle",
-    "volumes_channel_shuffle",
 ]

@@ -3,7 +3,7 @@
 This module provides a collection of transformation classes designed specifically for
 3D volumetric data (such as medical CT/MRI scans). These transforms can manipulate properties
 such as spatial dimensions, apply dropout effects, and perform symmetry operations on
-3D volumes, masks, and keypoints. Each transformation inherits from a base transform
+3D volume data, masks, and keypoints. Each transformation inherits from a base transform
 interface and implements specific 3D augmentation logic.
 """
 
@@ -34,23 +34,21 @@ NUM_DIMENSIONS = 3
 
 
 def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
-    """Return one volume's complete shape from singular or batched image and mask targets without indexing into
-    possibly empty arrays.
+    """Return a volume shape from available image and mask targets without indexing into potentially empty input arrays.
+    Avoids indexing empty leading axes.
     """
     if "volume" in data:
         return data["volume"].shape
-    if "volumes" in data:
-        return data["volumes"].shape[1:]
     if "mask3d" in data:
         return data["mask3d"].shape
     if "masks3d" in data:
         return data["masks3d"].shape[1:]
-    raise ValueError("No volume, volumes, mask3d, or masks3d found in data")
+    raise ValueError("No volume, mask3d, or masks3d found in data")
 
 
 def _get_volume_spatial_shape(data: dict[str, Any]) -> tuple[int, int, int]:
-    """Return the depth, height, and width of one singular or batched volume target while retaining support for empty
-    leading dimensions.
+    """Return depth, height, and width for one input volume target while retaining support for empty leading dimensions.
+    Avoids indexing empty leading axes.
     """
     return cast("tuple[int, int, int]", _get_volume_shape(data)[:3])
 
@@ -63,18 +61,18 @@ class _BaseCropAndPad3DInitSchema(BaseTransformInitSchema):
 
 
 class BasePad3D(Transform3D):
-    """Base class for 3D padding transforms. Common logic for volumes, masks, keypoints; fill, fill_mask.
+    """Base class for 3D padding transforms. Common logic for volume data, masks, keypoints; fill, fill_mask.
     Subclasses implement get_params_dependent_on_data.
 
     This class serves as a foundation for all 3D transforms that perform padding operations
-    on volumetric data. It provides common functionality for padding 3D volumes, masks,
+    on volumetric data. It provides common functionality for padding 3D volume data, masks,
     and processing 3D keypoints during padding operations.
 
     The class handles different types of padding values (scalar or per-channel) and
-    provides separate fill values for volumes and masks.
+    provides separate fill values for volume data and masks.
 
     Args:
-        fill (tuple[float, ...] | float): Value to fill the padded voxels for volumes.
+        fill (tuple[float, ...] | float): Value to fill the padded voxels for volume data.
             Can be a single value for all channels or a tuple of values per channel.
         fill_mask (tuple[float, ...] | float): Value to fill the padded voxels for 3D masks.
             Can be a single value for all channels or a tuple of values per channel.
@@ -462,7 +460,7 @@ class BaseCropAndPad3D(Transform3D):
 
     This class serves as a foundation for transforms that combine cropping and padding operations
     on 3D volumetric data. It provides functionality for calculating padding parameters,
-    applying crop and pad operations to volumes, masks, and handling keypoint coordinate shifts.
+    applying crop and pad operations to volume data, masks, and handling keypoint coordinate shifts.
 
     Args:
         pad_if_needed (bool): Whether to pad if the volume is smaller than target dimensions
@@ -1280,7 +1278,7 @@ class CubicSymmetry(Transform3D):
     - All vertex positions (8)
     - All edge centers (12)
 
-    works with 3D volumes and masks of the shape (D, H, W) or (D, H, W, C)
+    works with 3D volume data and masks of the shape (D, H, W) or (D, H, W, C)
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0

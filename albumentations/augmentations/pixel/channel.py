@@ -13,7 +13,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType, VolumeType
+from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "ChannelShuffle",
@@ -119,16 +119,6 @@ class ChannelShuffle(ImageOnlyTransform):
         if channels_shuffled is None:
             return images
         return fpixel.volume_channel_shuffle(images, channels_shuffled)
-
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        channels_shuffled: list[int] | None,
-        **params: Any,
-    ) -> VolumeType:
-        if channels_shuffled is None:
-            return volumes
-        return fpixel.volumes_channel_shuffle(volumes, channels_shuffled)
 
     def get_params_dependent_on_data(
         self,

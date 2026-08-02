@@ -150,7 +150,6 @@ AVAILABLE_KEYS = (
     "bboxes",
     "keypoints",
     "volume",
-    "volumes",
     "mask3d",
     "masks3d",
     "user_data",
@@ -167,7 +166,7 @@ MASK_KEYS = (
 IMAGE_KEYS = {"image", "images"}
 CHECK_BBOX_PARAM = {"bboxes"}
 CHECK_KEYPOINTS_PARAM = {"keypoints"}
-VOLUME_KEYS = {"volume", "volumes"}
+VOLUME_KEYS = {"volume"}
 
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
 # Distinct ferry-key constants used to shuttle per-row instance ids through `data`
@@ -1413,7 +1412,7 @@ class Compose(BaseCompose, HubMixin):
         volume_shapes: list[tuple[int, ...]] = []  # For D,H,W checks
 
         # List of targets to check shapes for
-        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks", "masks3d"}
+        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks", "masks3d"}
 
         for data_name, data_value in data.items():
             # Resolve aliases via additional_targets so e.g. {'custom_image_key': 'image'}
@@ -1462,7 +1461,7 @@ class Compose(BaseCompose, HubMixin):
             volume_shapes.append(data_value.shape[:3])  # D,H,W
 
         # Handle 3D batch data
-        elif data_name in {"volumes", "masks3d"}:
+        elif data_name == "masks3d":
             if data_value.ndim not in {4, 5}:  # (N,D,H,W) or (N,D,H,W,C)
                 raise TypeError(f"{data_name} must be 4D or 5D array")
             shapes.append(data_value.shape[2:4])  # H,W from (N,D,H,W)
@@ -1522,7 +1521,6 @@ class Compose(BaseCompose, HubMixin):
         "mask": 2,  # (H, W) => (H, W, 1)
         "masks": 3,  # (N, H, W) => (N, H, W, 1)
         "volume": 3,  # (D, H, W) => (D, H, W, 1)
-        "volumes": 4,  # (N, D, H, W) => (N, D, H, W, 1)
         "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
         "masks3d": 4,  # (N, D, H, W) => (N, D, H, W, 1)
     }
@@ -1531,7 +1529,7 @@ class Compose(BaseCompose, HubMixin):
         """Add a trailing channel dimension to grayscale image/mask/volume entries,
         resolving `_additional_targets` so aliased keys are handled like canonical ones.
 
-        Expands `(H, W)` to `(H, W, 1)` (and the equivalent for batches/volumes). Tracks
+        Expands `(H, W)` to `(H, W, 1)` and the equivalent batch and 3D-mask shapes. Tracks
         expansion in `_added_channel_dim` (keyed by user key) and `_added_channel_canonical`
         (user_key -> canonical name) so postprocess can strip only what we added.
         """
@@ -2256,7 +2254,7 @@ class Compose(BaseCompose, HubMixin):
         """Check and process a single argument from _check_args. Validates type and shape
         for image, mask, images, volume, etc.; appends to shapes/volume_shapes.
         """
-        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks", "masks3d"}
+        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks", "masks3d"}
         if internal_name not in shape_check_targets:
             return
 
@@ -2277,10 +2275,10 @@ class Compose(BaseCompose, HubMixin):
         # Check H,W consistency
         self._check_shapes(shapes, self.is_check_shapes)
 
-        # Check D,H,W consistency for volumes and 3D masks
+        # Check D,H,W consistency for volume data and 3D masks
         if self.is_check_shapes and volume_shapes and volume_shapes.count(volume_shapes[0]) != len(volume_shapes):
             raise ValueError(
-                "Depth, Height and Width of volume, mask3d, volumes and masks3d should be equal. "
+                "Depth, Height and Width of volume, mask3d, and masks3d should be equal. "
                 "You can disable shapes check by setting is_check_shapes=False.",
             )
 

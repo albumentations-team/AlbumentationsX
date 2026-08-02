@@ -104,7 +104,7 @@ def test_mosaic_identity_monochromatic(
     else:
         assert np.all((transformed_img == fill) | (transformed_img == 0))
         orig_h, orig_w = img_shape[:2]
-        assert np.all(transformed_img[:orig_h, :orig_w] == fill)
+        np.testing.assert_array_equal(transformed_img[:orig_h, :orig_w], fill)
 
     # --- Assertions (Mask) ---
     assert transformed_mask.shape == expected_output_shape_mask
@@ -116,7 +116,7 @@ def test_mosaic_identity_monochromatic(
     else:
         assert np.all((transformed_mask == fill_mask) | (transformed_mask == 0))
         orig_h, orig_w = mask_shape[:2]
-        assert np.all(transformed_mask[:orig_h, :orig_w] == fill_mask)
+        np.testing.assert_array_equal(transformed_mask[:orig_h, :orig_w], fill_mask)
 
 
 def test_mosaic_identity_with_targets() -> None:

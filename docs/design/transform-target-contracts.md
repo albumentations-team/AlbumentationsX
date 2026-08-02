@@ -1,7 +1,7 @@
 # Generated Transform Target Contracts
 
 **Status:** Implemented
-**Scope:** public `DualTransform` execution across images, annotations, volumes, and batches
+**Scope:** public `DualTransform` execution across images, annotations, volume data, and batches
 **Primary readers:** maintainers adding transform modes, targets, metadata requirements, or target-specific behavior
 
 ## What adding a registry case now covers
@@ -71,7 +71,7 @@ The HBB and OBB profiles use separate `BboxParams`. A case collects only for bbo
 Extended profiles run one primary mode per class:
 
 - float32, one-channel, and five-channel image/mask data;
-- `images`, `masks`, `volumes`, and `masks3d` batches;
+- `images`, `masks`, and `masks3d` batches;
 - empty HBB and keypoint collections;
 - non-contiguous image/mask views; and
 - read-only image/mask arrays.

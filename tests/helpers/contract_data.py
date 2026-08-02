@@ -157,12 +157,6 @@ def make_target_mask_batch_data(rng: np.random.Generator) -> dict[str, Any]:
     return {"masks": np.stack(masks)}
 
 
-def make_target_volume_batch_data(rng: np.random.Generator) -> dict[str, Any]:
-    """Return a batch of distinct coordinate-coded volumes."""
-    volumes = [make_target_volume_data(rng)["volume"] for _ in range(2)]
-    return {"volumes": np.stack(volumes)}
-
-
 def make_target_mask3d_batch_data(rng: np.random.Generator) -> dict[str, Any]:
     """Return a batch of slice-dependent 3D masks."""
     masks3d = [make_target_volume_data(rng)["mask3d"] for _ in range(2)]
@@ -238,8 +232,6 @@ def _first_image(data: dict[str, Any]) -> np.ndarray:
         return data["images"][0]
     if "volume" in data:
         return data["volume"][0]
-    if "volumes" in data:
-        return data["volumes"][0, 0]
     if "mask" in data:
         mask = data["mask"]
         return np.repeat(mask[..., None], 3, axis=-1) if mask.ndim == 2 else mask

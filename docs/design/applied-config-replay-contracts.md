@@ -124,7 +124,7 @@ factories cover:
 - masks;
 - horizontal and oriented bounding boxes with labels;
 - keypoints with labels;
-- volumes and `mask3d`;
+- volume data and `mask3d`;
 - image, mask, volume, and `masks3d` batches;
 - reference-image metadata;
 - mosaic, copy-and-paste, overlay, and text metadata;

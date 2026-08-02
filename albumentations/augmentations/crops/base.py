@@ -38,7 +38,7 @@ class BaseCrop(DualTransform):
 
     This abstract class provides the foundation for all cropping transformations.
     It handles cropping of different data types including images, masks, bounding boxes,
-    keypoints, and volumes while keeping their spatial relationships intact.
+    keypoints, and volume data while keeping their spatial relationships intact.
 
     Child classes must implement the `get_params_dependent_on_data` method to determine
     crop coordinates based on transform-specific logic. This method should return a dictionary
@@ -186,14 +186,6 @@ class BaseCrop(DualTransform):
     ) -> VolumeType:
         return fcrops.volume_crop_yx(volume, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> VolumeType:
-        return fcrops.volumes_crop_yx(volumes, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
-
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
@@ -226,7 +218,7 @@ class BaseCrop(DualTransform):
                 "VolumeType",
                 np.empty((0, masks3d.shape[1], crop_height, crop_width, masks3d.shape[4]), dtype=masks3d.dtype),
             )
-        return self.apply_to_volumes(masks3d, crop_coords, **params)
+        return fcrops.masks3d_crop_yx(masks3d, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
 
     @staticmethod
     def _clip_bbox(bbox: tuple[int, int, int, int], image_shape: tuple[int, int]) -> tuple[int, int, int, int]:
@@ -490,27 +482,6 @@ class BaseCropAndPad(BaseCrop):
             )
         return BaseCrop.apply_to_images(self, images, crop_coords, **params)
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> VolumeType:
-        pad_params = params.get("pad_params")
-        if pad_params is not None:
-            volumes = fcrops.pad_along_axes(
-                volumes,
-                pad_params["pad_top"],
-                pad_params["pad_bottom"],
-                pad_params["pad_left"],
-                pad_params["pad_right"],
-                h_axis=2,
-                w_axis=3,
-                border_mode=self.border_mode,
-                pad_value=self.fill,
-            )
-        return BaseCrop.apply_to_volumes(self, volumes, crop_coords, **params)
-
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
@@ -525,7 +496,20 @@ class BaseCropAndPad(BaseCrop):
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> VolumeType:
-        return self.apply_to_volumes(masks3d, crop_coords, **params)
+        pad_params = params.get("pad_params")
+        if pad_params is not None:
+            masks3d = fcrops.pad_along_axes(
+                masks3d,
+                pad_params["pad_top"],
+                pad_params["pad_bottom"],
+                pad_params["pad_left"],
+                pad_params["pad_right"],
+                h_axis=2,
+                w_axis=3,
+                border_mode=self.border_mode,
+                pad_value=self.fill,
+            )
+        return BaseCrop.apply_to_masks3d(self, masks3d, crop_coords, **params)
 
     def apply_to_bboxes(
         self,

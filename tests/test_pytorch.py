@@ -88,8 +88,8 @@ def test_additional_targets_for_totensorv2():
         )
         assert isinstance(res["mask"], torch.Tensor) and res["mask"].shape == mask1.shape
         assert isinstance(res["mask2"], torch.Tensor) and res["mask2"].shape == mask2.shape
-        assert np.array_equal(res["image"], res["image2"])
-        assert np.array_equal(res["mask"], res["mask2"])
+        np.testing.assert_array_equal(res["image"], res["image2"])
+        np.testing.assert_array_equal(res["mask"], res["mask2"])
 
     aug = A.Compose([A.ToTensorV2()], strict=True)
     aug.add_targets(additional_targets={"image2": "image", "mask2": "mask"})
@@ -114,8 +114,8 @@ def test_additional_targets_for_totensorv2():
         )
         assert isinstance(res["mask"], torch.Tensor) and res["mask"].shape == mask1.shape
         assert isinstance(res["mask2"], torch.Tensor) and res["mask2"].shape == mask2.shape
-        assert np.array_equal(res["image"], res["image2"])
-        assert np.array_equal(res["mask"], res["mask2"])
+        np.testing.assert_array_equal(res["image"], res["image2"])
+        np.testing.assert_array_equal(res["mask"], res["mask2"])
 
 
 def test_torch_to_tensor_v2_on_gray_scale_images():

@@ -10,6 +10,7 @@ interface and implements specific 3D augmentation logic.
 from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
+import torch
 from pydantic import AfterValidator, field_validator, model_validator
 from typing_extensions import Self
 
@@ -17,10 +18,11 @@ from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
-from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D
+from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D, VolumeOnlyTransform
 from albumentations.core.type_definitions import C4_INVERSE, C4GroupElement, Targets, VolumeType, c4_group_elements
 
 __all__ = [
+    "Anisotropy3D",
     "CenterCrop3D",
     "CoarseDropout3D",
     "CubicSymmetry",
@@ -45,7 +47,8 @@ def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
     Avoids indexing empty leading axes.
     """
     if "volume" in data:
-        return data["volume"].shape
+        volume = data["volume"]
+        return tuple(volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape
     if "mask3d" in data:
         return data["mask3d"].shape
     raise ValueError("No volume or mask3d found in data")
@@ -56,6 +59,119 @@ def _get_volume_spatial_shape(data: dict[str, Any]) -> tuple[int, int, int]:
     Avoids indexing empty leading axes.
     """
     return cast("tuple[int, int, int]", _get_volume_shape(data)[:3])
+
+
+class Anisotropy3D(VolumeOnlyTransform):
+    """Simulate thicker or lower-resolution volume acquisition by degrading selected spatial axes and restoring the
+    original grid for 3D model robustness training.
+
+    The transform samples a subset from `axes` and one downsampling factor for every selected axis. Both NumPy and CPU
+    Tensor routes delegate spatial resizing to Albucore `resize3d`. PyTorch does not currently provide antialiasing for
+    5D trilinear interpolation, so Tensor input remains non-antialiased when `antialias=True`. `mask3d` remains
+    unchanged because this is an image-acquisition artifact, not a geometry transform.
+
+    Args:
+        axes (tuple[int, ...]): Eligible spatial axes in `(depth, height, width)` order. Default: `(0, 1, 2)`.
+        num_axes_range (tuple[int, int]): Inclusive range for the number of eligible axes to degrade.
+            Default: `(1, 1)`.
+        downscale_factor_range (tuple[float, float]): Inclusive range of downsampling factors, each greater than one.
+            Default: `(1.5, 4.0)`.
+        antialias (bool): Apply a low-pass filter while reducing spatial resolution. Default: `True`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        volume
+
+    Image types:
+        uint8, float32
+
+    Examples:
+        >>> import albumentations as A
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).integers(0, 256, (32, 128, 128, 1), dtype=np.uint8)
+        >>> transform = A.Compose([
+        ...     A.Anisotropy3D(
+        ...         axes=(0,),
+        ...         num_axes_range=(1, 1),
+        ...         downscale_factor_range=(2.0, 2.0),
+        ...         p=1.0,
+        ...     ),
+        ... ])
+        >>> result = transform(volume=volume)
+        >>> result["volume"].shape
+        (32, 128, 128, 1)
+
+    """
+
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"volume", "mask3d"})
+
+    class InitSchema(BaseTransformInitSchema):
+        axes: tuple[AxisIndex3D, ...]
+        num_axes_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1, None)),
+            AfterValidator(nondecreasing),
+        ]
+        downscale_factor_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(1, None, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+        antialias: bool
+
+        @model_validator(mode="after")
+        def _validate_axes(self) -> Self:
+            if not self.axes:
+                raise ValueError("axes must contain at least one spatial axis")
+            if len(self.axes) != len(set(self.axes)):
+                raise ValueError("axes must not contain duplicates")
+            if self.num_axes_range[1] > len(self.axes):
+                raise ValueError("num_axes_range cannot select more axes than are available in axes")
+            return self
+
+    def __init__(
+        self,
+        axes: tuple[AxisIndex3D, ...] = (0, 1, 2),
+        num_axes_range: tuple[int, int] = (1, 1),
+        downscale_factor_range: tuple[float, float] = (1.5, 4.0),
+        antialias: bool = True,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.axes = axes
+        self.num_axes_range = num_axes_range
+        self.downscale_factor_range = downscale_factor_range
+        self.antialias = antialias
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        selected_axis_count = self.py_random.randint(*self.num_axes_range)
+        selected_axes = tuple(sorted(self.py_random.sample(self.axes, selected_axis_count)))
+        downscale_factor = self.py_random.uniform(*self.downscale_factor_range)
+        downsample_shape = f3d.get_anisotropy_downsample_shape(
+            _get_volume_spatial_shape(data),
+            selected_axes,
+            downscale_factor,
+        )
+
+        self.applied_config = {
+            "axes": selected_axes,
+            "num_axes_range": (selected_axis_count, selected_axis_count),
+            "downscale_factor_range": (downscale_factor, downscale_factor),
+        }
+        return {"downsample_shape": downsample_shape}
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        downsample_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return cast("VolumeType", f3d.anisotropy_3d(volume, downsample_shape, self.antialias))
 
 
 class _BaseCropAndPad3DInitSchema(BaseTransformInitSchema):

@@ -118,7 +118,7 @@ def test_pad_if_needed_3d_fill_values():
 )
 def test_augmentations_match_uint8_float32(augmentation_cls, params):
     image_uint8 = RECTANGULAR_UINT8_IMAGE
-    image_float32 = image_uint8 / 255.0
+    image_float32 = image_uint8.astype(np.float32) / 255.0
 
     transform = A.Compose([augmentation_cls(p=1, **params)], seed=42)
 
@@ -275,7 +275,7 @@ def test_pad3d_2d_equivalence(pad3d_padding, pad2d_padding):
     ),
 )
 def test_change_volume(volume, mask3d, augmentation_cls, params):
-    """Checks whether resulting volume is different from the original one."""
+    """Check that the volume changes and that only geometric transforms change the paired mask."""
     aug = A.Compose([augmentation_cls(p=1, **params)], seed=0)
 
     original_volume = volume.copy()
@@ -288,7 +288,10 @@ def test_change_volume(volume, mask3d, augmentation_cls, params):
     transformed = aug(**data)
 
     assert not np.array_equal(transformed["volume"], original_volume)
-    assert not np.array_equal(transformed["mask3d"], original_mask3d)
+    if issubclass(augmentation_cls, A.VolumeOnlyTransform):
+        np.testing.assert_array_equal(transformed["mask3d"], original_mask3d)
+    else:
+        assert not np.array_equal(transformed["mask3d"], original_mask3d)
 
 
 @pytest.mark.parametrize(
@@ -916,6 +919,7 @@ def test_center_crop3d_keypoints(
         },
         except_augmentations={
             A.CoarseDropout3D,
+            A.Anisotropy3D,
         },
     ),
 )

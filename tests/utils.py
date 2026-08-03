@@ -208,7 +208,12 @@ def get_primary_public_transform_params(
 ) -> list[tuple[type, dict]]:
     """Get all transforms (2D and 3D)."""
     return get_primary_filtered_transform_params(
-        base_classes=(albumentations.ImageOnlyTransform, albumentations.DualTransform, albumentations.Transform3D),
+        base_classes=(
+            albumentations.ImageOnlyTransform,
+            albumentations.DualTransform,
+            albumentations.Transform3D,
+            albumentations.VolumeOnlyTransform,
+        ),
         custom_arguments=custom_arguments,
         except_augmentations=except_augmentations,
     )
@@ -228,12 +233,12 @@ def get_primary_2d_transform_params(
 
 
 def get_primary_3d_transform_params(
-    custom_arguments: dict[type[albumentations.Transform3D], dict] | None = None,
-    except_augmentations: set[type[albumentations.Transform3D]] | None = None,
+    custom_arguments: dict[type[albumentations.BasicTransform], dict] | None = None,
+    except_augmentations: set[type[albumentations.BasicTransform]] | None = None,
 ) -> list[tuple[type, dict]]:
     """Get all 3D transforms."""
     return get_primary_filtered_transform_params(
-        base_classes=(albumentations.Transform3D,),
+        base_classes=(albumentations.Transform3D, albumentations.VolumeOnlyTransform),
         custom_arguments=custom_arguments,
         except_augmentations=except_augmentations,
     )

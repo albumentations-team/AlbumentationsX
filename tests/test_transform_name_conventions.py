@@ -45,6 +45,20 @@ class RandomParameterGenerator:
     assert check_source(source) == []
 
 
+def test_new_volume_only_transform_name_cannot_start_with_random() -> None:
+    source = """
+class RandomNewVolumeTransform(VolumeOnlyTransform):
+    pass
+"""
+
+    assert check_source(source) == [
+        (
+            2,
+            "New transform class 'RandomNewVolumeTransform' must not use the 'Random' prefix.",
+        ),
+    ]
+
+
 def test_indirect_transform_subclass_cannot_start_with_random() -> None:
     source = """
 class CustomTransform(ImageOnlyTransform):

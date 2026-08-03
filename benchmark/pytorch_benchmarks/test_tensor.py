@@ -41,6 +41,12 @@ VOLUME_CASES = tuple(
 TENSOR_NATIVE_IMAGE_CASES = tuple(
     f"{size_name}|{channels}|{dtype_name}" for size_name in SIZES for channels in (1, 3) for dtype_name in DTYPES
 )
+TENSOR_NATIVE_VOLUME_CASES = tuple(
+    f"{size_name}|{channels}|{dtype_name}"
+    for size_name in VOLUME_SIZES
+    for channels in (1, 3, 5)
+    for dtype_name in DTYPES
+)
 
 
 def _parse_image_case(case_id: str) -> tuple[str, int, str]:
@@ -137,3 +143,60 @@ class TimeTensorNativeTranspose:
 
     def peakmem_tensor_direct(self, case_id: str) -> None:
         self.tensor_direct(image=self.tensor)
+
+
+class TimeTensorNativeAnisotropy3D:
+    """Benchmark the accepted Tensor `Anisotropy3D(volume=...)` capability.
+
+    The direct Tensor route uses C,D,H,W volumes. Its NumPy comparison paths
+    use the matching D,H,W,C volume and the normal `ToTensor3D` handoff.
+    """
+
+    params = (TENSOR_NATIVE_VOLUME_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        size_name, channels, dtype_name = _parse_image_case(case_id)
+        self.volume = make_volume(size_name, channels, dtype_from_name(dtype_name))
+        self.mask3d = make_mask3d(size_name)
+        self.tensor = torch.from_numpy(np.ascontiguousarray(self.volume.transpose(3, 0, 1, 2)))
+        self.tensor_mask3d = torch.from_numpy(self.mask3d)
+        anisotropy = albumentations.Anisotropy3D(
+            axes=(0, 2),
+            num_axes_range=(2, 2),
+            downscale_factor_range=(2.0, 2.0),
+            p=1.0,
+        )
+        self.numpy_direct = albumentations.Compose([anisotropy], seed=137, strict=True)
+        self.numpy_model_ready = albumentations.Compose(
+            [anisotropy, albumentations.ToTensor3D(p=1.0)],
+            seed=137,
+            strict=True,
+        )
+        self.tensor_direct = albumentations.Compose(
+            [
+                albumentations.Anisotropy3D(
+                    axes=(0, 2),
+                    num_axes_range=(2, 2),
+                    downscale_factor_range=(2.0, 2.0),
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
+
+    def time_numpy_direct(self, case_id: str) -> None:
+        self.numpy_direct(volume=self.volume)
+
+    def time_numpy_model_ready(self, case_id: str) -> None:
+        self.numpy_model_ready(volume=self.volume, mask3d=self.mask3d)
+
+    def time_tensor_direct(self, case_id: str) -> None:
+        self.tensor_direct(volume=self.tensor)
+
+    def time_tensor_and_mask3d(self, case_id: str) -> None:
+        self.tensor_direct(volume=self.tensor, mask3d=self.tensor_mask3d)
+
+    def peakmem_tensor_direct(self, case_id: str) -> None:
+        self.tensor_direct(volume=self.tensor)

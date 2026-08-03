@@ -340,7 +340,8 @@ Spatial-level transforms will simultaneously change both an input image as well 
 
 ### 3D transforms
 
-3D transforms operate on volumetric data and can modify both the input volume and associated 3D mask.
+3D transforms operate on volumetric data. Spatial transforms can also modify associated 3D masks and keypoints, while
+volume-intensity transforms leave those targets unchanged.
 
 Where:
 
@@ -349,6 +350,7 @@ Where:
 
 | Transform                                                                           | Volume | Mask3D | Keypoints |
 | ----------------------------------------------------------------------------------- | :----: | :----: | :-------: |
+| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)           | ✓      |        |           |
 | [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)           | ✓      | ✓      | ✓         |
 | [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)     | ✓      | ✓      | ✓         |
 | [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)         | ✓      | ✓      | ✓         |

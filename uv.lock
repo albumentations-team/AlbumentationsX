@@ -26,7 +26,7 @@ wheels = [
 
 [[package]]
 name = "albucore"
-version = "0.2.9"
+version = "0.2.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numkong" },
@@ -34,10 +34,11 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "stringzilla" },
+    { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/d2/cfcbe0778e60e091d0594c87269a8fe37ef83f5cf5d11c7db04e27230545/albucore-0.2.9.tar.gz", hash = "sha256:c7d94e902371a533237cf4894b42881229b64e3afb8780d0de4ba254ace445a3", size = 170347, upload-time = "2026-07-31T13:46:17.704Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/a0/38a950121bf97a671755e86d82617dad9afa6627de612d833fd4b99d1b1e/albucore-0.2.10.tar.gz", hash = "sha256:b9f5ae6627342ca901ab668d1531b23b5aa73e879187d5adf60421a679c13520", size = 227993, upload-time = "2026-08-03T11:44:47.966Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/ea/83fca154d58f695adf07540c79817af4dd2e51b2ae6e59aafd3d34892b83/albucore-0.2.9-py3-none-any.whl", hash = "sha256:5180bcc0cb2643a6916fda8bd8334eea018071795ec71654b4062ecc6e747365", size = 46851, upload-time = "2026-07-31T13:46:16.398Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/4e/ee6bb9d1aad14443beb1e23084f64813cdd01ee2b179d1fb846d6a6bebee/albucore-0.2.10-py3-none-any.whl", hash = "sha256:6e3111374b2ee1089f8e5b9002eb6381c9f7b4036cd5d74871b1844556b04ed6", size = 52457, upload-time = "2026-08-03T11:44:46.452Z" },
 ]
 
 [[package]]
@@ -231,7 +232,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "albucore", specifier = "==0.2.9" },
+    { name = "albucore", specifier = "==0.2.10" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
     { name = "numkong", specifier = "!=7.7.1" },
     { name = "numpy", specifier = ">=2.2.6" },

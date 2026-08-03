@@ -251,6 +251,12 @@ HBB_KEYPOINT_TRANSFORMS = frozenset(
 )
 
 VOLUME_TRANSFORMS: Mapping[str, Factory] = {
+    "anisotropy3d": lambda: albumentations.Anisotropy3D(
+        axes=(0, 2),
+        num_axes_range=(2, 2),
+        downscale_factor_range=(2.0, 2.0),
+        p=1.0,
+    ),
     "center_crop3d": lambda: albumentations.CenterCrop3D(size=(4, 48, 48), p=1.0),
     "random_crop3d": lambda: albumentations.RandomCrop3D(size=(4, 48, 48), p=1.0),
     "pad3d": lambda: albumentations.Pad3D(padding=(1, 2, 2), p=1.0),

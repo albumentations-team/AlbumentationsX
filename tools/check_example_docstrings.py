@@ -9,7 +9,7 @@ from pathlib import Path
 
 from google_docstring_parser import parse_google_docstring
 
-TARGET_PARENT_CLASSES = {"DualTransform", "ImageOnlyTransform", "Transform3D"}
+TARGET_PARENT_CLASSES = {"DualTransform", "ImageOnlyTransform", "Transform3D", "VolumeOnlyTransform"}
 
 # We'll check for both, but have different error messages
 EXAMPLES_SECTION = "Examples"

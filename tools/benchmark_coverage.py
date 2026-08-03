@@ -217,6 +217,7 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
 }
 
 VOLUME_ALIAS_TO_TRANSFORM = {
+    "anisotropy3d": "Anisotropy3D",
     "center_crop3d": "CenterCrop3D",
     "coarse_dropout3d": "CoarseDropout3D",
     "cubic_symmetry": "CubicSymmetry",
@@ -254,6 +255,7 @@ PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM = {
 DIRECT_KERNEL_TRANSFORMS = frozenset(
     {
         "Affine",
+        "Anisotropy3D",
         "AutoContrast",
         "Blur",
         "CenterCrop3D",
@@ -313,14 +315,16 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
 )
 
 PYTORCH_TERMINAL_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
-PYTORCH_NATIVE_TENSOR_TRANSFORMS = frozenset({"Transpose"})
+PYTORCH_NATIVE_TENSOR_TRANSFORMS = frozenset({"Anisotropy3D", "Transpose"})
 PYTORCH_TENSOR_TRANSFORMS = PYTORCH_TERMINAL_TENSOR_TRANSFORMS | PYTORCH_NATIVE_TENSOR_TRANSFORMS
 PYTORCH_IMAGE_CASES = pytorch_tensor_benchmarks.IMAGE_CASES
 PYTORCH_VOLUME_CASES = pytorch_tensor_benchmarks.VOLUME_CASES
 PYTORCH_NATIVE_IMAGE_CASES = pytorch_tensor_benchmarks.TENSOR_NATIVE_IMAGE_CASES
+PYTORCH_NATIVE_VOLUME_CASES = pytorch_tensor_benchmarks.TENSOR_NATIVE_VOLUME_CASES
 
 DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "Affine": ("bboxes_affine", "keypoints_affine"),
+    "Anisotropy3D": ("anisotropy_3d",),
     "AutoContrast": ("auto_contrast",),
     "Blur": ("box_blur",),
     "CenterCrop3D": ("crop3d",),
@@ -389,6 +393,7 @@ ASV_BENCHMARKS = {
     "pytorch_tensor_2d": "pytorch_benchmarks.test_tensor.TimeToTensorV2",
     "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
     "pytorch_tensor_native": "pytorch_benchmarks.test_tensor.TimeTensorNativeTranspose",
+    "pytorch_tensor_native_3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeAnisotropy3D",
     "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
     "target_matrix": "benchmarks.test_family_matrix.TimeSpecialTargetMatrix.time_transform",
     "volumetric_matrix": "benchmarks.test_family_matrix.TimeVolumetricFullMatrix.time_transform",
@@ -526,6 +531,11 @@ def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
         return CoverageExpectation(
             required_layers=frozenset({"pytorch_tensor"}),
             reason="PyTorch Tensor transforms are benchmarked in the dedicated Tensor ASV lane",
+        )
+    if name == "Anisotropy3D":
+        return CoverageExpectation(
+            required_layers=frozenset({"catalog_smoke", "direct_kernel", "pytorch_tensor", "volumetric_matrix"}),
+            reason="the NumPy, direct kernel, and accepted CPU Tensor volume routes have dedicated evidence",
         )
     if name in PYTORCH_NATIVE_TENSOR_TRANSFORMS:
         return CoverageExpectation(
@@ -788,7 +798,7 @@ def _pytorch_tensor_scenario(case: Mapping[str, str], route: str, transform_name
         return {
             **_parse_pytorch_case(case["case_id"]),
             "scope": "tensor_native_compose",
-            "targets": ["image"],
+            "targets": ["mask3d", "volume"] if transform_name == "Anisotropy3D" else ["image"],
         }
     targets = ["mask3d", "volume"] if transform_name == "ToTensor3D" else ["image", "images", "mask", "masks"]
     return {
@@ -1146,6 +1156,15 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
             cases,
             "Transpose",
             benchmark=ASV_BENCHMARKS["pytorch_tensor_native"],
+            case_id=case_id,
+            config="pytorch",
+            layer="pytorch_tensor",
+        )
+    for case_id in PYTORCH_NATIVE_VOLUME_CASES:
+        _add_asv_case(
+            cases,
+            "Anisotropy3D",
+            benchmark=ASV_BENCHMARKS["pytorch_tensor_native_3d"],
             case_id=case_id,
             config="pytorch",
             layer="pytorch_tensor",

@@ -14,6 +14,7 @@ IGNORED_CLASSES = {
     "DualTransform",
     "ImageOnlyTransform",
     "Transform3D",
+    "VolumeOnlyTransform",
 }
 
 UTM_QUERY_RE = re.compile(r"\?utm_(?:source|medium|campaign|term|content)=[^)\s|]+")
@@ -98,7 +99,9 @@ def get_3d_transforms_info():
     members = inspect.getmembers(albumentations)
     for name, cls in members:
         if (
-            inspect.isclass(cls) and issubclass(cls, albumentations.Transform3D) and name not in IGNORED_CLASSES
+            inspect.isclass(cls)
+            and issubclass(cls, (albumentations.Transform3D, albumentations.VolumeOnlyTransform))
+            and name not in IGNORED_CLASSES
         ) and not is_deprecated(cls):
             # Get targets from class or parent class if not defined
             targets = cls._targets if hasattr(cls, "_targets") else albumentations.Transform3D._targets

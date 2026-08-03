@@ -66,7 +66,7 @@ def get_targets_from_methods(cls):
     return targets
 
 
-TRASNFORM_3D_TARGETS = {}
+TRASNFORM_3D_TARGETS = {A.Anisotropy3D: {Targets.VOLUME}}
 
 str2target = {
     "mask": Targets.MASK3D,  # docstrings say "mask" for 3D mask target

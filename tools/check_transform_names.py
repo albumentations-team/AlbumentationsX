@@ -17,6 +17,7 @@ TRANSFORM_BASE_CLASS_NAMES = frozenset(
         "DualTransform",
         "ImageOnlyTransform",
         "Transform3D",
+        "VolumeOnlyTransform",
     },
 )
 

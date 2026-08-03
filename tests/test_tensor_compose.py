@@ -383,6 +383,7 @@ def test_transpose_rejects_tensor_routes_outside_accepted_capability(
         A.CubicSymmetry(p=1.0),
         A.Pad3D(padding=(1, 2, 2), p=1.0),
         A.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
+        A.Flip3D(flip_axes=(0, 2), p=1.0),
     ],
 )
 def test_3d_transforms_remain_rejected_until_their_tensor_routes_pass_the_performance_gate(

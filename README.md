@@ -352,6 +352,7 @@ Where:
 | [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)           | ✓      | ✓      | ✓         |
 | [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)     | ✓      | ✓      | ✓         |
 | [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)         | ✓      | ✓      | ✓         |
+| [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                       | ✓      | ✓      | ✓         |
 | [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)         | ✓      | ✓      | ✓         |
 | [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                         | ✓      | ✓      | ✓         |
 | [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)         | ✓      | ✓      | ✓         |

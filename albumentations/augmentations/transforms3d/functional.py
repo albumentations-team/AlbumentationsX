@@ -15,6 +15,22 @@ from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
 
 
+@handle_empty_array("keypoints")
+def keypoints_flip_3d(
+    keypoints: np.ndarray,
+    flip_axes: tuple[Literal[0, 1, 2], ...],
+    volume_shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Reflect XYZ keypoints across selected depth, height, and width voxel-index axes while preserving all extra
+    columns and dtype.
+    """
+    flipped_keypoints = keypoints.copy()
+    for axis in flip_axes:
+        coordinate_index = len(volume_shape) - axis - 1
+        flipped_keypoints[:, coordinate_index] = volume_shape[axis] - 1 - flipped_keypoints[:, coordinate_index]
+    return flipped_keypoints
+
+
 def adjust_padding_by_position3d(
     paddings: list[tuple[int, int]],  # [(front, back), (top, bottom), (left, right)]
     position: Literal["center", "random"],

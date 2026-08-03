@@ -324,9 +324,10 @@ def test_resize_with_additional_targets_mask():
         additional_targets={"semantic_mask": "mask"},
     )
 
-    augmented = transform(image=image, semantic_mask=mask)
+    augmented = transform(image=image, mask=mask, semantic_mask=mask.copy())
 
     assert augmented["image"].shape == (512, 512, 3)
+    assert augmented["mask"].shape == (512, 512)
     assert augmented["semantic_mask"].shape == (512, 512)
     assert augmented["semantic_mask"].ndim == 2
 

@@ -466,6 +466,7 @@ def test_compose_operators_preserve_additional_targets(sample_image):
     data = {
         "image": sample_image,
         "image2": sample_image.copy(),
+        "mask": mask2.copy(),
         "mask2": mask2,
     }
 
@@ -473,6 +474,7 @@ def test_compose_operators_preserve_additional_targets(sample_image):
 
     assert "image" in result
     assert "image2" in result
+    assert "mask" in result
     assert "mask2" in result
 
 

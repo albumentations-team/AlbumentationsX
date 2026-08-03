@@ -52,6 +52,7 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "Crop": {"x_max": 128, "y_max": 128},
     "CropAndPad": {"px": 8},
     "CropNonEmptyMaskIfExists": {"height": 96, "width": 96},
+    "Flip3D": {"flip_axes": (0, 1, 2)},
     "GridElasticDeform": {"num_grid_xy": (4, 4), "magnitude": 4},
     "LetterBox": {"size": (128, 128)},
     "LongestMaxSize": {"max_size": 160},

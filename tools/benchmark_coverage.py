@@ -220,6 +220,7 @@ VOLUME_ALIAS_TO_TRANSFORM = {
     "center_crop3d": "CenterCrop3D",
     "coarse_dropout3d": "CoarseDropout3D",
     "cubic_symmetry": "CubicSymmetry",
+    "flip3d": "Flip3D",
     "grid_shuffle3d": "GridShuffle3D",
     "pad3d": "Pad3D",
     "pad_if_needed3d": "PadIfNeeded3D",

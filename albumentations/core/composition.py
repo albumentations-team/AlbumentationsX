@@ -173,6 +173,7 @@ IMAGE_KEYS = {"image", "images"}
 CHECK_BBOX_PARAM = {"bboxes"}
 CHECK_KEYPOINTS_PARAM = {"keypoints"}
 VOLUME_KEYS = {"volume"}
+_SPATIAL_ADDITIONAL_TARGETS = frozenset((*IMAGE_KEYS, *MASK_KEYS, *VOLUME_KEYS))
 
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
 # Distinct ferry-key constants used to shuttle per-row instance ids through `data`
@@ -625,7 +626,7 @@ class BaseCompose(Serializable):
         if not self.check_each_transform:
             return data
 
-        shape = get_shape(data, self._additional_targets)
+        shape = get_shape(data)
         binding = getattr(self, "_instance_binding", None)
 
         for proc in self.check_each_transform:
@@ -863,7 +864,7 @@ class BaseCompose(Serializable):
         if isinstance(mask, np.ndarray):
             return -1
 
-        shape = get_shape(data, self._additional_targets)
+        shape = get_shape(data)
         spatial_shape = tuple(shape[:2])
         trailing_layout = tuple(mask.shape[:2]) == spatial_shape
         leading_layout = tuple(mask.shape[-2:]) == spatial_shape
@@ -1126,7 +1127,8 @@ class Compose(BaseCompose, HubMixin):
         keypoint_params (dict[str, Any] | KeypointParams | None): Parameters for keypoint transforms.
             Can be a dict of params or a KeypointParams object. Default is None.
         additional_targets (dict[str, str] | None): A dictionary mapping additional target names
-            to their types. For example, {'image2': 'image'}. Default is None.
+            to their types. For example, {'image2': 'image'}. Passing a spatial alias also
+            requires passing its canonical target (`image` in this example). Default is None.
         p (float): Probability of applying all transforms. Should be in range [0, 1]. Default is 1.0.
         is_check_shapes (bool): If True, checks consistency of shapes for image/mask/masks on each call.
             Disable only if you are sure about your data consistency. Default is True.
@@ -1464,6 +1466,8 @@ class Compose(BaseCompose, HubMixin):
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
             raise KeyError(msg)
 
+        if self._additional_targets:
+            self._validate_additional_target_sources(data)
         self._validate_tensor_inputs(data)
 
         # Initialize applied_transforms only in top-level Compose if requested
@@ -1498,6 +1502,15 @@ class Compose(BaseCompose, HubMixin):
             del self._repack_after_processors
         if hasattr(self, "_instance_count"):
             delattr(self, "_instance_count")
+
+    def _validate_additional_target_sources(self, data: dict[str, Any]) -> None:
+        """Validate that every supplied spatial alias has a populated canonical source at the public Compose
+        input boundary for each invocation.
+        """
+        for alias, target in self._additional_targets.items():
+            if target in _SPATIAL_ADDITIONAL_TARGETS and data.get(alias) is not None and data.get(target) is None:
+                msg = f"Additional target '{alias}' requires canonical target '{target}' to be present."
+                raise ValueError(msg)
 
     def _validate_tensor_inputs(self, data: dict[str, Any]) -> None:
         """Validate Tensor boundary contracts before Compose samples probability or parameters,
@@ -1892,7 +1905,7 @@ class Compose(BaseCompose, HubMixin):
         if not isinstance(bbox_processor, BboxProcessor):
             return
 
-        shape = get_shape(data, self._additional_targets)
+        shape = get_shape(data)
         self._bbox_filter_with_mirror(bbox_processor, data, shape, binding)
         self._drop_instances_with_empty_bound_masks(data, binding)
         self._resync_instance_ids(data)

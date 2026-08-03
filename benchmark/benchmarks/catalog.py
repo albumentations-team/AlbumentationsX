@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 import albumentations
-from albumentations.core.transforms_interface import BasicTransform, Transform3D
+from albumentations.core.transforms_interface import BasicTransform, Transform3D, VolumeOnlyTransform
 from benchmarks.common import SIZES, make_image, make_volume
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +29,7 @@ ABSTRACT_TRANSFORM_NAMES = frozenset(
         "DualTransform",
         "ImageOnlyTransform",
         "Transform3D",
+        "VolumeOnlyTransform",
     },
 )
 
@@ -46,6 +47,11 @@ EXPECTED_INIT_WARNINGS = (
 
 PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "AtLeastOneBBoxRandomCrop": {"height": 96, "width": 96},
+    "Anisotropy3D": {
+        "axes": (0, 2),
+        "num_axes_range": (2, 2),
+        "downscale_factor_range": (2.0, 2.0),
+    },
     "CenterCrop": {"height": 96, "width": 96},
     "CenterCrop3D": {"size": (4, 48, 48)},
     "ConstrainedCoarseDropout": {"mask_indices": [1]},
@@ -156,7 +162,7 @@ def public_transform_names() -> tuple[str, ...]:
 def _route_for_transform(name: str, transform_cls: type[BasicTransform]) -> str:
     if name in DEDICATED_TENSOR_BENCHMARK_TRANSFORMS:
         return "dedicated_tensor"
-    if issubclass(transform_cls, Transform3D):
+    if issubclass(transform_cls, (Transform3D, VolumeOnlyTransform)):
         return "volume"
     if name in BBOX_ROUTE_TRANSFORMS:
         return "bboxes"

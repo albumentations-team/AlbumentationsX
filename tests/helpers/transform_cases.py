@@ -572,6 +572,15 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.Pad3D, {"padding": 10}],
+    [
+        A.Anisotropy3D,
+        {
+            "axes": (0, 2),
+            "num_axes_range": (2, 2),
+            "downscale_factor_range": (2.0, 2.0),
+            "antialias": False,
+        },
+    ],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
     [
@@ -1195,6 +1204,7 @@ _REFERENCE_METADATA_KEYS = {
     A.PixelDistributionAdaptation: "pda_metadata",
 }
 _EXACT_TRANSFORMS = {
+    A.Anisotropy3D,
     A.Blur,
     A.CropAndPad,
     A.ExposureMatching,
@@ -1214,7 +1224,7 @@ def _case_data(
     transform_cls: type[A.BasicTransform],
     init_kwargs: Mapping[str, Any],
 ) -> tuple[ContractDataFactory, ContractContextFactory, dict[str, Any], frozenset[str]]:
-    if issubclass(transform_cls, A.Transform3D):
+    if issubclass(transform_cls, (A.Transform3D, A.VolumeOnlyTransform)):
         return make_volume_data, make_empty_context, {}, frozenset()
     if transform_cls in _BBOX_TRANSFORMS:
         compose_kwargs = {

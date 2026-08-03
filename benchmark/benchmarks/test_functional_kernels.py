@@ -52,6 +52,7 @@ FUNCTIONAL_GEOMETRY_ANNOTATION_COUNTS: Mapping[str, tuple[int, ...]] = {
     "keypoints_affine": (10, 100),
 }
 FUNCTIONAL_3D_KERNELS = (
+    "anisotropy_3d",
     "crop3d",
     "pad_3d_with_params",
     "cutout3d",
@@ -413,6 +414,10 @@ def _call_pad_3d_with_params(benchmark: Any) -> np.ndarray:
     return f3d.pad_3d_with_params(benchmark.volume, (1, 1, 2, 2, 2, 2), 0)
 
 
+def _call_anisotropy_3d(benchmark: Any) -> np.ndarray:
+    return f3d.anisotropy_3d(benchmark.volume, benchmark.anisotropy_downsample_shape, antialias=True)
+
+
 def _call_cutout3d(benchmark: Any) -> np.ndarray:
     return f3d.cutout3d(benchmark.volume, benchmark.holes, 0)
 
@@ -430,6 +435,7 @@ def _call_swap_tiles_on_volume(benchmark: Any) -> np.ndarray:
 
 
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
+    "anisotropy_3d": _call_anisotropy_3d,
     "crop3d": _call_crop3d,
     "pad_3d_with_params": _call_pad_3d_with_params,
     "cutout3d": _call_cutout3d,
@@ -552,6 +558,7 @@ class TimeFunctional3DKernels:
         depth, height, width = VOLUME_SIZES[size_name]
         self.name = name
         self.volume = make_volume(size_name, 1, dtype_from_name(dtype_name))
+        self.anisotropy_downsample_shape = (max(1, depth // 2), height, max(1, width // 2))
         self.crop_coords = (1, depth - 1, height // 4, height * 3 // 4, width // 4, width * 3 // 4)
         self.holes = np.array(
             [[1, height // 4, width // 4, min(depth - 1, 4), height // 2, width // 2]],

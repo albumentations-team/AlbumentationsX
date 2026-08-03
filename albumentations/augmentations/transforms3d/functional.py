@@ -9,10 +9,61 @@ specifically designed for 3D data.
 import random
 from typing import Literal, cast
 
+import cv2
 import numpy as np
+import torch
+from albucore import resize3d
 
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
+
+
+def get_anisotropy_downsample_shape(
+    spatial_shape: tuple[int, int, int],
+    axes: tuple[int, ...],
+    downscale_factor: float,
+) -> tuple[int, int, int]:
+    """Derive an anisotropic intermediate shape by scaling selected axes while retaining non-selected axes, ensuring
+    every requested spatial dimension remains valid.
+    """
+    return cast(
+        "tuple[int, int, int]",
+        tuple(
+            max(1, round(axis_size / downscale_factor)) if axis_index in axes else axis_size
+            for axis_index, axis_size in enumerate(spatial_shape)
+        ),
+    )
+
+
+def anisotropy_3d(
+    volume: VolumeType | torch.Tensor,
+    downsample_shape: tuple[int, int, int],
+    antialias: bool,
+) -> VolumeType | torch.Tensor:
+    """Simulate thicker or lower-resolution volume acquisition by shrinking selected spatial axes and restoring the
+    original shape for 3D robustness training.
+
+    Both routes delegate to Albucore `resize3d`, which resizes only spatial axes and preserves the input representation.
+    NumPy applies antialiasing while shrinking; PyTorch does not yet provide 5D trilinear antialiasing, so Tensor input
+    uses the non-antialiased native route until upstream support is available.
+    """
+    source_shape = cast(
+        "tuple[int, int, int]",
+        tuple(volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape[:3],
+    )
+    if source_shape == downsample_shape:
+        return volume
+
+    is_channel_less_numpy_volume = isinstance(volume, np.ndarray) and volume.ndim == NUM_VOLUME_DIMENSIONS - 1
+    working_volume = volume[..., np.newaxis] if is_channel_less_numpy_volume else volume
+    downsampled = resize3d(
+        working_volume,
+        downsample_shape,
+        interpolation=cv2.INTER_LINEAR,
+        antialias=antialias and not isinstance(volume, torch.Tensor),
+    )
+    restored = resize3d(downsampled, source_shape, interpolation=cv2.INTER_LINEAR)
+    return restored[..., 0] if is_channel_less_numpy_volume else restored
 
 
 @handle_empty_array("keypoints")

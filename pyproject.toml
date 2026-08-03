@@ -126,7 +126,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "albucore==0.2.9",
+  "albucore==0.2.10",
   "numkong!=7.7.1",
   "numpy>=2.2.6",
   "pydantic>=2.12.4",

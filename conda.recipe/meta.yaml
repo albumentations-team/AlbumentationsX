@@ -34,7 +34,7 @@ requirements:
     - pydantic>=2.12.4
     - typing-extensions>=4.9.0
     - opencv-python-headless>=5.0.0.93
-    - albucore==0.2.9
+    - albucore==0.2.10
     - numkong!=7.7.1
     - pytorch>=2.13.0
 

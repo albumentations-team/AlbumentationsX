@@ -36,7 +36,15 @@ from .type_definitions import ALL_TARGETS, ImageType, StackedMasks4D, Targets, V
 from .utils import format_args
 from .utils import get_image_data as _get_image_data_impl
 
-__all__ = ["BasicTransform", "CustomTransformsApplyMixin", "DualTransform", "ImageOnlyTransform", "NoOp", "Transform3D"]
+__all__ = [
+    "BasicTransform",
+    "CustomTransformsApplyMixin",
+    "DualTransform",
+    "ImageOnlyTransform",
+    "NoOp",
+    "Transform3D",
+    "VolumeOnlyTransform",
+]
 
 
 class Interpolation:
@@ -1420,6 +1428,29 @@ class Transform3D(DualTransform):
             "volume": self.apply_to_volume,
             "mask3d": self.apply_to_mask3d,
             "keypoints": self.apply_to_keypoints,
+            "user_data": self.apply_to_user_data,
+        }
+
+
+class VolumeOnlyTransform(BasicTransform):
+    """Provide a base for volume-intensity transforms that leave masks and keypoints untouched, keeping acquisition
+    artifacts separate from label geometry changes.
+
+    Unlike `Transform3D`, subclasses do not dispatch to `mask3d` or
+    `keypoints`. Compose therefore preserves those targets unchanged, which
+    is appropriate for acquisition and photometric artifacts that do not alter
+    label geometry.
+    """
+
+    _targets = (Targets.VOLUME,)
+
+    def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
+        raise NotImplementedError
+
+    @property
+    def targets(self) -> dict[str, Callable[..., Any]]:
+        return {
+            "volume": self.apply_to_volume,
             "user_data": self.apply_to_user_data,
         }
 

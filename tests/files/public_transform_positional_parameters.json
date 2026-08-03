@@ -37,6 +37,7 @@
   "ExposureMatching": ["target_mean_range", "gain_range", "p"],
   "FDA": ["beta_range", "metadata_key", "p"],
   "FancyPCA": ["alpha", "p"],
+  "Flip3D": ["axes", "flip_axes", "p"],
   "FilmGrain": ["intensity_range", "grain_size_range", "p"],
   "FrequencyMasking": ["freq_mask_param", "p"],
   "FromFloat": ["dtype", "max_value", "p"],

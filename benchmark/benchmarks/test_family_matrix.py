@@ -258,6 +258,7 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "coarse_dropout3d": lambda: albumentations.CoarseDropout3D(p=1.0),
     "grid_shuffle3d": lambda: albumentations.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0),
     "cubic_symmetry": lambda: albumentations.CubicSymmetry(p=1.0),
+    "flip3d": lambda: albumentations.Flip3D(flip_axes=(0, 1, 2), p=1.0),
     "random_rotate90_3d": lambda: albumentations.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
 }
 

@@ -24,6 +24,7 @@ __all__ = [
     "CenterCrop3D",
     "CoarseDropout3D",
     "CubicSymmetry",
+    "Flip3D",
     "GridShuffle3D",
     "Pad3D",
     "PadIfNeeded3D",
@@ -36,6 +37,7 @@ AxisIndex3D = Literal[0, 1, 2]
 AxisPair3D = tuple[AxisIndex3D, AxisIndex3D]
 RotationCount3D = Literal[0, 1, 2, 3]
 DEFAULT_ROTATION_AXIS_PAIRS: tuple[AxisPair3D, ...] = ((0, 1), (0, 2), (1, 2))
+DEFAULT_FLIP_AXES: tuple[AxisIndex3D, ...] = (0, 1, 2)
 
 
 def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
@@ -1259,6 +1261,121 @@ class CoarseDropout3D(Transform3D):
         if processor is None or not processor.params.remove_invisible:
             return keypoints
         return f3d.filter_keypoints_in_holes3d(keypoints, holes)
+
+
+class Flip3D(Transform3D):
+    """Reflect a volume independently across depth, height, and width voxel-index axes while retaining its shape and
+    channel layout.
+
+    In random mode, each allowed axis is independently reflected. Set `flip_axes` to a fixed subset for reversible
+    test-time augmentation; reflections are self-inverse. This is a voxel-index reflection only: it does not update
+    affine metadata or perform a physical-space reorientation.
+
+    Args:
+        axes (tuple[int, ...]): Non-empty spatial axes that random mode may flip, in `(depth, height, width)` order.
+            Default: `(0, 1, 2)`.
+        flip_axes (tuple[int, ...] | None): Fixed subset of `axes` to reflect for deterministic test-time augmentation.
+            Default: None.
+        p (float): Probability of applying the transform. Default: 1.0.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> volume = np.arange(2 * 3 * 5, dtype=np.uint8).reshape(2, 3, 5, 1)
+        >>> transform = A.Flip3D(flip_axes=(0, 2), p=1.0)
+        >>> result = transform(volume=volume)
+        >>> result["volume"].shape
+        (2, 3, 5, 1)
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+
+    class InitSchema(BaseTransformInitSchema):
+        axes: tuple[AxisIndex3D, ...]
+        flip_axes: tuple[AxisIndex3D, ...] | None
+
+        @model_validator(mode="after")
+        def _validate_flip_config(self) -> Self:
+            if not self.axes:
+                raise ValueError("axes must contain at least one spatial axis")
+            if len(self.axes) != len(set(self.axes)):
+                raise ValueError("axes must not contain duplicate spatial axes")
+            if self.flip_axes is not None:
+                if not self.flip_axes:
+                    raise ValueError("flip_axes must contain at least one spatial axis")
+                if len(self.flip_axes) != len(set(self.flip_axes)):
+                    raise ValueError("flip_axes must not contain duplicate spatial axes")
+                if not set(self.flip_axes).issubset(self.axes):
+                    raise ValueError("flip_axes must be a subset of axes")
+            return self
+
+    def __init__(
+        self,
+        axes: tuple[AxisIndex3D, ...] = DEFAULT_FLIP_AXES,
+        flip_axes: tuple[AxisIndex3D, ...] | None = None,
+        p: float = 1.0,
+    ):
+        super().__init__(p=p)
+        self.axes = axes
+        self.flip_axes = flip_axes
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        flip_axes = self.flip_axes
+        if flip_axes is None:
+            flip_axes = tuple(axis for axis in self.axes if self.py_random.random() < 0.5)
+            if not flip_axes:
+                flip_axes = (self.py_random.choice(self.axes),)
+
+        self.applied_config = {"flip_axes": flip_axes}
+        return {"flip_axes": flip_axes, "volume_shape": _get_volume_spatial_shape(data)}
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        flip_axes: tuple[AxisIndex3D, ...],
+        **params: Any,
+    ) -> VolumeType:
+        return cast("VolumeType", np.flip(volume, axis=flip_axes))
+
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType,
+        flip_axes: tuple[AxisIndex3D, ...],
+        **params: Any,
+    ) -> VolumeType:
+        return cast("VolumeType", np.flip(mask3d, axis=flip_axes))
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        flip_axes: tuple[AxisIndex3D, ...],
+        volume_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        return f3d.keypoints_flip_3d(keypoints, flip_axes, volume_shape)
+
+    def inverse(self) -> Self:
+        """Return a fixed self-inverse reflection for test-time augmentation when this transform has a deterministic
+        axis subset configured.
+
+        Raises:
+            ValueError: If this transform is configured in random mode.
+
+        """
+        if self.flip_axes is None:
+            raise ValueError("Cannot invert Flip3D in random mode. Set flip_axes for TTA.")
+        return type(self)(axes=self.axes, flip_axes=self.flip_axes, p=1.0)
 
 
 class CubicSymmetry(Transform3D):

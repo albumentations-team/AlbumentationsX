@@ -586,6 +586,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.CubicSymmetry, {}],
+    [A.Flip3D, {"axes": (0, 2)}],
     [A.RandomRotate90_3D, {"axis_pairs": ((0, 2),)}],
     [A.AtLeastOneBBoxRandomCrop, {"height": 80, "width": 80, "erosion_factor": 0.2}],
     [
@@ -1032,6 +1033,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("fixed-element", A.RandomRotate90, {"group_element": "r90"}),
     ("subset-elements", A.RandomRotate90, {"group_elements": ("r90", "r270")}),
     ("fixed-axis-rotation", A.RandomRotate90_3D, {"axis_pair": (0, 2), "group_element": "r90"}),
+    ("fixed-axes", A.Flip3D, {"flip_axes": (0, 2)}),
     ("anisotropic-range", A.RandomScale, {"scale_range": {"x": (-0.2, 0.3), "y": (-0.1, 0.15)}}),
     ("downscale-aware", A.RandomScale, {"mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"}),
     ("variable-intensity", A.RandomShadow, {"shadow_intensity_range": (0.2, 0.7)}),
@@ -1196,6 +1198,7 @@ _EXACT_TRANSFORMS = {
     A.Blur,
     A.CropAndPad,
     A.ExposureMatching,
+    A.Flip3D,
     A.HorizontalFlip,
     A.NoOp,
     A.Pad,

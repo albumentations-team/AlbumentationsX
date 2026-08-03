@@ -708,60 +708,39 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         return params
 
-    # Maps canonical shape-bearing target name -> callable extracting the raw shape tuple
-    # used by get_params_dependent_on_data implementations. Order encodes lookup priority.
-    _SHAPE_TARGETS_TUPLE: ClassVar[tuple[tuple[str, Callable[[Any], tuple[int, ...]]], ...]] = (
-        ("image", lambda v: v.shape),
-        ("images", lambda v: v.shape[1:]),
-        ("volume", lambda v: v.shape[1:]),
-        ("mask", lambda v: v.shape),
-        ("masks", lambda v: v.shape[1:]),
-        ("mask3d", lambda v: v.shape[1:]),
-    )
-
     def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
-        """Return the raw .shape tuple of the first image/mask/volume entry in `data`,
-        resolving aliases via `_additional_targets` (priority from `_SHAPE_TARGETS_TUPLE`).
-
-        Returns None if nothing matches. Aliased keys like
-        `{'custom_image_key': 'image'}` resolve to their canonical role.
+        """Return the raw canonical spatial shape using the layout convention expected by every data-aware
+        transform parameter sampler.
         """
-        # Resolve canonical target -> user key, picking canonical when both present
-        # and otherwise the first alias seen.
-        resolved: dict[str, str] = {}
-        target_set = {name for name, _ in self._SHAPE_TARGETS_TUPLE}
-        for data_key, value in data.items():
-            target = self._additional_targets.get(data_key, data_key)
-            if target not in target_set or value is None:
-                continue
-            if target not in resolved or data_key == target:
-                resolved[target] = data_key
-
-        for target, extractor in self._SHAPE_TARGETS_TUPLE:
-            chosen = resolved.get(target)
-            if chosen is None:
-                continue
-            value = data[chosen]
-            if isinstance(value, torch.Tensor):
-                if target == "image":
-                    return value.shape[1], value.shape[2], value.shape[0]
-                if target in {"images", "volume"}:
-                    return value.shape[2], value.shape[3], value.shape[0]
-            return extractor(value)
+        if (image := data.get("image")) is not None:
+            if isinstance(image, torch.Tensor):
+                return image.shape[1], image.shape[2], image.shape[0]
+            return image.shape
+        if (images := data.get("images")) is not None:
+            if isinstance(images, torch.Tensor):
+                return images.shape[2], images.shape[3], images.shape[0]
+            return images.shape[1:]
+        if (volume := data.get("volume")) is not None:
+            if isinstance(volume, torch.Tensor):
+                return volume.shape[2], volume.shape[3], volume.shape[0]
+            return volume.shape[1:]
+        if (mask := data.get("mask")) is not None:
+            return mask.shape
+        if (masks := data.get("masks")) is not None:
+            return masks.shape[1:]
+        if (mask3d := data.get("mask3d")) is not None:
+            return mask3d.shape[1:]
         return None
 
     def get_image_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Return image metadata (dtype, height, width, num_channels) for the first match,
-        resolving aliases via `self._additional_targets` (drop-in for albucore helper).
-
-        Mirrors the contract of the previous `albucore.get_image_data` helper but
-        resolves aliased keys (e.g. `add_targets({'custom_image_key': 'image'})`) first.
+        """Return dtype, spatial dimensions, and channel count from the first canonical image, image batch, or
+        volume for parameter sampling.
 
         Raises:
             ValueError: If no valid image/volume data is present in `data`.
 
         """
-        return _get_image_data_impl(data, self._additional_targets)
+        return _get_image_data_impl(data)
 
     def _add_transform_specific_params(self, params: dict[str, Any]) -> None:
         """Add transform-specific parameters to params dict (interpolation, fill, fill_mask).

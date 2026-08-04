@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as torch_f
 
 import albumentations as A
+from albumentations.augmentations.transforms3d import functional as f3d
 from tests.conftest import RECTANGULAR_UINT8_IMAGE
 from tests.utils import (
     get_primary_2d_transform_params,
@@ -106,15 +107,29 @@ def test_resize_3d_supports_cpu_tensor_volume():
 def test_resize_3d_scales_xyz_keypoints():
     volume = np.zeros((2, 4, 8, 1), dtype=np.uint8)
     keypoints = np.array([[2.0, 2.0, 1.0], [6.0, 1.0, 0.0]], dtype=np.float32)
+    keypoint_labels = [7, 9]
     transform = A.Compose(
         [A.Resize3D(size=(4, 2, 16), p=1.0)],
-        keypoint_params=A.KeypointParams(coord_format="xyz"),
+        keypoint_params=A.KeypointParams(coord_format="xyz", label_fields=["keypoint_labels"]),
         strict=True,
     )
 
-    result = transform(volume=volume, keypoints=keypoints)
+    result = transform(volume=volume, keypoints=keypoints, keypoint_labels=keypoint_labels)
 
     np.testing.assert_allclose(result["keypoints"], [[4.0, 1.0, 2.0], [12.0, 0.5, 0.0]])
+    assert result["keypoint_labels"] == keypoint_labels
+
+
+def test_resize_3d_preserves_keypoint_attributes_after_xyz_coordinates():
+    keypoints = np.array([[2.0, 2.0, 1.0, 7.0, 11.0], [6.0, 1.0, 0.0, 9.0, 13.0]], dtype=np.float32)
+
+    result = f3d.keypoints_scale_3d(
+        keypoints,
+        source_shape=(2, 4, 8),
+        target_shape=(4, 2, 16),
+    )
+
+    np.testing.assert_array_equal(result, [[4.0, 1.0, 2.0, 7.0, 11.0], [12.0, 0.5, 0.0, 9.0, 13.0]])
 
 
 @pytest.mark.parametrize("interpolation", [cv2.INTER_CUBIC, cv2.INTER_AREA])

@@ -360,6 +360,7 @@ Where:
 | [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)         | ✓      | ✓      | ✓         |
 | [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)           | ✓      | ✓      | ✓         |
 | [RandomRotate90_3D](https://albumentations.ai/explore/transform/RandomRotate90_3D/) | ✓      | ✓      | ✓         |
+| [Resize3D](https://albumentations.ai/explore/transform/Resize3D/)                   | ✓      | ✓      | ✓         |
 
 ## A few more examples of **augmentations**
 

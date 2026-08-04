@@ -3,6 +3,8 @@ from typing import Any
 import cv2
 import numpy as np
 import pytest
+import torch
+import torch.nn.functional as torch_f
 
 import albumentations as A
 from tests.conftest import RECTANGULAR_UINT8_IMAGE
@@ -11,6 +13,114 @@ from tests.utils import (
     get_primary_3d_transform_params,
     get_primary_dual_transform_params,
 )
+
+
+@pytest.mark.parametrize(
+    ("source_shape", "size"),
+    [
+        ((3, 4, 5, 1), (6, 2, 1)),
+        ((1, 4, 5, 3), (3, 8, 10)),
+        ((3, 5, 4, 9), (1, 10, 8)),
+    ],
+)
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_resize_3d_preserves_shape_dtype_and_mask_labels(source_shape, size, dtype):
+    rng = np.random.default_rng(137)
+    if dtype == np.uint8:
+        volume = rng.integers(0, 256, source_shape, dtype=dtype)
+    else:
+        volume = rng.random(source_shape, dtype=dtype)
+    mask3d = rng.integers(0, 4, source_shape[:3], dtype=np.uint8)
+
+    transform = A.Compose([A.Resize3D(size=size, p=1.0)], strict=True)
+    result = transform(volume=volume, mask3d=mask3d)
+
+    assert result["volume"].shape == (*size, source_shape[-1])
+    assert result["mask3d"].shape == size
+    assert result["volume"].dtype == dtype
+    assert result["mask3d"].dtype == mask3d.dtype
+    assert set(np.unique(result["mask3d"])).issubset(set(np.unique(mask3d)))
+    if dtype == np.uint8:
+        assert result["volume"].min() >= 0
+        assert result["volume"].max() <= 255
+
+
+def test_resize_3d_identity_and_integer_nearest_scale_are_exact():
+    volume = np.arange(8, dtype=np.uint8).reshape(2, 2, 2, 1)
+    mask3d = np.arange(8, dtype=np.uint8).reshape(2, 2, 2)
+
+    identity = A.Compose([A.Resize3D(size=(2, 2, 2), p=1.0)], strict=True)
+    identity_result = identity(volume=volume, mask3d=mask3d)
+    np.testing.assert_array_equal(identity_result["volume"], volume)
+    np.testing.assert_array_equal(identity_result["mask3d"], mask3d)
+
+    transform = A.Compose(
+        [
+            A.Resize3D(
+                size=(4, 4, 4),
+                interpolation=cv2.INTER_NEAREST,
+                mask_interpolation=cv2.INTER_NEAREST,
+                p=1.0,
+            ),
+        ],
+        strict=True,
+    )
+    result = transform(volume=volume, mask3d=mask3d)
+    expected_volume = np.repeat(np.repeat(np.repeat(volume, 2, axis=0), 2, axis=1), 2, axis=2)
+    expected_mask3d = np.repeat(np.repeat(np.repeat(mask3d, 2, axis=0), 2, axis=1), 2, axis=2)
+    np.testing.assert_array_equal(result["volume"], expected_volume)
+    np.testing.assert_array_equal(result["mask3d"], expected_mask3d)
+
+
+def test_resize_3d_matches_trilinear_reference():
+    volume = np.random.default_rng(137).random((3, 4, 5, 3), dtype=np.float32)
+    size = (5, 3, 7)
+    expected = (
+        torch_f.interpolate(
+            torch.from_numpy(volume).permute(3, 0, 1, 2).unsqueeze(0),
+            size=size,
+            mode="trilinear",
+            align_corners=False,
+        )
+        .squeeze(0)
+        .permute(1, 2, 3, 0)
+        .numpy()
+    )
+
+    result = A.Compose([A.Resize3D(size=size, p=1.0)], strict=True)(volume=volume)["volume"]
+
+    np.testing.assert_allclose(result, expected, rtol=2e-4, atol=3e-5)
+
+
+def test_resize_3d_supports_cpu_tensor_volume():
+    volume = np.random.default_rng(137).random((3, 4, 5, 2), dtype=np.float32)
+    tensor = torch.from_numpy(np.ascontiguousarray(volume.transpose(3, 0, 1, 2)))
+
+    result = A.Compose([A.Resize3D(size=(5, 3, 7), p=1.0)], strict=True)(volume=tensor)["volume"]
+
+    assert isinstance(result, torch.Tensor)
+    assert result.shape == (2, 5, 3, 7)
+    assert result.dtype == torch.float32
+
+
+def test_resize_3d_scales_xyz_keypoints():
+    volume = np.zeros((2, 4, 8, 1), dtype=np.uint8)
+    keypoints = np.array([[2.0, 2.0, 1.0], [6.0, 1.0, 0.0]], dtype=np.float32)
+    transform = A.Compose(
+        [A.Resize3D(size=(4, 2, 16), p=1.0)],
+        keypoint_params=A.KeypointParams(coord_format="xyz"),
+        strict=True,
+    )
+
+    result = transform(volume=volume, keypoints=keypoints)
+
+    np.testing.assert_allclose(result["keypoints"], [[4.0, 1.0, 2.0], [12.0, 0.5, 0.0]])
+
+
+@pytest.mark.parametrize("interpolation", [cv2.INTER_CUBIC, cv2.INTER_AREA])
+def test_resize_3d_rejects_unsupported_interpolation(interpolation):
+    with pytest.raises(ValueError, match="Input should be 0 or 1"):
+        A.Resize3D(size=(2, 3, 4), interpolation=interpolation)
 
 
 @pytest.mark.parametrize(
@@ -916,6 +1026,7 @@ def test_center_crop3d_keypoints(
             A.RandomCrop3D: {"size": (4, 4, 4)},
             A.CenterCrop3D: {"size": (4, 4, 4)},
             A.CubicSymmetry: {},
+            A.Resize3D: {"size": (12, 12, 12), "interpolation": cv2.INTER_NEAREST},
         },
         except_augmentations={
             A.CoarseDropout3D,

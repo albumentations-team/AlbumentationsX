@@ -11,6 +11,7 @@ from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
 import torch
+from albucore import resize3d
 from pydantic import AfterValidator, field_validator, model_validator
 from typing_extensions import Self
 
@@ -19,7 +20,15 @@ from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D, VolumeOnlyTransform
-from albumentations.core.type_definitions import C4_INVERSE, C4GroupElement, Targets, VolumeType, c4_group_elements
+from albumentations.core.type_definitions import (
+    C4_INVERSE,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
+    C4GroupElement,
+    Targets,
+    VolumeType,
+    c4_group_elements,
+)
 
 __all__ = [
     "Anisotropy3D",
@@ -32,6 +41,7 @@ __all__ = [
     "PadIfNeeded3D",
     "RandomCrop3D",
     "RandomRotate90_3D",
+    "Resize3D",
 ]
 
 NUM_DIMENSIONS = 3
@@ -172,6 +182,101 @@ class Anisotropy3D(VolumeOnlyTransform):
         **params: Any,
     ) -> VolumeType:
         return cast("VolumeType", f3d.anisotropy_3d(volume, downsample_shape, self.antialias))
+
+
+class Resize3D(Transform3D):
+    """Resize a volume to a fixed `(depth, height, width)` shape, preserving all\
+    channels, dtype, and its public layout intact.
+
+    `Resize3D` resamples all three spatial axes together; depth is never treated as a
+    batch axis. Intensity volumes and categorical masks use independently configurable
+    interpolation. The routed Albucore backend supports only linear and nearest-neighbor
+    interpolation, ensuring the same public contract for NumPy and CPU Tensor inputs.
+
+    Args:
+        size (tuple[int, int, int]): Target spatial shape in `(depth, height, width)` order.
+        interpolation (Literal[0, 1]): Interpolation for volumes: `cv2.INTER_LINEAR` or
+            `cv2.INTER_NEAREST`. Default: `cv2.INTER_LINEAR`.
+        mask_interpolation (Literal[0, 1]): Interpolation for `mask3d`:
+            `cv2.INTER_LINEAR` or `cv2.INTER_NEAREST`. Default: `cv2.INTER_NEAREST`.
+        p (float): Probability of applying the transform. Default: `1.0`.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Notes:
+        - NumPy volumes use channel-last `(D, H, W, C)` layout. CPU Tensor volumes
+          use channel-first `(C, D, H, W)` layout.
+        - `uint8` output preserves dtype; linear resampling rounds and saturates to
+          `[0, 255]`. Float32 output remains float32.
+        - Keypoints use `(x, y, z)` order and scale from the voxel-grid origin by
+          `(W2 / W1, H2 / H1, D2 / D1)`, matching the 2D resize convention.
+        - This transform changes voxel-grid coordinates only. It does not update physical
+          voxel spacing or orientation metadata.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import cv2
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).random((16, 64, 96, 1), dtype=np.float32)
+        >>> mask3d = np.zeros((16, 64, 96), dtype=np.uint8)
+        >>> transform = A.Compose([
+        ...     A.Resize3D(
+        ...         size=(32, 128, 128),
+        ...         interpolation=cv2.INTER_LINEAR,
+        ...         mask_interpolation=cv2.INTER_NEAREST,
+        ...     ),
+        ... ])
+        >>> result = transform(volume=volume, mask3d=mask3d)
+        >>> result["volume"].shape, result["mask3d"].shape
+        ((32, 128, 128, 1), (32, 128, 128))
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"volume"})
+
+    class InitSchema(BaseTransformInitSchema):
+        size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
+        interpolation: Literal[0, 1]
+        mask_interpolation: Literal[0, 1]
+
+    def __init__(
+        self,
+        size: tuple[int, int, int],
+        interpolation: Literal[0, 1] = CV2_INTER_LINEAR,
+        mask_interpolation: Literal[0, 1] = CV2_INTER_NEAREST,
+        p: float = 1.0,
+    ):
+        super().__init__(p=p)
+        self.size = size
+        self.interpolation = interpolation
+        self.mask_interpolation = mask_interpolation
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, tuple[int, int, int]]:
+        return {"source_shape": _get_volume_spatial_shape(data)}
+
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
+
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
+        return cast("VolumeType", resize3d(mask3d, self.size, self.mask_interpolation))
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        source_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        return f3d.keypoints_scale_3d(keypoints, source_shape, self.size)
 
 
 class _BaseCropAndPad3DInitSchema(BaseTransformInitSchema):

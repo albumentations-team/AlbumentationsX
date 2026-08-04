@@ -8,6 +8,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+from albucore import resize3d
 
 from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.geometric import functional as fgeometric
@@ -53,6 +54,7 @@ FUNCTIONAL_GEOMETRY_ANNOTATION_COUNTS: Mapping[str, tuple[int, ...]] = {
 }
 FUNCTIONAL_3D_KERNELS = (
     "anisotropy_3d",
+    "resize3d",
     "crop3d",
     "pad_3d_with_params",
     "cutout3d",
@@ -418,6 +420,10 @@ def _call_anisotropy_3d(benchmark: Any) -> np.ndarray:
     return f3d.anisotropy_3d(benchmark.volume, benchmark.anisotropy_downsample_shape, antialias=True)
 
 
+def _call_resize3d(benchmark: Any) -> np.ndarray:
+    return resize3d(benchmark.volume, benchmark.resize_shape, cv2.INTER_LINEAR)
+
+
 def _call_cutout3d(benchmark: Any) -> np.ndarray:
     return f3d.cutout3d(benchmark.volume, benchmark.holes, 0)
 
@@ -436,6 +442,7 @@ def _call_swap_tiles_on_volume(benchmark: Any) -> np.ndarray:
 
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "anisotropy_3d": _call_anisotropy_3d,
+    "resize3d": _call_resize3d,
     "crop3d": _call_crop3d,
     "pad_3d_with_params": _call_pad_3d_with_params,
     "cutout3d": _call_cutout3d,
@@ -559,6 +566,7 @@ class TimeFunctional3DKernels:
         self.name = name
         self.volume = make_volume(size_name, 1, dtype_from_name(dtype_name))
         self.anisotropy_downsample_shape = (max(1, depth // 2), height, max(1, width // 2))
+        self.resize_shape = (max(1, depth * 3 // 2), max(1, height * 3 // 4), max(1, width * 3 // 2))
         self.crop_coords = (1, depth - 1, height // 4, height * 3 // 4, width // 4, width * 3 // 4)
         self.holes = np.array(
             [[1, height // 4, width // 4, min(depth - 1, 4), height // 2, width // 2]],

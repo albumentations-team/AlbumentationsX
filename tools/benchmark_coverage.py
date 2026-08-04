@@ -227,6 +227,7 @@ VOLUME_ALIAS_TO_TRANSFORM = {
     "pad_if_needed3d": "PadIfNeeded3D",
     "random_crop3d": "RandomCrop3D",
     "random_rotate90_3d": "RandomRotate90_3D",
+    "resize3d": "Resize3D",
 }
 
 BATCH_ALIAS_TO_TRANSFORM = {
@@ -280,6 +281,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "RandomGamma",
         "RandomToneCurve",
         "Resize",
+        "Resize3D",
         "Solarize",
         "ToGray",
         "Transpose",
@@ -297,6 +299,7 @@ MEMORY_BENCHMARKS = (
     "peakmem_resize_large_rgb",
     "peakmem_spatter_batch_large_rgb",
     "peakmem_volume_pad_medium",
+    "peakmem_volume_resize_medium",
 )
 
 MEMORY_COVERED_TRANSFORMS = frozenset(
@@ -310,12 +313,14 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
         "PadIfNeeded3D",
         "RandomBrightnessContrast",
         "Resize",
+        "Resize3D",
         "Spatter",
     },
 )
 
 PYTORCH_TERMINAL_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
-PYTORCH_NATIVE_TENSOR_TRANSFORMS = frozenset({"Anisotropy3D", "Transpose"})
+PYTORCH_NATIVE_VOLUME_TRANSFORMS = frozenset({"Anisotropy3D", "Resize3D"})
+PYTORCH_NATIVE_TENSOR_TRANSFORMS = PYTORCH_NATIVE_VOLUME_TRANSFORMS | frozenset({"Transpose"})
 PYTORCH_TENSOR_TRANSFORMS = PYTORCH_TERMINAL_TENSOR_TRANSFORMS | PYTORCH_NATIVE_TENSOR_TRANSFORMS
 PYTORCH_IMAGE_CASES = pytorch_tensor_benchmarks.IMAGE_CASES
 PYTORCH_VOLUME_CASES = pytorch_tensor_benchmarks.VOLUME_CASES
@@ -349,6 +354,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "RandomGamma": ("gamma_transform",),
     "RandomToneCurve": ("move_tone_curve_shared", "move_tone_curve_per_channel"),
     "Resize": ("resize", "resize_bboxes"),
+    "Resize3D": ("resize3d",),
     "Solarize": ("solarize",),
     "ToGray": ("to_gray",),
     "Transpose": ("transpose",),
@@ -366,6 +372,7 @@ MEMORY_CASES_BY_TRANSFORM = {
     "PadIfNeeded3D": ("peakmem_volume_pad_medium",),
     "RandomBrightnessContrast": ("peakmem_batch_pipeline_medium_rgb",),
     "Resize": ("peakmem_resize_large_rgb",),
+    "Resize3D": ("peakmem_volume_resize_medium",),
     "Spatter": ("peakmem_spatter_batch_large_rgb",),
 }
 
@@ -394,6 +401,7 @@ ASV_BENCHMARKS = {
     "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
     "pytorch_tensor_native": "pytorch_benchmarks.test_tensor.TimeTensorNativeTranspose",
     "pytorch_tensor_native_3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeAnisotropy3D",
+    "pytorch_tensor_native_resize3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeResize3D",
     "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
     "target_matrix": "benchmarks.test_family_matrix.TimeSpecialTargetMatrix.time_transform",
     "volumetric_matrix": "benchmarks.test_family_matrix.TimeVolumetricFullMatrix.time_transform",
@@ -532,7 +540,7 @@ def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
             required_layers=frozenset({"pytorch_tensor"}),
             reason="PyTorch Tensor transforms are benchmarked in the dedicated Tensor ASV lane",
         )
-    if name == "Anisotropy3D":
+    if name in PYTORCH_NATIVE_VOLUME_TRANSFORMS:
         return CoverageExpectation(
             required_layers=frozenset({"catalog_smoke", "direct_kernel", "pytorch_tensor", "volumetric_matrix"}),
             reason="the NumPy, direct kernel, and accepted CPU Tensor volume routes have dedicated evidence",
@@ -798,7 +806,7 @@ def _pytorch_tensor_scenario(case: Mapping[str, str], route: str, transform_name
         return {
             **_parse_pytorch_case(case["case_id"]),
             "scope": "tensor_native_compose",
-            "targets": ["mask3d", "volume"] if transform_name == "Anisotropy3D" else ["image"],
+            "targets": ["volume"] if transform_name in PYTORCH_NATIVE_VOLUME_TRANSFORMS else ["image"],
         }
     targets = ["mask3d", "volume"] if transform_name == "ToTensor3D" else ["image", "images", "mask", "masks"]
     return {
@@ -1160,15 +1168,19 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
             config="pytorch",
             layer="pytorch_tensor",
         )
-    for case_id in PYTORCH_NATIVE_VOLUME_CASES:
-        _add_asv_case(
-            cases,
-            "Anisotropy3D",
-            benchmark=ASV_BENCHMARKS["pytorch_tensor_native_3d"],
-            case_id=case_id,
-            config="pytorch",
-            layer="pytorch_tensor",
-        )
+    for transform_name, benchmark_name in {
+        "Anisotropy3D": "pytorch_tensor_native_3d",
+        "Resize3D": "pytorch_tensor_native_resize3d",
+    }.items():
+        for case_id in PYTORCH_NATIVE_VOLUME_CASES:
+            _add_asv_case(
+                cases,
+                transform_name,
+                benchmark=ASV_BENCHMARKS[benchmark_name],
+                case_id=case_id,
+                config="pytorch",
+                layer="pytorch_tensor",
+            )
     return {
         name: sorted(items, key=lambda item: (item["layer"], item["benchmark"], item["case_id"]))
         for name, items in cases.items()

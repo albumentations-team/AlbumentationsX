@@ -255,7 +255,7 @@ def rotate90_3d(
     if rot90_count == 0:
         return volume
 
-    return cast("VolumeType", np.rot90(volume, k=rot90_count, axes=axis_pair))
+    return np.rot90(volume, k=rot90_count, axes=axis_pair)
 
 
 def keypoints_rotate90_3d(

@@ -9,7 +9,7 @@ specifically designed for 3D data.
 import math
 import random
 from collections.abc import Mapping
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import cv2
 import numpy as np
@@ -84,6 +84,38 @@ def create_affine_transformation_matrix_3d(
     )
 
 
+def _prepare_numpy_affine_3d_volume(
+    volume: VolumeType,
+    is_mask: bool,
+) -> tuple[VolumeType, np.dtype[Any], bool, bool]:
+    """Prepare a NumPy volume for Albucore's affine router, adding a mask channel and promoting integer masks so
+    source dtype is restored after resampling.
+    """
+    is_channel_less = volume.ndim == NUM_VOLUME_DIMENSIONS - 1
+    working_volume = volume[..., np.newaxis] if is_channel_less else volume
+    original_dtype = working_volume.dtype
+    needs_mask_promotion = is_mask and original_dtype not in {np.dtype(np.uint8), np.dtype(np.float32)}
+    if needs_mask_promotion:
+        working_volume = working_volume.astype(np.float32)
+    return working_volume, original_dtype, is_channel_less, needs_mask_promotion
+
+
+def _prepare_tensor_affine_3d_volume(
+    volume: torch.Tensor,
+    is_mask: bool,
+) -> tuple[torch.Tensor, torch.dtype, bool, bool]:
+    """Prepare a CPU Tensor volume for Albucore's affine router, adding a mask channel and promoting integer masks
+    so source dtype is restored after resampling.
+    """
+    is_channel_less = volume.ndim == NUM_VOLUME_DIMENSIONS - 1
+    working_volume = volume.unsqueeze(0) if is_channel_less else volume
+    original_dtype = working_volume.dtype
+    needs_mask_promotion = is_mask and original_dtype not in {torch.uint8, torch.float32}
+    if needs_mask_promotion:
+        working_volume = working_volume.to(torch.float32)
+    return working_volume, original_dtype, is_channel_less, needs_mask_promotion
+
+
 def affine_3d(
     volume: VolumeType | torch.Tensor,
     matrix: np.ndarray,
@@ -100,22 +132,33 @@ def affine_3d(
     Albucore owns CPU Torch sampling and its matrix, interpolation, and border semantics. This adapter adds or removes
     the implicit channel required by channel-less masks and temporarily promotes non-native integer masks when needed.
     """
-    is_channel_less_numpy = isinstance(volume, np.ndarray) and volume.ndim == NUM_VOLUME_DIMENSIONS - 1
-    is_channel_less_tensor = isinstance(volume, torch.Tensor) and volume.ndim == NUM_VOLUME_DIMENSIONS - 1
     if isinstance(volume, np.ndarray):
-        working_volume = volume[..., np.newaxis] if is_channel_less_numpy else volume
-        original_numpy_dtype = working_volume.dtype
+        (
+            working_volume,
+            original_numpy_dtype,
+            is_channel_less_numpy,
+            needs_mask_promotion,
+        ) = _prepare_numpy_affine_3d_volume(
+            volume,
+            is_mask,
+        )
         original_tensor_dtype = None
-        needs_mask_promotion = is_mask and original_numpy_dtype not in {np.dtype(np.uint8), np.dtype(np.float32)}
-        if needs_mask_promotion:
-            working_volume = working_volume.astype(np.float32)
-    else:
-        working_volume = volume.unsqueeze(0) if is_channel_less_tensor else volume
+        is_channel_less_tensor = False
+    elif isinstance(volume, torch.Tensor):
+        (
+            working_volume,
+            original_tensor_dtype,
+            is_channel_less_tensor,
+            needs_mask_promotion,
+        ) = _prepare_tensor_affine_3d_volume(
+            volume,
+            is_mask,
+        )
         original_numpy_dtype = None
-        original_tensor_dtype = working_volume.dtype
-        needs_mask_promotion = is_mask and original_tensor_dtype not in {torch.uint8, torch.float32}
-        if needs_mask_promotion:
-            working_volume = working_volume.to(torch.float32)
+        is_channel_less_numpy = False
+    else:
+        msg = f"affine_3d expects a NumPy array or CPU torch.Tensor, got {type(volume).__name__}"
+        raise TypeError(msg)
 
     result = warp_affine3d(
         working_volume,

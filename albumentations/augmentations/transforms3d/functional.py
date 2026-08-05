@@ -6,6 +6,7 @@ algorithms for operations like padding, cropping, rotation, and other spatial ma
 specifically designed for 3D data.
 """
 
+import math
 import random
 from collections.abc import Mapping
 from typing import Literal, cast
@@ -39,12 +40,12 @@ def create_affine_transformation_matrix_3d(
     center_y = (height - 1.0) / 2.0
     center_z = (depth - 1.0) / 2.0
 
-    rotation_x_radians = np.deg2rad(rotate["x"])
-    rotation_y_radians = np.deg2rad(rotate["y"])
-    rotation_z_radians = np.deg2rad(rotate["z"])
-    cosine_x, sine_x = np.cos(rotation_x_radians), np.sin(rotation_x_radians)
-    cosine_y, sine_y = np.cos(rotation_y_radians), np.sin(rotation_y_radians)
-    cosine_z, sine_z = np.cos(rotation_z_radians), np.sin(rotation_z_radians)
+    rotation_x_radians = math.radians(rotate["x"])
+    rotation_y_radians = math.radians(rotate["y"])
+    rotation_z_radians = math.radians(rotate["z"])
+    cosine_x, sine_x = math.cos(rotation_x_radians), math.sin(rotation_x_radians)
+    cosine_y, sine_y = math.cos(rotation_y_radians), math.sin(rotation_y_radians)
+    cosine_z, sine_z = math.cos(rotation_z_radians), math.sin(rotation_z_radians)
 
     scale_matrix = np.diag((scale["x"], scale["y"], scale["z"], 1.0))
     rotation_x = np.array(

@@ -189,13 +189,13 @@ class Resize3D(Transform3D):
     channels, dtype, and its public layout intact.
 
     `Resize3D` resamples all three spatial axes together; depth is never treated as a
-    batch axis. Intensity volumes and categorical masks use independently configurable
+    batch axis. Single-volume intensity data and categorical masks use independently configurable
     interpolation. The routed Albucore backend supports only linear and nearest-neighbor
     interpolation, ensuring the same public contract for NumPy and CPU Tensor inputs.
 
     Args:
         size (tuple[int, int, int]): Target spatial shape in `(depth, height, width)` order.
-        interpolation (Literal[0, 1]): Interpolation for volumes: `cv2.INTER_LINEAR` or
+        interpolation (Literal[0, 1]): Interpolation for a volume: `cv2.INTER_LINEAR` or
             `cv2.INTER_NEAREST`. Default: `cv2.INTER_LINEAR`.
         mask_interpolation (Literal[0, 1]): Interpolation for `mask3d`:
             `cv2.INTER_LINEAR` or `cv2.INTER_NEAREST`. Default: `cv2.INTER_NEAREST`.
@@ -208,7 +208,7 @@ class Resize3D(Transform3D):
         uint8, float32
 
     Notes:
-        - NumPy volumes use channel-last `(D, H, W, C)` layout. CPU Tensor volumes
+        - NumPy volume data use channel-last `(D, H, W, C)` layout. CPU Tensor volume data
           use channel-first `(C, D, H, W)` layout.
         - `uint8` output preserves dtype; linear resampling rounds and saturates to
           `[0, 255]`. Float32 output remains float32.

@@ -235,7 +235,7 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
   - Single volume: `(D, H, W, C)`
 - Do not add compatibility branches for grayscale images shaped as `(H, W)` in transform `apply_*` methods or functional
   kernels used by `Compose`; normalize inputs before they reach transform logic.
-- It is fine to branch on `img.ndim` when selecting between image, image batch, volume, and 3D-mask batch logic. Do not
+- It is fine to branch on `img.ndim` when selecting between image, image-batch, and single-volume logic. Do not
   use `img.ndim` to infer whether a Compose image has channels.
 
 ### Handling Auxiliary Data via Metadata

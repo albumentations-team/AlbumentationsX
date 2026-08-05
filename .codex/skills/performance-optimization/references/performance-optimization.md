@@ -210,7 +210,7 @@ After removing work and comparing straight implementations, consider routing by:
 - uint8 versus float32;
 - scalar versus per-channel parameters;
 - 1, 3, 4, and high-channel inputs;
-- image, batch, volume, and batch-of-volumes rank;
+- image, image-batch, and single-volume rank;
 - contiguous versus strided input;
 - small versus large arrays;
 - dense versus sparse labels;
@@ -235,7 +235,7 @@ For Albucore, benchmark the public router, not only its private backend. Include
 Check these shared entry points before writing a local kernel:
 
 - `albucore.apply_uint8_lut` and `albucore.sz_lut` for benchmark-routed uint8 tables;
-- `albucore.stats` for `sum`, `mean`, `std`, and `mean_std` across images, batches, and volumes;
+- `albucore.stats` for `sum`, `mean`, `std`, and `mean_std` across supported array ranks;
 - Albucore arithmetic and weighted routers for add, multiply, normalize, power, blend, and fused multiply-add;
 - Albucore geometric and resize functions for channel-safe OpenCV routing;
 - `pairwise_distances_squared` for the routed small-set NumKong and larger NumPy paths.

@@ -912,9 +912,9 @@ class GaussianBlur(ImageOnlyTransform):
         )
 
     def _sample_3d_kernel_size(self, blur_range: tuple[int, int]) -> int:
-        if blur_range == (0, 0):
-            return 0
-        return fblur.sample_odd_from_range(self.py_random, *blur_range)
+        lower_bound, upper_bound = blur_range
+        kernel_size = lower_bound if lower_bound == upper_bound else self.py_random.randint(lower_bound, upper_bound)
+        return kernel_size + 1 if kernel_size > 1 and kernel_size % 2 == 0 else kernel_size
 
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         sigma = self.py_random.uniform(*self.sigma_range)

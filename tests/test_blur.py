@@ -288,6 +288,54 @@ def test_gaussian_blur_true_3d_matches_albucore(dtype: np.dtype, num_channels: i
     np.testing.assert_array_equal(result, expected)
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_gaussian_blur_true_3d_defaults_to_isotropic_kernel(dtype: np.dtype, num_channels: int) -> None:
+    rng = np.random.default_rng(137)
+    shape = (4, 7, 11, num_channels)
+    if dtype == np.uint8:
+        volume = rng.integers(0, 256, shape, dtype=np.uint8)
+    else:
+        volume = rng.random(shape, dtype=np.float32)
+    transform = A.Compose(
+        [
+            A.GaussianBlur(
+                blur_range=(5, 5),
+                sigma_range=(1.25, 1.25),
+                volume_mode="3d",
+                p=1.0,
+            ),
+        ],
+    )
+
+    result = transform(volume=volume)["volume"]
+    expected = gaussian_blur3d(volume, sigma=(1.25, 1.25, 1.25), kernel_size=(5, 5, 5))
+
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_gaussian_blur_true_3d_preserves_unit_spatial_kernel() -> None:
+    rng = np.random.default_rng(137)
+    volume = rng.integers(0, 256, (4, 7, 11, 3), dtype=np.uint8)
+    transform = A.Compose(
+        [
+            A.GaussianBlur(
+                blur_range=(1, 1),
+                sigma_range=(1.25, 1.25),
+                volume_mode="3d",
+                sigma_z_range=(0.75, 0.75),
+                blur_z_range=(3, 3),
+                p=1.0,
+            ),
+        ],
+    )
+
+    result = transform(volume=volume)["volume"]
+    expected = gaussian_blur3d(volume, sigma=(0.75, 1.25, 1.25), kernel_size=(3, 1, 1))
+
+    np.testing.assert_array_equal(result, expected)
+
+
 def test_gaussian_blur_volume_defaults_to_slice_wise_behavior() -> None:
     rng = np.random.default_rng(137)
     volume = rng.integers(0, 256, (4, 9, 13, 3), dtype=np.uint8)

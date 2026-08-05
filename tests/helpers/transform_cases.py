@@ -836,6 +836,15 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("wide-sigma", A.GaussianBlur, {"sigma_range": (0.2, 1.5)}),
     (
+        "true-3d-anisotropic",
+        A.GaussianBlur,
+        {
+            "volume_mode": "3d",
+            "sigma_z_range": (0.2, 1.5),
+            "blur_z_range": (3, 5),
+        },
+    ),
+    (
         "unnormalized-direct",
         A.GridDistortion,
         {

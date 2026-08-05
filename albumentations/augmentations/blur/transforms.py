@@ -2,10 +2,11 @@
 defocus, zoom). Each transform documents its parameters and behavior in Args and Examples.
 """
 
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
 from albucore import median_blur, reduce_sum
+from albucore.filter3d import gaussian_blur3d
 from pydantic import (
     Field,
     ValidationInfo,
@@ -24,7 +25,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType
+from albumentations.core.type_definitions import ImageType, VolumeType
 
 from . import functional as fblur
 
@@ -668,12 +669,13 @@ class ModeFilter(ImageOnlyTransform):
 
 
 class GaussianBlur(ImageOnlyTransform):
-    """Smooth an image with Gaussian blur to reduce noise and fine detail. Blur strength and
-    size are sampled independently on every call.
+    """Smooth images or a volume with a Gaussian kernel, including optional true 3D spatial filtering
+    for volumetric data with anisotropic depth resolution.
 
     This transform blurs the input image using a Gaussian filter with a random kernel size
     and sigma value. Gaussian blur is a widely used image processing technique that reduces
-    image noise and detail, creating a smoothing effect.
+    image noise and detail, creating a smoothing effect. Use 3D volume mode when medical
+    resolution changes affect depth as well as height and width.
 
     Args:
         sigma_range (tuple[float, float]): Inclusive range for the Gaussian kernel standard
@@ -685,6 +687,22 @@ class GaussianBlur(ImageOnlyTransform):
             three-pass extended-box approximation. Positive values use a discrete Gaussian
             kernel with the sampled size.
             Default: (0, 0)
+
+        volume_mode (Literal["slice", "3d"]): How to blur the `volume` target. `"slice"`
+            applies the 2D image kernel independently to each depth slice and preserves the
+            previous behavior. `"3d"` applies a separable kernel along depth, height, and width.
+            Default: "slice".
+
+        sigma_z_range (tuple[float, float] | None): Inclusive range for the depth-axis sigma
+            in `volume_mode="3d"`. `None` reuses the sampled `sigma_range` value, producing an
+            isotropic 3D blur. Set `(0, 0)` to leave the depth axis unblurred.
+            Default: None.
+
+        blur_z_range (tuple[int, int] | None): Inclusive range for the depth-axis kernel size
+            in `volume_mode="3d"`. `None` reuses the sampled `blur_range` value. `(0, 0)`
+            chooses Albucore's automatic kernel size from the depth sigma; other values are
+            sampled as positive odd sizes.
+            Default: None.
 
         p (float): Probability of applying the transform. Default: 0.5
 
@@ -703,6 +721,10 @@ class GaussianBlur(ImageOnlyTransform):
         - Float32 images use the same extended-box approximation without uint8 quantization.
         - Positive `blur_range` values select a discrete Gaussian kernel independently of
           sigma, so some size and sigma combinations can truncate the blur substantially.
+        - `volume_mode="3d"` uses `BORDER_REFLECT_101` along all spatial axes. It does not blur
+          channels, and a zero sigma skips its corresponding axis.
+        - In 3D mode, `sigma_range` and `blur_range` control the height and width axes;
+          `sigma_z_range` and `blur_z_range` independently control depth.
         - The default sigma range (0.5, 3.0) provides a good balance between subtle
           and strong blur effects:
           * sigma=0.5 results in a subtle blur
@@ -791,6 +813,18 @@ class GaussianBlur(ImageOnlyTransform):
         >>> pipeline_result = pipeline(image=image)
         >>> transformed_image = pipeline_result["image"]
         >>> # The image may have Gaussian blur applied with 30% probability along with other effects
+        >>>
+        >>> # Example 7: Anisotropic volumetric blur for medical data
+        >>> volume = np.random.default_rng(137).random((16, 128, 128, 1), dtype=np.float32)
+        >>> volumetric_blur = A.Compose([
+        ...     A.GaussianBlur(
+        ...         sigma_range=(1.0, 1.0),
+        ...         sigma_z_range=(0.5, 0.5),
+        ...         volume_mode="3d",
+        ...         p=1.0,
+        ...     )
+        ... ])
+        >>> blurred_volume = volumetric_blur(volume=volume)["volume"]
 
     References:
         - OpenCV Gaussian Blur: https://docs.opencv.org/master/d4/d86/group__imgproc__filter.html#gaabe8c836e97159a9193fb0b11ac52cf1
@@ -809,16 +843,51 @@ class GaussianBlur(ImageOnlyTransform):
             AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
+        volume_mode: Literal["slice", "3d"]
+        sigma_z_range: (
+            Annotated[
+                tuple[float, float],
+                AfterValidator(check_range_bounds(0)),
+                AfterValidator(nondecreasing),
+            ]
+            | None
+        )
+        blur_z_range: (
+            Annotated[
+                tuple[int, int],
+                AfterValidator(check_range_bounds(0)),
+                AfterValidator(nondecreasing),
+            ]
+            | None
+        )
+
+        @field_validator("blur_z_range")
+        @classmethod
+        def _validate_blur_z_range(
+            cls,
+            value: tuple[int, int] | None,
+            info: ValidationInfo,
+        ) -> tuple[int, int] | None:
+            if value is None or value == (0, 0):
+                return value
+            return fblur.process_blur_range(value, info, min_value=3)
 
     def __init__(
         self,
         blur_range: tuple[int, int] = (0, 0),
         sigma_range: tuple[float, float] = (0.5, 3.0),
         p: float = 0.5,
-    ):
+        *,
+        volume_mode: Literal["slice", "3d"] = "slice",
+        sigma_z_range: tuple[float, float] | None = None,
+        blur_z_range: tuple[int, int] | None = None,
+    ) -> None:
         super().__init__(p=p)
         self.blur_range = blur_range
         self.sigma_range = sigma_range
+        self.volume_mode = volume_mode
+        self.sigma_z_range = sigma_z_range
+        self.blur_z_range = blur_z_range
 
     def apply(
         self,
@@ -830,13 +899,56 @@ class GaussianBlur(ImageOnlyTransform):
             return fblur.pillow_gaussian_blur(img, kernel)
         return fpixel.separable_convolve(img, kernel=kernel)
 
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        if self.volume_mode == "slice":
+            return super().apply_to_volume(volume, **params)
+        return cast(
+            "VolumeType",
+            gaussian_blur3d(
+                volume,
+                sigma=params["volume_sigma"],
+                kernel_size=params["volume_kernel_size"],
+            ),
+        )
+
+    def _sample_3d_kernel_size(self, blur_range: tuple[int, int]) -> int:
+        lower_bound, upper_bound = blur_range
+        kernel_size = lower_bound if lower_bound == upper_bound else self.py_random.randint(lower_bound, upper_bound)
+        return kernel_size + 1 if kernel_size > 1 and kernel_size % 2 == 0 else kernel_size
+
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         sigma = self.py_random.uniform(*self.sigma_range)
-        ksize = self.py_random.randint(*self.blur_range)
+        ksize = (
+            self._sample_3d_kernel_size(self.blur_range)
+            if self.volume_mode == "3d"
+            else self.py_random.randint(*self.blur_range)
+        )
         self.applied_config = {"sigma_range": sigma, "blur_range": ksize}
-        if ksize == 0:
-            return {"kernel": fblur.create_pillow_gaussian_kernel(sigma), "pillow_mode": True}
-        return {"kernel": fblur.create_gaussian_kernel_1d(sigma, ksize), "pillow_mode": False}
+        result: dict[str, Any] = {
+            "kernel": fblur.create_pillow_gaussian_kernel(sigma)
+            if ksize == 0
+            else fblur.create_gaussian_kernel_1d(sigma, ksize),
+            "pillow_mode": ksize == 0,
+        }
+        if self.volume_mode == "slice":
+            return result
+
+        sigma_z = sigma if self.sigma_z_range is None else self.py_random.uniform(*self.sigma_z_range)
+        kernel_size_z = ksize if self.blur_z_range is None else self._sample_3d_kernel_size(self.blur_z_range)
+        self.applied_config.update(
+            {
+                "volume_mode": self.volume_mode,
+                "sigma_z_range": sigma_z,
+                "blur_z_range": kernel_size_z,
+            },
+        )
+        result.update(
+            {
+                "volume_sigma": (sigma_z, sigma, sigma),
+                "volume_kernel_size": (kernel_size_z, ksize, ksize),
+            },
+        )
+        return result
 
 
 class GlassBlur(ImageOnlyTransform):

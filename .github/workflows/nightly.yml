@@ -91,7 +91,7 @@ jobs:
         numpy==2.2.6
         scipy==1.15.3
         pydantic==2.12.4
-        albucore==0.2.9
+        albucore==0.2.12
         opencv-python-headless==5.0.0.93
         hypothesis
         pytest

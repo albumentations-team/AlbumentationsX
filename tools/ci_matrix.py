@@ -419,13 +419,11 @@ def _check_workflow_job_timeouts() -> list[str]:
 def _check_workflow_push_triggers() -> list[str]:
     issues: list[str] = []
     for path in _workflow_files():
-        workflow_header = _read_text(path).split("jobs:", maxsplit=1)[0]
-        if not re.search(r"(?m)^  push:\s*$", workflow_header):
-            continue
-
         expected_paths = CODEQL_WORKFLOW_PATHS.get(path)
         if expected_paths is None:
-            issues.append(f"{path} must not run from a push trigger; use PR, schedule, manual, or release events")
+            workflow_header = _read_text(path).split("jobs:", maxsplit=1)[0]
+            if re.search(r"(?m)^  push:\s*$", workflow_header):
+                issues.append(f"{path} must not run from a push trigger; use PR, schedule, manual, or release events")
             continue
 
         triggers = _workflow_triggers(path)

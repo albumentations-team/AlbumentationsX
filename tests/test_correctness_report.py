@@ -103,6 +103,7 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
     assert "memory: covered_advisory=1" in report
     assert "0 coverage contract failure(s)" in report
     assert "Security summary: provided" in report
+    assert "CodeQL: managed through path-scoped advanced workflows" in report
 
 
 @pytest.mark.parametrize(

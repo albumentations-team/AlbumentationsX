@@ -368,7 +368,7 @@ Dependency sets tracked by the support policy: {dependency_sets}
 - Runtime dependency audit: see security workflow evidence
 - GitHub Actions hardening audit: see security workflow evidence
 - OpenSSF Scorecard: see security workflow evidence
-- CodeQL: managed through GitHub default setup where enabled
+- CodeQL: managed through path-scoped advanced workflows
 - SBOM and SHA256 checksums: attached to the GitHub Release
 - PyPI provenance: provided through trusted publishing attestations
 - {_evidence_status(security_summaries, "Security summary")}

@@ -1,9 +1,12 @@
+import itertools
 import json
+import warnings
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from decimal import Decimal
 from enum import IntEnum
 from fractions import Fraction
+from numbers import Real
 
 import numpy as np
 import pytest
@@ -14,6 +17,14 @@ import albumentations as A
 class _Length(IntEnum):
     ZERO = 0
     THREE = 3
+
+
+class _CustomReal:
+    def __float__(self) -> float:
+        return 0.5
+
+
+Real.register(_CustomReal)
 
 
 def _sample_holes(transform: A.XYMasking, shape: tuple[int, int, int], seed: int = 137) -> np.ndarray:
@@ -48,6 +59,7 @@ def test_relative_ranges_scale_x_by_width_and_y_by_height() -> None:
     [
         (0.5, 9, 4),
         (0.1, 5, 0),
+        (0.58, 100, 57),
         (1.0, 9, 9),
     ],
 )
@@ -124,6 +136,63 @@ def test_fractional_zero_length_is_noop_for_every_supported_target() -> None:
     assert result["keypoint_labels"] == keypoint_labels
     np.testing.assert_array_equal(result["volume"], volume)
     np.testing.assert_array_equal(result["mask3d"], mask3d)
+
+
+@pytest.mark.parametrize("mode", ["float-float", "float-int", "int-float"])
+@pytest.mark.parametrize("zero_noop", [False, True])
+def test_relative_and_mixed_modes_cover_batch_and_volume_targets(mode: str, zero_noop: bool) -> None:
+    height, width = 5, 7
+    relative_length = 0.1 if zero_noop else 0.5
+    if mode == "float-float":
+        mask_x_length_range: tuple[int, int] | tuple[float, float] = (relative_length, relative_length)
+        mask_y_length_range: tuple[int, int] | tuple[float, float] = (relative_length, relative_length)
+        num_masks_x_range = (1, 1)
+        num_masks_y_range = (1, 1)
+    elif mode == "float-int":
+        mask_x_length_range = (relative_length, relative_length)
+        mask_y_length_range = (2, 2)
+        num_masks_x_range = (1, 1)
+        num_masks_y_range = (0, 0) if zero_noop else (1, 1)
+    else:
+        mask_x_length_range = (2, 2)
+        mask_y_length_range = (relative_length, relative_length)
+        num_masks_x_range = (0, 0) if zero_noop else (1, 1)
+        num_masks_y_range = (1, 1)
+
+    transform = A.Compose(
+        [
+            A.XYMasking(
+                num_masks_x_range=num_masks_x_range,
+                num_masks_y_range=num_masks_y_range,
+                mask_x_length_range=mask_x_length_range,
+                mask_y_length_range=mask_y_length_range,
+                fill=0,
+                fill_mask=0,
+                p=1,
+            ),
+        ],
+        seed=137,
+        strict=True,
+    )
+    inputs = {
+        "image": np.full((height, width, 1), 9, dtype=np.uint8),
+        "images": np.full((2, height, width, 1), 9, dtype=np.uint8),
+        "masks": np.full((2, height, width), 9, dtype=np.uint8),
+        "volume": np.full((2, height, width, 1), 9, dtype=np.uint8),
+        "volumes": np.full((2, 2, height, width, 1), 9, dtype=np.uint8),
+        "mask3d": np.full((2, height, width), 9, dtype=np.uint8),
+        "masks3d": np.full((2, 2, height, width), 9, dtype=np.uint8),
+    }
+
+    result = transform(**inputs)
+
+    for target_name, target in inputs.items():
+        assert result[target_name].shape == target.shape
+        assert result[target_name].dtype == target.dtype
+        if zero_noop:
+            np.testing.assert_array_equal(result[target_name], target)
+        else:
+            assert np.any(result[target_name] == 0)
 
 
 def test_fractional_zero_length_is_noop_for_float32_inpainting() -> None:
@@ -244,17 +313,24 @@ def test_axes_accept_different_range_representations() -> None:
         ((np.int32(0), np.int64(3)), (0, 3)),
         ((_Length.ZERO, _Length.THREE), (0, 3)),
         ((np.float32(0.0), np.float64(1.0)), (0.0, 1.0)),
-        ((Fraction(1, 10), Fraction(1, 2)), (0.1, 0.5)),
+        ((0.0, np.float32(0.5)), (0.0, 0.5)),
+        ((np.longdouble("0.25"), np.longdouble("0.5")), (0.25, 0.5)),
+        ([0.0, np.float32(0.5)], (0.0, 0.5)),
     ],
 )
+@pytest.mark.parametrize("field_name", ["mask_x_length_range", "mask_y_length_range"])
+@pytest.mark.parametrize("strict", [False, True])
 def test_mask_length_range_accepts_numeric_scalars_and_normalizes_to_builtin(
     value: object,
     expected: tuple[int, int] | tuple[float, float],
+    field_name: str,
+    strict: bool,
 ) -> None:
-    transform = A.XYMasking(mask_x_length_range=value)
+    transform = A.XYMasking(**{field_name: value}, strict=strict)
 
-    assert transform.mask_x_length_range == expected
-    assert all(type(element) is type(expected[0]) for element in transform.mask_x_length_range)
+    normalized_range = getattr(transform, field_name)
+    assert normalized_range == expected
+    assert all(type(element) is type(expected[0]) for element in normalized_range)
 
 
 @pytest.mark.parametrize(
@@ -268,14 +344,36 @@ def test_mask_length_range_accepts_numeric_scalars_and_normalizes_to_builtin(
         lambda: (element for element in (0, 3)),
     ],
 )
-def test_mask_length_range_accepts_ordered_two_item_iterables(value_factory: Callable[[], object]) -> None:
-    transform = A.XYMasking(mask_x_length_range=value_factory())
+@pytest.mark.parametrize("field_name", ["mask_x_length_range", "mask_y_length_range"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_mask_length_range_accepts_ordered_two_item_iterables(
+    value_factory: Callable[[], object],
+    field_name: str,
+    strict: bool,
+) -> None:
+    transform = A.XYMasking(**{field_name: value_factory()}, strict=strict)
 
-    assert transform.mask_x_length_range in {(0, 3), (0, 1)}
-    assert all(type(element) is int for element in transform.mask_x_length_range)
+    normalized_range = getattr(transform, field_name)
+    assert normalized_range in {(0, 3), (0, 1)}
+    assert all(type(element) is int for element in normalized_range)
+
+
+def test_wrong_length_generator_consumes_at_most_three_values() -> None:
+    consumed = []
+
+    def values() -> Iterator[int]:
+        for value in itertools.count():
+            consumed.append(value)
+            yield value
+
+    with pytest.raises(ValueError, match="exactly two values"):
+        A.XYMasking(mask_x_length_range=values())
+
+    assert consumed == [0, 1, 2]
 
 
 @pytest.mark.parametrize("field_name", ["mask_x_length_range", "mask_y_length_range"])
+@pytest.mark.parametrize("strict", [False, True])
 @pytest.mark.parametrize(
     "value",
     [
@@ -286,11 +384,28 @@ def test_mask_length_range_accepts_ordered_two_item_iterables(value_factory: Cal
         (np.int64(0), np.float32(0.5)),
     ],
 )
-def test_mask_length_range_rejects_mixed_element_types(field_name: str, value: object) -> None:
-    kwargs = {field_name: value}
+def test_mask_length_range_rejects_mixed_element_types(field_name: str, value: object, strict: bool) -> None:
+    kwargs = {field_name: value, "strict": strict}
 
     with pytest.raises(ValueError, match="all integers or all floats"):
         A.XYMasking(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "value_factory",
+    [
+        lambda: deque([0.0, 1.0]),
+        lambda: np.array([0.0, 1.0]),
+        lambda: (value for value in (0.0, 1.0)),
+    ],
+)
+@pytest.mark.parametrize("strict", [False, True])
+def test_float_ranges_reject_non_tuple_list_containers(
+    value_factory: Callable[[], object],
+    strict: bool,
+) -> None:
+    with pytest.raises(ValueError, match="must use a tuple or list"):
+        A.XYMasking(mask_x_length_range=value_factory(), strict=strict)
 
 
 @pytest.mark.parametrize(
@@ -303,30 +418,48 @@ def test_mask_length_range_rejects_mixed_element_types(field_name: str, value: o
         frozenset({0, 1}),
         (value for value in (0,)),
         (value for value in (0, 1, 2)),
+        np.array([[0, 1]]),
         3,
+        np.float32(0.5),
         Decimal("0.5"),
+        (Decimal("0.25"), Decimal("0.5")),
+        Fraction(1, 2),
+        (_CustomReal(), _CustomReal()),
     ],
 )
-def test_mask_length_range_rejects_unordered_non_numeric_and_wrong_arity_inputs(value: object) -> None:
+@pytest.mark.parametrize("strict", [False, True])
+def test_mask_length_range_rejects_unordered_non_numeric_and_wrong_arity_inputs(value: object, strict: bool) -> None:
     with pytest.raises(ValueError):
-        A.XYMasking(mask_x_length_range=value)
+        A.XYMasking(mask_x_length_range=value, strict=strict)
 
 
-@pytest.mark.parametrize("value", [(0.0, 1.0), [0.0, 1.0]])
+@pytest.mark.parametrize("value", [(1.0, 1.0), [1.0, 1.0]])
 def test_float_range_transport_preserves_integral_valued_float_identity(value: object) -> None:
-    transform = A.XYMasking(num_masks_x_range=(1, 1), mask_x_length_range=value, p=1)
+    transform = A.XYMasking(
+        num_masks_x_range=(1, 1),
+        num_masks_y_range=(1, 1),
+        mask_x_length_range=value,
+        mask_y_length_range=value,
+        p=1,
+    )
     pipeline = A.Compose([transform], seed=137)
     transported = json.loads(json.dumps(A.to_dict(pipeline), allow_nan=False))
     restored = A.from_dict(transported)
     restored_transform = restored.transforms[0]
+    restored(image=np.ones((7, 11, 1), dtype=np.uint8))
+    holes = restored_transform.get_applied_params()["holes"]
 
-    assert transform.mask_x_length_range == (0.0, 1.0)
+    assert transform.mask_x_length_range == (1.0, 1.0)
     assert all(type(element) is float for element in transform.mask_x_length_range)
-    assert restored_transform.mask_x_length_range == (0.0, 1.0)
+    assert restored_transform.mask_x_length_range == (1.0, 1.0)
+    assert restored_transform.mask_y_length_range == (1.0, 1.0)
     assert all(type(element) is float for element in restored_transform.mask_x_length_range)
+    assert all(type(element) is float for element in restored_transform.mask_y_length_range)
+    np.testing.assert_array_equal(holes, [[0, 0, 11, 7], [0, 0, 11, 7]])
 
 
 @pytest.mark.parametrize("field_name", ["mask_x_length_range", "mask_y_length_range"])
+@pytest.mark.parametrize("strict", [False, True])
 @pytest.mark.parametrize(
     "value",
     [
@@ -340,12 +473,13 @@ def test_float_range_transport_preserves_integral_valued_float_identity(value: o
         (-float("inf"), 0.5),
         (0.5, float("inf")),
         (False, True),
+        (np.bool_(False), np.bool_(True)),
         [False, 1],
         ("0", "1"),
     ],
 )
-def test_mask_length_range_rejects_invalid_values(field_name: str, value: object) -> None:
-    kwargs = {field_name: value}
+def test_mask_length_range_rejects_invalid_values(field_name: str, value: object, strict: bool) -> None:
+    kwargs = {field_name: value, "strict": strict}
 
     with pytest.raises(ValueError):
         A.XYMasking(**kwargs)
@@ -354,19 +488,36 @@ def test_mask_length_range_rejects_invalid_values(field_name: str, value: object
 @pytest.mark.parametrize(
     "value",
     [
-        (Fraction(2**54 + 1, 2**54), Fraction(2**54 + 1, 2**54)),
         (np.nextafter(np.longdouble(1), np.longdouble(2)), np.longdouble(1)),
-        (Fraction(-1, 10**400), Fraction(1, 2)),
         (np.nextafter(np.longdouble(0), np.longdouble(-1)), np.longdouble(0.5)),
         (np.longdouble(0.5), np.longdouble("inf")),
         (np.longdouble("nan"), np.longdouble(0.5)),
-        (Fraction(2**54 + 1, 2**55), Fraction(1, 2)),
         (np.nextafter(np.longdouble(0.5), np.longdouble(1)), np.longdouble(0.5)),
     ],
 )
-def test_float_range_validates_raw_values_before_builtin_float_normalization(value: object) -> None:
+@pytest.mark.parametrize("strict", [False, True])
+def test_float_range_validates_raw_values_before_builtin_float_normalization(value: object, strict: bool) -> None:
     with pytest.raises(ValueError):
-        A.XYMasking(mask_x_length_range=value)
+        A.XYMasking(mask_x_length_range=value, strict=strict)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "value",
+    [
+        (np.longdouble("0.25"), Fraction(1, 2)),
+        (Fraction(10**400), Fraction(10**400)),
+    ],
+)
+def test_invalid_real_ranges_fail_closed_without_warning(value: object, strict: bool) -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError) as raised:
+            A.XYMasking(mask_x_length_range=value, strict=strict)
+
+    assert caught == []
+    assert raised.value.__cause__ is not None
+    assert type(raised.value.__cause__).__name__ == "ValidationError"
 
 
 @pytest.mark.parametrize(
@@ -388,6 +539,49 @@ def test_integer_ranges_retain_runtime_dimension_validation(
         pipeline(image=np.ones(shape, dtype=np.uint8))
 
 
+@pytest.mark.parametrize("invalid_axis", ["x", "y"])
+def test_integer_dimension_error_does_not_advance_rng(invalid_axis: str) -> None:
+    invalid_kwargs = {
+        "num_masks_x_range": (1, 2),
+        "num_masks_y_range": (1, 2),
+        "mask_x_length_range": (2, 18) if invalid_axis == "x" else (2, 5),
+        "mask_y_length_range": (2, 12) if invalid_axis == "y" else (2, 5),
+        "fill": 0,
+        "p": 1,
+    }
+    retried = A.XYMasking(**invalid_kwargs)
+    fresh = A.XYMasking(**invalid_kwargs)
+    retried.set_random_seed(137)
+    fresh.set_random_seed(137)
+    invalid_image = np.ones((11, 17, 1), dtype=np.uint8)
+    valid_image = np.ones((13, 19, 1), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match=f"mask_{invalid_axis}_length_range"):
+        retried(image=invalid_image)
+
+    retried_result = retried(image=valid_image)
+    fresh_result = fresh(image=valid_image)
+    np.testing.assert_array_equal(retried.get_applied_params()["holes"], fresh.get_applied_params()["holes"])
+    np.testing.assert_array_equal(retried_result["image"], fresh_result["image"])
+
+    retried(image=valid_image)
+    fresh(image=valid_image)
+    np.testing.assert_array_equal(retried.get_applied_params()["holes"], fresh.get_applied_params()["holes"])
+
+
+def test_integer_dimension_preflight_checks_x_before_y() -> None:
+    transform = A.XYMasking(
+        num_masks_x_range=(1, 1),
+        num_masks_y_range=(1, 1),
+        mask_x_length_range=(2, 18),
+        mask_y_length_range=(2, 12),
+        p=1,
+    )
+
+    with pytest.raises(ValueError, match="mask_x_length_range"):
+        transform(image=np.ones((11, 17, 1), dtype=np.uint8))
+
+
 def test_integer_length_equal_to_dimension_is_valid() -> None:
     holes = _sample_holes(
         A.XYMasking(
@@ -399,45 +593,6 @@ def test_integer_length_equal_to_dimension_is_valid() -> None:
     )
 
     np.testing.assert_array_equal(holes, [[0, 0, 5, 7]])
-
-
-@pytest.mark.parametrize(
-    ("initial_range", "reassigned_range", "expected_length", "expected_type"),
-    [
-        ((2, 2), (0.5, 0.5), 10, float),
-        ((0.5, 0.5), (3, 3), 3, int),
-    ],
-)
-def test_post_init_category_reassignment_matches_strict_json_constructor_round_trip(
-    initial_range: tuple[int, int] | tuple[float, float],
-    reassigned_range: tuple[int, int] | tuple[float, float],
-    expected_length: int,
-    expected_type: type[int] | type[float],
-) -> None:
-    transform = A.XYMasking(
-        num_masks_x_range=(1, 1),
-        mask_x_length_range=initial_range,
-        p=1,
-    )
-    transform.mask_x_length_range = reassigned_range
-    original = A.Compose([transform], seed=137, strict=True)
-    transported = json.loads(json.dumps(A.to_dict(original), allow_nan=False))
-    restored = A.from_dict(transported)
-    original.set_random_seed(137)
-    restored.set_random_seed(137)
-    image = np.ones((12, 20, 1), dtype=np.uint8)
-
-    original_result = original(image=image)
-    restored_result = restored(image=image)
-    original_holes = transform.get_applied_params()["holes"]
-    restored_transform = restored.transforms[0]
-    restored_holes = restored_transform.get_applied_params()["holes"]
-
-    assert all(type(element) is expected_type for element in transform.mask_x_length_range)
-    assert all(type(element) is expected_type for element in restored_transform.mask_x_length_range)
-    np.testing.assert_array_equal(original_holes, restored_holes)
-    np.testing.assert_array_equal(original_holes[:, 2] - original_holes[:, 0], [expected_length])
-    np.testing.assert_array_equal(original_result["image"], restored_result["image"])
 
 
 def test_strict_json_applied_configuration_reconstructs_runnable_policy_at_new_resolution() -> None:

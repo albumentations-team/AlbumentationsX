@@ -5,17 +5,16 @@ and other grid-like data representations where masking in specific directions (t
 can improve model robustness and generalization.
 """
 
-import math
 from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
-from numbers import Integral, Real
+from itertools import islice
 from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
 from pydantic import field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 from pydantic_core import PydanticCustomError
-from typing_extensions import Self
+from typing_extensions import LiteralString, Self
 
 from albumentations.augmentations.dropout.transforms import BaseDropout, DropoutFillValue
 from albumentations.core.pydantic import (
@@ -29,41 +28,98 @@ __all__ = ["XYMasking"]
 MaskLengthRange = tuple[int, int] | tuple[float, float]
 
 
-def _materialize_range(value: Any) -> tuple[Any, Any]:
+def _invalid_range(error_type: LiteralString, message: LiteralString) -> PydanticCustomError:
+    return PydanticCustomError(error_type, message)
+
+
+def _materialize_range(value: Any) -> tuple[tuple[Any, Any], bool]:
     if isinstance(value, (str, bytes, bytearray, Mapping, AbstractSet)):
-        raise PydanticCustomError(
-            "mask_length_range_type",
-            "Mask length range must be an ordered iterable of two values",
+        raise _invalid_range(
+            "mask_length_range_container",
+            "Mask length range must be an ordered iterable of exactly two values",
+        )
+
+    allows_float = isinstance(value, (tuple, list))
+    if isinstance(value, np.ndarray) and value.ndim != 1:
+        raise _invalid_range(
+            "mask_length_range_dimension",
+            "NumPy mask length ranges must be one-dimensional",
         )
 
     try:
-        elements = tuple(value)
-    except TypeError as exc:
-        raise PydanticCustomError(
-            "mask_length_range_type",
-            "Mask length range must be an ordered iterable of two values",
+        iterator = iter(value)
+        elements = list(islice(iterator, 3))
+    except Exception as exc:
+        raise _invalid_range(
+            "mask_length_range_iteration",
+            "Mask length range must be an ordered iterable of exactly two values",
         ) from exc
 
     if len(elements) != 2:
-        raise ValueError("Mask length range must contain exactly two values")
-    return elements[0], elements[1]
+        raise _invalid_range(
+            "mask_length_range_length",
+            "Mask length range must contain exactly two values",
+        )
+    return (elements[0], elements[1]), allows_float
+
+
+def _is_integer_endpoint(value: Any) -> bool:
+    return isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_))
+
+
+def _is_float_endpoint(value: Any) -> bool:
+    return isinstance(value, (float, np.floating))
 
 
 def _normalize_integer_range(elements: tuple[Any, Any]) -> tuple[int, int]:
-    if elements[0] < 0:
-        raise ValueError("Integer mask length ranges must contain only nonnegative values")
-    if elements[0] > elements[1]:
-        raise ValueError("Mask length range must be nondecreasing")
+    try:
+        has_negative_endpoint = elements[0] < 0
+        has_decreasing_endpoints = elements[0] > elements[1]
+    except Exception as exc:
+        raise _invalid_range(
+            "mask_length_range_comparison",
+            "Integer mask length range endpoints could not be compared",
+        ) from exc
+
+    if has_negative_endpoint:
+        raise _invalid_range(
+            "mask_length_range_bounds",
+            "Integer mask length ranges must contain only nonnegative values",
+        )
+    if has_decreasing_endpoints:
+        raise _invalid_range(
+            "mask_length_range_order",
+            "Mask length range must be nondecreasing",
+        )
     return int(elements[0]), int(elements[1])
 
 
 def _normalize_float_range(elements: tuple[Any, Any]) -> tuple[float, float]:
-    if not all(math.isfinite(element) for element in elements):
-        raise ValueError("Float mask length ranges must contain only finite values")
-    if any(element < 0 or element > 1 for element in elements):
-        raise ValueError("Float mask length ranges must be within [0.0, 1.0]")
-    if elements[0] > elements[1]:
-        raise ValueError("Mask length range must be nondecreasing")
+    try:
+        has_nonfinite_endpoint = not all(bool(np.isfinite(element)) for element in elements)
+        has_out_of_bounds_endpoint = any(element < 0 or element > 1 for element in elements)
+        has_decreasing_endpoints = elements[0] > elements[1]
+    except Exception as exc:
+        raise _invalid_range(
+            "mask_length_range_comparison",
+            "Float mask length range endpoints could not be validated",
+        ) from exc
+
+    if has_nonfinite_endpoint:
+        raise _invalid_range(
+            "mask_length_range_finite",
+            "Float mask length ranges must contain only finite values",
+        )
+    if has_out_of_bounds_endpoint:
+        raise _invalid_range(
+            "mask_length_range_bounds",
+            "Float mask length ranges must be within [0.0, 1.0]",
+        )
+    if has_decreasing_endpoints:
+        raise _invalid_range(
+            "mask_length_range_order",
+            "Mask length range must be nondecreasing",
+        )
     return float(elements[0]), float(elements[1])
 
 
@@ -87,15 +143,23 @@ class _XYMaskingInitSchema(BaseTransformInitSchema):
     @field_validator("mask_x_length_range", "mask_y_length_range", mode="before")
     @classmethod
     def _validate_mask_length_range(cls, value: Any) -> MaskLengthRange:
-        elements = _materialize_range(value)
+        elements, allows_float = _materialize_range(value)
 
-        if all(isinstance(element, Integral) and not isinstance(element, bool) for element in elements):
+        if all(_is_integer_endpoint(element) for element in elements):
             return _normalize_integer_range(elements)
 
-        if all(isinstance(element, Real) and not isinstance(element, (Integral, bool)) for element in elements):
+        if all(_is_float_endpoint(element) for element in elements):
+            if not allows_float:
+                raise _invalid_range(
+                    "mask_length_range_float_container",
+                    "Float mask length ranges must use a tuple or list",
+                )
             return _normalize_float_range(elements)
 
-        raise ValueError("Mask length range elements must be all integers or all floats")
+        raise _invalid_range(
+            "mask_length_range_endpoint_type",
+            "Mask length range elements must be all integers or all floats",
+        )
 
     @model_validator(mode="after")
     def _check_mask_length(self) -> Self:
@@ -120,12 +184,12 @@ class XYMasking(BaseDropout):
         num_masks_y_range (tuple[int, int]): Range of horizontal strips to mask. Defaults to (0, 0).
         mask_x_length_range (tuple[int, int] | tuple[float, float]): Range (min, max) of mask length along the X
             (horizontal) axis. Integer values specify pixels. Float values specify fractions of the image width and
-            must be within [0.0, 1.0]. The length is randomly chosen within this range for each mask. Defaults to
-            (0, 0).
+            must be finite and within [0.0, 1.0]. The length is randomly chosen within this range for each mask.
+            Runtime lists are accepted for standard JSON transport. Defaults to (0, 0).
         mask_y_length_range (tuple[int, int] | tuple[float, float]): Range (min, max) of mask height along the Y
             (vertical) axis. Integer values specify pixels. Float values specify fractions of the image height and
-            must be within [0.0, 1.0]. The height is randomly chosen within this range for each mask. Defaults to
-            (0, 0).
+            must be finite and within [0.0, 1.0]. The height is randomly chosen within this range for each mask.
+            Runtime lists are accepted for standard JSON transport. Defaults to (0, 0).
         fill (float | tuple[float, ...] | str):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
@@ -151,9 +215,14 @@ class XYMasking(BaseDropout):
 
     Note:
         - Either `mask_x_length_range` or `mask_y_length_range` or both must have a positive max.
+        - Relative endpoints must be homogeneous Python or NumPy floats in a tuple or list. Integer endpoints may use
+          the compatible ordered two-item integer iterables accepted by the constructor. Booleans, mixed numeric
+          categories, `Fraction`, `Decimal`, and arbitrary `Real` implementations are rejected.
         - Fractional lengths are sampled uniformly, multiplied by the corresponding image dimension, and rounded down
           with `int`. A positive fractional sample can therefore produce a zero-length, no-op mask on a small image;
           such degenerate masks are discarded. A fractional endpoint of 1.0 can span the full axis.
+        - Post-initialization range reassignment is unsupported. Standard Albumentations/Python JSON round trips
+          preserve relative `1.0`; JSON processors that canonicalize `1.0` to integer `1` do not preserve units.
         - `Compose.from_applied_transforms()` reconstructs a runnable length policy and samples new holes.
           Use `ReplayCompose` when the exact holes from one call must be replayed.
         - When using `fill="grayscale"`, `fill_mask` must be None.
@@ -245,6 +314,9 @@ class XYMasking(BaseDropout):
     ) -> dict[str, int | np.ndarray]:
         image_shape = params["shape"][:2]
 
+        self._validate_integer_axis_range(self.mask_x_length_range, image_shape[1], axis="x")
+        self._validate_integer_axis_range(self.mask_y_length_range, image_shape[0], axis="y")
+
         masks_x = self._generate_axis_masks(
             self.num_masks_x_range,
             image_shape,
@@ -272,6 +344,22 @@ class XYMasking(BaseDropout):
 
         return {"holes": holes, "seed": int(self.random_generator.integers(0, 2**32 - 1))}
 
+    @staticmethod
+    def _validate_integer_axis_range(
+        mask_length_range: MaskLengthRange,
+        dimension_size: int,
+        axis: Literal["x", "y"],
+    ) -> None:
+        if type(mask_length_range[0]) is not int:
+            return
+
+        integer_range = cast("tuple[int, int]", mask_length_range)
+        if integer_range[0] < 0 or integer_range[1] > dimension_size:
+            dimension_name = f"mask_{axis}_length_range"
+            raise ValueError(
+                f"{dimension_name} range {integer_range} is out of valid range [0, {dimension_size}]",
+            )
+
     def _generate_axis_masks(
         self,
         num_masks: tuple[int, int],
@@ -280,7 +368,7 @@ class XYMasking(BaseDropout):
         axis: Literal["x", "y"],
     ) -> list[tuple[int, int, int, int]]:
         first_length = mask_length_range[0]
-        if type(first_length) is int or isinstance(first_length, Integral):
+        if type(first_length) is int:
             return self._generate_masks(
                 num_masks,
                 image_shape,
@@ -306,13 +394,6 @@ class XYMasking(BaseDropout):
         axis: Literal["x", "y"],
     ) -> list[tuple[int, int, int, int]]:
         height, width = image_shape
-        dimension_size = width if axis == "x" else height
-        if max_length[0] < 0 or max_length[1] > dimension_size:
-            dimension_name = f"mask_{axis}_length_range"
-            raise ValueError(
-                f"{dimension_name} range {max_length} is out of valid range [0, {dimension_size}]",
-            )
-
         if max_length[1] == 0 or num_masks[1] == 0:
             return []
 

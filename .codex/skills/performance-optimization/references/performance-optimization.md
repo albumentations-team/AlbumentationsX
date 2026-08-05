@@ -1,5 +1,9 @@
 # Performance Optimization Workflow
 
+## Prevalidated caller boundary
+
+Albucore routers run after the caller has validated the input contract. Upstream code owns container, rank, channel-last layout, dtype, device, contiguity, autograd state, and operation-control validation. Albucore keeps only dispatch branches and kernel-required normalization needed to select and execute the benchmarked implementation; hot paths must not repeat those checks.
+
 Use this workflow whenever implementing, reviewing, or profiling runtime code in Albucore or AlbumentationsX. Its
 order matters: remove work before making the remaining work faster. Treat every proposed optimization as a hypothesis
 until correctness tests and representative benchmarks support it.
@@ -244,11 +248,11 @@ The stats API already routes selected uint8 and low-channel reductions through N
 OpenCV where they win. Reimplementing these reductions inside AlbumentationsX loses both the routing and its benchmark
 coverage.
 
-In the Albucore checkout, use `docs/numkong-performance.md` for current NumKong route evidence and
-`docs/performance-regressions-plan.md` for known router regressions. When using the bundled fallback from an
-AlbumentationsX checkout, read the same files under `../albucore/docs/` if a sibling Albucore checkout is available.
-If it is absent, these supporting documents are unavailable: use repository-local benchmarks for candidate discovery
-and defer Albucore route or threshold changes until the canonical evidence can be checked.
+In the Albucore checkout, use `docs/numkong-performance.md` for current NumKong route evidence and the reports under
+`benchmarks/results/` for measured router comparisons. When using the bundled fallback from an AlbumentationsX
+checkout, read the same resources under `../albucore/` if a sibling Albucore checkout is available. If it is absent,
+these supporting documents are unavailable: use repository-local benchmarks for candidate discovery and defer
+Albucore route or threshold changes until the canonical evidence can be checked.
 
 Regenerate or extend the relevant benchmark when a route changes; do not update a threshold from an isolated
 microbenchmark alone.

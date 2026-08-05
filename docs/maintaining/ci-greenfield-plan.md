@@ -321,27 +321,25 @@ never make its PR job name required.
 ### CodeQL
 
 Do not require `Analyze (actions)` or `Analyze (python)` as exact status-check
-names. They are implementation details of a dynamic analysis matrix.
+names. They are advisory language-specific checks that are skipped when their
+path filter finds no relevant input.
 
 Preferred policy:
 
-- keep CodeQL enabled for same-repository pull requests, pushes to the default
-  branch, and weekly scans;
-- do not require the aggregate `CodeQL` context while default setup excludes
-  pull requests from forks;
+- keep CodeQL enabled for pull requests with relevant inputs, matching pushes
+  to the default branch, and weekly scans;
+- keep both language checks advisory because path filtering intentionally
+  omits them from unrelated pull requests;
 - run Python analysis for runtime or Python tooling changes;
 - run Actions analysis for workflow/local-action changes;
 - run the complete scan on the default branch and weekly;
 - do not run a language analysis for Markdown-only changes.
 
-GitHub default setup has limited trigger control and excludes pull requests
-from forks. If every pull request must pass CodeQL, or selective execution is
-important, migrate to
-[advanced setup](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types)
-in a separate change, and disable default setup before enabling the advanced
-workflow. Do not run both configurations accidentally. Advanced setup permits
-normal workflow triggers and CodeQL path configuration. Validate one
-fork-based pull request before adding CodeQL back to the required merge gates.
+This repository uses advanced setup. `codeql-python.yml` selects Python source,
+stubs, and CodeQL configuration. `codeql-actions.yml` selects workflow and
+composite-action files. GitHub Default Setup must remain disabled because it
+suppresses advanced workflows and blocks their SARIF uploads. Validate a
+fork-based pull request before making either CodeQL check a merge gate.
 
 ### Legal integrity
 

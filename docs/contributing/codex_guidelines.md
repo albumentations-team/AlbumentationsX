@@ -65,7 +65,7 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - Single images are `(H, W, C)`; grayscale is `(H, W, 1)`, not `(H, W)`.
 - Image batches are `(N, H, W, C)`, and a volume is `(D, H, W, C)`.
 - Do not add functional-layer compatibility branches for 2D grayscale images when code is used through `Compose`.
-- Branching on `ndim` is appropriate to distinguish image, batch, volume, and 3D-mask batch paths, not to infer channels.
+- Branching on `ndim` is appropriate to distinguish image, image-batch, and single-volume paths, not to infer channels.
 
 ### Validation Principles
 

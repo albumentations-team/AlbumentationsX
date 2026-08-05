@@ -148,7 +148,7 @@ class TimeTensorNativeTranspose:
 class TimeTensorNativeAnisotropy3D:
     """Benchmark the accepted Tensor `Anisotropy3D(volume=...)` capability.
 
-    The direct Tensor route uses C,D,H,W volumes. Its NumPy comparison paths
+    The direct Tensor route uses C,D,H,W single-volume data. Its NumPy comparison paths
     use the matching D,H,W,C volume and the normal `ToTensor3D` handoff.
     """
 
@@ -205,7 +205,7 @@ class TimeTensorNativeAnisotropy3D:
 class TimeTensorNativeResize3D:
     """Benchmark the accepted Tensor `Resize3D(volume=...)` capability.
 
-    The direct Tensor route uses C,D,H,W volumes. Its NumPy comparison paths use
+    The direct Tensor route uses C,D,H,W single-volume data. Its NumPy comparison paths use
     the matching D,H,W,C volume and the normal `ToTensor3D` handoff.
     """
 

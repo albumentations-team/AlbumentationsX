@@ -1,10 +1,21 @@
 import json
+from typing import Any
 
 import numpy as np
 import pytest
 import torch
 
 import albumentations as A
+
+
+class _ApplyWithParamsTrackingFlip(A.HorizontalFlip):
+    def __init__(self) -> None:
+        super().__init__(p=1.0)
+        self.apply_with_params_calls = 0
+
+    def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.apply_with_params_calls += 1
+        return super().apply_with_params(params, *args, **kwargs)
 
 
 def test_semantic_mask_label_mapping_swaps_labels_after_horizontal_flip() -> None:
@@ -20,6 +31,70 @@ def test_semantic_mask_label_mapping_swaps_labels_after_horizontal_flip() -> Non
 
     np.testing.assert_array_equal(result["mask"], np.array([[3, 2, 0, 3]], dtype=np.uint8))
     np.testing.assert_array_equal(mask, np.array([[2, 0, 3, 2]], dtype=np.uint8))
+
+
+def test_semantic_mask_label_mapping_preserves_custom_apply_with_params_hook() -> None:
+    image = np.zeros((1, 4, 3), dtype=np.uint8)
+    mask = np.array([[2, 0, 3, 2]], dtype=np.uint8)
+    flip = _ApplyWithParamsTrackingFlip()
+    transform = A.Compose(
+        [flip],
+        semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
+        telemetry=False,
+    )
+
+    result = transform(image=image, mask=mask)
+
+    assert flip.apply_with_params_calls == 1
+    np.testing.assert_array_equal(result["mask"], np.array([[3, 2, 0, 3]], dtype=np.uint8))
+
+
+def test_semantic_mask_label_mapping_preserves_nested_compose_configuration() -> None:
+    image = np.zeros((1, 4, 3), dtype=np.uint8)
+    mask = np.array([[2, 0, 3, 2]], dtype=np.uint8)
+    nested = A.Compose(
+        [A.HorizontalFlip(p=1.0)],
+        semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
+        telemetry=False,
+    )
+    transform = A.Compose(
+        [nested],
+        semantic_mask_label_mappings={"HorizontalFlip": {2: 4, 4: 2}},
+        telemetry=False,
+    )
+
+    result = transform(image=image, mask=mask)
+
+    np.testing.assert_array_equal(result["mask"], np.array([[3, 2, 0, 3]], dtype=np.uint8))
+
+
+def test_semantic_mask_label_mapping_propagates_to_unconfigured_nested_compose() -> None:
+    image = np.zeros((1, 4, 3), dtype=np.uint8)
+    mask = np.array([[2, 0, 3, 2]], dtype=np.uint8)
+    transform = A.Compose(
+        [A.Compose([A.HorizontalFlip(p=1.0)], telemetry=False)],
+        semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
+        telemetry=False,
+    )
+
+    result = transform(image=image, mask=mask)
+
+    np.testing.assert_array_equal(result["mask"], np.array([[3, 2, 0, 3]], dtype=np.uint8))
+
+
+def test_semantic_mask_label_mapping_normalizes_string_target_labels() -> None:
+    image = np.zeros((1, 4, 3), dtype=np.uint8)
+    mask = np.array([[2, 0, 3, 2]], dtype=np.uint8)
+    transform = A.Compose(
+        [A.HorizontalFlip(p=1.0)],
+        semantic_mask_label_mappings={"HorizontalFlip": {"2": "3", "3": "2"}},
+        telemetry=False,
+    )
+
+    result = transform(image=image, mask=mask)
+
+    assert transform.semantic_mask_label_mappings == {"HorizontalFlip": {2: 3, 3: 2}}
+    np.testing.assert_array_equal(result["mask"], np.array([[3, 2, 0, 3]], dtype=np.uint8))
 
 
 def test_semantic_mask_label_mapping_survives_json_replay() -> None:

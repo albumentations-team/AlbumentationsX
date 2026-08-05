@@ -75,23 +75,17 @@ NUM_ONEOF_TRANSFORMS = 2
 _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
 
 
-def _normalize_semantic_mask_source_label(source_label: Any) -> int:
-    if isinstance(source_label, str):
+def _normalize_semantic_mask_label(label: Any, label_kind: str) -> int:
+    if isinstance(label, str):
         try:
-            normalized_source = int(source_label)
+            normalized_label = int(label)
         except ValueError as exc:
-            raise TypeError("semantic mask source labels must be integers") from exc
-        if source_label == str(normalized_source):
-            return normalized_source
-    elif isinstance(source_label, (int, np.integer)) and not isinstance(source_label, (bool, np.bool_)):
-        return int(source_label)
-    raise TypeError("semantic mask source labels must be integers")
-
-
-def _normalize_semantic_mask_target_label(target_label: Any) -> int:
-    if isinstance(target_label, (int, np.integer)) and not isinstance(target_label, (bool, np.bool_)):
-        return int(target_label)
-    raise TypeError("semantic mask target labels must be integers")
+            raise TypeError(f"semantic mask {label_kind} labels must be integers") from exc
+        if label == str(normalized_label):
+            return normalized_label
+    elif isinstance(label, (int, np.integer)) and not isinstance(label, (bool, np.bool_)):
+        return int(label)
+    raise TypeError(f"semantic mask {label_kind} labels must be integers")
 
 
 def _normalize_semantic_mask_label_mappings(mappings: Any) -> dict[str, dict[int, int]] | None:
@@ -112,8 +106,8 @@ def _normalize_semantic_mask_label_mappings(mappings: Any) -> dict[str, dict[int
 
         normalized_mapping: dict[int, int] = {}
         for source_label, target_label in mapping.items():
-            normalized_source = _normalize_semantic_mask_source_label(source_label)
-            normalized_target = _normalize_semantic_mask_target_label(target_label)
+            normalized_source = _normalize_semantic_mask_label(source_label, "source")
+            normalized_target = _normalize_semantic_mask_label(target_label, "target")
             if normalized_source in normalized_mapping:
                 raise ValueError(f"Duplicate semantic mask source label after normalization: {normalized_source}")
             normalized_mapping[normalized_source] = normalized_target
@@ -1344,8 +1338,9 @@ class Compose(BaseCompose, HubMixin):
         for transform in transforms:
             if isinstance(transform, DualTransform):
                 transform.set_semantic_mask_label_mappings(effective_mappings)
-            elif isinstance(transform, Compose) and mappings is None:
-                continue
+            elif isinstance(transform, Compose):
+                if transform.semantic_mask_label_mappings is None:
+                    self._set_semantic_mask_label_mappings_for_transforms(transform.transforms, mappings)
             elif isinstance(transform, BaseCompose):
                 self._set_semantic_mask_label_mappings_for_transforms(transform.transforms, mappings)
 

@@ -1019,14 +1019,18 @@ class DualTransform(BasicTransform):
     """
 
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})  # Default: only axis-aligned boxes
-    _semantic_mask_label_mappings: ClassVar[dict[str, dict[int, int]]] = {}
-    _semantic_mask_uint8_luts: ClassVar[dict[str, NDArray[np.uint8]]] = {}
+    _semantic_mask_label_mappings: dict[str, dict[int, int]]
+    _semantic_mask_uint8_luts: dict[str, NDArray[np.uint8]]
+
+    def __init__(self, p: float = 0.5, **kwargs: Any):
+        super().__init__(p=p, **kwargs)
+        self._semantic_mask_label_mappings = {}
+        self._semantic_mask_uint8_luts = {}
 
     def set_semantic_mask_label_mappings(self, mappings: dict[str, dict[int, int]]) -> None:
         """Set transform-aware semantic-mask label mappings, discard no-op entries, and compile reusable
         uint8 lookup tables once per instance.
         """
-        self.__dict__.pop("apply_with_params", None)
         compiled_mappings = {
             transform_name: {
                 source_label: target_label
@@ -1042,10 +1046,8 @@ class DualTransform(BasicTransform):
                 for source_label, target_label in mapping.items():
                     lut[source_label] = target_label
                 compiled_uint8_luts[transform_name] = lut
-        self.__dict__["_semantic_mask_label_mappings"] = compiled_mappings
-        self.__dict__["_semantic_mask_uint8_luts"] = compiled_uint8_luts
-        if any(compiled_mappings.values()):
-            self.__dict__["apply_with_params"] = self._apply_with_semantic_mask_params
+        self._semantic_mask_label_mappings = compiled_mappings
+        self._semantic_mask_uint8_luts = compiled_uint8_luts
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
@@ -1230,15 +1232,6 @@ class DualTransform(BasicTransform):
                 data[data_name] = self._remap_semantic_mask_labels(value, mapping, uint8_lut)
         return data
 
-    def _apply_with_semantic_mask_params(
-        self,
-        params: dict[str, Any],
-        *args: Any,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        result = DualTransform.apply_with_params(self, params, *args, **kwargs)
-        return self._apply_label_mapping_to_semantic_masks(result, **params)
-
     def _swap_keypoint_rows_by_labels(
         self,
         keypoints: np.ndarray,
@@ -1343,6 +1336,9 @@ class DualTransform(BasicTransform):
         # Apply label mapping to keypoints if they were transformed
         if "keypoints" in res and res["keypoints"] is not None:
             res["keypoints"] = self._apply_label_mapping_to_keypoints(res["keypoints"], **params)
+
+        if self._semantic_mask_label_mappings:
+            res = self._apply_label_mapping_to_semantic_masks(res, **params)
 
         return res
 

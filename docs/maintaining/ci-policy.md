@@ -23,14 +23,10 @@ closed when a selected leaf is missing, skipped, cancelled, or failed. A leaf
 that the router did not select may be skipped without leaving the pull request
 waiting for a status that will never arrive.
 
-Keep the external CLA check. Do not require the `CodeQL` status while code
-scanning uses GitHub default setup: default setup excludes pull requests from
-forks, so external contributions never report that status. Keep CodeQL enabled
-for same-repository pull requests, pushes to `main`, and weekly scans. If every
-pull request must pass CodeQL, migrate to advanced setup and verify a fork-based
-pull request before adding a stable required gate. Do not require dynamic
-CodeQL leaf names such as `Analyze (actions)` or `Analyze (python)`, advisory
-ASV jobs, or AI-review jobs.
+Keep the external CLA check. CodeQL is advisory, so do not require either
+language-specific analysis check. A skipped path-scoped CodeQL workflow must
+never leave a pull request waiting for a required status. Do not require
+advisory ASV jobs or AI-review jobs.
 
 Direct pushes to `main` are outside the maintenance policy and should be
 blocked by the repository ruleset. Repository workflows use pull-request,
@@ -144,13 +140,15 @@ Nightly and release-candidate workflows run the complete 3 × 5 base suite.
 They also retain lower-bound, property/regression, optional-extra, PyTorch,
 performance, and release artifact evidence where appropriate.
 
-CodeQL is managed by GitHub default setup. GitHub's
-[default-setup trigger policy](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types)
-excludes pull requests from forks, so the repository ruleset must not require
-the `CodeQL` status. Do not add an advanced CodeQL workflow while default setup
-is enabled, because duplicate configurations can reject SARIF uploads. Treat
-mandatory fork analysis or selective language analysis as a separate
-default-to-advanced migration.
+CodeQL uses two path-scoped advanced workflows. `codeql-python.yml` runs for
+Python source, stubs, or CodeQL configuration changes. `codeql-actions.yml`
+runs for GitHub Actions and composite-action changes. Ordinary Markdown and
+`.codex` documentation changes start neither workflow. Both workflows run
+after a matching pull request, once each week, and on manual dispatch.
+
+GitHub Default Setup must remain disabled. It suppresses advanced workflows
+and blocks their SARIF uploads. CodeQL check names remain advisory because a
+path filter correctly skips the language that cannot produce signal.
 
 ## Antigravity pull-request reviews
 

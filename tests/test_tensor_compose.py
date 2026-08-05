@@ -210,9 +210,25 @@ def test_tensor_boundary_rejects_invalid_annotation_contract(
         )
 
 
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("mask", (11, 13)),
+        ("masks", (2, 11, 13)),
+        ("mask3d", (2, 11, 13)),
+    ],
+)
+def test_tensor_boundary_rejects_int64_masks(target: str, shape: tuple[int, ...]) -> None:
+    with pytest.raises(TypeError, match="dtype one of"):
+        A.Compose([])(
+            image=torch.zeros((3, 11, 13), dtype=torch.uint8),
+            **{target: torch.zeros(shape, dtype=torch.int64)},
+        )
+
+
 def test_noop_preserves_tensor_spatial_targets_at_compose_boundary() -> None:
     image = torch.arange(3 * 5 * 7, dtype=torch.float32).reshape(3, 5, 7)
-    mask = torch.arange(5 * 7, dtype=torch.int64).reshape(5, 7)
+    mask = torch.arange(5 * 7, dtype=torch.uint8).reshape(5, 7)
     masks = torch.arange(2 * 5 * 7, dtype=torch.uint8).reshape(2, 5, 7)
     bboxes = torch.tensor([[1.0, 1.0, 5.0, 4.0]], dtype=torch.float32)
     keypoints = torch.tensor([[2.0, 3.0]], dtype=torch.float32)
@@ -238,7 +254,7 @@ def test_noop_preserves_tensor_spatial_targets_at_compose_boundary() -> None:
 
 def test_noop_preserves_tensor_volume_and_mask3d_without_numpy_batch_dispatch() -> None:
     volume = torch.arange(3 * 5 * 7 * 9, dtype=torch.float32).reshape(3, 5, 7, 9)
-    mask3d = torch.arange(5 * 7 * 9, dtype=torch.int64).reshape(5, 7, 9)
+    mask3d = torch.zeros((5, 7, 9), dtype=torch.uint8)
 
     result = A.Compose([A.NoOp(p=1.0)], strict=True)(volume=volume, mask3d=mask3d)
 
@@ -314,7 +330,7 @@ def test_transpose_keeps_tensor_masks_bboxes_and_keypoints_aligned_with_tensor_i
     image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
     numpy_image = image.permute(1, 2, 0).numpy().copy()
     mask = np.arange(5 * 7, dtype=np.uint8).reshape(5, 7)
-    masks = np.arange(2 * 5 * 7, dtype=np.int64).reshape(2, 5, 7)
+    masks = np.arange(2 * 5 * 7, dtype=np.uint8).reshape(2, 5, 7)
     mask3d = np.arange(3 * 5 * 7, dtype=np.uint8).reshape(3, 5, 7)
     bboxes = np.array([[1, 1, 5, 4]], dtype=np.float32)
     keypoints = np.array([[2, 3]], dtype=np.float32)

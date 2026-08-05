@@ -17,7 +17,8 @@ from warnings import warn
 import cv2
 import numpy as np
 import torch
-from albucore import batch_transform
+from albucore import batch_transform, sz_lut
+from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
 from albumentations.core.bbox_utils import BboxProcessor
@@ -1018,6 +1019,33 @@ class DualTransform(BasicTransform):
     """
 
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})  # Default: only axis-aligned boxes
+    _semantic_mask_label_mappings: ClassVar[dict[str, dict[int, int]]] = {}
+    _semantic_mask_uint8_luts: ClassVar[dict[str, NDArray[np.uint8]]] = {}
+
+    def set_semantic_mask_label_mappings(self, mappings: dict[str, dict[int, int]]) -> None:
+        """Set transform-aware semantic-mask label mappings, discard no-op entries, and compile reusable
+        uint8 lookup tables once per instance.
+        """
+        self.__dict__.pop("apply_with_params", None)
+        compiled_mappings = {
+            transform_name: {
+                source_label: target_label
+                for source_label, target_label in mapping.items()
+                if source_label != target_label
+            }
+            for transform_name, mapping in mappings.items()
+        }
+        compiled_uint8_luts: dict[str, NDArray[np.uint8]] = {}
+        for transform_name, mapping in compiled_mappings.items():
+            if mapping and all(0 <= label <= 255 for pair in mapping.items() for label in pair):
+                lut = np.arange(256, dtype=np.uint8)
+                for source_label, target_label in mapping.items():
+                    lut[source_label] = target_label
+                compiled_uint8_luts[transform_name] = lut
+        self.__dict__["_semantic_mask_label_mappings"] = compiled_mappings
+        self.__dict__["_semantic_mask_uint8_luts"] = compiled_uint8_luts
+        if any(compiled_mappings.values()):
+            self.__dict__["apply_with_params"] = self._apply_with_semantic_mask_params
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
@@ -1118,12 +1146,14 @@ class DualTransform(BasicTransform):
                 "r180": None,
                 "r270": None,
             }
-            mapped_name = d4_to_base_transform.get(group_element)
-            return mapped_name or class_name
+            return d4_to_base_transform.get(group_element)
 
         # Only parity-changing transforms should apply label mappings
         parity_changing_transforms = {"HorizontalFlip", "VerticalFlip", "Transpose"}
-        return class_name if class_name in parity_changing_transforms else None
+        return next(
+            (base.__name__ for base in self.__class__.__mro__ if base.__name__ in parity_changing_transforms),
+            None,
+        )
 
     def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         """Apply label mapping by reordering entire keypoint rows. For keypoint regression, row
@@ -1160,6 +1190,47 @@ class DualTransform(BasicTransform):
             return keypoints
 
         return self._swap_keypoint_rows_by_labels(keypoints, processor.params.label_fields, field_mappings)
+
+    @staticmethod
+    def _remap_semantic_mask_labels(
+        mask: NDArray[np.generic] | torch.Tensor,
+        mapping: dict[int, int],
+        uint8_lut: NDArray[np.uint8] | None,
+    ) -> NDArray[np.generic] | torch.Tensor:
+        is_empty = mask.size == 0 if isinstance(mask, np.ndarray) else mask.numel() == 0
+        if is_empty:
+            return mask
+        if isinstance(mask, np.ndarray) and mask.dtype == np.uint8 and uint8_lut is not None:
+            return sz_lut(mask, uint8_lut, inplace=False)
+
+        result = mask.copy() if isinstance(mask, np.ndarray) else mask.clone()
+        for source_label, target_label in mapping.items():
+            result[mask == source_label] = target_label
+        return result
+
+    def _apply_label_mapping_to_semantic_masks(self, data: dict[str, Any], **params: Any) -> dict[str, Any]:
+        transform_name = self._get_label_transform_name(**params)
+        if transform_name is None:
+            return data
+        mapping = self._semantic_mask_label_mappings.get(transform_name)
+        if not mapping:
+            return data
+        uint8_lut = self._semantic_mask_uint8_luts.get(transform_name)
+
+        for data_name, value in data.items():
+            canonical_name = self._additional_targets.get(data_name, data_name)
+            if canonical_name in {"mask", "masks", "mask3d"} and isinstance(value, (np.ndarray, torch.Tensor)):
+                data[data_name] = self._remap_semantic_mask_labels(value, mapping, uint8_lut)
+        return data
+
+    def _apply_with_semantic_mask_params(
+        self,
+        params: dict[str, Any],
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        result = DualTransform.apply_with_params(self, params, *args, **kwargs)
+        return self._apply_label_mapping_to_semantic_masks(result, **params)
 
     def _swap_keypoint_rows_by_labels(
         self,
@@ -1257,8 +1328,8 @@ class DualTransform(BasicTransform):
         return keypoints
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Apply transforms with parameters, including automatic keypoint label swapping. After
-        super().apply_with_params, applies _apply_label_mapping_to_keypoints.
+        """Apply a dual transform with its parameters, including configured keypoint and transform-aware
+        semantic-mask label mappings.
         """
         res = super().apply_with_params(params, *args, **kwargs)
 

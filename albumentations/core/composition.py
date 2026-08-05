@@ -51,7 +51,7 @@ from .tensor import (
     tensor_to_numpy_annotation,
     validate_tensor_input,
 )
-from .transforms_interface import BasicTransform
+from .transforms_interface import BasicTransform, DualTransform
 from .type_definitions import StackedMasks4D
 from .utils import DataProcessor, format_args, get_shape
 
@@ -73,6 +73,53 @@ __all__ = [
 NUM_ONEOF_TRANSFORMS = 2
 
 _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
+
+
+def _normalize_semantic_mask_source_label(source_label: Any) -> int:
+    if isinstance(source_label, str):
+        try:
+            normalized_source = int(source_label)
+        except ValueError as exc:
+            raise TypeError("semantic mask source labels must be integers") from exc
+        if source_label == str(normalized_source):
+            return normalized_source
+    elif isinstance(source_label, (int, np.integer)) and not isinstance(source_label, (bool, np.bool_)):
+        return int(source_label)
+    raise TypeError("semantic mask source labels must be integers")
+
+
+def _normalize_semantic_mask_target_label(target_label: Any) -> int:
+    if isinstance(target_label, (int, np.integer)) and not isinstance(target_label, (bool, np.bool_)):
+        return int(target_label)
+    raise TypeError("semantic mask target labels must be integers")
+
+
+def _normalize_semantic_mask_label_mappings(mappings: Any) -> dict[str, dict[int, int]] | None:
+    """Normalize integer semantic-mask label keys after JSON transport and reject invalid, ambiguous,
+    or duplicate mappings before use.
+    """
+    if mappings is None:
+        return None
+    if not isinstance(mappings, dict):
+        raise TypeError("semantic_mask_label_mappings must be a dictionary")
+
+    normalized: dict[str, dict[int, int]] = {}
+    for transform_name, mapping in mappings.items():
+        if not isinstance(transform_name, str):
+            raise TypeError("semantic_mask_label_mappings transform names must be strings")
+        if not isinstance(mapping, dict):
+            raise TypeError(f"semantic_mask_label_mappings['{transform_name}'] must be a dictionary")
+
+        normalized_mapping: dict[int, int] = {}
+        for source_label, target_label in mapping.items():
+            normalized_source = _normalize_semantic_mask_source_label(source_label)
+            normalized_target = _normalize_semantic_mask_target_label(target_label)
+            if normalized_source in normalized_mapping:
+                raise ValueError(f"Duplicate semantic mask source label after normalization: {normalized_source}")
+            normalized_mapping[normalized_source] = normalized_target
+
+        normalized[transform_name] = normalized_mapping
+    return normalized
 
 
 def _get_replay_param_annotations(cls: type) -> dict[str, Any]:
@@ -1129,6 +1176,10 @@ class Compose(BaseCompose, HubMixin):
         additional_targets (dict[str, str] | None): A dictionary mapping additional target names
             to their types. For example, {'image2': 'image'}. Passing a spatial alias also
             requires passing its canonical target (`image` in this example). Default is None.
+        semantic_mask_label_mappings (dict[str, dict[int, int]] | None): Label replacements applied to
+            `mask`, `masks`, `mask3d`, and their aliases after a realized label-changing spatial transform.
+            The outer key is `HorizontalFlip`, `VerticalFlip`, or `Transpose`; the inner dictionary maps
+            source class IDs to target class IDs. Default: None.
         p (float): Probability of applying all transforms. Should be in range [0, 1]. Default is 1.0.
         is_check_shapes (bool): If True, checks consistency of shapes for image/mask/masks on each call.
             Disable only if you are sure about your data consistency. Default is True.
@@ -1182,6 +1233,13 @@ class Compose(BaseCompose, HubMixin):
         ... ], seed=137)
         >>> transformed = transform(image=image)
 
+        >>> # Swap left/right semantic-mask class IDs after a realized horizontal flip:
+        >>> transform = A.Compose(
+        ...     [A.HorizontalFlip(p=1.0)],
+        ...     semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
+        ... )
+        >>> transformed = transform(image=image, mask=mask)
+
         >>> # Pipeline modification after initialization:
         >>> # Create initial pipeline with bbox support
         >>> base_transform = A.Compose([
@@ -1202,6 +1260,11 @@ class Compose(BaseCompose, HubMixin):
         - The class checks the validity of input data and shapes if is_check_args and is_check_shapes are True.
         - When bbox_params or keypoint_params are provided, it sets up the corresponding processors.
         - The transform can handle additional targets specified in the additional_targets dictionary.
+        - Semantic-mask mappings replace class IDs simultaneously, so paired swaps do not overwrite one another.
+          Unmapped labels stay unchanged. For D4/SquareSymmetry, configure the realized reflection name:
+          `HorizontalFlip`, `VerticalFlip`, or `Transpose`; identity and rotations do not remap labels.
+        - Configure semantic-mask mappings only when the transformed and relabeled sample remains valid for your
+          domain. Compose applies the declared mapping but cannot verify its semantic truth.
         - When strict mode is enabled, it performs additional validation to ensure data and transform
           configuration correctness.
         - Pipeline modification operators (+, -, __radd__) preserve all Compose parameters including
@@ -1225,6 +1288,7 @@ class Compose(BaseCompose, HubMixin):
         telemetry: bool = True,
         instance_binding: Sequence[str] | None = None,
         strict_instance_invariant: bool = True,
+        semantic_mask_label_mappings: dict[str, dict[int, int]] | None = None,
     ):
         # Strict-invariant mode (2.2.2+ default) raises RuntimeError when a transform breaks
         # the masks/bboxes positional alignment contract instead of trying to recover.
@@ -1249,6 +1313,9 @@ class Compose(BaseCompose, HubMixin):
         self._instance_binding = self._setup_instance_binding(instance_binding)
 
         self.add_targets(additional_targets)
+        normalized_mask_mappings = _normalize_semantic_mask_label_mappings(semantic_mask_label_mappings)
+        self.semantic_mask_label_mappings = normalized_mask_mappings
+        self._set_semantic_mask_label_mappings_for_transforms(self.transforms, normalized_mask_mappings)
         if not self.transforms:  # if no transforms -> do nothing, all keys will be available
             self._available_keys.update(AVAILABLE_KEYS)
         if self._instance_binding:
@@ -1267,6 +1334,20 @@ class Compose(BaseCompose, HubMixin):
 
         # Telemetry runs after nested composes so main_compose=False is already set on them.
         self._maybe_send_telemetry(telemetry)
+
+    def _set_semantic_mask_label_mappings_for_transforms(
+        self,
+        transforms: TransformsSeqType,
+        mappings: dict[str, dict[int, int]] | None,
+    ) -> None:
+        effective_mappings = mappings or {}
+        for transform in transforms:
+            if isinstance(transform, DualTransform):
+                transform.set_semantic_mask_label_mappings(effective_mappings)
+            elif isinstance(transform, Compose) and mappings is None:
+                continue
+            elif isinstance(transform, BaseCompose):
+                self._set_semantic_mask_label_mappings_for_transforms(transform.transforms, mappings)
 
     def _resolve_processors(
         self,
@@ -2489,6 +2570,8 @@ class Compose(BaseCompose, HubMixin):
                 "seed": getattr(self, "_base_seed", None),
             },
         )
+        if self.semantic_mask_label_mappings is not None:
+            dictionary["semantic_mask_label_mappings"] = self.semantic_mask_label_mappings
         if self._instance_binding:
             dictionary["instance_binding"] = sorted(self._instance_binding)
         return dictionary
@@ -2519,6 +2602,8 @@ class Compose(BaseCompose, HubMixin):
                 "is_check_shapes": self.is_check_shapes,
             },
         )
+        if self.semantic_mask_label_mappings is not None:
+            dictionary["semantic_mask_label_mappings"] = self.semantic_mask_label_mappings
         if self._instance_binding:
             dictionary["instance_binding"] = sorted(self._instance_binding)
         return dictionary
@@ -2674,6 +2759,7 @@ class Compose(BaseCompose, HubMixin):
             "bbox_params": bbox_params,
             "keypoint_params": kp_params,
             "additional_targets": self.additional_targets,
+            "semantic_mask_label_mappings": self.semantic_mask_label_mappings,
             "p": self.p,
             "is_check_shapes": self.is_check_shapes,
             "strict": self.strict,
@@ -3059,6 +3145,8 @@ class ReplayCompose(Compose):
             Parameters for keypoint transforms.
         additional_targets (dict[str, str] | None):
             Dictionary of additional targets.
+        semantic_mask_label_mappings (dict[str, dict[int, int]] | None):
+            Transform-aware semantic-mask class-ID replacements.
         p (float):
             Probability of applying the compose.
         is_check_shapes (bool):
@@ -3082,6 +3170,7 @@ class ReplayCompose(Compose):
         save_key: str = "replay",
         seed: int | None = None,
         instance_binding: Sequence[str] | None = None,
+        semantic_mask_label_mappings: dict[str, dict[int, int]] | None = None,
     ):
         super().__init__(
             transforms,
@@ -3092,6 +3181,7 @@ class ReplayCompose(Compose):
             is_check_shapes,
             seed=seed,
             instance_binding=instance_binding,
+            semantic_mask_label_mappings=semantic_mask_label_mappings,
         )
         self.set_deterministic(True, save_key=save_key)
         self.save_key = save_key

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from operator import index
+from operator import attrgetter, index
 from typing import Any, Literal, Protocol, cast
+
+import torch
 
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
@@ -1253,6 +1255,10 @@ def hflip_images(volume: np.ndarray) -> np.ndarray:
     return np.flip(volume, axis=2)
 
 
+# Tensor spatial primitives are aliases rather than wrappers so transform dispatch does not add a Python frame.
+flip_tensor = torch.flip
+
+
 def vflip_images(volume: np.ndarray) -> np.ndarray:
     """Perform vertical flip on a single volume (D, H, W) or (D, H, W, C). Flips
     along height axis. For Transforms3D VerticalFlip.
@@ -1268,6 +1274,9 @@ def vflip_images(volume: np.ndarray) -> np.ndarray:
 
     """
     return np.flip(volume, axis=1)
+
+
+transpose_tensor = attrgetter("mT")
 
 
 @preserve_channel_dim
@@ -1400,6 +1409,7 @@ __all__ = [
     "dilate",
     "distort_image",
     "erode",
+    "flip_tensor",
     "get_pad_grid_dimensions",
     "hflip_images",
     "is_identity_matrix",
@@ -1420,5 +1430,6 @@ __all__ = [
     "scale_xy",
     "transpose",
     "transpose_images",
+    "transpose_tensor",
     "vflip_images",
 ]

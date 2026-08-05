@@ -581,6 +581,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
             "antialias": False,
         },
     ],
+    [A.Resize3D, {"size": (2, 30, 30), "interpolation": cv2.INTER_NEAREST, "mask_interpolation": cv2.INTER_LINEAR}],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
     [
@@ -1215,6 +1216,7 @@ _EXACT_TRANSFORMS = {
     A.RandomRotate90,
     A.RandomRotate90_3D,
     A.Resize,
+    A.Resize3D,
     A.Transpose,
     A.VerticalFlip,
 }

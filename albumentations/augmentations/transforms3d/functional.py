@@ -67,6 +67,29 @@ def anisotropy_3d(
 
 
 @handle_empty_array("keypoints")
+def keypoints_scale_3d(
+    keypoints: np.ndarray,
+    source_shape: tuple[int, int, int],
+    target_shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Scale XYZ keypoints across voxel grids while leaving every user-provided\
+    attribute after their three spatial coordinates unchanged.
+
+    Coordinates use Albumentations' pixel-index convention: `x`, `y`, and `z`
+    scale from the origin by the output-to-input ratio. All remaining columns preserve
+    their input values.
+    """
+    depth_scale, height_scale, width_scale = np.asarray(target_shape, dtype=np.float32) / np.asarray(
+        source_shape, dtype=np.float32
+    )
+    result = keypoints.copy()
+    result[:, 0] *= width_scale
+    result[:, 1] *= height_scale
+    result[:, 2] *= depth_scale
+    return result
+
+
+@handle_empty_array("keypoints")
 def keypoints_flip_3d(
     keypoints: np.ndarray,
     flip_axes: tuple[Literal[0, 1, 2], ...],

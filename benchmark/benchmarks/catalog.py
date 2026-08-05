@@ -73,6 +73,7 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "RandomSizedBBoxSafeCrop": {"height": 96, "width": 96},
     "RandomSizedCrop": {"min_max_height": (96, 128), "size": (96, 96)},
     "Resize": {"height": 128, "width": 128},
+    "Resize3D": {"size": (12, 96, 96)},
     "SmallestMaxSize": {"max_size": 160},
     "TextImage": {
         "augmentations": (None,),

@@ -84,19 +84,19 @@ def test_semantic_mask_label_mapping_one_way_preserves_unmapped_and_ignore_label
     np.testing.assert_array_equal(result["mask"], np.array([[4, 255, 7, 3]], dtype=np.uint8))
 
 
-def test_semantic_mask_label_mapping_preserves_int32_mask_dtype() -> None:
+def test_semantic_mask_label_mapping_preserves_uint16_mask_dtype() -> None:
     image = np.zeros((1, 4, 3), dtype=np.uint8)
-    mask = np.array([[2, 0, 3, 2]], dtype=np.int32)
+    mask = np.array([[300, 0, 400, 300]], dtype=np.uint16)
     transform = A.Compose(
         [A.HorizontalFlip(p=1.0)],
-        semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
+        semantic_mask_label_mappings={"HorizontalFlip": {300: 400, 400: 300}},
         telemetry=False,
     )
 
     result = transform(image=image, mask=mask)
 
-    assert result["mask"].dtype == np.int32
-    np.testing.assert_array_equal(result["mask"], np.array([[3, 2, 0, 3]], dtype=np.int32))
+    assert result["mask"].dtype == np.uint16
+    np.testing.assert_array_equal(result["mask"], np.array([[400, 300, 0, 400]], dtype=np.uint16))
 
 
 def test_semantic_mask_label_mapping_covers_masks_mask3d_and_aliases() -> None:

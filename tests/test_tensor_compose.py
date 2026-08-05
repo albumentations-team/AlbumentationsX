@@ -191,7 +191,6 @@ def test_tensor_boundary_rejects_invalid_image_contract(tensor: torch.Tensor, me
     [
         ("mask", torch.zeros((1, 11, 13), dtype=torch.uint8), "must have shape"),
         ("masks", torch.zeros((11, 13), dtype=torch.uint8), "must have shape"),
-        ("mask3d", torch.zeros((1, 11, 13), dtype=torch.int32), "dtype one of"),
         ("bboxes", torch.zeros((1, 4), dtype=torch.int64), "dtype one of"),
         ("keypoints", torch.zeros((1, 2, 1), dtype=torch.float32), "must have shape"),
     ],
@@ -214,6 +213,9 @@ def test_tensor_boundary_rejects_invalid_annotation_contract(
         ("mask", (11, 13), torch.int64),
         ("masks", (2, 11, 13), torch.int64),
         ("mask3d", (2, 11, 13), torch.int64),
+        ("mask", (11, 13), torch.int32),
+        ("masks", (2, 11, 13), torch.int32),
+        ("mask3d", (2, 11, 13), torch.int32),
         ("mask", (11, 13), torch.bool),
         ("masks", (2, 11, 13), torch.bool),
         ("mask3d", (2, 11, 13), torch.bool),

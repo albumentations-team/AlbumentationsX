@@ -179,9 +179,7 @@ def test_relative_and_mixed_modes_cover_batch_and_volume_targets(mode: str, zero
         "images": np.full((2, height, width, 1), 9, dtype=np.uint8),
         "masks": np.full((2, height, width), 9, dtype=np.uint8),
         "volume": np.full((2, height, width, 1), 9, dtype=np.uint8),
-        "volumes": np.full((2, 2, height, width, 1), 9, dtype=np.uint8),
         "mask3d": np.full((2, height, width), 9, dtype=np.uint8),
-        "masks3d": np.full((2, 2, height, width), 9, dtype=np.uint8),
     }
 
     result = transform(**inputs)

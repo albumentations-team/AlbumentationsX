@@ -30,7 +30,9 @@ advisory ASV jobs or AI-review jobs.
 
 Direct pushes to `main` are outside the maintenance policy and should be
 blocked by the repository ruleset. Repository workflows use pull-request,
-scheduled, manual, and release events instead of `push` events.
+scheduled, manual, and release events instead of `push` events. CodeQL is the
+exception: its scoped `push` trigger updates default-branch alerts after a
+merged pull request.
 
 ## Path-based selection
 
@@ -144,7 +146,8 @@ CodeQL uses two path-scoped advanced workflows. `codeql-python.yml` runs for
 Python source, stubs, or CodeQL configuration changes. `codeql-actions.yml`
 runs for GitHub Actions and composite-action changes. Ordinary Markdown and
 `.codex` documentation changes start neither workflow. Both workflows run
-after a matching pull request, once each week, and on manual dispatch.
+after a matching pull request or push to `main`, once each week, and on manual
+dispatch.
 
 GitHub Default Setup must remain disabled. It suppresses advanced workflows
 and blocks their SARIF uploads. CodeQL check names remain advisory because a

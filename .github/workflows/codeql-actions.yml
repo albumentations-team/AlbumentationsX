@@ -1,6 +1,12 @@
 name: CodeQL Actions
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/**"
+      - "**/action.yml"
+      - "**/action.yaml"
   pull_request:
     branches: [main]
     paths:

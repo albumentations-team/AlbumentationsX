@@ -1,6 +1,13 @@
 name: CodeQL Python
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.py"
+      - "**/*.pyi"
+      - ".github/codeql/**"
+      - ".github/workflows/codeql-python.yml"
   pull_request:
     branches: [main]
     paths:

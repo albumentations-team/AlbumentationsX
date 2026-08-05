@@ -326,7 +326,8 @@ path filter finds no relevant input.
 
 Preferred policy:
 
-- keep CodeQL enabled for pull requests with relevant inputs and weekly scans;
+- keep CodeQL enabled for pull requests with relevant inputs, matching pushes
+  to the default branch, and weekly scans;
 - keep both language checks advisory because path filtering intentionally
   omits them from unrelated pull requests;
 - run Python analysis for runtime or Python tooling changes;

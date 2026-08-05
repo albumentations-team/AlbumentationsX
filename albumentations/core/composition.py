@@ -199,7 +199,9 @@ AVAILABLE_KEYS = (
     "bboxes",
     "keypoints",
     "volume",
+    "volumes",
     "mask3d",
+    "mask3ds",
     "user_data",
 )
 
@@ -207,13 +209,14 @@ MASK_KEYS = (
     "mask",  # 2D mask
     "masks",  # Multiple 2D masks
     "mask3d",  # 3D mask
+    "mask3ds",  # Multiple 3D masks
 )
 
 # Keys related to image data
 IMAGE_KEYS = {"image", "images"}
 CHECK_BBOX_PARAM = {"bboxes"}
 CHECK_KEYPOINTS_PARAM = {"keypoints"}
-VOLUME_KEYS = {"volume"}
+VOLUME_KEYS = {"volume", "volumes"}
 _SPATIAL_ADDITIONAL_TARGETS = frozenset((*IMAGE_KEYS, *MASK_KEYS, *VOLUME_KEYS))
 
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
@@ -1769,7 +1772,7 @@ class Compose(BaseCompose, HubMixin):
         volume_shapes: list[tuple[int, ...]] = []  # For D,H,W checks
 
         # List of targets to check shapes for
-        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks"}
+        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "mask3ds", "masks"}
 
         for data_name, data_value in data.items():
             # Resolve aliases via additional_targets so e.g. {'custom_image_key': 'image'}
@@ -1823,6 +1826,13 @@ class Compose(BaseCompose, HubMixin):
             shapes.append(data_value.shape[1:3])  # H,W
             volume_shapes.append(data_value.shape[:3])  # D,H,W
 
+        # Handle 3D batch data
+        elif data_name in {"volumes", "mask3ds"}:
+            if data_value.ndim not in {4, 5}:  # (N,D,H,W) or (N,D,H,W,C)
+                raise TypeError(f"{data_name} must be 4D or 5D array")
+            shapes.append(data_value.shape[2:4])  # H,W from (N,D,H,W)
+            volume_shapes.append(data_value.shape[1:4])  # D,H,W
+
     @staticmethod
     def _process_tensor_data_shape(
         data_name: str,
@@ -1840,6 +1850,9 @@ class Compose(BaseCompose, HubMixin):
         elif data_name == "volume":
             shapes.append((data_value.shape[2], data_value.shape[3]))
             volume_shapes.append((data_value.shape[1], data_value.shape[2], data_value.shape[3]))
+        elif data_name == "volumes":
+            shapes.append((data_value.shape[3], data_value.shape[4]))
+            volume_shapes.append((data_value.shape[2], data_value.shape[3], data_value.shape[4]))
         elif data_name == "mask":
             shapes.append(data_value.shape[:2])
         elif data_name == "masks":
@@ -1847,6 +1860,9 @@ class Compose(BaseCompose, HubMixin):
         elif data_name == "mask3d":
             shapes.append(data_value.shape[1:3])
             volume_shapes.append(data_value.shape[:3])
+        elif data_name == "mask3ds":
+            shapes.append(data_value.shape[2:4])
+            volume_shapes.append(data_value.shape[1:4])
 
     def _validate_data(self, data: dict[str, Any]) -> None:
         """Validate input data keys and arguments. When strict, checks every key is in
@@ -1902,7 +1918,9 @@ class Compose(BaseCompose, HubMixin):
         "mask": 2,  # (H, W) => (H, W, 1)
         "masks": 3,  # (N, H, W) => (N, H, W, 1)
         "volume": 3,  # (D, H, W) => (D, H, W, 1)
+        "volumes": 4,  # (N, D, H, W) => (N, D, H, W, 1)
         "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
+        "mask3ds": 4,  # (N, D, H, W) => (N, D, H, W, 1)
     }
 
     def _add_grayscale_channels(self, data: dict[str, Any]) -> None:
@@ -2005,7 +2023,7 @@ class Compose(BaseCompose, HubMixin):
                         data[key] = np.squeeze(value, axis=-1)
                 elif (
                     isinstance(value, torch.Tensor)
-                    and canonical in {"mask", "masks", "mask3d"}
+                    and canonical in {"mask", "masks", "mask3d", "mask3ds"}
                     and value.shape[-1] == 1
                 ):
                     # Legacy terminal ToTensorV2/ToTensor3D transforms keep mask axis behavior unchanged.
@@ -2673,7 +2691,7 @@ class Compose(BaseCompose, HubMixin):
         """Check and process a single argument from _check_args. Validates type and shape
         for image, mask, images, volume, etc.; appends to shapes/volume_shapes.
         """
-        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks"}
+        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "mask3ds", "masks"}
         if internal_name not in shape_check_targets:
             return
 

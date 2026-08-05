@@ -22,6 +22,7 @@ from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D, VolumeOnlyTransform
 from albumentations.core.type_definitions import (
     C4_INVERSE,
+    CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     C4GroupElement,
@@ -31,6 +32,7 @@ from albumentations.core.type_definitions import (
 )
 
 __all__ = [
+    "Affine3D",
     "Anisotropy3D",
     "CenterCrop3D",
     "CoarseDropout3D",
@@ -48,8 +50,18 @@ NUM_DIMENSIONS = 3
 AxisIndex3D = Literal[0, 1, 2]
 AxisPair3D = tuple[AxisIndex3D, AxisIndex3D]
 RotationCount3D = Literal[0, 1, 2, 3]
+AxisName3D = Literal["x", "y", "z"]
+AxisRange3D = Annotated[tuple[float, float], AfterValidator(nondecreasing)]
+PositiveAxisRange3D = Annotated[
+    tuple[float, float],
+    AfterValidator(check_range_bounds(0, None, min_inclusive=False)),
+    AfterValidator(nondecreasing),
+]
+AxisRanges3D = dict[AxisName3D, AxisRange3D]
+PositiveAxisRanges3D = dict[AxisName3D, PositiveAxisRange3D]
 DEFAULT_ROTATION_AXIS_PAIRS: tuple[AxisPair3D, ...] = ((0, 1), (0, 2), (1, 2))
 DEFAULT_FLIP_AXES: tuple[AxisIndex3D, ...] = (0, 1, 2)
+AXIS_NAMES_3D: tuple[AxisName3D, ...] = ("x", "y", "z")
 
 
 def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
@@ -61,6 +73,11 @@ def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
         return tuple(volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape
     if "mask3d" in data:
         return data["mask3d"].shape
+    if "volumes" in data:
+        volumes = data["volumes"]
+        return tuple(volumes.shape[2:]) if isinstance(volumes, torch.Tensor) else volumes.shape[1:]
+    if "mask3ds" in data:
+        return data["mask3ds"].shape[1:]
     raise ValueError("No volume or mask3d found in data")
 
 
@@ -69,6 +86,278 @@ def _get_volume_spatial_shape(data: dict[str, Any]) -> tuple[int, int, int]:
     Avoids indexing empty leading axes.
     """
     return cast("tuple[int, int, int]", _get_volume_shape(data)[:3])
+
+
+class Affine3D(Transform3D):
+    """Apply a sampled 3D affine mapping to volumes, masks, and keypoints by rotating, scaling, and shifting
+    voxel coordinates for robust medical-imaging augmentation.
+
+    `Affine3D` resamples depth, height, and width jointly through Albucore `warp_affine3d`; it never treats depth as a
+    batch axis. The output grid keeps the input `(D, H, W)` shape. It samples positive per-axis scales, rotations, and
+    relative translations independently, then applies the same forward matrix to `volume`, `mask3d`, and `xyz`
+    keypoints.
+
+    Args:
+        rotate_range (dict[str, tuple[float, float]]): Inclusive degree ranges around the `x`, `y`, and `z` axes.
+            Axis names use the `(x, y, z)` voxel coordinate order. Default: all `(0.0, 0.0)`.
+        scale_range (dict[str, tuple[float, float]]): Positive multiplicative scale ranges for `x`, `y`, and `z`.
+            `1.0` leaves an axis unchanged. Default: all `(1.0, 1.0)`.
+        translate_percent_range (dict[str, tuple[float, float]]): Relative translation ranges for `x`, `y`, and `z`.
+            A value of `1.0` moves by the corresponding input-axis length. Default: all `(0.0, 0.0)`.
+        interpolation (Literal[0, 1]): Volume interpolation: `cv2.INTER_NEAREST` or `cv2.INTER_LINEAR`.
+            Default: `cv2.INTER_LINEAR`.
+        mask_interpolation (Literal[0, 1]): `mask3d` interpolation: `cv2.INTER_NEAREST` or `cv2.INTER_LINEAR`.
+            Default: `cv2.INTER_NEAREST`.
+        border_mode (Literal[0, 1]): Border policy: `cv2.BORDER_CONSTANT` or `cv2.BORDER_REPLICATE`.
+            Default: `cv2.BORDER_CONSTANT`.
+        fill (tuple[float, ...] | float): Constant fill for volume channels when `border_mode` is constant.
+            Default: `0`.
+        fill_mask (tuple[float, ...] | float): Constant fill for `mask3d` when `border_mode` is constant.
+            Default: `0`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Notes:
+        - Volume arrays are `(D, H, W, C)`, batch arrays are `(N, D, H, W, C)`, and keypoints are `(x, y, z)`.
+          The centred forward matrix applies scale, then x-, y-, and z-axis rotations, then translation. One sampled
+          matrix is shared by every item in a `volumes` or `mask3ds` batch.
+        - Scale factors must be positive, so this transform does not sample reflections. Use `Flip3D` for reflections.
+        - Transform parameters use voxel coordinates only; physical spacing, orientation, and affine metadata remain
+          unchanged.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import cv2
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).random((16, 64, 96, 1), dtype=np.float32)
+        >>> mask3d = np.zeros((16, 64, 96), dtype=np.uint8)
+        >>> keypoints = np.array([[48.0, 32.0, 8.0]], dtype=np.float32)
+        >>> transform = A.Compose([
+        ...     A.Affine3D(
+        ...         rotate_range={"x": (-10.0, 10.0), "y": (-5.0, 5.0), "z": (-15.0, 15.0)},
+        ...         scale_range={"x": (0.9, 1.1), "y": (0.9, 1.1), "z": (0.95, 1.05)},
+        ...         translate_percent_range={"x": (-0.1, 0.1), "y": (-0.1, 0.1), "z": (-0.05, 0.05)},
+        ...         interpolation=cv2.INTER_LINEAR,
+        ...         mask_interpolation=cv2.INTER_NEAREST,
+        ...         p=1.0,
+        ...     ),
+        ... ], keypoint_params=A.KeypointParams(coord_format="xyz"), strict=True)
+        >>> result = transform(volume=volume, mask3d=mask3d, keypoints=keypoints)
+        >>> result["volume"].shape, result["mask3d"].shape
+        ((16, 64, 96, 1), (16, 64, 96))
+
+    See Also:
+        - `Resize3D`: Resize every spatial axis without sampling an affine matrix.
+        - `RandomRotate90_3D`: Use exact right-angle rotations without interpolation.
+        - `Flip3D`: Apply discrete axis reflections without resampling.
+
+    Returns:
+        dict[str, Any]: Augmented targets when the transform is executed through `Compose`.
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"volume", "volumes", "mask3d", "mask3ds"})
+
+    class InitSchema(BaseTransformInitSchema):
+        rotate_range: AxisRanges3D
+        scale_range: PositiveAxisRanges3D
+        translate_percent_range: AxisRanges3D
+        interpolation: Literal[0, 1]
+        mask_interpolation: Literal[0, 1]
+        border_mode: Literal[0, 1]
+        fill: tuple[float, ...] | float
+        fill_mask: tuple[float, ...] | float
+
+        @model_validator(mode="after")
+        def _validate_axis_ranges(self) -> Self:
+            expected_axes = set(AXIS_NAMES_3D)
+            for field_name, axis_ranges in (
+                ("rotate_range", self.rotate_range),
+                ("scale_range", self.scale_range),
+                ("translate_percent_range", self.translate_percent_range),
+            ):
+                if set(axis_ranges) != expected_axes:
+                    raise ValueError(f"{field_name} must define exactly the x, y, and z axes")
+            return self
+
+    def __init__(
+        self,
+        rotate_range: AxisRanges3D = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)},
+        scale_range: PositiveAxisRanges3D = {"x": (1.0, 1.0), "y": (1.0, 1.0), "z": (1.0, 1.0)},
+        translate_percent_range: AxisRanges3D = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)},
+        interpolation: Literal[0, 1] = CV2_INTER_LINEAR,
+        mask_interpolation: Literal[0, 1] = CV2_INTER_NEAREST,
+        border_mode: Literal[0, 1] = CV2_BORDER_CONSTANT,
+        fill: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float = 0,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.rotate_range = rotate_range
+        self.scale_range = scale_range
+        self.translate_percent_range = translate_percent_range
+        self.interpolation = interpolation
+        self.mask_interpolation = mask_interpolation
+        self.border_mode = border_mode
+        self.fill = fill
+        self.fill_mask = fill_mask
+
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        source_shape = _get_volume_spatial_shape(data)
+        rotate = {axis: self.py_random.uniform(*self.rotate_range[axis]) for axis in AXIS_NAMES_3D}
+        scale = {axis: self.py_random.uniform(*self.scale_range[axis]) for axis in AXIS_NAMES_3D}
+        translate_percent = {
+            axis: self.py_random.uniform(*self.translate_percent_range[axis]) for axis in AXIS_NAMES_3D
+        }
+        depth, height, width = source_shape
+        translate = {
+            "x": translate_percent["x"] * width,
+            "y": translate_percent["y"] * height,
+            "z": translate_percent["z"] * depth,
+        }
+        matrix = f3d.create_affine_transformation_matrix_3d(translate, scale, rotate, source_shape)
+
+        self.applied_config = {
+            "rotate_range": {axis: (rotate[axis], rotate[axis]) for axis in AXIS_NAMES_3D},
+            "scale_range": {axis: (scale[axis], scale[axis]) for axis in AXIS_NAMES_3D},
+            "translate_percent_range": {
+                axis: (translate_percent[axis], translate_percent[axis]) for axis in AXIS_NAMES_3D
+            },
+        }
+        return {"matrix": matrix, "output_shape": source_shape}
+
+    @property
+    def targets(self) -> dict[str, Any]:
+        """Route individual volumes and homogeneous 3D batches through a sampled affine matrix so every item uses
+        identical spatial geometry.
+        """
+        return {
+            **super().targets,
+            "volumes": self.apply_to_volumes,
+            "mask3ds": self.apply_to_mask3ds,
+        }
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return cast(
+            "VolumeType",
+            f3d.affine_3d(volume, matrix, output_shape, self.interpolation, self.border_mode, self.fill),
+        )
+
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType,
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return cast(
+            "VolumeType",
+            f3d.affine_3d(
+                mask3d,
+                matrix,
+                output_shape,
+                self.mask_interpolation,
+                self.border_mode,
+                self.fill_mask,
+                is_mask=True,
+            ),
+        )
+
+    def apply_to_volumes(
+        self,
+        volumes: VolumeType | torch.Tensor,
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType | torch.Tensor:
+        """Apply a sampled affine matrix to every volume in an `N,D,H,W[,C]` or `N,C,D,H,W` batch, preserving its
+        output shape, dtype, and public layout.
+        """
+        if len(volumes) == 0:
+            return volumes
+        if isinstance(volumes, torch.Tensor):
+            transformed_tensors = [
+                cast(
+                    "torch.Tensor",
+                    f3d.affine_3d(volume, matrix, output_shape, self.interpolation, self.border_mode, self.fill),
+                )
+                for volume in volumes
+            ]
+            return torch.stack(transformed_tensors)
+        transformed_volumes = [
+            cast(
+                "VolumeType",
+                f3d.affine_3d(volume, matrix, output_shape, self.interpolation, self.border_mode, self.fill),
+            )
+            for volume in volumes
+        ]
+        return cast("VolumeType", np.stack(transformed_volumes))
+
+    def apply_to_mask3ds(
+        self,
+        mask3ds: VolumeType | torch.Tensor,
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType | torch.Tensor:
+        """Apply a sampled affine matrix to every mask in an `N,D,H,W[,C]` or `N,D,H,W` batch, preserving
+        interpolation, fill, dtype, and public layout.
+        """
+        if len(mask3ds) == 0:
+            return mask3ds
+        if isinstance(mask3ds, torch.Tensor):
+            transformed_tensors = [
+                cast(
+                    "torch.Tensor",
+                    f3d.affine_3d(
+                        mask3d,
+                        matrix,
+                        output_shape,
+                        self.mask_interpolation,
+                        self.border_mode,
+                        self.fill_mask,
+                        is_mask=True,
+                    ),
+                )
+                for mask3d in mask3ds
+            ]
+            return torch.stack(transformed_tensors)
+        transformed_masks = [
+            cast(
+                "VolumeType",
+                f3d.affine_3d(
+                    mask3d,
+                    matrix,
+                    output_shape,
+                    self.mask_interpolation,
+                    self.border_mode,
+                    self.fill_mask,
+                    is_mask=True,
+                ),
+            )
+            for mask3d in mask3ds
+        ]
+        return cast("VolumeType", np.stack(transformed_masks))
+
+    def apply_to_keypoints(self, keypoints: np.ndarray, matrix: np.ndarray, **params: Any) -> np.ndarray:
+        return f3d.keypoints_affine_3d(keypoints, matrix)
 
 
 class Anisotropy3D(VolumeOnlyTransform):
@@ -233,6 +522,9 @@ class Resize3D(Transform3D):
         >>> result = transform(volume=volume, mask3d=mask3d)
         >>> result["volume"].shape, result["mask3d"].shape
         ((32, 128, 128, 1), (32, 128, 128))
+
+    See Also:
+        - `Affine3D`: Sample continuous rotations, scales, and translations while keeping the input output grid.
 
     """
 
@@ -1514,6 +1806,9 @@ class Flip3D(Transform3D):
         >>> result["volume"].shape
         (2, 3, 5, 1)
 
+    See Also:
+        - `Affine3D`: Use positive scales and continuous rotations or translations without sampling reflections.
+
     """
 
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
@@ -1727,6 +2022,9 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         >>> result = transform(volume=volume)
         >>> result["volume"].shape
         (5, 3, 2, 1)
+
+    See Also:
+        - `Affine3D`: Sample continuous rotations with interpolation and optional scale or translation.
 
     """
 

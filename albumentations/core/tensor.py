@@ -10,15 +10,17 @@ TENSOR_TARGET_RANKS: Final[dict[str, int]] = {
     "image": 3,
     "images": 4,
     "volume": 4,
+    "volumes": 5,
     "mask": 2,
     "masks": 3,
     "mask3d": 3,
+    "mask3ds": 4,
     "bboxes": 2,
     "keypoints": 2,
 }
 TENSOR_ANNOTATION_TARGETS: Final[frozenset[str]] = frozenset({"bboxes", "keypoints"})
 TENSOR_SPATIAL_TARGETS: Final[frozenset[str]] = frozenset(
-    {"image", "images", "volume", "mask", "masks", "mask3d", "bboxes", "keypoints"},
+    {"image", "images", "volume", "volumes", "mask", "masks", "mask3d", "mask3ds", "bboxes", "keypoints"},
 )
 TENSOR_IMAGE_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.float32})
 TENSOR_MASK_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.uint16, torch.float32})
@@ -27,9 +29,11 @@ TENSOR_TARGET_DTYPES: Final[dict[str, frozenset[torch.dtype]]] = {
     "image": TENSOR_IMAGE_DTYPES,
     "images": TENSOR_IMAGE_DTYPES,
     "volume": TENSOR_IMAGE_DTYPES,
+    "volumes": TENSOR_IMAGE_DTYPES,
     "mask": TENSOR_MASK_DTYPES,
     "masks": TENSOR_MASK_DTYPES,
     "mask3d": TENSOR_MASK_DTYPES,
+    "mask3ds": TENSOR_MASK_DTYPES,
     **dict.fromkeys(TENSOR_ANNOTATION_TARGETS, TENSOR_ANNOTATION_DTYPES),
 }
 
@@ -47,7 +51,7 @@ def validate_tensor_input(value: torch.Tensor, data_name: str, canonical_name: s
     if expected_rank is None:
         raise TypeError(
             f"{data_name} is a torch.Tensor, but Tensor input is currently supported only for "
-            "image, images, volume, mask, masks, mask3d, bboxes, and keypoints targets",
+            "image, images, volume, volumes, mask, masks, mask3d, mask3ds, bboxes, and keypoints targets",
         )
     if value.device.type != "cpu":
         raise ValueError(f"{data_name} must be a CPU torch.Tensor, got device {value.device}")
@@ -64,9 +68,11 @@ def validate_tensor_input(value: torch.Tensor, data_name: str, canonical_name: s
             "image": "(C, H, W)",
             "images": "(C, L, H, W)",
             "volume": "(C, D, H, W)",
+            "volumes": "(N, C, D, H, W)",
             "mask": "(H, W)",
             "masks": "(N, H, W)",
             "mask3d": "(D, H, W)",
+            "mask3ds": "(N, D, H, W)",
             "bboxes": "(N, K)",
             "keypoints": "(N, K)",
         }[canonical_name]

@@ -7,15 +7,157 @@ specifically designed for 3D data.
 """
 
 import random
+from collections.abc import Mapping
 from typing import Literal, cast
 
 import cv2
 import numpy as np
 import torch
-from albucore import resize3d
+from albucore import resize3d, warp_affine3d
 
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
+
+AxisValues3D = Mapping[Literal["x", "y", "z"], float] | Mapping[str, float]
+
+
+def create_affine_transformation_matrix_3d(
+    translate: AxisValues3D,
+    scale: AxisValues3D,
+    rotate: AxisValues3D,
+    volume_shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Build a forward 4x4 affine matrix around a volume centre from sampled 3D parameters in Albucore's explicit
+    `(x, y, z)` voxel-coordinate convention.
+
+    The matrix follows Albucore's `(x, y, z)` coordinate order while `volume_shape` is `(depth, height, width)`.
+    Positive rotations use the same screen-coordinate convention as `Affine`: the transform applies scale, then x-,
+    y-, and z-axis rotations, then translation.
+    """
+    depth, height, width = volume_shape
+    center_x = (width - 1.0) / 2.0
+    center_y = (height - 1.0) / 2.0
+    center_z = (depth - 1.0) / 2.0
+
+    rotation_x_radians = np.deg2rad(rotate["x"])
+    rotation_y_radians = np.deg2rad(rotate["y"])
+    rotation_z_radians = np.deg2rad(rotate["z"])
+    cosine_x, sine_x = np.cos(rotation_x_radians), np.sin(rotation_x_radians)
+    cosine_y, sine_y = np.cos(rotation_y_radians), np.sin(rotation_y_radians)
+    cosine_z, sine_z = np.cos(rotation_z_radians), np.sin(rotation_z_radians)
+
+    scale_matrix = np.diag((scale["x"], scale["y"], scale["z"], 1.0))
+    rotation_x = np.array(
+        ((1.0, 0.0, 0.0, 0.0), (0.0, cosine_x, sine_x, 0.0), (0.0, -sine_x, cosine_x, 0.0), (0.0, 0.0, 0.0, 1.0)),
+    )
+    rotation_y = np.array(
+        ((cosine_y, 0.0, sine_y, 0.0), (0.0, 1.0, 0.0, 0.0), (-sine_y, 0.0, cosine_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
+    )
+    rotation_z = np.array(
+        ((cosine_z, sine_z, 0.0, 0.0), (-sine_z, cosine_z, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+    )
+    center_to_origin = np.array(
+        ((1.0, 0.0, 0.0, -center_x), (0.0, 1.0, 0.0, -center_y), (0.0, 0.0, 1.0, -center_z), (0.0, 0.0, 0.0, 1.0)),
+    )
+    center_from_origin = np.array(
+        ((1.0, 0.0, 0.0, center_x), (0.0, 1.0, 0.0, center_y), (0.0, 0.0, 1.0, center_z), (0.0, 0.0, 0.0, 1.0)),
+    )
+    translation_matrix = np.array(
+        (
+            (1.0, 0.0, 0.0, translate["x"]),
+            (0.0, 1.0, 0.0, translate["y"]),
+            (0.0, 0.0, 1.0, translate["z"]),
+            (0.0, 0.0, 0.0, 1.0),
+        ),
+    )
+
+    return np.asarray(
+        center_from_origin
+        @ translation_matrix
+        @ rotation_z
+        @ rotation_y
+        @ rotation_x
+        @ scale_matrix
+        @ center_to_origin,
+        dtype=np.float32,
+    )
+
+
+def affine_3d(
+    volume: VolumeType | torch.Tensor,
+    matrix: np.ndarray,
+    output_shape: tuple[int, int, int],
+    interpolation: int,
+    border_mode: int,
+    fill: float | tuple[float, ...] | None,
+    *,
+    is_mask: bool = False,
+) -> VolumeType | torch.Tensor:
+    """Resample one volume with Albucore's true 3D affine router while preserving public channel and mask layouts,
+    dtypes, borders, and interpolation policies.
+
+    Albucore owns CPU Torch sampling and its matrix, interpolation, and border semantics. This adapter adds or removes
+    the implicit channel required by channel-less masks and temporarily promotes non-native integer masks when needed.
+    """
+    is_channel_less_numpy = isinstance(volume, np.ndarray) and volume.ndim == NUM_VOLUME_DIMENSIONS - 1
+    is_channel_less_tensor = isinstance(volume, torch.Tensor) and volume.ndim == NUM_VOLUME_DIMENSIONS - 1
+    if isinstance(volume, np.ndarray):
+        working_volume = volume[..., np.newaxis] if is_channel_less_numpy else volume
+        original_numpy_dtype = working_volume.dtype
+        original_tensor_dtype = None
+        needs_mask_promotion = is_mask and original_numpy_dtype not in {np.dtype(np.uint8), np.dtype(np.float32)}
+        if needs_mask_promotion:
+            working_volume = working_volume.astype(np.float32)
+    else:
+        working_volume = volume.unsqueeze(0) if is_channel_less_tensor else volume
+        original_numpy_dtype = None
+        original_tensor_dtype = working_volume.dtype
+        needs_mask_promotion = is_mask and original_tensor_dtype not in {torch.uint8, torch.float32}
+        if needs_mask_promotion:
+            working_volume = working_volume.to(torch.float32)
+
+    result = warp_affine3d(
+        working_volume,
+        matrix,
+        output_shape,
+        interpolation=interpolation,
+        border_mode=border_mode,
+        border_value=fill,
+    )
+    if needs_mask_promotion:
+        if isinstance(result, np.ndarray):
+            if original_numpy_dtype is None:
+                msg = "NumPy affine result requires a NumPy source dtype"
+                raise RuntimeError(msg)
+            result = np.rint(result).astype(original_numpy_dtype, copy=False)
+        else:
+            if original_tensor_dtype is None:
+                msg = "Tensor affine result requires a Tensor source dtype"
+                raise RuntimeError(msg)
+            result = torch.round(result).to(original_tensor_dtype)
+
+    if is_channel_less_numpy:
+        return result[..., 0]
+    if is_channel_less_tensor:
+        return result[0]
+    return result
+
+
+@handle_empty_array("keypoints")
+def keypoints_affine_3d(keypoints: np.ndarray, matrix: np.ndarray) -> np.ndarray:
+    """Map XYZ keypoints with the forward voxel-space affine matrix used for volumes and masks, preserving
+    additional attribute and the input coordinate-array dtype.
+
+    The first three columns use Albucore's `(x, y, z)` order; homogeneous coordinates apply the same sampled matrix as
+    the volume and mask routes, leaving angle, scale, labels, and any extra columns untouched.
+    """
+    transformed_keypoints = keypoints.copy()
+    homogeneous_coordinates = np.concatenate(
+        (transformed_keypoints[:, :3], np.ones((len(transformed_keypoints), 1), dtype=keypoints.dtype)),
+        axis=1,
+    )
+    transformed_keypoints[:, :3] = (homogeneous_coordinates @ matrix.T)[:, :3]
+    return transformed_keypoints
 
 
 def get_anisotropy_downsample_shape(

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 
+import numpy as np
+
 import albumentations
 from benchmarks.catalog import benchmark_specs
 from benchmarks.catalog import make_compose as make_catalog_compose
@@ -251,6 +253,12 @@ HBB_KEYPOINT_TRANSFORMS = frozenset(
 )
 
 VOLUME_TRANSFORMS: Mapping[str, Factory] = {
+    "affine3d": lambda: albumentations.Affine3D(
+        rotate_range={"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
+        scale_range={"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
+        translate_percent_range={"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
+        p=1.0,
+    ),
     "anisotropy3d": lambda: albumentations.Anisotropy3D(
         axes=(0, 2),
         num_axes_range=(2, 2),
@@ -520,7 +528,22 @@ class PeakMemoryHotPaths:
             strict=True,
         )
         self.volume_resize = albumentations.Compose([albumentations.Resize3D(size=(12, 96, 96), p=1.0)], strict=True)
+        self.volume_affine = albumentations.Compose(
+            [
+                albumentations.Affine3D(
+                    rotate_range={"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
+                    scale_range={"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
+                    translate_percent_range={"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
+                    p=1.0,
+                ),
+            ],
+            strict=True,
+        )
         self.volume_data = {"mask3d": make_mask3d("medium"), "volume": make_volume("medium")}
+        self.volume_affine_batch_data = {
+            "mask3ds": np.stack((make_mask3d("medium"), make_mask3d("medium"))),
+            "volumes": np.stack((make_volume("medium"), make_volume("medium"))),
+        }
 
     def peakmem_resize_large_rgb(self) -> None:
         self.resize(image=self.large_rgb)
@@ -545,3 +568,9 @@ class PeakMemoryHotPaths:
 
     def peakmem_volume_resize_medium(self) -> None:
         self.volume_resize(**self.volume_data)
+
+    def peakmem_volume_affine_medium(self) -> None:
+        self.volume_affine(**self.volume_data)
+
+    def peakmem_volume_affine_batch_medium(self) -> None:
+        self.volume_affine(**self.volume_affine_batch_data)

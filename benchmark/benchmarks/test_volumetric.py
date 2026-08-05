@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 import albumentations
-from benchmarks.common import DTYPES, VOLUME_SIZES, make_volume
+from albumentations.augmentations.transforms3d import functional as f3d
+from benchmarks.common import DTYPES, VOLUME_SIZES, make_mask3d, make_volume
 
 
 class TimeVolumetricTransforms:
@@ -50,3 +53,48 @@ class TimeGaussianBlur3D:
 
     def peakmem_gaussian_blur3d(self, size: str, channels: int, dtype: str) -> None:
         self.gaussian_blur(volume=self.volume)
+
+
+class TimeAffine3D:
+    """Benchmark true-3D affine resampling through its public Compose route."""
+
+    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES))
+    param_names = ("size", "channels", "dtype")
+
+    def setup(self, size: str, channels: int, dtype: str) -> None:
+        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.volumes = np.stack((self.volume, np.flip(self.volume, axis=2)), axis=0)
+        self.mask3ds = np.stack((make_mask3d(size), make_mask3d(size)), axis=0)
+        depth, height, width = self.volume.shape[:3]
+        self.matrix = f3d.create_affine_transformation_matrix_3d(
+            {"x": 0.02 * width, "y": -0.02 * height, "z": 0.0},
+            {"x": 1.05, "y": 0.95, "z": 1.0},
+            {"x": 3.0, "y": -2.0, "z": 5.0},
+            (depth, height, width),
+        )
+        transform_kwargs = {
+            "rotate_range": {"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
+            "scale_range": {"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
+            "translate_percent_range": {"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
+            "p": 1.0,
+        }
+        self.affine_transform = albumentations.Affine3D(**transform_kwargs)
+        self.affine = albumentations.Compose(
+            [albumentations.Affine3D(**transform_kwargs)],
+            strict=True,
+        )
+
+    def time_affine3d(self, size: str, channels: int, dtype: str) -> None:
+        self.affine(volume=self.volume)
+
+    def peakmem_affine3d(self, size: str, channels: int, dtype: str) -> None:
+        self.affine(volume=self.volume)
+
+    def time_direct_affine3d_batch(self, size: str, channels: int, dtype: str) -> None:
+        self.affine_transform.apply_to_volumes(self.volumes, self.matrix, self.volume.shape[:3])
+
+    def time_affine3d_batch(self, size: str, channels: int, dtype: str) -> None:
+        self.affine(volumes=self.volumes, mask3ds=self.mask3ds)
+
+    def peakmem_affine3d_batch(self, size: str, channels: int, dtype: str) -> None:
+        self.affine(volumes=self.volumes, mask3ds=self.mask3ds)

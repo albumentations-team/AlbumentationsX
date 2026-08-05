@@ -53,6 +53,7 @@ FUNCTIONAL_GEOMETRY_ANNOTATION_COUNTS: Mapping[str, tuple[int, ...]] = {
     "keypoints_affine": (10, 100),
 }
 FUNCTIONAL_3D_KERNELS = (
+    "affine_3d",
     "anisotropy_3d",
     "resize3d",
     "crop3d",
@@ -412,6 +413,17 @@ def _call_crop3d(benchmark: Any) -> np.ndarray:
     return f3d.crop3d(benchmark.volume, benchmark.crop_coords)
 
 
+def _call_affine_3d(benchmark: Any) -> np.ndarray:
+    return f3d.affine_3d(
+        benchmark.volume,
+        benchmark.affine3d_matrix,
+        benchmark.volume.shape[:3],
+        cv2.INTER_LINEAR,
+        cv2.BORDER_CONSTANT,
+        0,
+    )
+
+
 def _call_pad_3d_with_params(benchmark: Any) -> np.ndarray:
     return f3d.pad_3d_with_params(benchmark.volume, (1, 1, 2, 2, 2, 2), 0)
 
@@ -441,6 +453,7 @@ def _call_swap_tiles_on_volume(benchmark: Any) -> np.ndarray:
 
 
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
+    "affine_3d": _call_affine_3d,
     "anisotropy_3d": _call_anisotropy_3d,
     "resize3d": _call_resize3d,
     "crop3d": _call_crop3d,
@@ -567,6 +580,12 @@ class TimeFunctional3DKernels:
         self.volume = make_volume(size_name, 1, dtype_from_name(dtype_name))
         self.anisotropy_downsample_shape = (max(1, depth // 2), height, max(1, width // 2))
         self.resize_shape = (max(1, depth * 3 // 2), max(1, height * 3 // 4), max(1, width * 3 // 2))
+        self.affine3d_matrix = f3d.create_affine_transformation_matrix_3d(
+            {"x": 2.0, "y": -2.0, "z": 1.0},
+            {"x": 1.05, "y": 0.95, "z": 1.0},
+            {"x": 3.0, "y": -2.0, "z": 5.0},
+            self.volume.shape[:3],
+        )
         self.crop_coords = (1, depth - 1, height // 4, height * 3 // 4, width // 4, width * 3 // 4)
         self.holes = np.array(
             [[1, height // 4, width // 4, min(depth - 1, 4), height // 2, width // 2]],

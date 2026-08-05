@@ -582,6 +582,19 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.Resize3D, {"size": (2, 30, 30), "interpolation": cv2.INTER_NEAREST, "mask_interpolation": cv2.INTER_LINEAR}],
+    [
+        A.Affine3D,
+        {
+            "rotate_range": {"x": (-10.0, 10.0), "y": (-5.0, 5.0), "z": (-15.0, 15.0)},
+            "scale_range": {"x": (0.9, 1.1), "y": (0.95, 1.05), "z": (0.85, 1.15)},
+            "translate_percent_range": {"x": (-0.1, 0.1), "y": (-0.05, 0.05), "z": (-0.2, 0.2)},
+            "interpolation": cv2.INTER_NEAREST,
+            "mask_interpolation": cv2.INTER_LINEAR,
+            "border_mode": cv2.BORDER_REPLICATE,
+            "fill": 17,
+            "fill_mask": 31,
+        },
+    ],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
     [
@@ -1053,6 +1066,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("subset-elements", A.RandomRotate90, {"group_elements": ("r90", "r270")}),
     ("fixed-axis-rotation", A.RandomRotate90_3D, {"axis_pair": (0, 2), "group_element": "r90"}),
     ("fixed-axes", A.Flip3D, {"flip_axes": (0, 2)}),
+    ("constant-fill", A.Affine3D, {"border_mode": cv2.BORDER_CONSTANT}),
     ("anisotropic-range", A.RandomScale, {"scale_range": {"x": (-0.2, 0.3), "y": (-0.1, 0.15)}}),
     ("downscale-aware", A.RandomScale, {"mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"}),
     ("variable-intensity", A.RandomShadow, {"shadow_intensity_range": (0.2, 0.7)}),
@@ -1214,6 +1228,7 @@ _REFERENCE_METADATA_KEYS = {
     A.PixelDistributionAdaptation: "pda_metadata",
 }
 _EXACT_TRANSFORMS = {
+    A.Affine3D,
     A.Anisotropy3D,
     A.Blur,
     A.CropAndPad,

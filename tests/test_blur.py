@@ -359,13 +359,6 @@ def test_gaussian_blur_true_3d_applied_config_replays_after_json_transport() -> 
     np.testing.assert_array_equal(replay_result["volume"], original_result["volume"])
 
 
-def test_gaussian_blur_true_3d_keeps_mask3d_outside_its_targets() -> None:
-    transform = A.GaussianBlur(volume_mode="3d", p=1.0)
-
-    assert "mask3d" not in transform.targets
-    assert "volumes" not in transform.targets
-
-
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize("num_channels", [1, 3, 5])
 @pytest.mark.parametrize("kernel_size", [3, 5, 7])

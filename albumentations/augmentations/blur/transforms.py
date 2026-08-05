@@ -669,7 +669,7 @@ class ModeFilter(ImageOnlyTransform):
 
 
 class GaussianBlur(ImageOnlyTransform):
-    """Smooth images or volumes with a Gaussian kernel, including optional true 3D spatial filtering
+    """Smooth images or a volume with a Gaussian kernel, including optional true 3D spatial filtering
     for volumetric data with anisotropic depth resolution.
 
     This transform blurs the input image using a Gaussian filter with a random kernel size

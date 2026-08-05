@@ -251,6 +251,12 @@ HBB_KEYPOINT_TRANSFORMS = frozenset(
 )
 
 VOLUME_TRANSFORMS: Mapping[str, Factory] = {
+    "anisotropy3d": lambda: albumentations.Anisotropy3D(
+        axes=(0, 2),
+        num_axes_range=(2, 2),
+        downscale_factor_range=(2.0, 2.0),
+        p=1.0,
+    ),
     "center_crop3d": lambda: albumentations.CenterCrop3D(size=(4, 48, 48), p=1.0),
     "random_crop3d": lambda: albumentations.RandomCrop3D(size=(4, 48, 48), p=1.0),
     "pad3d": lambda: albumentations.Pad3D(padding=(1, 2, 2), p=1.0),
@@ -258,6 +264,9 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "coarse_dropout3d": lambda: albumentations.CoarseDropout3D(p=1.0),
     "grid_shuffle3d": lambda: albumentations.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0),
     "cubic_symmetry": lambda: albumentations.CubicSymmetry(p=1.0),
+    "flip3d": lambda: albumentations.Flip3D(flip_axes=(0, 1, 2), p=1.0),
+    "random_rotate90_3d": lambda: albumentations.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
+    "resize3d": lambda: albumentations.Resize3D(size=(12, 96, 96), p=1.0),
 }
 
 REFERENCE_TRANSFORMS = (
@@ -510,6 +519,7 @@ class PeakMemoryHotPaths:
             [albumentations.PadIfNeeded3D(min_zyx=(18, 144, 144), p=1.0)],
             strict=True,
         )
+        self.volume_resize = albumentations.Compose([albumentations.Resize3D(size=(12, 96, 96), p=1.0)], strict=True)
         self.volume_data = {"mask3d": make_mask3d("medium"), "volume": make_volume("medium")}
 
     def peakmem_resize_large_rgb(self) -> None:
@@ -532,3 +542,6 @@ class PeakMemoryHotPaths:
 
     def peakmem_volume_pad_medium(self) -> None:
         self.volume_pad(**self.volume_data)
+
+    def peakmem_volume_resize_medium(self) -> None:
+        self.volume_resize(**self.volume_data)

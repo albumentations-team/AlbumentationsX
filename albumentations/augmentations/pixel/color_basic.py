@@ -130,16 +130,6 @@ class RandomToneCurve(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.move_tone_curve(images, low_y, high_y, num_channels)
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        low_y: float | np.ndarray,
-        high_y: float | np.ndarray,
-        num_channels: int,
-        **params: Any,
-    ) -> VolumeType:
-        return fpixel.move_tone_curve(volumes, low_y, high_y, num_channels)
-
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
@@ -274,7 +264,11 @@ class HueSaturationValue(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.shift_hsv_images(images, hue_shift, sat_shift, val_shift)
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         hue_shift = self.py_random.uniform(*self.hue_shift_range)
         sat_shift = self.py_random.uniform(*self.sat_shift_range)
         val_shift = self.py_random.uniform(*self.val_shift_range)
@@ -384,10 +378,11 @@ class Solarize(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         threshold = self.py_random.uniform(*self.threshold_range)
 
         self.applied_config = {"threshold_range": threshold}
@@ -500,10 +495,11 @@ class Posterize(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         if isinstance(self.num_bits, list):
             num_bits_list = [self.py_random.randint(*i) for i in self.num_bits]
             self.applied_config = {"num_bits": num_bits_list}
@@ -702,7 +698,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         - RGB contrast uses the mean BT.601 grayscale luminance. Other multichannel inputs use the
           mean of their per-pixel channel averages.
         - A batch uses one sampled pair of factors but computes the contrast mean independently for
-          each image. Volumes compute it independently for each slice.
+          each image. The `volume` target computes it independently for each slice.
         - Outputs are clipped to [0, 255] for uint8 and [0, 1] for float32 unless
           `ensure_safe_output=True` first reduces the affine coefficients to avoid clipping.
 
@@ -830,14 +826,6 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, *args, **params))
         return self.apply(images, *args, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        if not self.brightness_by_max:
-            return self._apply_to_batch_same_shape(
-                volumes,
-                lambda volume: self.apply_to_volume(volume, *args, **params),
-            )
-        return self.apply(volumes, *args, **params)
-
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
@@ -863,7 +851,7 @@ class ExposureMatching(ImageOnlyTransform):
     model exposure changes whose strength depends on the input brightness.
 
     The transform samples one normalized target mean per call and computes the multiplicative gain
-    from each image's global mean. Image batches and volumes share the sampled target while deriving
+    from each image's global mean. Image batches and the `volume` target share the sampled target while deriving
     one gain per image or depth slice. Values that exceed the dtype range are clipped, so saturation
     can keep the resulting mean below the sampled target. A zero image remains zero.
 
@@ -885,7 +873,7 @@ class ExposureMatching(ImageOnlyTransform):
 
     Note:
         - The global mean includes every pixel and channel.
-        - For `images`, `volume`, and `volumes`, each image or slice gets its own gain.
+        - For `images` and `volume`, each image or slice gets its own gain.
         - Clipping saturated pixels is a one-pass operation; the transform does not compensate for
           the resulting difference between the requested and achieved means.
 
@@ -963,7 +951,8 @@ class ExposureMatching(ImageOnlyTransform):
         self.gain_range = gain_range
 
     def apply(self, img: ImageType, gain: float, **params: Any) -> ImageType:
-        return albucore.multiply(img, gain, inplace=False)
+        result = albucore.multiply(img, gain, inplace=False)
+        return fpixel.clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
     def apply_to_images(self, images: ImageType, image_gains: list[float], **params: Any) -> ImageType:
         return fpixel.exposure_match_batch(images, np.asarray(image_gains, dtype=np.float32))
@@ -971,26 +960,14 @@ class ExposureMatching(ImageOnlyTransform):
     def apply_to_volume(self, volume: VolumeType, volume_gains: list[float], **params: Any) -> VolumeType:
         return fpixel.exposure_match_batch(volume, np.asarray(volume_gains, dtype=np.float32))
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        volumes_gains: list[list[float]],
-        **params: Any,
-    ) -> VolumeType:
-        return fpixel.exposure_match_batch(volumes, np.asarray(volumes_gains, dtype=np.float32))
-
-    def get_params(self) -> dict[str, float]:
-        target_mean = self.py_random.uniform(*self.target_mean_range)
-        self.applied_config = {"target_mean_range": target_mean}
-        return {"target_mean": target_mean}
-
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
-    ) -> dict[str, float | list[float] | list[list[float]]]:
-        target_mean = params["target_mean"]
-        gains: dict[str, float | list[float] | list[list[float]]] = {}
+    ) -> dict[str, float | list[float]]:
+        target_mean = self.py_random.uniform(*self.target_mean_range)
+        self.applied_config = {"target_mean_range": target_mean}
+        gains: dict[str, float | list[float]] = {}
 
         if "image" in data:
             gains["gain"] = float(
@@ -1006,13 +983,10 @@ class ExposureMatching(ImageOnlyTransform):
         if "volume" in data:
             volume_gains = fpixel.get_exposure_gains(data["volume"], target_mean, self.gain_range)
             gains["volume_gains"] = np.asarray(volume_gains).tolist()
-        if "volumes" in data:
-            volumes_gains = fpixel.get_exposure_gains(data["volumes"], target_mean, self.gain_range)
-            gains["volumes_gains"] = np.asarray(volumes_gains).tolist()
         if not gains:
-            raise RuntimeError("Expected image, images, volume, or volumes data for exposure matching")
+            raise RuntimeError("Expected image, images, or volume data for exposure matching")
 
-        return gains
+        return {"target_mean": target_mean, **gains}
 
 
 class CLAHE(ImageOnlyTransform):
@@ -1092,7 +1066,11 @@ class CLAHE(ImageOnlyTransform):
 
         return fpixel.clahe(img, clip_limit, self.tile_grid_size)
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         clip_limit = self.py_random.uniform(*self.clip_range)
 
         self.applied_config = {"clip_range": clip_limit}
@@ -1188,9 +1166,6 @@ class RandomGamma(ImageOnlyTransform):
     def apply(self, img: ImageType, gamma: float, **params: Any) -> ImageType:
         return fpixel.gamma_transform(img, gamma=gamma)
 
-    def apply_to_volumes(self, volumes: VolumeType, gamma: float, **params: Any) -> VolumeType:
-        return self.apply(volumes, gamma=gamma)
-
     def apply_to_images(self, images: ImageType, gamma: float, **params: Any) -> ImageType:
         return self.apply(images, gamma=gamma)
 
@@ -1281,10 +1256,6 @@ class AutoContrast(ImageOnlyTransform):
     @batch_transform("channel")
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    @batch_transform("channel")
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 __all__ = [

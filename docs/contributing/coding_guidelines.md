@@ -229,14 +229,13 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
 
 ### Image and Volume Shape Invariants
 
-- Within `Compose`, images and volumes are always channel-last with an explicit channel dimension:
+- Within `Compose`, images and volume data are always channel-last with an explicit channel dimension:
   - Single image: `(H, W, C)`, including grayscale as `(H, W, 1)`
   - Image batch: `(N, H, W, C)`
   - Single volume: `(D, H, W, C)`
-  - Volume batch: `(N, D, H, W, C)`
 - Do not add compatibility branches for grayscale images shaped as `(H, W)` in transform `apply_*` methods or functional
   kernels used by `Compose`; normalize inputs before they reach transform logic.
-- It is fine to branch on `img.ndim` when selecting between image, image batch, volume, and volume batch logic. Do not
+- It is fine to branch on `img.ndim` when selecting between image, image-batch, and single-volume logic. Do not
   use `img.ndim` to infer whether a Compose image has channels.
 
 ### Handling Auxiliary Data via Metadata

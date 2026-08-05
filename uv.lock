@@ -26,7 +26,7 @@ wheels = [
 
 [[package]]
 name = "albucore"
-version = "0.2.5"
+version = "0.2.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numkong" },
@@ -34,15 +34,16 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "stringzilla" },
+    { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/69/c5846a4e520935a8125c5a83be11326eae838a1dfb280c7b38fa1b9c5f33/albucore-0.2.5.tar.gz", hash = "sha256:6653da52223987af3bcf264ff4c1672595ed8c13b6f66ffd28c5a353a68cb43f", size = 153595, upload-time = "2026-07-22T13:55:02.478Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/03/0d81c80164397d29f413b81cfeea5c9b989a970ee2b1a43f3f09f461d0f3/albucore-0.2.12.tar.gz", hash = "sha256:314cafc3f1ec3c1ecb87fe4e5168f56694217aa27287bc7e6ffb13aeb61a9e02", size = 254563, upload-time = "2026-08-05T09:31:58.413Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/ef/dd7fddfc3ce4d25d51923eb68a09e9a29e23740f731d1b9116d99c338f8a/albucore-0.2.5-py3-none-any.whl", hash = "sha256:946a28bbe1c6078a72ef9220955239db7d4b4fec4ba90b552c25e3daa5d2f2ae", size = 42535, upload-time = "2026-07-22T13:55:00.939Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/10/4b6fa19d445fca566e7a6ba1cf67852f527a094a5dcb63ffa82af47efa54/albucore-0.2.12-py3-none-any.whl", hash = "sha256:f516da25592367abf09c3c54b88ce697b6eddeb574a10049067a3b224f484404", size = 58160, upload-time = "2026-08-05T09:31:56.844Z" },
 ]
 
 [[package]]
 name = "albumentationsx"
-version = "2.3.7"
+version = "2.3.8"
 source = { editable = "." }
 dependencies = [
     { name = "albucore" },
@@ -55,6 +56,7 @@ dependencies = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "torch" },
     { name = "typing-extensions" },
 ]
 
@@ -76,9 +78,6 @@ hub = [
 ]
 pillow = [
     { name = "pillow" },
-]
-pytorch = [
-    { name = "torch" },
 ]
 pyvips = [
     { name = "pyvips", extra = ["binary"] },
@@ -233,7 +232,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "albucore", specifier = "==0.2.5" },
+    { name = "albucore", specifier = "==0.2.12" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
     { name = "numkong", specifier = "!=7.7.1" },
     { name = "numpy", specifier = ">=2.2.6" },
@@ -247,10 +246,10 @@ requires-dist = [
     { name = "pyvips", extras = ["binary"], marker = "extra == 'pyvips'" },
     { name = "pyyaml" },
     { name = "scipy", specifier = ">=1.15.3" },
-    { name = "torch", marker = "extra == 'pytorch'" },
+    { name = "torch", specifier = ">=2.13.0" },
     { name = "typing-extensions", specifier = ">=4.9.0" },
 ]
-provides-extras = ["contrib", "contrib-headless", "gui", "headless", "hub", "pillow", "pytorch", "pyvips", "text"]
+provides-extras = ["contrib", "contrib-headless", "gui", "headless", "hub", "pillow", "pyvips", "text"]
 
 [package.metadata.requires-dev]
 ci-benchmark = [

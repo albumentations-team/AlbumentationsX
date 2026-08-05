@@ -1,8 +1,10 @@
+import json
 import warnings
 from typing import Any
 
 import numpy as np
 import pytest
+from albucore.filter3d import gaussian_blur3d
 from PIL import Image, ImageFilter
 
 import albumentations as A
@@ -255,6 +257,154 @@ def test_gaussian_blur_explicit_kernel_uses_discrete_gaussian() -> None:
     result = transform(image=image)["image"]
 
     np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_gaussian_blur_true_3d_matches_albucore(dtype: np.dtype, num_channels: int) -> None:
+    rng = np.random.default_rng(137)
+    shape = (4, 7, 11, num_channels)
+    if dtype == np.uint8:
+        volume = rng.integers(0, 256, shape, dtype=np.uint8)
+    else:
+        volume = rng.random(shape, dtype=np.float32)
+
+    transform = A.Compose(
+        [
+            A.GaussianBlur(
+                blur_range=(5, 5),
+                sigma_range=(1.25, 1.25),
+                volume_mode="3d",
+                sigma_z_range=(0.5, 0.5),
+                blur_z_range=(3, 3),
+                p=1.0,
+            ),
+        ],
+    )
+
+    result = transform(volume=volume)["volume"]
+    expected = gaussian_blur3d(volume, sigma=(0.5, 1.25, 1.25), kernel_size=(3, 5, 5))
+
+    np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_gaussian_blur_true_3d_defaults_to_isotropic_kernel(dtype: np.dtype, num_channels: int) -> None:
+    rng = np.random.default_rng(137)
+    shape = (4, 7, 11, num_channels)
+    if dtype == np.uint8:
+        volume = rng.integers(0, 256, shape, dtype=np.uint8)
+    else:
+        volume = rng.random(shape, dtype=np.float32)
+    transform = A.Compose(
+        [
+            A.GaussianBlur(
+                blur_range=(5, 5),
+                sigma_range=(1.25, 1.25),
+                volume_mode="3d",
+                p=1.0,
+            ),
+        ],
+    )
+
+    result = transform(volume=volume)["volume"]
+    expected = gaussian_blur3d(volume, sigma=(1.25, 1.25, 1.25), kernel_size=(5, 5, 5))
+
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_gaussian_blur_true_3d_preserves_unit_spatial_kernel() -> None:
+    rng = np.random.default_rng(137)
+    volume = rng.integers(0, 256, (4, 7, 11, 3), dtype=np.uint8)
+    transform = A.Compose(
+        [
+            A.GaussianBlur(
+                blur_range=(1, 1),
+                sigma_range=(1.25, 1.25),
+                volume_mode="3d",
+                sigma_z_range=(0.75, 0.75),
+                blur_z_range=(3, 3),
+                p=1.0,
+            ),
+        ],
+    )
+
+    result = transform(volume=volume)["volume"]
+    expected = gaussian_blur3d(volume, sigma=(0.75, 1.25, 1.25), kernel_size=(3, 1, 1))
+
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_gaussian_blur_volume_defaults_to_slice_wise_behavior() -> None:
+    rng = np.random.default_rng(137)
+    volume = rng.integers(0, 256, (4, 9, 13, 3), dtype=np.uint8)
+    transform = A.Compose([A.GaussianBlur(blur_range=(5, 5), sigma_range=(1.25, 1.25), p=1.0)])
+
+    result = transform(volume=volume)["volume"]
+    expected = np.stack(
+        [A.GaussianBlur(blur_range=(5, 5), sigma_range=(1.25, 1.25), p=1.0)(image=image)["image"] for image in volume],
+    )
+
+    np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_gaussian_blur_true_3d_supports_single_slice_and_zero_sigma_axes(dtype: np.dtype) -> None:
+    rng = np.random.default_rng(137)
+    shape = (1, 7, 11, 3)
+    if dtype == np.uint8:
+        volume = rng.integers(0, 256, shape, dtype=np.uint8)
+    else:
+        volume = rng.random(shape, dtype=np.float32)
+
+    transform = A.Compose(
+        [
+            A.GaussianBlur(
+                blur_range=(0, 0),
+                sigma_range=(0.0, 0.0),
+                volume_mode="3d",
+                sigma_z_range=(0.75, 0.75),
+                blur_z_range=(3, 3),
+                p=1.0,
+            ),
+        ],
+    )
+
+    result = transform(volume=volume)["volume"]
+
+    assert result.shape == volume.shape
+    assert result.dtype == volume.dtype
+    if dtype == np.uint8:
+        np.testing.assert_array_equal(result, volume)
+    else:
+        np.testing.assert_allclose(result, volume, rtol=1e-6, atol=1e-6)
+
+
+def test_gaussian_blur_true_3d_applied_config_replays_after_json_transport() -> None:
+    rng = np.random.default_rng(137)
+    volume = rng.random((4, 7, 11, 3), dtype=np.float32)
+    original = A.Compose(
+        [
+            A.GaussianBlur(
+                blur_range=(3, 7),
+                sigma_range=(0.5, 1.5),
+                volume_mode="3d",
+                sigma_z_range=(0.2, 0.8),
+                blur_z_range=(3, 5),
+                p=1.0,
+            ),
+        ],
+        save_applied_params=True,
+        seed=137,
+    )
+
+    original_result = original(volume=volume)
+    record = json.loads(json.dumps(original_result["applied_transforms"], allow_nan=False))
+    replay = A.Compose.from_applied_transforms(record, seed=137)
+    replay_result = replay(volume=volume)
+
+    np.testing.assert_array_equal(replay_result["volume"], original_result["volume"])
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])

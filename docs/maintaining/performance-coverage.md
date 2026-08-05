@@ -16,8 +16,8 @@ included in CI or release evidence.
 - Discover public concrete `BasicTransform` subclasses exported by
   `albumentations`.
 - Require every public transform to have benchmark accounting.
-- Record optional transforms explicitly with a reason instead of silently
-  skipping them.
+- Record transforms covered in a dedicated benchmark lane explicitly with a
+  reason instead of silently skipping them.
 - Record each transform's expected coverage contract and fail validation when
   required layers are missing.
 
@@ -50,7 +50,7 @@ each public transform it records:
 - benchmark route and constructor parameters used by the catalog smoke path
 - coverage layers and required coverage contract
 - family labels such as geometry, pixel, reference-data, volumetric, direct
-  kernel, memory, alias, or optional PyTorch
+  kernel, memory, alias, or dedicated PyTorch Tensor
 - exact ASV benchmark class, config, and case IDs that measure the transform
 - parsed scenario metadata for each ASV case
 - a compact `scenario_contract` summary of covered sizes, channels, dtypes,
@@ -76,8 +76,8 @@ uv run python -m tools.performance_budget check
 - Run one valid `Compose` path for every runnable public transform.
 - Use deterministic inputs and explicit parameter overrides for transforms that
   need non-default constructor arguments or auxiliary metadata.
-- Keep optional PyTorch tensor transforms accounted separately unless the
-  benchmark environment installs the optional dependency.
+- Keep explicit terminal Tensor transforms accounted separately in their
+  dedicated benchmark lane.
 
 This layer catches public catalog drift and verifies that every runnable
 transform has at least one measured user-facing route.
@@ -90,8 +90,10 @@ verifies that the public alias constructs and executes.
 `ToTensorV2` and `ToTensor3D` are not part of the default headless ASV suite.
 They are covered by the dedicated PyTorch ASV config,
 `benchmark/asv-pytorch.conf.json`, and appear in coverage details under the
-`pytorch_tensor` layer. They must not be treated as uncovered simply because
-the default ASV environment avoids torch.
+`pytorch_tensor` layer. The same lane also measures accepted Tensor-native
+capabilities beside their normal NumPy coverage. `Transpose(image=...)` is the
+first such route, bounded to C=1 and C=3 CPU Tensor images. It does not imply
+that its `images` or `volume` targets accept Tensor input.
 
 ### L2: Family Matrices
 
@@ -122,8 +124,8 @@ The current family matrix covers:
 - reference data: mixing, domain adaptation, overlay, copy-paste, mosaic, and
   text metadata transforms
 - volumetric data: public 3D transforms over volume size and dtype variants
-- optional tensor data: PyTorch tensor conversion paths for 2D and 3D terminal
-  transforms in the optional PyTorch ASV lane
+- tensor data: PyTorch terminal conversion paths and accepted Tensor-native
+  `Compose` paths in the dedicated PyTorch Tensor ASV lane
 - batch data: selected image, mask, volume, and mask3d batch routes over
   size, channel, dtype, and batch-size variants
 
@@ -188,9 +190,7 @@ This layer covers:
 - `images` routes for representative geometry, pixel, noise, dropout, and
   normalization transforms
 - `images` plus `masks` routes for transforms that exercise mask batch routing
-- `volumes` plus `masks3d` routes for batch-capable volume transforms
 - batch sizes `4` and `8` for image/mask routes
-- batch sizes `2` and `4` for volume routes
 
 The benchmark detail artifact also inventories transforms that declare custom
 batch methods but are not yet promoted to dedicated batch-matrix cases. Those
@@ -297,9 +297,8 @@ Pull requests:
   triage items, and release-blocking regressions
 - the default performance workflow evaluates the core budget with `--core-only`;
   it does not report the separately owned `pytorch_tensor` layer as missing
-- optional PyTorch ASV is not run on every pull request because installing
-  torch can dominate feedback time; it is run by the separate scheduled/manual
-  PyTorch Tensor Performance workflow
+- dedicated PyTorch Tensor ASV is not run on every pull request; it is run by
+  the separate scheduled/manual PyTorch Tensor Performance workflow
 - when the PR router selects the CPU-only PyTorch correctness job, that job
   validates the complete benchmark catalog and performance policy with Torch
   installed
@@ -307,7 +306,7 @@ Pull requests:
 Nightly and scheduled runs:
 
 - full ASV evidence from the default-branch scheduled workflow
-- optional PyTorch tensor ASV evidence from the PyTorch Tensor Performance
+- dedicated PyTorch Tensor ASV evidence from the PyTorch Tensor Performance
   workflow
 - environment JSON
 - benchmark coverage JSON
@@ -338,7 +337,7 @@ uv run asv --config asv.conf.json continuous \
 Manual workflow runs may pass `bench_filter` to scope a comparison or leave it
 empty to compare the full suite.
 
-Optional PyTorch tensor benchmarks can be run locally with:
+Dedicated PyTorch Tensor benchmarks can be run locally with:
 
 ```bash
 cd benchmark
@@ -392,7 +391,7 @@ following are true:
   evidence instead of relying only on default constructor parameters.
 - Core pipeline evidence includes dispatch, setup, `additional_targets`,
   image batch routing, and bbox/keypoint processor overhead.
-- Optional PyTorch tensor paths are included in scheduled or release-adjacent
+- Dedicated PyTorch Tensor paths are included in scheduled or release-adjacent
   benchmark evidence.
 - Performance-budget evidence is published and has no coverage-contract
   failures.

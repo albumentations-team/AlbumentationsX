@@ -225,7 +225,7 @@ runtime code and documentation gets both sets of checks.
 | `docs` | `**/*.md`, documentation assets | Broken prose, links, examples, or package-description rendering |
 | `runtime` | `albumentations/**/*.py` except dedicated PyTorch paths | Product behavior, API, serialization, typing |
 | `tests` | `tests/**` | Test validity; shared fixtures can affect the whole suite |
-| `pytorch` | `albumentations/pytorch/**` and related tests | Optional heavy dependency and tensor behavior |
+| `pytorch` | `albumentations/pytorch/**` and related tests | Dedicated heavyweight Tensor and TorchVision behavior |
 | `dependencies` | `pyproject.toml`, `uv.lock`, requirements/conda metadata | Resolution, installability, vulnerabilities, cross-platform wheels |
 | `packaging` | build backend configuration, package manifests, release build code | Wheel/sdist contents and metadata |
 | `workflows` | `.github/workflows/**`, local actions | Actions syntax, permissions, supply-chain hardening |

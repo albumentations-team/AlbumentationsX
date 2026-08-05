@@ -47,10 +47,10 @@ environment. It performs the release-specific work:
 9. Generates the CycloneDX SBOM and Correctness & Compatibility Report.
 10. Creates checksums and an immutable release manifest.
 
-The core performance profile passes `--core-only` because `ci-release` does not
-install Torch. The dedicated PyTorch PR job validates the optional tensor layer
-with CPU Torch installed. The stable `Correctness` and `Security and policy`
-gates require both selected paths to succeed.
+The core performance profile passes `--core-only` because it does not run the
+dedicated Tensor benchmark matrix. The dedicated PyTorch PR job validates that
+Tensor lane with CPU Torch installed. The stable `Correctness` and `Security
+and policy` gates require both selected paths to succeed.
 
 ## The PR Produces the Final Bundle
 

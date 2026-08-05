@@ -9,17 +9,14 @@ OPTIONAL_DOCSTRING_METHODS: set[str] = {
     "apply",
     "apply_to_images",
     "apply_to_volume",
-    "apply_to_volumes",
     "apply_to_mask",
     "apply_to_masks",
     "apply_to_mask3d",
-    "apply_to_masks3d",
     "apply_to_bboxes",
     "apply_to_keypoints",
     "get_params_dependent_on_data",
     "to_dict_private",
     "targets_as_params",
-    "get_params",
     "get_transform_init_args",
 }
 

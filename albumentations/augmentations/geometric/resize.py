@@ -202,7 +202,11 @@ class RandomScale(DualTransform):
         self.mask_interpolation = mask_interpolation
         self.area_for_downscale = area_for_downscale
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         if isinstance(self.scale_range, dict):
             scale_x = self.py_random.uniform(*self.scale_range["x"]) + 1.0
             scale_y = self.py_random.uniform(*self.scale_range["y"]) + 1.0

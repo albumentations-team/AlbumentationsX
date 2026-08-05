@@ -17,6 +17,7 @@ TRANSFORM_BASE_CLASS_NAMES = frozenset(
         "DualTransform",
         "ImageOnlyTransform",
         "Transform3D",
+        "VolumeOnlyTransform",
     },
 )
 
@@ -35,6 +36,8 @@ LEGACY_RANDOM_TRANSFORM_NAMES = frozenset(
         "RandomRain",
         "RandomResizedCrop",
         "RandomRotate90",
+        # Public API name required by https://github.com/albumentations-team/AlbumentationsX/issues/388.
+        "RandomRotate90_3D",
         "RandomScale",
         "RandomShadow",
         "RandomSizedBBoxSafeCrop",

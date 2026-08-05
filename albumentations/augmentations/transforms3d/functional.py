@@ -1,7 +1,7 @@
 """Module containing functional implementations of 3D transformations.
 
 This module provides a collection of utility functions for manipulating and transforming
-3D volumetric data (such as medical imaging volumes). The functions here implement the core
+3D volumetric data (such as medical imaging data). The functions here implement the core
 algorithms for operations like padding, cropping, rotation, and other spatial manipulations
 specifically designed for 3D data.
 """
@@ -9,10 +9,100 @@ specifically designed for 3D data.
 import random
 from typing import Literal, cast
 
+import cv2
 import numpy as np
+import torch
+from albucore import resize3d
 
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
+
+
+def get_anisotropy_downsample_shape(
+    spatial_shape: tuple[int, int, int],
+    axes: tuple[int, ...],
+    downscale_factor: float,
+) -> tuple[int, int, int]:
+    """Derive an anisotropic intermediate shape by scaling selected axes while retaining non-selected axes, ensuring
+    every requested spatial dimension remains valid.
+    """
+    return cast(
+        "tuple[int, int, int]",
+        tuple(
+            max(1, round(axis_size / downscale_factor)) if axis_index in axes else axis_size
+            for axis_index, axis_size in enumerate(spatial_shape)
+        ),
+    )
+
+
+def anisotropy_3d(
+    volume: VolumeType | torch.Tensor,
+    downsample_shape: tuple[int, int, int],
+    antialias: bool,
+) -> VolumeType | torch.Tensor:
+    """Simulate thicker or lower-resolution volume acquisition by shrinking selected spatial axes and restoring the
+    original shape for 3D robustness training.
+
+    Both routes delegate to Albucore `resize3d`, which resizes only spatial axes and preserves the input representation.
+    NumPy applies antialiasing while shrinking; PyTorch does not yet provide 5D trilinear antialiasing, so Tensor input
+    uses the non-antialiased native route until upstream support is available.
+    """
+    source_shape = cast(
+        "tuple[int, int, int]",
+        tuple(volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape[:3],
+    )
+    if source_shape == downsample_shape:
+        return volume
+
+    is_channel_less_numpy_volume = isinstance(volume, np.ndarray) and volume.ndim == NUM_VOLUME_DIMENSIONS - 1
+    working_volume = volume[..., np.newaxis] if is_channel_less_numpy_volume else volume
+    downsampled = resize3d(
+        working_volume,
+        downsample_shape,
+        interpolation=cv2.INTER_LINEAR,
+        antialias=antialias and not isinstance(volume, torch.Tensor),
+    )
+    restored = resize3d(downsampled, source_shape, interpolation=cv2.INTER_LINEAR)
+    return restored[..., 0] if is_channel_less_numpy_volume else restored
+
+
+@handle_empty_array("keypoints")
+def keypoints_scale_3d(
+    keypoints: np.ndarray,
+    source_shape: tuple[int, int, int],
+    target_shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Scale XYZ keypoints across voxel grids while leaving every user-provided\
+    attribute after their three spatial coordinates unchanged.
+
+    Coordinates use Albumentations' pixel-index convention: `x`, `y`, and `z`
+    scale from the origin by the output-to-input ratio. All remaining columns preserve
+    their input values.
+    """
+    depth_scale, height_scale, width_scale = np.asarray(target_shape, dtype=np.float32) / np.asarray(
+        source_shape, dtype=np.float32
+    )
+    result = keypoints.copy()
+    result[:, 0] *= width_scale
+    result[:, 1] *= height_scale
+    result[:, 2] *= depth_scale
+    return result
+
+
+@handle_empty_array("keypoints")
+def keypoints_flip_3d(
+    keypoints: np.ndarray,
+    flip_axes: tuple[Literal[0, 1, 2], ...],
+    volume_shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Reflect XYZ keypoints across selected depth, height, and width voxel-index axes while preserving all extra
+    columns and dtype.
+    """
+    flipped_keypoints = keypoints.copy()
+    for axis in flip_axes:
+        coordinate_index = len(volume_shape) - axis - 1
+        flipped_keypoints[:, coordinate_index] = volume_shape[axis] - 1 - flipped_keypoints[:, coordinate_index]
+    return flipped_keypoints
 
 
 def adjust_padding_by_position3d(
@@ -152,6 +242,54 @@ def cutout3d(volume: ImageType, holes: np.ndarray, fill: tuple[float, ...] | flo
     for z1, y1, x1, z2, y2, x2 in holes:
         volume[z1:z2, y1:y2, x1:x2] = fill
     return volume
+
+
+def rotate90_3d(
+    volume: VolumeType,
+    rot90_count: Literal[0, 1, 2, 3],
+    axis_pair: tuple[int, int],
+) -> VolumeType:
+    """Rotate a 3D or channel-last 4D volume by 90-degree increments along a selected spatial axis pair, preserving
+    dtype and channel order.
+    """
+    if rot90_count == 0:
+        return volume
+
+    return cast("VolumeType", np.rot90(volume, k=rot90_count, axes=axis_pair))
+
+
+def keypoints_rotate90_3d(
+    keypoints: np.ndarray,
+    rot90_count: Literal[0, 1, 2, 3],
+    axis_pair: tuple[int, int],
+    volume_shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Rotate XYZ keypoints to match `rotate90_3d` on a volume, keeping their additional attributes and mapping the
+    chosen axis pair exactly.
+    """
+    if rot90_count == 0 or len(keypoints) == 0:
+        return keypoints
+
+    result = keypoints.copy()
+    first_axis, second_axis = axis_pair
+    first_coordinate = 2 - first_axis
+    second_coordinate = 2 - second_axis
+    first_coordinate_values = result[:, first_coordinate].copy()
+    second_coordinate_values = result[:, second_coordinate].copy()
+    first_axis_length = volume_shape[first_axis]
+    second_axis_length = volume_shape[second_axis]
+
+    if rot90_count == 1:
+        result[:, first_coordinate] = second_axis_length - 1 - second_coordinate_values
+        result[:, second_coordinate] = first_coordinate_values
+    elif rot90_count == 2:
+        result[:, first_coordinate] = first_axis_length - 1 - first_coordinate_values
+        result[:, second_coordinate] = second_axis_length - 1 - second_coordinate_values
+    else:
+        result[:, first_coordinate] = second_coordinate_values
+        result[:, second_coordinate] = first_axis_length - 1 - first_coordinate_values
+
+    return result
 
 
 def transform_cube(cube: np.ndarray, index: int) -> np.ndarray:

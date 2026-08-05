@@ -6,7 +6,7 @@ from albumentations.augmentations.crops.transforms import CropSizeError
 
 
 def test_random_crop_with_pad_on_volume():
-    """Test that RandomCrop with pad_if_needed=True works correctly on volumes after scale reduction."""
+    """Test that RandomCrop with pad_if_needed=True works correctly on volume data after scale reduction."""
     # Create a small volume (8 frames, 100x100 grayscale video)
     volume = np.random.randint(0, 256, (8, 100, 100), dtype=np.uint8)
 
@@ -31,7 +31,7 @@ def test_random_crop_with_pad_on_volume():
 
 
 def test_random_crop_without_pad_raises_error_on_small_volume():
-    """Test that RandomCrop without pad_if_needed correctly raises error on small volumes."""
+    """Test that RandomCrop without pad_if_needed correctly raises error on small volume data."""
     # Create a volume smaller than crop size
     volume = np.random.randint(0, 256, (8, 100, 100), dtype=np.uint8)
 

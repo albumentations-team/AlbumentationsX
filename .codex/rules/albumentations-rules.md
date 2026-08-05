@@ -24,13 +24,25 @@ always_apply: true
   `tests/helpers/target_profiles.py`, transform-required metadata in the case `context_factory`, and target prerequisites
   in `required_targets`. Profiles and runners must not contain transform-class lists or class-name skip branches. See
   `docs/design/transform-target-contracts.md`.
-- Within `Compose`, images and volumes always have an explicit channel dimension:
-  `(H, W, C)`, `(N, H, W, C)`, `(D, H, W, C)`, or `(N, D, H, W, C)`
+- Within `Compose`, images and volume data always have an explicit channel dimension:
+  `(H, W, C)`, `(N, H, W, C)`, or `(D, H, W, C)`
 - Grayscale in Compose is `(H, W, 1)`, not `(H, W)`; do not add 2D grayscale compatibility branches to
   transform `apply_*` methods or functional kernels used by Compose
 - For performance work, benchmark before choosing `cv2`, `sz_lut`, or NumPy. Direct bitwise operations can beat
   LUTs for true bit masks, scalar NumPy bitwise can beat OpenCV, and tiny transforms may be dominated by dispatch
   overhead rather than pixel kernels.
+- For Torch backend work, follow `docs/design/torch-cpu-backend-migration.md`. Extend the existing `Compose`,
+  `apply_*`, and functional layers; do not add a second Tensor composition API. CPU Tensor targets use `C,H,W` for
+  `image`, `C,L,H,W` for `images`, and `C,D,H,W` for `volume`. The central planner may route NumPy input through
+  Torch segments and Tensor input through NumPy/OpenCV/NumKong segments, but only when the full path including every
+  bridge, layout conversion, and return conversion has evidence of no repeatable regression. Helpers must not perform
+  ad hoc representation conversion. Backend routing preserves the input representation; existing explicit terminal
+  `ToTensorV2` and `ToTensor3D` behavior remains unchanged for NumPy input, and Tensor-input pipelines reject those
+  unnecessary terminal transforms. Do not add device, CUDA, MPS, stream, or autograd support in the CPU stage. Every
+  accepted Tensor route must be no slower than the equivalent NumPy `Compose` in a direct pre-created-input benchmark,
+  and must also pass the NumPy-Compose-plus-terminal-conversion versus Tensor-Compose model-ready-output benchmark.
+  Run `DataLoader`/collation benchmarks for shared Compose, bridge, planner, batching, and milestone changes; do not
+  require them in every isolated transform-family pull request.
 - After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
   complete when the environment can support it.
 

@@ -238,7 +238,6 @@ def test_hestain_project_mode_stays_within_accepted_legacy_tolerance(
         ("image", (12, 10, 3)),
         ("images", (2, 12, 10, 3)),
         ("volume", (2, 12, 10, 3)),
-        ("volumes", (2, 2, 12, 10, 3)),
     ],
 )
 def test_hestain_augment_residual_replay_reuses_all_sampled_parameters(
@@ -416,7 +415,6 @@ def test_hestain_rejects_invalid_residual_mode() -> None:
         ("image", (12, 10, 3)),
         ("images", (2, 12, 10, 3)),
         ("volume", (2, 12, 10, 3)),
-        ("volumes", (2, 2, 12, 10, 3)),
     ],
 )
 def test_hestain_custom_matrix_supports_all_image_targets(

@@ -13,7 +13,6 @@ from ._color_shared import (
     FullInterpolationType,
     ImageOnlyTransform,
     ImageType,
-    VolumeType,
     batch_transform,
     check_range_bounds,
     field_validator,
@@ -136,7 +135,11 @@ class ColorJitter(ImageOnlyTransform):
         self.saturation_range = saturation_range
         self.hue_range = hue_range
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         brightness = self.py_random.uniform(*self.brightness_range)
         contrast = self.py_random.uniform(*self.contrast_range)
         saturation = self.py_random.uniform(*self.saturation_range)
@@ -316,7 +319,11 @@ class ChromaticAberration(ImageOnlyTransform):
             self.interpolation,
         )
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         primary_distortion_red = self.py_random.uniform(*self.primary_distortion_range)
         secondary_distortion_red = self.py_random.uniform(
             *self.secondary_distortion_range,
@@ -546,11 +553,11 @@ class PlanckianJitter(ImageOnlyTransform):
         non_rgb_error(images)
         return self.apply(images, temperature, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, temperature: int, **params: Any) -> VolumeType:
-        non_rgb_error(volumes)
-        return self.apply(volumes, temperature, **params)
-
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         sampling_prob_boundary = PLANKIAN_JITTER_CONST["SAMPLING_TEMP_PROB"]
         sampling_temp_boundary = PLANKIAN_JITTER_CONST["WHITE_TEMP"]
 
@@ -1032,10 +1039,6 @@ class HEStain(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    @batch_transform("channel")
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         # Get stain matrix
         if "image" in data:
@@ -1044,10 +1047,8 @@ class HEStain(ImageOnlyTransform):
             image = data["images"][0]
         elif "volume" in data:
             image = data["volume"][0]
-        elif "volumes" in data:
-            image = data["volumes"][0][0]
         else:
-            raise RuntimeError("Expected image, images, volume, or volumes data for stain augmentation")
+            raise RuntimeError("Expected image, images, or volume data for stain augmentation")
 
         stain_matrix = self._get_stain_matrix(image)
 

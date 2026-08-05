@@ -8,7 +8,6 @@ from ._color_shared import (
     Field,
     ImageOnlyTransform,
     ImageType,
-    VolumeType,
     albucore,
     batch_transform,
     check_range_bounds,
@@ -218,10 +217,6 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
 
 class PlasmaShadow(ImageOnlyTransform):
     """Plasma fractal (Diamond-Square) shadow: organic darkening. shadow_intensity_range, roughness.
@@ -374,10 +369,6 @@ class PlasmaShadow(ImageOnlyTransform):
     @batch_transform("spatial")
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    @batch_transform("spatial", keep_depth_dim=True)
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 class Illumination(ImageOnlyTransform):
@@ -713,7 +704,11 @@ class Vignetting(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params(self) -> dict[str, float]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, float]:
         intensity = self.py_random.uniform(*self.intensity_range)
         center_x = self.py_random.uniform(*self.center_range)
         center_y = self.py_random.uniform(*self.center_range)

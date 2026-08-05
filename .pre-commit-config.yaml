@@ -26,13 +26,13 @@ repos:
         files: ^(pyproject\.toml|\.github/workflows/|docs/maintaining/|tools/ci_matrix\.py)
       - id: verify-regression-vectors
         name: Verify regression vector contracts
-        entry: python -m tools.verify_regression_vectors --all
+        entry: uv run python -m tools.verify_regression_vectors --all
         language: system
         pass_filenames: false
         files: ^(tests/regression/|tests/files/regression/|tools/(generate|verify)_regression_vectors\.py)
       - id: check-benchmark-coverage
         name: Check benchmark catalog coverage
-        entry: python -m tools.benchmark_coverage check
+        entry: uv run python -m tools.benchmark_coverage check
         language: system
         pass_filenames: false
         files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|performance_budget|quality_gate)\.py)
@@ -152,7 +152,7 @@ repos:
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
       - id: check-readme-transforms-docs
         name: Check README transform tables match albumentations
-        entry: python -m tools.make_transforms_docs check README.md
+        entry: uv run python -m tools.make_transforms_docs check README.md
         language: system
         pass_filenames: false
         files: ^(README\.md|albumentations/).*$
@@ -175,6 +175,11 @@ repos:
       - id: python-use-type-annotations
       - id: python-check-blanket-noqa
       - id: text-unicode-replacement-char
+  - repo: https://github.com/Ternaus/numpy-assert-lint
+    rev: v0.2.0
+    hooks:
+      - id: numpy-assert-lint
+        files: ^tests/
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.3
     hooks:

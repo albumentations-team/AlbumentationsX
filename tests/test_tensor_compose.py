@@ -159,8 +159,6 @@ def test_nested_compose_preserves_tensor_annotations() -> None:
 @pytest.mark.parametrize(
     "transform",
     [
-        A.HorizontalFlip(p=1.0),
-        A.VerticalFlip(p=1.0),
         _NumpyOnlyProbe(),
     ],
 )
@@ -193,7 +191,6 @@ def test_tensor_boundary_rejects_invalid_image_contract(tensor: torch.Tensor, me
     [
         ("mask", torch.zeros((1, 11, 13), dtype=torch.uint8), "must have shape"),
         ("masks", torch.zeros((11, 13), dtype=torch.uint8), "must have shape"),
-        ("mask3d", torch.zeros((1, 11, 13), dtype=torch.int32), "dtype one of"),
         ("bboxes", torch.zeros((1, 4), dtype=torch.int64), "dtype one of"),
         ("keypoints", torch.zeros((1, 2, 1), dtype=torch.float32), "must have shape"),
     ],
@@ -210,9 +207,35 @@ def test_tensor_boundary_rejects_invalid_annotation_contract(
         )
 
 
+@pytest.mark.parametrize(
+    ("target", "shape", "dtype"),
+    [
+        ("mask", (11, 13), torch.int64),
+        ("masks", (2, 11, 13), torch.int64),
+        ("mask3d", (2, 11, 13), torch.int64),
+        ("mask", (11, 13), torch.int32),
+        ("masks", (2, 11, 13), torch.int32),
+        ("mask3d", (2, 11, 13), torch.int32),
+        ("mask", (11, 13), torch.bool),
+        ("masks", (2, 11, 13), torch.bool),
+        ("mask3d", (2, 11, 13), torch.bool),
+    ],
+)
+def test_tensor_boundary_rejects_unsupported_mask_dtypes(
+    target: str,
+    shape: tuple[int, ...],
+    dtype: torch.dtype,
+) -> None:
+    with pytest.raises(TypeError, match="dtype one of"):
+        A.Compose([])(
+            image=torch.zeros((3, 11, 13), dtype=torch.uint8),
+            **{target: torch.zeros(shape, dtype=dtype)},
+        )
+
+
 def test_noop_preserves_tensor_spatial_targets_at_compose_boundary() -> None:
     image = torch.arange(3 * 5 * 7, dtype=torch.float32).reshape(3, 5, 7)
-    mask = torch.arange(5 * 7, dtype=torch.int64).reshape(5, 7)
+    mask = torch.arange(5 * 7, dtype=torch.uint8).reshape(5, 7)
     masks = torch.arange(2 * 5 * 7, dtype=torch.uint8).reshape(2, 5, 7)
     bboxes = torch.tensor([[1.0, 1.0, 5.0, 4.0]], dtype=torch.float32)
     keypoints = torch.tensor([[2.0, 3.0]], dtype=torch.float32)
@@ -238,7 +261,7 @@ def test_noop_preserves_tensor_spatial_targets_at_compose_boundary() -> None:
 
 def test_noop_preserves_tensor_volume_and_mask3d_without_numpy_batch_dispatch() -> None:
     volume = torch.arange(3 * 5 * 7 * 9, dtype=torch.float32).reshape(3, 5, 7, 9)
-    mask3d = torch.arange(5 * 7 * 9, dtype=torch.int64).reshape(5, 7, 9)
+    mask3d = torch.zeros((5, 7, 9), dtype=torch.uint8)
 
     result = A.Compose([A.NoOp(p=1.0)], strict=True)(volume=volume, mask3d=mask3d)
 
@@ -314,7 +337,7 @@ def test_transpose_keeps_tensor_masks_bboxes_and_keypoints_aligned_with_tensor_i
     image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
     numpy_image = image.permute(1, 2, 0).numpy().copy()
     mask = np.arange(5 * 7, dtype=np.uint8).reshape(5, 7)
-    masks = np.arange(2 * 5 * 7, dtype=np.int64).reshape(2, 5, 7)
+    masks = np.arange(2 * 5 * 7, dtype=np.uint8).reshape(2, 5, 7)
     mask3d = np.arange(3 * 5 * 7, dtype=np.uint8).reshape(3, 5, 7)
     bboxes = np.array([[1, 1, 5, 4]], dtype=np.float32)
     keypoints = np.array([[2, 3]], dtype=np.float32)
@@ -359,20 +382,37 @@ def test_transpose_keeps_tensor_masks_bboxes_and_keypoints_aligned_with_tensor_i
 
 
 @pytest.mark.parametrize(
-    ("target", "tensor", "message"),
+    ("transform_cls", "dimensions"),
     [
-        ("image", torch.zeros((5, 5, 7), dtype=torch.uint8), "accepted channel counts are 1, 3"),
-        ("images", torch.zeros((3, 2, 5, 7), dtype=torch.uint8), "accepted targets are image"),
-        ("volume", torch.zeros((3, 2, 5, 7), dtype=torch.uint8), "accepted targets are image"),
+        (A.HorizontalFlip, (-1,)),
+        (A.VerticalFlip, (-2,)),
+        (A.Transpose, None),
     ],
 )
-def test_transpose_rejects_tensor_routes_outside_accepted_capability(
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("image", (5, 3, 4)),
+        ("images", (5, 2, 3, 4)),
+        ("volume", (5, 2, 3, 4)),
+        ("mask", (3, 4)),
+        ("masks", (2, 3, 4)),
+        ("mask3d", (2, 3, 4)),
+    ],
+)
+def test_flip_transforms_support_all_tensor_spatial_targets(
+    transform_cls: type[A.DualTransform],
+    dimensions: tuple[int, ...] | None,
     target: str,
-    tensor: torch.Tensor,
-    message: str,
+    shape: tuple[int, ...],
 ) -> None:
-    with pytest.raises(TypeError, match=message):
-        A.Compose([A.Transpose(p=1.0)], strict=True)(**{target: tensor})
+    value = torch.arange(int(np.prod(shape)), dtype=torch.uint8).reshape(shape)
+
+    result = A.Compose([transform_cls(p=1.0)], strict=True)(**{target: value})[target]
+
+    expected = value.transpose(-1, -2) if dimensions is None else torch.flip(value, dimensions)
+    assert result.dtype == value.dtype
+    torch.testing.assert_close(result, expected)
 
 
 @pytest.mark.parametrize(

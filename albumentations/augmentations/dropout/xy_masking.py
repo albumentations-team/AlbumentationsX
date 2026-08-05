@@ -306,6 +306,8 @@ class XYMasking(BaseDropout):
 
         self.mask_x_length_range = mask_x_length_range
         self.mask_y_length_range = mask_y_length_range
+        self._mask_x_length_is_integer = type(mask_x_length_range[0]) is int
+        self._mask_y_length_is_integer = type(mask_y_length_range[0]) is int
 
     def get_params_dependent_on_data(
         self,
@@ -314,8 +316,7 @@ class XYMasking(BaseDropout):
     ) -> dict[str, int | np.ndarray]:
         image_shape = params["shape"][:2]
 
-        self._validate_integer_axis_range(self.mask_x_length_range, image_shape[1], axis="x")
-        self._validate_integer_axis_range(self.mask_y_length_range, image_shape[0], axis="y")
+        self._validate_integer_axis_ranges(image_shape)
 
         masks_x = self._generate_axis_masks(
             self.num_masks_x_range,
@@ -344,20 +345,14 @@ class XYMasking(BaseDropout):
 
         return {"holes": holes, "seed": int(self.random_generator.integers(0, 2**32 - 1))}
 
-    @staticmethod
-    def _validate_integer_axis_range(
-        mask_length_range: MaskLengthRange,
-        dimension_size: int,
-        axis: Literal["x", "y"],
-    ) -> None:
-        if type(mask_length_range[0]) is not int:
-            return
-
-        integer_range = cast("tuple[int, int]", mask_length_range)
-        if integer_range[0] < 0 or integer_range[1] > dimension_size:
-            dimension_name = f"mask_{axis}_length_range"
+    def _validate_integer_axis_ranges(self, image_shape: tuple[int, int]) -> None:
+        if self._mask_x_length_is_integer and self.mask_x_length_range[1] > image_shape[1]:
             raise ValueError(
-                f"{dimension_name} range {integer_range} is out of valid range [0, {dimension_size}]",
+                f"mask_x_length_range range {self.mask_x_length_range} is out of valid range [0, {image_shape[1]}]",
+            )
+        if self._mask_y_length_is_integer and self.mask_y_length_range[1] > image_shape[0]:
+            raise ValueError(
+                f"mask_y_length_range range {self.mask_y_length_range} is out of valid range [0, {image_shape[0]}]",
             )
 
     def _generate_axis_masks(

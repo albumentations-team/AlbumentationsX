@@ -211,20 +211,46 @@ def test_semantic_mask_label_mapping_does_not_remap_d4_identity_or_rotations(gro
 
 
 @pytest.mark.pytorch
-def test_semantic_mask_label_mapping_preserves_tensor_mask_and_mask3d() -> None:
+def test_semantic_mask_label_mapping_preserves_uint16_tensor_masks() -> None:
     image = torch.zeros((3, 2, 3), dtype=torch.uint8)
-    mask = torch.tensor([[2, 0, 3], [3, 2, 0]], dtype=torch.uint8)
-    mask3d = torch.stack([mask, mask + 4])
+    mask = torch.tensor([[300, 0, 400], [400, 300, 0]], dtype=torch.uint16)
+    other_mask = torch.tensor([[400, 300, 0], [0, 400, 300]], dtype=torch.uint16)
+    stacked_masks = torch.stack([mask, other_mask])
+    transform = A.Compose(
+        [A.Transpose(p=1.0)],
+        semantic_mask_label_mappings={"Transpose": {300: 400, 400: 300}},
+        telemetry=False,
+    )
+
+    result = transform(image=image, mask=mask, masks=stacked_masks, mask3d=stacked_masks)
+
+    expected_mask = torch.tensor([[400, 300], [0, 400], [300, 0]], dtype=torch.uint16)
+    expected_other_mask = torch.tensor([[300, 0], [400, 300], [0, 400]], dtype=torch.uint16)
+    expected_stacked_masks = torch.stack([expected_mask, expected_other_mask])
+    assert isinstance(result["mask"], torch.Tensor)
+    assert isinstance(result["masks"], torch.Tensor)
+    assert isinstance(result["mask3d"], torch.Tensor)
+    assert result["mask"].dtype == torch.uint16
+    assert result["masks"].dtype == torch.uint16
+    assert result["mask3d"].dtype == torch.uint16
+    torch.testing.assert_close(result["mask"], expected_mask, rtol=0, atol=0)
+    torch.testing.assert_close(result["masks"], expected_stacked_masks, rtol=0, atol=0)
+    torch.testing.assert_close(result["mask3d"], expected_stacked_masks, rtol=0, atol=0)
+
+
+@pytest.mark.pytorch
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.float32])
+def test_semantic_mask_label_mapping_preserves_tensor_mask_dtype(dtype: torch.dtype) -> None:
+    image = torch.zeros((3, 2, 3), dtype=torch.uint8)
+    mask = torch.tensor([[2, 0, 3], [3, 2, 0]], dtype=dtype)
     transform = A.Compose(
         [A.Transpose(p=1.0)],
         semantic_mask_label_mappings={"Transpose": {2: 3, 3: 2}},
         telemetry=False,
     )
 
-    result = transform(image=image, mask=mask, mask3d=mask3d)
+    result = transform(image=image, mask=mask)
 
-    expected_mask = torch.tensor([[3, 2], [0, 3], [2, 0]], dtype=torch.uint8)
-    assert isinstance(result["mask"], torch.Tensor)
-    assert isinstance(result["mask3d"], torch.Tensor)
-    torch.testing.assert_close(result["mask"], expected_mask, rtol=0, atol=0)
-    torch.testing.assert_close(result["mask3d"], torch.stack([expected_mask, (mask + 4).mT]), rtol=0, atol=0)
+    expected = torch.tensor([[3, 2], [0, 3], [2, 0]], dtype=dtype)
+    assert result["mask"].dtype == dtype
+    torch.testing.assert_close(result["mask"], expected, rtol=0, atol=0)

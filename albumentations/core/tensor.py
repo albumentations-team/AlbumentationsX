@@ -21,7 +21,7 @@ TENSOR_SPATIAL_TARGETS: Final[frozenset[str]] = frozenset(
     {"image", "images", "volume", "mask", "masks", "mask3d", "bboxes", "keypoints"},
 )
 TENSOR_IMAGE_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.float32})
-TENSOR_MASK_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.float32, torch.bool})
+TENSOR_MASK_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.uint16, torch.float32})
 TENSOR_ANNOTATION_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.float32})
 TENSOR_TARGET_DTYPES: Final[dict[str, frozenset[torch.dtype]]] = {
     "image": TENSOR_IMAGE_DTYPES,

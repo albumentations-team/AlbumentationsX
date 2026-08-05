@@ -1203,7 +1203,14 @@ class DualTransform(BasicTransform):
         if isinstance(mask, np.ndarray) and mask.dtype == np.uint8 and uint8_lut is not None:
             return sz_lut(mask, uint8_lut, inplace=False)
 
-        result = mask.copy() if isinstance(mask, np.ndarray) else mask.clone()
+        if isinstance(mask, torch.Tensor):
+            result = mask.clone()
+            for source_label, target_label in mapping.items():
+                target = torch.tensor(target_label, dtype=mask.dtype, device=mask.device)
+                torch.where(mask == source_label, target, result, out=result)
+            return result
+
+        result = mask.copy()
         for source_label, target_label in mapping.items():
             result[mask == source_label] = target_label
         return result

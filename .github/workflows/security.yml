@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  # CodeQL is managed by GitHub default setup for this repository. Adding an
-  # advanced CodeQL workflow here makes GitHub reject uploaded SARIF.
+  # The path-scoped advanced CodeQL workflows are separate so this scheduled
+  # evidence workflow remains focused on dependency and workflow audits.
   dependency_audit:
     name: Dependency audit
     runs-on: ubuntu-latest

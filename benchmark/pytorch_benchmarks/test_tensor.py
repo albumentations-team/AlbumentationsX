@@ -257,10 +257,6 @@ class TimeTensorNativeAffine3D:
         self.mask3d = make_mask3d(size_name)
         self.tensor = torch.from_numpy(np.ascontiguousarray(self.volume.transpose(3, 0, 1, 2)))
         self.tensor_mask3d = torch.from_numpy(self.mask3d)
-        self.volumes = np.stack((self.volume, self.volume), axis=0)
-        self.mask3ds = np.stack((self.mask3d, self.mask3d), axis=0)
-        self.tensor_volumes = torch.stack((self.tensor, self.tensor))
-        self.tensor_mask3ds = torch.stack((self.tensor_mask3d, self.tensor_mask3d))
         transform_kwargs = {
             "rotate_range": {"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
             "scale_range": {"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
@@ -285,12 +281,6 @@ class TimeTensorNativeAffine3D:
 
     def time_tensor_and_mask3d(self, case_id: str) -> None:
         self.tensor_direct(volume=self.tensor, mask3d=self.tensor_mask3d)
-
-    def time_numpy_batch(self, case_id: str) -> None:
-        self.numpy_direct(volumes=self.volumes, mask3ds=self.mask3ds)
-
-    def time_tensor_batch(self, case_id: str) -> None:
-        self.tensor_direct(volumes=self.tensor_volumes, mask3ds=self.tensor_mask3ds)
 
     def peakmem_tensor_direct(self, case_id: str) -> None:
         self.tensor_direct(volume=self.tensor)

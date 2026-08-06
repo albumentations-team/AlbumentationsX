@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 
-import numpy as np
-
 import albumentations
 from benchmarks.catalog import benchmark_specs
 from benchmarks.catalog import make_compose as make_catalog_compose
@@ -540,10 +538,6 @@ class PeakMemoryHotPaths:
             strict=True,
         )
         self.volume_data = {"mask3d": make_mask3d("medium"), "volume": make_volume("medium")}
-        self.volume_affine_batch_data = {
-            "mask3ds": np.stack((make_mask3d("medium"), make_mask3d("medium"))),
-            "volumes": np.stack((make_volume("medium"), make_volume("medium"))),
-        }
 
     def peakmem_resize_large_rgb(self) -> None:
         self.resize(image=self.large_rgb)
@@ -571,6 +565,3 @@ class PeakMemoryHotPaths:
 
     def peakmem_volume_affine_medium(self) -> None:
         self.volume_affine(**self.volume_data)
-
-    def peakmem_volume_affine_batch_medium(self) -> None:
-        self.volume_affine(**self.volume_affine_batch_data)

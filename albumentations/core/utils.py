@@ -41,9 +41,6 @@ def get_shape(data: dict[str, Any]) -> tuple[int, int]:
         return _get_shape_from_images(data["images"])
     if "volume" in data:
         return _get_shape_from_volume(data["volume"])
-    if "volumes" in data:
-        volumes = data["volumes"]
-        return (volumes.shape[3], volumes.shape[4]) if isinstance(volumes, torch.Tensor) else volumes.shape[2:4]
     raise ValueError("No image or volume found in data", data.keys())
 
 
@@ -66,7 +63,7 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
         ValueError: If no valid image/volume data keys are found in the dictionary.
 
     """
-    for target in ("image", "images", "volume", "volumes"):
+    for target in ("image", "images", "volume"):
         array = data.get(target)
         if array is None:
             continue
@@ -75,17 +72,11 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
             if target == "image":
                 height, width = shape[1], shape[2]
                 num_channels = int(shape[0])
-            elif target == "volumes":
-                height, width = shape[3], shape[4]
-                num_channels = int(shape[1])
             else:
                 height, width = shape[2], shape[3]
                 num_channels = int(shape[0])
         elif target == "image":
             height, width = shape[0], shape[1]
-            num_channels = shape[-1]
-        elif target == "volumes":
-            height, width = shape[2], shape[3]
             num_channels = shape[-1]
         else:
             height, width = shape[1], shape[2]
@@ -124,12 +115,6 @@ def get_volume_shape(data: dict[str, Any]) -> tuple[int, int, int] | None:
     volume = data.get("volume")
     if volume is not None:
         return _volume_shape_from_array(volume)
-
-    volumes = data.get("volumes")
-    if volumes is not None:
-        if isinstance(volumes, torch.Tensor):
-            return volumes.shape[2], volumes.shape[3], volumes.shape[4]
-        return volumes.shape[1], volumes.shape[2], volumes.shape[3]
 
     return None
 

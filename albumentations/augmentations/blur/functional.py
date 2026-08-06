@@ -9,7 +9,7 @@ import random
 from collections.abc import Sequence
 from functools import lru_cache
 from itertools import product
-from math import ceil
+from math import ceil, cos, radians, sin
 from typing import Literal, cast
 from warnings import warn
 
@@ -307,11 +307,11 @@ def create_motion_kernel(
     center = kernel_size // 2
 
     # Convert angle to radians
-    angle_rad = np.deg2rad(angle)
+    angle_rad = radians(angle)
 
     # Calculate direction vector
-    dx = np.cos(angle_rad)
-    dy = np.sin(angle_rad)
+    dx = cos(angle_rad)
+    dy = sin(angle_rad)
 
     # Create line points with direction bias
     line_length = kernel_size // 2

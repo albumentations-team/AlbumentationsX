@@ -1041,6 +1041,12 @@ def test_center_crop3d_keypoints(
             A.RandomCrop3D: {"size": (4, 4, 4)},
             A.CenterCrop3D: {"size": (4, 4, 4)},
             A.CubicSymmetry: {},
+            A.Affine3D: {
+                "rotate_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (90.0, 90.0)},
+                "scale_range": {"x": (1.0, 1.0), "y": (1.0, 1.0), "z": (1.0, 1.0)},
+                "translate_percent_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)},
+                "interpolation": cv2.INTER_NEAREST,
+            },
             A.Resize3D: {"size": (12, 12, 12), "interpolation": cv2.INTER_NEAREST},
         },
         except_augmentations={

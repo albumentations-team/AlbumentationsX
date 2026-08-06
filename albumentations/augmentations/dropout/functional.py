@@ -6,6 +6,7 @@ These functions create and apply dropout patterns to images, masks, bounding box
 keypoints, with support for different filling methods and hole generation strategies.
 """
 
+import math
 from typing import Literal, cast
 
 import cv2
@@ -1181,7 +1182,7 @@ def generate_grid_mask_holes(
         pos += cell_size
 
     center = (diag // 2, diag // 2)
-    rot_mat = cv2.getRotationMatrix2D(center, np.degrees(rotation), 1.0)
+    rot_mat = cv2.getRotationMatrix2D(center, math.degrees(rotation), 1.0)
     grid_3d = grid_mask[:, :, np.newaxis]
     rotated_3d = warp_affine(grid_3d, rot_mat, (diag, diag), border_value=1)
     rotated = rotated_3d[:, :, 0]

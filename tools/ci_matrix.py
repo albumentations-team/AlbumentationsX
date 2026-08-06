@@ -66,7 +66,7 @@ WORKFLOWS = (
     CODEQL_PYTHON_WORKFLOW,
 )
 CODEQL_WORKFLOW_PATHS = {
-    CODEQL_ACTIONS_WORKFLOW: (".github/**", "**/action.yml", "**/action.yaml"),
+    CODEQL_ACTIONS_WORKFLOW: ("**/*",),
     CODEQL_PYTHON_WORKFLOW: (
         "**/*.py",
         "**/*.pyi",

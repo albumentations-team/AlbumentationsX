@@ -52,6 +52,11 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
         "num_axes_range": (2, 2),
         "downscale_factor_range": (2.0, 2.0),
     },
+    "Affine3D": {
+        "rotate_range": {"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
+        "scale_range": {"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
+        "translate_percent_range": {"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
+    },
     "CenterCrop": {"height": 96, "width": 96},
     "CenterCrop3D": {"size": (4, 48, 48)},
     "ConstrainedCoarseDropout": {"mask_indices": [1]},

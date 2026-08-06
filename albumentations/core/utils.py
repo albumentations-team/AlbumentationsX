@@ -71,10 +71,9 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
         if isinstance(array, torch.Tensor):
             if target == "image":
                 height, width = shape[1], shape[2]
-                num_channels = int(shape[0])
             else:
                 height, width = shape[2], shape[3]
-                num_channels = int(shape[0])
+            num_channels = int(shape[0])
         elif target == "image":
             height, width = shape[0], shape[1]
             num_channels = shape[-1]

@@ -18,9 +18,7 @@ CODEQL_WORKFLOWS = {
         ".github/workflows/codeql-python.yml",
     ],
     "codeql-actions.yml": [
-        ".github/**",
-        "**/action.yml",
-        "**/action.yaml",
+        "**/*",
     ],
 }
 

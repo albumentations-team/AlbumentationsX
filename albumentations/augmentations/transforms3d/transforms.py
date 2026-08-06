@@ -70,8 +70,19 @@ def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
     """
     if "volume" in data:
         volume = data["volume"]
-        return tuple(volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape
+        if isinstance(volume, np.ndarray):
+            if volume.ndim not in (NUM_DIMENSIONS, NUM_DIMENSIONS + 1):
+                raise ValueError("volume must be a 3D or 4D array")
+            return volume.shape
+        if isinstance(volume, torch.Tensor):
+            if volume.ndim != NUM_DIMENSIONS + 1:
+                raise ValueError("volume must be a 4D torch.Tensor")
+            return tuple(volume.shape[1:])
     if "mask3d" in data:
+        if isinstance(data["mask3d"], np.ndarray) and data["mask3d"].ndim != NUM_DIMENSIONS:
+            raise ValueError("mask3d must be a 3D array")
+        if isinstance(data["mask3d"], torch.Tensor) and data["mask3d"].ndim != NUM_DIMENSIONS:
+            raise ValueError("mask3d must be a 3D Tensor")
         return data["mask3d"].shape
     raise ValueError("No volume or mask3d found in data")
 
@@ -118,7 +129,7 @@ class Affine3D(Transform3D):
         uint8, float32
 
     Notes:
-        - Volume arrays are `(D, H, W, C)`, batch arrays are `(N, D, H, W, C)`, and keypoints are `(x, y, z)`.
+        - Volume arrays are `(D, H, W, C)` and keypoints are `(x, y, z)`.
           The centred forward matrix applies scale, then x-, y-, and z-axis rotations, then translation. One sampled
           matrix is shared across all elements of a sampled transform.
         - Scale factors must be positive, so this transform does not sample reflections. Use `Flip3D` for reflections.

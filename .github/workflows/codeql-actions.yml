@@ -4,15 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/**"
-      - "**/action.yml"
-      - "**/action.yaml"
+      - "**/*"
   pull_request:
     branches: [main]
     paths:
-      - ".github/**"
-      - "**/action.yml"
-      - "**/action.yaml"
+      - "**/*"
   schedule:
     - cron: "17 3 * * 0"
   workflow_dispatch:

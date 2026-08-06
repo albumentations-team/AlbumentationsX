@@ -217,6 +217,7 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
 }
 
 VOLUME_ALIAS_TO_TRANSFORM = {
+    "affine3d": "Affine3D",
     "anisotropy3d": "Anisotropy3D",
     "center_crop3d": "CenterCrop3D",
     "coarse_dropout3d": "CoarseDropout3D",
@@ -256,6 +257,7 @@ PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM = {
 DIRECT_KERNEL_TRANSFORMS = frozenset(
     {
         "Affine",
+        "Affine3D",
         "Anisotropy3D",
         "AutoContrast",
         "Blur",
@@ -298,6 +300,8 @@ MEMORY_BENCHMARKS = (
     "peakmem_normalize_large_rgb",
     "peakmem_resize_large_rgb",
     "peakmem_spatter_batch_large_rgb",
+    "peakmem_volume_affine_medium",
+    "peakmem_volume_affine_batch_medium",
     "peakmem_volume_pad_medium",
     "peakmem_volume_resize_medium",
 )
@@ -305,6 +309,7 @@ MEMORY_BENCHMARKS = (
 MEMORY_COVERED_TRANSFORMS = frozenset(
     {
         "Affine",
+        "Affine3D",
         "CopyAndPaste",
         "GaussianBlur",
         "HorizontalFlip",
@@ -319,7 +324,7 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
 )
 
 PYTORCH_TERMINAL_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
-PYTORCH_NATIVE_VOLUME_TRANSFORMS = frozenset({"Anisotropy3D", "Resize3D"})
+PYTORCH_NATIVE_VOLUME_TRANSFORMS = frozenset({"Affine3D", "Anisotropy3D", "Resize3D"})
 PYTORCH_NATIVE_TENSOR_TRANSFORMS = PYTORCH_NATIVE_VOLUME_TRANSFORMS | frozenset({"Transpose"})
 PYTORCH_TENSOR_TRANSFORMS = PYTORCH_TERMINAL_TENSOR_TRANSFORMS | PYTORCH_NATIVE_TENSOR_TRANSFORMS
 PYTORCH_IMAGE_CASES = pytorch_tensor_benchmarks.IMAGE_CASES
@@ -329,6 +334,7 @@ PYTORCH_NATIVE_VOLUME_CASES = pytorch_tensor_benchmarks.TENSOR_NATIVE_VOLUME_CAS
 
 DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "Affine": ("bboxes_affine", "keypoints_affine"),
+    "Affine3D": ("affine_3d",),
     "Anisotropy3D": ("anisotropy_3d",),
     "AutoContrast": ("auto_contrast",),
     "Blur": ("box_blur",),
@@ -364,6 +370,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
 
 MEMORY_CASES_BY_TRANSFORM = {
     "Affine": ("peakmem_affine_large_rgb",),
+    "Affine3D": ("peakmem_volume_affine_medium", "peakmem_volume_affine_batch_medium"),
     "CopyAndPaste": ("peakmem_copy_paste_small_rgb",),
     "GaussianBlur": ("peakmem_batch_pipeline_medium_rgb",),
     "HorizontalFlip": ("peakmem_batch_pipeline_medium_rgb",),
@@ -400,6 +407,7 @@ ASV_BENCHMARKS = {
     "pytorch_tensor_2d": "pytorch_benchmarks.test_tensor.TimeToTensorV2",
     "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
     "pytorch_tensor_native": "pytorch_benchmarks.test_tensor.TimeTensorNativeTranspose",
+    "pytorch_tensor_native_affine3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeAffine3D",
     "pytorch_tensor_native_3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeAnisotropy3D",
     "pytorch_tensor_native_resize3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeResize3D",
     "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
@@ -1169,6 +1177,7 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
             layer="pytorch_tensor",
         )
     for transform_name, benchmark_name in {
+        "Affine3D": "pytorch_tensor_native_affine3d",
         "Anisotropy3D": "pytorch_tensor_native_3d",
         "Resize3D": "pytorch_tensor_native_resize3d",
     }.items():

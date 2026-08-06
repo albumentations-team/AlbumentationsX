@@ -73,11 +73,6 @@ def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
         return tuple(volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape
     if "mask3d" in data:
         return data["mask3d"].shape
-    if "volumes" in data:
-        volumes = data["volumes"]
-        return tuple(volumes.shape[2:]) if isinstance(volumes, torch.Tensor) else volumes.shape[1:]
-    if "mask3ds" in data:
-        return data["mask3ds"].shape[1:]
     raise ValueError("No volume or mask3d found in data")
 
 
@@ -89,7 +84,7 @@ def _get_volume_spatial_shape(data: dict[str, Any]) -> tuple[int, int, int]:
 
 
 class Affine3D(Transform3D):
-    """Apply a sampled 3D affine mapping to volumes, masks, and keypoints by rotating, scaling, and shifting
+    """Apply a sampled 3D affine mapping to volume and mask3d by rotating, scaling, and shifting
     voxel coordinates for robust medical-imaging augmentation.
 
     `Affine3D` resamples depth, height, and width jointly through Albucore `warp_affine3d`; it never treats depth as a
@@ -125,7 +120,7 @@ class Affine3D(Transform3D):
     Notes:
         - Volume arrays are `(D, H, W, C)`, batch arrays are `(N, D, H, W, C)`, and keypoints are `(x, y, z)`.
           The centred forward matrix applies scale, then x-, y-, and z-axis rotations, then translation. One sampled
-          matrix is shared by every item in a `volumes` or `mask3ds` batch.
+          matrix is shared across all elements of a sampled transform.
         - Scale factors must be positive, so this transform does not sample reflections. Use `Flip3D` for reflections.
         - Transform parameters use voxel coordinates only; physical spacing, orientation, and affine metadata remain
           unchanged.
@@ -163,7 +158,7 @@ class Affine3D(Transform3D):
 
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
     _supports_cpu_tensor = True
-    _cpu_tensor_targets = frozenset({"volume", "volumes", "mask3d", "mask3ds"})
+    _cpu_tensor_targets = frozenset({"volume", "mask3d"})
 
     class InitSchema(BaseTransformInitSchema):
         rotate_range: AxisRanges3D
@@ -237,17 +232,6 @@ class Affine3D(Transform3D):
         }
         return {"matrix": matrix, "output_shape": source_shape}
 
-    @property
-    def targets(self) -> dict[str, Any]:
-        """Route individual volumes and homogeneous 3D batches through a sampled affine matrix so every item uses
-        identical spatial geometry.
-        """
-        return {
-            **super().targets,
-            "volumes": self.apply_to_volumes,
-            "mask3ds": self.apply_to_mask3ds,
-        }
-
     def apply_to_volume(
         self,
         volume: VolumeType,
@@ -279,82 +263,6 @@ class Affine3D(Transform3D):
                 is_mask=True,
             ),
         )
-
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType | torch.Tensor,
-        matrix: np.ndarray,
-        output_shape: tuple[int, int, int],
-        **params: Any,
-    ) -> VolumeType | torch.Tensor:
-        """Apply a sampled affine matrix to every volume in an `N,D,H,W[,C]` or `N,C,D,H,W` batch, preserving its
-        output shape, dtype, and public layout.
-        """
-        if len(volumes) == 0:
-            return volumes
-        if isinstance(volumes, torch.Tensor):
-            transformed_tensors = [
-                cast(
-                    "torch.Tensor",
-                    f3d.affine_3d(volume, matrix, output_shape, self.interpolation, self.border_mode, self.fill),
-                )
-                for volume in volumes
-            ]
-            return torch.stack(transformed_tensors)
-        transformed_volumes = [
-            cast(
-                "VolumeType",
-                f3d.affine_3d(volume, matrix, output_shape, self.interpolation, self.border_mode, self.fill),
-            )
-            for volume in volumes
-        ]
-        return cast("VolumeType", np.stack(transformed_volumes))
-
-    def apply_to_mask3ds(
-        self,
-        mask3ds: VolumeType | torch.Tensor,
-        matrix: np.ndarray,
-        output_shape: tuple[int, int, int],
-        **params: Any,
-    ) -> VolumeType | torch.Tensor:
-        """Apply a sampled affine matrix to every mask in an `N,D,H,W[,C]` or `N,D,H,W` batch, preserving
-        interpolation, fill, dtype, and public layout.
-        """
-        if len(mask3ds) == 0:
-            return mask3ds
-        if isinstance(mask3ds, torch.Tensor):
-            transformed_tensors = [
-                cast(
-                    "torch.Tensor",
-                    f3d.affine_3d(
-                        mask3d,
-                        matrix,
-                        output_shape,
-                        self.mask_interpolation,
-                        self.border_mode,
-                        self.fill_mask,
-                        is_mask=True,
-                    ),
-                )
-                for mask3d in mask3ds
-            ]
-            return torch.stack(transformed_tensors)
-        transformed_masks = [
-            cast(
-                "VolumeType",
-                f3d.affine_3d(
-                    mask3d,
-                    matrix,
-                    output_shape,
-                    self.mask_interpolation,
-                    self.border_mode,
-                    self.fill_mask,
-                    is_mask=True,
-                ),
-            )
-            for mask3d in mask3ds
-        ]
-        return cast("VolumeType", np.stack(transformed_masks))
 
     def apply_to_keypoints(self, keypoints: np.ndarray, matrix: np.ndarray, **params: Any) -> np.ndarray:
         return f3d.keypoints_affine_3d(keypoints, matrix)

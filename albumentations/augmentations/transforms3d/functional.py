@@ -189,7 +189,7 @@ def affine_3d(
 
 @handle_empty_array("keypoints")
 def keypoints_affine_3d(keypoints: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    """Map XYZ keypoints with the forward voxel-space affine matrix used for volumes and masks, preserving
+    """Map XYZ keypoints with the forward voxel-space affine matrix used for volume and mask, preserving
     additional attribute and the input coordinate-array dtype.
 
     The first three columns use Albucore's `(x, y, z)` order; homogeneous coordinates apply the same sampled matrix as

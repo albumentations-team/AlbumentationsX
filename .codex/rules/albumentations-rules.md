@@ -11,6 +11,14 @@ always_apply: true
 - `get_params_dependent_on_data` should be minimal and clear - just call other functions from it
 - Use `fill`, not `fill_value`. Use `fill_mask`, not `fill_mask_value`
 - NO default values in InitSchema classes (except discriminator fields for Pydantic unions)
+- Prefer reusable `Annotated` validators for standard single-field checks. Use `field_validator` only when validation
+  genuinely requires field context or cannot be expressed as reusable type metadata; use `model_validator` for
+  cross-field constraints.
+- Avoid redundant numeric container unions such as `tuple[int, int] | tuple[float, float]`. Prefer
+  `tuple[int | float, int | float]` plus explicit runtime homogeneity validation when integers and floats encode
+  different units or behavior.
+- Keep public docstrings focused on user-facing behavior. Omit post-initialization, serialization, replay, and other
+  implementation details unless they are part of the supported public contract.
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite

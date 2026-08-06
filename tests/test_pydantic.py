@@ -338,7 +338,7 @@ def test_check_range_bounds_type_preservation():
 
 # ---------------------------------------------------------------------------
 # API convention: any InitSchema field whose name ends with `_range` must be
-# annotated as a two-number tuple (`int, int` or `float, float`), optionally
+# annotated as a two-number tuple (`int`, `float`, or `int | float` endpoints), optionally
 # wrapped in `| None` for runtime-defaulted fields. Scalar shorthand was
 # dropped library-wide; this test prevents regressions.
 # ---------------------------------------------------------------------------
@@ -362,9 +362,17 @@ def _arms(annotation: Any) -> list[Any]:
     return [annotation]
 
 
+def _is_number_annotation(annotation: Any) -> bool:
+    """Return whether an annotation is `int`, `float`, or exactly `int | float`."""
+    annotation = _unwrap(annotation)
+    if annotation in (int, float):
+        return True
+    return get_origin(annotation) in (Union, UnionType) and set(get_args(annotation)) == {int, float}
+
+
 def _is_uniform_number_tuple(annotation: Any, length: int | None = None) -> bool:
     """Return True iff `annotation` is a fixed-arity `tuple[T, T, ...]` whose elements all have
-    the same number type (`int` or `float`). The variadic `tuple[T, ...]` form is rejected.
+    the same numeric annotation (`int`, `float`, or `int | float`). The variadic `tuple[T, ...]` form is rejected.
     If `length` is given, the tuple must have that arity.
     """
     annotation = _unwrap(annotation)
@@ -374,13 +382,13 @@ def _is_uniform_number_tuple(annotation: Any, length: int | None = None) -> bool
     if not args or (length is not None and len(args) != length):
         return False
     first = args[0]
-    if first not in (int, float):
+    if not _is_number_annotation(first):
         return False
-    return all(arg is first for arg in args)
+    return all(arg == first for arg in args)
 
 
 def _is_two_number_tuple(annotation: Any) -> bool:
-    """Return True iff `annotation` is exactly `tuple[int, int]` or `tuple[float, float]`."""
+    """Return True for a two-item tuple whose endpoints share the same numeric annotation."""
     return _is_uniform_number_tuple(annotation, length=2)
 
 
@@ -454,12 +462,13 @@ def test_range_fields_discovered() -> None:
 )
 def test_range_field_is_two_number_tuple(cls: type, field_name: str, annotation: Any) -> None:
     """Every InitSchema field ending in `_range` must be either a scalar range
-    (`tuple[int, int]` / `tuple[float, float]`) or a per-channel vector range
+    (`tuple[int, int]`, `tuple[float, float]`, or `tuple[int | float, int | float]`) or a per-channel vector range
     (`tuple[tuple[int, ...], tuple[int, ...]]` / float variant), optionally wrapped
     in `| None`. Scalar shorthand is forbidden.
     """
     assert _is_valid_range_annotation(annotation), (
         f"{cls.__name__}.{field_name} must be typed as tuple[int, int], tuple[float, float], "
+        f"tuple[int | float, int | float], "
         f"or a two-vector range tuple[tuple[int, ...], tuple[int, ...]] "
         f"(optionally `| None`); got {annotation!r}"
     )

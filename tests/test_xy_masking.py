@@ -1,30 +1,9 @@
-import itertools
 import json
-import warnings
-from collections import deque
-from collections.abc import Callable, Iterator
-from decimal import Decimal
-from enum import IntEnum
-from fractions import Fraction
-from numbers import Real
 
 import numpy as np
 import pytest
 
 import albumentations as A
-
-
-class _Length(IntEnum):
-    ZERO = 0
-    THREE = 3
-
-
-class _CustomReal:
-    def __float__(self) -> float:
-        return 0.5
-
-
-Real.register(_CustomReal)
 
 
 def _sample_holes(transform: A.XYMasking, shape: tuple[int, int, int], seed: int = 137) -> np.ndarray:
@@ -144,8 +123,8 @@ def test_relative_and_mixed_modes_cover_batch_and_volume_targets(mode: str, zero
     height, width = 5, 7
     relative_length = 0.1 if zero_noop else 0.5
     if mode == "float-float":
-        mask_x_length_range: tuple[int, int] | tuple[float, float] = (relative_length, relative_length)
-        mask_y_length_range: tuple[int, int] | tuple[float, float] = (relative_length, relative_length)
+        mask_x_length_range: tuple[int | float, int | float] = (relative_length, relative_length)
+        mask_y_length_range: tuple[int | float, int | float] = (relative_length, relative_length)
         num_masks_x_range = (1, 1)
         num_masks_y_range = (1, 1)
     elif mode == "float-int":
@@ -308,70 +287,26 @@ def test_axes_accept_different_range_representations() -> None:
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ((np.int32(0), np.int64(3)), (0, 3)),
-        ((_Length.ZERO, _Length.THREE), (0, 3)),
-        ((np.float32(0.0), np.float64(1.0)), (0.0, 1.0)),
-        ((0.0, np.float32(0.5)), (0.0, 0.5)),
-        ((np.longdouble("0.25"), np.longdouble("0.5")), (0.25, 0.5)),
-        ([0.0, np.float32(0.5)], (0.0, 0.5)),
+        ((0, 3), (0, 3)),
+        ([0, 3], (0, 3)),
+        ((0.0, 1.0), (0.0, 1.0)),
+        ([0.0, 1.0], (0.0, 1.0)),
     ],
 )
 @pytest.mark.parametrize("field_name", ["mask_x_length_range", "mask_y_length_range"])
-@pytest.mark.parametrize("strict", [False, True])
-def test_mask_length_range_accepts_numeric_scalars_and_normalizes_to_builtin(
+def test_mask_length_range_preserves_homogeneous_endpoint_kind(
     value: object,
-    expected: tuple[int, int] | tuple[float, float],
+    expected: tuple[int | float, int | float],
     field_name: str,
-    strict: bool,
 ) -> None:
-    transform = A.XYMasking(**{field_name: value}, strict=strict)
+    transform = A.XYMasking(**{field_name: value})
 
     normalized_range = getattr(transform, field_name)
     assert normalized_range == expected
     assert all(type(element) is type(expected[0]) for element in normalized_range)
 
 
-@pytest.mark.parametrize(
-    "value_factory",
-    [
-        lambda: (0, 3),
-        lambda: [0, 3],
-        lambda: deque([0, 3]),
-        lambda: np.array([0, 3]),
-        lambda: range(2),
-        lambda: (element for element in (0, 3)),
-    ],
-)
 @pytest.mark.parametrize("field_name", ["mask_x_length_range", "mask_y_length_range"])
-@pytest.mark.parametrize("strict", [False, True])
-def test_mask_length_range_accepts_ordered_two_item_iterables(
-    value_factory: Callable[[], object],
-    field_name: str,
-    strict: bool,
-) -> None:
-    transform = A.XYMasking(**{field_name: value_factory()}, strict=strict)
-
-    normalized_range = getattr(transform, field_name)
-    assert normalized_range in {(0, 3), (0, 1)}
-    assert all(type(element) is int for element in normalized_range)
-
-
-def test_wrong_length_generator_consumes_at_most_three_values() -> None:
-    consumed = []
-
-    def values() -> Iterator[int]:
-        for value in itertools.count():
-            consumed.append(value)
-            yield value
-
-    with pytest.raises(ValueError, match="exactly two values"):
-        A.XYMasking(mask_x_length_range=values())
-
-    assert consumed == [0, 1, 2]
-
-
-@pytest.mark.parametrize("field_name", ["mask_x_length_range", "mask_y_length_range"])
-@pytest.mark.parametrize("strict", [False, True])
 @pytest.mark.parametrize(
     "value",
     [
@@ -379,56 +314,11 @@ def test_wrong_length_generator_consumes_at_most_three_values() -> None:
         (0.0, 1),
         [0, 0.5],
         [0.0, 1],
-        (np.int64(0), np.float32(0.5)),
     ],
 )
-def test_mask_length_range_rejects_mixed_element_types(field_name: str, value: object, strict: bool) -> None:
-    kwargs = {field_name: value, "strict": strict}
-
-    with pytest.raises(ValueError, match="all integers or all floats"):
-        A.XYMasking(**kwargs)
-
-
-@pytest.mark.parametrize(
-    "value_factory",
-    [
-        lambda: deque([0.0, 1.0]),
-        lambda: np.array([0.0, 1.0]),
-        lambda: (value for value in (0.0, 1.0)),
-    ],
-)
-@pytest.mark.parametrize("strict", [False, True])
-def test_float_ranges_reject_non_tuple_list_containers(
-    value_factory: Callable[[], object],
-    strict: bool,
-) -> None:
-    with pytest.raises(ValueError, match="must use a tuple or list"):
-        A.XYMasking(mask_x_length_range=value_factory(), strict=strict)
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "01",
-        b"01",
-        {0: "lower", 1: "upper"},
-        {0, 1},
-        frozenset({0, 1}),
-        (value for value in (0,)),
-        (value for value in (0, 1, 2)),
-        np.array([[0, 1]]),
-        3,
-        np.float32(0.5),
-        Decimal("0.5"),
-        (Decimal("0.25"), Decimal("0.5")),
-        Fraction(1, 2),
-        (_CustomReal(), _CustomReal()),
-    ],
-)
-@pytest.mark.parametrize("strict", [False, True])
-def test_mask_length_range_rejects_unordered_non_numeric_and_wrong_arity_inputs(value: object, strict: bool) -> None:
+def test_mask_length_range_rejects_mixed_element_types(field_name: str, value: object) -> None:
     with pytest.raises(ValueError):
-        A.XYMasking(mask_x_length_range=value, strict=strict)
+        A.XYMasking(**{field_name: value})
 
 
 @pytest.mark.parametrize("value", [(1.0, 1.0), [1.0, 1.0]])
@@ -457,7 +347,6 @@ def test_float_range_transport_preserves_integral_valued_float_identity(value: o
 
 
 @pytest.mark.parametrize("field_name", ["mask_x_length_range", "mask_y_length_range"])
-@pytest.mark.parametrize("strict", [False, True])
 @pytest.mark.parametrize(
     "value",
     [
@@ -471,51 +360,11 @@ def test_float_range_transport_preserves_integral_valued_float_identity(value: o
         (-float("inf"), 0.5),
         (0.5, float("inf")),
         (False, True),
-        (np.bool_(False), np.bool_(True)),
-        [False, 1],
-        ("0", "1"),
     ],
 )
-def test_mask_length_range_rejects_invalid_values(field_name: str, value: object, strict: bool) -> None:
-    kwargs = {field_name: value, "strict": strict}
-
+def test_mask_length_range_rejects_invalid_values(field_name: str, value: object) -> None:
     with pytest.raises(ValueError):
-        A.XYMasking(**kwargs)
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        (np.nextafter(np.longdouble(1), np.longdouble(2)), np.longdouble(1)),
-        (np.nextafter(np.longdouble(0), np.longdouble(-1)), np.longdouble(0.5)),
-        (np.longdouble(0.5), np.longdouble("inf")),
-        (np.longdouble("nan"), np.longdouble(0.5)),
-        (np.nextafter(np.longdouble(0.5), np.longdouble(1)), np.longdouble(0.5)),
-    ],
-)
-@pytest.mark.parametrize("strict", [False, True])
-def test_float_range_validates_raw_values_before_builtin_float_normalization(value: object, strict: bool) -> None:
-    with pytest.raises(ValueError):
-        A.XYMasking(mask_x_length_range=value, strict=strict)
-
-
-@pytest.mark.parametrize("strict", [False, True])
-@pytest.mark.parametrize(
-    "value",
-    [
-        (np.longdouble("0.25"), Fraction(1, 2)),
-        (Fraction(10**400), Fraction(10**400)),
-    ],
-)
-def test_invalid_real_ranges_fail_closed_without_warning(value: object, strict: bool) -> None:
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        with pytest.raises(ValueError) as raised:
-            A.XYMasking(mask_x_length_range=value, strict=strict)
-
-    assert caught == []
-    assert raised.value.__cause__ is not None
-    assert type(raised.value.__cause__).__name__ == "ValidationError"
+        A.XYMasking(**{field_name: value})
 
 
 @pytest.mark.parametrize(

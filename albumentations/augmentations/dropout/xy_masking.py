@@ -5,16 +5,12 @@ and other grid-like data representations where masking in specific directions (t
 can improve model robustness and generalization.
 """
 
-from collections.abc import Mapping
-from collections.abc import Set as AbstractSet
-from itertools import islice
 from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
-from pydantic import field_validator, model_validator
-from pydantic.functional_validators import AfterValidator
-from pydantic_core import PydanticCustomError
-from typing_extensions import LiteralString, Self
+from pydantic import model_validator
+from pydantic.functional_validators import AfterValidator, BeforeValidator
+from typing_extensions import Self
 
 from albumentations.augmentations.dropout.transforms import BaseDropout, DropoutFillValue
 from albumentations.core.pydantic import (
@@ -25,102 +21,31 @@ from albumentations.core.transforms_interface import BaseTransformInitSchema
 
 __all__ = ["XYMasking"]
 
-MaskLengthRange = tuple[int, int] | tuple[float, float]
+MaskLengthRange = tuple[int | float, int | float]
 
 
-def _invalid_range(error_type: LiteralString, message: LiteralString) -> PydanticCustomError:
-    return PydanticCustomError(error_type, message)
+def _normalize_mask_length_range(value: Any) -> MaskLengthRange:
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        raise ValueError("Mask length range must be a tuple or list of exactly two values")
+
+    endpoint_type = type(value[0])
+    if endpoint_type not in (int, float) or any(type(endpoint) is not endpoint_type for endpoint in value):
+        raise ValueError("Mask length range elements must be all integers or all floats")
+    return value[0], value[1]
 
 
-def _materialize_range(value: Any) -> tuple[tuple[Any, Any], bool]:
-    if isinstance(value, (str, bytes, bytearray, Mapping, AbstractSet)):
-        raise _invalid_range(
-            "mask_length_range_container",
-            "Mask length range must be an ordered iterable of exactly two values",
-        )
-
-    allows_float = isinstance(value, (tuple, list))
-    if isinstance(value, np.ndarray) and value.ndim != 1:
-        raise _invalid_range(
-            "mask_length_range_dimension",
-            "NumPy mask length ranges must be one-dimensional",
-        )
-
-    try:
-        iterator = iter(value)
-        elements = list(islice(iterator, 3))
-    except Exception as exc:
-        raise _invalid_range(
-            "mask_length_range_iteration",
-            "Mask length range must be an ordered iterable of exactly two values",
-        ) from exc
-
-    if len(elements) != 2:
-        raise _invalid_range(
-            "mask_length_range_length",
-            "Mask length range must contain exactly two values",
-        )
-    return (elements[0], elements[1]), allows_float
+def _validate_mask_length_bounds(value: MaskLengthRange) -> MaskLengthRange:
+    max_value = None if type(value[0]) is int else 1
+    check_range_bounds(0, max_value)(value)
+    return value
 
 
-def _is_integer_endpoint(value: Any) -> bool:
-    return isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_))
-
-
-def _is_float_endpoint(value: Any) -> bool:
-    return isinstance(value, (float, np.floating))
-
-
-def _normalize_integer_range(elements: tuple[Any, Any]) -> tuple[int, int]:
-    try:
-        has_negative_endpoint = elements[0] < 0
-        has_decreasing_endpoints = elements[0] > elements[1]
-    except Exception as exc:
-        raise _invalid_range(
-            "mask_length_range_comparison",
-            "Integer mask length range endpoints could not be compared",
-        ) from exc
-
-    if has_negative_endpoint:
-        raise _invalid_range(
-            "mask_length_range_bounds",
-            "Integer mask length ranges must contain only nonnegative values",
-        )
-    if has_decreasing_endpoints:
-        raise _invalid_range(
-            "mask_length_range_order",
-            "Mask length range must be nondecreasing",
-        )
-    return int(elements[0]), int(elements[1])
-
-
-def _normalize_float_range(elements: tuple[Any, Any]) -> tuple[float, float]:
-    try:
-        has_nonfinite_endpoint = not all(bool(np.isfinite(element)) for element in elements)
-        has_out_of_bounds_endpoint = any(element < 0 or element > 1 for element in elements)
-        has_decreasing_endpoints = elements[0] > elements[1]
-    except Exception as exc:
-        raise _invalid_range(
-            "mask_length_range_comparison",
-            "Float mask length range endpoints could not be validated",
-        ) from exc
-
-    if has_nonfinite_endpoint:
-        raise _invalid_range(
-            "mask_length_range_finite",
-            "Float mask length ranges must contain only finite values",
-        )
-    if has_out_of_bounds_endpoint:
-        raise _invalid_range(
-            "mask_length_range_bounds",
-            "Float mask length ranges must be within [0.0, 1.0]",
-        )
-    if has_decreasing_endpoints:
-        raise _invalid_range(
-            "mask_length_range_order",
-            "Mask length range must be nondecreasing",
-        )
-    return float(elements[0]), float(elements[1])
+ValidatedMaskLengthRange = Annotated[
+    MaskLengthRange,
+    BeforeValidator(_normalize_mask_length_range),
+    AfterValidator(_validate_mask_length_bounds),
+    AfterValidator(nondecreasing),
+]
 
 
 class _XYMaskingInitSchema(BaseTransformInitSchema):
@@ -134,32 +59,11 @@ class _XYMaskingInitSchema(BaseTransformInitSchema):
         AfterValidator(check_range_bounds(0)),
         AfterValidator(nondecreasing),
     ]
-    mask_x_length_range: MaskLengthRange
-    mask_y_length_range: MaskLengthRange
+    mask_x_length_range: ValidatedMaskLengthRange
+    mask_y_length_range: ValidatedMaskLengthRange
 
     fill: DropoutFillValue
     fill_mask: tuple[float, ...] | float | None
-
-    @field_validator("mask_x_length_range", "mask_y_length_range", mode="before")
-    @classmethod
-    def _validate_mask_length_range(cls, value: Any) -> MaskLengthRange:
-        elements, allows_float = _materialize_range(value)
-
-        if all(_is_integer_endpoint(element) for element in elements):
-            return _normalize_integer_range(elements)
-
-        if all(_is_float_endpoint(element) for element in elements):
-            if not allows_float:
-                raise _invalid_range(
-                    "mask_length_range_float_container",
-                    "Float mask length ranges must use a tuple or list",
-                )
-            return _normalize_float_range(elements)
-
-        raise _invalid_range(
-            "mask_length_range_endpoint_type",
-            "Mask length range elements must be all integers or all floats",
-        )
 
     @model_validator(mode="after")
     def _check_mask_length(self) -> Self:
@@ -171,25 +75,19 @@ class _XYMaskingInitSchema(BaseTransformInitSchema):
 
 
 class XYMasking(BaseDropout):
-    """Apply horizontal or vertical masking strips to simulate occlusion.
-    Useful for spectrograms (spectral/frequency masking).
+    """Mask images with random horizontal and vertical strips sized in pixels or axis-relative fractions,
+    useful for occlusion and spectrogram augmentation.
 
-    Useful for training with varied visibility conditions; spectral and frequency
-    masking can improve model robustness (e.g. SpecAugment-style). At least one of
-    `mask_x_length_range` or `mask_y_length_range` must have a positive maximum,
-    dictating the mask's maximum size along each axis.
+    Integer endpoints express strip sizes in pixels. Float endpoints in [0.0, 1.0] scale X lengths by image width
+    and Y lengths by image height.
 
     Args:
-        num_masks_x_range (tuple[int, int]): Range of vertical strips to mask. Defaults to (0, 0).
-        num_masks_y_range (tuple[int, int]): Range of horizontal strips to mask. Defaults to (0, 0).
-        mask_x_length_range (tuple[int, int] | tuple[float, float]): Range (min, max) of mask length along the X
-            (horizontal) axis. Integer values specify pixels. Float values specify fractions of the image width and
-            must be finite and within [0.0, 1.0]. The length is randomly chosen within this range for each mask.
-            Runtime lists are accepted for standard JSON transport. Defaults to (0, 0).
-        mask_y_length_range (tuple[int, int] | tuple[float, float]): Range (min, max) of mask height along the Y
-            (vertical) axis. Integer values specify pixels. Float values specify fractions of the image height and
-            must be finite and within [0.0, 1.0]. The height is randomly chosen within this range for each mask.
-            Runtime lists are accepted for standard JSON transport. Defaults to (0, 0).
+        num_masks_x_range (tuple[int, int]): Range for the number of vertical strips. Defaults to (0, 0).
+        num_masks_y_range (tuple[int, int]): Range for the number of horizontal strips. Defaults to (0, 0).
+        mask_x_length_range (tuple[int | float, int | float]): Range of vertical-strip widths. Use two integers for
+            pixels or two floats in [0.0, 1.0] for fractions of image width. Defaults to (0, 0).
+        mask_y_length_range (tuple[int | float, int | float]): Range of horizontal-strip heights. Use two integers for
+            pixels or two floats in [0.0, 1.0] for fractions of image height. Defaults to (0, 0).
         fill (float | tuple[float, ...] | str):
             Value for the dropped pixels. Can be:
             - int or float: all channels are filled with this value
@@ -201,7 +99,7 @@ class XYMasking(BaseDropout):
             - 'grayscale': converts dropped regions to grayscale while preserving channel count
             Default: 0
         fill_mask (tuple[float, ...] | float | None): Fill value for dropout regions in the mask.
-            If None, mask regions corresponding to image dropouts are unchanged. Default: None
+            If None, mask regions corresponding to image dropouts are unchanged. Defaults to None.
         p (float): Probability of applying the transform. Defaults to 0.5.
 
     Targets:
@@ -214,77 +112,39 @@ class XYMasking(BaseDropout):
         hbb
 
     Note:
-        - Either `mask_x_length_range` or `mask_y_length_range` or both must have a positive max.
-        - Relative endpoints must be homogeneous Python or NumPy floats in a tuple or list. Integer endpoints may use
-          the compatible ordered two-item integer iterables accepted by the constructor. Booleans, mixed numeric
-          categories, `Fraction`, `Decimal`, and arbitrary `Real` implementations are rejected.
-        - Fractional lengths are sampled uniformly, multiplied by the corresponding image dimension, and rounded down
-          with `int`. A positive fractional sample can therefore produce a zero-length, no-op mask on a small image;
-          such degenerate masks are discarded. A fractional endpoint of 1.0 can span the full axis.
-        - Post-initialization range reassignment is unsupported. Standard Albumentations/Python JSON round trips
-          preserve relative `1.0`; JSON processors that canonicalize `1.0` to integer `1` do not preserve units.
-        - `Compose.from_applied_transforms()` reconstructs a runnable length policy and samples new holes.
-          Use `ReplayCompose` when the exact holes from one call must be replayed.
+        - Each length range must contain either two integers or two floats; mixed endpoint types are invalid.
+        - Integer lengths are sampled inclusively in pixels. Float lengths are sampled between the endpoints, scaled
+          by the corresponding axis, and rounded down. Zero-length strips are omitted, and 1.0 can span the full axis.
+        - At least one of `mask_x_length_range` and `mask_y_length_range` must have a positive maximum.
         - When using `fill="grayscale"`, `fill_mask` must be None.
 
     Examples:
-        Pixel-based ranges keep their existing inclusive integer sampling behavior:
+        Use integer ranges for pixel-based strip sizes:
 
         >>> import albumentations as A
         >>> import numpy as np
-        >>> image = np.ones((80, 120, 3), dtype=np.uint8) * 255
-        >>> mask = np.ones((80, 120), dtype=np.uint8)
-        >>> bboxes = np.array([[10, 10, 40, 40]], dtype=np.float32)
-        >>> bbox_labels = [1]
-        >>> keypoints = np.array([[20, 30]], dtype=np.float32)
-        >>> keypoint_labels = [0]
-        >>> pixel_transform = A.Compose(
-        ...     [
-        ...         A.XYMasking(
-        ...             num_masks_x_range=(1, 2),
-        ...             num_masks_y_range=(1, 1),
-        ...             mask_x_length_range=(8, 16),
-        ...             mask_y_length_range=(4, 8),
-        ...             fill=0,
-        ...             p=1.0,
-        ...         ),
-        ...     ],
-        ...     bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
-        ...     keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
-        ...     seed=137,
+        >>> image = np.full((80, 120, 3), 255, dtype=np.uint8)
+        >>> pixel_transform = A.XYMasking(
+        ...     num_masks_x_range=(1, 2),
+        ...     num_masks_y_range=(1, 1),
+        ...     mask_x_length_range=(8, 16),
+        ...     mask_y_length_range=(4, 8),
+        ...     fill=0,
+        ...     p=1.0,
         ... )
-        >>> pixel_result = pixel_transform(
-        ...     image=image,
-        ...     mask=mask,
-        ...     bboxes=bboxes,
-        ...     bbox_labels=bbox_labels,
-        ...     keypoints=keypoints,
-        ...     keypoint_labels=keypoint_labels,
-        ... )
-        >>> pixel_image = pixel_result["image"]
-        >>> pixel_mask = pixel_result["mask"]
-        >>> pixel_bboxes = pixel_result["bboxes"]
-        >>> pixel_bbox_labels = pixel_result["bbox_labels"]
-        >>> pixel_keypoints = pixel_result["keypoints"]
-        >>> pixel_keypoint_labels = pixel_result["keypoint_labels"]
+        >>> pixel_image = pixel_transform(image=image)["image"]
 
-        Fractional ranges scale X by width and Y by height, so the same pipeline adapts to each input resolution:
+        Use float ranges when strip sizes should scale with each input:
 
-        >>> relative_transform = A.Compose(
-        ...     [
-        ...         A.XYMasking(
-        ...             num_masks_x_range=(1, 2),
-        ...             num_masks_y_range=(1, 1),
-        ...             mask_x_length_range=(0.05, 0.15),
-        ...             mask_y_length_range=(0.1, 0.2),
-        ...             fill=0,
-        ...             p=1.0,
-        ...         ),
-        ...     ],
-        ...     seed=137,
+        >>> relative_transform = A.XYMasking(
+        ...     num_masks_x_range=(1, 2),
+        ...     num_masks_y_range=(1, 1),
+        ...     mask_x_length_range=(0.05, 0.15),
+        ...     mask_y_length_range=(0.1, 0.2),
+        ...     fill=0,
+        ...     p=1.0,
         ... )
-        >>> small_relative_image = relative_transform(image=np.ones((40, 60, 3), dtype=np.uint8))["image"]
-        >>> large_relative_image = relative_transform(image=np.ones((80, 120, 3), dtype=np.uint8))["image"]
+        >>> relative_image = relative_transform(image=image)["image"]
 
     """
 

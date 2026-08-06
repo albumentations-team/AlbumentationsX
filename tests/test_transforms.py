@@ -11,6 +11,7 @@ from albucore import MAX_VALUES_BY_DTYPE, clip, to_float
 import albumentations as A
 import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel.functional as fpixel
+from albumentations.augmentations.pixel import _functional_noise as fnoise
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import (
     IMAGES,
@@ -323,9 +324,10 @@ def test_resize_with_additional_targets_mask():
         additional_targets={"semantic_mask": "mask"},
     )
 
-    augmented = transform(image=image, semantic_mask=mask)
+    augmented = transform(image=image, mask=mask, semantic_mask=mask.copy())
 
     assert augmented["image"].shape == (512, 512, 3)
+    assert augmented["mask"].shape == (512, 512)
     assert augmented["semantic_mask"].shape == (512, 512)
     assert augmented["semantic_mask"].ndim == 2
 
@@ -340,7 +342,7 @@ def test_image_invert(seed):
     r_int = fpixel.invert(fpixel.invert(image1))
     r_float = fpixel.invert(fpixel.invert(image2))
     r_to_float = to_float(r_int)
-    assert np.allclose(r_float, r_to_float, atol=0.01)
+    np.testing.assert_allclose(r_float, r_to_float, atol=0.01, rtol=1e-5, equal_nan=False)
 
 
 def test_lambda_transform():
@@ -421,19 +423,19 @@ def test_equalize():
     img = cv2.randu(np.zeros((256, 256, 3), dtype=np.uint8), 0, 255)
     a = aug(image=img)["image"]
     b = fpixel.equalize(img)
-    assert np.all(a == b)
+    np.testing.assert_array_equal(a, b)
 
     mask = cv2.randu(np.zeros((256, 256, 1), dtype=np.uint8), 0, 2)
     aug = A.Equalize(mask=mask, p=1)
     a = aug(image=img)["image"]
     b = fpixel.equalize(img, mask=mask)
-    assert np.all(a == b)
+    np.testing.assert_array_equal(a, b)
 
     def mask_func(image, test):
         return mask
 
     aug = A.Equalize(mask=mask_func, mask_params=["test"], p=1)
-    assert np.all(aug(image=img, test=mask)["image"] == fpixel.equalize(img, mask=mask))
+    np.testing.assert_array_equal(aug(image=img, test=mask)["image"], fpixel.equalize(img, mask=mask))
 
 
 @pytest.mark.parametrize("mode", ["linear", "corner", "gaussian"])
@@ -576,7 +578,7 @@ def test_multiplicative_noise_grayscale(image):
 
     expected = image.astype(np.float32) * params["multiplier"]
 
-    assert np.allclose(clip(expected, image.dtype), result_e)
+    np.testing.assert_allclose(clip(expected, image.dtype), result_e, rtol=1e-5, atol=1e-8, equal_nan=False)
 
     aug = A.MultiplicativeNoise((m, m), elementwise=True, p=1)
     params = aug.get_params_dependent_on_data(
@@ -587,7 +589,7 @@ def test_multiplicative_noise_grayscale(image):
 
     expected = image.astype(np.float32) * params["multiplier"]
 
-    assert np.allclose(clip(expected, image.dtype), result_ne)
+    np.testing.assert_allclose(clip(expected, image.dtype), result_ne, rtol=1e-5, atol=1e-8, equal_nan=False)
 
 
 @pytest.mark.parametrize(
@@ -617,7 +619,7 @@ def test_multiplicative_noise_rgb(image, elementwise):
 
     expected = image.astype(np.float32) * mul
 
-    assert np.allclose(clip(expected, dtype), result, atol=1e-5)
+    np.testing.assert_allclose(clip(expected, dtype), result, atol=1e-5, rtol=1e-5, equal_nan=False)
 
 
 def test_mask_dropout():
@@ -627,8 +629,8 @@ def test_mask_dropout():
 
     aug = A.MaskDropout(p=1)
     result = aug(image=img, mask=mask)
-    assert np.all(result["image"] == 0)
-    assert np.all(result["mask"] == 0)
+    np.testing.assert_array_equal(result["image"], 0)
+    np.testing.assert_array_equal(result["mask"], 0)
 
     # In this case we have mask with zeros , so MaskDropout will make no changes
     img = cv2.randu(np.zeros((50, 10, 3), dtype=np.uint8), 0, 255)
@@ -636,8 +638,8 @@ def test_mask_dropout():
 
     aug = A.MaskDropout(p=1)
     result = aug(image=img, mask=mask)
-    assert np.all(result["image"] == img)
-    assert np.all(result["mask"] == 0)
+    np.testing.assert_array_equal(result["image"], img)
+    np.testing.assert_array_equal(result["mask"], 0)
 
 
 @pytest.mark.parametrize("fill", ["inpaint_telea", "inpaint_ns"])
@@ -651,7 +653,7 @@ def test_mask_dropout_inpaint_fill(fill):
 
     assert result["image"].shape == img.shape
     assert result["image"].dtype == img.dtype
-    assert np.all(result["mask"] == 0)
+    np.testing.assert_array_equal(result["mask"], 0)
 
 
 @pytest.mark.parametrize("fill", ["inpaint_telea", "inpaint_ns"])
@@ -665,7 +667,7 @@ def test_mask_dropout_inpaint_fill_tiny_mask(fill):
 
     assert result["image"].shape == img.shape
     assert result["image"].dtype == img.dtype
-    assert np.all(result["mask"] == 0)
+    np.testing.assert_array_equal(result["mask"], 0)
 
 
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
@@ -795,33 +797,6 @@ def test_random_brightness_contrast_torchvision_mode_uses_per_image_batch_means(
     np.testing.assert_array_equal(result, expected)
 
 
-def test_random_brightness_contrast_torchvision_mode_uses_per_slice_volume_means():
-    volumes = np.array(
-        [
-            [[[[0], [100]]]],
-            [[[[100], [200]]]],
-        ],
-        dtype=np.uint8,
-    )
-    expected = np.array(
-        [
-            [[[[50], [50]]]],
-            [[[[150], [150]]]],
-        ],
-        dtype=np.uint8,
-    )
-    transform = A.RandomBrightnessContrast(
-        brightness_range=(0, 0),
-        contrast_range=(-1, -1),
-        brightness_by_max=False,
-        p=1,
-    )
-
-    result = transform(volumes=volumes)["volumes"]
-
-    np.testing.assert_array_equal(result, expected)
-
-
 def test_random_brightness_contrast_torchvision_mode_safe_output_uses_combined_coefficients():
     image = np.array([[[50], [100], [150]]], dtype=np.uint8)
     transform = A.RandomBrightnessContrast(
@@ -920,8 +895,8 @@ def test_perspective_keep_size():
         labels=[0] * len(bboxes),
     )
 
-    assert np.allclose(res_1["bboxes"], res_2["bboxes"], atol=0.2)
-    assert np.allclose(res_1["keypoints"], res_2["keypoints"])
+    np.testing.assert_allclose(res_1["bboxes"], res_2["bboxes"], atol=0.2, rtol=1e-5, equal_nan=False)
+    np.testing.assert_allclose(res_1["keypoints"], res_2["keypoints"], rtol=1e-5, atol=1e-8, equal_nan=False)
 
     assert res_1["image"].shape == img.shape
 
@@ -967,8 +942,7 @@ def test_affine_scale_ratio(params):
     image = SQUARE_UINT8_IMAGE
 
     data = {"image": image}
-    call_params = aug.get_params()
-    call_params = aug.update_transform_params(call_params, data)
+    call_params = aug.update_transform_params({}, data)
 
     apply_params = aug.get_params_dependent_on_data(params=call_params, data=data)
 
@@ -1004,8 +978,7 @@ def test_affine_default_keep_ratio_behavior():
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
-    params = transform.get_params()
-    params = transform.update_transform_params(params, data)
+    params = transform.update_transform_params({}, data)
     apply_params = transform.get_params_dependent_on_data(params=params, data=data)
 
     assert apply_params["scale"]["x"] == apply_params["scale"]["y"], (
@@ -1022,8 +995,7 @@ def test_affine_explicit_keep_ratio_false():
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
-    params = transform.get_params()
-    params = transform.update_transform_params(params, data)
+    params = transform.update_transform_params({}, data)
     apply_params = transform.get_params_dependent_on_data(params=params, data=data)
 
     # With keep_ratio=False, x and y can be different (not always will be, but can be)
@@ -1031,8 +1003,7 @@ def test_affine_explicit_keep_ratio_false():
     found_different = False
     for seed in range(10):
         transform.set_random_seed(seed)
-        params = transform.get_params()
-        params = transform.update_transform_params(params, data)
+        params = transform.update_transform_params({}, data)
         apply_params = transform.get_params_dependent_on_data(params=params, data=data)
         if apply_params["scale"]["x"] != apply_params["scale"]["y"]:
             found_different = True
@@ -1051,8 +1022,7 @@ def test_affine_with_dict_scale_keep_ratio_true():
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
-    params = transform.get_params()
-    params = transform.update_transform_params(params, data)
+    params = transform.update_transform_params({}, data)
     apply_params = transform.get_params_dependent_on_data(params=params, data=data)
 
     assert apply_params["scale"]["x"] == apply_params["scale"]["y"], (
@@ -1073,8 +1043,7 @@ def test_affine_keep_ratio_with_single_scale_value():
     transform.set_random_seed(137)
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
-    params = transform.get_params()
-    params = transform.update_transform_params(params, data)
+    params = transform.update_transform_params({}, data)
     apply_params = transform.get_params_dependent_on_data(params=params, data=data)
 
     # With a single scale value, both x and y should be that value
@@ -1334,7 +1303,7 @@ def test_motion_blur_allow_shifted():
         direction_range=(0, 0),  # Symmetric direction
         blur_range=(7, 7),  # Fixed kernel size
     )
-    kernel = transform.get_params()["kernel"]
+    kernel = transform.get_params_dependent_on_data(params={}, data={})["kernel"]
 
     center = kernel.shape[0] / 2 - 0.5
 
@@ -1370,7 +1339,7 @@ def test_motion_blur_allow_shifted_true():
     # Generate multiple kernels with same transform instance
     kernels = []
     for _ in range(10):
-        kernel = transform.get_params()["kernel"]
+        kernel = transform.get_params_dependent_on_data(params={}, data={})["kernel"]
         kernels.append(kernel)
 
     # Check that not all kernels are identical (shifting should cause variation)
@@ -1864,7 +1833,7 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
                 pad_left : pad_left + image.shape[1],
                 :,
             ]
-            assert np.all(central_region == 255)
+            np.testing.assert_array_equal(central_region, 255)
         elif all(p <= 0 for p in px):  # Cropping
             crop_top, crop_right, crop_bottom, crop_left = (-p for p in px)
             cropped_region = image[
@@ -1872,7 +1841,7 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
                 crop_left : image.shape[1] - crop_right,
                 :,
             ]
-            assert np.all(transformed_image == cropped_region)
+            np.testing.assert_array_equal(transformed_image, cropped_region)
 
 
 @pytest.mark.parametrize(
@@ -1907,6 +1876,50 @@ def test_gauss_noise(mean, image):
     result = A.Compose([aug], seed=137, strict=True)(image=image)
 
     assert not (result["image"] >= image).all()
+
+
+@pytest.mark.parametrize(
+    ("noise_type", "noise_params"),
+    [
+        ("uniform", {"ranges": [(-0.2, 0.2)]}),
+        ("gaussian", {"mean_range": (0.0, 0.0), "std_range": (0.1, 0.1)}),
+        ("laplace", {"mean_range": (0.0, 0.0), "scale_range": (0.1, 0.1)}),
+        ("beta", {"alpha_range": (0.5, 1.5), "beta_range": (0.5, 1.5), "scale_range": (0.1, 0.3)}),
+    ],
+)
+@pytest.mark.parametrize("spatial_mode", ["per_pixel", "shared"])
+def test_additive_noise_spatial_map_is_float32(noise_type, noise_params, spatial_mode):
+    image = np.full((32, 48, 3), 128, dtype=np.uint8)
+    aug = A.AdditiveNoise(
+        noise_type=noise_type,
+        spatial_mode=spatial_mode,
+        noise_params=noise_params,
+        p=1,
+    )
+
+    apply_params = aug.get_params_dependent_on_data(
+        params={"shape": image.shape},
+        data={"image": image},
+    )
+
+    assert apply_params["noise_map"].dtype == np.float32
+
+
+def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
+    image = np.full((4, 6, 3), 128, dtype=np.uint8)
+    noise = np.ones((4, 6, 1), dtype=np.float32)
+    captured_noise: list[np.ndarray] = []
+
+    def capture_add_array(image: np.ndarray, noise: np.ndarray) -> np.ndarray:
+        captured_noise.append(noise)
+        return image
+
+    monkeypatch.setattr(fnoise, "add_array", capture_add_array)
+    fnoise.add_noise(image, noise)
+
+    assert len(captured_noise) == 1
+    assert captured_noise[0].shape == image.shape
+    assert captured_noise[0].flags.c_contiguous
 
 
 @pytest.mark.parametrize(

@@ -17,7 +17,7 @@ These transforms are particularly useful for:
 - Exploiting symmetries in the problem domain
 
 All transforms support various target types including images, masks, bounding boxes,
-keypoints, volumes, and 3D masks, ensuring consistent transformation across
+keypoints, volume data, and 3D masks, ensuring consistent transformation across
 different data modalities.
 """
 
@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any, Literal, cast
 
 import numpy as np
+import torch
 from albucore import hflip, vflip
 
 from albumentations.core.transforms_interface import (
@@ -114,8 +115,12 @@ class VerticalFlip(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"image", "images", "volume", "mask", "masks", "mask3d"})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
+        if isinstance(img, torch.Tensor):
+            return cast("ImageType", fgeometric.flip_tensor(img, dims=(-2,)))
         return vflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
@@ -132,30 +137,27 @@ class VerticalFlip(DualTransform):
         return self.apply(mask, **params)
 
     def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
+        if isinstance(masks, torch.Tensor):
+            return cast("StackedMasks4D", fgeometric.flip_tensor(masks, dims=(-2,)))
         if masks.size == 0:
             return masks
         return StackedMasks4D(self.apply_to_images(masks, **params))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        if isinstance(images, torch.Tensor):
+            return cast("ImageType", fgeometric.flip_tensor(images, dims=(-2,)))
         return fgeometric.vflip_images(images)
 
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        if isinstance(volume, torch.Tensor):
+            return cast("VolumeType", fgeometric.flip_tensor(volume, dims=(-2,)))
         return fgeometric.vflip_images(volume)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return fgeometric.vflip_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
             return mask3d
         return self.apply_to_images(mask3d, **params)
-
-    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
-        if masks3d.size == 0:
-            # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
-            return masks3d
-        return self.apply_to_volumes(masks3d, **params)
 
     def inverse(self) -> VerticalFlip:
         """Return a new VerticalFlip that undoes the flip (vertical flip is self-inverse). Use after
@@ -221,8 +223,12 @@ class HorizontalFlip(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"image", "images", "volume", "mask", "masks", "mask3d"})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
+        if isinstance(img, torch.Tensor):
+            return cast("ImageType", fgeometric.flip_tensor(img, dims=(-1,)))
         return hflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
@@ -239,30 +245,27 @@ class HorizontalFlip(DualTransform):
         return self.apply(mask, **params)
 
     def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
+        if isinstance(masks, torch.Tensor):
+            return cast("StackedMasks4D", fgeometric.flip_tensor(masks, dims=(-1,)))
         if masks.size == 0:
             return masks
         return StackedMasks4D(self.apply_to_images(masks, **params))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        if isinstance(images, torch.Tensor):
+            return cast("ImageType", fgeometric.flip_tensor(images, dims=(-1,)))
         return fgeometric.hflip_images(images)
 
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        if isinstance(volume, torch.Tensor):
+            return cast("VolumeType", fgeometric.flip_tensor(volume, dims=(-1,)))
         return fgeometric.hflip_images(volume)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return fgeometric.hflip_volumes(volumes)
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
             return mask3d
         return self.apply_to_images(mask3d, **params)
-
-    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
-        if masks3d.size == 0:
-            # Assume masks3d shape is (N, D, H, W, C) - return empty array with same shape
-            return masks3d
-        return self.apply_to_volumes(masks3d, **params)
 
     def inverse(self) -> HorizontalFlip:
         """Return a new HorizontalFlip that undoes the flip (horizontal flip is self-inverse). Use
@@ -335,8 +338,12 @@ class Transpose(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"image", "images", "volume", "mask", "masks", "mask3d"})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
+        if isinstance(img, torch.Tensor):
+            return cast("ImageType", fgeometric.transpose_tensor(img))
         return fgeometric.transpose(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
@@ -347,6 +354,8 @@ class Transpose(DualTransform):
         return fgeometric.keypoints_transpose(keypoints)
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
+        if isinstance(mask, torch.Tensor):
+            return cast("ImageType", fgeometric.transpose_tensor(mask))
         if mask.size == 0:
             # Transpose swaps H and W
             # Assume mask shape is (H, W, C) -> (W, H, C)
@@ -354,6 +363,8 @@ class Transpose(DualTransform):
         return self.apply(mask, **params)
 
     def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
+        if isinstance(masks, torch.Tensor):
+            return cast("StackedMasks4D", fgeometric.transpose_tensor(masks))
         if masks.size == 0:
             return StackedMasks4D(
                 np.empty((0, masks.shape[2], masks.shape[1], masks.shape[3]), dtype=masks.dtype),
@@ -361,12 +372,18 @@ class Transpose(DualTransform):
         return StackedMasks4D(self.apply_to_images(masks, **params))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        if isinstance(images, torch.Tensor):
+            return cast("ImageType", fgeometric.transpose_tensor(images))
         return fgeometric.transpose_images(images)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return fgeometric.transpose_volumes(volumes)
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        if isinstance(volume, torch.Tensor):
+            return cast("VolumeType", fgeometric.transpose_tensor(volume))
+        return fgeometric.transpose_images(volume)
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
+        if isinstance(mask3d, torch.Tensor):
+            return cast("VolumeType", fgeometric.transpose_tensor(mask3d))
         if mask3d.size == 0:
             # Transpose swaps H and W
             # Assume mask3d shape is (D, H, W, C) -> (D, W, H, C)
@@ -375,19 +392,6 @@ class Transpose(DualTransform):
                 np.empty((mask3d.shape[0], mask3d.shape[2], mask3d.shape[1], mask3d.shape[3]), dtype=mask3d.dtype),
             )
         return self.apply_to_images(mask3d, **params)
-
-    def apply_to_masks3d(self, masks3d: VolumeType, **params: Any) -> VolumeType:
-        if masks3d.size == 0:
-            # Transpose swaps H and W
-            # Assume masks3d shape is (N, D, H, W, C) -> (N, D, W, H, C)
-            return cast(
-                "VolumeType",
-                np.empty(
-                    (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
-                    dtype=masks3d.dtype,
-                ),
-            )
-        return self.apply_to_volumes(masks3d, **params)
 
     def inverse(self) -> Transpose:
         """Return a new Transpose that undoes the transpose (transpose is self-inverse). Use after
@@ -542,17 +546,6 @@ class D4(DualTransform):
     ) -> ImageType:
         return fgeometric.d4_images(images, group_element)
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
-        **params: Any,
-    ) -> VolumeType:
-        batch_size, depth = volumes.shape[:2]
-        flattened = volumes.reshape(batch_size * depth, *volumes.shape[2:])
-        transformed = fgeometric.d4_images(flattened, group_element)
-        return cast("VolumeType", transformed.reshape(batch_size, depth, *transformed.shape[1:]))
-
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
@@ -575,29 +568,11 @@ class D4(DualTransform):
             return mask3d
         return self.apply_to_images(mask3d, group_element)
 
-    def apply_to_masks3d(
+    def get_params_dependent_on_data(
         self,
-        masks3d: VolumeType,
-        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
-        **params: Any,
-    ) -> VolumeType:
-        if masks3d.size == 0:
-            # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
-            # Assume masks3d shape is (N, D, H, W, C)
-            if group_element in {"r90", "r270", "t", "hvt"}:
-                # These swap H and W: (N, D, H, W, C) -> (N, D, W, H, C)
-                return cast(
-                    "VolumeType",
-                    np.empty(
-                        (0, masks3d.shape[1], masks3d.shape[3], masks3d.shape[2], masks3d.shape[4]),
-                        dtype=masks3d.dtype,
-                    ),
-                )
-            # Other elements preserve dimensions: "e", "r180", "v", "h"
-            return masks3d
-        return self.apply_to_volumes(masks3d, group_element)
-
-    def get_params(self) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
         if self.group_element is not None:
             group_element = self.group_element
         else:

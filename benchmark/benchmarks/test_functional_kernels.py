@@ -8,7 +8,7 @@ from typing import Any
 
 import cv2
 import numpy as np
-from albucore import median_blur
+from albucore import median_blur, resize3d
 
 from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.geometric import functional as fgeometric
@@ -18,6 +18,7 @@ from benchmarks.common import (
     ANNOTATION_COUNTS,
     CHANNELS,
     DTYPES,
+    MEDIAN_BLUR_FUNCTIONAL_CASES,
     SIZES,
     VOLUME_SIZES,
     dtype_from_name,
@@ -53,9 +54,13 @@ FUNCTIONAL_GEOMETRY_ANNOTATION_COUNTS: Mapping[str, tuple[int, ...]] = {
     "keypoints_affine": (10, 100),
 }
 FUNCTIONAL_3D_KERNELS = (
+    "affine_3d",
+    "anisotropy_3d",
+    "resize3d",
     "crop3d",
     "pad_3d_with_params",
     "cutout3d",
+    "rotate90_3d",
     "transform_cube",
     "swap_tiles_on_volume",
 )
@@ -84,6 +89,8 @@ FUNCTIONAL_PIXEL_KERNELS: Mapping[str, KernelSupport] = {
     "pixel_dropout": KernelSupport(),
     "channel_shuffle": KernelSupport(channels=(3, 5)),
     "image_compression": KernelSupport(dtypes=("uint8",)),
+    "move_tone_curve_shared": KernelSupport(),
+    "move_tone_curve_per_channel": KernelSupport(),
     "solarize": KernelSupport(),
     "posterize": KernelSupport(),
 }
@@ -95,9 +102,7 @@ FUNCTIONAL_BLUR_KERNELS: Mapping[str, KernelSupport] = {
     "zoom_blur": KernelSupport(),
     "mode_filter": KernelSupport(),
     "glass_blur": KernelSupport(channels=(1, 3), sizes=("small", "medium")),
-    "median_blur_k3": KernelSupport(),
-    "median_blur_k5": KernelSupport(),
-    "median_blur_k7": KernelSupport(),
+    **{name: KernelSupport() for name, _ in MEDIAN_BLUR_FUNCTIONAL_CASES},
 }
 
 
@@ -330,6 +335,19 @@ def _call_image_compression(benchmark: Any) -> np.ndarray:
     return fpixel.image_compression(benchmark.image, 90, ".jpg")
 
 
+def _call_move_tone_curve_shared(benchmark: Any) -> np.ndarray:
+    return fpixel.move_tone_curve(benchmark.image, 0.17, 0.83, benchmark.image.shape[-1])
+
+
+def _call_move_tone_curve_per_channel(benchmark: Any) -> np.ndarray:
+    return fpixel.move_tone_curve(
+        benchmark.image,
+        benchmark.tone_curve_low_y,
+        benchmark.tone_curve_high_y,
+        benchmark.image.shape[-1],
+    )
+
+
 def _call_solarize(benchmark: Any) -> np.ndarray:
     return fpixel.solarize(benchmark.image, benchmark.solarize_threshold)
 
@@ -352,6 +370,8 @@ PIXEL_CALLS: Mapping[str, ImageKernelCall] = {
     "pixel_dropout": _call_pixel_dropout,
     "channel_shuffle": _call_channel_shuffle,
     "image_compression": _call_image_compression,
+    "move_tone_curve_shared": _call_move_tone_curve_shared,
+    "move_tone_curve_per_channel": _call_move_tone_curve_per_channel,
     "solarize": _call_solarize,
     "posterize": _call_posterize,
 }
@@ -381,16 +401,11 @@ def _call_glass_blur(benchmark: Any) -> np.ndarray:
     return fblur.glass_blur(benchmark.image, 0.7, 2, benchmark.glass_iterations, benchmark.dxy, "fast")
 
 
-def _call_median_blur_k3(benchmark: Any) -> np.ndarray:
-    return median_blur(benchmark.image, 3)
+def _make_median_blur_call(kernel_size: int) -> ImageKernelCall:
+    def call(benchmark: Any) -> np.ndarray:
+        return median_blur(benchmark.image, kernel_size)
 
-
-def _call_median_blur_k5(benchmark: Any) -> np.ndarray:
-    return median_blur(benchmark.image, 5)
-
-
-def _call_median_blur_k7(benchmark: Any) -> np.ndarray:
-    return median_blur(benchmark.image, 7)
+    return call
 
 
 BLUR_CALLS: Mapping[str, ImageKernelCall] = {
@@ -400,9 +415,7 @@ BLUR_CALLS: Mapping[str, ImageKernelCall] = {
     "zoom_blur": _call_zoom_blur,
     "mode_filter": _call_mode_filter,
     "glass_blur": _call_glass_blur,
-    "median_blur_k3": _call_median_blur_k3,
-    "median_blur_k5": _call_median_blur_k5,
-    "median_blur_k7": _call_median_blur_k7,
+    **{name: _make_median_blur_call(kernel_size) for name, kernel_size in MEDIAN_BLUR_FUNCTIONAL_CASES},
 }
 
 
@@ -410,12 +423,35 @@ def _call_crop3d(benchmark: Any) -> np.ndarray:
     return f3d.crop3d(benchmark.volume, benchmark.crop_coords)
 
 
+def _call_affine_3d(benchmark: Any) -> np.ndarray:
+    return f3d.affine_3d(
+        benchmark.volume,
+        benchmark.affine3d_matrix,
+        benchmark.volume.shape[:3],
+        cv2.INTER_LINEAR,
+        cv2.BORDER_CONSTANT,
+        0,
+    )
+
+
 def _call_pad_3d_with_params(benchmark: Any) -> np.ndarray:
     return f3d.pad_3d_with_params(benchmark.volume, (1, 1, 2, 2, 2, 2), 0)
 
 
+def _call_anisotropy_3d(benchmark: Any) -> np.ndarray:
+    return f3d.anisotropy_3d(benchmark.volume, benchmark.anisotropy_downsample_shape, antialias=True)
+
+
+def _call_resize3d(benchmark: Any) -> np.ndarray:
+    return resize3d(benchmark.volume, benchmark.resize_shape, cv2.INTER_LINEAR)
+
+
 def _call_cutout3d(benchmark: Any) -> np.ndarray:
     return f3d.cutout3d(benchmark.volume, benchmark.holes, 0)
+
+
+def _call_rotate90_3d(benchmark: Any) -> np.ndarray:
+    return f3d.rotate90_3d(benchmark.volume, rot90_count=1, axis_pair=(0, 2))
 
 
 def _call_transform_cube(benchmark: Any) -> np.ndarray:
@@ -427,9 +463,13 @@ def _call_swap_tiles_on_volume(benchmark: Any) -> np.ndarray:
 
 
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
+    "affine_3d": _call_affine_3d,
+    "anisotropy_3d": _call_anisotropy_3d,
+    "resize3d": _call_resize3d,
     "crop3d": _call_crop3d,
     "pad_3d_with_params": _call_pad_3d_with_params,
     "cutout3d": _call_cutout3d,
+    "rotate90_3d": _call_rotate90_3d,
     "transform_cube": _call_transform_cube,
     "swap_tiles_on_volume": _call_swap_tiles_on_volume,
 }
@@ -507,6 +547,8 @@ class TimeFunctionalPixelKernels:
         self.drop_values = np.zeros((channels,), dtype=self.image.dtype)
         self.channels_shuffled = list(reversed(range(channels)))
         self.solarize_threshold = 128 if self.image.dtype == np.uint8 else 0.5
+        self.tone_curve_low_y = np.linspace(0.11, 0.31, channels, dtype=np.float64)
+        self.tone_curve_high_y = np.linspace(0.69, 0.89, channels, dtype=np.float64)
 
     def time_kernel(self, case_id: str) -> None:
         PIXEL_CALLS[self.name](self)
@@ -546,6 +588,14 @@ class TimeFunctional3DKernels:
         depth, height, width = VOLUME_SIZES[size_name]
         self.name = name
         self.volume = make_volume(size_name, 1, dtype_from_name(dtype_name))
+        self.anisotropy_downsample_shape = (max(1, depth // 2), height, max(1, width // 2))
+        self.resize_shape = (max(1, depth * 3 // 2), max(1, height * 3 // 4), max(1, width * 3 // 2))
+        self.affine3d_matrix = f3d.create_affine_transformation_matrix_3d(
+            {"x": 2.0, "y": -2.0, "z": 1.0},
+            {"x": 1.05, "y": 0.95, "z": 1.0},
+            {"x": 3.0, "y": -2.0, "z": 5.0},
+            self.volume.shape[:3],
+        )
         self.crop_coords = (1, depth - 1, height // 4, height * 3 // 4, width // 4, width * 3 // 4)
         self.holes = np.array(
             [[1, height // 4, width // 4, min(depth - 1, 4), height // 2, width // 2]],

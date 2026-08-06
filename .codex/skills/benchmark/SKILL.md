@@ -168,5 +168,4 @@ for batch_size in BATCH_SIZES:
 - If adding a new transform, benchmark against the equivalent naive numpy implementation
 - For batch optimizations, compare 1-channel, 3-channel RGB, and 5-channel multichannel inputs to verify speedup
   holds across channel counts
-- Keep channel-last shapes throughout: images `(H,W,C)`, image batches `(N,H,W,C)`, volumes `(D,H,W,C)`,
-  volume batches `(N,D,H,W,C)`
+- Keep channel-last shapes throughout: images `(H,W,C)`, image batches `(N,H,W,C)`, and a volume `(D,H,W,C)`

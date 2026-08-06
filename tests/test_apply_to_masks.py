@@ -6,64 +6,6 @@ import pytest
 import albumentations as A
 
 
-class _SpecializedMask3DTransform(A.DualTransform):
-    """Expose whether inherited masks3d dispatch honors apply_to_mask3d overrides."""
-
-    def apply(self, img: np.ndarray, **params: object) -> np.ndarray:
-        return img
-
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: object) -> np.ndarray:
-        return mask3d + 1
-
-
-class _ValueDependentMask3DTransform(A.DualTransform):
-    """Change output shape when the empty-batch shape probe contains nonzero values."""
-
-    def apply(self, img: np.ndarray, **params: object) -> np.ndarray:
-        return img
-
-    def apply_to_mask3d(self, mask3d: np.ndarray, **params: object) -> np.ndarray:
-        return mask3d[:, :-1] if np.any(mask3d) else mask3d
-
-
-def test_inherited_apply_to_masks3d_uses_specialized_mask3d_dispatch() -> None:
-    masks3d = np.zeros((2, 3, 8, 12), dtype=np.uint8)
-    pipeline = A.Compose([_SpecializedMask3DTransform(p=1.0)])
-
-    result = pipeline(image=np.zeros((8, 12, 3), dtype=np.uint8), masks3d=masks3d)
-
-    np.testing.assert_array_equal(result["masks3d"], np.ones_like(masks3d))
-
-
-def test_inherited_apply_to_masks3d_preserves_transformed_empty_shape() -> None:
-    masks3d = np.empty((0, 3, 100, 120, 1), dtype=np.uint8)
-    pipeline = A.Compose(
-        [A.RandomSizedCrop(min_max_height=(80, 80), size=(40, 50), p=1.0)],
-    )
-
-    result = pipeline(image=np.zeros((100, 120, 3), dtype=np.uint8), masks3d=masks3d)
-
-    assert result["masks3d"].shape == (0, 3, 40, 50, 1)
-
-
-def test_empty_specialized_masks3d_shape_probe_is_zero_initialized(monkeypatch: pytest.MonkeyPatch) -> None:
-    masks3d = np.empty((0, 3, 8, 12, 1), dtype=np.uint8)
-    original_empty = np.empty
-
-    def dirty_empty(shape: tuple[int, ...], *args: object, **kwargs: object) -> np.ndarray:
-        result = original_empty(shape, *args, **kwargs)
-        if shape == masks3d.shape[1:]:
-            result.fill(1)
-        return result
-
-    monkeypatch.setattr(np, "empty", dirty_empty)
-    pipeline = A.Compose([_ValueDependentMask3DTransform(p=1.0)])
-
-    result = pipeline(image=np.zeros((8, 12, 3), dtype=np.uint8), masks3d=masks3d)
-
-    assert result["masks3d"].shape == masks3d.shape
-
-
 # Test crops with single mask (empty and non-empty)
 @pytest.mark.parametrize(
     "transform_class,init_params,expected_shape",
@@ -377,34 +319,6 @@ def test_d4_empty_mask3d_dimension_handling(group_element, expected_swap):
     assert result_mask3d.dtype == np.uint8
 
 
-@pytest.mark.parametrize(
-    "group_element,expected_swap",
-    [
-        ("e", False),
-        ("r90", True),
-        ("r270", True),
-        ("t", True),
-        ("hvt", True),
-    ],
-)
-def test_d4_empty_masks3d_batch_dimension_handling(group_element, expected_swap):
-    """Test that D4 correctly handles dimension swapping for empty masks3d batches."""
-    transform = A.D4(p=1.0)
-
-    # Test with batch of empty masks3d (N, D, H, W, C)
-    masks3d = np.empty((0, 10, 80, 120, 3), dtype=np.uint8)
-    result_masks3d = transform.apply_to_masks3d(masks3d, group_element=group_element)
-
-    if expected_swap:
-        # Group elements that swap dimensions: r90, r270, t, hvt
-        # Should swap H and W: (0, 10, 80, 120, 3) -> (0, 10, 120, 80, 3)
-        assert result_masks3d.shape == (0, 10, 120, 80, 3), f"Failed for group_element={group_element}"
-    else:
-        # Other group elements preserve dimensions: e, r180, v, h
-        assert result_masks3d.shape == (0, 10, 80, 120, 3), f"Failed for group_element={group_element}"
-    assert result_masks3d.dtype == np.uint8
-
-
 def test_crop_apply_to_mask3d_empty():
     """Test that apply_to_mask3d handles empty mask correctly."""
     transform = A.Crop(x_min=10, y_min=10, x_max=60, y_max=60, p=1.0)
@@ -420,22 +334,7 @@ def test_crop_apply_to_mask3d_empty():
     assert result["mask3d"].dtype == np.uint8
 
 
-def test_crop_apply_to_masks3d_empty_batch():
-    """Test that apply_to_masks3d handles empty batch correctly."""
-    transform = A.Crop(x_min=10, y_min=10, x_max=60, y_max=60, p=1.0)
-    # Create empty batch of masks3d
-    masks3d = np.empty((0, 10, 100, 100), dtype=np.uint8)
-
-    # Apply the transform through Compose
-    aug = A.Compose([transform])
-    result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), masks3d=masks3d)
-
-    # Check correct shape
-    assert result["masks3d"].shape == (0, 10, 50, 50)
-    assert result["masks3d"].dtype == np.uint8
-
-
-# Test flips with mask3d and masks3d
+# Test flips with mask3d
 @pytest.mark.parametrize("transform_class", [A.HorizontalFlip, A.VerticalFlip, A.Transpose, A.D4])
 def test_flip_apply_to_mask3d(transform_class):
     """Test that apply_to_mask3d works correctly for flips."""
@@ -488,58 +387,6 @@ def test_transpose_empty_mask3d_swaps_dimensions():
     # Transpose should swap H and W: (0, 80, 120, 3) -> (0, 120, 80, 3)
     assert result["mask3d"].shape == (0, 120, 80, 3)
     assert result["mask3d"].dtype == np.uint8
-
-
-@pytest.mark.parametrize("transform_class", [A.HorizontalFlip, A.VerticalFlip, A.Transpose])
-@pytest.mark.parametrize("num_masks3d", [1, 3])
-def test_flip_apply_to_masks3d_batch(transform_class, num_masks3d):
-    """Test that apply_to_masks3d works correctly for batch processing."""
-    transform = transform_class(p=1.0)
-    # masks3d has shape (N, D, H, W)
-    masks3d = np.random.randint(0, 2, (num_masks3d, 10, 100, 100), dtype=np.uint8)
-
-    # Apply the transform through Compose
-    aug = A.Compose([transform])
-    result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), masks3d=masks3d)
-
-    # Check shape (square image, so dimensions preserved even for transpose)
-    assert result["masks3d"].shape == (num_masks3d, 10, 100, 100)
-
-
-def test_flip_apply_to_masks3d_empty_batch():
-    """Test that HorizontalFlip and VerticalFlip handle empty masks3d batch correctly."""
-    for transform_class in [A.HorizontalFlip, A.VerticalFlip]:
-        transform = transform_class(p=1.0)
-        # Create empty batch of masks3d
-        masks3d = np.empty((0, 10, 80, 120), dtype=np.uint8)
-
-        # Apply the transform through Compose
-        aug = A.Compose([transform])
-        result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), masks3d=masks3d)
-
-        # Check correct shape
-        assert result["masks3d"].shape == (0, 10, 80, 120)
-        assert result["masks3d"].dtype == np.uint8
-
-
-def test_transpose_empty_masks3d_swaps_dimensions():
-    """Test that Transpose swaps dimensions correctly for empty masks3d batch."""
-    transform = A.Transpose(p=1.0)
-    aug = A.Compose([transform])
-
-    # Test with 4D masks3d (N, D, H, W) where N=0
-    masks3d_empty_batch = np.empty((0, 10, 80, 120), dtype=np.uint8)
-    result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), masks3d=masks3d_empty_batch)
-    # Transpose should swap H and W: (0, 10, 80, 120) -> (0, 10, 120, 80)
-    assert result["masks3d"].shape == (0, 10, 120, 80)
-    assert result["masks3d"].dtype == np.uint8
-
-    # Test with 5D masks3d (N, D, H, W, C) where N=0
-    masks3d_empty_batch_5d = np.empty((0, 10, 80, 120, 3), dtype=np.uint8)
-    result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), masks3d=masks3d_empty_batch_5d)
-    # Transpose should swap H and W: (0, 10, 80, 120, 3) -> (0, 10, 120, 80, 3)
-    assert result["masks3d"].shape == (0, 10, 120, 80, 3)
-    assert result["masks3d"].dtype == np.uint8
 
 
 # Test that batch processing is actually faster than loop (integration test)

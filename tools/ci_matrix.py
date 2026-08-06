@@ -50,6 +50,8 @@ PYTORCH_PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pytorch-pe
 RELEASE_CANDIDATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-candidate.yml"
 SECURITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "security.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
+CODEQL_ACTIONS_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql-actions.yml"
+CODEQL_PYTHON_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql-python.yml"
 WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
 WORKFLOWS = (
     PR_WORKFLOW,
@@ -60,7 +62,18 @@ WORKFLOWS = (
     RELEASE_CANDIDATE_WORKFLOW,
     SECURITY_WORKFLOW,
     RELEASE_WORKFLOW,
+    CODEQL_ACTIONS_WORKFLOW,
+    CODEQL_PYTHON_WORKFLOW,
 )
+CODEQL_WORKFLOW_PATHS = {
+    CODEQL_ACTIONS_WORKFLOW: ("**/*",),
+    CODEQL_PYTHON_WORKFLOW: (
+        "**/*.py",
+        "**/*.pyi",
+        ".github/codeql/**",
+        ".github/workflows/codeql-python.yml",
+    ),
+}
 FORBIDDEN_WORKFLOWS = (
     REPO_ROOT / ".github" / "workflows" / "ci.yml",
     REPO_ROOT / ".github" / "workflows" / "legal-integrity.yml",
@@ -71,7 +84,7 @@ LOWER_BOUND_REQUIREMENTS = (
     "numpy==2.2.6",
     "scipy==1.15.3",
     "pydantic==2.12.4",
-    "albucore==0.2.5",
+    "albucore==0.2.12",
     "opencv-python-headless==5.0.0.93",
 )
 CI_DEPENDENCY_GROUPS = {
@@ -107,7 +120,7 @@ SUPPORT_POLICY_TABLE_ROWS = (
         "Nightly and release gate |"
     ),
     (
-        "| `optional-extras` | Smoke-tests extras such as `pillow`, `pytorch`, `text`, `hub`, "
+        "| `optional-extras` | Smoke-tests extras such as `pillow`, `text`, `hub`, "
         "and OpenCV variants. | Advisory until stable |"
     ),
     (
@@ -138,6 +151,15 @@ def _load_yaml(path: Path) -> dict[str, Any]:
         msg = f"{path} does not contain a YAML mapping"
         raise TypeError(msg)
     return data
+
+
+def _workflow_triggers(path: Path) -> dict[str, Any]:
+    with path.open() as workflow_file:
+        workflow = yaml.safe_load(workflow_file)
+    if not isinstance(workflow, dict):
+        return {}
+    triggers = workflow.get(True, workflow.get("on", {}))
+    return triggers if isinstance(triggers, dict) else {}
 
 
 def _read_text(path: Path) -> str:
@@ -397,9 +419,29 @@ def _check_workflow_job_timeouts() -> list[str]:
 def _check_workflow_push_triggers() -> list[str]:
     issues: list[str] = []
     for path in _workflow_files():
-        workflow_header = _read_text(path).split("jobs:", maxsplit=1)[0]
-        if re.search(r"(?m)^  push:\s*$", workflow_header):
-            issues.append(f"{path} must not run from a push trigger; use PR, schedule, manual, or release events")
+        expected_paths = CODEQL_WORKFLOW_PATHS.get(path)
+        if expected_paths is None:
+            workflow_header = _read_text(path).split("jobs:", maxsplit=1)[0]
+            if re.search(r"(?m)^  push:\s*$", workflow_header):
+                issues.append(f"{path} must not run from a push trigger; use PR, schedule, manual, or release events")
+            continue
+
+        triggers = _workflow_triggers(path)
+        for event_name in ("pull_request", "push"):
+            event = triggers.get(event_name)
+            if not isinstance(event, dict):
+                issues.append(f"{path} CodeQL workflow is missing {event_name!r} trigger")
+                continue
+            if event.get("branches") != ["main"]:
+                issues.append(f"{path} CodeQL {event_name} trigger must be limited to main")
+            if event.get("paths") != list(expected_paths):
+                issues.append(f"{path} CodeQL {event_name} trigger must use its documented path filter")
+
+        issues.extend(
+            f"{path} CodeQL workflow is missing {event_name!r} trigger"
+            for event_name in ("schedule", "workflow_dispatch")
+            if event_name not in triggers
+        )
     return issues
 
 

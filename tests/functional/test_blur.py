@@ -174,13 +174,13 @@ def test_create_gaussian_kernel_1d_sigma_zero_uniform_kernel(ksize):
     # Only center element is 1, all others are 0 (identity/delta kernel)
     center_idx = ksize // 2
     assert kernel[center_idx] == 1.0
-    assert np.all(kernel[:center_idx] == 0.0)
-    assert np.all(kernel[center_idx + 1 :] == 0.0)
+    np.testing.assert_array_equal(kernel[:center_idx], 0.0)
+    np.testing.assert_array_equal(kernel[center_idx + 1 :], 0.0)
 
     # Verify it's a proper identity kernel (no blur)
     expected = np.zeros(ksize, dtype=np.float64)
     expected[center_idx] = 1.0
-    assert np.allclose(kernel, expected)
+    np.testing.assert_allclose(kernel, expected, rtol=1e-5, atol=1e-8, equal_nan=False)
 
 
 # === Motion Kernel Tests ===

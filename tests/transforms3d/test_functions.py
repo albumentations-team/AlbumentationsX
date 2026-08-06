@@ -252,3 +252,60 @@ def test_transform_cube_keypoints_matches_transform_cube(index):
         original_extra_cols,
         err_msg=f"Extra columns should remain unchanged after transformation with index={index}",
     )
+
+
+@pytest.mark.parametrize("axis_pair", [(0, 1), (0, 2), (1, 2)])
+@pytest.mark.parametrize("rotation_count", [0, 1, 2, 3])
+def test_rotate90_3d_matches_numpy(axis_pair, rotation_count):
+    volume = np.arange(3 * 4 * 5 * 2, dtype=np.uint8).reshape(3, 4, 5, 2)
+
+    result = f3d.rotate90_3d(
+        volume,
+        rot90_count=rotation_count,
+        axis_pair=axis_pair,
+    )
+
+    np.testing.assert_array_equal(result, np.rot90(volume, k=rotation_count, axes=axis_pair))
+    assert result.dtype == volume.dtype
+
+
+@pytest.mark.parametrize("flip_axes", [(0,), (1,), (2,), (0, 2), (0, 1, 2)])
+def test_keypoints_flip3d_matches_reflected_volume(flip_axes):
+    volume = np.zeros((3, 4, 5), dtype=np.uint8)
+    keypoints = np.array([[1, 1, 0, 7], [3, 2, 1, 9], [4, 3, 2, 11]], dtype=np.float32)
+
+    for value, (x_coordinate, y_coordinate, z_coordinate) in enumerate(keypoints[:, :3], start=1):
+        volume[int(z_coordinate), int(y_coordinate), int(x_coordinate)] = value
+
+    transformed_volume = np.flip(volume, axis=flip_axes)
+    transformed_keypoints = f3d.keypoints_flip_3d(keypoints, flip_axes, volume.shape)
+
+    for value, (x_coordinate, y_coordinate, z_coordinate) in enumerate(transformed_keypoints[:, :3], start=1):
+        assert transformed_volume[int(z_coordinate), int(y_coordinate), int(x_coordinate)] == value
+    np.testing.assert_array_equal(transformed_keypoints[:, 3:], keypoints[:, 3:])
+
+
+@pytest.mark.parametrize("axis_pair", [(0, 1), (0, 2), (1, 2)])
+@pytest.mark.parametrize("rotation_count", [1, 2, 3])
+def test_keypoints_rotate90_3d_matches_rotated_volume(axis_pair, rotation_count):
+    volume = np.zeros((3, 4, 5), dtype=np.uint8)
+    keypoints = np.array([[1, 1, 0, 7], [3, 2, 1, 9], [4, 3, 2, 11]], dtype=np.float32)
+
+    for value, (x_coordinate, y_coordinate, z_coordinate) in enumerate(keypoints[:, :3], start=1):
+        volume[int(z_coordinate), int(y_coordinate), int(x_coordinate)] = value
+
+    transformed_volume = f3d.rotate90_3d(
+        volume,
+        rot90_count=rotation_count,
+        axis_pair=axis_pair,
+    )
+    transformed_keypoints = f3d.keypoints_rotate90_3d(
+        keypoints,
+        rot90_count=rotation_count,
+        axis_pair=axis_pair,
+        volume_shape=volume.shape,
+    )
+
+    for value, (x_coordinate, y_coordinate, z_coordinate) in enumerate(transformed_keypoints[:, :3], start=1):
+        assert transformed_volume[int(z_coordinate), int(y_coordinate), int(x_coordinate)] == value
+    np.testing.assert_array_equal(transformed_keypoints[:, 3:], keypoints[:, 3:])

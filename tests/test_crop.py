@@ -97,9 +97,7 @@ def test_crop_near_bbox(image, bboxes, keypoints):
         "masks",
         "keypoints",
         "volume",
-        "volumes",
         "mask3d",
-        "masks3d",
         "user_data",
         bbox_key,
     }
@@ -261,21 +259,26 @@ def test_base_crop_and_pad_fill():
 
     im = np.zeros((2, 6, 3)).astype(np.float32)
     msk = np.zeros((2, 6, 1)).astype(np.uint8)
+    mask3d = np.zeros((2, 2, 6, 1), dtype=np.uint8)
 
-    out = c(image=im, mask=msk)
-    out1 = c1(image=im, mask=msk)
+    out = c(image=im, mask=msk, mask3d=mask3d)
+    out1 = c1(image=im, mask=msk, mask3d=mask3d)
 
     expected_img = np.ones((4, 4, 3)).astype(np.float32)
     expected_img[1:3, ...] = 0
 
     expected_msk = np.ones((4, 4, 1)).astype(np.uint8)
     expected_msk[1:3, ...] = 0
+    expected_mask3d = np.ones((2, 4, 4, 1), dtype=np.uint8)
+    expected_mask3d[:, 1:3, ...] = 0
 
-    assert np.all(out["image"] == expected_img * 100)
-    assert np.all(out["mask"] == expected_msk * 200)
+    np.testing.assert_array_equal(out["image"], expected_img * 100)
+    np.testing.assert_array_equal(out["mask"], expected_msk * 200)
+    np.testing.assert_array_equal(out["mask3d"], expected_mask3d * 200)
 
-    assert np.all(out1["image"] == expected_img * 201)
-    assert np.all(out1["mask"] == expected_msk * 0)  # 0 is the default for fill_mask
+    np.testing.assert_array_equal(out1["image"], expected_img * 201)
+    np.testing.assert_array_equal(out1["mask"], expected_msk * 0)  # 0 is the default for fill_mask
+    np.testing.assert_array_equal(out1["mask3d"], expected_mask3d * 0)
 
 
 @pytest.mark.parametrize(

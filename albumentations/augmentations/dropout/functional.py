@@ -6,6 +6,7 @@ These functions create and apply dropout patterns to images, masks, bounding box
 keypoints, with support for different filling methods and hole generation strategies.
 """
 
+import math
 from typing import Literal, cast
 
 import cv2
@@ -34,7 +35,6 @@ __all__ = [
     "fill_holes_with_grayscale",
     "fill_mask_with_grayscale",
     "fill_volume_holes_with_grayscale",
-    "fill_volumes_holes_with_grayscale",
     "filter_bboxes_by_holes",
     "filter_keypoints_in_holes",
     "generate_grid_holes",
@@ -244,43 +244,6 @@ def fill_volume_holes_with_grayscale(volume: ImageType, holes: np.ndarray) -> Im
     return volume
 
 
-def fill_volumes_holes_with_grayscale(volumes: ImageType, holes: np.ndarray) -> ImageType:
-    """Convert shared rectangular holes to grayscale across an image batch while preserving
-    batch shape, per-image dtype, and channel layout used by Compose.
-
-    All images share the same holes, so each hole's patch is processed as a single
-    4-D slice rather than image-by-image, avoiding repeated Python-loop overhead.
-
-    Args:
-        volumes (ImageType): Batch of volumes with shape (N, D, H, W, C) or
-            batch of images with shape (N, H, W, C).
-        holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates.
-
-    Returns:
-        ImageType: Batch with grayscale-converted holes.
-
-    """
-    num_channels = get_num_channels(volumes)
-    if holes.size == 0:
-        return volumes
-
-    if num_channels == 1:
-        return volumes
-
-    if volumes.ndim == 5:
-        flattened = volumes.reshape(-1, *volumes.shape[2:])
-        result = fill_volumes_holes_with_grayscale(flattened, holes)
-        return result.reshape(volumes.shape)
-
-    for x_min, y_min, x_max, y_max in holes:
-        patch_batch = volumes[:, y_min:y_max, x_min:x_max]
-        volumes[:, y_min:y_max, x_min:x_max] = grayscale_to_multichannel(
-            to_gray_average(patch_batch),
-            num_channels,
-        )
-    return volumes
-
-
 def fill_volume_holes_with_value(volume: ImageType, holes: np.ndarray, fill: np.ndarray) -> ImageType:
     """Fill rectangular holes in a volume (D,H,W,C) with constant value. holes: [x1,y1,x2,y2]; fill
     broadcast. Used by cutout_on_volume for numeric fill.
@@ -294,21 +257,6 @@ def fill_volume_holes_with_value(volume: ImageType, holes: np.ndarray, fill: np.
     for x_min, y_min, x_max, y_max in holes:
         volume[:, y_min:y_max, x_min:x_max] = fill
     return volume
-
-
-def fill_volumes_holes_with_value(volumes: np.ndarray, holes: np.ndarray, fill: np.ndarray) -> np.ndarray:
-    """Fill rectangular holes in batch of volumes (N,D,H,W,C) with constant value. holes: [x1,y1,x2,y2];
-    fill broadcast. Used by cutout_on_volumes for numeric fill.
-
-    Args:
-        volumes (np.ndarray): Input batch of volumes
-        holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (np.ndarray): Value to fill the holes with
-
-    """
-    for x_min, y_min, x_max, y_max in holes:
-        volumes[:, :, y_min:y_max, x_min:x_max] = fill
-    return volumes
 
 
 def fill_holes_with_random(
@@ -361,37 +309,6 @@ def fill_volume_holes_with_random(
         random_fill = generate_random_fill(volume.dtype, shape, random_generator)
         volume[:, y_min:y_max, x_min:x_max] = random_fill
     return volume
-
-
-def fill_volumes_holes_with_random(
-    volumes: np.ndarray,
-    holes: np.ndarray,
-    random_generator: np.random.Generator,
-    uniform: bool,
-) -> np.ndarray:
-    """Fill rectangular holes in batch of volumes (N,D,H,W,C) with random values. holes: [x1,y1,x2,y2];
-    uniform: one per hole or per pixel. Used by cutout_on_volumes.
-
-    Args:
-        volumes (np.ndarray): Input volume of shape (N, D, H, W, C) or (N, D, H, W)
-        holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        random_generator (np.random.Generator): Random number generator
-        uniform (bool): If True, use same random value for entire hole for each image
-
-    """
-    for x_min, y_min, x_max, y_max in holes:
-        shape = (
-            (volumes.shape[0], volumes.shape[1], 1, 1)
-            if uniform
-            else (volumes.shape[0], volumes.shape[1], y_max - y_min, x_max - x_min)
-        )
-        if volumes.ndim != 4:
-            shape = (
-                (volumes.shape[0], volumes.shape[1], 1, 1, volumes.shape[4]) if uniform else (*shape, volumes.shape[4])
-            )
-        random_fill = generate_random_fill(volumes.dtype, shape, random_generator)
-        volumes[:, :, y_min:y_max, x_min:x_max] = random_fill
-    return volumes
 
 
 def cutout(
@@ -513,69 +430,6 @@ def cutout_on_volume(
             )
 
     return fill_volume_holes_with_value(volume, holes, fill_array)
-
-
-def cutout_on_volumes(
-    volumes: np.ndarray,
-    holes: np.ndarray,
-    fill: float | tuple[float, ...] | FillValueLiteral,
-    random_generator: np.random.Generator,
-) -> np.ndarray:
-    """Apply cutout to batch of volumes (N,D,H,W,C): cut holes and fill. fill: constant, 'random',
-    'random_uniform', inpaint, or grayscale. holes: [x1,y1,x2,y2].
-
-    Args:
-        volumes (np.ndarray): The image to augment
-        holes (np.ndarray): Array of [x1, y1, x2, y2] coordinates
-        fill (float | tuple[float, ...] | FillValueLiteral):
-            Value to fill holes with. Can be:
-            - number (int/float): Will be broadcast to all channels
-            - sequence (tuple/list/ndarray): Must match number of channels
-            - "random": Different random values for each pixel
-            - "random_uniform": Same random value for entire hole, different values across images
-            - "inpaint_telea"/"inpaint_ns": OpenCV inpainting methods
-            - "grayscale": Convert holes to grayscale while preserving image shape and dtype
-        random_generator (np.random.Generator): Random number generator for random fills
-
-    Raises:
-        ValueError: If fill length doesn't match number of channels
-
-    """
-    volumes = volumes.copy()
-
-    # Handle inpainting methods
-    if isinstance(fill, str):
-        if fill in {"inpaint_telea", "inpaint_ns"}:
-            processed_images = [apply_inpainting(img, holes, fill) for volume in volumes for img in volume]
-            result = np.array(processed_images)
-            # Reshape to original batch of volumes shape: (N, D, H, W, C) or (N, D, H, W)
-            return result.reshape(volumes.shape)
-        if fill == "random":
-            return fill_volumes_holes_with_random(volumes, holes, random_generator, uniform=False)
-        if fill == "random_uniform":
-            return fill_volumes_holes_with_random(volumes, holes, random_generator, uniform=True)
-        if fill == "grayscale":
-            return fill_volumes_holes_with_grayscale(volumes, holes)
-        raise ValueError(f"Unsupported string fill: {fill}")
-
-    # Convert numeric fill values to numpy array
-    if isinstance(fill, (int, float)):
-        fill_array = np.array(fill, dtype=volumes.dtype)
-        return fill_volumes_holes_with_value(volumes, holes, fill_array)
-
-    # Handle sequence fill values
-    fill_array = np.array(fill, dtype=volumes.dtype)
-
-    # For multi-channel images, verify fill matches number of channels
-    if volumes.ndim == 5:
-        fill_array = fill_array.ravel()
-        if fill_array.size != volumes.shape[4]:
-            raise ValueError(
-                f"Fill value must have same number of channels as image. "
-                f"Got {fill_array.size}, expected {volumes.shape[4]}",
-            )
-
-    return fill_volumes_holes_with_value(volumes, holes, fill_array)
 
 
 @handle_empty_array("keypoints")
@@ -1328,7 +1182,7 @@ def generate_grid_mask_holes(
         pos += cell_size
 
     center = (diag // 2, diag // 2)
-    rot_mat = cv2.getRotationMatrix2D(center, np.degrees(rotation), 1.0)
+    rot_mat = cv2.getRotationMatrix2D(center, math.degrees(rotation), 1.0)
     grid_3d = grid_mask[:, :, np.newaxis]
     rotated_3d = warp_affine(grid_3d, rot_mat, (diag, diag), border_value=1)
     rotated = rotated_3d[:, :, 0]

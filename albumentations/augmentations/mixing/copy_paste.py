@@ -56,6 +56,8 @@ class CopyAndPaste(DualTransform):
         min_visibility_after_paste (float): Minimum mask area ratio (area_after / area_before) for
             an existing instance to survive after occlusion by pasted objects. Instances whose
             remaining visible area falls below this threshold are removed from masks and bboxes.
+            With `instance_binding`, a primary instance is dropped if its mask becomes fully occluded
+            (empty) after pasting, regardless of `min_visibility_after_paste=0.0`.
             Default: 0.05.
         blend_mode (Literal["hard", "gaussian"]): How to blend pasted pixels. "hard" does direct
             pixel copy (paper default). "gaussian" applies gaussian blur to the alpha mask for

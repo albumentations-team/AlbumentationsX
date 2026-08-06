@@ -41,8 +41,16 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
     if img.ndim == 3 and noise.ndim == 1:
         return add_vector(img, noise, inplace=False)
 
-    n_tiles = np.prod(img.shape) // np.prod(noise.shape)
-    noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
+    if noise.shape != img.shape:
+        try:
+            noise = np.broadcast_to(noise, img.shape)
+        except ValueError:
+            n_tiles = np.prod(img.shape) // np.prod(noise.shape)
+            noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
+
+    if img.dtype == np.uint8 and not noise.flags.c_contiguous:
+        # NumKong's dense uint8 route is faster with a dense array than with a zero-stride broadcast view.
+        noise = np.ascontiguousarray(noise)
 
     return add_array(img, noise)
 
@@ -311,15 +319,18 @@ def sample_noise(
 
     """
     if noise_type == "uniform":
-        return sample_uniform(size, params, random_generator) * max_value
-    if noise_type == "gaussian":
-        return sample_gaussian(size, params, random_generator) * max_value
-    if noise_type == "laplace":
-        return sample_laplace(size, params, random_generator) * max_value
-    if noise_type == "beta":
-        return sample_beta(size, params, random_generator) * max_value
+        samples = sample_uniform(size, params, random_generator)
+    elif noise_type == "gaussian":
+        samples = sample_gaussian(size, params, random_generator)
+    elif noise_type == "laplace":
+        samples = sample_laplace(size, params, random_generator)
+    elif noise_type == "beta":
+        samples = sample_beta(size, params, random_generator)
+    else:
+        raise ValueError(f"Unknown noise type: {noise_type}")
 
-    raise ValueError(f"Unknown noise type: {noise_type}")
+    np.multiply(samples, max_value, out=samples)
+    return samples.astype(np.float32, copy=False)
 
 
 def sample_uniform(

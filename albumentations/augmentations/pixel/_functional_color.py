@@ -13,6 +13,7 @@ from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
     PCA,
+    ImageFloat32,
     ImageType,
     ImageUInt8,
     add_array,
@@ -31,6 +32,7 @@ from ._functional_shared import (
     non_rgb_error,
     normalize_per_image,
     np,
+    power,
     preserve_channel_dim,
     reduce_sum,
     reshape_ndhwc_channel,
@@ -388,13 +390,12 @@ def evaluate_bez(
     low_y: float | np.ndarray,
     high_y: float | np.ndarray,
 ) -> np.ndarray:
-    """Evaluate the Bezier curve at the given t values. Used for tone-curve control points;
-    returns y coordinates for input t in [0, 1].
+    """Build a 256-entry cubic Bezier tone curve from shared or per-channel control points for fast lookup-table
+    evaluation of uint8 images.
 
     Args:
-        t (np.ndarray): The t values to evaluate the Bezier curve at.
-        low_y (float | np.ndarray): The low y values to evaluate the Bezier curve at.
-        high_y (float | np.ndarray): The high y values to evaluate the Bezier curve at.
+        low_y (float | np.ndarray): The first inner control ordinate of the Bezier curve.
+        high_y (float | np.ndarray): The second inner control ordinate of the Bezier curve.
 
     Returns:
         np.ndarray: The Bezier curve values.
@@ -406,15 +407,55 @@ def evaluate_bez(
     return (3 * one_minus_t**2 * t * low_y + 3 * one_minus_t * t**2 * high_y + t**3) * 255
 
 
-@uint8_io
+def _move_tone_curve_float32(
+    img: ImageFloat32,
+    low_y: float | np.ndarray,
+    high_y: float | np.ndarray,
+) -> ImageFloat32:
+    """Evaluate a cubic Bezier tone curve continuously in float32 while reusing one image-sized output buffer for
+    memory-efficient processing.
+    """
+    low_y_float32 = np.asarray(low_y, dtype=np.float32)
+    high_y_float32 = np.asarray(high_y, dtype=np.float32)
+
+    coefficient_1 = np.float32(3) * low_y_float32
+    coefficient_2 = np.float32(3) * high_y_float32 - np.float32(6) * low_y_float32
+    coefficient_3 = np.float32(3) * low_y_float32 - np.float32(3) * high_y_float32 + np.float32(1)
+
+    result = np.empty_like(img)
+    if coefficient_1.shape == (3,) and img.shape[-1] == 3:
+        # The loop wins at the measured 256/512/1024 single-image C=3 sizes but loses at
+        # the measured 1x1-32x32 sizes; the single-machine crossover does not establish a stable cutoff.
+        for channel_idx in range(3):
+            image_channel = img[..., channel_idx]
+            result_channel = result[..., channel_idx]
+            np.multiply(image_channel, coefficient_3[channel_idx], out=result_channel)
+            np.add(result_channel, coefficient_2[channel_idx], out=result_channel)
+            np.multiply(result_channel, image_channel, out=result_channel)
+            np.add(result_channel, coefficient_1[channel_idx], out=result_channel)
+            np.multiply(result_channel, image_channel, out=result_channel)
+    else:
+        np.multiply(img, coefficient_3, out=result)
+        np.add(result, coefficient_2, out=result)
+        np.multiply(result, img, out=result)
+        np.add(result, coefficient_1, out=result)
+        np.multiply(result, img, out=result)
+    np.clip(result, np.float32(0), np.float32(1), out=result)
+    # Float32 coefficient rounding can undershoot the cubic curve's exact t=1 endpoint.
+    result[img == np.float32(1)] = np.float32(1)
+    return result
+
+
 def move_tone_curve(
     img: ImageType,
     low_y: float | np.ndarray,
     high_y: float | np.ndarray,
     num_channels: int,
 ) -> ImageType:
-    """Rescale bright/dark via Bezier tone curve. low_y, high_y (per-channel or scalar), num_channels
-    for per-channel curves. uint8 I/O.
+    """Apply a cubic Bezier tone curve with scalar or per-channel controls, dispatching to continuous float32
+    arithmetic or a uint8 lookup table.
+
+    Float32 images are evaluated continuously. Uint8 images retain the rounded 256-entry LUT path.
 
     Args:
         img (ImageType): Any number of channels
@@ -431,6 +472,12 @@ def move_tone_curve(
     if np.isscalar(low_y) and np.isscalar(high_y):
         low_y_scalar = cast("Any", low_y)
         high_y_scalar = cast("Any", high_y)
+        if img.dtype == np.float32:
+            return _move_tone_curve_float32(
+                cast("ImageFloat32", img),
+                float(low_y_scalar),
+                float(high_y_scalar),
+            )
         lut = cast(
             "ImageUInt8",
             clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8), inplace=False),
@@ -438,6 +485,8 @@ def move_tone_curve(
         return sz_lut(cast("ImageUInt8", img), lut, inplace=False)
 
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
+        if img.dtype == np.float32:
+            return _move_tone_curve_float32(cast("ImageFloat32", img), low_y, high_y)
         luts = cast(
             "ImageUInt8",
             clip(
@@ -465,8 +514,8 @@ def linear_transformation_rgb(
     to the RGB channels of either a single image or a batch of images.
 
     Args:
-        img (ImageType): A single RGB image of shape (H, W, 3), or a batch of images (B, H, W, 3),
-            or a batch of volumes (B, D, H, W, 3).
+        img (ImageType): A single RGB image of shape (H, W, 3), a batch of images (B, H, W, 3),
+            or a five-dimensional tensor (B, D, H, W, 3).
         transformation_matrix (np.ndarray): A 3x3 matrix
 
     Returns:
@@ -649,21 +698,6 @@ def volume_channel_shuffle(volume: np.ndarray, channels_shuffled: Sequence[int])
     return volume.copy()[..., channels_shuffled] if volume.ndim == 4 else volume
 
 
-def volumes_channel_shuffle(volumes: np.ndarray, channels_shuffled: Sequence[int]) -> np.ndarray:
-    """Shuffle channels of a batch of volumes (B, D, H, W, C) or (B, D, H, W).
-    Per-volume shuffle; used for 3D batch augmentation.
-
-    Args:
-        volumes (np.ndarray): Input batch of volumes.
-        channels_shuffled (Sequence[int]): New channel order.
-
-    Returns:
-        np.ndarray: Batch of volumes with channels shuffled.
-
-    """
-    return volumes.copy()[..., channels_shuffled] if volumes.ndim == 5 else volumes
-
-
 def get_exposure_gains(
     images: ImageType,
     target_mean: float,
@@ -701,11 +735,11 @@ def get_exposure_gains(
 
 
 def exposure_match_batch(images: ImageType, gains: np.ndarray) -> ImageType:
-    """Scale an image tensor by per-image exposure gains in one vectorized operation, covering image
-    batches, volumes, and volume batches without per-image dispatch.
+    """Scale an image tensor by per-image exposure gains in one vectorized operation for image batches
+    and the `volume` target without per-image dispatch.
 
     Args:
-        images (ImageType): Image batch, volume, or volume batch ending in `(H, W, C)`.
+        images (ImageType): Image batch or `volume` data ending in `(H, W, C)`.
         gains (np.ndarray): Gain array matching every leading dimension before `(H, W, C)`.
 
     Returns:
@@ -755,7 +789,7 @@ def gamma_transform(img: ImageType, gamma: float) -> ImageType:
         table = (np.arange(0, 256.0 / 255, 1.0 / 255) ** gamma) * 255
         return sz_lut(img, table.astype(np.uint8), inplace=False)
 
-    return np.power(img, gamma)
+    return power(img, gamma)
 
 
 @float32_io
@@ -877,7 +911,7 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
     which applies the following formula:
     Y = 0.299*R + 0.587*G + 0.114*B
 
-    The function efficiently handles batches and volumes by reshaping them into
+    The function efficiently handles batches and the `volume` target by reshaping them into
     a tall 2D image for processing, then restoring the original shape structure.
 
     Args:
@@ -885,7 +919,7 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
             - Single image: (H, W, 3)
             - Batch of images: (N, H, W, 3)
             - Volume: (D, H, W, 3)
-            - Batch of volumes: (N, D, H, W, 3)
+            - Five-dimensional tensor: (N, D, H, W, 3)
 
     Returns:
         ImageType: Grayscale image as a 2D numpy array.
@@ -925,11 +959,11 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
 
     This function converts RGB images to grayscale by first converting to LAB color space
     and then extracting the L (lightness) channel. It uses albucore's reshape utilities
-    to efficiently handle batches/volumes by processing them as a single tall image.
+    to efficiently handle batches and the `volume` target by processing them as a single tall image.
 
     Implementation Details:
         The function uses albucore's reshape_for_channel and restore_from_channel functions:
-        - reshape_for_channel: Flattens batches/volumes to 2D format for OpenCV processing
+        - reshape_for_channel: Flattens batches and the `volume` target to 2D format for OpenCV processing
         - restore_from_channel: Restores the original shape after processing
 
         This enables processing all images in a single OpenCV call
@@ -940,7 +974,7 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
             - Single image: (H, W, 3)
             - Batch of images: (N, H, W, 3)
             - Volume: (D, H, W, 3)
-            - Batch of volumes: (N, D, H, W, 3)
+            - Five-dimensional tensor: (N, D, H, W, 3)
 
             Supported dtypes:
             - np.uint8: Values in range [0, 255]
@@ -951,7 +985,7 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
             - Single image: (H, W)
             - Batch of images: (N, H, W)
             - Volume: (D, H, W)
-            - Batch of volumes: (N, D, H, W)
+            - Five-dimensional tensor: (N, D, H, W)
 
         The output dtype matches the input dtype. For float inputs, the L channel
         is normalized to [0, 1] by dividing by 100.
@@ -1130,7 +1164,7 @@ def to_gray_pca(img: ImageType) -> ImageType:
             - Single multi-channel image: (H, W, C)
             - Batch of multi-channel images: (N, H, W, C)
             - Single multi-channel volume: (D, H, W, C)
-            - Batch of multi-channel volumes: (N, D, H, W, C)
+            - Five-dimensional multi-channel tensor: (N, D, H, W, C)
 
     Returns:
         ImageType: Grayscale image with the same spatial dimensions as input.
@@ -1154,7 +1188,7 @@ def to_gray_pca(img: ImageType) -> ImageType:
     pixels = img.reshape(-1, img.shape[-1])
 
     # Perform PCA
-    pca = PCA(n_components=1)
+    pca = PCA(n_components=1, dtype=np.float32)
     pca_result = pca.fit_transform(pixels)
 
     # Reshape back to image dimensions and scale to 0-255
@@ -1425,5 +1459,4 @@ __all__ = [
     "to_gray_pca",
     "to_gray_weighted_average",
     "volume_channel_shuffle",
-    "volumes_channel_shuffle",
 ]

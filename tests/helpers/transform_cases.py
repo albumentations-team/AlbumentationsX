@@ -572,6 +572,29 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.Pad3D, {"padding": 10}],
+    [
+        A.Anisotropy3D,
+        {
+            "axes": (0, 2),
+            "num_axes_range": (2, 2),
+            "downscale_factor_range": (2.0, 2.0),
+            "antialias": False,
+        },
+    ],
+    [A.Resize3D, {"size": (2, 30, 30), "interpolation": cv2.INTER_NEAREST, "mask_interpolation": cv2.INTER_LINEAR}],
+    [
+        A.Affine3D,
+        {
+            "rotate_range": {"x": (-10.0, 10.0), "y": (-5.0, 5.0), "z": (-15.0, 15.0)},
+            "scale_range": {"x": (0.9, 1.1), "y": (0.95, 1.05), "z": (0.85, 1.15)},
+            "translate_percent_range": {"x": (-0.1, 0.1), "y": (-0.05, 0.05), "z": (-0.2, 0.2)},
+            "interpolation": cv2.INTER_NEAREST,
+            "mask_interpolation": cv2.INTER_LINEAR,
+            "border_mode": cv2.BORDER_REPLICATE,
+            "fill": 17,
+            "fill_mask": 31,
+        },
+    ],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
     [
@@ -586,6 +609,8 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.CubicSymmetry, {}],
+    [A.Flip3D, {"axes": (0, 2)}],
+    [A.RandomRotate90_3D, {"axis_pairs": ((0, 2),)}],
     [A.AtLeastOneBBoxRandomCrop, {"height": 80, "width": 80, "erosion_factor": 0.2}],
     [
         A.ConstrainedCoarseDropout,
@@ -824,6 +849,15 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("wide-sigma", A.GaussianBlur, {"sigma_range": (0.2, 1.5)}),
     (
+        "true-3d-anisotropic",
+        A.GaussianBlur,
+        {
+            "volume_mode": "3d",
+            "sigma_z_range": (0.2, 1.5),
+            "blur_z_range": (3, 5),
+        },
+    ),
+    (
         "unnormalized-direct",
         A.GridDistortion,
         {
@@ -1030,6 +1064,9 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("fixed-element", A.RandomRotate90, {"group_element": "r90"}),
     ("subset-elements", A.RandomRotate90, {"group_elements": ("r90", "r270")}),
+    ("fixed-axis-rotation", A.RandomRotate90_3D, {"axis_pair": (0, 2), "group_element": "r90"}),
+    ("fixed-axes", A.Flip3D, {"flip_axes": (0, 2)}),
+    ("constant-fill", A.Affine3D, {"border_mode": cv2.BORDER_CONSTANT}),
     ("anisotropic-range", A.RandomScale, {"scale_range": {"x": (-0.2, 0.3), "y": (-0.1, 0.15)}}),
     ("downscale-aware", A.RandomScale, {"mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"}),
     ("variable-intensity", A.RandomShadow, {"shadow_intensity_range": (0.2, 0.7)}),
@@ -1191,14 +1228,19 @@ _REFERENCE_METADATA_KEYS = {
     A.PixelDistributionAdaptation: "pda_metadata",
 }
 _EXACT_TRANSFORMS = {
+    A.Affine3D,
+    A.Anisotropy3D,
     A.Blur,
     A.CropAndPad,
     A.ExposureMatching,
+    A.Flip3D,
     A.HorizontalFlip,
     A.NoOp,
     A.Pad,
     A.RandomRotate90,
+    A.RandomRotate90_3D,
     A.Resize,
+    A.Resize3D,
     A.Transpose,
     A.VerticalFlip,
 }
@@ -1208,7 +1250,7 @@ def _case_data(
     transform_cls: type[A.BasicTransform],
     init_kwargs: Mapping[str, Any],
 ) -> tuple[ContractDataFactory, ContractContextFactory, dict[str, Any], frozenset[str]]:
-    if issubclass(transform_cls, A.Transform3D):
+    if issubclass(transform_cls, (A.Transform3D, A.VolumeOnlyTransform)):
         return make_volume_data, make_empty_context, {}, frozenset()
     if transform_cls in _BBOX_TRANSFORMS:
         compose_kwargs = {

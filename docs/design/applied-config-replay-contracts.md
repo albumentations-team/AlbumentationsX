@@ -124,8 +124,8 @@ factories cover:
 - masks;
 - horizontal and oriented bounding boxes with labels;
 - keypoints with labels;
-- volumes and `mask3d`;
-- image, mask, volume, and `masks3d` batches;
+- volume data and `mask3d`;
+- image, mask, and volume batches;
 - reference-image metadata;
 - mosaic, copy-and-paste, overlay, and text metadata;
 - configurable metadata keys.
@@ -302,8 +302,7 @@ The implementation remains complete only while all of these statements are true:
 - every configurable public constructor parameter has a non-default case, with no exemptions;
 - all cases pass emission, strict JSON transport, reconstruction, and execution;
 - exact cases compare all supplied targets;
-- image, mask, HBB, OBB, keypoint, volume, `mask3d`, image-, mask-, volume-, and `masks3d`-batch replay paths are
-  represented;
+- image, mask, HBB, OBB, keypoint, volume, `mask3d`, image-, mask-, and volume-batch replay paths are represented;
 - negative controls cover all five contract levels and fail at their intended levels;
 - dict, JSON, and YAML constructor serialization consume the same registry;
 - deterministic contracts run in the required PR gate;

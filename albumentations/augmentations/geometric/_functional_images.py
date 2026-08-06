@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from operator import index
+from operator import attrgetter, index
 from typing import Any, Literal, Protocol, cast
+
+import torch
 
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
@@ -716,31 +718,6 @@ def transpose_images(images: ImageType) -> ImageType:
     return images.transpose(new_axes)
 
 
-def transpose_volumes(volumes: np.ndarray) -> np.ndarray:
-    """Transpose a batch of volumes (N, D, H, W, C). Swaps D and H per volume.
-    Same as transpose on each volume along axes 0, 1.
-
-    Args:
-        volumes (np.ndarray): Batch of volumes to transpose with shape:
-            - (N, D, H, W) for grayscale volumes
-            - (N, D, H, W, C) for multi-channel volumes
-            where N is the batch size, D is depth, H is height, W is width, C is channels
-
-    Returns:
-        np.ndarray: Transposed batch of volumes with shape:
-            - (N, D, W, H) for grayscale volumes
-            - (N, D, W, H, C) for multi-channel volumes
-
-    """
-    # Generate the new axes order
-    new_axes = list(range(volumes.ndim))
-    # Swap dimensions 2 and 3 (Height and Width), preserving batch, depth and channels
-    new_axes[2], new_axes[3] = 3, 2
-
-    # Transpose the array using the new axes order
-    return volumes.transpose(new_axes)
-
-
 def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
     """Rotate image 90° counterclockwise. group_element: e, r90, r180, r270. Same as np.rot90.
     Use for D4-style augmentation. Same dtype and shape.
@@ -1278,6 +1255,10 @@ def hflip_images(volume: np.ndarray) -> np.ndarray:
     return np.flip(volume, axis=2)
 
 
+# Tensor spatial primitives are aliases rather than wrappers so transform dispatch does not add a Python frame.
+flip_tensor = torch.flip
+
+
 def vflip_images(volume: np.ndarray) -> np.ndarray:
     """Perform vertical flip on a single volume (D, H, W) or (D, H, W, C). Flips
     along height axis. For Transforms3D VerticalFlip.
@@ -1295,59 +1276,7 @@ def vflip_images(volume: np.ndarray) -> np.ndarray:
     return np.flip(volume, axis=1)
 
 
-def hflip_volumes(volumes: np.ndarray) -> np.ndarray:
-    """Perform horizontal flip on batch of volumes (B, D, H, W) or (B, D, H, W, C).
-    Flips along width axis. For Transforms3D batch HorizontalFlip.
-
-    Flips the volumes along the width axis (axis=3). Handles inputs with
-    shapes (B, D, H, W) or (B, D, H, W, C).
-
-    Args:
-        volumes (np.ndarray): Input batch of volumes.
-
-    Returns:
-        np.ndarray: Horizontally flipped batch of volumes.
-
-    """
-    # Width axis is 3 for both (B, D, H, W) and (B, D, H, W, C)
-    return np.flip(volumes, axis=3)
-
-
-def vflip_volumes(volumes: np.ndarray) -> np.ndarray:
-    """Perform vertical flip on batch of volumes (B, D, H, W) or (B, D, H, W, C).
-    Flips along height axis. For Transforms3D batch VerticalFlip.
-
-    Flips the volumes along the height axis (axis=2). Handles inputs with
-    shapes (B, D, H, W) or (B, D, H, W, C).
-
-    Args:
-        volumes (np.ndarray): Input batch of volumes.
-
-    Returns:
-        np.ndarray: Vertically flipped batch of volumes.
-
-    """
-    # Height axis is 2 for both (B, D, H, W) and (B, D, H, W, C)
-    return np.flip(volumes, axis=2)
-
-
-def rot90_volumes(volumes: np.ndarray, group_element: Literal["e", "r90", "r180", "r270"]) -> np.ndarray:
-    """Rotate batch of volumes 90° CCW in H-W plane. group_element: e, r90, r180, r270.
-    Shape (B, D, H, W) or (B, D, H, W, C). For Transforms3D D4/C4.
-
-    Rotates the volumes in the height-width plane (axes 2 and 3).
-    Handles inputs with shapes (B, D, H, W) or (B, D, H, W, C).
-
-    Args:
-        volumes (np.ndarray): Input batch of volumes.
-        group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
-
-    Returns:
-        np.ndarray: Rotated batch of volumes.
-
-    """
-    rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
-    return np.rot90(volumes, k=rot90_count, axes=(2, 3))
+transpose_tensor = attrgetter("mT")
 
 
 @preserve_channel_dim
@@ -1480,9 +1409,9 @@ __all__ = [
     "dilate",
     "distort_image",
     "erode",
+    "flip_tensor",
     "get_pad_grid_dimensions",
     "hflip_images",
-    "hflip_volumes",
     "is_identity_matrix",
     "morphology",
     "pad",
@@ -1496,13 +1425,11 @@ __all__ = [
     "resize_pyvips",
     "rot90",
     "rot90_images",
-    "rot90_volumes",
     "rotation2d_matrix_to_euler_angles",
     "scale",
     "scale_xy",
     "transpose",
     "transpose_images",
-    "transpose_volumes",
+    "transpose_tensor",
     "vflip_images",
-    "vflip_volumes",
 ]

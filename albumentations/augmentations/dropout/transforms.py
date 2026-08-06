@@ -16,7 +16,6 @@ from albumentations.augmentations.dropout.functional import (
     FillValueLiteral,
     cutout,
     cutout_on_volume,
-    cutout_on_volumes,
     filter_bboxes_by_holes,
     filter_keypoints_in_holes,
 )
@@ -34,17 +33,15 @@ _PIXEL_DROPOUT_REFERENCE_TARGETS = (
     ("image", 0),
     ("images", 1),
     ("volume", 1),
-    ("volumes", 2),
     ("mask", 0),
     ("masks", 1),
     ("mask3d", 1),
-    ("masks3d", 2),
 )
 
 
 def _get_pixel_dropout_reference(data: dict[str, Any]) -> np.ndarray:
     """Return one spatial target for PixelDropout parameter sampling while preserving shape and dtype metadata for
-    empty batches and zero-depth volumes.
+    empty batches and zero-depth volume data.
     """
     for key, leading_dimensions in _PIXEL_DROPOUT_REFERENCE_TARGETS:
         if key not in data:
@@ -176,7 +173,7 @@ class BaseDropout(DualTransform):
         if holes.size == 0:
             return images
         self._validate_fill_channel_count(images, {4})
-        # Images (N, H, W, C) have the same structure as volumes (D, H, W, C)
+        # Images (N, H, W, C) have the same structure as a volume (D, H, W, C)
         return cutout_on_volume(images, holes, self.fill, np.random.default_rng(seed))
 
     def apply_to_volume(self, volume: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
@@ -184,21 +181,10 @@ class BaseDropout(DualTransform):
         # We can reuse the same logic
         return self.apply_to_images(volume, holes, seed, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
-        if holes.size == 0:
-            return volumes
-        self._validate_fill_channel_count(volumes, {5})
-        return cutout_on_volumes(volumes, holes, self.fill, np.random.default_rng(seed))
-
     def apply_to_mask3d(self, mask: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
         if self.fill_mask is None or holes.size == 0:
             return mask
         return cutout_on_volume(mask, holes, self.fill_mask, np.random.default_rng(seed))
-
-    def apply_to_masks3d(self, masks3d: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
-        if self.fill_mask is None or holes.size == 0:
-            return masks3d
-        return cutout_on_volumes(masks3d, holes, self.fill_mask, np.random.default_rng(seed))
 
     def apply_to_mask(self, mask: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if self.fill_mask is None or holes.size == 0:

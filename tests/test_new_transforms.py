@@ -4,6 +4,7 @@ Halftone, GridMask, LensFlare, WaterRefraction, AtmosphericFog.
 
 import numpy as np
 import pytest
+from albucore import clip
 
 import albumentations as A
 import albumentations.augmentations.pixel.functional as fpixel
@@ -547,6 +548,24 @@ class TestAtmosphericFog:
         depth = np.broadcast_to(depth, (100, 100)).copy()
         result = fpixel.apply_atmospheric_fog(img, density=0.0, fog_color=(200.0, 200.0, 200.0), depth_map=depth)
         np.testing.assert_array_equal(result, img)
+
+    @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+    def test_matches_numpy_exponential_reference(self, dtype: type[np.generic]) -> None:
+        img = _make_image(shape=(24, 32, 3), dtype=dtype, seed=137)
+        depth = np.random.default_rng(138).random((24, 32), dtype=np.float32)
+        density = 1.7
+        fog_color = (200.0, 210.0, 220.0) if dtype == np.uint8 else (0.7, 0.8, 0.9)
+        transmission = np.exp(-density * depth).astype(np.float32)[..., np.newaxis]
+        fog_array = np.asarray(fog_color, dtype=np.float32).reshape(1, 1, -1)
+        expected = clip(
+            img.astype(np.float32) * transmission + fog_array * (1.0 - transmission),
+            img.dtype,
+        )
+
+        result = fpixel.apply_atmospheric_fog(img, density, fog_color, depth)
+
+        tolerance = 1 if dtype == np.uint8 else 1e-6
+        np.testing.assert_allclose(result, expected, rtol=1e-5, atol=tolerance)
 
     def test_linear_mode_top_foggier(self):
         img = np.full((200, 200, 3), 50, dtype=np.uint8)

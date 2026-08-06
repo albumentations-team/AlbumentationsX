@@ -55,7 +55,7 @@ def test_image_only_augmentations_mask_persists(augmentation_cls, params):
 
     assert data["image"].dtype == image.dtype
     assert data["mask"].dtype == mask.dtype
-    assert np.array_equal(data["mask"], mask)
+    np.testing.assert_array_equal(data["mask"], mask)
 
 
 @pytest.mark.parametrize(
@@ -98,7 +98,7 @@ def test_image_only_augmentations(augmentation_cls, params):
 
     assert data["image"].dtype == image.dtype
     assert data["mask"].dtype == mask.dtype
-    assert np.array_equal(data["mask"], mask)
+    np.testing.assert_array_equal(data["mask"], mask)
 
 
 @pytest.mark.parametrize(
@@ -832,13 +832,13 @@ def test_pad_if_needed_position(params, image_shape):
         # Check that the zero region is contiguous and of correct size
         assert len(zero_rows) == image_shape[0], "Height of placed image incorrect"
         assert len(zero_cols) == image_shape[1], "Width of placed image incorrect"
-        assert np.all(np.diff(zero_rows) == 1), "Image placement not contiguous in height"
-        assert np.all(np.diff(zero_cols) == 1), "Image placement not contiguous in width"
+        np.testing.assert_array_equal(np.diff(zero_rows), 1, err_msg="Image placement not contiguous in height")
+        np.testing.assert_array_equal(np.diff(zero_cols), 1, err_msg="Image placement not contiguous in width")
 
         # Verify the rest of the image is filled with ones
         padded_mask = np.ones_like(true_result)
         padded_mask[zero_rows[0] : zero_rows[-1] + 1, zero_cols[0] : zero_cols[-1] + 1] = 0
-        assert np.all(image_padded[padded_mask == 1] == 1), "Padding value incorrect"
+        np.testing.assert_array_equal(image_padded[padded_mask == 1], 1, err_msg="Padding value incorrect")
 
 
 @pytest.mark.parametrize(
@@ -1000,37 +1000,13 @@ def test_solarize_apply_to_images(dtype):
     "dtype",
     [np.uint8, np.float32],
 )
-def test_solarize_apply_to_volumes(dtype):
-    shape = (2, 4, 32, 32, 3)
-
-    if dtype == np.uint8:
-        volumes = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
-    else:
-        volumes = np.random.RandomState(137).random(shape).astype(np.float32)
-
-    threshold = 0.5
-    transform = A.Solarize(threshold_range=(threshold, threshold), p=1.0)
-
-    transformed = transform(volumes=volumes)["volumes"]
-
-    assert transformed.shape == volumes.shape
-    assert transformed.dtype == volumes.dtype
-
-    expected = np.stack([transform(image=volumes[i])["image"] for i in range(volumes.shape[0])])
-    np.testing.assert_array_equal(transformed, expected)
-
-
-@pytest.mark.parametrize(
-    "dtype",
-    [np.uint8, np.float32],
-)
 def test_zoom_blur_apply_to_images(dtype):
     if dtype == np.uint8:
         images = np.random.RandomState(137).randint(0, 256, (2, 100, 100, 3), dtype=np.uint8)
     else:
         images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
 
-    # Use fixed parameters so get_params produces deterministic zoom_factors
+    # Use fixed parameters so parameter generation produces deterministic zoom_factors
     transform = A.ZoomBlur(max_factor_range=(1.1, 1.1), step_factor_range=(0.01, 0.01), p=1.0)
 
     transformed = transform(images=images)["images"]
@@ -1043,27 +1019,44 @@ def test_zoom_blur_apply_to_images(dtype):
 
 
 @pytest.mark.parametrize(
-    "dtype",
-    [np.uint8, np.float32],
+    ("transform_cls", "kwargs"),
+    [
+        (A.ZoomBlur, {"max_factor_range": (1.1, 1.1), "step_factor_range": (0.01, 0.01)}),
+        (A.UnsharpMask, {"blur_range": (3, 3), "sigma_range": (0.5, 0.5), "alpha_range": (0.3, 0.3), "threshold": 10}),
+        (
+            A.Sharpen,
+            {
+                "alpha_range": (0.3, 0.3),
+                "lightness_range": (0.7, 0.7),
+                "method": "kernel",
+                "kernel_size": 5,
+                "sigma": 1.0,
+            },
+        ),
+        (
+            A.Sharpen,
+            {
+                "alpha_range": (0.3, 0.3),
+                "lightness_range": (0.7, 0.7),
+                "method": "gaussian",
+                "kernel_size": 5,
+                "sigma": 1.0,
+            },
+        ),
+    ],
 )
-def test_zoom_blur_apply_to_volumes(dtype):
-    shape = (2, 4, 32, 32, 3)
-
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_image_only_transforms_apply_to_volume(transform_cls, kwargs, dtype):
+    shape = (4, 32, 32, 3)
     if dtype == np.uint8:
-        volumes = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
+        volume = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
     else:
-        volumes = np.random.RandomState(137).random(shape).astype(np.float32)
+        volume = np.random.RandomState(137).random(shape).astype(np.float32)
 
-    # Use fixed parameters so get_params produces deterministic zoom_factors
-    transform = A.ZoomBlur(max_factor_range=(1.1, 1.1), step_factor_range=(0.01, 0.01), p=1.0)
+    actual = A.Compose([transform_cls(**kwargs, p=1.0)], strict=True)(volume=volume)["volume"]
+    expected = A.Compose([transform_cls(**kwargs, p=1.0)], strict=True)(images=volume)["images"]
 
-    transformed = transform(volumes=volumes)["volumes"]
-
-    assert transformed.shape == volumes.shape
-    assert transformed.dtype == volumes.dtype
-
-    expected = np.stack([transform(volume=volumes[i])["volume"] for i in range(volumes.shape[0])])
-    np.testing.assert_array_equal(transformed, expected)
+    np.testing.assert_array_equal(actual, expected)
 
 
 def test_constrained_coarse_dropout_with_mask():
@@ -1204,11 +1197,11 @@ def test_pixel_dropout_drop_values(drop_value, expected_values):
         assert np.all((result >= 0) & (result <= 255))
     elif isinstance(drop_value, (int, float)):
         # For single value, all channels should have same value
-        assert np.all(result == expected_values)
+        np.testing.assert_array_equal(result, expected_values)
     else:
         # For sequence, each channel should have corresponding value
         for channel_idx, expected_value in enumerate(expected_values):
-            assert np.all(result[:, :, channel_idx] == expected_value)
+            np.testing.assert_array_equal(result[:, :, channel_idx], expected_value)
 
 
 def test_pixel_dropout_per_channel():
@@ -1267,9 +1260,7 @@ def test_pixel_dropout_multiple_images():
         ("images", (0, 8, 12, 3)),
         ("masks", (0, 8, 12)),
         ("volume", (0, 8, 12, 1)),
-        ("volumes", (0, 2, 8, 12, 1)),
         ("mask3d", (0, 8, 12)),
-        ("masks3d", (0, 2, 8, 12, 1)),
     ],
 )
 def test_pixel_dropout_preserves_empty_targets(target: str, shape: tuple[int, ...]) -> None:
@@ -1316,11 +1307,11 @@ def test_pixel_dropout_mismatched_tuple_dimensions(drop_value, channels, expecte
     # Check values are as expected
     if channels == 1:
         # Grayscale - should use first value
-        assert np.all(result == expected_values[0])
+        np.testing.assert_array_equal(result, expected_values[0])
     else:
         # Multi-channel - check each channel
         for channel_idx in range(channels):
-            assert np.all(result[:, :, channel_idx] == expected_values[channel_idx])
+            np.testing.assert_array_equal(result[:, :, channel_idx], expected_values[channel_idx])
 
 
 BASE_DROPOUT_GRAYSCALE_CASES = [
@@ -1497,28 +1488,6 @@ def test_erasing_grayscale_fill_on_volume(channels):
     _assert_grayscale_fill_behavior(volume, result)
 
 
-@pytest.mark.parametrize("channels", [1, 3, 5])
-def test_erasing_grayscale_fill_on_volumes(channels):
-    volumes = np.stack(
-        [
-            _create_grayscale_fill_test_array((4, 64, 64, channels), np.uint8),
-            _create_grayscale_fill_test_array((4, 64, 64, channels), np.uint8)[::-1],
-        ],
-        axis=0,
-    )
-
-    transform = A.Erasing(
-        scale=(0.2, 0.2),
-        ratio=(1.0, 1.0),
-        fill="grayscale",
-        p=1.0,
-    )
-    transform.set_random_seed(137)
-
-    result = transform(volumes=volumes)["volumes"]
-    _assert_grayscale_fill_behavior(volumes, result)
-
-
 def test_salt_and_pepper_noise():
     # Test image setup - create all gray image instead of black with gray square
     image = np.full((100, 100, 3), 128, dtype=np.uint8)  # All gray image
@@ -1567,8 +1536,22 @@ def test_salt_and_pepper_float_image():
 
     # Check that salt pixels are 1.0 and pepper pixels are 0.0
     (transformed != image).any(axis=2)
-    assert np.allclose(transformed[transformed > 0.9], 1.0), "Salt pixels should be exactly 1.0 for float images"
-    assert np.allclose(transformed[transformed < 0.1], 0.0), "Pepper pixels should be exactly 0.0 for float images"
+    np.testing.assert_allclose(
+        transformed[transformed > 0.9],
+        1.0,
+        rtol=1e-5,
+        atol=1e-8,
+        equal_nan=False,
+        err_msg="Salt pixels should be exactly 1.0 for float images",
+    )
+    np.testing.assert_allclose(
+        transformed[transformed < 0.1],
+        0.0,
+        rtol=1e-5,
+        atol=1e-8,
+        equal_nan=False,
+        err_msg="Pepper pixels should be exactly 0.0 for float images",
+    )
 
 
 def test_salt_and_pepper_grayscale():
@@ -1710,7 +1693,7 @@ def test_to_sepia_gray(image: np.ndarray):
 
     transformed = transform(image=image)["image"]
 
-    assert np.array_equal(image, transformed)
+    np.testing.assert_array_equal(image, transformed)
 
 
 def test_to_sepia_rgb_multiple_images():
@@ -1721,6 +1704,32 @@ def test_to_sepia_rgb_multiple_images():
 
     assert images.shape == transformed.shape
     assert np.all([not np.array_equal(im, tr) for im, tr in zip(images, transformed, strict=False)])
+
+
+def _restore_median_blur_channel_axis(image: np.ndarray, num_channels: int) -> np.ndarray:
+    return image[..., np.newaxis] if num_channels == 1 and image.ndim == 2 else image
+
+
+def _median_blur_uint8_reference(image: np.ndarray, kernel: int) -> np.ndarray:
+    num_channels = image.shape[-1]
+    if kernel in (3, 5) or num_channels <= 4:
+        return _restore_median_blur_channel_axis(cv2.medianBlur(image, kernel), num_channels)
+    return np.concatenate(
+        [
+            _restore_median_blur_channel_axis(cv2.medianBlur(image[..., index : index + 1], kernel), 1)
+            for index in range(num_channels)
+        ],
+        axis=-1,
+    )
+
+
+def _median_blur_reference(image: np.ndarray, kernel: int) -> np.ndarray:
+    if image.dtype == np.uint8:
+        return _median_blur_uint8_reference(image, kernel)
+    if kernel in (3, 5):
+        return _restore_median_blur_channel_axis(cv2.medianBlur(image, kernel), image.shape[-1])
+    quantized = from_float(image, np.dtype(np.uint8))
+    return to_float(_median_blur_uint8_reference(quantized, kernel))
 
 
 @pytest.mark.parametrize(
@@ -1750,7 +1759,6 @@ def test_median_blur_compose_target_routes(
 
     images = np.stack([image, np.flip(image, axis=0)], axis=0)
     volume = np.stack([image, np.flip(image, axis=1)], axis=0)
-    volumes = np.stack([volume, np.flip(volume, axis=1)], axis=0)
     transform = A.Compose(
         [A.MedianBlur(blur_range=(kernel, kernel), p=1.0)],
         save_applied_params=True,
@@ -1760,56 +1768,40 @@ def test_median_blur_compose_target_routes(
     image_result = transform(image=image)
     images_result = transform(images=images)
     volume_result = transform(volume=volume)
-    volumes_result = transform(volumes=volumes)
 
-    def reference(item: np.ndarray) -> np.ndarray:
-        working = from_float(item, np.dtype(np.uint8)) if item.dtype == np.float32 and kernel >= 7 else item
-        if kernel in (3, 5) or num_channels <= 4:
-            filtered = cv2.medianBlur(working, kernel)
-            if filtered.ndim == 2:
-                filtered = filtered[..., np.newaxis]
-        else:
-            filtered = np.concatenate(
-                [cv2.medianBlur(working[..., index], kernel)[..., np.newaxis] for index in range(num_channels)],
-                axis=-1,
-            )
-        return to_float(filtered) if item.dtype == np.float32 and kernel >= 7 else filtered
-
-    expected_image = reference(image)
-    expected_images = np.stack([reference(item) for item in images])
-    expected_volume = np.stack([reference(item) for item in volume])
-    expected_volumes = np.stack(
-        [[reference(item) for item in item_volume] for item_volume in volumes],
-    )
-
-    if dtype == np.float32 and kernel in (3, 5):
-        legacy = to_float(
-            np.stack(
-                [
-                    cv2.medianBlur(from_float(image, np.dtype(np.uint8))[..., index], kernel)
-                    for index in range(num_channels)
-                ],
-                axis=-1,
-            ),
-        )
-        assert not np.array_equal(expected_image, legacy)
+    expected_image = _median_blur_reference(image, kernel)
+    expected_images = np.stack([_median_blur_reference(item, kernel) for item in images])
+    expected_volume = np.stack([_median_blur_reference(item, kernel) for item in volume])
 
     for result, target_name, source, expected in (
         (image_result, "image", image, expected_image),
         (images_result, "images", images, expected_images),
         (volume_result, "volume", volume, expected_volume),
-        (volumes_result, "volumes", volumes, expected_volumes),
     ):
         transformed = result[target_name]
         assert transformed.shape == source.shape
         assert transformed.dtype == source.dtype
+        assert transformed.flags.c_contiguous
         np.testing.assert_array_equal(transformed, expected)
         assert result["applied_transforms"] == [("MedianBlur", {"p": 1.0, "blur_range": kernel})]
 
     per_image_results = np.stack([transform(image=item)["image"] for item in images])
-    per_volume_results = np.stack([transform(volume=item)["volume"] for item in volumes])
+    per_volume_results = np.stack([transform(image=item)["image"] for item in volume])
     np.testing.assert_array_equal(images_result["images"], per_image_results)
-    np.testing.assert_array_equal(volumes_result["volumes"], per_volume_results)
+    np.testing.assert_array_equal(volume_result["volume"], per_volume_results)
+
+
+@pytest.mark.parametrize("kernel", [3, 5])
+def test_median_blur_native_float32_preserves_sub_uint8_precision(kernel: int) -> None:
+    image = np.linspace(0.1001, 0.1099, 31 * 37, dtype=np.float32).reshape(31, 37, 1)
+    transform = A.Compose([A.MedianBlur(blur_range=(kernel, kernel), p=1.0)])
+
+    result = transform(image=image)["image"]
+    native = _restore_median_blur_channel_axis(cv2.medianBlur(image, kernel), 1)
+    legacy = to_float(_median_blur_uint8_reference(from_float(image, np.dtype(np.uint8)), kernel))
+
+    np.testing.assert_array_equal(result, native)
+    assert not np.array_equal(result, legacy)
 
 
 @pytest.mark.parametrize(
@@ -1836,35 +1828,6 @@ def test_unsharp_mask_apply_to_images(dtype):
     assert transformed.dtype == images.dtype
 
     expected = np.stack([transform(image=images[i])["image"] for i in range(images.shape[0])])
-    np.testing.assert_array_equal(transformed, expected)
-
-
-@pytest.mark.parametrize(
-    "dtype",
-    [np.uint8, np.float32],
-)
-def test_unsharp_mask_apply_to_volumes(dtype):
-    shape = (2, 4, 32, 32, 3)
-
-    if dtype == np.uint8:
-        volumes = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
-    else:
-        volumes = np.random.RandomState(137).random(shape).astype(np.float32)
-
-    transform = A.UnsharpMask(
-        blur_range=(3, 3),
-        sigma_range=(0.5, 0.5),
-        alpha_range=(0.3, 0.3),
-        threshold=10,
-        p=1.0,
-    )
-
-    transformed = transform(volumes=volumes)["volumes"]
-
-    assert transformed.shape == volumes.shape
-    assert transformed.dtype == volumes.dtype
-
-    expected = np.stack([transform(volume=volumes[i])["volume"] for i in range(volumes.shape[0])])
     np.testing.assert_array_equal(transformed, expected)
 
 
@@ -1898,41 +1861,6 @@ def test_sharpen_apply_to_images(dtype, method):
     assert transformed.dtype == images.dtype
 
     expected = np.stack([transform(image=images[i])["image"] for i in range(images.shape[0])])
-    np.testing.assert_array_equal(transformed, expected)
-
-
-@pytest.mark.parametrize(
-    ["dtype", "method"],
-    [
-        (np.uint8, "kernel"),
-        (np.float32, "kernel"),
-        (np.uint8, "gaussian"),
-        (np.float32, "gaussian"),
-    ],
-)
-def test_sharpen_apply_to_volumes(dtype, method):
-    shape = (2, 4, 32, 32, 3)
-
-    if dtype == np.uint8:
-        volumes = np.random.RandomState(137).randint(0, 256, shape, dtype=np.uint8)
-    else:
-        volumes = np.random.RandomState(137).random(shape).astype(np.float32)
-
-    transform = A.Sharpen(
-        alpha_range=(0.3, 0.3),
-        lightness_range=(0.7, 0.7),
-        method=method,
-        kernel_size=5,
-        sigma=1.0,
-        p=1.0,
-    )
-
-    transformed = transform(volumes=volumes)["volumes"]
-
-    assert transformed.shape == volumes.shape
-    assert transformed.dtype == volumes.dtype
-
-    expected = np.stack([transform(volume=volumes[i])["volume"] for i in range(volumes.shape[0])])
     np.testing.assert_array_equal(transformed, expected)
 
 
@@ -2188,26 +2116,21 @@ def test_spatter_apply_to_images_rejects_non_rgb_batches(shape):
 
 
 @pytest.mark.parametrize("mode", ["rain", "mud"])
-@pytest.mark.parametrize("target", ["volume", "volumes"])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
-def test_spatter_batch_path_preserves_volume_routing(mode, target, dtype):
+def test_spatter_batch_path_preserves_volume_routing(mode, dtype):
     rng = np.random.default_rng(137)
     if dtype == np.uint8:
         volume = rng.integers(0, 256, (3, 17, 19, 3), dtype=np.uint8)
     else:
         volume = rng.random((3, 17, 19, 3), dtype=np.float32)
-    data = volume if target == "volume" else np.stack([volume, volume[::-1]], axis=0)
     transform = A.Spatter(mode=mode, p=1.0)
 
-    actual = A.Compose([transform], seed=137, strict=True)(**{target: data})[target]
+    actual = A.Compose([transform], seed=137, strict=True)(volume=volume)["volume"]
     params = transform.get_applied_params()
-    if target == "volume":
-        expected = ImageOnlyTransform.apply_to_images(transform, data, **params)
-    else:
-        expected = np.stack([ImageOnlyTransform.apply_to_images(transform, item, **params) for item in data])
+    expected = ImageOnlyTransform.apply_to_images(transform, volume, **params)
 
     if dtype == np.uint8:
-        np.testing.assert_allclose(actual, expected, atol=1)
+        np.testing.assert_array_equal(actual, expected)
     else:
         np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 

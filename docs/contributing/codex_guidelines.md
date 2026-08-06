@@ -61,11 +61,11 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 
 ### Image and Volume Shape Invariants
 
-- Within `Compose`, images and volumes are always channel-last with an explicit channel dimension.
+- Within `Compose`, images and volume data are always channel-last with an explicit channel dimension.
 - Single images are `(H, W, C)`; grayscale is `(H, W, 1)`, not `(H, W)`.
-- Image batches are `(N, H, W, C)`, volumes are `(D, H, W, C)`, and volume batches are `(N, D, H, W, C)`.
+- Image batches are `(N, H, W, C)`, and a volume is `(D, H, W, C)`.
 - Do not add functional-layer compatibility branches for 2D grayscale images when code is used through `Compose`.
-- Branching on `ndim` is appropriate to distinguish image, batch, volume, and volume batch paths, not to infer channels.
+- Branching on `ndim` is appropriate to distinguish image, image-batch, and single-volume paths, not to infer channels.
 
 ### Validation Principles
 
@@ -195,7 +195,7 @@ its constructor changes:
 
 - add or update a named `TransformContractCase`;
 - give every configurable public constructor parameter except `p` and `strict` a non-default case;
-- provide a deterministic data factory for masks, bboxes, keypoints, volumes, batches, or custom metadata;
+- provide a deterministic data factory for masks, bboxes, keypoints, volume data, batches, or custom metadata;
 - do not add a parallel class/parameter list, adapter, broad skip, or exemption;
 - make realized `applied_config` fields constructor-valid after strict JSON transport;
 - clear stochastic policy fields when they conflict with a sampled field; and

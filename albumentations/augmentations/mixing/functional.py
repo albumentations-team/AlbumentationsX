@@ -113,7 +113,12 @@ def blend_images_using_alpha(
         return result
 
     alpha_3d = alpha[..., np.newaxis].astype(np.float32)
-    blended = donor_image.astype(np.float32) * alpha_3d + base_image.astype(np.float32) * (1.0 - alpha_3d)
+    if img_dtype == np.float32:
+        blended = np.subtract(donor_image, base_image, dtype=np.float32)
+        np.multiply(blended, alpha_3d, out=blended)
+        np.add(blended, base_image, out=blended)
+    else:
+        blended = donor_image.astype(np.float32) * alpha_3d + base_image.astype(np.float32) * (1.0 - alpha_3d)
     clip_high = _soft_blend_clip_high(base_image, donor_image)
     return np.clip(blended, 0, clip_high).astype(img_dtype)
 

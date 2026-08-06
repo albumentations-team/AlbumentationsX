@@ -42,11 +42,11 @@ def get_targets_from_methods(cls):
     if has_masks_method:
         targets.add(Targets.MASK)
 
-    has_masks3d_method = any(
+    has_mask3d_method = any(
         hasattr(cls, attr) and getattr(cls, attr) is not getattr(A.Transform3D, attr, None)
         for attr in ["apply_to_mask3d"]
     )
-    if has_masks3d_method:
+    if has_mask3d_method:
         targets.add(Targets.MASK3D)
 
     has_bboxes_method = any(
@@ -66,7 +66,7 @@ def get_targets_from_methods(cls):
     return targets
 
 
-TRASNFORM_3D_TARGETS = {}
+TRASNFORM_3D_TARGETS = {A.Anisotropy3D: {Targets.VOLUME}}
 
 str2target = {
     "mask": Targets.MASK3D,  # docstrings say "mask" for 3D mask target

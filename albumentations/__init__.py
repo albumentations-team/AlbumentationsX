@@ -20,12 +20,8 @@ except ImportError as e:
     )
     raise ImportError(msg) from e
 
-from contextlib import suppress
-
 from .augmentations import *
 from .core.composition import *
 from .core.serialization import *
 from .core.transforms_interface import *
-
-with suppress(ImportError):
-    from .pytorch import *
+from .pytorch import *

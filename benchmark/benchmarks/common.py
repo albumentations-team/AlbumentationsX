@@ -15,6 +15,14 @@ DTYPES = {
     "uint8": np.uint8,
     "float32": np.float32,
 }
+MEDIAN_BLUR_CASES = (
+    ("median_blur", 3),
+    ("median_blur_k5", 5),
+    ("median_blur_k7", 7),
+)
+MEDIAN_BLUR_FUNCTIONAL_CASES = tuple(
+    (f"median_blur_k{kernel_size}", kernel_size) for _, kernel_size in MEDIAN_BLUR_CASES
+)
 IMAGE_DTYPE_PARAMS = ([*SIZES], CHANNELS, tuple(DTYPES))
 ANNOTATION_COUNTS = (10, 100, 1000)
 VOLUME_SIZES = {
@@ -166,9 +174,3 @@ def make_mask3d(size_name: str = "small") -> np.ndarray:
     """Create a deterministic 3D mask."""
     volume = make_volume(size_name, 1)
     return (volume[..., 0] > 127).astype(np.uint8)
-
-
-def make_volume_batch(size_name: str = "small", channels: int = 1, batch_size: int = 2) -> np.ndarray:
-    """Create a deterministic channel-last volume batch."""
-    volume = make_volume(size_name, channels)
-    return np.stack([volume.copy() for _ in range(batch_size)], axis=0)

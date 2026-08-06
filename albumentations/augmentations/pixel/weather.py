@@ -1390,13 +1390,15 @@ class Spatter(ImageOnlyTransform):
         sigma = self.py_random.uniform(*self.gauss_sigma_range)
         mode = self.mode
         intensity = self.py_random.uniform(*self.intensity_range)
-        color = np.array(self.color) / 255.0
+        color = np.asarray(self.color, dtype=np.float32) / np.float32(255)
 
         liquid_layer = self.random_generator.normal(
             size=(height, width),
             loc=mean,
             scale=std,
         )
+        if mode == "rain":
+            liquid_layer = liquid_layer.astype(np.float32)
         # Convert sigma to kernel size (must be odd)
         ksize = 2 * round(3 * sigma) + 1  # 3 sigma rule, rounded to nearest odd
         cv2.GaussianBlur(
@@ -1545,11 +1547,11 @@ class AtmosphericFog(ImageOnlyTransform):
             depth_map = (y[:, np.newaxis] + x[np.newaxis, :]) / 2.0
         else:
             cy, cx = height / 2.0, width / 2.0
-            y = np.arange(height, dtype=np.float32)
-            x = np.arange(width, dtype=np.float32)
-            dist = np.sqrt((y[:, np.newaxis] - cy) ** 2 + (x[np.newaxis, :] - cx) ** 2)
-            max_dist = np.sqrt(cy**2 + cx**2)
-            depth_map = (dist / max_dist).astype(np.float32)
+            y = np.arange(height, dtype=np.float32)[:, np.newaxis] - cy
+            x = np.arange(width, dtype=np.float32)[np.newaxis, :] - cx
+            depth_map = x * x + y * y
+            depth_map = albucore.sqrt(depth_map, inplace=True)
+            depth_map *= np.float32(1 / math.hypot(cy, cx))
 
         max_val = albucore.MAX_VALUES_BY_DTYPE[np.uint8]
         image_data = self.get_image_data(data)

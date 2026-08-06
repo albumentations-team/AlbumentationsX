@@ -350,8 +350,8 @@ def random_dither(
 
     """
     # Add random noise
-    noise = random_generator.uniform(noise_range[0], noise_range[1], size=img.shape)
-    noisy = img + noise
+    noisy = random_generator.uniform(noise_range[0], noise_range[1], size=img.shape)
+    np.add(noisy, img, out=noisy)
     np.clip(noisy, 0, 1, out=noisy)
 
     # Quantize using vectorized numpy operations
@@ -359,9 +359,10 @@ def random_dither(
         return (noisy >= 0.5).astype(np.float32)
 
     # Vectorized quantization for float32
-    scaled = noisy * (n_colors - 1)
-    quantized = np.round(scaled) / (n_colors - 1)
-    return quantized.astype(np.float32)
+    np.multiply(noisy, n_colors - 1, out=noisy)
+    np.round(noisy, out=noisy)
+    np.divide(noisy, n_colors - 1, out=noisy)
+    return noisy.astype(np.float32)
 
 
 def _floyd_steinberg_binary_uint8(img: ImageUInt8) -> ImageUInt8:

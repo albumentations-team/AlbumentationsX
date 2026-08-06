@@ -197,7 +197,7 @@ AlbumentationsX collects anonymous usage statistics to improve the library. This
 
 ### Pixel-level transforms
 
-Pixel-level transforms will change just an input image and will leave any additional targets such as masks, bounding boxes, and keypoints unchanged. For volumetric data (volumes and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The list of pixel-level transforms:
+Pixel-level transforms will change just an input image and will leave any additional targets such as masks, bounding boxes, and keypoints unchanged. For volumetric data (a volume and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The list of pixel-level transforms:
 
 - [AdditiveNoise](https://albumentations.ai/explore/transform/AdditiveNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [AdvancedBlur](https://albumentations.ai/explore/transform/AdvancedBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
@@ -274,7 +274,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 
 ### Spatial-level transforms
 
-Spatial-level transforms will simultaneously change both an input image as well as additional targets such as masks, bounding boxes, and keypoints. For volumetric data (volumes and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The following table shows which additional targets are supported by each transform:
+Spatial-level transforms will simultaneously change both an input image as well as additional targets such as masks, bounding boxes, and keypoints. For volumetric data (a volume and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The following table shows which additional targets are supported by each transform:
 
 - Volume: 3D array of shape (D, H, W) or (D, H, W, C) where D is depth, H is height, W is width, and C is number of channels (optional)
 - Mask3D: Binary or multi-class 3D mask of shape (D, H, W) where each slice represents segmentation for the corresponding volume slice
@@ -340,22 +340,28 @@ Spatial-level transforms will simultaneously change both an input image as well 
 
 ### 3D transforms
 
-3D transforms operate on volumetric data and can modify both the input volume and associated 3D mask.
+3D transforms operate on volumetric data. Spatial transforms can also modify associated 3D masks and keypoints, while
+volume-intensity transforms leave those targets unchanged.
 
 Where:
 
 - Volume: 3D array of shape (D, H, W) or (D, H, W, C) where D is depth, H is height, W is width, and C is number of channels (optional)
 - Mask3D: Binary or multi-class 3D mask of shape (D, H, W) where each slice represents segmentation for the corresponding volume slice
 
-| Transform                                                                       | Volume | Mask3D | Keypoints |
-| ------------------------------------------------------------------------------- | :----: | :----: | :-------: |
-| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓      | ✓      | ✓         |
-| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓      | ✓      | ✓         |
-| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓      | ✓      | ✓         |
-| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓      | ✓      | ✓         |
+| Transform                                                                           | Volume | Mask3D | Keypoints |
+| ----------------------------------------------------------------------------------- | :----: | :----: | :-------: |
+| [Affine3D](https://albumentations.ai/explore/transform/Affine3D/)                   | ✓      | ✓      | ✓         |
+| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)           | ✓      |        |           |
+| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)           | ✓      | ✓      | ✓         |
+| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)     | ✓      | ✓      | ✓         |
+| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)         | ✓      | ✓      | ✓         |
+| [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                       | ✓      | ✓      | ✓         |
+| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)         | ✓      | ✓      | ✓         |
+| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                         | ✓      | ✓      | ✓         |
+| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)         | ✓      | ✓      | ✓         |
+| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)           | ✓      | ✓      | ✓         |
+| [RandomRotate90_3D](https://albumentations.ai/explore/transform/RandomRotate90_3D/) | ✓      | ✓      | ✓         |
+| [Resize3D](https://albumentations.ai/explore/transform/Resize3D/)                   | ✓      | ✓      | ✓         |
 
 ## A few more examples of **augmentations**
 

@@ -9,7 +9,6 @@ from ._color_shared import (
     Field,
     ImageOnlyTransform,
     ImageType,
-    VolumeType,
     check_range_bounds,
     fpixel,
     get_num_channels,
@@ -211,14 +210,6 @@ class ToGray(ImageOnlyTransform):
 
         return fpixel.to_gray(images, self.num_output_channels, self.method)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        # Check if volumes are already grayscale by checking number of channels
-        if volumes.shape[-1] == 1:
-            warnings.warn("The volumes are already gray.", stacklevel=2)
-            return volumes
-
-        return fpixel.to_gray(volumes, self.num_output_channels, self.method)
-
 
 class ToRGB(ImageOnlyTransform):
     """Convert grayscale image to RGB by replicating the single channel to three. No color
@@ -284,9 +275,6 @@ class ToRGB(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 def _validate_color_range(rng: ColorRange) -> ColorRange:
@@ -408,7 +396,11 @@ class Colorize(ImageOnlyTransform):
             self.py_random.randint(lo[2], hi[2]),
         )
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         black_color = self._sample_color(self.black_range)
         white_color = self._sample_color(self.white_range)
         mid_color = self._sample_color(self.mid_range) if self.mid_range is not None else None
@@ -453,9 +445,6 @@ class Colorize(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 class ToSepia(ImageOnlyTransform):
@@ -548,9 +537,6 @@ class ToSepia(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 class FancyPCA(ImageOnlyTransform):

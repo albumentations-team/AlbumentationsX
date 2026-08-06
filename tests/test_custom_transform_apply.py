@@ -48,7 +48,11 @@ def mask3d():
 class BrightnessWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
     """ImageOnlyTransform + one custom target: float label."""
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         return {"factor": 0.5}
 
     def apply(self, img: np.ndarray, factor: float = 1.0, **p) -> np.ndarray:
@@ -74,7 +78,11 @@ class FlipWithMetadata(A.CustomTransformsApplyMixin, A.DualTransform):
 class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
     """DualTransform + integer rotation label."""
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         return {"factor": 1}  # fixed for deterministic tests
 
     def apply(self, img: np.ndarray, factor: int = 0, **p) -> np.ndarray:
@@ -90,7 +98,11 @@ class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
 class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
     """DualTransform + two custom targets."""
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         return {"factor": 2}
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
@@ -109,7 +121,11 @@ class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
 class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
     """Transform3D + integer label."""
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params_dependent_on_data(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         return {"factor": 1}
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
@@ -143,7 +159,7 @@ class TestImageOnlyTransformWithMixin:
         assert "image" in t._key2func
 
     def test_apply_to_label_called_with_correct_params(self, uint8_image):
-        """factor=0.5 is fixed in get_params; label must be halved."""
+        """factor=0.5 is fixed during parameter generation; label must be halved."""
         t = BrightnessWithLabel(p=1.0)
         out = t(image=uint8_image, label=0.8)
         assert abs(out["label"] - 0.4) < 1e-6
@@ -427,12 +443,12 @@ class TestTransform3DWithMixin:
 class TestParamsPassthrough:
     """All apply_* methods — built-in and custom — must receive the same params."""
 
-    def test_custom_apply_receives_get_params_values(self, uint8_image):
-        """Factor from get_params must reach apply_to_label unchanged."""
+    def test_custom_apply_receives_generated_values(self, uint8_image):
+        """Factor from parameter generation must reach apply_to_label unchanged."""
         received = {}
 
         class _Capture(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params(self):
+            def get_params_dependent_on_data(self, params, data):
                 return {"factor": 7}
 
             def apply(self, img, factor=0, **p):
@@ -452,7 +468,7 @@ class TestParamsPassthrough:
         received = {}
 
         class _CaptureMulti(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params(self):
+            def get_params_dependent_on_data(self, params, data):
                 return {"alpha": 3, "beta": 9}
 
             def apply(self, img, **p):
@@ -569,12 +585,13 @@ class TestGetParamsDependentOnData:
         class DataAwareLabelTransform(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             targets_as_params = ("label",)
 
-            def get_params(self) -> dict[str, Any]:
-                return {"base": 10}
-
-            def get_params_dependent_on_data(self, params: dict, data: dict) -> dict:
+            def get_params_dependent_on_data(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+            ) -> dict[str, Any]:
                 label = data.get("label", 0)
-                return {"offset": label * 2}
+                return {"base": 10, "offset": label * 2}
 
             def apply(self, img: np.ndarray, base: int = 0, offset: int = 0, **p) -> np.ndarray:
                 return img
@@ -591,7 +608,11 @@ class TestGetParamsDependentOnData:
         class RequiresLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             targets_as_params = ("label",)
 
-            def get_params(self) -> dict[str, Any]:
+            def get_params_dependent_on_data(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+            ) -> dict[str, Any]:
                 return {}
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
@@ -612,7 +633,11 @@ class TestAddTargetsWithCustomKeys:
 
     def test_add_targets_aliases_custom_key(self, uint8_image):
         class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params(self) -> dict[str, Any]:
+            def get_params_dependent_on_data(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+            ) -> dict[str, Any]:
                 return {}
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
@@ -632,7 +657,11 @@ class TestAddTargetsWithCustomKeys:
 
     def test_compose_with_additional_targets_custom_key(self, uint8_image):
         class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params(self) -> dict[str, Any]:
+            def get_params_dependent_on_data(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+            ) -> dict[str, Any]:
                 return {}
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
@@ -715,7 +744,11 @@ class TestAvailableKeysAndComposition:
 
         # First: label += 1. Second: label *= 2. Input 5 -> 6 -> 12.
         class AddOne(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params(self) -> dict[str, Any]:
+            def get_params_dependent_on_data(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+            ) -> dict[str, Any]:
                 return {}
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
@@ -725,7 +758,11 @@ class TestAvailableKeysAndComposition:
                 return label + 1
 
         class MulTwo(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params(self) -> dict[str, Any]:
+            def get_params_dependent_on_data(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+            ) -> dict[str, Any]:
                 return {}
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
@@ -742,7 +779,11 @@ class TestAvailableKeysAndComposition:
         """Subclass can add another apply_to_ method."""
 
         class BaseWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params(self) -> dict[str, Any]:
+            def get_params_dependent_on_data(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+            ) -> dict[str, Any]:
                 return {}
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:

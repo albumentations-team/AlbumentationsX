@@ -51,6 +51,7 @@ ABSTRACT_PUBLIC_APIS = frozenset(
         "DualTransform",
         "ImageOnlyTransform",
         "Transform3D",
+        "VolumeOnlyTransform",
     },
 )
 COMPOSITION_PUBLIC_APIS = frozenset(

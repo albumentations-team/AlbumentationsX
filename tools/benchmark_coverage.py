@@ -18,7 +18,7 @@ BENCHMARK_ROOT = REPO_ROOT / "benchmark"
 sys.path.insert(0, str(BENCHMARK_ROOT))
 
 from benchmarks.catalog import (  # noqa: E402
-    OPTIONAL_BENCHMARK_TRANSFORMS,
+    DEDICATED_TENSOR_BENCHMARK_TRANSFORMS,
     asv_case_ids,
     benchmark_specs,
     instantiate_transform,
@@ -26,20 +26,21 @@ from benchmarks.catalog import (  # noqa: E402
     make_data,
     public_transform_names,
 )
-from benchmarks.catalog import (  # noqa: E402
-    unavailable_optional_transform_names as _unavailable_optional_transform_names,
+from benchmarks.common import (  # noqa: E402
+    CHANNELS,
+    DTYPES,
+    MEDIAN_BLUR_CASES,
+    MEDIAN_BLUR_FUNCTIONAL_CASES,
+    SIZES,
+    VOLUME_SIZES,
 )
-from benchmarks.common import CHANNELS, DTYPES, SIZES, VOLUME_SIZES  # noqa: E402
 from benchmarks.test_batch_matrix import (  # noqa: E402
     IMAGE_BATCH_CASES,
     IMAGE_BATCH_TRANSFORMS,
     MASK_BATCH_CASES,
     MASK_BATCH_TRANSFORMS,
-    MEDIAN_BLUR_DIRECT_BATCH_CASES,
-    MEDIAN_BLUR_TARGET_CASES,
+    RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
     SPATTER_DIRECT_CASES,
-    VOLUME_BATCH_CASES,
-    VOLUME_BATCH_TRANSFORMS,
 )
 from benchmarks.test_family_matrix import (  # noqa: E402
     ANNOTATION_CASES,
@@ -70,17 +71,9 @@ from benchmarks.test_parameter_sensitivity import (  # noqa: E402
 )
 from pytorch_benchmarks import test_tensor as pytorch_tensor_benchmarks  # noqa: E402
 
-
-def unavailable_optional_transform_names() -> set[str]:
-    """Return optional transforms unavailable in the current environment."""
-    return _unavailable_optional_transform_names()
-
-
 BATCH_METHOD_NAMES = (
     "apply_to_images",
     "apply_to_masks",
-    "apply_to_volumes",
-    "apply_to_masks3d",
 )
 ANNOTATION_METHOD_NAMES = (
     "apply_to_bboxes",
@@ -164,9 +157,7 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "iso_noise": "ISONoise",
     "lambda": "Lambda",
     "lens_flare": "LensFlare",
-    "median_blur": "MedianBlur",
-    "median_blur_k5": "MedianBlur",
-    "median_blur_k7": "MedianBlur",
+    **{name: "MedianBlur" for name, _ in MEDIAN_BLUR_CASES},
     "mode_filter": "ModeFilter",
     "motion_blur": "MotionBlur",
     "multiplicative_noise": "MultiplicativeNoise",
@@ -186,6 +177,7 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "random_snow": "RandomSnow",
     "random_sun_flare": "RandomSunFlare",
     "random_tone_curve": "RandomToneCurve",
+    "random_tone_curve_per_channel": "RandomToneCurve",
     "rgb_shift": "RGBShift",
     "ringing_overshoot": "RingingOvershoot",
     "salt_and_pepper": "SaltAndPepper",
@@ -232,13 +224,18 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
 }
 
 VOLUME_ALIAS_TO_TRANSFORM = {
+    "affine3d": "Affine3D",
+    "anisotropy3d": "Anisotropy3D",
     "center_crop3d": "CenterCrop3D",
     "coarse_dropout3d": "CoarseDropout3D",
     "cubic_symmetry": "CubicSymmetry",
+    "flip3d": "Flip3D",
     "grid_shuffle3d": "GridShuffle3D",
     "pad3d": "Pad3D",
     "pad_if_needed3d": "PadIfNeeded3D",
     "random_crop3d": "RandomCrop3D",
+    "random_rotate90_3d": "RandomRotate90_3D",
+    "resize3d": "Resize3D",
 }
 
 BATCH_ALIAS_TO_TRANSFORM = {
@@ -248,10 +245,12 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "d4": "D4",
     "gauss_noise": "GaussNoise",
     "horizontal_flip": "HorizontalFlip",
-    "median_blur": "MedianBlur",
+    **{name: "MedianBlur" for name, _ in MEDIAN_BLUR_CASES},
     "normalize": "Normalize",
     "random_brightness_contrast": "RandomBrightnessContrast",
     "random_rotate90": "RandomRotate90",
+    "random_tone_curve": "RandomToneCurve",
+    "random_tone_curve_per_channel": "RandomToneCurve",
     "resize": "Resize",
     "spatter_mud": "Spatter",
     "spatter_rain": "Spatter",
@@ -266,6 +265,8 @@ PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM = {
 DIRECT_KERNEL_TRANSFORMS = frozenset(
     {
         "Affine",
+        "Affine3D",
+        "Anisotropy3D",
         "AutoContrast",
         "Blur",
         "CenterCrop3D",
@@ -289,7 +290,9 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "PixelDropout",
         "Posterize",
         "RandomGamma",
+        "RandomToneCurve",
         "Resize",
+        "Resize3D",
         "Solarize",
         "ToGray",
         "Transpose",
@@ -307,12 +310,16 @@ MEMORY_BENCHMARKS = (
     "peakmem_normalize_large_rgb",
     "peakmem_resize_large_rgb",
     "peakmem_spatter_batch_large_rgb",
+    "peakmem_volume_affine_medium",
+    "peakmem_volume_affine_batch_medium",
     "peakmem_volume_pad_medium",
+    "peakmem_volume_resize_medium",
 )
 
 MEMORY_COVERED_TRANSFORMS = frozenset(
     {
         "Affine",
+        "Affine3D",
         "CopyAndPaste",
         "GaussianBlur",
         "HorizontalFlip",
@@ -322,16 +329,24 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
         "PadIfNeeded3D",
         "RandomBrightnessContrast",
         "Resize",
+        "Resize3D",
         "Spatter",
     },
 )
 
-PYTORCH_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
+PYTORCH_TERMINAL_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
+PYTORCH_NATIVE_VOLUME_TRANSFORMS = frozenset({"Affine3D", "Anisotropy3D", "Resize3D"})
+PYTORCH_NATIVE_TENSOR_TRANSFORMS = PYTORCH_NATIVE_VOLUME_TRANSFORMS | frozenset({"Transpose"})
+PYTORCH_TENSOR_TRANSFORMS = PYTORCH_TERMINAL_TENSOR_TRANSFORMS | PYTORCH_NATIVE_TENSOR_TRANSFORMS
 PYTORCH_IMAGE_CASES = pytorch_tensor_benchmarks.IMAGE_CASES
 PYTORCH_VOLUME_CASES = pytorch_tensor_benchmarks.VOLUME_CASES
+PYTORCH_NATIVE_IMAGE_CASES = pytorch_tensor_benchmarks.TENSOR_NATIVE_IMAGE_CASES
+PYTORCH_NATIVE_VOLUME_CASES = pytorch_tensor_benchmarks.TENSOR_NATIVE_VOLUME_CASES
 
 DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "Affine": ("bboxes_affine", "keypoints_affine"),
+    "Affine3D": ("affine_3d",),
+    "Anisotropy3D": ("anisotropy_3d",),
     "AutoContrast": ("auto_contrast",),
     "Blur": ("box_blur",),
     "CenterCrop3D": ("crop3d",),
@@ -346,7 +361,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "HorizontalFlip": ("hflip",),
     "HueSaturationValue": ("shift_hsv",),
     "ImageCompression": ("image_compression",),
-    "MedianBlur": ("median_blur_k3", "median_blur_k5", "median_blur_k7"),
+    "MedianBlur": tuple(name for name, _ in MEDIAN_BLUR_FUNCTIONAL_CASES),
     "ModeFilter": ("mode_filter",),
     "Normalize": ("normalize_per_image",),
     "Pad": ("pad_with_params",),
@@ -355,7 +370,9 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "PixelDropout": ("pixel_dropout",),
     "Posterize": ("posterize",),
     "RandomGamma": ("gamma_transform",),
+    "RandomToneCurve": ("move_tone_curve_shared", "move_tone_curve_per_channel"),
     "Resize": ("resize", "resize_bboxes"),
+    "Resize3D": ("resize3d",),
     "Solarize": ("solarize",),
     "ToGray": ("to_gray",),
     "Transpose": ("transpose",),
@@ -365,6 +382,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
 
 MEMORY_CASES_BY_TRANSFORM = {
     "Affine": ("peakmem_affine_large_rgb",),
+    "Affine3D": ("peakmem_volume_affine_medium", "peakmem_volume_affine_batch_medium"),
     "CopyAndPaste": ("peakmem_copy_paste_small_rgb",),
     "GaussianBlur": ("peakmem_batch_pipeline_medium_rgb",),
     "HorizontalFlip": ("peakmem_batch_pipeline_medium_rgb",),
@@ -374,6 +392,7 @@ MEMORY_CASES_BY_TRANSFORM = {
     "PadIfNeeded3D": ("peakmem_volume_pad_medium",),
     "RandomBrightnessContrast": ("peakmem_batch_pipeline_medium_rgb",),
     "Resize": ("peakmem_resize_large_rgb",),
+    "Resize3D": ("peakmem_volume_resize_medium",),
     "Spatter": ("peakmem_spatter_batch_large_rgb",),
 }
 
@@ -381,10 +400,10 @@ ASV_BENCHMARKS = {
     "annotation_scaling": "benchmarks.test_family_matrix.TimeAnnotationTargets.time_transform",
     "batch_image": "benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform",
     "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
-    "batch_median_blur_direct": "benchmarks.test_batch_matrix.TimeMedianBlurDirectBatch.time_apply_to_images",
-    "batch_median_blur_targets": "benchmarks.test_batch_matrix.TimeMedianBlurTargetRoutes.time_transform",
+    "batch_random_tone_curve_direct_image": (
+        "benchmarks.test_batch_matrix.TimeRandomToneCurveDirectImageBatchMatrix.time_apply_to_images"
+    ),
     "batch_spatter_direct": "benchmarks.test_batch_matrix.TimeSpatterDirectBatchMatrix.time_apply_to_images",
-    "batch_volume": "benchmarks.test_batch_matrix.TimeVolumeBatchMatrix.time_transform",
     "catalog_smoke": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
     "direct_kernel_3d": "benchmarks.test_functional_kernels.TimeFunctional3DKernels.time_kernel",
     "direct_kernel_blur": "benchmarks.test_functional_kernels.TimeFunctionalBlurKernels.time_kernel",
@@ -400,6 +419,10 @@ ASV_BENCHMARKS = {
     "parameter_sensitivity": "benchmarks.test_parameter_sensitivity.TimeParameterSensitivity.time_transform",
     "pytorch_tensor_2d": "pytorch_benchmarks.test_tensor.TimeToTensorV2",
     "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
+    "pytorch_tensor_native": "pytorch_benchmarks.test_tensor.TimeTensorNativeTranspose",
+    "pytorch_tensor_native_affine3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeAffine3D",
+    "pytorch_tensor_native_3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeAnisotropy3D",
+    "pytorch_tensor_native_resize3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeResize3D",
     "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
     "target_matrix": "benchmarks.test_family_matrix.TimeSpecialTargetMatrix.time_transform",
     "volumetric_matrix": "benchmarks.test_family_matrix.TimeVolumetricFullMatrix.time_transform",
@@ -463,7 +486,12 @@ AXIS_ORDERS: Mapping[str, tuple[Any, ...]] = {
 
 LAYER_AXIS_REFERENCES: Mapping[str, Mapping[str, tuple[Any, ...]]] = {
     "annotation_scaling": {"annotation_counts": ANNOTATION_COUNT_ORDER},
-    "batch_matrix": {"channels": CHANNEL_ORDER, "dtypes": DTYPE_ORDER, "sizes": SIZE_ORDER},
+    "batch_matrix": {
+        "channels": CHANNEL_ORDER,
+        "dtypes": DTYPE_ORDER,
+        "sizes": SIZE_ORDER,
+        "volume_sizes": VOLUME_SIZE_ORDER,
+    },
     "direct_kernel": {
         "annotation_counts": ANNOTATION_COUNT_ORDER,
         "channels": CHANNEL_ORDER,
@@ -485,7 +513,7 @@ LAYER_SKIP_REASONS: Mapping[str, str] = {
     "direct_kernel": "direct-kernel cases cover the axes exercised by each shared functional hot path",
     "family_matrix": "family matrix uses the transform's supported or representative size/channel/dtype axes",
     "parameter_sensitivity": "parameter stress cases are bounded to representative axes for scheduled evidence",
-    "pytorch_tensor": "optional PyTorch tensor benchmarks follow supported tensor conversion axes",
+    "pytorch_tensor": "dedicated PyTorch Tensor benchmarks follow supported tensor conversion axes",
     "reference_data": "reference-data benchmarks are bounded to small/medium metadata-heavy cases",
     "target_matrix": "target matrix uses the standard image axes for target-specialized transforms",
     "volumetric_matrix": "volumetric matrix uses the supported volume size and dtype axes",
@@ -503,8 +531,6 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
     annotation_scaling = _mapped_names(ANNOTATION_ALIAS_TO_TRANSFORM, ANNOTATION_TRANSFORMS)
     batch_matrix = _mapped_names(BATCH_ALIAS_TO_TRANSFORM, IMAGE_BATCH_TRANSFORMS)
     batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, MASK_BATCH_TRANSFORMS)
-    batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, VOLUME_BATCH_TRANSFORMS)
-    batch_matrix.add("MedianBlur")
     parameter_sensitivity = _mapped_names(
         PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM,
         PARAMETER_SENSITIVITY_TRANSFORMS,
@@ -530,10 +556,20 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
 
 def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
     """Return the expected benchmark coverage layers for a public transform."""
-    if name in PYTORCH_TENSOR_TRANSFORMS:
+    if name in PYTORCH_TERMINAL_TENSOR_TRANSFORMS:
         return CoverageExpectation(
-            required_layers=frozenset({"optional", "pytorch_tensor"}),
-            reason="optional PyTorch tensor transforms are benchmarked in the dedicated PyTorch ASV lane",
+            required_layers=frozenset({"pytorch_tensor"}),
+            reason="PyTorch Tensor transforms are benchmarked in the dedicated Tensor ASV lane",
+        )
+    if name in PYTORCH_NATIVE_VOLUME_TRANSFORMS:
+        return CoverageExpectation(
+            required_layers=frozenset({"catalog_smoke", "direct_kernel", "pytorch_tensor", "volumetric_matrix"}),
+            reason="the NumPy, direct kernel, and accepted CPU Tensor volume routes have dedicated evidence",
+        )
+    if name in PYTORCH_NATIVE_TENSOR_TRANSFORMS:
+        return CoverageExpectation(
+            required_layers=frozenset({"catalog_smoke", "family_matrix", "pytorch_tensor"}),
+            reason="the retained NumPy route and accepted CPU Tensor route both have dedicated Compose evidence",
         )
     if name in ALIAS_COVERAGE_TRANSFORMS:
         return CoverageExpectation(
@@ -686,7 +722,7 @@ def _parse_volume_case(case_id: str) -> dict[str, Any]:
 
 
 def _parse_pytorch_case(case_id: str) -> dict[str, Any]:
-    """Parse an optional PyTorch tensor benchmark case id."""
+    """Parse a dedicated PyTorch Tensor benchmark case id."""
     size_name, channels, dtype_name = case_id.split("|")
     return {
         "channels": int(channels),
@@ -697,14 +733,11 @@ def _parse_pytorch_case(case_id: str) -> dict[str, Any]:
 
 def _parse_batch_case(case_id: str) -> dict[str, Any]:
     """Parse a batch matrix benchmark case id."""
-    name, target_route, size_name, channels, dtype_name, batch_size, *_ = case_id.split("|")
+    name, target_route, size_name, channels, dtype_name, batch_size = case_id.split("|")
     targets = {
         "direct_images": ["images"],
         "images": ["images"],
         "images_and_masks": ["images", "masks"],
-        "volume": ["volume"],
-        "volumes": ["volumes"],
-        "volumes_and_masks3d": ["masks3d", "volumes"],
     }[target_route]
     scenario = {
         "batch_size": int(batch_size),
@@ -714,10 +747,7 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
         "target_route": target_route,
         "targets": targets,
     }
-    if target_route in {"volume", "volumes", "volumes_and_masks3d"}:
-        scenario["volume_size"] = size_name
-    else:
-        scenario["size"] = size_name
+    scenario["size"] = size_name
     return scenario
 
 
@@ -760,7 +790,7 @@ def _target_matrix_scenario(case: Mapping[str, str], route: str, transform_name:
 def _batch_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a batch matrix case."""
     scenario = _parse_batch_case(case["case_id"])
-    scope = "direct_batch" if scenario["target_route"] == "direct_images" else "compose_batch"
+    scope = "direct_batch" if scenario["target_route"].startswith("direct_") else "compose_batch"
     return {**scenario, "scope": scope}
 
 
@@ -792,12 +822,18 @@ def _memory_scenario(case: Mapping[str, str], route: str, transform_name: str) -
 
 
 def _pytorch_tensor_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
-    """Return scenario metadata for an optional PyTorch tensor case."""
+    """Return scenario metadata for a dedicated PyTorch Tensor case."""
+    if transform_name in PYTORCH_NATIVE_TENSOR_TRANSFORMS:
+        return {
+            **_parse_pytorch_case(case["case_id"]),
+            "scope": "tensor_native_compose",
+            "targets": ["volume"] if transform_name in PYTORCH_NATIVE_VOLUME_TRANSFORMS else ["image"],
+        }
     targets = ["mask3d", "volume"] if transform_name == "ToTensor3D" else ["image", "images", "mask", "masks"]
     return {
         **_parse_pytorch_case(case["case_id"]),
         "batch_size": 8,
-        "scope": "optional_pytorch",
+        "scope": "pytorch_tensor",
         "targets": targets,
     }
 
@@ -1088,29 +1124,15 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
     )
     _add_matrix_cases(
         cases,
+        benchmark=ASV_BENCHMARKS["batch_random_tone_curve_direct_image"],
+        case_ids=RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
         benchmark=ASV_BENCHMARKS["batch_spatter_direct"],
         case_ids=SPATTER_DIRECT_CASES,
-        layer="batch_matrix",
-        name_map=BATCH_ALIAS_TO_TRANSFORM,
-    )
-    _add_matrix_cases(
-        cases,
-        benchmark=ASV_BENCHMARKS["batch_median_blur_targets"],
-        case_ids=MEDIAN_BLUR_TARGET_CASES,
-        layer="batch_matrix",
-        name_map=BATCH_ALIAS_TO_TRANSFORM,
-    )
-    _add_matrix_cases(
-        cases,
-        benchmark=ASV_BENCHMARKS["batch_median_blur_direct"],
-        case_ids=MEDIAN_BLUR_DIRECT_BATCH_CASES,
-        layer="batch_matrix",
-        name_map=BATCH_ALIAS_TO_TRANSFORM,
-    )
-    _add_matrix_cases(
-        cases,
-        benchmark=ASV_BENCHMARKS["batch_volume"],
-        case_ids=VOLUME_BATCH_CASES,
         layer="batch_matrix",
         name_map=BATCH_ALIAS_TO_TRANSFORM,
     )
@@ -1158,6 +1180,29 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
             config="pytorch",
             layer="pytorch_tensor",
         )
+    for case_id in PYTORCH_NATIVE_IMAGE_CASES:
+        _add_asv_case(
+            cases,
+            "Transpose",
+            benchmark=ASV_BENCHMARKS["pytorch_tensor_native"],
+            case_id=case_id,
+            config="pytorch",
+            layer="pytorch_tensor",
+        )
+    for transform_name, benchmark_name in {
+        "Affine3D": "pytorch_tensor_native_affine3d",
+        "Anisotropy3D": "pytorch_tensor_native_3d",
+        "Resize3D": "pytorch_tensor_native_resize3d",
+    }.items():
+        for case_id in PYTORCH_NATIVE_VOLUME_CASES:
+            _add_asv_case(
+                cases,
+                transform_name,
+                benchmark=ASV_BENCHMARKS[benchmark_name],
+                case_id=case_id,
+                config="pytorch",
+                layer="pytorch_tensor",
+            )
     return {
         name: sorted(items, key=lambda item: (item["layer"], item["benchmark"], item["case_id"]))
         for name, items in cases.items()
@@ -1165,7 +1210,7 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
 
 
 def _family_labels(name: str, layers: Iterable[str]) -> list[str]:
-    families = set(layers) - {"catalog_smoke", "optional"}
+    families = set(layers) - {"catalog_smoke"}
     if name in _mapped_names(GEOMETRY_ALIAS_TO_TRANSFORM, GEOMETRY_TRANSFORMS):
         families.add("geometry")
     if name in _mapped_names(PIXEL_ALIAS_TO_TRANSFORM, PIXEL_TRANSFORMS):
@@ -1218,12 +1263,12 @@ def _performance_contract_entry(
 def _batch_performance_contract(name: str, layers: set[str]) -> dict[str, Any]:
     """Return batch-route performance expectations for one transform."""
     methods = _declared_transform_methods(name, BATCH_METHOD_NAMES)
-    if name in PYTORCH_TENSOR_TRANSFORMS:
+    if name in PYTORCH_TERMINAL_TENSOR_TRANSFORMS:
         return _performance_contract_entry(
             implementation_methods=methods,
-            reason="optional tensor batch routes are measured in the dedicated PyTorch benchmark lane",
+            reason="Tensor batch routes are measured in the dedicated PyTorch benchmark lane",
             required_layers=("pytorch_tensor",),
-            status="covered_optional",
+            status="covered_dedicated_tensor",
         )
     if "batch_matrix" in layers:
         return _performance_contract_entry(
@@ -1380,7 +1425,7 @@ def coverage_details() -> dict[str, Any]:
     transforms: list[dict[str, Any]] = []
 
     for name, spec in specs.items():
-        layers = ["optional"] if not spec.benchmark else ["catalog_smoke"]
+        layers = [] if not spec.benchmark else ["catalog_smoke"]
         for layer_name, transform_names in layer_sets.items():
             if name in transform_names:
                 layers.append(layer_name)
@@ -1411,7 +1456,7 @@ def coverage_details() -> dict[str, Any]:
                 "families": _family_labels(name, layers),
                 "layers": layers,
                 "name": name,
-                "optional_reason": spec.reason,
+                "benchmark_reason": spec.reason,
                 "performance_contract": performance_contract,
                 "route": spec.route,
                 "scenario_axis_contracts": _scenario_axis_contracts(transform_cases),
@@ -1437,7 +1482,6 @@ def coverage_details() -> dict[str, Any]:
                 "memory",
                 "parameter_sensitivity",
                 "pytorch_tensor",
-                "optional",
             )
         },
     )
@@ -1448,12 +1492,12 @@ def coverage_details() -> dict[str, Any]:
         "kind": "benchmark-coverage-detail",
         "layer_counts": dict(sorted(layer_counts.items())),
         "public_transforms": len(transforms),
-        "schema_version": 5,
+        "schema_version": 6,
         "smoke_only_transforms": smoke_only,
         "summary": {
             "contract_failures": len(contract_failures),
-            "deep_coverage_transforms": len(transforms) - len(smoke_only) - layer_counts["optional"],
-            "optional_transforms": layer_counts["optional"],
+            "deep_coverage_transforms": len(transforms) - len(smoke_only),
+            "dedicated_tensor_transforms": len(PYTORCH_TERMINAL_TENSOR_TRANSFORMS),
             "performance_contract_status_counts": _performance_contract_status_counts(transforms),
             "smoke_only_transforms": len(smoke_only),
         },
@@ -1465,7 +1509,7 @@ def _spec_summary() -> dict[str, Any]:
     specs = benchmark_specs()
     route_counts = Counter(spec.route for spec in specs.values())
     runnable = [spec.name for spec in specs.values() if spec.benchmark]
-    optional = {spec.name: spec.reason for spec in specs.values() if not spec.benchmark}
+    dedicated = {spec.name: spec.reason for spec in specs.values() if not spec.benchmark}
     details = coverage_details()
     return {
         "annotation_matrix_cases": len(ANNOTATION_CASES),
@@ -1476,7 +1520,6 @@ def _spec_summary() -> dict[str, Any]:
             "annotations": len(ANNOTATION_CASES),
             "batch_image": len(IMAGE_BATCH_CASES),
             "batch_mask": len(MASK_BATCH_CASES),
-            "batch_volume": len(VOLUME_BATCH_CASES),
             "geometry": len(GEOMETRY_CASES),
             "parameter_sensitivity": len(PARAMETER_SENSITIVITY_CASES),
             "pixel": len(PIXEL_CASES),
@@ -1495,7 +1538,7 @@ def _spec_summary() -> dict[str, Any]:
         "pytorch_tensor_benchmark_cases": len(PYTORCH_TENSOR_TRANSFORMS),
         "registered_specs": len(specs),
         "asv_cases": len(asv_case_ids()),
-        "optional_cases": optional,
+        "dedicated_tensor_cases": dedicated,
         "performance_contract_status_counts": details["summary"]["performance_contract_status_counts"],
         "route_counts": dict(sorted(route_counts.items())),
         "runnable_transforms": runnable,
@@ -1510,18 +1553,16 @@ def _validate_public_registry(public_names: set[str], spec_names: set[str]) -> l
         errors.append("Missing benchmark specs: " + ", ".join(missing))
     if unexpected:
         errors.append("Benchmark specs reference unknown transforms: " + ", ".join(unexpected))
-    unknown_optional = sorted(
-        set(OPTIONAL_BENCHMARK_TRANSFORMS) - public_names - unavailable_optional_transform_names(),
-    )
-    if unknown_optional:
-        errors.append("Optional benchmark transform is not public: " + ", ".join(unknown_optional))
+    unknown_dedicated = sorted(set(DEDICATED_TENSOR_BENCHMARK_TRANSFORMS) - public_names)
+    if unknown_dedicated:
+        errors.append("Dedicated Tensor benchmark transform is not public: " + ", ".join(unknown_dedicated))
     return errors
 
 
 def _validate_transform_construction(specs: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
     for spec in specs.values():
-        if spec.route == "optional":
+        if spec.route == "dedicated_tensor":
             continue
         try:
             instantiate_transform(spec)
@@ -1541,7 +1582,7 @@ def _validate_case_groups(groups: Mapping[str, tuple[str, ...]], message: str) -
 def _validate_coverage_layers(spec_names: set[str]) -> list[str]:
     layer_sets = _coverage_layer_sets()
     referenced = set().union(*layer_sets.values())
-    unknown = sorted(referenced - spec_names - unavailable_optional_transform_names())
+    unknown = sorted(referenced - spec_names)
     if unknown:
         return ["Benchmark coverage layers reference unknown transforms: " + ", ".join(unknown)]
     return []
@@ -1594,7 +1635,6 @@ def _validate_registry() -> list[str]:
                 "annotation": ANNOTATION_CASES,
                 "batch_image": IMAGE_BATCH_CASES,
                 "batch_mask": MASK_BATCH_CASES,
-                "batch_volume": VOLUME_BATCH_CASES,
                 "geometry": GEOMETRY_CASES,
                 "parameter_sensitivity": PARAMETER_SENSITIVITY_CASES,
                 "pixel": PIXEL_CASES,
@@ -1659,7 +1699,7 @@ def check(*, run_smoke: bool, output: Path | None) -> int:
     print(
         "Benchmark coverage ok: "
         f"{summary['asv_cases']} ASV cases, "
-        f"{len(summary['optional_cases'])} optional cases, "
+        f"{len(summary['dedicated_tensor_cases'])} dedicated Tensor cases, "
         f"{summary['public_transforms']} public transforms accounted.",
     )
     return 0

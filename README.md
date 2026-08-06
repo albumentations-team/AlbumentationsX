@@ -350,6 +350,7 @@ Where:
 
 | Transform                                                                           | Volume | Mask3D | Keypoints |
 | ----------------------------------------------------------------------------------- | :----: | :----: | :-------: |
+| [Affine3D](https://albumentations.ai/explore/transform/Affine3D/)                   | ✓      | ✓      | ✓         |
 | [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)           | ✓      |        |           |
 | [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)           | ✓      | ✓      | ✓         |
 | [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)     | ✓      | ✓      | ✓         |

@@ -50,3 +50,29 @@ class TimeGaussianBlur3D:
 
     def peakmem_gaussian_blur3d(self, size: str, channels: int, dtype: str) -> None:
         self.gaussian_blur(volume=self.volume)
+
+
+class TimeAffine3D:
+    """Benchmark true-3D affine resampling through its public Compose route."""
+
+    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES))
+    param_names = ("size", "channels", "dtype")
+
+    def setup(self, size: str, channels: int, dtype: str) -> None:
+        self.volume = make_volume(size, channels, DTYPES[dtype])
+        transform_kwargs = {
+            "rotate_range": {"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
+            "scale_range": {"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
+            "translate_percent_range": {"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
+            "p": 1.0,
+        }
+        self.affine = albumentations.Compose(
+            [albumentations.Affine3D(**transform_kwargs)],
+            strict=True,
+        )
+
+    def time_affine3d(self, size: str, channels: int, dtype: str) -> None:
+        self.affine(volume=self.volume)
+
+    def peakmem_affine3d(self, size: str, channels: int, dtype: str) -> None:
+        self.affine(volume=self.volume)

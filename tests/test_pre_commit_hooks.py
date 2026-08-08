@@ -56,6 +56,9 @@ def test_range_parameter_annotations_require_pair_types(tmp_path: Path) -> None:
         "        optional_range: tuple[int, int] | None,\n"
         "        axis_range: dict[str, tuple[float, float]],\n"
         "        named_range: PixelLengthRange | None,\n"
+        "        mask_range: MaskLengthRange,\n"
+        "        axis_ranges: AxisRanges3D,\n"
+        "        positive_axis_ranges: PositiveAxisRanges3D,\n"
         "    ):\n"
         "        pass\n",
         encoding="utf-8",

@@ -32,7 +32,7 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
     ...
 ```
 
-- No randomness — all random values come from `get_params` / `get_params_dependent_on_data`
+- No randomness — all random values come from `get_params_dependent_on_data`
 - Delete redundant work and full-array passes before selecting a backend
 - Compare applicable NumPy, OpenCV, NumKong, StringZilla, and LUT implementations
 - Consider `np.bincount` for repeated reductions over dense non-negative integer labels
@@ -42,7 +42,7 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
 
 ## 3. Write the transform class
 
-- Keep sampling in `get_params` / `get_params_dependent_on_data`; `apply_*` receives realized parameters only.
+- Keep sampling in `get_params_dependent_on_data`; `apply_*` receives realized parameters only.
 - Use `self.py_random` for scalar sampling and `self.random_generator` only for array-valued samples.
 - Use relative parameters where users should transfer a policy across image sizes.
 - Use `ImageType` for image, mask, and volume signatures; reserve `np.ndarray` for bboxes and keypoints.

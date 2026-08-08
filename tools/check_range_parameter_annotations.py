@@ -7,7 +7,12 @@ import ast
 from collections.abc import Iterable
 from pathlib import Path
 
-APPROVED_RANGE_TYPE_ALIASES = {"PixelLengthRange"}
+APPROVED_RANGE_TYPE_ALIASES = {
+    "AxisRanges3D",
+    "MaskLengthRange",
+    "PixelLengthRange",
+    "PositiveAxisRanges3D",
+}
 
 
 def _annotation_name(node: ast.expr) -> str | None:

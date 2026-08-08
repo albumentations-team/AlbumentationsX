@@ -1,11 +1,11 @@
 ---
 name: benchmark
-description: Run performance benchmarks for transform changes. Use when the user asks to benchmark, measure performance, compare speed, or when changes affect apply methods, functional layer, get_params, or core pipeline code.
+description: Run performance benchmarks for transform changes. Use when the user asks to benchmark, measure performance, compare speed, or when changes affect apply methods, functional layer, parameter generation, or core pipeline code.
 ---
 
 # Benchmark
 
-Any change touching `apply_*`, `functional.py`, `get_params`, `get_params_dependent_on_data`, `composition.py`, or `transforms_interface.py` **must** include benchmark results.
+Any change touching `apply_*`, `functional.py`, `get_params_dependent_on_data`, `composition.py`, or `transforms_interface.py` **must** include benchmark results.
 
 Before designing the benchmark, read `../performance-optimization/SKILL.md` and its required reference completely.
 Use that workflow to define candidates and the dimension that controls each candidate, such as label density for

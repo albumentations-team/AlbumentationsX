@@ -38,7 +38,7 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 
 ## 4. Random Number Generation (🔴 Critical)
 
-- [ ] All randomness lives in `get_params` or `get_params_dependent_on_data`, NOT in `apply_*`
+- [ ] All randomness lives in `get_params_dependent_on_data`, NOT in `apply_*`
 - [ ] Uses `self.py_random` for simple ops (faster)
 - [ ] Uses `self.random_generator` only when numpy arrays are needed
 - [ ] **No `np.random.*` or `random.*` module-level calls** anywhere in the class
@@ -63,7 +63,7 @@ Priority order to check:
 6. Use `albucore.resize`, not `cv2.resize`, for image resizing.
 7. Move reusable atomic image operations into Albucore.
 8. Use in-place operations where ownership and aliasing make them safe.
-9. Cache expensive setup in `get_params` / `get_params_dependent_on_data` or once per batch.
+9. Cache expensive setup in `get_params_dependent_on_data` or once per batch.
 
 ### Batch Optimization Checks
 

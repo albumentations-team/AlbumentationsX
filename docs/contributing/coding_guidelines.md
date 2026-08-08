@@ -382,16 +382,13 @@ result = transform(
 
 ### Parameter Sampling
 
-- Handle all probability calculations in `get_params` or `get_params_dependent_on_data`
+- Handle all probability calculations and random sampling in `get_params_dependent_on_data`
 - Don't perform random operations in `apply_xxx` or `__init__` methods:
 
   ```python
-  def get_params(self):
+  def get_params_dependent_on_data(self, params: dict, data: dict) -> dict:
       return {
-          "brightness": self.random_generator.uniform(
-              self.brightness_range[0],
-              self.brightness_range[1]
-          )
+          "brightness": self.py_random.uniform(*self.brightness_range),
       }
   ```
 

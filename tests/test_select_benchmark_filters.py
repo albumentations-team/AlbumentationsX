@@ -21,6 +21,12 @@ def test_select_benchmark_filters_add_pixel_family_matrix_for_pixel_changes() ->
     assert "TimeCatalogTransformSmoke" in patterns
 
 
+def test_select_benchmark_filters_add_memory_for_blur_changes() -> None:
+    patterns = select_benchmark_patterns(["albumentations/augmentations/blur/transforms.py"])
+
+    assert "PeakMemory" in patterns
+
+
 def test_select_benchmark_filters_add_geometry_and_annotation_paths_for_geometric_changes() -> None:
     patterns = select_benchmark_patterns(["albumentations/augmentations/geometric/functional.py"])
 
@@ -51,8 +57,8 @@ def test_select_benchmark_filters_returns_asv_regex() -> None:
     regex = select_benchmark_regex(["albumentations/augmentations/blur/transforms.py"])
 
     assert regex == (
-        "TimeBatch|TimeCatalogTransformSmoke|TimeCorePipeline|TimeParameterSensitivity|TimePixelFullMatrix|"
-        "TimeFunctionalPixelKernels|TimeFunctionalBlurKernels"
+        "PeakMemory|TimeBatch|TimeCatalogTransformSmoke|TimeCorePipeline|TimeParameterSensitivity|"
+        "TimePixelFullMatrix|TimeFunctionalPixelKernels|TimeFunctionalBlurKernels"
     )
 
 

@@ -15,6 +15,14 @@ DTYPES = {
     "uint8": np.uint8,
     "float32": np.float32,
 }
+MEDIAN_BLUR_CASES = (
+    ("median_blur", 3),
+    ("median_blur_k5", 5),
+    ("median_blur_k7", 7),
+)
+MEDIAN_BLUR_FUNCTIONAL_CASES = tuple(
+    (f"median_blur_k{kernel_size}", kernel_size) for _, kernel_size in MEDIAN_BLUR_CASES
+)
 IMAGE_DTYPE_PARAMS = ([*SIZES], CHANNELS, tuple(DTYPES))
 ANNOTATION_COUNTS = (10, 100, 1000)
 VOLUME_SIZES = {

@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pytest
-from albucore import to_float
+from albucore import from_float, to_float
 
 import albumentations as A
 from albumentations.augmentations.pixel import functional as fpixel
@@ -1706,6 +1706,32 @@ def test_to_sepia_rgb_multiple_images():
     assert np.all([not np.array_equal(im, tr) for im, tr in zip(images, transformed, strict=False)])
 
 
+def _restore_median_blur_channel_axis(image: np.ndarray, num_channels: int) -> np.ndarray:
+    return image[..., np.newaxis] if num_channels == 1 and image.ndim == 2 else image
+
+
+def _median_blur_uint8_reference(image: np.ndarray, kernel: int) -> np.ndarray:
+    num_channels = image.shape[-1]
+    if kernel in (3, 5) or num_channels <= 4:
+        return _restore_median_blur_channel_axis(cv2.medianBlur(image, kernel), num_channels)
+    return np.concatenate(
+        [
+            _restore_median_blur_channel_axis(cv2.medianBlur(image[..., index : index + 1], kernel), 1)
+            for index in range(num_channels)
+        ],
+        axis=-1,
+    )
+
+
+def _median_blur_reference(image: np.ndarray, kernel: int) -> np.ndarray:
+    if image.dtype == np.uint8:
+        return _median_blur_uint8_reference(image, kernel)
+    if kernel in (3, 5):
+        return _restore_median_blur_channel_axis(cv2.medianBlur(image, kernel), image.shape[-1])
+    quantized = from_float(image, np.dtype(np.uint8))
+    return to_float(_median_blur_uint8_reference(quantized, kernel))
+
+
 @pytest.mark.parametrize(
     "dtype",
     [np.uint8, np.float32],
@@ -1718,26 +1744,64 @@ def test_to_sepia_rgb_multiple_images():
     "kernel",
     [3, 5, 7],
 )
-def test_median_blur_apply_to_images(dtype: np.dtype, num_channels: int, kernel: int):
-    """Test that MedianBlur batch processing via images= produces the same results as per-image."""
+def test_median_blur_compose_target_routes(
+    dtype: type[np.uint8 | np.float32],
+    num_channels: int,
+    kernel: int,
+) -> None:
+    """MedianBlur preserves its dtype route across image, batch, and volume targets."""
     rng = np.random.default_rng(137)
 
     if dtype == np.uint8:
-        images = rng.integers(0, 256, size=(3, 50, 50, num_channels), dtype=np.uint8)
+        image = rng.integers(0, 256, size=(31, 37, num_channels), dtype=np.uint8)
     else:
-        images = rng.random((3, 50, 50, num_channels), dtype=np.float32)
+        image = rng.random((31, 37, num_channels), dtype=np.float32)
 
+    images = np.stack([image, np.flip(image, axis=0)], axis=0)
+    volume = np.stack([image, np.flip(image, axis=1)], axis=0)
+    transform = A.Compose(
+        [A.MedianBlur(blur_range=(kernel, kernel), p=1.0)],
+        save_applied_params=True,
+        seed=137,
+    )
+
+    image_result = transform(image=image)
+    images_result = transform(images=images)
+    volume_result = transform(volume=volume)
+
+    expected_image = _median_blur_reference(image, kernel)
+    expected_images = np.stack([_median_blur_reference(item, kernel) for item in images])
+    expected_volume = np.stack([_median_blur_reference(item, kernel) for item in volume])
+
+    for result, target_name, source, expected in (
+        (image_result, "image", image, expected_image),
+        (images_result, "images", images, expected_images),
+        (volume_result, "volume", volume, expected_volume),
+    ):
+        transformed = result[target_name]
+        assert transformed.shape == source.shape
+        assert transformed.dtype == source.dtype
+        assert transformed.flags.c_contiguous
+        np.testing.assert_array_equal(transformed, expected)
+        assert result["applied_transforms"] == [("MedianBlur", {"p": 1.0, "blur_range": kernel})]
+
+    per_image_results = np.stack([transform(image=item)["image"] for item in images])
+    per_volume_results = np.stack([transform(image=item)["image"] for item in volume])
+    np.testing.assert_array_equal(images_result["images"], per_image_results)
+    np.testing.assert_array_equal(volume_result["volume"], per_volume_results)
+
+
+@pytest.mark.parametrize("kernel", [3, 5])
+def test_median_blur_native_float32_preserves_sub_uint8_precision(kernel: int) -> None:
+    image = np.linspace(0.1001, 0.1099, 31 * 37, dtype=np.float32).reshape(31, 37, 1)
     transform = A.Compose([A.MedianBlur(blur_range=(kernel, kernel), p=1.0)])
 
-    # Batch result via images= key
-    batch_result = transform(images=images)["images"]
+    result = transform(image=image)["image"]
+    native = _restore_median_blur_channel_axis(cv2.medianBlur(image, kernel), 1)
+    legacy = to_float(_median_blur_uint8_reference(from_float(image, np.dtype(np.uint8)), kernel))
 
-    # Per-image results via image= key
-    per_image_results = np.stack([transform(image=img)["image"] for img in images])
-
-    assert batch_result.shape == images.shape
-    assert batch_result.dtype == images.dtype
-    np.testing.assert_array_equal(batch_result, per_image_results)
+    np.testing.assert_array_equal(result, native)
+    assert not np.array_equal(result, legacy)
 
 
 @pytest.mark.parametrize(

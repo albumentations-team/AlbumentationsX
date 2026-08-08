@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 
@@ -11,6 +12,7 @@ import albumentations
 from benchmarks.common import (
     CHANNELS,
     DTYPES,
+    MEDIAN_BLUR_CASES,
     dtype_from_name,
     make_image,
     make_masks,
@@ -45,6 +47,12 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     ),
     "gauss_noise": BatchSpec(lambda: albumentations.GaussNoise(p=1.0)),
     "horizontal_flip": BatchSpec(lambda: albumentations.HorizontalFlip(p=1.0)),
+    **{
+        name: BatchSpec(
+            partial(albumentations.MedianBlur, blur_range=(kernel_size, kernel_size), p=1.0),
+        )
+        for name, kernel_size in MEDIAN_BLUR_CASES
+    },
     "normalize": BatchSpec(lambda: albumentations.Normalize(p=1.0)),
     "random_brightness_contrast": BatchSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
     "random_tone_curve": BatchSpec(lambda: albumentations.RandomToneCurve(p=1.0)),

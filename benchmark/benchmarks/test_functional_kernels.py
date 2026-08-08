@@ -8,7 +8,7 @@ from typing import Any
 
 import cv2
 import numpy as np
-from albucore import resize3d
+from albucore import median_blur, resize3d
 
 from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.geometric import functional as fgeometric
@@ -18,6 +18,7 @@ from benchmarks.common import (
     ANNOTATION_COUNTS,
     CHANNELS,
     DTYPES,
+    MEDIAN_BLUR_FUNCTIONAL_CASES,
     SIZES,
     VOLUME_SIZES,
     dtype_from_name,
@@ -101,6 +102,7 @@ FUNCTIONAL_BLUR_KERNELS: Mapping[str, KernelSupport] = {
     "zoom_blur": KernelSupport(),
     "mode_filter": KernelSupport(),
     "glass_blur": KernelSupport(channels=(1, 3), sizes=("small", "medium")),
+    **{name: KernelSupport() for name, _ in MEDIAN_BLUR_FUNCTIONAL_CASES},
 }
 
 
@@ -399,6 +401,13 @@ def _call_glass_blur(benchmark: Any) -> np.ndarray:
     return fblur.glass_blur(benchmark.image, 0.7, 2, benchmark.glass_iterations, benchmark.dxy, "fast")
 
 
+def _make_median_blur_call(kernel_size: int) -> ImageKernelCall:
+    def call(benchmark: Any) -> np.ndarray:
+        return median_blur(benchmark.image, kernel_size)
+
+    return call
+
+
 BLUR_CALLS: Mapping[str, ImageKernelCall] = {
     "box_blur": _call_box_blur,
     "convolve": _call_convolve,
@@ -406,6 +415,7 @@ BLUR_CALLS: Mapping[str, ImageKernelCall] = {
     "zoom_blur": _call_zoom_blur,
     "mode_filter": _call_mode_filter,
     "glass_blur": _call_glass_blur,
+    **{name: _make_median_blur_call(kernel_size) for name, kernel_size in MEDIAN_BLUR_FUNCTIONAL_CASES},
 }
 
 

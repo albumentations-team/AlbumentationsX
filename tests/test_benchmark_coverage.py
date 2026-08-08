@@ -25,7 +25,7 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
-    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 10
+    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 11
     assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 8
 
 
@@ -118,6 +118,21 @@ def test_benchmark_coverage_details_map_spatter_modes_to_batch_matrix() -> None:
         "spatter_rain|images|small|3|uint8|4",
         "spatter_rain|images|large|3|float32|16",
     }.issubset({case["case_id"] for case in spatter["asv_cases"] if case["layer"] == "batch_matrix"})
+
+
+def test_benchmark_coverage_details_map_median_blur_kernel_and_dtype_routes() -> None:
+    median_blur = _coverage_for("MedianBlur")
+
+    cases_by_layer = {
+        layer: {case["case_id"] for case in median_blur["asv_cases"] if case["layer"] == layer}
+        for layer in ("batch_matrix", "direct_kernel", "family_matrix", "memory")
+    }
+    assert "median_blur_k5|images|small|5|float32|4" in cases_by_layer["batch_matrix"]
+    assert "median_blur_k3|large|1|float32" in cases_by_layer["direct_kernel"]
+    assert "median_blur_k7|medium|3|uint8" in cases_by_layer["family_matrix"]
+    assert "peakmem_median_blur_large_float32" in cases_by_layer["memory"]
+    assert {"uint8", "float32"}.issubset(median_blur["scenario_contract"]["dtypes"])
+    assert {"image", "images"}.issubset(median_blur["scenario_contract"]["targets"])
 
 
 def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transforms() -> None:

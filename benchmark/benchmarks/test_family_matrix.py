@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from functools import partial
 
 import albumentations
 from benchmarks.catalog import benchmark_specs
@@ -13,6 +14,7 @@ from benchmarks.common import (
     ANNOTATION_COUNTS,
     CHANNELS,
     DTYPES,
+    MEDIAN_BLUR_CASES,
     SIZES,
     VOLUME_SIZES,
     dtype_from_name,
@@ -125,7 +127,12 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     ),
     "gaussian_blur": PixelSpec(lambda: albumentations.GaussianBlur(blur_range=(3, 3), p=1.0)),
     "glass_blur": PixelSpec(lambda: albumentations.GlassBlur(sigma=0.7, max_delta=2, iterations=1, p=1.0)),
-    "median_blur": PixelSpec(lambda: albumentations.MedianBlur(blur_range=(3, 3), p=1.0), dtypes=("uint8",)),
+    **{
+        name: PixelSpec(
+            partial(albumentations.MedianBlur, blur_range=(kernel_size, kernel_size), p=1.0),
+        )
+        for name, kernel_size in MEDIAN_BLUR_CASES
+    },
     "mode_filter": PixelSpec(lambda: albumentations.ModeFilter(kernel_range=(3, 3), p=1.0)),
     "motion_blur": PixelSpec(lambda: albumentations.MotionBlur(blur_range=(5, 5), p=1.0), dtypes=("uint8",)),
     "zoom_blur": PixelSpec(
@@ -506,6 +513,11 @@ class PeakMemoryHotPaths:
         self.resize = albumentations.Compose([albumentations.Resize(height=512, width=512, p=1.0)], strict=True)
         self.affine = albumentations.Compose([albumentations.Affine(scale=(1.05, 1.05), p=1.0)], strict=True)
         self.normalize = albumentations.Compose([albumentations.Normalize(p=1.0)], strict=True)
+        self.median_blur_float32 = albumentations.Compose(
+            [albumentations.MedianBlur(blur_range=(5, 5), p=1.0)],
+            strict=True,
+        )
+        self.large_float32_multichannel = make_image("large", 5, dtype_from_name("float32"))
         self.batch_pipeline = albumentations.Compose(
             [
                 albumentations.HorizontalFlip(p=1.0),
@@ -547,6 +559,9 @@ class PeakMemoryHotPaths:
 
     def peakmem_normalize_large_rgb(self) -> None:
         self.normalize(image=self.large_rgb)
+
+    def peakmem_median_blur_large_float32(self) -> None:
+        self.median_blur_float32(image=self.large_float32_multichannel)
 
     def peakmem_batch_pipeline_medium_rgb(self) -> None:
         self.batch_pipeline(images=self.medium_batch)

@@ -160,7 +160,7 @@ covers:
   auto-contrast, HSV shifting, RGB matrix transforms, dropout, compression,
   solarize, and posterize
 - blur/filter kernels such as box blur, convolution, defocus, zoom blur, mode
-  filter, and glass blur
+  filter, glass blur, and median blur with kernel sizes 3, 5, and 7
 - 3D kernels such as crop, pad, cutout, cube symmetry, and tile swapping
 
 Direct-kernel coverage is summarized under `direct_kernel_cases` in the JSON
@@ -222,6 +222,7 @@ Peak-memory checks must cover allocation-heavy paths:
 - batch image pipeline
 - mosaic
 - copy-paste
+- large float32 median blur
 - volume padding
 
 Memory results from shared runners are advisory until enough scheduled data

@@ -442,8 +442,8 @@ class MotionBlur(Blur):
 
 
 class MedianBlur(Blur):
-    """Replace each pixel with median in a square window. Removes salt-and-pepper noise; edges
-    sharper than box or Gaussian. Kernel size from blur_range.
+    """Remove impulse noise by replacing each pixel with the median of a square neighborhood,
+    smoothing isolated outliers while keeping edges crisp.
 
     This transform uses a median filter to blur the input image. Median filtering is particularly
     effective at removing salt-and-pepper noise while preserving edges, making it a popular choice
@@ -451,7 +451,8 @@ class MedianBlur(Blur):
 
     Args:
         blur_range (tuple[int, int]): Inclusive range of the median filter aperture linear size.
-            Both ends must be odd and >= 3.
+            Input bounds below 3, even bounds, and descending ranges are adjusted to valid odd
+            values with a UserWarning.
             Default: (3, 7)
 
         p (float): Probability of applying the transform. Default: 0.5
@@ -466,7 +467,7 @@ class MedianBlur(Blur):
         Any
 
     Note:
-        - The kernel size (aperture linear size) must always be odd and greater than 1.
+        - The applied kernel is a square odd size of at least 3.
         - Unlike mean blur or Gaussian blur, median blur uses the median of all pixels under
           the kernel area, making it more robust to outliers.
         - This transform is particularly useful for:
@@ -476,6 +477,10 @@ class MedianBlur(Blur):
         - For color images, the median is calculated independently for each channel.
         - Larger kernel sizes result in stronger blurring effects but may also remove
           fine details from the image.
+        - Float32 images with kernel sizes 3 and 5 are filtered directly in CV_32F without uint8 quantization.
+        - For kernel sizes 7 and larger, OpenCV accepts only CV_8U input, so values are quantized to uint8 for
+          filtering and converted back to float32. The output dtype is preserved, but differences smaller than
+          1/255 may be lost.
 
     Examples:
         >>> import numpy as np
@@ -560,7 +565,7 @@ class MedianBlur(Blur):
 
     References:
         - Median filter: https://en.wikipedia.org/wiki/Median_filter
-        - OpenCV medianBlur: https://docs.opencv.org/master/d4/d86/group__imgproc__filter.html#ga564869aa33e58769b4469101aac458f9
+        - OpenCV medianBlur: https://docs.opencv.org/4.x/d4/d86/group__imgproc__filter.html#ga564869aa33e58769b4469101aac458f9
 
     """
 

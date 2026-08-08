@@ -1781,7 +1781,8 @@ class Flip3D(Transform3D):
         flip_axes: tuple[AxisIndex3D, ...],
         **params: Any,
     ) -> VolumeType:
-        return cast("VolumeType", np.flip(volume, axis=flip_axes))
+        flipped: np.ndarray = np.flip(volume, axis=flip_axes)
+        return cast("VolumeType", flipped)
 
     def apply_to_mask3d(
         self,
@@ -1789,7 +1790,8 @@ class Flip3D(Transform3D):
         flip_axes: tuple[AxisIndex3D, ...],
         **params: Any,
     ) -> VolumeType:
-        return cast("VolumeType", np.flip(mask3d, axis=flip_axes))
+        flipped: np.ndarray = np.flip(mask3d, axis=flip_axes)
+        return cast("VolumeType", flipped)
 
     def apply_to_keypoints(
         self,

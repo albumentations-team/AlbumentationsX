@@ -192,8 +192,8 @@ The current ASV suite includes these production coverage layers:
 - Direct functional kernels: shared geometry, annotation, pixel, blur/filter,
   and 3D kernels benchmarked outside `Compose` to identify whether changes come
   from raw kernels or pipeline overhead.
-- Memory checks: allocation-heavy resize, affine, normalize, batch pipeline,
-  mosaic, copy-paste, and volume padding paths.
+- Memory checks: allocation-heavy resize, affine, normalize, large float32
+  median blur, batch pipeline, mosaic, copy-paste, and volume padding paths.
 
 Any task that changes transform hot paths, functional kernels, parameter
 generation, or core pipeline code should include before/after benchmark

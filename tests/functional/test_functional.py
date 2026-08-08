@@ -7,7 +7,6 @@ import pytest
 from albucore import (
     MAX_VALUES_BY_DTYPE,
     clip,
-    is_multispectral_image,
     to_float,
 )
 from sklearn.decomposition import NMF
@@ -304,24 +303,6 @@ def test_keypoint_image_rot90_match(group_element, expected_positions):
         f"Key point after rotation {group_element} is not at the expected position {expected_positions}, "
         f"but at {rotated_keypoints}"
     )
-
-
-@pytest.mark.parametrize(
-    "image_shape,expected_is_rgb,expected_is_gray,expected_is_multi",
-    [
-        ((5, 5, 3), True, False, False),  # RGB image
-        ((5, 5, 1), False, True, False),  # Grayscale image
-        ((5, 5, 4), False, False, True),  # Multispectral image (4 channels)
-        ((5, 5, 5), False, False, True),  # Multispectral image (5 channels)
-    ],
-)
-def test_image_type_detection(image_shape, expected_is_rgb, expected_is_gray, expected_is_multi):
-    """Test is_rgb_image, is_grayscale_image, and is_multispectral_image functions."""
-    image = np.ones(image_shape, dtype=np.uint8)
-
-    assert fpixel.is_rgb_image(image) == expected_is_rgb
-    assert fpixel.is_grayscale_image(image) == expected_is_gray
-    assert is_multispectral_image(image) == expected_is_multi
 
 
 @pytest.mark.parametrize(

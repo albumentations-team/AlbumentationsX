@@ -12,8 +12,6 @@
 > **Design Documents:**
 >
 > - `docs/design/bounding_boxes.md` - **Complete bounding box processing guide (HBB/OBB, clipping, clamping, filtering)**
-> - `docs/design/dithering.md` - Dithering transform design
-> - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 > - `docs/design/mosaic.md` - Mosaic transform technical specification
 > - `docs/design/applied-config-replay-contracts.md` - Applied configuration and replay contracts
 > - `docs/design/transform-target-contracts.md` - Generated target profiles and capability-driven coverage

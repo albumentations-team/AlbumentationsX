@@ -13,28 +13,19 @@ Design documents are created for:
 
 **Note**: Regular bug fixes and small improvements should be documented in commit messages and PR descriptions, not as separate design documents.
 
-## Available Design Documents
+## Current Architectural References
 
-### [Dithering Transform](dithering.md)
+### [Bounding Box Processing](bounding_boxes.md)
 
-Design specification for the Dithering transform, which applies various dithering algorithms (Floyd-Steinberg, Bayer matrix, etc.) to reduce color depth in images.
+Reference for HBB and OBB coordinate formats, clipping, filtering, and processor behavior.
 
-**Status**: Design complete, pending implementation
-**Phase**: Planning
+### [Instance Binding](instance_binding.md)
 
-### [Keypoint Label Swapping](keypoint_label_swapping.md)
-
-Design for semantic keypoint label swapping during geometric transforms (e.g., swapping left/right eye labels during horizontal flip).
-
-**Status**: Implemented
-**Phase**: Complete
+Structural contract for keeping masks, bounding boxes, keypoints, and labels aligned as instances are filtered.
 
 ### [Mosaic Transform](mosaic.md)
 
 Technical specification for the Mosaic transform's data handling, including label encoding and preprocessing for multiple input images.
-
-**Status**: Implemented
-**Phase**: Complete
 
 ### [Applied Configuration Replay Contracts](applied-config-replay-contracts.md)
 
@@ -42,17 +33,20 @@ Implemented configuration-centric contract system that verifies strict JSON tran
 reconstruction, replay execution, exact output where declared, and non-default coverage for every public constructor
 parameter.
 
-**Status**: Implemented
-**Phase**: Complete
+### [Generated Transform Target Contracts](transform-target-contracts.md)
+
+Coverage contract for the shared transform-case registry and reusable target profiles.
+
+## Active Design Work
 
 ### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
 
 Plan for making Torch a required dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
-the existing `Compose`. The route planner can cross the representation boundary in either direction when the complete
-measured path does not regress.
+the existing `Compose`. The future route planner may cross the representation boundary in either direction when the
+complete measured path does not regress.
 
-**Status**: Proposed
-**Phase**: Planning
+**Status**: In progress. The CPU Tensor boundary is implemented; capability routing and per-family Tensor paths remain
+planned.
 
 ## Creating New Design Documents
 

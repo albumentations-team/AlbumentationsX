@@ -6,6 +6,13 @@ always_apply: true
 
 # AlbumentationsX Quick Rules
 
+## Automation Boundary
+- Before creating or expanding a skill, classify the rule first: deterministic source-local invariants belong in a focused
+  pre-commit hook or quality-gate check, with tests.
+- Keep skills for architecture, trade-offs, performance decisions, workflow, and reviewer judgment that tooling cannot
+  prove reliably.
+- Do not create a skill merely to repeat an automated check; make the hook diagnostic the source of the mechanical rule.
+
 ## Code Style
 - Avoid unclear variable names (e.g., single-letter `k`); use descriptive names like `rot90_count`
 - `get_params_dependent_on_data` should be minimal and clear - just call other functions from it
@@ -80,8 +87,6 @@ See these documents for comprehensive guidelines:
 - `AGENTS.md` - Codex entrypoint that points to the shared guidelines
 
 ### Design Documents
-- `docs/design/dithering.md` - Dithering transform design
-- `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 - `docs/design/mosaic.md` - Mosaic transform technical specification
 - `docs/design/applied-config-replay-contracts.md` - Applied configuration replay contract architecture
 - `docs/design/transform-target-contracts.md` - Generated transform/target contract architecture

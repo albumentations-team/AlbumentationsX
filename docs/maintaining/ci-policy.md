@@ -194,6 +194,3 @@ Always-run evidence steps may pass `--allow-incomplete` to
 `tools/pytest_summary.py` so early failures still produce explicit evidence.
 Release reports remain strict and require complete test, environment,
 benchmark, performance-budget, and security evidence.
-
-The design rationale, measured baseline, and future impact-selection criteria
-are recorded in `docs/maintaining/ci-greenfield-plan.md`.

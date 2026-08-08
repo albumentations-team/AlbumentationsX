@@ -46,7 +46,7 @@ def _is_pair_mapping_annotation(node: ast.expr) -> bool:
     if not isinstance(node, ast.Subscript) or _annotation_name(node.value) not in {"dict", "Dict"}:
         return False
     items = _slice_items(node.slice)
-    return len(items) == 2 and _is_pair_annotation(items[1])
+    return len(items) == 2 and _is_range_annotation(items[1])
 
 
 def _is_none_annotation(node: ast.expr) -> bool:

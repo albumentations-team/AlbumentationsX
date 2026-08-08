@@ -39,7 +39,10 @@ def _local_target(source: Path, destination: str) -> Path | None:
     parsed = urlsplit(destination)
     if parsed.scheme or parsed.netloc or not parsed.path:
         return None
-    return (source.parent / unquote(parsed.path)).resolve()
+    path = Path(unquote(parsed.path))
+    if path.is_absolute():
+        return (REPO_ROOT / path.relative_to(path.anchor)).resolve()
+    return (source.parent / path).resolve()
 
 
 def collect_errors(paths: Iterable[Path]) -> list[str]:

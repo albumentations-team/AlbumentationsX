@@ -55,6 +55,7 @@ def test_range_parameter_annotations_require_pair_types(tmp_path: Path) -> None:
         "        size_range: tuple[int, int] | tuple[float, float],\n"
         "        optional_range: tuple[int, int] | None,\n"
         "        axis_range: dict[str, tuple[float, float]],\n"
+        "        optional_axis_range: dict[str, tuple[float, float] | None],\n"
         "        named_range: PixelLengthRange | None,\n"
         "        mask_range: MaskLengthRange,\n"
         "        axis_ranges: AxisRanges3D,\n"
@@ -82,6 +83,7 @@ def test_local_markdown_links_ignore_external_urls_and_fenced_examples(tmp_path:
     target.write_text("target", encoding="utf-8")
     source.write_text(
         "[Local](target.md#section)\n"
+        "[Root-relative](/docs/target.md#section)\n"
         "[External](https://albumentations.ai/docs/)\n"
         "```markdown\n"
         "[Example](not-a-real-file.md)\n"

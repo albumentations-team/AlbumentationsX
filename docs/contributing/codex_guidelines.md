@@ -12,8 +12,6 @@
 > **Design Documents:**
 >
 > - `docs/design/bounding_boxes.md` - **Complete bounding box processing guide (HBB/OBB, clipping, clamping, filtering)**
-> - `docs/design/dithering.md` - Dithering transform design
-> - `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
 > - `docs/design/mosaic.md` - Mosaic transform technical specification
 > - `docs/design/applied-config-replay-contracts.md` - Applied configuration and replay contracts
 > - `docs/design/transform-target-contracts.md` - Generated target profiles and capability-driven coverage
@@ -111,7 +109,7 @@ def __init__(self, brightness: float | tuple[float, float] = 0.2):
 3. **cv2 operations over numpy when benchmarked faster** - generally faster for image processing, but not automatic
 4. **Vectorized numpy over loops** - eliminate Python loops where possible
 5. **In-place operations** - reduce memory allocations and unnecessary copies
-6. **Cache computations** in `get_params` or `get_params_dependent_on_data`
+6. **Cache computations** in `get_params_dependent_on_data`
 7. **Remove dead code** - unused code impacts performance and maintainability
 8. Apply decorators `@uint8_io` or `@float32_io` for type consistency
 
@@ -177,7 +175,7 @@ def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> Image
 - Use `self.py_random` for simple random operations (faster)
 - Use `self.random_generator` only when numpy arrays are needed
 - **NEVER** use `np.random` or `random` module directly
-- All random operations in `get_params` or `get_params_dependent_on_data`, NOT in `apply_xxx` methods
+- All random operations in `get_params_dependent_on_data`, NOT in `apply_xxx` methods
 
 ### Testing
 

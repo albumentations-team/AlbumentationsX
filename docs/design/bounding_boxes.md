@@ -122,7 +122,7 @@ All bounding boxes are converted to **normalized Albumentations format** interna
 from albumentations import BboxParams
 
 bbox_params = BboxParams(
-    bbox_format='pascal_voc',      # Input format
+    coord_format='pascal_voc',     # Input format
     bbox_type='hbb',               # 'hbb' or 'obb'
     label_fields=['class_labels'], # Names of label arrays
 )
@@ -130,10 +130,10 @@ bbox_params = BboxParams(
 
 ### Complete Parameter Reference
 
-#### `bbox_format: Literal['pascal_voc', 'coco', 'yolo', 'cxcywh', 'albumentations']`
-Input coordinate format: `'pascal_voc'`, `'coco'`, `'yolo'`, `'cxcywh'`, or `'albumentations'`
+Every `BboxParams` call requires `coord_format`.
 
-**Deprecated**: The `format` parameter is deprecated. Use `bbox_format` instead to avoid shadowing the built-in `format()` function.
+#### `coord_format: Literal['pascal_voc', 'coco', 'yolo', 'cxcywh', 'albumentations']`
+Input coordinate format: `'pascal_voc'`, `'coco'`, `'yolo'`, `'cxcywh'`, or `'albumentations'`
 
 #### `bbox_type: Literal['hbb', 'obb']`
 Type of bounding box:
@@ -159,25 +159,25 @@ transform(
 #### `min_area: float = 0.0`
 Minimum area (in pixels²) for a bbox to be kept after transformation.
 ```python
-BboxParams(min_area=100.0)  # Remove boxes smaller than 100px²
+BboxParams(coord_format='pascal_voc', min_area=100.0)  # Remove boxes smaller than 100px²
 ```
 
 #### `min_visibility: float = 0.0`
 Minimum visible area ratio [0.0, 1.0] after transformation:
 ```python
-BboxParams(min_visibility=0.3)  # Remove boxes with <30% visible area
+BboxParams(coord_format='pascal_voc', min_visibility=0.3)  # Remove boxes with <30% visible area
 ```
 
 #### `min_width: float = 0.0` and `min_height: float = 0.0`
 Minimum dimensions (in pixels) after transformation:
 ```python
-BboxParams(min_width=10.0, min_height=10.0)  # Remove tiny boxes
+BboxParams(coord_format='pascal_voc', min_width=10.0, min_height=10.0)  # Remove tiny boxes
 ```
 
 #### `max_accept_ratio: float | None = None`
 Maximum aspect ratio (width/height or height/width) to accept:
 ```python
-BboxParams(max_accept_ratio=3.0)  # Remove boxes with aspect ratio > 3:1
+BboxParams(coord_format='pascal_voc', max_accept_ratio=3.0)  # Remove boxes with aspect ratio > 3:1
 ```
 
 #### `check_each_transform: bool = True`
@@ -186,15 +186,13 @@ If `True`, validates bbox compatibility with each transform at pipeline creation
 #### `clip_bboxes_on_input: bool = False`
 If `True`, clips bboxes to image boundaries **once at pipeline start** (before any transforms):
 ```python
-BboxParams(clip_bboxes_on_input=True)  # Fix invalid input coordinates (e.g., YOLO -1e-6)
+BboxParams(coord_format='yolo', clip_bboxes_on_input=True)  # Fix invalid input coordinates (e.g., YOLO -1e-6)
 ```
 - Runs during `preprocess()` only
 - Fixes malformed input bboxes
 - Independent of `clip_after_transform`
 
 **OBB warning**: For OBB, clipping converts boxes whose corners extend outside [0, 1] to axis-aligned boxes (angle=0). This destroys orientation and causes misalignment with Affine/rotation transforms. **Recommend `clip_bboxes_on_input=False` for OBB** unless you only need to fix minor coordinate errors (boxes fully inside bounds are not affected).
-
-**Deprecated**: The `clip` parameter is deprecated. Use `clip_bboxes_on_input` instead for clarity.
 
 #### `clip_after_transform: bool = True`
 Controls how bboxes are clipped **after each transform** in the pipeline:
@@ -215,14 +213,14 @@ Controls how bboxes are clipped **after each transform** in the pipeline:
 ```python
 # Strict: clip input errors AND after each transform
 BboxParams(
-    bbox_format='yolo',
+    coord_format='yolo',
     clip_bboxes_on_input=True,  # Fix input errors once
     clip_after_transform=True,  # Clip after each transform
 )
 
 # Lenient: allow temporary excursions
 BboxParams(
-    bbox_format='albumentations',
+    coord_format='albumentations',
     clip_bboxes_on_input=True,   # Fix input errors once
     clip_after_transform=False,  # Allow boxes outside [0,1] during pipeline
 )
@@ -373,11 +371,11 @@ BboxParams(coord_format='yolo', clip_bboxes_on_input=True)
 
 ```python
 # Example: Crop that moves bbox outside bounds
-BboxParams(clip_after_transform=True)
+BboxParams(coord_format='pascal_voc', clip_after_transform=True)
 # After crop: [-0.1, -0.1, 1.1, 1.1]  # Outside bounds
 # After clip: [0.0, 0.0, 1.0, 1.0]   # Clipped to [0, 1]
 
-BboxParams(clip_after_transform=False)
+BboxParams(coord_format='pascal_voc', clip_after_transform=False)
 # After crop: [-0.1, -0.1, 1.1, 1.1]  # Left as-is
 # Later transform (e.g., pad) may bring it back inside
 ```
@@ -389,7 +387,7 @@ BboxParams(clip_after_transform=False)
 | Fix malformed input | ✅ `True` | N/A |
 | Strict bounds enforcement | Optional | `True` |
 | Lenient pipeline (crop→pad) | Optional | `False` |
-| OBB with accurate geometry | Optional | `True` |
+| OBB with accurate geometry | Optional | `False` |
 | Performance critical (HBB only) | Optional | `True` (fast) |
 
 ---
@@ -402,7 +400,7 @@ Filters are applied after each transform (after clamping):
 
 ```python
 # Remove boxes smaller than 100px²
-BboxParams(min_area=100.0)
+BboxParams(coord_format='pascal_voc', min_area=100.0)
 
 # Example:
 # Box: [0.1, 0.1, 0.2, 0.15] on 1000x1000 image
@@ -414,7 +412,7 @@ BboxParams(min_area=100.0)
 
 ```python
 # Remove boxes with less than 30% visible area
-BboxParams(min_visibility=0.3)
+BboxParams(coord_format='pascal_voc', min_visibility=0.3)
 
 # Example after crop:
 # Original box area: 1000px²
@@ -427,7 +425,7 @@ BboxParams(min_visibility=0.3)
 
 ```python
 # Remove boxes smaller than 10px in either dimension
-BboxParams(min_width=10.0, min_height=10.0)
+BboxParams(coord_format='pascal_voc', min_width=10.0, min_height=10.0)
 
 # Example:
 # Box: [0.1, 0.1, 0.105, 0.2] on 1000x1000 image
@@ -440,7 +438,7 @@ BboxParams(min_width=10.0, min_height=10.0)
 
 ```python
 # Remove boxes with aspect ratio > 5:1
-BboxParams(max_accept_ratio=5.0)
+BboxParams(coord_format='pascal_voc', max_accept_ratio=5.0)
 
 # Example:
 # Box: [0.1, 0.1, 0.7, 0.15] on 1000x1000 image
@@ -511,7 +509,8 @@ transform = A.Compose([...], bbox_params=A.BboxParams(coord_format='pascal_voc')
 
 # ✅ GOOD: Explicit format handling
 bboxes = load_bboxes_from_file()
-if bbox_format == 'yolo':
+coord_format = 'yolo'  # Declared by the dataset
+if coord_format == 'yolo':
     bbox_params = A.BboxParams(coord_format='yolo', bbox_type='obb')
 ```
 
@@ -520,7 +519,7 @@ if bbox_format == 'yolo':
 ```python
 # ✅ GOOD: Clip malformed external data
 bbox_params = A.BboxParams(
-    bbox_format='yolo',
+    coord_format='yolo',
     clip_bboxes_on_input=True,  # Fix rounding errors from external sources
 )
 ```
@@ -529,10 +528,10 @@ bbox_params = A.BboxParams(
 
 ```python
 # Strict pipeline - always keep boxes in bounds
-bbox_params = A.BboxParams(clip_after_transform=True)
+bbox_params = A.BboxParams(coord_format='pascal_voc', clip_after_transform=True)
 
 # Lenient pipeline - allow temporary excursions
-bbox_params = A.BboxParams(clip_after_transform=False)
+bbox_params = A.BboxParams(coord_format='pascal_voc', clip_after_transform=False)
 ```
 
 ### 4. Set Meaningful Filters
@@ -543,7 +542,7 @@ bbox_params = A.BboxParams(coord_format='pascal_voc')
 
 # ✅ GOOD: Filter out problematic boxes
 bbox_params = A.BboxParams(
-    bbox_format='pascal_voc',
+    coord_format='pascal_voc',
     min_area=100.0,        # Remove tiny boxes
     min_visibility=0.3,    # Remove heavily cropped boxes
     min_width=5.0,         # Remove thin boxes
@@ -561,7 +560,7 @@ if bboxes.shape[1] >= 5:
 
 # ✅ GOOD: Explicit configuration
 bbox_params = A.BboxParams(
-    bbox_format='albumentations',
+    coord_format='albumentations',
     bbox_type='obb',  # User knows their data format
     label_fields=['class_ids', 'track_ids'],  # May add columns
 )
@@ -574,7 +573,7 @@ bbox_params = A.BboxParams(
 transform = A.Compose([
     A.RandomCrop(width=512, height=512),
 ], bbox_params=A.BboxParams(
-    bbox_format='pascal_voc',
+    coord_format='pascal_voc',
     label_fields=['class_labels', 'track_ids']
 ))
 
@@ -601,11 +600,10 @@ if len(result['bboxes']) == 0:
 
 ```python
 # ✅ GOOD: Use consistent angle convention
-# Albumentations uses [-180, 180) degrees
-# Angle is automatically normalized
+# OBBs fitted from corners use the canonical [-90, 90) degree range.
+# A geometry-changing transform refits 450 degrees as -90 degrees.
 
-bbox_obb = [0.2, 0.2, 0.8, 0.8, 450.0]  # Input
-# After normalization: [0.2, 0.2, 0.8, 0.8, 90.0]  # 450 % 360 = 90
+bbox_obb = [0.2, 0.2, 0.8, 0.8, 450.0]
 ```
 
 ### 9. Testing Transforms
@@ -633,21 +631,21 @@ for bbox in test_cases:
 ```python
 # For HBB with many boxes and strict bounds:
 bbox_params = A.BboxParams(
-    bbox_format='yolo',
+    coord_format='yolo',
     bbox_type='hbb',
     clip_after_transform=True,  # Fast for HBB
 )
 
-# For OBB with accurate geometry (slower):
+# For OBB geometry that must remain oriented:
 bbox_params = A.BboxParams(
-    bbox_format='albumentations',
+    coord_format='albumentations',
     bbox_type='obb',
-    clip_after_transform=True,  # Refits boxes, may change angle
+    clip_after_transform=False,  # Preserve orientation; a later transform may bring corners back in bounds
 )
 
 # For maximum performance (careful!):
 bbox_params = A.BboxParams(
-    bbox_format='albumentations',
+    coord_format='albumentations',
     clip_after_transform=False,  # No clipping after transforms
 )
 ```
@@ -667,10 +665,6 @@ Key takeaways:
 5. **Filtering**: Applied after each transform based on area, visibility, dimensions
 6. **OBB angle**: Preserved during coordinate shifts, updated by rotation transforms
 7. **Label fields**: Use `label_fields` for additional per-bbox data
-
-**Deprecated parameters**:
-- `format` → use `bbox_format` (avoids shadowing built-in)
-- `clip` → use `clip_bboxes_on_input` (clearer timing)
 
 For implementation details, see:
 - `albumentations/core/bbox_utils.py`: BboxParams and BboxProcessor

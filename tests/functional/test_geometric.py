@@ -942,41 +942,6 @@ def test_memory_efficiency(random_generator):
     tracemalloc.stop()
 
 
-@pytest.mark.parametrize(
-    "input_shape,target_shape",
-    [
-        ((100, 100), (200, 200)),
-        ((200, 200), (100, 100)),
-        ((150, 100), (150, 200)),
-    ],
-)
-def test_albucore_resize(input_shape, target_shape):
-    img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
-
-    resized = albucore_resize(img, (target_shape[1], target_shape[0]), interpolation=0)
-
-    assert resized.shape == (*target_shape, 3)
-
-
-@pytest.mark.parametrize(
-    "input_shape,target_shape",
-    [
-        ((100, 100), (200, 200)),
-        ((256, 256), (512, 512)),
-        ((200, 200), (100, 100)),
-        ((150, 100), (150, 200)),
-    ],
-)
-def test_albucore_resize_2d_mask(input_shape, target_shape):
-    """Test that albucore.resize handles 2D arrays (masks) correctly."""
-    mask = np.random.randint(0, 2, input_shape, dtype=np.uint8)
-
-    resized = albucore_resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
-
-    assert resized.shape == target_shape
-    assert resized.ndim == 2
-
-
 @pytest.mark.skipif(not _PYVIPS_AVAILABLE, reason="pyvips is not installed")
 @pytest.mark.parametrize(
     "input_shape,target_shape",

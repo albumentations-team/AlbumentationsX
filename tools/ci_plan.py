@@ -87,7 +87,6 @@ QUALITY_CONFIG_PATHS = {
     "pyproject.toml",
 }
 CI_POLICY_PATHS = {
-    "docs/maintaining/ci-greenfield-plan.md",
     "docs/maintaining/ci-policy.md",
     "docs/maintaining/correctness-and-compatibility-report.md",
     "docs/maintaining/correctness-report-template.md",

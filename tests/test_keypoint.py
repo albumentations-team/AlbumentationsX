@@ -725,6 +725,15 @@ def test_keypoint_vh_flip_equivalence(keypoint, rows, cols):
     ), "rot180 not equivalent to vflip + hflip"
 
 
+@pytest.mark.parametrize("angle", [0, np.pi / 2, np.pi, 3 * np.pi / 2, 7 * np.pi / 4])
+def test_keypoints_transpose_is_involution(angle: float) -> None:
+    keypoints = np.array([[10, 20, 0, angle, 1]], dtype=np.float32)
+
+    transposed = fgeometric.keypoints_transpose(keypoints)
+    np.testing.assert_allclose(transposed[0, 3], (np.pi / 2 - angle) % (2 * np.pi), atol=1e-6)
+    np.testing.assert_allclose(fgeometric.keypoints_transpose(transposed), keypoints, atol=1e-6)
+
+
 def test_swap_tiles_on_keypoints_basic():
     keypoints = np.array([[10, 10], [30, 30], [50, 50]])
     tiles = np.array([[0, 0, 20, 20], [20, 20, 40, 40], [40, 40, 60, 60]])

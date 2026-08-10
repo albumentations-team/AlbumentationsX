@@ -1400,6 +1400,40 @@ def test_flip3d_odd_reflections_remap_keypoint_labels_without_reordering_rows(
     assert result["side"] == [3, 2]
 
 
+@pytest.mark.parametrize(
+    ("label_mapping", "expected_side", "expected_view"),
+    [
+        ({"Flip3D": {"side": {2: 3, 3: 2}}}, [3, 2], [4, 5]),
+        ({"Flip3D": {"view": {4: 5, 5: 4}}}, [2, 3], [5, 4]),
+    ],
+)
+def test_flip3d_keypoint_label_mapping_handles_multiple_fields_independently(
+    label_mapping: dict[str, dict[str, dict[int, int]]],
+    expected_side: list[int],
+    expected_view: list[int],
+) -> None:
+    volume = np.zeros((2, 3, 5, 1), dtype=np.float32)
+    keypoints = np.array([[1, 1, 0], [3, 2, 1]], dtype=np.float32)
+    side = [2, 3]
+    view = [4, 5]
+    transform = A.Compose(
+        [A.Flip3D(flip_axes=(2,), p=1.0)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xyz",
+            label_fields=["side", "view"],
+            label_mapping=label_mapping,
+        ),
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(volume=volume, keypoints=keypoints, side=side, view=view)
+
+    np.testing.assert_array_equal(result["keypoints"], np.array([[3, 1, 0], [1, 2, 1]], dtype=np.float32))
+    assert result["side"] == expected_side
+    assert result["view"] == expected_view
+
+
 @pytest.mark.parametrize("flip_axes", [(0, 1), (0, 2), (1, 2)])
 def test_flip3d_even_reflections_preserve_keypoint_labels(flip_axes: tuple[int, ...]) -> None:
     volume = np.zeros((2, 3, 5, 1), dtype=np.float32)

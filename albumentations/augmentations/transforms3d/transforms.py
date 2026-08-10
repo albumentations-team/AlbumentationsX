@@ -1788,7 +1788,8 @@ class Flip3D(Transform3D):
         negative and therefore applies the configured semantic mapping; an even number, including identity, preserves
         orientation.
         """
-        return "Flip3D" if len(params["flip_axes"]) % 2 else None
+        flip_axes = params.get("flip_axes", ())
+        return "Flip3D" if len(flip_axes) % 2 else None
 
     def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         """Rename keypoint label values after a realized orientation-reversing reflection while preserving transformed

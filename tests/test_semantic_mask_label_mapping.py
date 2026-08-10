@@ -33,7 +33,8 @@ def test_semantic_mask_label_mapping_swaps_labels_after_horizontal_flip() -> Non
     np.testing.assert_array_equal(mask, np.array([[2, 0, 3, 2]], dtype=np.uint8))
 
 
-def test_semantic_mask_label_mapping_swaps_mask3d_after_width_flip3d() -> None:
+@pytest.mark.parametrize("flip_axes", [(0,), (1,), (2,), (0, 1, 2)])
+def test_semantic_mask_label_mapping_swaps_mask3d_after_odd_flip3d(flip_axes: tuple[int, ...]) -> None:
     volume = np.arange(2 * 2 * 4, dtype=np.float32).reshape(2, 2, 4, 1)
     mask3d = np.array(
         [
@@ -43,7 +44,7 @@ def test_semantic_mask_label_mapping_swaps_mask3d_after_width_flip3d() -> None:
         dtype=np.uint8,
     )
     transform = A.Compose(
-        [A.Flip3D(flip_axes=(2,), p=1.0)],
+        [A.Flip3D(flip_axes=flip_axes, p=1.0)],
         additional_targets={"mask3d_alias": "mask3d"},
         semantic_mask_label_mappings={"Flip3D": {2: 3, 3: 2}},
         strict=True,
@@ -52,14 +53,11 @@ def test_semantic_mask_label_mapping_swaps_mask3d_after_width_flip3d() -> None:
 
     result = transform(volume=volume, mask3d=mask3d, mask3d_alias=mask3d.copy())
 
-    np.testing.assert_array_equal(result["volume"], np.flip(volume, axis=2))
-    expected_mask3d = np.array(
-        [
-            [[4, 2, 0, 3], [3, 0, 2, 4]],
-            [[0, 4, 3, 2], [2, 3, 4, 0]],
-        ],
-        dtype=np.uint8,
-    )
+    np.testing.assert_array_equal(result["volume"], np.flip(volume, axis=flip_axes))
+    expected_mask3d = np.flip(mask3d, axis=flip_axes).copy()
+    source_labels = expected_mask3d.copy()
+    expected_mask3d[source_labels == 2] = 3
+    expected_mask3d[source_labels == 3] = 2
     np.testing.assert_array_equal(result["mask3d"], expected_mask3d)
     np.testing.assert_array_equal(result["mask3d_alias"], expected_mask3d)
 
@@ -81,8 +79,8 @@ def test_semantic_mask_label_mapping_flip3d_does_not_remap_2d_masks() -> None:
     np.testing.assert_array_equal(result["masks"], masks)
 
 
-@pytest.mark.parametrize("flip_axes", [(0,), (1,), (0, 1)])
-def test_semantic_mask_label_mapping_flip3d_ignores_non_width_flips(flip_axes: tuple[int, ...]) -> None:
+@pytest.mark.parametrize("flip_axes", [(0, 1), (0, 2), (1, 2)])
+def test_semantic_mask_label_mapping_flip3d_ignores_even_reflections(flip_axes: tuple[int, ...]) -> None:
     volume = np.zeros((2, 2, 3, 1), dtype=np.float32)
     mask3d = np.array(
         [

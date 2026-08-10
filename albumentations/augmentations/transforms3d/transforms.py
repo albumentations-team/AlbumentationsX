@@ -1718,9 +1718,11 @@ class Flip3D(Transform3D):
         uint8, float32
 
     Note:
-        - A realized width/X flip (axis `2`) emits the `Flip3D` label-mapping event. Its semantic-mask mapping applies
-          only to `mask3d`; keypoint label mappings rename label values without changing coordinate-row order.
-        - Depth-only and height-only flips do not emit this event. Without an explicit mapping, labels stay unchanged.
+        - A realized reflection across an odd number of axes emits the `Flip3D` label-mapping event. Its semantic-mask
+          mapping applies only to `mask3d`; keypoint label mappings rename label values without changing coordinate-row
+          order.
+        - A reflection across an even number of axes preserves orientation and does not emit this event. Without an
+          explicit mapping, labels stay unchanged.
 
     Examples:
         >>> import numpy as np
@@ -1782,17 +1784,17 @@ class Flip3D(Transform3D):
         return {"flip_axes": flip_axes, "volume_shape": _get_volume_spatial_shape(data)}
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
-        """Return the Flip3D semantic-mapping event when the realized axes include width/X, so mask3d and keypoint
-        labels can follow the reflection.
+        """Return the Flip3D semantic-mapping event for a realized orientation-reversing reflection, allowing mask3d
+        and keypoint labels to follow it.
 
-        In canonical medical-image orientation, width is the left-right axis. Reflections across depth or height
-        alone preserve left/right class semantics, while a width reflection swaps them.
+        Each voxel-index reflection changes orientation parity. An odd number of reflected axes has determinant
+        negative and therefore applies the configured semantic mapping; an even number preserves orientation.
         """
-        return "Flip3D" if 2 in params["flip_axes"] else None
+        return "Flip3D" if len(params["flip_axes"]) % 2 else None
 
     def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Rename mapped keypoint label values after a width/X reflection while preserving transformed coordinate
-        rows and their original order.
+        """Rename keypoint label values after a realized orientation-reversing reflection while preserving transformed
+        coordinates and input row order.
         """
         processor = self.processors.get("keypoints")
         transform_name = self._get_label_transform_name(**params)

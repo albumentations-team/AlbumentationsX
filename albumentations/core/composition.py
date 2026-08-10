@@ -49,7 +49,9 @@ from .tensor import (
     TENSOR_ANNOTATION_TARGETS,
     TENSOR_SPATIAL_TARGETS,
     numpy_to_tensor_annotation,
+    numpy_to_tensor_spatial,
     tensor_to_numpy_annotation,
+    tensor_to_numpy_spatial,
     validate_tensor_input,
 )
 from .tracing import TraceOptions, TraceResult, _TraceContext
@@ -318,6 +320,8 @@ class BaseCompose(Serializable):
     main_compose: bool = True
     _tensor_capability_is_transparent: bool = True
     _tensor_annotation_targets: tuple[tuple[str, str], ...] = ()
+    _tensor_spatial_targets: tuple[tuple[str, str], ...] = ()
+    _tensor_requires_numpy_bridge: bool = False
 
     @property
     def tensor_capability_is_transparent(self) -> bool:
@@ -1562,9 +1566,11 @@ class Compose(BaseCompose, HubMixin):
 
         need_to_run = force_apply or self.py_random.random() < self.p
         if not need_to_run:
+            self._clear_tensor_annotation_targets()
             return data
 
         try:
+            self._bridge_tensor_data_to_numpy(data)
             self.preprocess(data)
             resync = self._resync_instance_ids if self.main_compose and self._instance_binding else None
             for t in self.transforms:
@@ -1575,13 +1581,14 @@ class Compose(BaseCompose, HubMixin):
                     resync(data)
 
             result = self.postprocess(data)
+            self._restore_tensor_spatial_data(result)
             self._restore_tensor_annotations(result)
             return result
         finally:
             # Clear per-call unpack/repack flags if preprocess or a transform raised mid-call.
             if self.main_compose and self._instance_binding:
                 self._clear_instance_binding_call_state_if_pending()
-            self._tensor_annotation_targets = ()
+            self._clear_tensor_annotation_targets()
 
     def run_with_trace(
         self,
@@ -1615,9 +1622,11 @@ class Compose(BaseCompose, HubMixin):
 
         if not (force_apply or self.py_random.random() < self.p):
             self._emit_skipped_trace_tree(self, trace_context, (), _TRACE_STATUS_SKIPPED_PROBABILITY)
+            self._clear_tensor_annotation_targets()
             return trace_context.finish(data)
 
         try:
+            self._bridge_tensor_data_to_numpy(data)
             self.preprocess(data)
             data = self._run_traced_node_children(
                 self,
@@ -1628,12 +1637,13 @@ class Compose(BaseCompose, HubMixin):
             )
             self._emit_composition_record(self, trace_context, (), _TRACE_STATUS_APPLIED)
             result = self.postprocess(data)
+            self._restore_tensor_spatial_data(result)
             self._restore_tensor_annotations(result)
             return trace_context.finish(result)
         finally:
             if self.main_compose and self._instance_binding:
                 self._clear_instance_binding_call_state_if_pending()
-            self._tensor_annotation_targets = ()
+            self._clear_tensor_annotation_targets()
 
     def _validate_trace_options(self, options: TraceOptions, data: dict[str, Any]) -> None:
         known_targets = set(data) | self._available_keys | set(AVAILABLE_KEYS)
@@ -2172,13 +2182,14 @@ class Compose(BaseCompose, HubMixin):
         """Validate Tensor boundary contracts before Compose samples probability or parameters,
         ensuring each spatial target uses a single representation.
 
-        Tensor execution is opt-in at the capability level. This prevents a NumPy-only
-        helper from receiving a Tensor and performing an ad hoc representation bridge.
+        A pipeline uses its direct Tensor route only when every selectable transform supports the supplied targets.
+        Otherwise, Compose bridges all spatial targets to NumPy once before dispatch and restores Tensor output after
+        postprocessing. Individual helpers never perform representation conversion.
         """
         tensor_targets: list[tuple[str, str, torch.Tensor]] = []
         spatial_representations: set[str] = set()
         annotation_targets: list[tuple[str, str]] = []
-        self._tensor_annotation_targets = ()
+        self._clear_tensor_annotation_targets()
 
         for data_name, value in data.items():
             canonical_name = self._additional_targets.get(data_name, data_name)
@@ -2208,53 +2219,45 @@ class Compose(BaseCompose, HubMixin):
             )
 
         self._tensor_annotation_targets = tuple(annotation_targets)
+        self._tensor_spatial_targets = tuple(
+            (data_name, canonical_name) for data_name, canonical_name, _ in tensor_targets
+        )
 
         tensor_image_inputs = tuple(
             (canonical_name, value)
             for _, canonical_name, value in tensor_targets
             if canonical_name not in TENSOR_ANNOTATION_TARGETS
         )
-        self._validate_tensor_pipeline(self.transforms, tensor_image_inputs)
+        self._tensor_requires_numpy_bridge = not self._tensor_pipeline_supports_cpu_inputs(
+            self.transforms,
+            tensor_image_inputs,
+        )
 
-    def _validate_tensor_pipeline(
+    def _tensor_pipeline_supports_cpu_inputs(
         self,
         transforms: TransformsSeqType,
         tensor_inputs: tuple[tuple[str, torch.Tensor], ...],
-    ) -> None:
-        """Require every selectable transform branch to declare CPU Tensor capability before a
-        caller-provided Tensor can reach any helper or fallback implementation.
+    ) -> bool:
+        """Check whether every selectable branch can run supplied CPU Tensor targets directly without selecting
+        Compose's NumPy bridge.
+
+        A False result selects Compose's one-time NumPy bridge for the whole pipeline. This keeps arbitrary public
+        transform combinations usable with Tensor input without allowing transform helpers to create ad hoc bridges.
         """
         for transform in transforms:
             if isinstance(transform, BaseCompose):
                 if not transform.tensor_capability_is_transparent:
-                    raise TypeError(f"{transform.__class__.__name__} does not support CPU Tensor input")
-                self._validate_tensor_pipeline(transform.transforms, tensor_inputs)
+                    return False
+                if not self._tensor_pipeline_supports_cpu_inputs(transform.transforms, tensor_inputs):
+                    return False
                 continue
             if getattr(transform, "_is_tensor_terminal", False):
                 raise TypeError(
                     "Tensor input is already model-ready; remove ToTensorV2 or ToTensor3D from this Compose pipeline",
                 )
             if not transform.supports_cpu_tensor_inputs(tensor_inputs):
-                supported_targets = transform.cpu_tensor_targets
-                supported_channels = transform.cpu_tensor_channels
-                tensor_targets = frozenset(target for target, _ in tensor_inputs)
-                target_note = (
-                    ""
-                    if supported_targets is None
-                    else f" for Tensor target(s) {', '.join(sorted(tensor_targets))}; accepted targets are "
-                    f"{', '.join(sorted(supported_targets))}"
-                )
-                channel_note = (
-                    ""
-                    if supported_channels is None
-                    else "; accepted channel counts are "
-                    + ", ".join(str(channel) for channel in sorted(supported_channels))
-                )
-                raise TypeError(
-                    f"{transform.__class__.__name__} does not yet declare CPU Tensor capability"
-                    f"{target_note}{channel_note}; "
-                    "use a NumPy input until its Tensor route is accepted",
-                )
+                return False
+        return True
 
     @staticmethod
     def from_applied_transforms(
@@ -2333,6 +2336,17 @@ class Compose(BaseCompose, HubMixin):
             value = data.get(data_name)
             if isinstance(value, torch.Tensor):
                 data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
+
+    def _bridge_tensor_data_to_numpy(self, data: dict[str, Any]) -> None:
+        """Convert all Tensor spatial targets to NumPy once before a pipeline containing a transform without a direct
+        Tensor route.
+        """
+        if not self._tensor_requires_numpy_bridge:
+            return
+        for data_name, canonical_name in self._tensor_spatial_targets:
+            value = data.get(data_name)
+            if isinstance(value, torch.Tensor):
+                data[data_name] = tensor_to_numpy_spatial(value, canonical_name)
 
     def _gather_shapes_from_data(self, data: dict[str, Any]) -> tuple[list[tuple[int, ...]], list[tuple[int, ...]]]:
         """Gather shapes from data for validation. Collects (H,W) or (D,H,W) from
@@ -2549,8 +2563,21 @@ class Compose(BaseCompose, HubMixin):
             if isinstance(value, np.ndarray):
                 data[data_name] = numpy_to_tensor_annotation(value, canonical_name)
 
+    def _restore_tensor_spatial_data(self, data: dict[str, Any]) -> None:
+        """Convert NumPy spatial results back to public Tensor layouts after Compose finishes a pipeline using its
+        central representation bridge.
+        """
+        if not self._tensor_requires_numpy_bridge:
+            return
+        for data_name, canonical_name in self._tensor_spatial_targets:
+            value = data.get(data_name)
+            if isinstance(value, np.ndarray) and canonical_name not in TENSOR_ANNOTATION_TARGETS:
+                data[data_name] = numpy_to_tensor_spatial(value, canonical_name)
+
     def _clear_tensor_annotation_targets(self) -> None:
         self._tensor_annotation_targets = ()
+        self._tensor_spatial_targets = ()
+        self._tensor_requires_numpy_bridge = False
 
     def _filter_bound_bboxes_before_postprocess(self, data: dict[str, Any]) -> None:
         """Filter bound bboxes at the final boundary and mirror their keep mask before postprocessing removes internal

@@ -79,7 +79,16 @@ def _make_2d_data(bbox_type: BboxType) -> dict[str, object]:
         "mask": image[..., 0] % 3,
         "volume": volume,
         "mask3d": volume[..., 0] % 5,
-        "keypoints": [[1.0, 1.0, 0.1], [4.0, 2.0, 1.5 * np.pi]],
+        "keypoints": [
+            [1.0, 1.0, 0.1],
+            [4.0, 2.0, 1.5 * np.pi],
+            [2.0, 1.0, -1e-6],
+            [3.0, 1.0, 0.5 * np.pi - 1e-6],
+            [3.0, 2.0, 0.5 * np.pi + 1e-6],
+            [2.0, 2.0, np.pi - 1e-6],
+            [2.0, 3.0, np.pi + 1e-6],
+            [1.0, 3.0, 2.0 * np.pi - 1e-6],
+        ],
         "bboxes": bboxes,
     }
 
@@ -218,6 +227,8 @@ def _transform_d4_corners(corners: np.ndarray, group_element: str) -> np.ndarray
     transformed = corners.copy()
     x_coordinates = corners[:, 0]
     y_coordinates = corners[:, 1]
+    if group_element == "e":
+        return transformed
     if group_element == "r90":
         transformed[:, 0], transformed[:, 1] = y_coordinates, 1.0 - x_coordinates
     elif group_element == "r180":
@@ -232,12 +243,30 @@ def _transform_d4_corners(corners: np.ndarray, group_element: str) -> np.ndarray
         transformed[:, 0] = 1.0 - x_coordinates
     elif group_element == "t":
         transformed[:, 0], transformed[:, 1] = y_coordinates, x_coordinates
+    else:
+        msg = f"Unknown D4 group element: {group_element}"
+        raise ValueError(msg)
     return transformed
 
 
 @pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", *D4_REFLECTIONS])
 def test_d4_obb_corners_follow_the_independent_group_mapping(group_element: str) -> None:
     data = _make_2d_data("obb")
+    compose = _make_2d_compose([A.D4(group_element=group_element, p=1.0)], "obb")
+
+    result = compose(**data)
+    source_corners = obb_to_polygons(np.asarray(data["bboxes"], dtype=np.float32))[0]
+    actual_corners = obb_to_polygons(np.asarray(result["bboxes"], dtype=np.float32))[0]
+
+    assert obb_corners_equivalent(actual_corners, _transform_d4_corners(source_corners, group_element))
+    assert -90.0 <= result["bboxes"][0][4] < 90.0
+
+
+@pytest.mark.parametrize("source_angle", [-450.0, 450.0])
+@pytest.mark.parametrize("group_element", ["r90", "r180", "r270", *D4_REFLECTIONS])
+def test_d4_obb_symmetries_canonicalize_noncanonical_input_angles(group_element: str, source_angle: float) -> None:
+    data = _make_2d_data("obb")
+    data["bboxes"][0][4] = source_angle
     compose = _make_2d_compose([A.D4(group_element=group_element, p=1.0)], "obb")
 
     result = compose(**data)

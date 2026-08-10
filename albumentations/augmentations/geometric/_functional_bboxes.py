@@ -58,6 +58,15 @@ def _split_obb_params(
     return center_x, center_y, width, height, angle, extras
 
 
+def _canonicalize_obb_angles(angles: np.ndarray) -> np.ndarray:
+    """Normalize OBB width-edge angles to [-90, 90) so symmetry transforms yield a single stable
+    representation for each undirected edge in downstream geometry code.
+    """
+    if angles.min() >= -90.0 and angles.max() < 90.0:
+        return angles
+    return np.mod(angles + 90.0, 180.0) - 90.0
+
+
 def _merge_obb_params(
     center_x: np.ndarray,
     center_y: np.ndarray,
@@ -162,6 +171,7 @@ def bboxes_rot90(
         if rot90_count % 2 == 1:
             width, height = height, width
 
+        angle = _canonicalize_obb_angles(angle)
         return _merge_obb_params(new_center_x, new_center_y, width, height, angle, extras)
 
     rotated_bboxes = bboxes.copy()
@@ -574,7 +584,7 @@ def bboxes_vflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.nda
     if bbox_type == "obb":
         center_x, center_y, width, height, angle, extras = _split_obb_params(bboxes)
         center_y = 1 - center_y
-        angle = -angle
+        angle = _canonicalize_obb_angles(-angle)
         return _merge_obb_params(center_x, center_y, width, height, angle, extras)
     flipped_bboxes = bboxes.copy()
     flipped_bboxes[:, 1] = 1 - bboxes[:, 3]  # new y_min = 1 - y_max
@@ -599,7 +609,7 @@ def bboxes_hflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.nda
     if bbox_type == "obb":
         center_x, center_y, width, height, angle, extras = _split_obb_params(bboxes)
         center_x = 1 - center_x
-        angle = -angle
+        angle = _canonicalize_obb_angles(-angle)
         return _merge_obb_params(center_x, center_y, width, height, angle, extras)
     flipped_bboxes = bboxes.copy()
     flipped_bboxes[:, 0] = 1 - bboxes[:, 2]  # new x_min = 1 - x_max
@@ -625,7 +635,7 @@ def bboxes_transpose(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np
         center_x, center_y, width, height, angle, extras = _split_obb_params(bboxes)
         center_x, center_y = center_y, center_x
         width, height = height, width
-        angle = -angle
+        angle = _canonicalize_obb_angles(-angle)
         return _merge_obb_params(center_x, center_y, width, height, angle, extras)
     transposed_bboxes = bboxes.copy()
     transposed_bboxes[:, [0, 1, 2, 3]] = bboxes[:, [1, 0, 3, 2]]

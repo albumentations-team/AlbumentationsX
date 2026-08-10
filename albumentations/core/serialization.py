@@ -38,6 +38,7 @@ _MAPPING_TYPE_VALUE = "mapping"
 _MAPPING_VERSION_KEY = "__albumentations_serialized_mapping_version__"
 _MAPPING_VERSION = 1
 _MAPPING_KEY_ESCAPE_PREFIX = "__albumentations_escaped_mapping_key__"
+_ESCAPED_MAPPING_TYPE_KEY = _MAPPING_KEY_ESCAPE_PREFIX + _MAPPING_TYPE_KEY
 
 
 def shorten_class_name(class_fullname: str) -> str:
@@ -252,9 +253,7 @@ def serialize_enum(obj: Any) -> Any:
         if all(isinstance(key, str) for key in obj):
             serialized_mapping = {_escape_mapping_key(key): value for key, value in serialized_items}
             if _is_encoded_mapping(serialized_mapping):
-                serialized_mapping[_MAPPING_KEY_ESCAPE_PREFIX + _MAPPING_TYPE_KEY] = serialized_mapping.pop(
-                    _MAPPING_TYPE_KEY,
-                )
+                serialized_mapping[_ESCAPED_MAPPING_TYPE_KEY] = serialized_mapping.pop(_MAPPING_TYPE_KEY)
             return serialized_mapping
         return {
             _MAPPING_TYPE_KEY: _MAPPING_TYPE_VALUE,
@@ -277,6 +276,12 @@ def deserialize_mapping_keys(obj: Any) -> Any:
                 _restore_mapping_key(deserialize_mapping_keys(key)): deserialize_mapping_keys(value)
                 for key, value in obj[_MAPPING_ITEMS_KEY]
             }
+        if _is_escaped_encoded_mapping(obj):
+            return {
+                _MAPPING_TYPE_KEY: deserialize_mapping_keys(obj[_ESCAPED_MAPPING_TYPE_KEY]),
+                _MAPPING_ITEMS_KEY: deserialize_mapping_keys(obj[_MAPPING_ITEMS_KEY]),
+                _MAPPING_VERSION_KEY: deserialize_mapping_keys(obj[_MAPPING_VERSION_KEY]),
+            }
         return {_unescape_mapping_key(key): deserialize_mapping_keys(value) for key, value in obj.items()}
     if isinstance(obj, list):
         return [deserialize_mapping_keys(value) for value in obj]
@@ -291,12 +296,21 @@ def _is_encoded_mapping(mapping: Mapping[str, Any]) -> bool:
     )
 
 
+def _is_escaped_encoded_mapping(mapping: Mapping[str, Any]) -> bool:
+    return (
+        set(mapping) == {_ESCAPED_MAPPING_TYPE_KEY, _MAPPING_ITEMS_KEY, _MAPPING_VERSION_KEY}
+        and mapping[_ESCAPED_MAPPING_TYPE_KEY] == _MAPPING_TYPE_VALUE
+        and mapping[_MAPPING_VERSION_KEY] == _MAPPING_VERSION
+    )
+
+
 def _escape_mapping_key(key: str) -> str:
     return _MAPPING_KEY_ESCAPE_PREFIX + key if key.startswith(_MAPPING_KEY_ESCAPE_PREFIX) else key
 
 
 def _unescape_mapping_key(key: Any) -> Any:
-    if isinstance(key, str) and key.startswith(_MAPPING_KEY_ESCAPE_PREFIX):
+    escaped_prefix = _MAPPING_KEY_ESCAPE_PREFIX + _MAPPING_KEY_ESCAPE_PREFIX
+    if isinstance(key, str) and key.startswith(escaped_prefix):
         return key.removeprefix(_MAPPING_KEY_ESCAPE_PREFIX)
     return key
 

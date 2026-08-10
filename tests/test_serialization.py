@@ -672,6 +672,22 @@ def test_mapping_codec_preserves_marker_shaped_label_mappings(
     }
 
 
+def test_from_dict_preserves_raw_mapping_escape_prefix_keys() -> None:
+    escape_prefix = "__albumentations_escaped_mapping_key__"
+    additional_targets = {f"{escape_prefix}image2": "image"}
+    pipeline = A.Compose([A.NoOp(p=1.0)], additional_targets=additional_targets)
+    payload = A.to_dict(pipeline)
+    canonical_restored = A.from_dict(payload)
+    payload["transform"]["additional_targets"] = additional_targets
+
+    restored = A.from_dict(payload)
+
+    assert isinstance(canonical_restored, A.Compose)
+    assert canonical_restored.additional_targets == additional_targets
+    assert isinstance(restored, A.Compose)
+    assert restored.additional_targets == additional_targets
+
+
 def test_compose_roundtrip_preserves_mask_validation_and_applied_output_behavior() -> None:
     transform = A.Compose(
         [

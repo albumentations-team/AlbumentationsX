@@ -1670,6 +1670,8 @@ class Compose(BaseCompose, HubMixin):
                 trace_context,
                 path,
                 force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
                 post_transform_container=post_transform_container,
             )
         if isinstance(transform, OneOf):
@@ -1679,12 +1681,33 @@ class Compose(BaseCompose, HubMixin):
                 trace_context,
                 path,
                 force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
                 post_transform_container=post_transform_container,
             )
         if isinstance(transform, SomeOf):
-            return self._run_traced_some_of(transform, data, trace_context, path, post_transform_container)
+            return self._run_traced_some_of(
+                transform,
+                data,
+                trace_context,
+                path,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
         if isinstance(transform, OneOrOther):
-            return self._run_traced_one_or_other(transform, data, trace_context, path, post_transform_container)
+            return self._run_traced_one_or_other(
+                transform,
+                data,
+                trace_context,
+                path,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
         if isinstance(transform, Sequential):
             return self._run_traced_sequential(
                 transform,
@@ -1692,6 +1715,9 @@ class Compose(BaseCompose, HubMixin):
                 trace_context,
                 path,
                 force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
                 post_transform_container=post_transform_container,
             )
         if isinstance(transform, Compose):
@@ -1701,6 +1727,9 @@ class Compose(BaseCompose, HubMixin):
                 trace_context,
                 path,
                 force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
                 post_transform_container=post_transform_container,
             )
         raise TypeError(f"Unsupported composition node: {type(transform).__name__}")
@@ -1759,23 +1788,62 @@ class Compose(BaseCompose, HubMixin):
         path: tuple[int, ...],
         *,
         force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
         post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
+        replay_compose = transform if isinstance(transform, ReplayCompose) else None
+        if replay_compose is not None:
+            data[replay_compose.save_key] = defaultdict(dict)
+        self._prepare_traced_compose_input(transform, data)
         if not (transform.replay_mode or force_apply or transform.py_random.random() < transform.p):
             self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
+            if replay_compose is not None:
+                self._finalize_traced_replay_compose(replay_compose, data)
             return data
-        transform.preprocess(data)
-        data = self._run_traced_node_children(
-            transform,
-            data,
-            trace_context,
-            path,
-            post_transform_container=transform,
-        )
-        result = transform.postprocess(data)
-        data = self._finalize_traced_leaf(result, post_transform_container)
-        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
-        return data
+        try:
+            transform.preprocess(data)
+            data = self._run_traced_node_children(
+                transform,
+                data,
+                trace_context,
+                path,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=transform,
+            )
+            result = transform.postprocess(data)
+            self._restore_traced_compose_tensor_annotations(transform, result)
+            if replay_compose is not None:
+                self._finalize_traced_replay_compose(replay_compose, result)
+            data = self._finalize_traced_leaf(result, post_transform_container)
+            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+            return data
+        finally:
+            Compose._clear_tensor_annotation_targets(transform)
+
+    @staticmethod
+    def _prepare_traced_compose_input(transform: "Compose", data: dict[str, Any]) -> None:
+        Compose._sync_runtime_random_state(transform)
+        if transform.additional_targets:
+            Compose._validate_additional_target_sources(transform, data)
+        if any(isinstance(value, torch.Tensor) for value in data.values()):
+            Compose._validate_tensor_inputs(transform, data)
+        else:
+            Compose._clear_tensor_annotation_targets(transform)
+
+    @staticmethod
+    def _restore_traced_compose_tensor_annotations(transform: "Compose", data: dict[str, Any]) -> None:
+        Compose._restore_tensor_annotations(transform, data)
+
+    @staticmethod
+    def _finalize_traced_replay_compose(transform: "ReplayCompose", data: dict[str, Any]) -> None:
+        serialized = transform.get_dict_with_id()
+        transform.fill_with_params(serialized, data[transform.save_key])
+        transform.fill_applied(serialized)
+        data[transform.save_key] = serialized
 
     def _run_traced_one_of(
         self,
@@ -1785,6 +1853,9 @@ class Compose(BaseCompose, HubMixin):
         path: tuple[int, ...],
         *,
         force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
         post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if transform.replay_mode:
@@ -1800,6 +1871,9 @@ class Compose(BaseCompose, HubMixin):
                     trace_context,
                     (*path, selected_index),
                     force_apply=True,
+                    tracking_data=tracking_data,
+                    event_data_factory=event_data_factory,
+                    finalize_leaf=finalize_leaf,
                     post_transform_container=post_transform_container,
                 )
             self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
@@ -1816,6 +1890,9 @@ class Compose(BaseCompose, HubMixin):
             trace_context,
             (*path, selected_index),
             force_apply=True,
+            tracking_data=tracking_data,
+            event_data_factory=event_data_factory,
+            finalize_leaf=finalize_leaf,
             post_transform_container=post_transform_container,
         )
         self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
@@ -1827,6 +1904,10 @@ class Compose(BaseCompose, HubMixin):
         data: dict[str, Any],
         trace_context: _TraceContext,
         path: tuple[int, ...],
+        *,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
         post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if transform.replay_mode:
@@ -1838,6 +1919,9 @@ class Compose(BaseCompose, HubMixin):
                 data,
                 trace_context,
                 path,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
                 post_transform_container=transform,
             )
             data = self._finalize_traced_leaf(data, post_transform_container)
@@ -1855,6 +1939,9 @@ class Compose(BaseCompose, HubMixin):
                 data,
                 trace_context,
                 (*path, selected_index),
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
                 post_transform_container=transform,
             )
         data = self._finalize_traced_leaf(data, post_transform_container)
@@ -1867,6 +1954,10 @@ class Compose(BaseCompose, HubMixin):
         data: dict[str, Any],
         trace_context: _TraceContext,
         path: tuple[int, ...],
+        *,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
         post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if transform.replay_mode:
@@ -1882,6 +1973,9 @@ class Compose(BaseCompose, HubMixin):
                     trace_context,
                     (*path, selected_index),
                     force_apply=True,
+                    tracking_data=tracking_data,
+                    event_data_factory=event_data_factory,
+                    finalize_leaf=finalize_leaf,
                     post_transform_container=post_transform_container,
                 )
             self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
@@ -1895,6 +1989,9 @@ class Compose(BaseCompose, HubMixin):
             trace_context,
             (*path, selected_index),
             force_apply=True,
+            tracking_data=tracking_data,
+            event_data_factory=event_data_factory,
+            finalize_leaf=finalize_leaf,
             post_transform_container=post_transform_container,
         )
         self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
@@ -1908,8 +2005,14 @@ class Compose(BaseCompose, HubMixin):
         path: tuple[int, ...],
         *,
         force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
         post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
+        if transform.replay_mode and not getattr(transform, "applied_in_replay", False):
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_REPLAY)
+            return data
         if not (transform.replay_mode or force_apply or transform.py_random.random() < transform.p):
             self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
@@ -1918,6 +2021,9 @@ class Compose(BaseCompose, HubMixin):
             data,
             trace_context,
             path,
+            tracking_data=tracking_data,
+            event_data_factory=event_data_factory,
+            finalize_leaf=finalize_leaf,
             post_transform_container=transform,
         )
         data = self._finalize_traced_leaf(data, post_transform_container)
@@ -1932,6 +2038,8 @@ class Compose(BaseCompose, HubMixin):
         path: tuple[int, ...],
         *,
         force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
         post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if not (force_apply or transform.py_random.random() < transform.p):
@@ -1947,7 +2055,7 @@ class Compose(BaseCompose, HubMixin):
             for channel_index, channel in zip(transform.channels, cv2.split(sub_data["image"]), strict=True):
                 output_image[:, :, channel_index] = channel
             output["image"] = np.ascontiguousarray(output_image)
-            return output
+            return event_data_factory(output) if event_data_factory is not None else output
 
         sub_data = {"image": sub_image}
         sub_data = self._run_traced_node_children(
@@ -1955,7 +2063,7 @@ class Compose(BaseCompose, HubMixin):
             sub_data,
             trace_context,
             path,
-            tracking_data=data,
+            tracking_data=data if tracking_data is None else tracking_data,
             event_data_factory=build_full_snapshot,
             finalize_leaf=False,
             post_transform_container=post_transform_container,
@@ -2436,6 +2544,9 @@ class Compose(BaseCompose, HubMixin):
             value = data.get(data_name)
             if isinstance(value, np.ndarray):
                 data[data_name] = numpy_to_tensor_annotation(value, canonical_name)
+
+    def _clear_tensor_annotation_targets(self) -> None:
+        self._tensor_annotation_targets = ()
 
     def _filter_bound_bboxes_before_postprocess(self, data: dict[str, Any]) -> None:
         """Filter bound bboxes at the final boundary and mirror their keep mask before postprocessing removes internal

@@ -61,6 +61,35 @@ def test_replay_with_trace_replays_output_and_trace_tree() -> None:
     ]
 
 
+def test_trace_matches_nested_replay_compose_execution() -> None:
+    def make_pipeline() -> A.Compose:
+        return A.Compose(
+            [A.ReplayCompose([A.HorizontalFlip(p=1.0)], p=1.0)],
+            seed=137,
+        )
+
+    image = np.arange(3 * 5 * 3, dtype=np.uint8).reshape(3, 5, 3)
+
+    expected = make_pipeline()(image=image)
+    traced = make_pipeline().run_with_trace(image=image)
+
+    np.testing.assert_array_equal(traced.data["image"], expected["image"])
+    assert traced.data["replay"] == expected["replay"]
+
+
+def test_trace_validates_nested_additional_target_sources() -> None:
+    pipeline = A.Compose(
+        [A.Compose([A.NoOp(p=1.0)], additional_targets={"image2": "image"}, p=1.0)],
+        seed=137,
+    )
+
+    with pytest.raises(ValueError, match="Additional target 'image2' requires canonical target 'image'"):
+        pipeline(image2=np.zeros((3, 5, 3), dtype=np.uint8))
+
+    with pytest.raises(ValueError, match="Additional target 'image2' requires canonical target 'image'"):
+        pipeline.run_with_trace(image2=np.zeros((3, 5, 3), dtype=np.uint8))
+
+
 def test_trace_snapshots_are_post_step_owned_copies() -> None:
     image = np.arange(3 * 5 * 3, dtype=np.uint8).reshape(3, 5, 3)
     pipeline = A.Compose([A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0)], seed=137)
@@ -388,3 +417,43 @@ def test_trace_keeps_selective_channel_post_transform_replacement() -> None:
     traced = pipeline.run_with_trace(image=np.arange(12, dtype=np.uint8).reshape(2, 2, 3))
 
     assert traced.data["post_transform_marker"] == "preserved"
+
+
+def test_trace_reconstructs_selective_snapshots_through_nested_compositions() -> None:
+    def make_pipeline() -> A.Compose:
+        return A.Compose(
+            [
+                A.SelectiveChannelTransform(
+                    [A.Compose([A.InvertImg(p=1.0)], p=1.0)],
+                    channels=(1,),
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+        )
+
+    image = np.arange(3 * 5 * 3, dtype=np.uint8).reshape(3, 5, 3)
+    expected = make_pipeline()(image=image)
+    traced = make_pipeline().run_with_trace(image=image, options=A.TraceOptions(snapshot_targets=("image",)))
+
+    np.testing.assert_array_equal(traced.data["image"], expected["image"])
+    leaf_record = next(record for record in traced.records if record.node_kind == "leaf")
+    assert leaf_record.node_path == (0, 0, 0)
+    np.testing.assert_array_equal(leaf_record.snapshot["image"], expected["image"])
+
+
+def test_replay_trace_marks_skipped_sequential_as_skipped_replay() -> None:
+    image = np.arange(3 * 5 * 3, dtype=np.uint8).reshape(3, 5, 3)
+    original = A.ReplayCompose(
+        [A.Sequential([A.HorizontalFlip(p=1.0)], p=0.0)],
+        seed=137,
+    ).run_with_trace(image=image)
+
+    replayed = A.ReplayCompose.replay_with_trace(original.data["replay"], image=image)
+
+    np.testing.assert_array_equal(replayed.data["image"], original.data["image"])
+    assert [(record.node_path, record.status) for record in replayed.records] == [
+        ((0,), "skipped_replay"),
+        ((0, 0), "skipped_replay"),
+        ((), "applied"),
+    ]

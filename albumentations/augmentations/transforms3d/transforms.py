@@ -25,6 +25,7 @@ from albumentations.core.type_definitions import (
     CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
+    NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
     C4GroupElement,
     Targets,
     VolumeType,
@@ -1716,6 +1717,11 @@ class Flip3D(Transform3D):
     Image types:
         uint8, float32
 
+    Note:
+        - A realized width/X flip (axis `2`) emits the `Flip3D` label-mapping event. Its semantic-mask mapping applies
+          only to `mask3d`; keypoint label mappings rename label values without changing coordinate-row order.
+        - Depth-only and height-only flips do not emit this event. Without an explicit mapping, labels stay unchanged.
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
@@ -1774,6 +1780,44 @@ class Flip3D(Transform3D):
 
         self.applied_config = {"flip_axes": flip_axes}
         return {"flip_axes": flip_axes, "volume_shape": _get_volume_spatial_shape(data)}
+
+    def _get_label_transform_name(self, **params: Any) -> str | None:
+        """Return the Flip3D semantic-mapping event when the realized axes include width/X, so mask3d and keypoint
+        labels can follow the reflection.
+
+        In canonical medical-image orientation, width is the left-right axis. Reflections across depth or height
+        alone preserve left/right class semantics, while a width reflection swaps them.
+        """
+        return "Flip3D" if 2 in params["flip_axes"] else None
+
+    def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
+        """Rename mapped keypoint label values after a width/X reflection while preserving transformed coordinate
+        rows and their original order.
+        """
+        processor = self.processors.get("keypoints")
+        transform_name = self._get_label_transform_name(**params)
+        if (
+            not isinstance(processor, KeypointsProcessor)
+            or not processor.params.label_fields
+            or keypoints.size == 0
+            or transform_name is None
+        ):
+            return keypoints
+
+        field_mappings = processor.encoded_label_mappings.get(transform_name)
+        if not field_mappings:
+            return keypoints
+
+        result = keypoints.copy()
+        for label_offset, label_field in enumerate(processor.params.label_fields):
+            mapping = field_mappings.get(label_field)
+            column_index = NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS + label_offset
+            if not mapping or column_index >= keypoints.shape[1]:
+                continue
+            source_values = keypoints[:, column_index]
+            for source_label, target_label in mapping.items():
+                result[source_values == source_label, column_index] = target_label
+        return result
 
     def apply_to_volume(
         self,

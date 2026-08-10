@@ -1176,10 +1176,11 @@ class Compose(BaseCompose, HubMixin):
         additional_targets (dict[str, str] | None): A dictionary mapping additional target names
             to their types. For example, {'image2': 'image'}. Passing a spatial alias also
             requires passing its canonical target (`image` in this example). Default is None.
-        semantic_mask_label_mappings (dict[str, dict[int, int]] | None): Label replacements applied to
-            `mask`, `masks`, `mask3d`, and their aliases after a realized label-changing spatial transform.
-            The outer key is `HorizontalFlip`, `VerticalFlip`, or `Transpose`; the inner dictionary maps
-            source class IDs to target class IDs. Default: None.
+        semantic_mask_label_mappings (dict[str, dict[int, int]] | None): Label replacements applied to spatial mask
+            targets after a realized label-changing transform. The outer key is `HorizontalFlip`, `VerticalFlip`,
+            `Transpose`, or `Flip3D`; the inner dictionary maps source class IDs to target class IDs. `Flip3D` runs
+            only for a realized width/X flip and remaps `mask3d` and its aliases, not 2D `mask` or `masks` targets.
+            Default: None.
         p (float): Probability of applying all transforms. Should be in range [0, 1]. Default is 1.0.
         is_check_shapes (bool): If True, checks consistency of shapes for image/mask/masks on each call.
             Disable only if you are sure about your data consistency. Default is True.
@@ -1263,6 +1264,7 @@ class Compose(BaseCompose, HubMixin):
         - Semantic-mask mappings replace class IDs simultaneously, so paired swaps do not overwrite one another.
           Unmapped labels stay unchanged. For D4/SquareSymmetry, configure the realized reflection name:
           `HorizontalFlip`, `VerticalFlip`, or `Transpose`; identity and rotations do not remap labels.
+          `Flip3D` emits its mapping event only when the realized axes include width/X (axis `2`).
         - Configure semantic-mask mappings only when the transformed and relabeled sample remains valid for your
           domain. Compose applies the declared mapping but cannot verify its semantic truth.
         - When strict mode is enabled, it performs additional validation to ensure data and transform

@@ -1367,6 +1367,48 @@ def test_flip3d_reflects_volume_mask_and_keypoints_without_reordering_axes():
     np.testing.assert_array_equal(restored["keypoints"], keypoints)
 
 
+def test_flip3d_width_flip_remaps_keypoint_labels_without_reordering_rows() -> None:
+    volume = np.zeros((2, 3, 5, 1), dtype=np.float32)
+    keypoints = np.array([[1, 1, 0], [3, 2, 1]], dtype=np.float32)
+    side = [2, 3]
+    transform = A.Compose(
+        [A.Flip3D(flip_axes=(2,), p=1.0)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xyz",
+            label_fields=["side"],
+            label_mapping={"Flip3D": {"side": {2: 3, 3: 2}}},
+        ),
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(volume=volume, keypoints=keypoints, side=side)
+
+    np.testing.assert_array_equal(result["keypoints"], np.array([[3, 1, 0], [1, 2, 1]], dtype=np.float32))
+    assert result["side"] == [3, 2]
+
+
+@pytest.mark.parametrize("flip_axes", [(0,), (1,), (0, 1)])
+def test_flip3d_non_width_flips_preserve_keypoint_labels(flip_axes: tuple[int, ...]) -> None:
+    volume = np.zeros((2, 3, 5, 1), dtype=np.float32)
+    keypoints = np.array([[1, 1, 0], [3, 2, 1]], dtype=np.float32)
+    side = [2, 3]
+    transform = A.Compose(
+        [A.Flip3D(flip_axes=flip_axes, p=1.0)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xyz",
+            label_fields=["side"],
+            label_mapping={"Flip3D": {"side": {2: 3, 3: 2}}},
+        ),
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(volume=volume, keypoints=keypoints, side=side)
+
+    assert result["side"] == side
+
+
 def test_flip3d_seeded_replay_records_realized_axes():
     volume = np.arange(3 * 4 * 5, dtype=np.uint8).reshape(3, 4, 5, 1)
     pipeline = A.Compose(

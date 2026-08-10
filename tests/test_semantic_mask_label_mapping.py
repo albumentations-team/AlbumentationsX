@@ -33,6 +33,76 @@ def test_semantic_mask_label_mapping_swaps_labels_after_horizontal_flip() -> Non
     np.testing.assert_array_equal(mask, np.array([[2, 0, 3, 2]], dtype=np.uint8))
 
 
+def test_semantic_mask_label_mapping_swaps_mask3d_after_width_flip3d() -> None:
+    volume = np.arange(2 * 2 * 4, dtype=np.float32).reshape(2, 2, 4, 1)
+    mask3d = np.array(
+        [
+            [[2, 0, 3, 4], [4, 3, 0, 2]],
+            [[3, 2, 4, 0], [0, 4, 2, 3]],
+        ],
+        dtype=np.uint8,
+    )
+    transform = A.Compose(
+        [A.Flip3D(flip_axes=(2,), p=1.0)],
+        additional_targets={"mask3d_alias": "mask3d"},
+        semantic_mask_label_mappings={"Flip3D": {2: 3, 3: 2}},
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(volume=volume, mask3d=mask3d, mask3d_alias=mask3d.copy())
+
+    np.testing.assert_array_equal(result["volume"], np.flip(volume, axis=2))
+    expected_mask3d = np.array(
+        [
+            [[4, 2, 0, 3], [3, 0, 2, 4]],
+            [[0, 4, 3, 2], [2, 3, 4, 0]],
+        ],
+        dtype=np.uint8,
+    )
+    np.testing.assert_array_equal(result["mask3d"], expected_mask3d)
+    np.testing.assert_array_equal(result["mask3d_alias"], expected_mask3d)
+
+
+def test_semantic_mask_label_mapping_flip3d_does_not_remap_2d_masks() -> None:
+    volume = np.zeros((1, 2, 3, 1), dtype=np.float32)
+    mask = np.array([[2, 0, 3], [3, 2, 0]], dtype=np.uint8)
+    masks = np.stack([mask, np.array([[0, 3, 2], [2, 0, 3]], dtype=np.uint8)])
+    transform = A.Compose(
+        [A.Flip3D(flip_axes=(2,), p=1.0)],
+        semantic_mask_label_mappings={"Flip3D": {2: 3, 3: 2}},
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(volume=volume, mask=mask, masks=masks)
+
+    np.testing.assert_array_equal(result["mask"], mask)
+    np.testing.assert_array_equal(result["masks"], masks)
+
+
+@pytest.mark.parametrize("flip_axes", [(0,), (1,), (0, 1)])
+def test_semantic_mask_label_mapping_flip3d_ignores_non_width_flips(flip_axes: tuple[int, ...]) -> None:
+    volume = np.zeros((2, 2, 3, 1), dtype=np.float32)
+    mask3d = np.array(
+        [
+            [[2, 0, 3], [3, 2, 0]],
+            [[0, 3, 2], [2, 0, 3]],
+        ],
+        dtype=np.uint8,
+    )
+    transform = A.Compose(
+        [A.Flip3D(flip_axes=flip_axes, p=1.0)],
+        semantic_mask_label_mappings={"Flip3D": {2: 3, 3: 2}},
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(volume=volume, mask3d=mask3d)
+
+    np.testing.assert_array_equal(result["mask3d"], np.flip(mask3d, axis=flip_axes))
+
+
 def test_semantic_mask_label_mapping_preserves_custom_apply_with_params_hook() -> None:
     image = np.zeros((1, 4, 3), dtype=np.uint8)
     mask = np.array([[2, 0, 3, 2]], dtype=np.uint8)

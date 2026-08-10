@@ -1228,7 +1228,11 @@ class DualTransform(BasicTransform):
 
         for data_name, value in data.items():
             canonical_name = self._additional_targets.get(data_name, data_name)
-            if canonical_name in {"mask", "masks", "mask3d"} and isinstance(value, (np.ndarray, torch.Tensor)):
+            if (
+                data_name in self._key2func
+                and canonical_name in {"mask", "masks", "mask3d"}
+                and isinstance(value, (np.ndarray, torch.Tensor))
+            ):
                 data[data_name] = self._remap_semantic_mask_labels(value, mapping, uint8_lut)
         return data
 

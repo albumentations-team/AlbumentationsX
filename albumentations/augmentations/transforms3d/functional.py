@@ -480,8 +480,8 @@ def keypoints_rotate90_3d(
 
 
 def transform_cube(cube: np.ndarray, index: int) -> np.ndarray:
-    """Transform cube by index (0-47). One of 48 cubic symmetries; no interpolation. For
-    CubicSymmetry; inverse via inverse index.
+    """Reorient a cube with one of 48 exact cubic symmetries, using only axis permutations and
+    reflections to move voxels without interpolation.
 
     Args:
         cube (np.ndarray): Input array with shape (D, H, W) or (D, H, W, C)

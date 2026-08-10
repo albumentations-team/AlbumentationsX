@@ -1506,6 +1506,12 @@ def test_flip3d_fixed_identity_preserves_targets_and_is_self_inverse() -> None:
     np.testing.assert_array_equal(restored["mask3d"], mask3d)
     np.testing.assert_array_equal(restored["keypoints"], keypoints)
 
+    serialized = A.to_dict(compose)
+    assert serialized["transform"]["transforms"][0]["flip_axes"] == []
+    deserialized = A.from_dict(serialized)
+
+    np.testing.assert_array_equal(deserialized(volume=volume)["volume"], volume)
+
 
 @pytest.mark.parametrize(
     "kwargs",

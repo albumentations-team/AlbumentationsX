@@ -1768,6 +1768,15 @@ class Flip3D(Transform3D):
         self.axes = axes
         self.flip_axes = flip_axes
 
+    def get_transform_init_args(self) -> dict[str, Any]:
+        """Return constructor arguments while preserving the empty axis tuple that selects deterministic identity
+        instead of random sampling.
+        """
+        args = super().get_transform_init_args()
+        if self.flip_axes == ():
+            args["flip_axes"] = self.flip_axes
+        return args
+
     def get_params_dependent_on_data(
         self,
         params: dict[str, Any],

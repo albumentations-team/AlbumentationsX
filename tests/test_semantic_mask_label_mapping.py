@@ -79,6 +79,21 @@ def test_semantic_mask_label_mapping_flip3d_does_not_remap_2d_masks() -> None:
     np.testing.assert_array_equal(result["masks"], masks)
 
 
+def test_semantic_mask_label_mapping_flip3d_identity_does_not_remap_mask3d() -> None:
+    volume = np.zeros((1, 2, 3, 1), dtype=np.float32)
+    mask3d = np.array([[[2, 0, 3], [3, 2, 0]]], dtype=np.uint8)
+    transform = A.Compose(
+        [A.Flip3D(flip_axes=(), p=1.0)],
+        semantic_mask_label_mappings={"Flip3D": {2: 3, 3: 2}},
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(volume=volume, mask3d=mask3d)
+
+    np.testing.assert_array_equal(result["mask3d"], mask3d)
+
+
 @pytest.mark.parametrize("flip_axes", [(0, 1), (0, 2), (1, 2)])
 def test_semantic_mask_label_mapping_flip3d_ignores_even_reflections(flip_axes: tuple[int, ...]) -> None:
     volume = np.zeros((2, 2, 3, 1), dtype=np.float32)

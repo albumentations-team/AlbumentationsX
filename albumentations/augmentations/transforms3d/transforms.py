@@ -1700,15 +1700,16 @@ class Flip3D(Transform3D):
     """Reflect a volume independently across depth, height, and width voxel-index axes while retaining its shape and
     channel layout.
 
-    In random mode, each allowed axis is independently reflected. Set `flip_axes` to a fixed subset for reversible
-    test-time augmentation; reflections are self-inverse. This is a voxel-index reflection only: it does not update
-    affine metadata or perform a physical-space reorientation.
+    In random mode, each allowed axis is independently reflected, including the empty subset (identity). This samples
+    the full reflection group uniformly. Set `flip_axes` to a fixed subset, including `()`, for reversible test-time
+    augmentation; reflections are self-inverse. This is a voxel-index reflection only: it does not update affine
+    metadata or perform a physical-space reorientation.
 
     Args:
         axes (tuple[int, ...]): Non-empty spatial axes that random mode may flip, in `(depth, height, width)` order.
             Default: `(0, 1, 2)`.
         flip_axes (tuple[int, ...] | None): Fixed subset of `axes` to reflect for deterministic test-time augmentation.
-            Default: None.
+            Use `()` for identity. Default: None.
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
@@ -1721,8 +1722,8 @@ class Flip3D(Transform3D):
         - A realized reflection across an odd number of axes emits the `Flip3D` label-mapping event. Its semantic-mask
           mapping applies only to `mask3d`; keypoint label mappings rename label values without changing coordinate-row
           order.
-        - A reflection across an even number of axes preserves orientation and does not emit this event. Without an
-          explicit mapping, labels stay unchanged.
+        - A reflection across an even number of axes, including identity, preserves orientation and does not emit this
+          event. Without an explicit mapping, labels stay unchanged.
 
     Examples:
         >>> import numpy as np
@@ -1751,8 +1752,6 @@ class Flip3D(Transform3D):
             if len(self.axes) != len(set(self.axes)):
                 raise ValueError("axes must not contain duplicate spatial axes")
             if self.flip_axes is not None:
-                if not self.flip_axes:
-                    raise ValueError("flip_axes must contain at least one spatial axis")
                 if len(self.flip_axes) != len(set(self.flip_axes)):
                     raise ValueError("flip_axes must not contain duplicate spatial axes")
                 if not set(self.flip_axes).issubset(self.axes):
@@ -1777,8 +1776,6 @@ class Flip3D(Transform3D):
         flip_axes = self.flip_axes
         if flip_axes is None:
             flip_axes = tuple(axis for axis in self.axes if self.py_random.random() < 0.5)
-            if not flip_axes:
-                flip_axes = (self.py_random.choice(self.axes),)
 
         self.applied_config = {"flip_axes": flip_axes}
         return {"flip_axes": flip_axes, "volume_shape": _get_volume_spatial_shape(data)}
@@ -1788,7 +1785,8 @@ class Flip3D(Transform3D):
         and keypoint labels to follow it.
 
         Each voxel-index reflection changes orientation parity. An odd number of reflected axes has determinant
-        negative and therefore applies the configured semantic mapping; an even number preserves orientation.
+        negative and therefore applies the configured semantic mapping; an even number, including identity, preserves
+        orientation.
         """
         return "Flip3D" if len(params["flip_axes"]) % 2 else None
 
@@ -1827,6 +1825,8 @@ class Flip3D(Transform3D):
         flip_axes: tuple[AxisIndex3D, ...],
         **params: Any,
     ) -> VolumeType:
+        if not flip_axes:
+            return volume
         flipped: np.ndarray = np.flip(volume, axis=flip_axes)
         return cast("VolumeType", flipped)
 
@@ -1836,6 +1836,8 @@ class Flip3D(Transform3D):
         flip_axes: tuple[AxisIndex3D, ...],
         **params: Any,
     ) -> VolumeType:
+        if not flip_axes:
+            return mask3d
         flipped: np.ndarray = np.flip(mask3d, axis=flip_axes)
         return cast("VolumeType", flipped)
 
@@ -1846,6 +1848,8 @@ class Flip3D(Transform3D):
         volume_shape: tuple[int, int, int],
         **params: Any,
     ) -> np.ndarray:
+        if not flip_axes:
+            return keypoints
         return f3d.keypoints_flip_3d(keypoints, flip_axes, volume_shape)
 
     def inverse(self) -> Self:

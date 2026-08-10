@@ -1437,12 +1437,47 @@ def test_flip3d_seeded_replay_records_realized_axes():
     np.testing.assert_array_equal(replayed["volume"], result["volume"])
 
 
+def test_flip3d_random_mode_samples_the_full_reflection_group() -> None:
+    transform = A.Flip3D(axes=(0, 2), p=1.0)
+    transform.set_random_seed(137)
+    volume = np.zeros((2, 3, 5, 1), dtype=np.uint8)
+
+    sampled_axes = {transform.get_params_dependent_on_data({}, {"volume": volume})["flip_axes"] for _ in range(64)}
+
+    assert sampled_axes == {(), (0,), (2,), (0, 2)}
+
+
+def test_flip3d_fixed_identity_preserves_targets_and_is_self_inverse() -> None:
+    volume = np.arange(2 * 3 * 5, dtype=np.uint8).reshape(2, 3, 5, 1)
+    mask3d = (volume[..., 0] % 2).astype(np.uint8)
+    keypoints = np.array([[1, 1, 0], [3, 2, 1]], dtype=np.float32)
+    transform = A.Flip3D(flip_axes=(), p=1.0)
+    compose = A.Compose(
+        [transform],
+        keypoint_params=A.KeypointParams(coord_format="xyz"),
+        save_applied_params=True,
+        strict=True,
+    )
+
+    result = compose(volume=volume, mask3d=mask3d, keypoints=keypoints)
+    restored = A.Compose([transform.inverse()], keypoint_params=A.KeypointParams(coord_format="xyz"), strict=True)(
+        **result,
+    )
+
+    np.testing.assert_array_equal(result["volume"], volume)
+    np.testing.assert_array_equal(result["mask3d"], mask3d)
+    np.testing.assert_array_equal(result["keypoints"], keypoints)
+    assert result["applied_transforms"][0][1]["flip_axes"] == ()
+    np.testing.assert_array_equal(restored["volume"], volume)
+    np.testing.assert_array_equal(restored["mask3d"], mask3d)
+    np.testing.assert_array_equal(restored["keypoints"], keypoints)
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
         {"axes": ()},
         {"axes": (0, 0)},
-        {"flip_axes": ()},
         {"axes": (0,), "flip_axes": (1,)},
         {"flip_axes": (0, 0)},
     ],

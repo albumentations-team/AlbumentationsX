@@ -1066,6 +1066,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("subset-elements", A.RandomRotate90, {"group_elements": ("r90", "r270")}),
     ("fixed-axis-rotation", A.RandomRotate90_3D, {"axis_pair": (0, 2), "group_element": "r90"}),
     ("fixed-axes", A.Flip3D, {"flip_axes": (0, 2)}),
+    ("fixed-identity", A.Flip3D, {"flip_axes": ()}),
     ("constant-fill", A.Affine3D, {"border_mode": cv2.BORDER_CONSTANT}),
     ("anisotropic-range", A.RandomScale, {"scale_range": {"x": (-0.2, 0.3), "y": (-0.1, 0.15)}}),
     ("downscale-aware", A.RandomScale, {"mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"}),

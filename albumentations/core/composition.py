@@ -74,6 +74,13 @@ __all__ = [
 
 NUM_ONEOF_TRANSFORMS = 2
 
+_TRACE_NODE_KIND_COMPOSITION = "composition"
+_TRACE_NODE_KIND_LEAF = "leaf"
+_TRACE_STATUS_APPLIED = "applied"
+_TRACE_STATUS_SKIPPED_PROBABILITY = "skipped_probability"
+_TRACE_STATUS_SKIPPED_REPLAY = "skipped_replay"
+_TRACE_STATUS_SKIPPED_SELECTION = "skipped_selection"
+
 _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
 
 
@@ -1603,18 +1610,19 @@ class Compose(BaseCompose, HubMixin):
             data["applied_transforms"] = []
 
         if not (force_apply or self.py_random.random() < self.p):
-            self._emit_skipped_trace_tree(self, trace_context, (), "skipped_probability")
+            self._emit_skipped_trace_tree(self, trace_context, (), _TRACE_STATUS_SKIPPED_PROBABILITY)
             return trace_context.finish(data)
 
         try:
             self.preprocess(data)
-            data = self._run_traced_children(data, trace_context, ())
-            trace_context.emit(
-                node_path=(),
-                class_fullname=self.get_class_fullname(),
-                node_kind="composition",
-                status="applied",
+            data = self._run_traced_node_children(
+                self,
+                data,
+                trace_context,
+                (),
+                post_transform_container=self,
             )
+            self._emit_composition_record(self, trace_context, (), _TRACE_STATUS_APPLIED)
             result = self.postprocess(data)
             self._restore_tensor_annotations(result)
             return trace_context.finish(result)
@@ -1630,28 +1638,6 @@ class Compose(BaseCompose, HubMixin):
             unknown = ", ".join(sorted(unknown_targets))
             raise ValueError(f"Unknown trace snapshot targets: {unknown}")
 
-    def _run_traced_children(
-        self,
-        data: dict[str, Any],
-        trace_context: _TraceContext,
-        parent_path: tuple[int, ...],
-        *,
-        tracking_data: dict[str, Any] | None = None,
-        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-        finalize_leaf: bool = True,
-    ) -> dict[str, Any]:
-        for index, transform in enumerate(self.transforms):
-            data = self._run_traced_node(
-                transform,
-                data,
-                trace_context,
-                (*parent_path, index),
-                tracking_data=tracking_data,
-                event_data_factory=event_data_factory,
-                finalize_leaf=finalize_leaf,
-            )
-        return data
-
     def _run_traced_node(
         self,
         transform: TransformType,
@@ -1663,6 +1649,7 @@ class Compose(BaseCompose, HubMixin):
         tracking_data: dict[str, Any] | None = None,
         event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         finalize_leaf: bool = True,
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if isinstance(transform, BasicTransform):
             return self._run_traced_leaf(
@@ -1674,19 +1661,48 @@ class Compose(BaseCompose, HubMixin):
                 tracking_data=tracking_data,
                 event_data_factory=event_data_factory,
                 finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
             )
         if isinstance(transform, SelectiveChannelTransform):
-            return self._run_traced_selective(transform, data, trace_context, path)
+            return self._run_traced_selective(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                post_transform_container=post_transform_container,
+            )
         if isinstance(transform, OneOf):
-            return self._run_traced_one_of(transform, data, trace_context, path)
+            return self._run_traced_one_of(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                post_transform_container=post_transform_container,
+            )
         if isinstance(transform, SomeOf):
-            return self._run_traced_some_of(transform, data, trace_context, path)
+            return self._run_traced_some_of(transform, data, trace_context, path, post_transform_container)
         if isinstance(transform, OneOrOther):
-            return self._run_traced_one_or_other(transform, data, trace_context, path)
+            return self._run_traced_one_or_other(transform, data, trace_context, path, post_transform_container)
         if isinstance(transform, Sequential):
-            return self._run_traced_sequential(transform, data, trace_context, path, force_apply=force_apply)
+            return self._run_traced_sequential(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                post_transform_container=post_transform_container,
+            )
         if isinstance(transform, Compose):
-            return self._run_traced_compose(transform, data, trace_context, path, force_apply=force_apply)
+            return self._run_traced_compose(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                post_transform_container=post_transform_container,
+            )
         raise TypeError(f"Unsupported composition node: {type(transform).__name__}")
 
     def _run_traced_leaf(
@@ -1700,6 +1716,7 @@ class Compose(BaseCompose, HubMixin):
         tracking_data: dict[str, Any] | None,
         event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
         finalize_leaf: bool,
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         start_ns = perf_counter_ns() if trace_context.options.include_timing else None
         data = transform(force_apply=force_apply, **data)
@@ -1708,7 +1725,7 @@ class Compose(BaseCompose, HubMixin):
         if applied:
             self._track_transform_params(transform, data if tracking_data is None else tracking_data)
             if finalize_leaf:
-                data = self._finalize_traced_leaf(data)
+                data = self._finalize_traced_leaf(data, post_transform_container)
             if trace_context.needs_snapshot:
                 event_data = event_data_factory(data) if event_data_factory is not None else data
 
@@ -1716,23 +1733,23 @@ class Compose(BaseCompose, HubMixin):
         trace_context.emit(
             node_path=path,
             class_fullname=transform.get_applied_replay_class().get_class_fullname(),
-            node_kind="leaf",
-            status="applied" if applied else self._leaf_skip_status(transform),
+            node_kind=_TRACE_NODE_KIND_LEAF,
+            status=_TRACE_STATUS_APPLIED if applied else self._leaf_skip_status(transform),
             params=transform.applied_config if applied else None,
             data=event_data,
             elapsed_ns=elapsed_ns,
         )
         return data
 
-    def _finalize_traced_leaf(self, data: dict[str, Any]) -> dict[str, Any]:
-        data = self.check_data_post_transform(data)
-        if self.main_compose and self._instance_binding:
+    def _finalize_traced_leaf(self, data: dict[str, Any], container: "BaseCompose") -> dict[str, Any]:
+        data = container.check_data_post_transform(data)
+        if container is self and self.main_compose and self._instance_binding:
             self._resync_instance_ids(data)
         return data
 
     @staticmethod
     def _leaf_skip_status(transform: BasicTransform) -> str:
-        return "skipped_replay" if transform.replay_mode else "skipped_probability"
+        return _TRACE_STATUS_SKIPPED_REPLAY if transform.replay_mode else _TRACE_STATUS_SKIPPED_PROBABILITY
 
     def _run_traced_compose(
         self,
@@ -1742,12 +1759,22 @@ class Compose(BaseCompose, HubMixin):
         path: tuple[int, ...],
         *,
         force_apply: bool,
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if not (transform.replay_mode or force_apply or transform.py_random.random() < transform.p):
-            self._emit_skipped_trace_tree(transform, trace_context, path, "skipped_probability")
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
-        data = self._run_traced_node_children(transform, data, trace_context, path)
-        self._emit_composition_record(transform, trace_context, path, "applied")
+        transform.preprocess(data)
+        data = self._run_traced_node_children(
+            transform,
+            data,
+            trace_context,
+            path,
+            post_transform_container=transform,
+        )
+        result = transform.postprocess(data)
+        data = self._finalize_traced_leaf(result, post_transform_container)
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
         return data
 
     def _run_traced_one_of(
@@ -1756,10 +1783,13 @@ class Compose(BaseCompose, HubMixin):
         data: dict[str, Any],
         trace_context: _TraceContext,
         path: tuple[int, ...],
+        *,
+        force_apply: bool,
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if transform.replay_mode:
             if not getattr(transform, "applied_in_replay", False):
-                self._emit_skipped_trace_tree(transform, trace_context, path, "skipped_probability")
+                self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_REPLAY)
                 return data
             selected_indices = self._replay_selected_child_indices(transform)
             self._emit_unselected_children(transform, trace_context, path, selected_indices)
@@ -1770,11 +1800,12 @@ class Compose(BaseCompose, HubMixin):
                     trace_context,
                     (*path, selected_index),
                     force_apply=True,
+                    post_transform_container=post_transform_container,
                 )
-            self._emit_composition_record(transform, trace_context, path, "applied")
+            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
             return data
-        if not transform.transforms_ps or transform.py_random.random() >= transform.p:
-            self._emit_skipped_trace_tree(transform, trace_context, path, "skipped_probability")
+        if not transform.transforms_ps or not (force_apply or transform.py_random.random() < transform.p):
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
 
         selected_index = transform.random_generator.choice(len(transform.transforms), p=transform.transforms_ps)
@@ -1785,8 +1816,9 @@ class Compose(BaseCompose, HubMixin):
             trace_context,
             (*path, selected_index),
             force_apply=True,
+            post_transform_container=post_transform_container,
         )
-        self._emit_composition_record(transform, trace_context, path, "applied")
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
         return data
 
     def _run_traced_some_of(
@@ -1795,13 +1827,24 @@ class Compose(BaseCompose, HubMixin):
         data: dict[str, Any],
         trace_context: _TraceContext,
         path: tuple[int, ...],
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if transform.replay_mode:
-            data = self._run_traced_node_children(transform, data, trace_context, path)
-            self._emit_composition_record(transform, trace_context, path, "applied")
+            if not getattr(transform, "applied_in_replay", False):
+                self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_REPLAY)
+                return data
+            data = self._run_traced_node_children(
+                transform,
+                data,
+                trace_context,
+                path,
+                post_transform_container=transform,
+            )
+            data = self._finalize_traced_leaf(data, post_transform_container)
+            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
             return data
         if transform.py_random.random() >= transform.p:
-            self._emit_skipped_trace_tree(transform, trace_context, path, "skipped_probability")
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
 
         selected_indices = tuple(transform.get_indices())
@@ -1812,8 +1855,10 @@ class Compose(BaseCompose, HubMixin):
                 data,
                 trace_context,
                 (*path, selected_index),
+                post_transform_container=transform,
             )
-        self._emit_composition_record(transform, trace_context, path, "applied")
+        data = self._finalize_traced_leaf(data, post_transform_container)
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
         return data
 
     def _run_traced_one_or_other(
@@ -1822,10 +1867,11 @@ class Compose(BaseCompose, HubMixin):
         data: dict[str, Any],
         trace_context: _TraceContext,
         path: tuple[int, ...],
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if transform.replay_mode:
             if not getattr(transform, "applied_in_replay", False):
-                self._emit_skipped_trace_tree(transform, trace_context, path, "skipped_probability")
+                self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_REPLAY)
                 return data
             selected_indices = self._replay_selected_child_indices(transform)
             self._emit_unselected_children(transform, trace_context, path, selected_indices)
@@ -1836,8 +1882,9 @@ class Compose(BaseCompose, HubMixin):
                     trace_context,
                     (*path, selected_index),
                     force_apply=True,
+                    post_transform_container=post_transform_container,
                 )
-            self._emit_composition_record(transform, trace_context, path, "applied")
+            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
             return data
 
         selected_index = 0 if transform.py_random.random() < transform.p else len(transform.transforms) - 1
@@ -1848,8 +1895,9 @@ class Compose(BaseCompose, HubMixin):
             trace_context,
             (*path, selected_index),
             force_apply=True,
+            post_transform_container=post_transform_container,
         )
-        self._emit_composition_record(transform, trace_context, path, "applied")
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
         return data
 
     def _run_traced_sequential(
@@ -1860,12 +1908,20 @@ class Compose(BaseCompose, HubMixin):
         path: tuple[int, ...],
         *,
         force_apply: bool,
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         if not (transform.replay_mode or force_apply or transform.py_random.random() < transform.p):
-            self._emit_skipped_trace_tree(transform, trace_context, path, "skipped_probability")
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
-        data = self._run_traced_node_children(transform, data, trace_context, path)
-        self._emit_composition_record(transform, trace_context, path, "applied")
+        data = self._run_traced_node_children(
+            transform,
+            data,
+            trace_context,
+            path,
+            post_transform_container=transform,
+        )
+        data = self._finalize_traced_leaf(data, post_transform_container)
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
         return data
 
     def _run_traced_selective(
@@ -1874,9 +1930,12 @@ class Compose(BaseCompose, HubMixin):
         data: dict[str, Any],
         trace_context: _TraceContext,
         path: tuple[int, ...],
+        *,
+        force_apply: bool,
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
-        if transform.py_random.random() >= transform.p:
-            self._emit_skipped_trace_tree(transform, trace_context, path, "skipped_probability")
+        if not (force_apply or transform.py_random.random() < transform.p):
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
 
         image = data["image"]
@@ -1899,13 +1958,14 @@ class Compose(BaseCompose, HubMixin):
             tracking_data=data,
             event_data_factory=build_full_snapshot,
             finalize_leaf=False,
+            post_transform_container=post_transform_container,
         )
         output_image = image.copy()
         for channel_index, channel in zip(transform.channels, cv2.split(sub_data["image"]), strict=True):
             output_image[:, :, channel_index] = channel
         data["image"] = np.ascontiguousarray(output_image)
-        self._finalize_traced_leaf(data)
-        self._emit_composition_record(transform, trace_context, path, "applied")
+        data = self._finalize_traced_leaf(data, post_transform_container)
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
         return data
 
     def _run_traced_node_children(
@@ -1918,6 +1978,7 @@ class Compose(BaseCompose, HubMixin):
         tracking_data: dict[str, Any] | None = None,
         event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         finalize_leaf: bool = True,
+        post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
         for index, child in enumerate(transform.transforms):
             data = self._run_traced_node(
@@ -1928,6 +1989,7 @@ class Compose(BaseCompose, HubMixin):
                 tracking_data=tracking_data,
                 event_data_factory=event_data_factory,
                 finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
             )
         return data
 
@@ -1940,7 +2002,7 @@ class Compose(BaseCompose, HubMixin):
     ) -> None:
         for index, child in enumerate(transform.transforms):
             if index not in selected_indices:
-                self._emit_skipped_trace_tree(child, trace_context, (*path, index), "skipped_selection")
+                self._emit_skipped_trace_tree(child, trace_context, (*path, index), _TRACE_STATUS_SKIPPED_SELECTION)
 
     @staticmethod
     def _replay_selected_child_indices(transform: "BaseCompose") -> set[int]:
@@ -1957,7 +2019,7 @@ class Compose(BaseCompose, HubMixin):
             trace_context.emit(
                 node_path=path,
                 class_fullname=transform.get_applied_replay_class().get_class_fullname(),
-                node_kind="leaf",
+                node_kind=_TRACE_NODE_KIND_LEAF,
                 status=status,
             )
             return
@@ -1975,7 +2037,7 @@ class Compose(BaseCompose, HubMixin):
         trace_context.emit(
             node_path=path,
             class_fullname=transform.get_class_fullname(),
-            node_kind="composition",
+            node_kind=_TRACE_NODE_KIND_COMPOSITION,
             status=status,
         )
 

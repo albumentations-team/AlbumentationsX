@@ -35,6 +35,9 @@ NON_SERIALIZABLE_REGISTRY: dict[str, "SerializableMeta"] = {}
 _MAPPING_TYPE_KEY = "__albumentations_serialized_type__"
 _MAPPING_ITEMS_KEY = "items"
 _MAPPING_TYPE_VALUE = "mapping"
+_MAPPING_VERSION_KEY = "__albumentations_serialized_mapping_version__"
+_MAPPING_VERSION = 1
+_MAPPING_KEY_ESCAPE_PREFIX = "__albumentations_escaped_mapping_key__"
 
 
 def shorten_class_name(class_fullname: str) -> str:
@@ -247,10 +250,16 @@ def serialize_enum(obj: Any) -> Any:
     if isinstance(obj, Mapping):
         serialized_items = [(serialize_enum(key), serialize_enum(value)) for key, value in obj.items()]
         if all(isinstance(key, str) for key in obj):
-            return dict(serialized_items)
+            serialized_mapping = {_escape_mapping_key(key): value for key, value in serialized_items}
+            if _is_encoded_mapping(serialized_mapping):
+                serialized_mapping[_MAPPING_KEY_ESCAPE_PREFIX + _MAPPING_TYPE_KEY] = serialized_mapping.pop(
+                    _MAPPING_TYPE_KEY,
+                )
+            return serialized_mapping
         return {
             _MAPPING_TYPE_KEY: _MAPPING_TYPE_VALUE,
             _MAPPING_ITEMS_KEY: serialized_items,
+            _MAPPING_VERSION_KEY: _MAPPING_VERSION,
         }
     if isinstance(obj, Sequence) and not isinstance(obj, str):  # exclude strings since they're also sequences
         return [serialize_enum(v) for v in obj]
@@ -263,15 +272,33 @@ def deserialize_mapping_keys(obj: Any) -> Any:
 
     """
     if isinstance(obj, Mapping):
-        if set(obj) == {_MAPPING_TYPE_KEY, _MAPPING_ITEMS_KEY} and obj[_MAPPING_TYPE_KEY] == _MAPPING_TYPE_VALUE:
+        if _is_encoded_mapping(obj):
             return {
                 _restore_mapping_key(deserialize_mapping_keys(key)): deserialize_mapping_keys(value)
                 for key, value in obj[_MAPPING_ITEMS_KEY]
             }
-        return {key: deserialize_mapping_keys(value) for key, value in obj.items()}
+        return {_unescape_mapping_key(key): deserialize_mapping_keys(value) for key, value in obj.items()}
     if isinstance(obj, list):
         return [deserialize_mapping_keys(value) for value in obj]
     return obj
+
+
+def _is_encoded_mapping(mapping: Mapping[str, Any]) -> bool:
+    return (
+        set(mapping) == {_MAPPING_TYPE_KEY, _MAPPING_ITEMS_KEY, _MAPPING_VERSION_KEY}
+        and mapping[_MAPPING_TYPE_KEY] == _MAPPING_TYPE_VALUE
+        and mapping[_MAPPING_VERSION_KEY] == _MAPPING_VERSION
+    )
+
+
+def _escape_mapping_key(key: str) -> str:
+    return _MAPPING_KEY_ESCAPE_PREFIX + key if key.startswith(_MAPPING_KEY_ESCAPE_PREFIX) else key
+
+
+def _unescape_mapping_key(key: Any) -> Any:
+    if isinstance(key, str) and key.startswith(_MAPPING_KEY_ESCAPE_PREFIX):
+        return key.removeprefix(_MAPPING_KEY_ESCAPE_PREFIX)
+    return key
 
 
 def _restore_mapping_key(key: Any) -> Any:
@@ -309,7 +336,6 @@ def save(
     """
     check_data_format(data_format)
     transform_dict = transform.to_dict(on_not_implemented_error=on_not_implemented_error)
-    transform_dict = serialize_enum(transform_dict)
 
     # Determine whether to write to a file or a file-like object
     if isinstance(filepath_or_buffer, (str, Path)):  # It's a filepath

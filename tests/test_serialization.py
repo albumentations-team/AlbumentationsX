@@ -627,6 +627,51 @@ def test_compose_roundtrip_preserves_all_behavioral_constructor_state() -> None:
     assert restored.processors["bboxes"].params.filter_invalid_bboxes is True
 
 
+@pytest.mark.parametrize("data_format", ("json", "yaml"))
+@pytest.mark.parametrize(
+    "marker_shaped_mapping",
+    (
+        {
+            "__albumentations_serialized_type__": "mapping",
+            "items": {"left": "right"},
+        },
+        {
+            "__albumentations_serialized_type__": "mapping",
+            "items": [["left", "right"]],
+            "__albumentations_serialized_mapping_version__": 1,
+        },
+    ),
+)
+def test_mapping_codec_preserves_marker_shaped_label_mappings(
+    data_format: str,
+    marker_shaped_mapping: dict[str, object],
+) -> None:
+    pipeline = A.Compose(
+        [A.HorizontalFlip(p=1.0)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xy",
+            label_fields=["label"],
+            label_mapping={"HorizontalFlip": {"label": marker_shaped_mapping}},
+        ),
+    )
+
+    restored_from_dict = A.from_dict(A.to_dict(pipeline))
+    assert isinstance(restored_from_dict, A.Compose)
+    assert restored_from_dict.processors["keypoints"].params.label_mapping == {
+        "HorizontalFlip": {"label": marker_shaped_mapping},
+    }
+
+    buffer = StringIO()
+    A.save(pipeline, buffer, data_format=data_format)
+    buffer.seek(0)
+    restored_from_file = A.load(buffer, data_format=data_format)
+
+    assert isinstance(restored_from_file, A.Compose)
+    assert restored_from_file.processors["keypoints"].params.label_mapping == {
+        "HorizontalFlip": {"label": marker_shaped_mapping},
+    }
+
+
 def test_compose_roundtrip_preserves_mask_validation_and_applied_output_behavior() -> None:
     transform = A.Compose(
         [

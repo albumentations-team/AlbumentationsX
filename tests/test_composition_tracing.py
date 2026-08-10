@@ -318,3 +318,73 @@ def test_trace_preserves_instance_binding_output_and_snapshots() -> None:
     leaf_record = next(record for record in traced.records if record.node_kind == "leaf")
     assert leaf_record.snapshot["masks"].shape[0] == 2
     assert leaf_record.snapshot["bboxes"].shape[0] == 2
+
+
+def test_trace_forces_nested_one_of_selected_by_one_or_other() -> None:
+    def make_pipeline() -> A.Compose:
+        return A.Compose(
+            [
+                A.OneOrOther(
+                    A.OneOf([A.HorizontalFlip(p=1.0)], p=0.0),
+                    A.NoOp(p=1.0),
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+        )
+
+    image = np.arange(3 * 5 * 3, dtype=np.uint8).reshape(3, 5, 3)
+    expected = make_pipeline()(image=image)
+    traced = make_pipeline().run_with_trace(image=image)
+
+    np.testing.assert_array_equal(traced.data["image"], expected["image"])
+
+
+def test_trace_runs_nested_compose_preprocess() -> None:
+    pipeline = A.Compose(
+        [A.Compose([A.NoOp(p=1.0)], is_check_shapes=True, p=1.0)],
+        is_check_shapes=False,
+        seed=137,
+    )
+    data = {
+        "image": np.zeros((3, 5, 3), dtype=np.uint8),
+        "mask": np.zeros((2, 5), dtype=np.uint8),
+    }
+
+    with pytest.raises(ValueError, match="Height and Width"):
+        pipeline(**data)
+
+    with pytest.raises(ValueError, match="Height and Width"):
+        pipeline.run_with_trace(**data)
+
+
+def test_replay_trace_marks_skipped_some_of_as_skipped_replay() -> None:
+    image = np.arange(3 * 5 * 3, dtype=np.uint8).reshape(3, 5, 3)
+    original = A.ReplayCompose(
+        [A.SomeOf([A.HorizontalFlip(p=1.0)], n=1, p=0.0)],
+        seed=137,
+    ).run_with_trace(image=image)
+
+    replayed = A.ReplayCompose.replay_with_trace(original.data["replay"], image=image)
+
+    np.testing.assert_array_equal(replayed.data["image"], original.data["image"])
+    assert [(record.node_path, record.status) for record in replayed.records] == [
+        ((0,), "skipped_replay"),
+        ((0, 0), "skipped_replay"),
+        ((), "applied"),
+    ]
+
+
+def test_trace_keeps_selective_channel_post_transform_replacement() -> None:
+    class ReplacingPostTransformCompose(A.Compose):
+        def check_data_post_transform(self, data: dict[str, object]) -> dict[str, object]:
+            return {**data, "post_transform_marker": "preserved"}
+
+    pipeline = ReplacingPostTransformCompose(
+        [A.SelectiveChannelTransform([A.InvertImg(p=1.0)], channels=(1,), p=1.0)],
+        seed=137,
+    )
+
+    traced = pipeline.run_with_trace(image=np.arange(12, dtype=np.uint8).reshape(2, 2, 3))
+
+    assert traced.data["post_transform_marker"] == "preserved"

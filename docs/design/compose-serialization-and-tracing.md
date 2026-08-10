@@ -42,8 +42,9 @@ portable pipeline definition.
 ### Transport codec
 
 `to_dict()` emits JSON/YAML-safe values. Mapping keys that JSON would coerce to strings are encoded as ordered pairs
-and decoded before construction. This keeps integer label mappings in `KeypointParams` and semantic-mask policy
-equivalent across dict, JSON, and YAML round trips.
+with a private codec-version marker and decoded before construction. A raw mapping that has the exact marker shape
+escapes that private key, so it cannot be mistaken for codec metadata. This keeps integer label mappings in
+`KeypointParams` and semantic-mask policy equivalent across dict, JSON, and YAML round trips.
 
 The portable payload is a complete current-format definition. Runtime tracing has no effect on its shape.
 
@@ -99,11 +100,16 @@ Skipped subtrees also receive lightweight records, allowing a debugger to map ev
 tree. The trace consumes the existing RNG stream only; a normal and traced pipeline with the same seed have equal
 final outputs and equal continuation on the next call.
 
+Nested `Compose` nodes run their own preprocess and postprocess boundaries while tracing, so shape validation,
+grayscale normalization, and nested policy match an ordinary pipeline call.
+
 ## Snapshot and timing ownership
 
 Metadata-only records contain no target arrays. A snapshot copies each requested value at emission time: NumPy arrays,
 Torch tensors, and nested Python values do not alias later pipeline state or the final result. The snapshot represents
 the normalized post-step working state; `TraceResult.data` is the normal public postprocessed result.
+Torch snapshots use `clone()` on the tensor's current device, so requesting them for CUDA targets consumes device
+memory; request only the targets required for diagnosis.
 
 Timing is opt-in. It covers the leaf execution and required post-step boundary, while observer work and the actual
 snapshot copy are outside the measured interval. Snapshot cost is intentionally a separate benchmarked mode.

@@ -723,7 +723,8 @@ def test_obb_rot90_updates_corners():
     exp_cy = 1 - cx
     exp_w = h
     exp_h = w
-    exp_angle = angle + 90.0
+    # The local axes exchange under a quarter turn, so the canonical width-edge angle is unchanged.
+    exp_angle = angle
 
     expected = np.column_stack(
         [

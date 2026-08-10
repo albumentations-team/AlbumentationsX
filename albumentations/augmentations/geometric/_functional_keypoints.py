@@ -520,11 +520,7 @@ def keypoints_transpose(keypoints: np.ndarray) -> np.ndarray:
 
     # Adjust angles to reflect the coordinate swap
     angles = keypoints[:, 3]
-    transposed_keypoints[:, 3] = np.where(
-        angles <= np.pi,
-        np.pi / 2 - angles,
-        3 * np.pi / 2 - angles,
-    )
+    transposed_keypoints[:, 3] = np.pi / 2 - angles
 
     return transposed_keypoints
 

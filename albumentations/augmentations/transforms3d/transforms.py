@@ -1876,8 +1876,10 @@ class Flip3D(Transform3D):
 
 
 class CubicSymmetry(Transform3D):
-    """Apply random cubic symmetry (one of 48) to a 3D volume. No interpolation; remaps voxels.
-    3D extension of D4. For TTA or augmentation; inverse() supported.
+    """Randomly reorient a 3D volume with one of 48 exact cubic symmetries, using only axis permutations and
+    reflections for interpolation-free augmentation.
+
+    This transform is intended for augmentation. Use a transform with explicit deterministic parameters for TTA.
 
     This transform is a 3D extension of D4. While D4 handles the 8 symmetries
     of a square (4 rotations x 2 reflections), CubicSymmetry handles all 48 symmetries of a cube.

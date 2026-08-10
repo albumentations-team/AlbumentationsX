@@ -162,7 +162,6 @@ def bboxes_rot90(
         if rot90_count % 2 == 1:
             width, height = height, width
 
-        angle = angle + rot90_count * 90
         return _merge_obb_params(new_center_x, new_center_y, width, height, angle, extras)
 
     rotated_bboxes = bboxes.copy()
@@ -600,7 +599,7 @@ def bboxes_hflip(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np.nda
     if bbox_type == "obb":
         center_x, center_y, width, height, angle, extras = _split_obb_params(bboxes)
         center_x = 1 - center_x
-        angle = 180.0 - angle
+        angle = -angle
         return _merge_obb_params(center_x, center_y, width, height, angle, extras)
     flipped_bboxes = bboxes.copy()
     flipped_bboxes[:, 0] = 1 - bboxes[:, 2]  # new x_min = 1 - x_max
@@ -626,7 +625,7 @@ def bboxes_transpose(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np
         center_x, center_y, width, height, angle, extras = _split_obb_params(bboxes)
         center_x, center_y = center_y, center_x
         width, height = height, width
-        angle = 90.0 - angle
+        angle = -angle
         return _merge_obb_params(center_x, center_y, width, height, angle, extras)
     transposed_bboxes = bboxes.copy()
     transposed_bboxes[:, [0, 1, 2, 3]] = bboxes[:, [1, 0, 3, 2]]

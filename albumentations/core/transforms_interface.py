@@ -123,15 +123,17 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     @property
     def supports_cpu_tensor(self) -> bool:
-        """Return whether this transform exposes an accepted CPU Tensor capability
-        route rather than relying on an unsupported implicit representation conversion.
+        """Return whether this transform can run CPU Tensor inputs directly, allowing Compose to keep data in Tensor
+        form without a NumPy bridge.
         """
         return self._supports_cpu_tensor
 
     @property
     def cpu_tensor_targets(self) -> frozenset[str] | None:
-        """Return canonical Compose targets covered by this Tensor capability so callers can
-        reject unsupported target combinations before sampling transform parameters.
+        """Return canonical targets this transform handles directly as CPU Tensor inputs, allowing Compose to decide
+        whether to keep a Tensor route.
+
+        Compose bridges a pipeline through NumPy when its Tensor targets fall outside this set.
         """
         return self._cpu_tensor_targets
 
@@ -146,22 +148,19 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         """Return whether accepted Tensor capability routes cover every caller-provided
         canonical target before Compose samples parameters or enters transform dispatch.
 
-        `None` means that this transform's accepted Tensor route is target
-        agnostic. Transforms with a narrower first capability declare the
-        canonical target names explicitly, so Compose rejects unsupported Tensor
-        targets before sampling parameters.
+        `None` means that this transform's direct Tensor route is target agnostic. Transforms with a narrower route
+        declare canonical target names explicitly so Compose can choose a NumPy bridge before sampling parameters.
         """
         return self.supports_cpu_tensor and (
             self._cpu_tensor_targets is None or targets.issubset(self._cpu_tensor_targets)
         )
 
     def supports_cpu_tensor_inputs(self, tensor_inputs: tuple[tuple[str, Any], ...]) -> bool:
-        """Return whether the accepted Tensor route covers every supplied target and image
-        channel count before Compose samples parameters or calls transform helpers.
+        """Check every supplied target and image channel count to decide whether this transform can run them directly
+        as CPU Tensor data.
 
-        Compose calls this before transform parameter sampling. Capability records
-        may be deliberately narrow while a route is being introduced; callers get
-        a boundary error instead of an unsupported helper receiving a Tensor.
+        Compose uses a False result to select its one-time NumPy bridge for the full pipeline. Transform helpers never
+        receive Tensor data through an ad hoc conversion.
         """
         targets = frozenset(target for target, _ in tensor_inputs)
         if not self.supports_cpu_tensor_targets(targets):

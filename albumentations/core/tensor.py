@@ -81,6 +81,35 @@ def tensor_to_numpy_annotation(value: torch.Tensor, target: str) -> NDArray[np.g
     return value.numpy()
 
 
+def tensor_to_numpy_spatial(value: torch.Tensor, target: str) -> NDArray[np.generic]:
+    """Convert a validated Tensor target to the channel-last NumPy layout that existing Compose preprocessing and
+    transforms expect.
+
+    The bridge owns every layout conversion. Transform helpers only receive their established NumPy layout and never
+    decide whether to convert a caller's Tensor themselves.
+    """
+    validate_tensor_input(value, target, target)
+    if target == "image":
+        return value.permute(1, 2, 0).numpy()
+    if target in {"images", "volume"}:
+        return value.permute(1, 2, 3, 0).numpy()
+    return value.numpy()
+
+
+def numpy_to_tensor_spatial(value: NDArray[np.generic], target: str) -> torch.Tensor:
+    """Convert a NumPy result from Compose back to the caller-facing Tensor layout, copying only when negative strides
+    require it.
+
+    NumPy transforms may return a negative-stride view, such as after a reflection. PyTorch cannot share that storage,
+    so materialize only that incompatible case before returning the Tensor result.
+    """
+    if target in {"image", "images", "volume"}:
+        value = np.moveaxis(value, -1, 0)
+    if any(stride < 0 for stride in value.strides):
+        value = np.ascontiguousarray(value)
+    return torch.from_numpy(value)
+
+
 def numpy_to_tensor_annotation(value: NDArray[np.generic], target: str) -> torch.Tensor:
     """Return a Tensor bbox or keypoint matrix from a processor result, materializing only
     negative-stride NumPy storage that PyTorch cannot safely share.

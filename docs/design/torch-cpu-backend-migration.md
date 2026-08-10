@@ -3,10 +3,11 @@
 **Status:** In progress
 
 **Decision:** `torch` becomes a required dependency. The existing `Compose` accepts both NumPy arrays and CPU
-`torch.Tensor` values. One execution engine routes each compatible *segment* to NumPy/OpenCV/NumKong or Torch based on
-full-path benchmark evidence. A Tensor input may use a faster NumPy segment and return to Tensor form. A NumPy input
-may use a faster Torch segment and return to NumPy form, unless an existing explicit terminal `ToTensorV2` or
-`ToTensor3D` transform requests Tensor output.
+`torch.Tensor` values. Every valid Tensor pipeline returns Tensor output. Before transform parameters are sampled,
+`Compose` chooses one representation for the entire pipeline: direct Tensor execution when every selectable child
+supports the supplied Tensor targets, otherwise one Tensor-to-NumPy bridge before the pipeline and one NumPy-to-Tensor
+bridge after it. New direct Tensor routes require full-path benchmark evidence. NumPy input retains its existing NumPy
+flow unless an explicit terminal `ToTensorV2` or `ToTensor3D` transform requests Tensor output.
 
 **Primary workload:** a PyTorch training process in which Torch is already imported. Steady-state `DataLoader`
 throughput is a milestone integration gate. Individual transform pull requests use direct and `Compose` benchmarks
@@ -14,16 +15,18 @@ without rebuilding and timing a complete loader for every matrix cell.
 
 ## Current implementation status
 
-The repository is in the foundation stage. `torch` is now a required dependency. `Compose` accepts CPU Tensor image,
-mask, bbox, and keypoint targets, preserves their public representation through the existing dispatch flow, and rejects
-accelerators, autograd inputs, mixed spatial representations, and legacy terminal Tensor transforms. Bbox and keypoint
-processors still use one centralized NumPy bridge internally and restore their `float32` Tensor output at the public
-boundary. A private probe and a `DataLoader` collation test cover this plumbing.
+The repository is in the foundation stage. `torch` is now a required dependency. `Compose` accepts every validated CPU
+Tensor pipeline and returns Tensor output. If every selectable transform supports the supplied Tensor targets, the
+pipeline runs directly on Tensor values. If any transform lacks that direct route, `Compose` converts every spatial
+target to its established channel-last NumPy layout once before the pipeline and restores Tensor layouts once after
+postprocessing. This keeps arbitrary transform combinations usable without letting individual helpers call `.numpy()`
+or `torch.from_numpy()` themselves.
 
-`NoOp` accepts every supported Tensor target. The measured `Transpose` capability accepts C=1 and C=3 Tensor images,
-plus `mask`, `masks`, and `mask3d`; it keeps Tensor bbox and keypoint entry and exit through the central processor
-bridge. Its Tensor `images` and `volume` routes remain unsupported. Every accepted Tensor-image pipeline requires each
-supplied spatial target to be a Tensor; the prior image-Tensor plus NumPy-target combination is no longer accepted.
+The boundary continues to reject accelerators, autograd inputs, mixed spatial representations, and legacy terminal
+Tensor transforms. Bbox and keypoint processors use the same central bridge and return `float32` Tensor matrices at the
+public boundary. Tensor capabilities now choose the direct fast path; they no longer decide whether a valid `Compose`
+pipeline can accept Tensor input. `NoOp` accepts every supported Tensor target. `Flip3D` accepts Tensor `volume` and
+`mask3d` through the central NumPy bridge while retaining semantic label mappings.
 
 The repository also contains `python -m tools.tensor_compose_benchmark`. It records raw model-ready `Compose` and
 optional steady-state `DataLoader` measurements as JSON. Run it after a change to Compose, a bridge, batching, or
@@ -44,7 +47,7 @@ volume matrix (C=1, C=3, C=5; `uint8` and `float32`). Reusing the NumPy crop hel
 slower still. A correctness-equivalent `CubicSymmetry` prototype reduced all 48 symmetries to one Tensor permutation
 and at most one flip or clone, but it still lost on required common cells; only the medium C=5 `float32` subset won.
 `Pad3D` with `torch.nn.functional.pad` likewise lost by 1.10x to 3.43x outside the one medium C=5 `float32` win. The
-needed Torch operations exist, so no upstream feature request is open. These transforms remain explicitly rejected
+needed Torch operations exist, so no upstream feature request is open. These transforms use Compose's NumPy bridge
 until a future CPU release or a different full-path implementation passes every required cell.
 
 The initial integration run measured workers 0 and 2 successfully. The 8-worker run did not finish on this macOS ARM
@@ -69,28 +72,37 @@ There is one public `Compose`, one transform hierarchy, and one parameter-sampli
 `apply_to_images`, and `apply_to_volume` decide target policy and dispatch. Reusable pixel arithmetic remains in the
 functional layer or Albucore.
 
-The planner may choose either representation for any compatible contiguous segment:
+For Tensor input, `Compose` makes one route decision for the complete transform chain:
 
 ```mermaid
 flowchart LR
-    NI["NumPy input"] --> NS1["NumPy / OpenCV / NumKong segment"]
-    NS1 --> NT["Measured bridge"]
-    NT --> TS["Torch segment"]
-    TS --> NO["NumPy output"]
-
-    TI["Tensor input"] --> TS1["Torch segment"]
-    TS1 --> TN["Measured bridge"]
-    TN --> NS["NumPy / OpenCV / NumKong segment"]
-    NS --> TO["Tensor output"]
+    TI["Tensor input"] --> D{"Every selectable child supports\nthese Tensor targets?"}
+    D -->|"Yes"| T["Whole pipeline runs on Tensor"]
+    T --> TO["Tensor output"]
+    D -->|"No"| N1["Bridge every spatial target\nTensor to NumPy once"]
+    N1 --> N2["Whole pipeline runs on NumPy"]
+    N2 --> N3["Bridge every spatial target\nNumPy to Tensor once"]
+    N3 --> TO
 ```
 
-The diagram shows possible boundaries, not a required alternation. The planner groups adjacent helpers with the same
-backend. It must not convert around every helper: a Tensor → NumPy → Tensor crossing is paid once per accepted NumPy
-segment, and a NumPy → Tensor → NumPy crossing is paid once per accepted Torch segment.
+This route prevents representation changes between individual transforms. A pipeline with several NumPy-backed
+transforms pays one pair of bridges, not one pair per transform. An empty pipeline and a pipeline skipped by `p=0`
+return the original Tensor objects without a bridge.
 
-The first segment may use either backend. No helper may add an ad hoc `.numpy()`, `torch.from_numpy()`, or layout
-conversion. The central bridge and capability registry own every crossing. The registry records why a route is
-eligible, rejected, or blocked.
+`Compose` owns every spatial conversion, layout adapter, and output repair. Transform helpers receive either their
+established NumPy layout or their declared Tensor layout. They must not add an ad hoc `.numpy()`, `torch.from_numpy()`,
+or layout conversion.
+
+### Compose route-selection invariant
+
+For every valid CPU Tensor call, `Compose` evaluates all selectable descendants before parameter sampling. `OneOf`,
+`SomeOf`, `Sequential`, and other nested compositions qualify for direct Tensor execution only when every branch that
+may run supports every supplied Tensor target. A wrapper that creates its own representation boundary also selects the
+NumPy route.
+
+The direct route is an optimization. A missing direct capability never rejects a valid Tensor input; it selects the
+whole-pipeline NumPy route. Tensor input still rejects accelerator tensors, autograd tensors, mixed spatial
+representations, and redundant `ToTensorV2` or `ToTensor3D` terminal transforms.
 
 ### Tensor boundary contract
 
@@ -133,9 +145,9 @@ conventions rather than the image channel convention:
 instance axis, not an image-channel axis. If a model needs a channel-first target, the dataset or collate function
 creates that model-specific form after `Compose`.
 
-The implementation keeps one transform hierarchy. A route may bridge Tensor annotations to the current NumPy
-processor or helper when that full route is faster, then return Tensor. The bridge owns conversion, layout, and
-ownership checks. No transform-specific helper may convert an annotation silently.
+The implementation keeps one transform hierarchy. The central bridge converts Tensor annotations for NumPy processors
+and restores Tensor output. The bridge owns conversion, layout, and ownership checks. No transform-specific helper may
+convert an annotation silently.
 
 ### CPU-only boundary
 
@@ -155,7 +167,7 @@ asks the caller to remove it.
 Accelerator support is a later project phase. It reuses the Tensor and capability contracts only after the CPU routes
 have passed their performance gate.
 
-## Bidirectional segment planner
+## Compose route selection
 
 ### Capability declaration
 
@@ -165,12 +177,11 @@ Each transform family and reusable functional helper receives a private capabili
 - exact output shape, dtype, range, mutation, aliasing, RNG, replay, and annotation behavior;
 - available implementations: current backend, Torch, or both;
 - valid entry and exit bridges, including all required layout views and copies;
-- supported predecessor and successor capability IDs; and
 - benchmark cells and status: `accepted`, `partial_route`, `existing_backend`, `rejected`, or `blocked_upstream`.
 
-`Compose` builds the route from the ordered transforms and their target set. Nested `OneOf`, `SomeOf`, and `Sequential`
-branches must all have a valid plan before execution. A plan must not change probabilities, parameter sampling, replay,
-or transform order.
+`Compose` uses the capability records only to select the whole-pipeline Tensor or NumPy route. It does not stitch
+Tensor and NumPy subsegments. Route selection must not change probabilities, parameter sampling, replay, or transform
+order.
 
 ### Bridges are operations, not bookkeeping
 
@@ -178,30 +189,30 @@ On a supported CPU array/Tensor, `torch.from_numpy(array)` and `tensor.numpy()` 
 route free. Torch dispatch, reference lifetime, unsupported strides, read-only storage, layout views, and a required
 contiguous copy all affect wall time and ownership.
 
-A Tensor NumPy segment commonly needs these steps:
+A Tensor pipeline using the NumPy route commonly needs these steps:
 
 ```text
 C,L,H,W Tensor → layout view for the NumPy helper → NumPy helper → output layout view → Tensor
 ```
 
-Any `.contiguous()`, `np.ascontiguousarray()`, dtype cast, or allocation is O(n). The benchmark includes it. If the
-NumPy helper only accepts a layout requiring a copy, the planner uses that route only when the entire segment remains
-at least as fast as its baseline and preserves the stated ownership contract.
+Any `.contiguous()`, `np.ascontiguousarray()`, dtype cast, or allocation is O(n). The benchmark includes it. The
+compatibility bridge is chosen when a pipeline needs a NumPy-only transform, so it may cost more than a direct Tensor
+route. It still preserves the input representation and gives every valid pipeline one `Compose` API.
 
-The analogous rule applies to NumPy callers entering Torch. A fast Torch kernel does not qualify if its bridge,
-layout conversion, and return conversion make the whole route slower.
+NumPy-to-Tensor routing is outside this CPU stage. A future route must include its bridge, layout conversion, and return
+conversion in the complete-path benchmark.
 
 ### Backend decision rule
 
 For every matrix cell:
 
-1. Keep the current backend when it is faster or is the only implementation with the required semantics.
-2. Route a compatible segment through Torch when the full route is faster or tied within calibrated noise and every
-   other contract is equal.
-3. At a measured tie, prefer Torch when it removes a boundary or extends a proven adjacent Torch segment.
-4. Route a Tensor segment through NumPy/OpenCV/NumKong when that complete Tensor → NumPy → Tensor route is faster
-   and the enclosing Tensor `Compose` route passes its direct performance gate.
-5. Split a segment when a required operation loses. A later win cannot compensate for a repeatable regression.
+1. Keep the direct Tensor route when every selectable transform supports every supplied Tensor target and the complete
+   path meets the performance gate.
+2. If any selectable transform lacks that direct route, bridge all spatial targets once to NumPy, execute the full
+   pipeline there, and restore Tensor output once.
+3. Add a new direct Tensor route only when it is faster or tied within calibrated noise and every other contract is
+   equal.
+4. At a measured tie, prefer the direct route because it removes the whole-pipeline representation boundary.
 
 The input representation does not force the backend. It determines only the input and output representation seen by
 the caller.
@@ -210,7 +221,11 @@ the caller.
 
 ### Acceptance condition
 
-> No accepted route may show a repeatable CPU slowdown in any required benchmark cell.
+> No direct Tensor route may show a repeatable CPU slowdown in any required benchmark cell.
+
+The one-time NumPy bridge is a compatibility route, not evidence that a transform has a fast Tensor implementation. It
+must preserve values, target alignment, layouts, dtypes, replay, and output representation. Its measured cost is
+reported when shared Compose or bridge code changes.
 
 Torch is imported before both baseline and candidate timing. Cold import time, wheel size, and install time are tracked
 as dependency diagnostics; they do not decide a hot training-path route.
@@ -226,11 +241,11 @@ two blocking comparisons that do not construct a `DataLoader`:
    `ToTensor3D` conversion with direct Tensor `Compose`. This is a controlled `Compose` benchmark with pre-created
    inputs; it does not include collation or `DataLoader` workers.
 
-The direct gate detects Tensor-dispatch or planner overhead. The model-ready output gate measures the cost to produce
-the Tensor that the model consumes. A candidate includes every bridge and layout operation that occurs inside its
-timed path.
+The direct gate detects Tensor-dispatch and route-selection overhead. The model-ready output gate measures the cost to
+produce the Tensor that the model consumes. A candidate includes every bridge and layout operation that occurs inside
+its timed path.
 
-A transform PR reports every direct helper, segment, direct-Compose, and model-ready-output cell. The output report
+A transform PR reports every direct helper, ordered-chain, direct-Compose, and model-ready-output cell. The output report
 records raw before/after measurements rather than aggregates alone.
 
 ### Benchmark cadence
@@ -240,10 +255,10 @@ runtime without isolating that transform's kernel or dispatch cost. Use this cad
 
 | Change | Required benchmark |
 |---|---|
-| `Compose`, preprocessing, postprocessing, shape handling, common bridge, or planner | Direct microbenchmarks, `Compose`, and representative `DataLoader`/collation cases |
-| One transform or functional family gains Tensor capability | Direct functional, ordered segment, direct `Compose`, and model-ready output; no `DataLoader` |
-| Several accepted capabilities form a new mixed-backend segment | Ordered segment and `Compose`; add one representative `DataLoader` case only when a shared boundary or batch behavior changed |
-| Milestone, release candidate, or scheduled performance run | Full representative `DataLoader` suite for NumPy, Tensor, and mixed routes |
+| `Compose`, preprocessing, postprocessing, shape handling, or common bridge | Direct microbenchmarks, `Compose`, and representative `DataLoader`/collation cases |
+| One transform or functional family gains Tensor capability | Direct functional, ordered chain, direct `Compose`, and model-ready output; no `DataLoader` |
+| Capability coverage changes a pipeline from NumPy to direct Tensor execution | Ordered chain and `Compose`; add one representative `DataLoader` case only when a shared boundary or batch behavior changed |
+| Milestone, release candidate, or scheduled performance run | Full representative `DataLoader` suite for NumPy, direct Tensor, and bridged Tensor routes |
 
 This keeps per-transform feedback short while preserving an integration gate for changes that can affect the whole
 training input pipeline.
@@ -263,8 +278,8 @@ read-only storage, non-contiguous Tensor inputs, image sequences, video-through-
 annotations where applicable, and the selected parameter axes.
 
 When the integration suite runs, it holds batch size, workers, persistent workers, prefetching, pinning, collation, and
-output consumption constant. It compares decoded NumPy samples, Tensor samples, mixed backend segments, and 0, 2, and
-8 workers where the workload is relevant.
+output consumption constant. It compares decoded NumPy samples, direct Tensor samples, bridged Tensor samples, and 0,
+2, and 8 workers where the workload is relevant.
 
 ### Correctness and ownership gates
 
@@ -277,8 +292,8 @@ An accepted route preserves:
 - output representation: backend routing returns the input representation. Existing explicit terminal `ToTensorV2`
   and `ToTensor3D` transforms retain their documented NumPy-to-Tensor behavior.
 
-A Tensor route may use a NumPy segment internally. This boundary is planner-controlled and reported in the route
-artifact. It is not an implicit fallback hidden inside a helper.
+A Tensor call may use the whole-pipeline NumPy route internally. `Compose` controls and reports that boundary. It is
+not an implicit fallback hidden inside a helper.
 
 ## Implementation phases
 
@@ -287,8 +302,8 @@ artifact. It is not an implicit fallback hidden inside a helper.
 1. Add the validated Torch floor to runtime dependencies. Keep TorchVision optional.
 2. Update lockfile, CI, platform/Python support checks, SBOM/security inputs, and environment reporting.
 3. Measure baseline variance on a stable Linux x86-64 machine. Calibrate a repeatability threshold no larger than 1%.
-4. Add the route-result JSON schema: environment, input representation, helper/segment IDs, every bridge, raw samples,
-   correctness result, memory result, and decision.
+4. Add the route-result JSON schema: environment, input representation, transform IDs, selected route, every bridge,
+   raw samples, correctness result, memory result, and decision.
 
 Exit: a default install includes Torch, and the benchmark runner can distinguish a real regression from noise.
 
@@ -303,26 +318,26 @@ transform.
 3. Pass Tensor values through `BasicTransform.__call__`, `apply_with_params`, and the existing `apply_*` dispatch.
 4. Use a minimal private probe transform to prove that the Tensor arriving at `apply` or `apply_to_images` also leaves
    `Compose` as Tensor. Test empty pipelines, `p=0`, nested compositions, additional targets, masks, annotations,
-   replay, and failure before parameter sampling.
+   replay, and boundary failures.
 5. Reject accelerator tensors, `requires_grad=True`, and Tensor-input pipelines containing `ToTensorV2` or
    `ToTensor3D` with actionable errors.
 6. Preserve every NumPy test and benchmark result.
 7. Run the representative `DataLoader` and collation suite once for this shared lifecycle change.
 
-Exit: the full `Compose` wrapper carries supported CPU Tensor targets from input to a transform and from its result to
-the caller. No public transform is considered Tensor-capable until its own capability PR lands.
+Exit: the full `Compose` wrapper accepts every valid CPU Tensor pipeline and returns Tensor output. Direct Tensor
+capabilities remain opt-in performance routes and land with their own evidence.
 
 ### Phase 2 — add the central bridge and the first two capabilities
 
 1. Build one bridge API for Tensor/NumPy conversion, axis adapters, ownership checks, and route diagnostics.
-2. Add the capability record and single-transform routing needed by the first pilots. Do not build a global optimizer
-   before real capabilities exist.
+2. Add the capability record and whole-pipeline route selection needed by the first pilots. Do not build a
+   segment-level optimizer before real capabilities exist.
 3. Prove one Tensor input that uses a faster NumPy/OpenCV helper and returns Tensor.
-4. Prove one NumPy input that uses a faster or tied Torch helper and returns NumPy.
+4. Preserve the current NumPy input flow and its output representation.
 5. Run direct, `Compose`, model-ready-output, and one representative `DataLoader` benchmark for each bridge direction.
 
-Exit: both bridge directions preserve correctness and pass their full-path performance gates. Adjacent accepted
-capabilities can then be grouped into longer segments without changing transform order.
+Exit: the compatibility bridge preserves correctness for every valid Tensor pipeline. Direct Tensor capabilities pass
+their full-path performance gates before they are enabled.
 
 ### Phase 3 — add Tensor support one transform family at a time
 
@@ -330,27 +345,27 @@ Each transform-family pull request follows the same bounded workflow:
 
 1. Freeze the current NumPy contract and save reference outputs for every target, dtype, channel count, and parameter
    mode in scope.
-2. Identify the best Tensor route. It may call a Torch helper or cross once into an existing NumPy/OpenCV/NumKong
-   helper and return to Tensor.
+2. Identify the best direct Tensor route. It may call a Torch helper or an existing backend that accepts the declared
+   Tensor layout. A transform that still needs NumPy remains on the Compose NumPy route.
 3. Add the Tensor implementation to the existing functional and `apply_*` flow. Keep reusable arithmetic in the
    functional layer or Albucore; do not add a parallel transform class.
 4. Add correctness tests for Tensor input and confirm that NumPy input remains unchanged.
-5. Run direct functional, ordered-segment, direct `Compose`, and model-ready-output benchmarks for NumPy and Tensor.
-   Do not run `DataLoader` for this transform PR unless it changes shared bridge, planner, batching, or collation code.
+5. Run direct functional, ordered-chain, direct `Compose`, and model-ready-output benchmarks for NumPy and Tensor.
+   Do not run `DataLoader` for this transform PR unless it changes shared bridge, route selection, batching, or
+   collation code.
 6. Accept, narrow, reject, or mark the capability `blocked_upstream`.
-7. After the Tensor path is accepted, test whether the same Torch helper should serve NumPy input. Route NumPy through
-   Torch only when the full NumPy → Torch → NumPy path is no slower.
+7. Preserve the existing NumPy route. A NumPy-to-Tensor proposal is separate work with its own full-path benchmark.
 
 Land one operation family, capability record, tests, benchmark artifact, and routing change per pull request.
 
-### Phase 4 — consolidate segments and run milestones
+### Phase 4 — broaden capability coverage and run milestones
 
-As accepted capabilities accumulate, group adjacent compatible operations so each NumPy/Tensor boundary is paid once
-per segment. A segment change runs its ordered-chain and `Compose` benchmarks. Add a representative `DataLoader` case
-only when the segment changes shared boundaries or batch behavior.
+As accepted capabilities accumulate, more pipelines qualify for direct Tensor execution. A capability change runs its
+ordered-chain and `Compose` benchmarks. Add a representative `DataLoader` case only when it changes a shared bridge,
+route selection, or batch behavior.
 
-Run the complete `DataLoader` suite on scheduled milestones and before release. It covers NumPy input, Tensor input,
-mixed backend segments, video-through-`images`, volume, and the supported worker matrix.
+Run the complete `DataLoader` suite on scheduled milestones and before release. It covers NumPy input, direct Tensor
+input, bridged Tensor input, video-through-`images`, volume, and the supported worker matrix.
 
 ### Phase 5 — audit retained backends and prepare accelerators
 
@@ -386,12 +401,12 @@ unrelated migration work.
 The CPU program is complete when:
 
 - Torch is a required dependency on supported platforms;
-- `Compose` accepts the declared CPU Tensor forms and returns Tensor output for Tensor input;
-- the route planner can use accepted NumPy and Torch segments in either input representation;
+- `Compose` accepts every valid declared CPU Tensor pipeline and returns Tensor output for Tensor input;
+- `Compose` selects either direct Tensor execution or the whole-pipeline NumPy route before parameter sampling;
 - every accepted route has permanent correctness tests and full per-cell performance evidence;
-- every accepted Tensor route passes both the direct Tensor-Compose and model-ready-output performance gates;
-- Compose/planner milestones and release candidates pass the representative `DataLoader` suite;
-- no accepted route has a repeatable CPU regression;
+- every direct Tensor route passes both the direct Tensor-Compose and model-ready-output performance gates;
+- Compose route-selection milestones and release candidates pass the representative `DataLoader` suite;
+- no direct Tensor route has a repeatable CPU regression;
 - all missing primitives have an upstream artifact or explicit retained-backend decision; and
 - the audit explains every retained backend and leaves a reusable capability contract for future accelerator work.
 

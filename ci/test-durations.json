@@ -64,7 +64,6 @@
     "tests/test_resize_obb.py": 0.466,
     "tests/test_select_benchmark_filters.py": 0.025,
     "tests/test_serialization.py": 25.06,
-    "tests/test_serialization_backward_compatibility.py": 0.097,
     "tests/test_targets.py": 0.624,
     "tests/test_telemetry.py": 0.342,
     "tests/test_text.py": 0.353,

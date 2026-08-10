@@ -4,6 +4,7 @@ import io
 from io import StringIO
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 from deepdiff import DeepDiff
@@ -578,9 +579,189 @@ def test_serialization_v2_to_dict() -> None:
         "bbox_params": None,
         "keypoint_params": None,
         "additional_targets": {},
+        "semantic_mask_label_mappings": None,
         "is_check_shapes": True,
+        "strict": False,
+        "mask_interpolation": None,
         "seed": None,
+        "save_applied_params": False,
+        "telemetry": True,
+        "instance_binding": None,
+        "strict_instance_invariant": True,
     }
+
+
+def test_compose_roundtrip_preserves_all_behavioral_constructor_state() -> None:
+    transform = A.Compose(
+        [A.HorizontalFlip(p=1.0)],
+        bbox_params=A.BboxParams(
+            coord_format="pascal_voc",
+            filter_invalid_bboxes=True,
+        ),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        additional_targets={"image2": "image"},
+        p=0.75,
+        is_check_shapes=False,
+        strict=True,
+        mask_interpolation=cv2.INTER_LINEAR,
+        seed=137,
+        save_applied_params=True,
+        telemetry=False,
+        strict_instance_invariant=False,
+        semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
+    )
+
+    restored = A.from_dict(A.to_dict(transform))
+
+    assert isinstance(restored, A.Compose)
+    assert restored.p == 0.75
+    assert restored.is_check_shapes is False
+    assert restored.strict is True
+    assert restored.mask_interpolation == cv2.INTER_LINEAR
+    assert restored.seed == 137
+    assert restored.save_applied_params is True
+    assert restored.telemetry is False
+    assert restored._strict_instance_invariant is False
+    assert restored.additional_targets == {"image2": "image"}
+    assert restored.semantic_mask_label_mappings == {"HorizontalFlip": {2: 3, 3: 2}}
+    assert restored.processors["bboxes"].params.filter_invalid_bboxes is True
+
+
+@pytest.mark.parametrize("data_format", ("json", "yaml"))
+@pytest.mark.parametrize(
+    "marker_shaped_mapping",
+    (
+        {
+            "__albumentations_serialized_type__": "mapping",
+            "items": {"left": "right"},
+        },
+        {
+            "__albumentations_serialized_type__": "mapping",
+            "items": [["left", "right"]],
+            "__albumentations_serialized_mapping_version__": 1,
+        },
+    ),
+)
+def test_mapping_codec_preserves_marker_shaped_label_mappings(
+    data_format: str,
+    marker_shaped_mapping: dict[str, object],
+) -> None:
+    pipeline = A.Compose(
+        [A.HorizontalFlip(p=1.0)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xy",
+            label_fields=["label"],
+            label_mapping={"HorizontalFlip": {"label": marker_shaped_mapping}},
+        ),
+    )
+
+    restored_from_dict = A.from_dict(A.to_dict(pipeline))
+    assert isinstance(restored_from_dict, A.Compose)
+    assert restored_from_dict.processors["keypoints"].params.label_mapping == {
+        "HorizontalFlip": {"label": marker_shaped_mapping},
+    }
+
+    buffer = StringIO()
+    A.save(pipeline, buffer, data_format=data_format)
+    buffer.seek(0)
+    restored_from_file = A.load(buffer, data_format=data_format)
+
+    assert isinstance(restored_from_file, A.Compose)
+    assert restored_from_file.processors["keypoints"].params.label_mapping == {
+        "HorizontalFlip": {"label": marker_shaped_mapping},
+    }
+
+
+def test_from_dict_preserves_raw_mapping_escape_prefix_keys() -> None:
+    escape_prefix = "__albumentations_escaped_mapping_key__"
+    additional_targets = {f"{escape_prefix}image2": "image"}
+    pipeline = A.Compose([A.NoOp(p=1.0)], additional_targets=additional_targets)
+    payload = A.to_dict(pipeline)
+    canonical_restored = A.from_dict(payload)
+    payload["transform"]["additional_targets"] = additional_targets
+
+    restored = A.from_dict(payload)
+
+    assert isinstance(canonical_restored, A.Compose)
+    assert canonical_restored.additional_targets == additional_targets
+    assert isinstance(restored, A.Compose)
+    assert restored.additional_targets == additional_targets
+
+
+def test_compose_roundtrip_preserves_mask_validation_and_applied_output_behavior() -> None:
+    transform = A.Compose(
+        [
+            A.Rotate(
+                angle_range=(45, 45),
+                interpolation=cv2.INTER_NEAREST,
+                mask_interpolation=cv2.INTER_NEAREST,
+                border_mode=cv2.BORDER_CONSTANT,
+                fill=0,
+                fill_mask=0,
+                p=1.0,
+            ),
+        ],
+        strict=True,
+        mask_interpolation=cv2.INTER_LINEAR,
+        save_applied_params=True,
+        seed=137,
+    )
+    restored = A.from_dict(A.to_dict(transform))
+    image = np.zeros((5, 5, 3), dtype=np.uint8)
+    mask = np.zeros((5, 5), dtype=np.uint8)
+    mask[1:4, 1:4] = 255
+
+    expected = transform(image=image, mask=mask)
+    actual = restored(image=image, mask=mask)
+
+    np.testing.assert_array_equal(actual["mask"], expected["mask"])
+    assert set(actual["mask"].ravel()) - {0, 255}
+    assert actual["applied_transforms"] == expected["applied_transforms"]
+    for pipeline in (transform, restored):
+        with pytest.raises(ValueError, match="Key unexpected is not in available keys"):
+            pipeline(image=image, unexpected=np.zeros((5, 5), dtype=np.uint8))
+
+
+def test_composition_subclasses_preserve_class_policy_in_roundtrip_and_operators() -> None:
+    selective = A.SelectiveChannelTransform(
+        [A.InvertImg(p=1.0)],
+        channels=[1],
+        p=0.8,
+    )
+    some_of = A.SomeOf(
+        [A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0)],
+        n=2,
+        replace=True,
+        p=0.9,
+    )
+    replay = A.ReplayCompose(
+        [selective, some_of],
+        p=0.75,
+        save_key="replay_state",
+        strict=True,
+        mask_interpolation=cv2.INTER_LINEAR,
+        save_applied_params=True,
+        telemetry=False,
+        strict_instance_invariant=False,
+        seed=137,
+    )
+
+    restored = A.from_dict(A.to_dict(replay))
+    extended = replay + A.VerticalFlip(p=1.0)
+
+    assert isinstance(restored, A.ReplayCompose)
+    assert restored.save_key == "replay_state"
+    assert restored.strict is True
+    assert restored.mask_interpolation == cv2.INTER_LINEAR
+    assert restored.save_applied_params is True
+    assert restored.telemetry is False
+    assert restored._strict_instance_invariant is False
+    assert restored.transforms[0].channels == [1]
+    assert restored.transforms[1].n == 2
+    assert restored.transforms[1].replace is True
+    assert isinstance(extended, A.ReplayCompose)
+    assert extended.strict is True
+    assert extended.transforms[0].channels == [1]
 
 
 @pytest.mark.parametrize(
@@ -610,15 +791,12 @@ def test_serialized_fields_match_public_constructor(case: TransformContractCase)
     assert serialized_fields <= public_fields | {"p"}
 
 
-def test_serialization_excludes_strict() -> None:
-    # Test that strict parameter is not included in serialization
+def test_serialization_includes_compose_strict_but_excludes_transform_strict() -> None:
     transform = A.Compose([A.HorizontalFlip()])
     transform_dict = A.to_dict(transform)["transform"]
-    assert "strict" not in transform_dict
-    # Also check nested transforms
+    assert transform_dict["strict"] is False
     assert "strict" not in transform_dict["transforms"][0]
 
-    # Test individual transform serialization
     transform = A.HorizontalFlip(strict=True)
     transform_dict = A.to_dict(transform)["transform"]
     assert "strict" not in transform_dict

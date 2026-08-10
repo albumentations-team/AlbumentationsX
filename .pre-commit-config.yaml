@@ -36,6 +36,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|performance_budget|quality_gate)\.py)
+      - id: check-compose-policy-and-tracing-contracts
+        name: Check Compose policy and tracing contracts
+        entry: uv run pytest -q tests/contracts/test_composition_serialization_contracts.py tests/test_composition_tracing.py
+        language: system
+        pass_filenames: false
+        files: ^(albumentations/core/(bbox_utils|composition|keypoints_utils|serialization|tracing)\.py|tests/(contracts/test_composition_serialization_contracts|test_composition_tracing)\.py)$
       - id: check-legal-integrity
         name: Check license and CLA provenance integrity
         entry: python tools/verify_legal_integrity.py

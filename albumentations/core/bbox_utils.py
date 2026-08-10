@@ -238,6 +238,7 @@ class BboxParams(Params):
                 "min_height": self.min_height,
                 "check_each_transform": self.check_each_transform,
                 "clip_bboxes_on_input": self.clip_bboxes_on_input,
+                "filter_invalid_bboxes": self.filter_invalid_bboxes,
                 "max_accept_ratio": self.max_accept_ratio,
                 "clip_after_transform": self.clip_after_transform,
             },

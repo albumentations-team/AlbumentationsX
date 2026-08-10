@@ -130,3 +130,33 @@ class TimeCorePipelineTargetProcessors:
 
     def time_bbox_keypoint_processor_roundtrip(self, count: int) -> None:
         self.transform(**self.data)
+
+
+class TimeCorePipelineTracing:
+    """Benchmark opt-in trace modes separately from the ordinary Compose path."""
+
+    params = IMAGE_PARAMS
+    param_names = ("size_name", "channels")
+
+    def setup(self, size_name: str, channels: int) -> None:
+        self.image = make_image(size_name, channels)
+        self.transform = albumentations.Compose(
+            [
+                albumentations.HorizontalFlip(p=1.0),
+                albumentations.VerticalFlip(p=1.0),
+                albumentations.RandomRotate90(p=1.0),
+            ],
+            seed=137,
+            strict=True,
+        )
+        self.snapshot_options = albumentations.TraceOptions(snapshot_targets=("image",))
+        self.timing_options = albumentations.TraceOptions(include_timing=True)
+
+    def time_metadata_trace(self, size_name: str, channels: int) -> None:
+        self.transform.run_with_trace(image=self.image)
+
+    def time_image_snapshot_trace(self, size_name: str, channels: int) -> None:
+        self.transform.run_with_trace(image=self.image, options=self.snapshot_options)
+
+    def time_timing_trace(self, size_name: str, channels: int) -> None:
+        self.transform.run_with_trace(image=self.image, options=self.timing_options)

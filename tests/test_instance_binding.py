@@ -797,24 +797,24 @@ class TestSerialization:
         assert "name" in kp_label_mapping["HorizontalFlip"]
         assert d["instance_binding"] == ["bboxes", "keypoints", "masks"]
 
-    def test_to_dict_omits_binding_when_none(self) -> None:
+    def test_to_dict_includes_binding_when_none(self) -> None:
         transform = A.Compose([A.NoOp(p=1)])
         d = transform.to_dict_private()
-        assert "instance_binding" not in d
+        assert d["instance_binding"] is None
 
-    def test_get_init_params_clean(self) -> None:
+    def test_reconstruction_kwargs_clean(self) -> None:
         transform = A.Compose(
             [A.NoOp(p=1)],
             bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"]),
             instance_binding=["masks", "bboxes"],
         )
 
-        params = transform._get_init_params()
+        params = transform._get_reconstruction_kwargs()
         bbox_params = params["bbox_params"]
-        assert "_bbox_instance_id" not in (bbox_params.label_fields or [])
+        assert "_bbox_instance_id" not in (bbox_params["label_fields"] or [])
         assert params["instance_binding"] == ["bboxes", "masks"]
 
-    def test_get_init_params_masks_keypoints_preserves_bbox_params(self) -> None:
+    def test_reconstruction_kwargs_masks_keypoints_preserves_bbox_params(self) -> None:
         transform = A.Compose(
             [A.NoOp(p=1)],
             bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"]),
@@ -822,10 +822,10 @@ class TestSerialization:
             instance_binding=["masks", "keypoints"],
         )
 
-        params = transform._get_init_params()
-        assert params["bbox_params"].label_fields == ["class_id"]
+        params = transform._get_reconstruction_kwargs()
+        assert params["bbox_params"]["label_fields"] == ["class_id"]
 
-    def test_get_init_params_masks_bboxes_preserves_keypoint_params(self) -> None:
+    def test_reconstruction_kwargs_masks_bboxes_preserves_keypoint_params(self) -> None:
         transform = A.Compose(
             [A.NoOp(p=1)],
             bbox_params=A.BboxParams(coord_format="pascal_voc"),
@@ -838,12 +838,12 @@ class TestSerialization:
             instance_binding=["masks", "bboxes"],
         )
 
-        params = transform._get_init_params()
-        assert params["keypoint_params"].label_fields == ["name"]
-        assert params["keypoint_params"].remove_invisible is False
-        assert params["keypoint_params"].check_each_transform is False
+        params = transform._get_reconstruction_kwargs()
+        assert params["keypoint_params"]["label_fields"] == ["name"]
+        assert params["keypoint_params"]["remove_invisible"] is False
+        assert params["keypoint_params"]["check_each_transform"] is False
 
-    def test_get_init_params_keypoints_binding_reflects_runtime_flags(self) -> None:
+    def test_reconstruction_kwargs_keypoints_binding_reflects_runtime_flags(self) -> None:
         transform = A.Compose(
             [A.NoOp(p=1)],
             bbox_params=A.BboxParams(coord_format="pascal_voc"),
@@ -854,10 +854,10 @@ class TestSerialization:
             ),
             instance_binding=["masks", "bboxes", "keypoints"],
         )
-        params = transform._get_init_params()
+        params = transform._get_reconstruction_kwargs()
         kp = params["keypoint_params"]
-        assert kp.remove_invisible is False
-        assert kp.check_each_transform is False
+        assert kp["remove_invisible"] is False
+        assert kp["check_each_transform"] is False
 
 
 class TestNestedComposeInstanceBinding:

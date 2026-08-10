@@ -1177,10 +1177,12 @@ class Compose(BaseCompose, HubMixin):
             to their types. For example, {'image2': 'image'}. Passing a spatial alias also
             requires passing its canonical target (`image` in this example). Default is None.
         semantic_mask_label_mappings (dict[str, dict[int, int]] | None): Label replacements applied to spatial mask
-            targets after a realized label-changing transform. The outer key is `HorizontalFlip`, `VerticalFlip`,
-            `Transpose`, or `Flip3D`; the inner dictionary maps source class IDs to target class IDs. `Flip3D` runs
-            for a realized reflection across an odd number of axes and remaps `mask3d` and its aliases, not 2D `mask`
-            or `masks` targets. Default: None.
+            targets when a realized transform emits a label-mapping event. The outer key is the emitted event name;
+            `D4` and `SquareSymmetry` emit the corresponding base reflection event (`HorizontalFlip`, `VerticalFlip`,
+            or `Transpose`) rather than their class name. Other transforms may emit their own events, such as
+            `Flip3D`. The inner dictionary maps source class IDs to target class IDs. `Flip3D` emits its event for a
+            realized reflection across an odd number of axes and remaps `mask3d` and its aliases, not 2D `mask` or
+            `masks` targets. Default: None.
         p (float): Probability of applying all transforms. Should be in range [0, 1]. Default is 1.0.
         is_check_shapes (bool): If True, checks consistency of shapes for image/mask/masks on each call.
             Disable only if you are sure about your data consistency. Default is True.

@@ -37,6 +37,10 @@ parameter.
 
 Coverage contract for the shared transform-case registry and reusable target profiles.
 
+### [Compose Serialization and Execution Tracing](compose-serialization-and-tracing.md)
+
+Canonical composition policy, JSON/YAML transport, and opt-in per-step trace paths, snapshots, and timing.
+
 ## Active Design Work
 
 ### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)

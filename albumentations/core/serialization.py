@@ -15,7 +15,6 @@ from collections.abc import Mapping, Sequence
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal, TextIO
-from warnings import warn
 
 try:
     import yaml
@@ -33,8 +32,9 @@ __all__ = ["from_dict", "load", "save", "to_dict"]
 SERIALIZABLE_REGISTRY: dict[str, "SerializableMeta"] = {}
 NON_SERIALIZABLE_REGISTRY: dict[str, "SerializableMeta"] = {}
 
-# Cache for default p values to avoid repeated inspect.signature calls
-_default_p_cache: dict[type, float] = {}
+_MAPPING_TYPE_KEY = "__albumentations_serialized_type__"
+_MAPPING_ITEMS_KEY = "items"
+_MAPPING_TYPE_VALUE = "mapping"
 
 
 def shorten_class_name(class_fullname: str) -> str:
@@ -165,7 +165,7 @@ class Serializable(metaclass=SerializableMeta):
                 f"BasicTransform to be properly serialized.",
                 stacklevel=2,
             )
-        return {"__version__": __version__, "transform": transform_dict}
+        return {"__version__": __version__, "transform": serialize_enum(transform_dict)}
 
 
 def to_dict(transform: Serializable, on_not_implemented_error: str = "raise") -> dict[str, Any]:
@@ -212,6 +212,7 @@ def from_dict(
         nonserializable (dict[str, Any] | None): Optional dict of non-serializable transforms keyed by name.
 
     """
+    transform_dict = deserialize_mapping_keys(transform_dict)
     register_additional_transforms()
     transform = transform_dict["transform"]
     lmbd = instantiate_nonserializable(transform, nonserializable)
@@ -222,31 +223,6 @@ def from_dict(
 
     # Get the transform class from registry
     cls = SERIALIZABLE_REGISTRY[shorten_class_name(name)]
-
-    # Handle missing 'p' parameter for backward compatibility
-    if "p" not in args:
-        # Import here to avoid circular imports
-        from albumentations.core.composition import BaseCompose
-
-        # Check if it's a composition class by verifying if it is a subclass of BaseCompose
-        if not issubclass(cls, BaseCompose):
-            # Check if default 'p' value is cached
-            if cls not in _default_p_cache:
-                # Use inspect to get the default value of p from __init__
-                import inspect
-
-                sig = inspect.signature(cls.__init__)
-                p_param = sig.parameters.get("p")
-                default_p = p_param.default if p_param and p_param.default != inspect.Parameter.empty else 0.5
-                _default_p_cache[cls] = default_p
-            else:
-                default_p = _default_p_cache[cls]
-
-            warn(
-                f"Transform {cls.__name__} has no 'p' parameter in serialized data, defaulting to {default_p}",
-                stacklevel=2,
-            )
-            args["p"] = default_p
 
     # Handle nested transforms
     if "transforms" in args:
@@ -261,14 +237,53 @@ def check_data_format(data_format: Literal["json", "yaml"]) -> None:
 
 
 def serialize_enum(obj: Any) -> Any:
-    """Recursively replace Enum instances with their value; traverse Mappings and
-    Sequences. Call before saving pipeline to JSON/YAML.
+    """Convert a portable pipeline value into JSON/YAML-safe data while retaining non-string mapping key types that
+    transport formats would otherwise coerce.
+
+    JSON only permits string mapping keys. Canonical pipeline payloads encode a mapping
+    with another key type as an ordered list of key-value pairs, so class-label mappings
+    survive both JSON and YAML transport without relying on format-specific coercion.
     """
     if isinstance(obj, Mapping):
-        return {k: serialize_enum(v) for k, v in obj.items()}
+        serialized_items = [(serialize_enum(key), serialize_enum(value)) for key, value in obj.items()]
+        if all(isinstance(key, str) for key in obj):
+            return dict(serialized_items)
+        return {
+            _MAPPING_TYPE_KEY: _MAPPING_TYPE_VALUE,
+            _MAPPING_ITEMS_KEY: serialized_items,
+        }
     if isinstance(obj, Sequence) and not isinstance(obj, str):  # exclude strings since they're also sequences
         return [serialize_enum(v) for v in obj]
     return obj.value if isinstance(obj, Enum) else obj
+
+
+def deserialize_mapping_keys(obj: Any) -> Any:
+    """Restore mapping keys from canonical portable data before construction, recovering policy key types while
+    recursively preserving normal mapping values.
+
+    """
+    if isinstance(obj, Mapping):
+        if set(obj) == {_MAPPING_TYPE_KEY, _MAPPING_ITEMS_KEY} and obj[_MAPPING_TYPE_KEY] == _MAPPING_TYPE_VALUE:
+            return {
+                _restore_mapping_key(deserialize_mapping_keys(key)): deserialize_mapping_keys(value)
+                for key, value in obj[_MAPPING_ITEMS_KEY]
+            }
+        return {key: deserialize_mapping_keys(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [deserialize_mapping_keys(value) for value in obj]
+    return obj
+
+
+def _restore_mapping_key(key: Any) -> Any:
+    """Restore decoded compound mapping keys to hashable canonical values while preserving scalar labels, allowing
+    policy dictionaries to retain key identity.
+
+    """
+    if isinstance(key, list):
+        return tuple(_restore_mapping_key(value) for value in key)
+    if isinstance(key, dict):
+        return frozenset((nested_key, _restore_mapping_key(value)) for nested_key, value in key.items())
+    return key
 
 
 def save(

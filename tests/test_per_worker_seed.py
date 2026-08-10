@@ -379,6 +379,8 @@ def test_derive_effective_seed():
 def test_unpickled_compose_resets_runtime_context():
     """Pickled Compose objects should re-sync against the worker context after unpickling."""
     transform = A.Compose([A.HorizontalFlip(p=0.5)], seed=137)
+    trace_result = transform.run_with_trace(image=np.zeros((10, 10, 3), dtype=np.uint8))
+    assert trace_result.records
     transform._rng_context = _RuntimeRngContext(worker_seed=138, effective_seed=275)
 
     restored = pickle.loads(pickle.dumps(transform))  # noqa: S301 - controlled round-trip in a test

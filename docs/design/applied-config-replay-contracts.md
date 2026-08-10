@@ -42,6 +42,9 @@ flowchart LR
 
 Passing one contract does not imply either of the others. Their tests remain separate.
 
+Composition-level constructor policy and per-step execution observation are specified in
+[Compose Serialization and Execution Tracing](compose-serialization-and-tracing.md).
+
 ## Architecture
 
 ```text

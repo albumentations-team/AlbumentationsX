@@ -13,7 +13,8 @@ import random
 import types
 import warnings
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from time import perf_counter_ns
 from typing import Any, ClassVar, Union, cast
 
 import cv2
@@ -51,6 +52,7 @@ from .tensor import (
     tensor_to_numpy_annotation,
     validate_tensor_input,
 )
+from .tracing import TraceOptions, TraceResult, _TraceContext
 from .transforms_interface import BasicTransform, DualTransform
 from .type_definitions import StackedMasks4D
 from .utils import DataProcessor, format_args, get_shape
@@ -71,6 +73,13 @@ __all__ = [
 ]
 
 NUM_ONEOF_TRANSFORMS = 2
+
+_TRACE_NODE_KIND_COMPOSITION = "composition"
+_TRACE_NODE_KIND_LEAF = "leaf"
+_TRACE_STATUS_APPLIED = "applied"
+_TRACE_STATUS_SKIPPED_PROBABILITY = "skipped_probability"
+_TRACE_STATUS_SKIPPED_REPLAY = "skipped_replay"
+_TRACE_STATUS_SKIPPED_SELECTION = "skipped_selection"
 
 _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
 
@@ -561,8 +570,8 @@ class BaseCompose(Serializable):
         return True
 
     def to_dict_private(self) -> dict[str, Any]:
-        """Convert the composition to a dictionary for serialization. Contains
-        __class_fullname__, p, and list of transform dicts. For save/replay.
+        """Build a detached constructor representation that preserves child order and policy, so serialization and
+        graph edits can recreate an equivalent composition.
 
         Returns:
             dict[str, Any]: Dictionary representation of the composition.
@@ -570,8 +579,8 @@ class BaseCompose(Serializable):
         """
         return {
             "__class_fullname__": self.get_class_fullname(),
-            "p": self.p,
             "transforms": [t.to_dict_private() for t in self.transforms],
+            **self._get_reconstruction_kwargs(),
         }
 
     def get_dict_with_id(self) -> dict[str, Any]:
@@ -587,6 +596,7 @@ class BaseCompose(Serializable):
             "id": id(self),
             "params": None,
             "transforms": [t.get_dict_with_id() for t in self.transforms],
+            **self._get_reconstruction_kwargs(),
         }
 
     def add_targets(self, additional_targets: dict[str, str] | None) -> None:
@@ -1090,12 +1100,10 @@ class BaseCompose(Serializable):
             BaseCompose: New instance of the same class
 
         """
-        # Get current instance parameters
-        init_params = self._get_init_params()
-        init_params["transforms"] = new_transforms
+        reconstruction_kwargs = self._get_reconstruction_kwargs()
+        reconstruction_kwargs["transforms"] = new_transforms
 
-        # Create new instance
-        new_instance = self.__class__(**init_params)
+        new_instance = self.__class__(**reconstruction_kwargs)
 
         # Copy random state from original instance to new instance
         if hasattr(self, "random_generator") and hasattr(self, "py_random"):
@@ -1108,14 +1116,12 @@ class BaseCompose(Serializable):
 
         return new_instance
 
-    def _get_init_params(self) -> dict[str, Any]:
-        """Get parameters needed to recreate this instance. Subclasses add their params.
-        For _create_new_instance and serialization; no defaults in InitSchema.
+    def _get_reconstruction_kwargs(self) -> dict[str, Any]:
+        """Expose the constructor policy shared by serialization and graph edits, letting subclasses add behavior
+        fields through one reconstruction contract.
 
-        Note:
-            Subclasses that add new initialization parameters (other than 'transforms',
-            which is set separately in _create_new_instance) should override this method
-            to include those parameters in the returned dictionary.
+        Subclasses extend this method with their class-specific policy. Both serialization
+        and composition operators use this one projection.
 
         Returns:
             dict[str, Any]: Dictionary of initialization parameters
@@ -1573,6 +1579,576 @@ class Compose(BaseCompose, HubMixin):
                 self._clear_instance_binding_call_state_if_pending()
             self._tensor_annotation_targets = ()
 
+    def run_with_trace(
+        self,
+        *,
+        options: TraceOptions | None = None,
+        force_apply: bool = False,
+        **data: Any,
+    ) -> TraceResult:
+        """Apply this pipeline once and return normal output plus per-node records, keeping tracing local so ordinary
+        execution retains its existing behavior.
+
+        Args:
+            options (TraceOptions | None): Per-call trace configuration that is never serialized with the pipeline.
+            force_apply (bool): Apply this compose regardless of its probability.
+            **data (Any): Named targets accepted by :meth:`__call__`.
+
+        Returns:
+            TraceResult: Final targets and, unless observer-only mode was selected, trace records.
+
+        """
+        options = TraceOptions() if options is None else options
+        self._validate_trace_options(options, data)
+        trace_context = _TraceContext(options)
+        self._sync_runtime_random_state()
+
+        if self._additional_targets:
+            self._validate_additional_target_sources(data)
+        self._validate_tensor_inputs(data)
+        if self.save_applied_params and self.main_compose:
+            data["applied_transforms"] = []
+
+        if not (force_apply or self.py_random.random() < self.p):
+            self._emit_skipped_trace_tree(self, trace_context, (), _TRACE_STATUS_SKIPPED_PROBABILITY)
+            return trace_context.finish(data)
+
+        try:
+            self.preprocess(data)
+            data = self._run_traced_node_children(
+                self,
+                data,
+                trace_context,
+                (),
+                post_transform_container=self,
+            )
+            self._emit_composition_record(self, trace_context, (), _TRACE_STATUS_APPLIED)
+            result = self.postprocess(data)
+            self._restore_tensor_annotations(result)
+            return trace_context.finish(result)
+        finally:
+            if self.main_compose and self._instance_binding:
+                self._clear_instance_binding_call_state_if_pending()
+            self._tensor_annotation_targets = ()
+
+    def _validate_trace_options(self, options: TraceOptions, data: dict[str, Any]) -> None:
+        known_targets = set(data) | self._available_keys | set(AVAILABLE_KEYS)
+        unknown_targets = set(options.snapshot_targets).difference(known_targets)
+        if unknown_targets:
+            unknown = ", ".join(sorted(unknown_targets))
+            raise ValueError(f"Unknown trace snapshot targets: {unknown}")
+
+    def _run_traced_node(
+        self,
+        transform: TransformType,
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        force_apply: bool = False,
+        tracking_data: dict[str, Any] | None = None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        finalize_leaf: bool = True,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        if isinstance(transform, BasicTransform):
+            return self._run_traced_leaf(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
+        if isinstance(transform, SelectiveChannelTransform):
+            return self._run_traced_selective(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                post_transform_container=post_transform_container,
+            )
+        if isinstance(transform, OneOf):
+            return self._run_traced_one_of(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
+        if isinstance(transform, SomeOf):
+            return self._run_traced_some_of(
+                transform,
+                data,
+                trace_context,
+                path,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
+        if isinstance(transform, OneOrOther):
+            return self._run_traced_one_or_other(
+                transform,
+                data,
+                trace_context,
+                path,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
+        if isinstance(transform, Sequential):
+            return self._run_traced_sequential(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
+        if isinstance(transform, Compose):
+            return self._run_traced_compose(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
+        raise TypeError(f"Unsupported composition node: {type(transform).__name__}")
+
+    def _run_traced_leaf(
+        self,
+        transform: BasicTransform,
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        start_ns = perf_counter_ns() if trace_context.options.include_timing else None
+        data = transform(force_apply=force_apply, **data)
+        applied = transform.applied_in_replay if transform.replay_mode else bool(transform.params)
+        event_data: dict[str, Any] | None = None
+        if applied:
+            self._track_transform_params(transform, data if tracking_data is None else tracking_data)
+            if finalize_leaf:
+                data = self._finalize_traced_leaf(data, post_transform_container)
+            if trace_context.needs_snapshot:
+                event_data = event_data_factory(data) if event_data_factory is not None else data
+
+        elapsed_ns = perf_counter_ns() - start_ns if start_ns is not None else None
+        trace_context.emit(
+            node_path=path,
+            class_fullname=transform.get_applied_replay_class().get_class_fullname(),
+            node_kind=_TRACE_NODE_KIND_LEAF,
+            status=_TRACE_STATUS_APPLIED if applied else self._leaf_skip_status(transform),
+            params=transform.applied_config if applied else None,
+            data=event_data,
+            elapsed_ns=elapsed_ns,
+        )
+        return data
+
+    def _finalize_traced_leaf(self, data: dict[str, Any], container: "BaseCompose") -> dict[str, Any]:
+        data = container.check_data_post_transform(data)
+        if container is self and self.main_compose and self._instance_binding:
+            self._resync_instance_ids(data)
+        return data
+
+    @staticmethod
+    def _leaf_skip_status(transform: BasicTransform) -> str:
+        return _TRACE_STATUS_SKIPPED_REPLAY if transform.replay_mode else _TRACE_STATUS_SKIPPED_PROBABILITY
+
+    def _run_traced_compose(
+        self,
+        transform: "Compose",
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        replay_compose = transform if isinstance(transform, ReplayCompose) else None
+        if replay_compose is not None:
+            data[replay_compose.save_key] = defaultdict(dict)
+        self._prepare_traced_compose_input(transform, data)
+        if not (transform.replay_mode or force_apply or transform.py_random.random() < transform.p):
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
+            if replay_compose is not None:
+                self._finalize_traced_replay_compose(replay_compose, data)
+            return data
+        try:
+            transform.preprocess(data)
+            data = self._run_traced_node_children(
+                transform,
+                data,
+                trace_context,
+                path,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=transform,
+            )
+            result = transform.postprocess(data)
+            self._restore_traced_compose_tensor_annotations(transform, result)
+            if replay_compose is not None:
+                self._finalize_traced_replay_compose(replay_compose, result)
+            data = self._finalize_traced_leaf(result, post_transform_container)
+            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+            return data
+        finally:
+            Compose._clear_tensor_annotation_targets(transform)
+
+    @staticmethod
+    def _prepare_traced_compose_input(transform: "Compose", data: dict[str, Any]) -> None:
+        Compose._sync_runtime_random_state(transform)
+        if transform.additional_targets:
+            Compose._validate_additional_target_sources(transform, data)
+        if any(isinstance(value, torch.Tensor) for value in data.values()):
+            Compose._validate_tensor_inputs(transform, data)
+        else:
+            Compose._clear_tensor_annotation_targets(transform)
+
+    @staticmethod
+    def _restore_traced_compose_tensor_annotations(transform: "Compose", data: dict[str, Any]) -> None:
+        Compose._restore_tensor_annotations(transform, data)
+
+    @staticmethod
+    def _finalize_traced_replay_compose(transform: "ReplayCompose", data: dict[str, Any]) -> None:
+        serialized = transform.get_dict_with_id()
+        transform.fill_with_params(serialized, data[transform.save_key])
+        transform.fill_applied(serialized)
+        data[transform.save_key] = serialized
+
+    def _run_traced_one_of(
+        self,
+        transform: "OneOf",
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        if transform.replay_mode:
+            if not getattr(transform, "applied_in_replay", False):
+                self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_REPLAY)
+                return data
+            selected_indices = self._replay_selected_child_indices(transform)
+            self._emit_unselected_children(transform, trace_context, path, selected_indices)
+            for selected_index in selected_indices:
+                data = self._run_traced_node(
+                    transform.transforms[selected_index],
+                    data,
+                    trace_context,
+                    (*path, selected_index),
+                    force_apply=True,
+                    tracking_data=tracking_data,
+                    event_data_factory=event_data_factory,
+                    finalize_leaf=finalize_leaf,
+                    post_transform_container=post_transform_container,
+                )
+            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+            return data
+        if not transform.transforms_ps or not (force_apply or transform.py_random.random() < transform.p):
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
+            return data
+
+        selected_index = transform.random_generator.choice(len(transform.transforms), p=transform.transforms_ps)
+        self._emit_unselected_children(transform, trace_context, path, {selected_index})
+        data = self._run_traced_node(
+            transform.transforms[selected_index],
+            data,
+            trace_context,
+            (*path, selected_index),
+            force_apply=True,
+            tracking_data=tracking_data,
+            event_data_factory=event_data_factory,
+            finalize_leaf=finalize_leaf,
+            post_transform_container=post_transform_container,
+        )
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+        return data
+
+    def _run_traced_some_of(
+        self,
+        transform: "SomeOf",
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        if transform.replay_mode:
+            if not getattr(transform, "applied_in_replay", False):
+                self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_REPLAY)
+                return data
+            data = self._run_traced_node_children(
+                transform,
+                data,
+                trace_context,
+                path,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=transform,
+            )
+            data = self._finalize_traced_leaf(data, post_transform_container)
+            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+            return data
+        if transform.py_random.random() >= transform.p:
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
+            return data
+
+        selected_indices = tuple(transform.get_indices())
+        self._emit_unselected_children(transform, trace_context, path, set(selected_indices))
+        for selected_index in selected_indices:
+            data = self._run_traced_node(
+                transform.transforms[selected_index],
+                data,
+                trace_context,
+                (*path, selected_index),
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=transform,
+            )
+        data = self._finalize_traced_leaf(data, post_transform_container)
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+        return data
+
+    def _run_traced_one_or_other(
+        self,
+        transform: "OneOrOther",
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        if transform.replay_mode:
+            if not getattr(transform, "applied_in_replay", False):
+                self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_REPLAY)
+                return data
+            selected_indices = self._replay_selected_child_indices(transform)
+            self._emit_unselected_children(transform, trace_context, path, selected_indices)
+            for selected_index in selected_indices:
+                data = self._run_traced_node(
+                    transform.transforms[selected_index],
+                    data,
+                    trace_context,
+                    (*path, selected_index),
+                    force_apply=True,
+                    tracking_data=tracking_data,
+                    event_data_factory=event_data_factory,
+                    finalize_leaf=finalize_leaf,
+                    post_transform_container=post_transform_container,
+                )
+            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+            return data
+
+        selected_index = 0 if transform.py_random.random() < transform.p else len(transform.transforms) - 1
+        self._emit_unselected_children(transform, trace_context, path, {selected_index})
+        data = self._run_traced_node(
+            transform.transforms[selected_index],
+            data,
+            trace_context,
+            (*path, selected_index),
+            force_apply=True,
+            tracking_data=tracking_data,
+            event_data_factory=event_data_factory,
+            finalize_leaf=finalize_leaf,
+            post_transform_container=post_transform_container,
+        )
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+        return data
+
+    def _run_traced_sequential(
+        self,
+        transform: "Sequential",
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        if transform.replay_mode and not getattr(transform, "applied_in_replay", False):
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_REPLAY)
+            return data
+        if not (transform.replay_mode or force_apply or transform.py_random.random() < transform.p):
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
+            return data
+        data = self._run_traced_node_children(
+            transform,
+            data,
+            trace_context,
+            path,
+            tracking_data=tracking_data,
+            event_data_factory=event_data_factory,
+            finalize_leaf=finalize_leaf,
+            post_transform_container=transform,
+        )
+        data = self._finalize_traced_leaf(data, post_transform_container)
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+        return data
+
+    def _run_traced_selective(
+        self,
+        transform: "SelectiveChannelTransform",
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        if not (force_apply or transform.py_random.random() < transform.p):
+            self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
+            return data
+
+        image = data["image"]
+        sub_image = np.ascontiguousarray(image[:, :, transform.channels])
+
+        def build_full_snapshot(sub_data: dict[str, Any]) -> dict[str, Any]:
+            output = data.copy()
+            output_image = image.copy()
+            for channel_index, channel in zip(transform.channels, cv2.split(sub_data["image"]), strict=True):
+                output_image[:, :, channel_index] = channel
+            output["image"] = np.ascontiguousarray(output_image)
+            return event_data_factory(output) if event_data_factory is not None else output
+
+        sub_data = {"image": sub_image}
+        sub_data = self._run_traced_node_children(
+            transform,
+            sub_data,
+            trace_context,
+            path,
+            tracking_data=data if tracking_data is None else tracking_data,
+            event_data_factory=build_full_snapshot,
+            finalize_leaf=False,
+            post_transform_container=post_transform_container,
+        )
+        output_image = image.copy()
+        for channel_index, channel in zip(transform.channels, cv2.split(sub_data["image"]), strict=True):
+            output_image[:, :, channel_index] = channel
+        data["image"] = np.ascontiguousarray(output_image)
+        data = self._finalize_traced_leaf(data, post_transform_container)
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+        return data
+
+    def _run_traced_node_children(
+        self,
+        transform: "BaseCompose",
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        tracking_data: dict[str, Any] | None = None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        finalize_leaf: bool = True,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
+        for index, child in enumerate(transform.transforms):
+            data = self._run_traced_node(
+                child,
+                data,
+                trace_context,
+                (*path, index),
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
+        return data
+
+    def _emit_unselected_children(
+        self,
+        transform: "BaseCompose",
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        selected_indices: set[int],
+    ) -> None:
+        for index, child in enumerate(transform.transforms):
+            if index not in selected_indices:
+                self._emit_skipped_trace_tree(child, trace_context, (*path, index), _TRACE_STATUS_SKIPPED_SELECTION)
+
+    @staticmethod
+    def _replay_selected_child_indices(transform: "BaseCompose") -> set[int]:
+        return {index for index, child in enumerate(transform.transforms) if getattr(child, "applied_in_replay", False)}
+
+    def _emit_skipped_trace_tree(
+        self,
+        transform: TransformType,
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        status: str,
+    ) -> None:
+        if isinstance(transform, BasicTransform):
+            trace_context.emit(
+                node_path=path,
+                class_fullname=transform.get_applied_replay_class().get_class_fullname(),
+                node_kind=_TRACE_NODE_KIND_LEAF,
+                status=status,
+            )
+            return
+        self._emit_composition_record(transform, trace_context, path, status)
+        for index, child in enumerate(transform.transforms):
+            self._emit_skipped_trace_tree(child, trace_context, (*path, index), status)
+
+    @staticmethod
+    def _emit_composition_record(
+        transform: "BaseCompose",
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        status: str,
+    ) -> None:
+        trace_context.emit(
+            node_path=path,
+            class_fullname=transform.get_class_fullname(),
+            node_kind=_TRACE_NODE_KIND_COMPOSITION,
+            status=status,
+        )
+
     def _clear_instance_binding_call_state_if_pending(self) -> None:
         if getattr(self, "_repack_after_processors", False):
             del self._repack_after_processors
@@ -1968,6 +2544,9 @@ class Compose(BaseCompose, HubMixin):
             value = data.get(data_name)
             if isinstance(value, np.ndarray):
                 data[data_name] = numpy_to_tensor_annotation(value, canonical_name)
+
+    def _clear_tensor_annotation_targets(self) -> None:
+        self._tensor_annotation_targets = ()
 
     def _filter_bound_bboxes_before_postprocess(self, data: dict[str, Any]) -> None:
         """Filter bound bboxes at the final boundary and mirror their keep mask before postprocessing removes internal
@@ -2546,30 +3125,38 @@ class Compose(BaseCompose, HubMixin):
             }
         return params_dict
 
-    def to_dict_private(self) -> dict[str, Any]:
-        dictionary = super().to_dict_private()
+    def _get_reconstruction_kwargs(self) -> dict[str, Any]:
+        """Return a complete detached Compose policy, including defaults, so construction routes recreate equivalent
+        validation, random, processor, and telemetry behavior.
+
+        """
         bbox_processor = self.processors.get("bboxes")
         keypoints_processor = self.processors.get("keypoints")
-        dictionary.update(
-            {
-                "bbox_params": self._clean_params_dict(
-                    bbox_processor.params.to_dict_private() if bbox_processor else None,
-                    self._bbox_label_map,
-                ),
-                "keypoint_params": self._clean_params_dict(
-                    keypoints_processor.params.to_dict_private() if keypoints_processor else None,
-                    self._kp_label_map,
-                ),
-                "additional_targets": self.additional_targets,
-                "is_check_shapes": self.is_check_shapes,
-                "seed": getattr(self, "_base_seed", None),
-            },
+
+        bbox_params = self._clean_params_dict(
+            bbox_processor.params.to_dict_private() if bbox_processor else None,
+            self._bbox_label_map,
         )
-        if self.semantic_mask_label_mappings is not None:
-            dictionary["semantic_mask_label_mappings"] = self.semantic_mask_label_mappings
-        if self._instance_binding:
-            dictionary["instance_binding"] = sorted(self._instance_binding)
-        return dictionary
+        keypoint_params = self._clean_params_dict(
+            keypoints_processor.params.to_dict_private() if keypoints_processor else None,
+            self._kp_label_map,
+        )
+
+        return {
+            "bbox_params": copy.deepcopy(bbox_params),
+            "keypoint_params": copy.deepcopy(keypoint_params),
+            "additional_targets": self.additional_targets.copy(),
+            "semantic_mask_label_mappings": copy.deepcopy(self.semantic_mask_label_mappings),
+            "p": self.p,
+            "is_check_shapes": self.is_check_shapes,
+            "strict": self.strict,
+            "mask_interpolation": self.mask_interpolation,
+            "seed": self._base_seed,
+            "save_applied_params": self.save_applied_params,
+            "telemetry": self.telemetry,
+            "instance_binding": sorted(self._instance_binding) if self._instance_binding else None,
+            "strict_instance_invariant": self._strict_instance_invariant,
+        }
 
     def get_dict_with_id(self) -> dict[str, Any]:
         """Get dict with object IDs for replay. Extends super with bbox_params,
@@ -2579,29 +3166,7 @@ class Compose(BaseCompose, HubMixin):
             dict[str, Any]: Dictionary with composition data and object IDs.
 
         """
-        dictionary = super().get_dict_with_id()
-        bbox_processor = self.processors.get("bboxes")
-        keypoints_processor = self.processors.get("keypoints")
-        dictionary.update(
-            {
-                "bbox_params": self._clean_params_dict(
-                    bbox_processor.params.to_dict_private() if bbox_processor else None,
-                    self._bbox_label_map,
-                ),
-                "keypoint_params": self._clean_params_dict(
-                    keypoints_processor.params.to_dict_private() if keypoints_processor else None,
-                    self._kp_label_map,
-                ),
-                "additional_targets": self.additional_targets,
-                "params": None,
-                "is_check_shapes": self.is_check_shapes,
-            },
-        )
-        if self.semantic_mask_label_mappings is not None:
-            dictionary["semantic_mask_label_mappings"] = self.semantic_mask_label_mappings
-        if self._instance_binding:
-            dictionary["instance_binding"] = sorted(self._instance_binding)
-        return dictionary
+        return super().get_dict_with_id()
 
     @staticmethod
     def _check_single_data(data_name: str, data: Any) -> tuple[int, int]:
@@ -2700,70 +3265,6 @@ class Compose(BaseCompose, HubMixin):
                 "Depth, Height and Width of volume and mask3d should be equal. "
                 "You can disable shapes check by setting is_check_shapes=False.",
             )
-
-    def _get_init_params(self) -> dict[str, Any]:
-        """Get parameters needed to recreate this Compose instance. Includes bbox_params,
-        keypoint_params, additional_targets, p, is_check_shapes, strict, seed, etc.
-
-        Returns:
-            dict[str, Any]: Dictionary of initialization parameters
-
-        """
-        bbox_processor = self.processors.get("bboxes")
-        keypoints_processor = self.processors.get("keypoints")
-
-        bbox_params: BboxParams | None = None
-        if bbox_processor:
-            bp = cast("BboxParams", bbox_processor.params)
-            if self._instance_binding and "bboxes" in self._instance_binding:
-                user_fields = list(self._bbox_label_map.values()) or None
-                bbox_params = BboxParams(
-                    coord_format=bp.coord_format,
-                    label_fields=user_fields,
-                    bbox_type=bp.bbox_type,
-                    min_area=bp.min_area,
-                    min_visibility=bp.min_visibility,
-                    min_width=bp.min_width,
-                    min_height=bp.min_height,
-                    check_each_transform=bp.check_each_transform,
-                    clip_bboxes_on_input=bp.clip_bboxes_on_input,
-                    filter_invalid_bboxes=bp.filter_invalid_bboxes,
-                    max_accept_ratio=bp.max_accept_ratio,
-                    clip_after_transform=bp.clip_after_transform,
-                )
-            else:
-                bbox_params = bp
-
-        kp_params: KeypointParams | None = None
-        if keypoints_processor:
-            kp = cast("KeypointParams", keypoints_processor.params)
-            if self._instance_binding and "keypoints" in self._instance_binding:
-                user_fields = list(self._kp_label_map.values()) or None
-                kp_params = KeypointParams(
-                    coord_format=kp.coord_format,
-                    label_fields=user_fields,
-                    remove_invisible=kp.remove_invisible,
-                    angle_in_degrees=kp.angle_in_degrees,
-                    check_each_transform=kp.check_each_transform,
-                    label_mapping=self._remap_label_mapping_fields(kp.label_mapping, self._kp_label_map) or None,
-                )
-            else:
-                kp_params = kp
-
-        return {
-            "bbox_params": bbox_params,
-            "keypoint_params": kp_params,
-            "additional_targets": self.additional_targets,
-            "semantic_mask_label_mappings": self.semantic_mask_label_mappings,
-            "p": self.p,
-            "is_check_shapes": self.is_check_shapes,
-            "strict": self.strict,
-            "mask_interpolation": getattr(self, "mask_interpolation", None),
-            "seed": getattr(self, "_base_seed", None),
-            "save_applied_params": getattr(self, "save_applied_params", False),
-            "telemetry": getattr(self, "telemetry", True),
-            "instance_binding": sorted(self._instance_binding) if self._instance_binding else None,
-        }
 
 
 class OneOf(BaseCompose):
@@ -2905,7 +3406,7 @@ class SomeOf(BaseCompose):
 
         if self.py_random.random() < self.p:  # Check overall SomeOf probability
             # Get indices uniformly
-            indices_to_consider = self._get_idx()
+            indices_to_consider = self.get_indices()
             for i in indices_to_consider:
                 t = self.transforms[i]
                 # Apply the transform respecting its own probability `t.p`
@@ -2914,7 +3415,14 @@ class SomeOf(BaseCompose):
                 data = self.check_data_post_transform(data)
         return data
 
-    def _get_idx(self) -> NDArray[np.int_]:
+    def get_indices(self) -> NDArray[np.int_]:
+        """Sample SomeOf child indices and sort them into stable execution order, while retaining replacement
+        behavior when a selection repeats the same child.
+
+        Returns:
+            NDArray[np.int_]: Selected child indices in execution order.
+
+        """
         # Use uniform probability for selection, ignore individual p values here
         idx = self.random_generator.choice(
             len(self.transforms),
@@ -2924,13 +3432,8 @@ class SomeOf(BaseCompose):
         idx.sort()
         return idx
 
-    def to_dict_private(self) -> dict[str, Any]:
-        dictionary = super().to_dict_private()
-        dictionary.update({"n": self.n, "replace": self.replace})
-        return dictionary
-
-    def _get_init_params(self) -> dict[str, Any]:
-        base_params = super()._get_init_params()
+    def _get_reconstruction_kwargs(self) -> dict[str, Any]:
+        base_params = super()._get_reconstruction_kwargs()
         base_params.update(
             {
                 "n": self.n,
@@ -2967,7 +3470,7 @@ class RandomOrder(SomeOf):
         >>> # respecting their individual probabilities (0.5, 1.0, 0.8).
 
     Note:
-        - Inherits from SomeOf, but overrides `_get_idx` to ensure random order without sorting.
+        - Inherits from SomeOf, but overrides `get_indices` to ensure random order without sorting.
         - Selection is uniform; application depends on individual transform probabilities.
 
     """
@@ -2976,7 +3479,14 @@ class RandomOrder(SomeOf):
         # Initialize using SomeOf's logic (which now does uniform selection setup)
         super().__init__(transforms=transforms, n=n, replace=replace, p=p)
 
-    def _get_idx(self) -> NDArray[np.int_]:
+    def get_indices(self) -> NDArray[np.int_]:
+        """Sample RandomOrder child indices without sorting, preserving the chosen random order when selected
+        transforms may not commute or may repeat.
+
+        Returns:
+            NDArray[np.int_]: Selected child indices in their sampled execution order.
+
+        """
         # Perform uniform random selection without replacement, like SomeOf
         # Crucially, DO NOT sort the indices here to maintain random order.
         return self.random_generator.choice(
@@ -3028,10 +3538,11 @@ class OneOrOther(BaseCompose):
                 self._track_transform_params(t, data)
             return data
 
-        if self.py_random.random() < self.p:
-            return self.transforms[0](force_apply=True, **data)
+        transform = self.transforms[0] if self.py_random.random() < self.p else self.transforms[-1]
 
-        return self.transforms[-1](force_apply=True, **data)
+        data = transform(force_apply=True, **data)
+        self._track_transform_params(transform, data)
+        return data
 
 
 class SelectiveChannelTransform(BaseCompose):
@@ -3094,7 +3605,7 @@ class SelectiveChannelTransform(BaseCompose):
             for t in self.transforms:
                 sub_data = {"image": sub_image}
                 sub_image = t(force_apply=False, **sub_data)["image"]
-                self._track_transform_params(t, sub_data)
+                self._track_transform_params(t, data)
 
             transformed_channels = cv2.split(sub_image)
             output_img = image.copy()
@@ -3106,15 +3617,12 @@ class SelectiveChannelTransform(BaseCompose):
 
         return data
 
-    def _get_init_params(self) -> dict[str, Any]:
-        """Get parameters needed to recreate this SelectiveChannelTransform instance.
-        Extends base with channels. For _create_new_instance and serialization.
-
-        Returns:
-            dict[str, Any]: Dictionary of initialization parameters
+    def _get_reconstruction_kwargs(self) -> dict[str, Any]:
+        """Extend the portable policy with channel selection, so serialization and graph edits retain channel-local
+        augmentation without runtime image or trace data.
 
         """
-        base_params = super()._get_init_params()
+        base_params = super()._get_reconstruction_kwargs()
         base_params.update(
             {
                 "channels": self.channels,
@@ -3166,6 +3674,11 @@ class ReplayCompose(Compose):
         seed: int | None = None,
         instance_binding: Sequence[str] | None = None,
         semantic_mask_label_mappings: dict[str, dict[int, int]] | None = None,
+        strict: bool = False,
+        mask_interpolation: int | None = None,
+        save_applied_params: bool = False,
+        telemetry: bool = True,
+        strict_instance_invariant: bool = True,
     ):
         super().__init__(
             transforms,
@@ -3174,8 +3687,13 @@ class ReplayCompose(Compose):
             additional_targets,
             p,
             is_check_shapes,
+            strict=strict,
+            mask_interpolation=mask_interpolation,
             seed=seed,
+            save_applied_params=save_applied_params,
+            telemetry=telemetry,
             instance_binding=instance_binding,
+            strict_instance_invariant=strict_instance_invariant,
             semantic_mask_label_mappings=semantic_mask_label_mappings,
         )
         self.set_deterministic(True, save_key=save_key)
@@ -3203,6 +3721,25 @@ class ReplayCompose(Compose):
         result[self.save_key] = serialized
         return result
 
+    def run_with_trace(
+        self,
+        *,
+        options: TraceOptions | None = None,
+        force_apply: bool = False,
+        **data: Any,
+    ) -> TraceResult:
+        """Apply this replayable pipeline and return replay data plus a trace, without making observation
+        configuration part of the saved augmentation payload.
+
+        """
+        data[self.save_key] = defaultdict(dict)
+        trace_result = super().run_with_trace(options=options, force_apply=force_apply, **data)
+        serialized = self.get_dict_with_id()
+        self.fill_with_params(serialized, trace_result.data[self.save_key])
+        self.fill_applied(serialized)
+        trace_result.data[self.save_key] = serialized
+        return trace_result
+
     @staticmethod
     def replay(saved_augmentations: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
         """Replay saved augmentations. Restores pipeline from saved_augmentations via
@@ -3218,6 +3755,23 @@ class ReplayCompose(Compose):
         """
         augs = ReplayCompose._restore_for_replay(saved_augmentations)
         return augs(force_apply=True, **kwargs)
+
+    @staticmethod
+    def replay_with_trace(
+        saved_augmentations: dict[str, Any],
+        *,
+        options: TraceOptions | None = None,
+        **data: Any,
+    ) -> TraceResult:
+        """Replay saved augmentations with a structural trace, exposing recorded decisions without resampling
+        probabilities or storing observation configuration.
+
+        """
+        augs = ReplayCompose._restore_for_replay(saved_augmentations)
+        if not isinstance(augs, Compose):
+            msg = "A replay trace requires a serialized Compose or ReplayCompose pipeline"
+            raise TypeError(msg)
+        return augs.run_with_trace(options=options, force_apply=True, **data)
 
     @staticmethod
     def _restore_for_replay(
@@ -3288,13 +3842,8 @@ class ReplayCompose(Compose):
             serialized["applied"] = serialized.get("params") is not None
         return serialized["applied"]
 
-    def to_dict_private(self) -> dict[str, Any]:
-        dictionary = super().to_dict_private()
-        dictionary.update({"save_key": self.save_key})
-        return dictionary
-
-    def _get_init_params(self) -> dict[str, Any]:
-        base_params = super()._get_init_params()
+    def _get_reconstruction_kwargs(self) -> dict[str, Any]:
+        base_params = super()._get_reconstruction_kwargs()
         base_params.update(
             {
                 "save_key": self.save_key,

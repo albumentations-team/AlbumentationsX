@@ -485,7 +485,7 @@ def generate_shared_noise(
 def generate_patch_noise(
     noise_type: Literal["uniform", "gaussian", "laplace", "beta"],
     shape: tuple[int, int, int],
-    params: dict[str, Any],
+    params: dict[str, Any] | None,
     max_value: float,
     random_generator: np.random.Generator,
     patches: np.ndarray,
@@ -496,7 +496,7 @@ def generate_patch_noise(
     Args:
         noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): Distribution used inside each patch.
         shape (tuple[int, int, int]): Image shape in ``(height, width, channels)`` order.
-        params (dict[str, Any]): Parameters for the selected distribution.
+        params (dict[str, Any] | None): Parameters for the selected distribution.
         max_value (float): Maximum value for the image dtype.
         random_generator (np.random.Generator): Random number generator used for noise sampling.
         patches (np.ndarray): Integer patch coordinates in ``(x_min, y_min, x_max, y_max)`` format.
@@ -511,6 +511,9 @@ def generate_patch_noise(
 
     """
     height, width, num_channels = shape
+    if params is None:
+        return np.zeros(shape, dtype=np.float32)
+
     is_full_image_patch = len(patches) == 1 and np.array_equal(patches[0], (0, 0, width, height))
 
     cv2_seed = int(random_generator.integers(0, 2**16))

@@ -491,15 +491,16 @@ def generate_patch_noise(
     patches: np.ndarray,
     per_channel: bool,
 ) -> np.ndarray:
-    """Generate noise only inside rectangular image patches.
+    """Generate a float32 noise map inside rectangular patches, leaving zero values elsewhere and optionally sampling
+    each channel independently.
 
     Args:
         noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): Distribution used inside each patch.
-        shape (tuple[int, int, int]): Image shape in ``(height, width, channels)`` order.
+        shape (tuple[int, int, int]): Image shape in `(height, width, channels)` order.
         params (dict[str, Any] | None): Parameters for the selected distribution.
         max_value (float): Maximum value for the image dtype.
         random_generator (np.random.Generator): Random number generator used for noise sampling.
-        patches (np.ndarray): Integer patch coordinates in ``(x_min, y_min, x_max, y_max)`` format.
+        patches (np.ndarray): Integer patch coordinates in `(x_min, y_min, x_max, y_max)` format.
         per_channel (bool): Whether to sample independent noise for each channel.
 
     Returns:

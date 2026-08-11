@@ -620,7 +620,8 @@ class _AdditiveNoiseInitSchema(BaseTransformInitSchema):
 
 
 class AdditiveNoise(ImageOnlyTransform):
-    """Add uniform, Gaussian, Laplace, or beta-distributed noise to an image.
+    """Add uniform, Gaussian, Laplace, or beta-distributed noise in constant, per-pixel, channel-shared, or randomly
+    localized rectangular patch modes.
 
     Noise can be constant per channel, independent per pixel and channel, shared across channels, or localized inside
     one or more randomly sampled rectangular patches. Patch-localized noise is useful when spatially restricted
@@ -629,10 +630,10 @@ class AdditiveNoise(ImageOnlyTransform):
     Args:
         noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): Noise distribution. Default: "uniform".
         spatial_mode (Literal['constant', 'per_pixel', 'shared', 'patch']): Spatial sampling mode. Default: "constant".
-            - ``"constant"`` samples one value per channel.
-            - ``"per_pixel"`` samples each pixel and channel independently.
-            - ``"shared"`` samples one spatial map and shares it across channels.
-            - ``"patch"`` samples noise only inside random rectangular patches.
+            - `"constant"` samples one value per channel.
+            - `"per_pixel"` samples each pixel and channel independently.
+            - `"shared"` samples one spatial map and shares it across channels.
+            - `"patch"` samples noise only inside random rectangular patches.
         noise_params (dict[str, Any] | None): Parameters for the chosen noise distribution.
             Must match the noise_type:
 
@@ -669,12 +670,12 @@ class AdditiveNoise(ImageOnlyTransform):
                     Range for sampling output scale, in [0, 1]
         p (float): Probability of applying the transform. Default: 0.5.
         patch_count_range (tuple[int, int]): Inclusive range for the number of patches when
-            ``spatial_mode="patch"``. Default: (1, 1).
+            `spatial_mode="patch"`. Default: (1, 1).
         patch_height_range (tuple[float, float]): Patch height as a fraction of image height. Values must be in
-            ``(0, 1]``. Default: (0.1, 1.0).
+            `(0, 1]`. Default: (0.1, 1.0).
         patch_width_range (tuple[float, float]): Patch width as a fraction of image width. Values must be in
-            ``(0, 1]``. Default: (0.1, 1.0).
-        per_channel (bool): When ``spatial_mode="patch"``, whether to sample independent noise for every channel.
+            `(0, 1]`. Default: (0.1, 1.0).
+        per_channel (bool): When `spatial_mode="patch"`, whether to sample independent noise for every channel.
             If False, the same noise is shared across channels. Default: False.
 
     Targets:
@@ -707,13 +708,13 @@ class AdditiveNoise(ImageOnlyTransform):
         >>> noisy_image = transform(image=image)["image"]
 
     Note:
-        - Patch positions and sizes are shared across channels. ``per_channel`` controls only the sampled noise values.
+        - Patch positions and sizes are shared across channels. `per_channel` controls only the sampled noise values.
         - Overlapping patches are processed in order, and later patch noise replaces earlier noise in the overlap.
         - Image batches and volume slices receive the same sampled patch program, matching the existing batch behavior.
         - All noise is generated in normalized units and scaled by the image dtype maximum.
 
     References:
-        - Patch Gaussian: Improving Generalization of Convolutional Neural Networks without Encouraging Invariance:
+        Patch Gaussian: Improving Generalization of Convolutional Neural Networks without Encouraging Invariance:
           https://openreview.net/forum?id=HkxWXkStDB
 
     """

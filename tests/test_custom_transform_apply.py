@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.core.invocation import SamplingContext
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
@@ -48,10 +49,11 @@ def mask3d():
 class BrightnessWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
     """ImageOnlyTransform + one custom target: float label."""
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         return {"factor": 0.5}
 
@@ -78,10 +80,11 @@ class FlipWithMetadata(A.CustomTransformsApplyMixin, A.DualTransform):
 class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
     """DualTransform + integer rotation label."""
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         return {"factor": 1}  # fixed for deterministic tests
 
@@ -98,10 +101,11 @@ class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
 class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
     """DualTransform + two custom targets."""
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         return {"factor": 2}
 
@@ -121,10 +125,11 @@ class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
 class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
     """Transform3D + integer label."""
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         return {"factor": 1}
 
@@ -448,7 +453,7 @@ class TestParamsPassthrough:
         received = {}
 
         class _Capture(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params_dependent_on_data(self, params, data):
+            def sample_parameters(self, params, data, sampling: SamplingContext):
                 return {"factor": 7}
 
             def apply(self, img, factor=0, **p):
@@ -468,7 +473,7 @@ class TestParamsPassthrough:
         received = {}
 
         class _CaptureMulti(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params_dependent_on_data(self, params, data):
+            def sample_parameters(self, params, data, sampling: SamplingContext):
                 return {"alpha": 3, "beta": 9}
 
             def apply(self, img, **p):
@@ -574,21 +579,22 @@ class TestReplayComposeIntegration:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# get_params_dependent_on_data with custom targets
+# sample_parameters with custom targets
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestGetParamsDependentOnData:
-    """Custom targets can be used in targets_as_params and get_params_dependent_on_data."""
+    """Custom targets can be used in targets_as_params and sample_parameters."""
 
     def test_custom_target_in_targets_as_params(self, uint8_image):
         class DataAwareLabelTransform(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             targets_as_params = ("label",)
 
-            def get_params_dependent_on_data(
+            def sample_parameters(
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                sampling: SamplingContext,
             ) -> dict[str, Any]:
                 label = data.get("label", 0)
                 return {"base": 10, "offset": label * 2}
@@ -608,10 +614,11 @@ class TestGetParamsDependentOnData:
         class RequiresLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             targets_as_params = ("label",)
 
-            def get_params_dependent_on_data(
+            def sample_parameters(
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                sampling: SamplingContext,
             ) -> dict[str, Any]:
                 return {}
 
@@ -633,10 +640,11 @@ class TestAddTargetsWithCustomKeys:
 
     def test_add_targets_aliases_custom_key(self, uint8_image):
         class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params_dependent_on_data(
+            def sample_parameters(
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                sampling: SamplingContext,
             ) -> dict[str, Any]:
                 return {}
 
@@ -657,10 +665,11 @@ class TestAddTargetsWithCustomKeys:
 
     def test_compose_with_additional_targets_custom_key(self, uint8_image):
         class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params_dependent_on_data(
+            def sample_parameters(
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                sampling: SamplingContext,
             ) -> dict[str, Any]:
                 return {}
 
@@ -744,10 +753,11 @@ class TestAvailableKeysAndComposition:
 
         # First: label += 1. Second: label *= 2. Input 5 -> 6 -> 12.
         class AddOne(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params_dependent_on_data(
+            def sample_parameters(
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                sampling: SamplingContext,
             ) -> dict[str, Any]:
                 return {}
 
@@ -758,10 +768,11 @@ class TestAvailableKeysAndComposition:
                 return label + 1
 
         class MulTwo(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params_dependent_on_data(
+            def sample_parameters(
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                sampling: SamplingContext,
             ) -> dict[str, Any]:
                 return {}
 
@@ -779,10 +790,11 @@ class TestAvailableKeysAndComposition:
         """Subclass can add another apply_to_ method."""
 
         class BaseWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def get_params_dependent_on_data(
+            def sample_parameters(
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                sampling: SamplingContext,
             ) -> dict[str, Any]:
                 return {}
 

@@ -4,19 +4,16 @@ This document outlines the coding standards and best practices for contributing 
 
 ## Important Note About Guidelines
 
-These guidelines represent our current best practices, developed through experience maintaining and expanding the AlbumentationsX codebase. While some existing code may not strictly follow these standards (due to historical reasons), we are gradually refactoring the codebase to align with these guidelines.
+These guidelines define the required standard for code that enters or is revised in the AlbumentationsX codebase.
 
 **For new contributions:**
 
 - All new code must follow these guidelines
-- All modifications to existing code should move it closer to these standards
-- Pull requests that introduce patterns we're trying to move away from will not be accepted
+- All revised code must follow these guidelines within the scope of the change
+- Pull requests that introduce non-conforming patterns will not be accepted
 
-**For existing code:**
-
-- You may encounter patterns that don't match these guidelines (e.g., transforms with "Random" prefix)
-- These are considered technical debt that we're working to address
-- When modifying existing code, take the opportunity to align it with current standards where possible
+Apply the same standard when changing existing code: do not preserve a non-conforming pattern merely because it is
+already present.
 
 ## Code Style and Formatting
 
@@ -98,7 +95,7 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
   # Correct
   class Brightness(ImageOnlyTransform):
 
-  # Incorrect (historical pattern)
+  # Incorrect
   class RandomBrightness(ImageOnlyTransform):
   ```
 
@@ -193,12 +190,14 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
     # if input was uint8 => result will stay uint8
     return cv2.blur(img, (3, 3))
 
+
 @float32_io  # If input is float32 => use as is; if uint8 => convert to float32, process, convert back
 def apply(self, img: np.ndarray, **params) -> np.ndarray:
     # img is guaranteed to be float32 in range [0, 1]
     # if input was uint8 => result will be converted back to uint8
     # if input was float32 => result will stay float32
     return img * 0.5
+
 
 # Avoid - manual type conversion
 def apply(self, img: np.ndarray, **params) -> np.ndarray:
@@ -219,6 +218,7 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
   def apply(self, img: np.ndarray, **params) -> np.ndarray:
       # img shape is (H, W, C), works for any C
       return img * self.factor
+
 
   # Also correct - explicitly requires RGB
   def apply(self, img: np.ndarray, **params) -> np.ndarray:
@@ -245,8 +245,8 @@ When a transform requires complex or variable auxiliary data beyond simple confi
 Instead, follow this preferred pattern:
 
 1. **Pass the auxiliary data** within the main `data` dictionary provided to the transform's `__call__` method, using a descriptive key (e.g., `mosaic_metadata`, `copy_paste_metadata`).
-2. **Declare this key** in the transform's `targets_as_params` property. This signals to `Compose` that the key should be extracted and forwarded to `get_params_dependent_on_data`.
-3. **Access the data** inside `get_params_dependent_on_data` using `data.get("your_metadata_key")`.
+2. **Declare this key** in the transform's `targets_as_params` property. This signals to `Compose` that the key should be extracted and forwarded to `sample_parameters`.
+3. **Access the data** inside `sample_parameters` using `data.get("your_metadata_key")`.
 4. **No-op gracefully** if the metadata is missing or empty — return unchanged inputs, never raise.
 
 Passing data via `__init__` couples the transform instance to specific data, making it less reusable and potentially breaking serialization or pipeline composition.
@@ -293,9 +293,9 @@ For **CopyAndPaste** (one object per dict), values are scalars:
 {
     "image": src_image,
     "mask": obj_mask,
-    "bbox": [10, 20, 50, 80],          # same coord_format as BboxParams
+    "bbox": [10, 20, 50, 80],  # same coord_format as BboxParams
     "bbox_labels": {"class_id": 3, "is_crowd": 0},
-    "keypoints": [[25, 40]],           # same coord_format as KeypointParams
+    "keypoints": [[25, 40]],  # same coord_format as KeypointParams
     "keypoint_labels": {"joint_name": "left_eye"},
 }
 ```
@@ -323,6 +323,9 @@ The processor converts them to internal format automatically — no manual conve
 **Example (`Mosaic` transform):**
 
 ```python
+from albumentations.core.invocation import SamplingContext
+
+
 class Mosaic(DualTransform):
     def __init__(self, target_size: tuple[int, int] = (512, 512), p=0.5, metadata_key="mosaic_metadata"):
         super().__init__(p=p)
@@ -333,12 +336,13 @@ class Mosaic(DualTransform):
     def targets_as_params(self) -> list[str]:
         return [self.metadata_key]
 
-    def get_params_dependent_on_data(self, params: dict, data: dict) -> dict:
+    def sample_parameters(self, params: dict, data: dict, sampling: SamplingContext) -> dict:
         metadata = data.get(self.metadata_key)
         if not isinstance(metadata, list) or not metadata:
             return self._no_op_params()
         # ... process metadata ...
         return {...}
+
 
 # Usage — user selects which images to include
 transform = A.Mosaic(target_size=(640, 640))
@@ -355,42 +359,29 @@ result = transform(
 
 ## Random Number Generation
 
-### Using Random Generators
+### SamplingContext owns call-local randomness
 
-- Use class-level random generators instead of direct numpy or random calls:
+`Compose` passes one `SamplingContext` to every `sample_parameters` call. Use it for every random draw and for the
+applied-configuration record. Do not read RNG state from the transform instance or use module-level random functions:
 
-  ```python
-  # Correct
-  value = self.random_generator.uniform(0, 1, size=image.shape)
-  choice = self.py_random.choice(options)
+```python
+from albumentations.core.invocation import SamplingContext
 
-  # Incorrect
-  value = np.random.uniform(0, 1, size=image.shape)
-  choice = random.choice(options)
-  ```
 
-- Prefer Python's standard library `random` over `numpy.random`:
+def sample_parameters(
+    self,
+    params: dict[str, Any],
+    data: dict[str, Any],
+    sampling: SamplingContext,
+) -> dict[str, Any]:
+    brightness = sampling.py_random.uniform(*self.brightness_range)
+    noise = sampling.random_generator.uniform(-1, 1, size=params["shape"])
+    sampling.applied_overrides["brightness_range"] = brightness
+    return {"brightness": brightness, "noise": noise}
+```
 
-  ```python
-  # Correct - using standard library random (faster)
-  value = self.py_random.uniform(0, 1)
-  choice = self.py_random.choice(options)
-
-  # Use numpy.random only when needed
-  value = self.random_generator.randint(0, 255, size=image.shape)
-  ```
-
-### Parameter Sampling
-
-- Handle all probability calculations and random sampling in `get_params_dependent_on_data`
-- Don't perform random operations in `apply_xxx` or `__init__` methods:
-
-  ```python
-  def get_params_dependent_on_data(self, params: dict, data: dict) -> dict:
-      return {
-          "brightness": self.py_random.uniform(*self.brightness_range),
-      }
-  ```
+Use `sampling.py_random` for a few scalar choices. Use `sampling.random_generator` for array-valued draws. Generate
+all stochastic parameters before `apply`, then pass the generated values to `apply` through the returned dictionary.
 
 ## Transform Development
 
@@ -408,22 +399,23 @@ result = transform(
 
 ### Parameter Generation
 
-#### Using get_params_dependent_on_data
+#### Using sample_parameters
 
 This method provides access to image shape and target data for parameter generation:
 
 ```python
-def get_params_dependent_on_data(
+def sample_parameters(
     self,
     params: dict[str, Any],
-    data: dict[str, Any]
+    data: dict[str, Any],
+    sampling: SamplingContext,
 ) -> dict[str, Any]:
     # Access image shape - always available
     height, width = params["shape"][:2]
 
     # Access targets if they were passed to transform
     image = data.get("image")  # Original image
-    mask = data.get("mask")    # Segmentation mask
+    mask = data.get("mask")  # Segmentation mask
     bboxes = data.get("bboxes")  # Bounding boxes
     keypoints = data.get("keypoints")  # Keypoint coordinates
 
@@ -432,16 +424,14 @@ def get_params_dependent_on_data(
     center_x = width // 2
     center_y = height // 2
 
-    return {
-        "crop_size": crop_size,
-        "center": (center_x, center_y)
-    }
+    return {"crop_size": crop_size, "center": (center_x, center_y)}
 ```
 
 The method receives:
 
 - `params`: Dictionary containing image metadata, where `params["shape"]` is always available
 - `data`: Dictionary containing all targets passed to the transform
+- `sampling`: Call-local Python and NumPy RNG streams plus the applied-configuration sink
 
 Use this method when you need to:
 
@@ -491,18 +481,23 @@ class MyTransform(ImageOnlyTransform):
         brightness_range: tuple[float, float]
         contrast_range: tuple[float, float]
 
-    def __init__(self, brightness_range: tuple[float, float] = (0.8, 1.2),
-                 contrast_range: tuple[float, float] = (0.8, 1.2), p: float = 0.5):
+    def __init__(
+        self,
+        brightness_range: tuple[float, float] = (0.8, 1.2),
+        contrast_range: tuple[float, float] = (0.8, 1.2),
+        p: float = 0.5,
+    ):
         # Default values go in __init__, not InitSchema
         super().__init__(p=p)
         self.brightness_range = brightness_range
         self.contrast_range = contrast_range
 
+
 # Incorrect - default values in InitSchema
 class MyTransform(ImageOnlyTransform):
     class InitSchema(BaseTransformInitSchema):
         brightness_range: tuple[float, float] = (0.8, 1.2)  # ❌ No defaults in InitSchema
-        contrast_range: tuple[float, float] = (0.8, 1.2)    # ❌ No defaults in InitSchema
+        contrast_range: tuple[float, float] = (0.8, 1.2)  # ❌ No defaults in InitSchema
 ```
 
 ##### Exception: Discriminator Fields
@@ -566,6 +561,7 @@ The center point calculation differs slightly between targets:
   ```python
   # Correct - using helper function
   from albumentations.augmentations.geometric.functional import center
+
   center_x, center_y = center(image_shape)  # Returns ((width-1)/2, (height-1)/2)
 
   # Incorrect - manual calculation might miss the -1
@@ -578,6 +574,7 @@ The center point calculation differs slightly between targets:
   ```python
   # Correct - using helper function
   from albumentations.augmentations.geometric.functional import center_bbox
+
   center_x, center_y = center_bbox(image_shape)  # Returns (width/2, height/2)
 
   # Incorrect - using wrong center calculation
@@ -700,7 +697,7 @@ Examples:
     ...         super().__init__(*args, **kwargs)
     ...         # Add custom parameters here
     ...
-    ...     def get_params_dependent_on_data(self, params, data):
+    ...     def sample_parameters(self, params, data, sampling):
     ...         height, width = params["shape"][:2]
     ...         # Generate distortion maps
     ...         map_x = np.zeros((height, width), dtype=np.float32)
@@ -893,10 +890,10 @@ Replace per-element Python RNG loops with single NumPy calls:
 
 ```python
 # Slow
-steps = [1 + self.py_random.uniform(*limit) for _ in range(n)]
+steps = [1 + sampling.py_random.uniform(*limit) for _ in range(n)]
 
 # Fast
-steps = (1 + self.random_generator.uniform(*limit, size=n)).tolist()
+steps = (1 + sampling.random_generator.uniform(*limit, size=n)).tolist()
 ```
 
 ### Updating Transform Documentation

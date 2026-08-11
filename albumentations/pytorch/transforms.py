@@ -154,7 +154,7 @@ class ToTensor3D(_TensorTransform):
             return torch.from_numpy(np.ascontiguousarray(volume.transpose(3, 0, 1, 2)))
         if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:  # D,H,W
             return torch.from_numpy(np.ascontiguousarray(volume[np.newaxis, ...]))
-        raise ValueError(f"Expected 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
+        raise TypeError(f"volume must be 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
         return self.apply_to_volume(mask3d, **params)

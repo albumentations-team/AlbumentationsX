@@ -20,6 +20,7 @@ from albumentations.augmentations.mixing.domain_adaptation_functional import (
     apply_histogram,
     fourier_domain_adaptation,
 )
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -47,7 +48,7 @@ class _BaseDomainAdaptationTransformInitSchema(BaseDomainAdaptationInitSchema):
 
 class BaseDomainAdaptation(ImageOnlyTransform):
     """Base for domain adaptation: modify source to match target via reference data in
-    metadata_key. Subclasses implement apply and get_params_dependent_on_data.
+    metadata_key. Subclasses implement apply and sample_parameters.
 
     Domain adaptation transforms modify source images to match the characteristics of a target domain.
     These transforms typically require an additional reference image or dataset from the target domain
@@ -69,7 +70,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
     Notes:
         - Subclasses should implement the `apply` method to perform the actual adaptation.
         - Use `targets_as_params` property to define what additional data your transform needs.
-        - Override `get_params_dependent_on_data` to extract the target domain data.
+        - Override `sample_parameters` to extract the target domain data.
         - Domain adaptation often requires per-sample auxiliary data, which should be passed
           through the main data dictionary rather than at initialization time.
 
@@ -98,7 +99,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         ...     def targets_as_params(self) -> list[str]:
         ...         return [self.reference_key]  # We need target domain image
         ...
-        ...     def get_params_dependent_on_data(
+        ...     def sample_parameters(
         ...         self,
         ...         params: dict[str, Any],
         ...         data: dict[str, Any]
@@ -165,7 +166,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
     def targets_as_params(self) -> list[str]:
         return [self.metadata_key]
 
-    def _get_reference_image(self, data: dict[str, Any]) -> ImageType:
+    def _get_reference_image(self, data: dict[str, Any], sampling: SamplingContext) -> ImageType:
         """Retrieve a reference image from data[metadata_key]. Returns one image from the
         sequence; raises ValueError or TypeError if missing or invalid type.
         """
@@ -187,7 +188,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
                 f"Images in metadata key '{self.metadata_key}' should be numpy arrays.",
             )
 
-        return self.py_random.choice(metadata_images)
+        return sampling.py_random.choice(metadata_images)
 
 
 class HistogramMatching(BaseDomainAdaptation):
@@ -302,13 +303,16 @@ class HistogramMatching(BaseDomainAdaptation):
         super().__init__(metadata_key=metadata_key, p=p)
         self.blend_ratio = blend_ratio
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        reference_image = self._get_reference_image(data)
-        blend_ratio = self.py_random.uniform(*self.blend_ratio)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        reference_image = self._get_reference_image(data, sampling)
+        blend_ratio = sampling.py_random.uniform(*self.blend_ratio)
 
-        self.applied_config = {
-            "blend_ratio": blend_ratio,
-        }
+        sampling.applied_overrides["blend_ratio"] = blend_ratio
 
         return {
             "reference_image": reference_image,
@@ -487,18 +491,21 @@ class FDA(BaseDomainAdaptation):
         super().__init__(metadata_key=metadata_key, p=p)
         self.beta_range = beta_range
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        target_image = self._get_reference_image(data)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        target_image = self._get_reference_image(data, sampling)
         height, width = params["shape"][:2]
 
         # Resize the target image to match the input image dimensions
         target_image_resized = fgeometric.resize(target_image, (height, width), cv2.INTER_LINEAR)
 
-        beta = self.py_random.uniform(*self.beta_range)
+        beta = sampling.py_random.uniform(*self.beta_range)
 
-        self.applied_config = {
-            "beta_range": beta,
-        }
+        sampling.applied_overrides["beta_range"] = beta
 
         return {"target_image": target_image_resized, "beta": beta}
 
@@ -669,15 +676,18 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
         self.blend_ratio = blend_ratio
         self.transform_type = transform_type
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        blend_ratio = self.py_random.uniform(*self.blend_ratio)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        blend_ratio = sampling.py_random.uniform(*self.blend_ratio)
 
-        self.applied_config = {
-            "blend_ratio": blend_ratio,
-        }
+        sampling.applied_overrides["blend_ratio"] = blend_ratio
 
         return {
-            "reference_image": self._get_reference_image(data),
+            "reference_image": self._get_reference_image(data, sampling),
             "blend_ratio": blend_ratio,
         }
 

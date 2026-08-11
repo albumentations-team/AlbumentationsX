@@ -6,13 +6,13 @@ always_apply: false
 
 # Benchmarking Requirements
 
-Any change that might affect the speed of transforms (functional layer, apply methods, `get_params_dependent_on_data`, core pipeline code) **must** include benchmark results comparing before and after.
+Any change that might affect the speed of transforms (functional layer, apply methods, `sample_parameters`, core pipeline code) **must** include benchmark results comparing before and after.
 
 ## When to Benchmark
 
 - Changes to `apply`, `apply_to_images`, `apply_to_masks`, or any `apply_*` method
 - Changes to functions in `functional.py` files
-- Changes to `get_params_dependent_on_data`
+- Changes to `sample_parameters`
 - Changes to core pipeline code (`composition.py`, `transforms_interface.py`)
 - Replacing numpy operations with cv2 or vice versa
 - Adding or removing array copies, allocations, or in-place operations

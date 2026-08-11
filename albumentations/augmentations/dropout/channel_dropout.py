@@ -10,6 +10,7 @@ from typing import Annotated, Any
 
 from pydantic import AfterValidator
 
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
@@ -100,7 +101,12 @@ class ChannelDropout(ImageOnlyTransform):
         result[:, :, :, channels_to_drop] = self.fill
         return result
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, tuple[int, ...]]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, tuple[int, ...]]:
         metadata = self.get_image_data(data)
         num_channels = metadata["num_channels"]
         if num_channels == 1:
@@ -110,11 +116,9 @@ class ChannelDropout(ImageOnlyTransform):
         if self.channel_drop_range[1] >= num_channels:
             msg = "Can not drop all channels in ChannelDropout."
             raise ValueError(msg)
-        num_drop_channels = self.py_random.randint(*self.channel_drop_range)
-        channels_to_drop = tuple(self.py_random.sample(range(num_channels), k=num_drop_channels))
+        num_drop_channels = sampling.py_random.randint(*self.channel_drop_range)
+        channels_to_drop = tuple(sampling.py_random.sample(range(num_channels), k=num_drop_channels))
 
-        self.applied_config = {
-            "channel_drop_range": num_drop_channels,
-        }
+        sampling.applied_overrides["channel_drop_range"] = num_drop_channels
 
         return {"channels_to_drop": channels_to_drop}

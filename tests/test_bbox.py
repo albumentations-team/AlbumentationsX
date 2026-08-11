@@ -3162,6 +3162,65 @@ def test_clip_bboxes_geometry_hbb():
     np.testing.assert_array_almost_equal(result, expected, decimal=5)
 
 
+def test_clip_bboxes_geometry_hbb_preserves_float32_dtype_and_input() -> None:
+    """The internal HBB clipping path must not promote or mutate caller-owned boxes."""
+    from albumentations.core.bbox_utils import clip_bboxes_geometry
+
+    bboxes = np.array([[-0.2, 0.1, 1.2, 0.9, 137.0]], dtype=np.float32)
+    original = bboxes.copy()
+
+    result = clip_bboxes_geometry(bboxes, (100, 100), "hbb")
+
+    assert result.dtype == np.float32
+    np.testing.assert_array_equal(bboxes, original)
+    np.testing.assert_array_equal(result, np.array([[0.0, 0.1, 1.0, 0.9, 137.0]], dtype=np.float32))
+
+
+def test_compose_input_clipping_does_not_mutate_albumentations_boxes() -> None:
+    """Input clipping owns its working copy even when the source format is already canonical."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    bboxes = np.array([[-0.2, 0.1, 1.2, 0.9]], dtype=np.float32)
+    original = bboxes.copy()
+    transform = A.Compose(
+        [A.NoOp(p=1.0)],
+        bbox_params=A.BboxParams("albumentations", clip_bboxes_on_input=True),
+    )
+
+    result = transform(image=image, bboxes=bboxes)
+
+    np.testing.assert_array_equal(bboxes, original)
+    np.testing.assert_array_equal(result["bboxes"], np.array([[0.0, 0.1, 1.0, 0.9]], dtype=np.float32))
+
+
+def test_check_each_transform_does_not_repeat_the_final_bbox_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The last per-node filter is also the final filter for an unchanged root boundary."""
+    calls = 0
+    original_filter = BboxProcessor.filter_with_keep_mask
+
+    def count_filter(
+        processor: BboxProcessor,
+        data: np.ndarray,
+        shape: tuple[int, int] | tuple[int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        nonlocal calls
+        calls += 1
+        return original_filter(processor, data, shape)
+
+    monkeypatch.setattr(BboxProcessor, "filter_with_keep_mask", count_filter)
+    transform = A.Compose(
+        [A.NoOp(p=1.0)],
+        bbox_params=A.BboxParams("pascal_voc", check_each_transform=True),
+    )
+
+    result = transform(
+        image=np.zeros((100, 100, 3), dtype=np.uint8),
+        bboxes=np.array([[10, 10, 30, 30]], dtype=np.float32),
+    )
+
+    assert calls == 1
+    np.testing.assert_allclose(result["bboxes"], np.array([[10, 10, 30, 30]], dtype=np.float32))
+
+
 def test_clip_bboxes_geometry_obb_no_clipping():
     """Test that clip_bboxes_geometry handles OBB that doesn't need clipping."""
     from albumentations.core.bbox_utils import clip_bboxes_geometry

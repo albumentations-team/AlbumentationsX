@@ -27,6 +27,7 @@ from albumentations.core.bbox_utils import (
     denormalize_bboxes,
     normalize_bboxes,
 )
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -288,18 +289,19 @@ class Perspective(DualTransform):
             self.keep_size,
         )
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        scale = self.py_random.uniform(*self.scale)
+        scale = sampling.py_random.uniform(*self.scale)
 
         points = fgeometric.generate_perspective_points(
             image_shape,
             scale,
-            self.random_generator,
+            sampling.random_generator,
         )
         points = fgeometric.order_points(points)
 
@@ -314,7 +316,7 @@ class Perspective(DualTransform):
                 image_shape,
             )
 
-        self.applied_config = {"scale": scale}
+        sampling.applied_overrides["scale"] = scale
 
         return {
             "matrix": matrix,
@@ -743,28 +745,29 @@ class Affine(DualTransform):
 
         return result_scale
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
 
-        translate = self._get_translate_params(image_shape)
-        shear = self._get_shear_params()
+        translate = self._get_translate_params(image_shape, sampling)
+        shear = self._get_shear_params(sampling)
         scale = self._get_scale(
             self.scale,
             self.keep_ratio,
             self.balanced_scale,
-            self.py_random,
+            sampling.py_random,
         )
-        rotate = self.py_random.uniform(*self.rotate)
+        rotate = sampling.py_random.uniform(*self.rotate)
 
-        self.applied_config = {"rotate": rotate, "scale": scale, "shear": shear}
+        sampling.applied_overrides.update({"rotate": rotate, "scale": scale, "shear": shear})
         if self.translate_percent is not None:
-            self.applied_config["translate_percent"] = translate
+            sampling.applied_overrides["translate_percent"] = translate
         elif self.translate_px is not None:
-            self.applied_config["translate_px"] = translate
+            sampling.applied_overrides["translate_px"] = translate
 
         image_shift = fgeometric.center(image_shape)
         bbox_shift = fgeometric.center_bbox(image_shape)
@@ -804,25 +807,25 @@ class Affine(DualTransform):
             "output_shape": output_shape,
         }
 
-    def _get_translate_params(self, image_shape: tuple[int, int]) -> dict[str, int]:
+    def _get_translate_params(self, image_shape: tuple[int, int], sampling: SamplingContext) -> dict[str, int]:
         height, width = image_shape[:2]
         if self.translate_px is not None:
             return {
-                "x": self.py_random.randint(self.translate_px["x"][0], self.translate_px["x"][1]),
-                "y": self.py_random.randint(self.translate_px["y"][0], self.translate_px["y"][1]),
+                "x": sampling.py_random.randint(self.translate_px["x"][0], self.translate_px["x"][1]),
+                "y": sampling.py_random.randint(self.translate_px["y"][0], self.translate_px["y"][1]),
             }
         if self.translate_percent is not None:
-            translate = {key: self.py_random.uniform(*value) for key, value in self.translate_percent.items()}
+            translate = {key: sampling.py_random.uniform(*value) for key, value in self.translate_percent.items()}
             return cast(
                 "dict[str, int]",
                 {"x": int(translate["x"] * width), "y": int(translate["y"] * height)},
             )
         return cast("dict[str, int]", {"x": 0, "y": 0})
 
-    def _get_shear_params(self) -> dict[str, float]:
+    def _get_shear_params(self, sampling: SamplingContext) -> dict[str, float]:
         return {
-            "x": -self.py_random.uniform(*self.shear["x"]),
-            "y": -self.py_random.uniform(*self.shear["y"]),
+            "x": -sampling.py_random.uniform(*self.shear["x"]),
+            "y": -sampling.py_random.uniform(*self.shear["y"]),
         }
 
 
@@ -1125,10 +1128,11 @@ class GridElasticDeform(DualTransform):
     def _generate_mesh(polygons: np.ndarray, dimensions: np.ndarray) -> np.ndarray:
         return np.hstack((dimensions.reshape(-1, 4), polygons))
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
 
@@ -1136,7 +1140,7 @@ class GridElasticDeform(DualTransform):
         tiles = fgeometric.split_uniform_grid(
             image_shape,
             self.num_grid_xy,
-            self.random_generator,
+            sampling.random_generator,
         )
 
         # Convert tiles to the format expected by generate_distorted_grid_polygons
@@ -1157,7 +1161,7 @@ class GridElasticDeform(DualTransform):
         polygons = fgeometric.generate_distorted_grid_polygons(
             dimensions,
             self.magnitude,
-            self.random_generator,
+            sampling.random_generator,
         )
 
         generated_mesh = self._generate_mesh(polygons, dimensions)
@@ -1368,22 +1372,23 @@ class RandomGridShuffle(DualTransform):
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return self.apply(mask3d, **params)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, np.ndarray | list[int]]:
         image_shape = params["shape"][:2]
 
         original_tiles = fgeometric.split_uniform_grid(
             image_shape,
             self.grid,
-            self.random_generator,
+            sampling.random_generator,
         )
         shape_groups = fgeometric.create_shape_groups(original_tiles)
         mapping = fgeometric.shuffle_tiles_within_shape_groups(
             shape_groups,
-            self.random_generator,
+            sampling.random_generator,
         )
 
         return {"tiles": original_tiles, "mapping": mapping}
@@ -1520,10 +1525,11 @@ class Morphological(DualTransform):
     ) -> np.ndarray:
         return keypoints
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, np.ndarray]:
         return {
             "kernel": cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.scale),

@@ -5,6 +5,7 @@ from albucore import from_float, to_float
 
 import albumentations as A
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from tests.conftest import (
     IMAGES,
@@ -1083,7 +1084,11 @@ def test_constrained_coarse_dropout_with_mask():
     _ = transform(image=image, mask=mask)
 
     # Get holes
-    params = transform.get_params_dependent_on_data({}, {"image": image, "mask": mask})
+    params = transform.sample_parameters(
+        {},
+        {"image": image, "mask": mask},
+        SamplingContext.from_owner(transform, {}),
+    )
     holes = params["holes"]
 
     # Verify number of holes (2 per object, 3 objects)
@@ -1136,6 +1141,7 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
         [ccd],
         strict=True,
         bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]),
+        save_applied_params=True,
         seed=137,
     )
 
@@ -1604,9 +1610,10 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         # Use different seed for each iteration
         transform.set_random_seed(137 + iteration)
         # Get params without actually applying transform
-        params = transform.get_params_dependent_on_data(
+        params = transform.sample_parameters(
             {"shape": image.shape},
             {"image": image},
+            SamplingContext.from_owner(transform, {}),
         )
         slants.append(params["slant"])
 
@@ -1962,7 +1969,7 @@ def test_spatter_apply_to_images_matches_inherited_fallback(mode, dtype, seed, b
     images.setflags(write=False)
     images_before = images.copy()
     transform = A.Spatter(mode=mode, color=(137, 89, 211), p=1.0)
-    compose_result = A.Compose([transform], seed=seed, strict=True)(images=images)["images"]
+    compose_result = A.Compose([transform], save_applied_params=True, seed=seed, strict=True)(images=images)["images"]
     params = transform.get_applied_params()
     expected = ImageOnlyTransform.apply_to_images(transform, images, **params)
     direct_result = transform.apply_to_images(images, **params)
@@ -2125,7 +2132,7 @@ def test_spatter_batch_path_preserves_volume_routing(mode, dtype):
         volume = rng.random((3, 17, 19, 3), dtype=np.float32)
     transform = A.Spatter(mode=mode, p=1.0)
 
-    actual = A.Compose([transform], seed=137, strict=True)(volume=volume)["volume"]
+    actual = A.Compose([transform], save_applied_params=True, seed=137, strict=True)(volume=volume)["volume"]
     params = transform.get_applied_params()
     expected = ImageOnlyTransform.apply_to_images(transform, volume, **params)
 

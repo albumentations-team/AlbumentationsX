@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, Literal
 
+from albumentations.core.invocation import SamplingContext
+
 from ._color_shared import (
     AfterValidator,
     BaseTransformInitSchema,
@@ -172,24 +174,25 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         self.plasma_size = plasma_size
         self.roughness = roughness
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         shape = params["shape"]
 
         # Sample adjustment strengths
-        brightness = self.py_random.uniform(*self.brightness_range)
-        contrast = self.py_random.uniform(*self.contrast_range)
+        brightness = sampling.py_random.uniform(*self.brightness_range)
+        contrast = sampling.py_random.uniform(*self.contrast_range)
 
-        self.applied_config = {"brightness_range": brightness, "contrast_range": contrast}
+        sampling.applied_overrides.update({"brightness_range": brightness, "contrast_range": contrast})
 
         plasma = _generate_resized_plasma(
             target_shape=shape[:2],
             plasma_size=self.plasma_size,
             roughness=self.roughness,
-            random_generator=self.random_generator,
+            random_generator=sampling.random_generator,
         )
 
         return {
@@ -333,23 +336,24 @@ class PlasmaShadow(ImageOnlyTransform):
         self.plasma_size = plasma_size
         self.roughness = roughness
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         shape = params["shape"]
 
         # Sample shadow intensity
-        intensity = self.py_random.uniform(*self.shadow_intensity_range)
+        intensity = sampling.py_random.uniform(*self.shadow_intensity_range)
 
-        self.applied_config = {"shadow_intensity_range": intensity}
+        sampling.applied_overrides["shadow_intensity_range"] = intensity
 
         plasma = _generate_resized_plasma(
             target_shape=shape[:2],
             plasma_size=self.plasma_size,
             roughness=self.roughness,
-            random_generator=self.random_generator,
+            random_generator=sampling.random_generator,
         )
 
         return {
@@ -542,46 +546,53 @@ class Illumination(ImageOnlyTransform):
         self.center_range = center_range
         self.sigma_range = sigma_range
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        intensity = self.py_random.uniform(*self.intensity_range)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        intensity = sampling.py_random.uniform(*self.intensity_range)
 
         # Determine if brightening or darkening
         sign = 1  # brighten
         if self.effect_type == "both":
-            sign = 1 if self.py_random.random() > 0.5 else -1
+            sign = 1 if sampling.py_random.random() > 0.5 else -1
         elif self.effect_type == "darken":
             sign = -1
 
         intensity *= sign
 
-        # Always record all _range overrides so applied_config consistently reflects what was used,
+        # Always record all _range overrides so the applied record consistently reflects what was used,
         # echoing the constructor range for params not active in this mode.
-        self.applied_config = {
-            "intensity_range": abs(intensity),
-            "angle_range": self.angle_range,
-            "center_range": self.center_range,
-            "sigma_range": self.sigma_range,
-        }
+        sampling.applied_overrides.update(
+            {
+                "intensity_range": abs(intensity),
+                "angle_range": self.angle_range,
+                "center_range": self.center_range,
+                "sigma_range": self.sigma_range,
+            },
+        )
 
         if self.mode == "linear":
-            angle = self.py_random.uniform(*self.angle_range)
-            self.applied_config["angle_range"] = angle
+            angle = sampling.py_random.uniform(*self.angle_range)
+            sampling.applied_overrides["angle_range"] = angle
             return {
                 "intensity": intensity,
                 "angle": angle,
             }
         if self.mode == "corner":
-            corner = self.py_random.randint(0, 3)  # Choose random corner
+            corner = sampling.py_random.randint(0, 3)  # Choose random corner
             return {
                 "intensity": intensity,
                 "corner": corner,
             }
 
-        x = self.py_random.uniform(*self.center_range)
-        y = self.py_random.uniform(*self.center_range)
-        sigma = self.py_random.uniform(*self.sigma_range)
-        self.applied_config["center_range"] = (x, y)
-        self.applied_config["sigma_range"] = sigma
+        x = sampling.py_random.uniform(*self.center_range)
+        y = sampling.py_random.uniform(*self.center_range)
+        sigma = sampling.py_random.uniform(*self.sigma_range)
+        sampling.applied_overrides["center_range"] = (x, y)
+        sampling.applied_overrides["sigma_range"] = sigma
         return {
             "intensity": intensity,
             "center": (x, y),
@@ -610,21 +621,11 @@ class Illumination(ImageOnlyTransform):
         )
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        height, width = images.shape[1], images.shape[2]
-        gradient = fpixel.create_illumination_gradient(
-            height,
-            width,
-            self.mode,
-            params,
-        )
-        gradient = gradient[..., np.newaxis]
-
         if self.mode == "linear":
-            return self._apply_to_batch_same_shape(
-                images,
-                lambda image: albucore.add_array(image, gradient),
-            )
+            return fpixel.apply_linear_illumination_batch(images, **params)
 
+        height, width = images.shape[1], images.shape[2]
+        gradient = fpixel.create_illumination_gradient(height, width, self.mode, params)[..., np.newaxis]
         return self._apply_to_batch_same_shape(images, lambda image: albucore.multiply_by_array(image, gradient))
 
 
@@ -704,18 +705,21 @@ class Vignetting(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, float]:
-        intensity = self.py_random.uniform(*self.intensity_range)
-        center_x = self.py_random.uniform(*self.center_range)
-        center_y = self.py_random.uniform(*self.center_range)
-        self.applied_config = {
-            "intensity_range": intensity,
-            "center_range": (min(center_x, center_y), max(center_x, center_y)),
-        }
+        intensity = sampling.py_random.uniform(*self.intensity_range)
+        center_x = sampling.py_random.uniform(*self.center_range)
+        center_y = sampling.py_random.uniform(*self.center_range)
+        sampling.applied_overrides.update(
+            {
+                "intensity_range": intensity,
+                "center_range": (min(center_x, center_y), max(center_x, center_y)),
+            },
+        )
         return {
             "intensity": intensity,
             "center_x": center_x,

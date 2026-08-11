@@ -5,11 +5,19 @@ description: Run performance benchmarks for transform changes. Use when the user
 
 # Benchmark
 
-Any change touching `apply_*`, `functional.py`, `get_params_dependent_on_data`, `composition.py`, or `transforms_interface.py` **must** include benchmark results.
+Any change touching `apply_*`, `functional.py`, `sample_parameters`, `composition.py`, or `transforms_interface.py` **must** include benchmark results.
 
 Before designing the benchmark, read `../performance-optimization/SKILL.md` and its required reference completely.
 Use that workflow to define candidates and the dimension that controls each candidate, such as label density for
 `bincount`, channel layout for LUTs, or output size and dtype for random generation.
+
+For `Compose` executor work, add a control-plane matrix alongside the image matrix: root `p=0`, no-op `p=1`, no-op
+with `0<p<1`, an always-applied cheap leaf, `save_applied_params=True`, trace, Tensor route, processors, and concurrent
+calls. Construction time and retained allocations for one-leaf, one-node, and ten-node pipelines are optional context
+when RNG or graph ownership changes. They are never an acceptance metric: prefer slower construction when it makes
+repeated training calls faster. For annotation work, include image-only and bbox/keypoint-affecting chains at empty, one,
+and representative dense annotation counts. Compare the same cells against the baseline checkout in one environment.
+The full-size image matrix remains required when the change touches pixel arithmetic, conversions, or layout work.
 
 ## Standard Matrix
 

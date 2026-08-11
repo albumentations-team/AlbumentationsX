@@ -3,6 +3,8 @@
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     _BBOX_INSTANCE_ID,
     _KP_INSTANCE_ID,
@@ -636,7 +638,13 @@ class CopyAndPaste(DualTransform):
             "shape": (new_h, new_w),
         }
 
-    def _sample_placement(self, scaled_h: int, scaled_w: int, target_shape: tuple[int, int]) -> tuple[int, int]:
+    def _sample_placement(
+        self,
+        scaled_h: int,
+        scaled_w: int,
+        target_shape: tuple[int, int],
+        sampling: SamplingContext,
+    ) -> tuple[int, int]:
         """Sample a top-left (y0, x0) for the scaled donor uniformly inside the target image,
         relying on the shrink-to-fit cap to guarantee non-negative placement bounds.
 
@@ -644,8 +652,8 @@ class CopyAndPaste(DualTransform):
         `_fit_and_jitter_scale`.
         """
         height, width = target_shape
-        y0 = self.py_random.randint(0, max(0, height - scaled_h))
-        x0 = self.py_random.randint(0, max(0, width - scaled_w))
+        y0 = sampling.py_random.randint(0, max(0, height - scaled_h))
+        x0 = sampling.py_random.randint(0, max(0, width - scaled_w))
         return y0, x0
 
     @staticmethod
@@ -922,6 +930,7 @@ class CopyAndPaste(DualTransform):
         bbox_processor: BboxProcessor | None,
         kp_processor: KeypointsProcessor | None,
         scale_jitter: float,
+        sampling: SamplingContext,
     ) -> tuple[dict[str, Any], np.ndarray] | object | None:
         """Run the per-donor pipeline (convert, crop, scale, place, stamp, back-convert) returning
         the stamped item + mask, `_NO_FOOTPRINT` sentinel, or None on drop.
@@ -957,7 +966,7 @@ class CopyAndPaste(DualTransform):
         if h_s * w_s < self.min_paste_area:
             return None
 
-        y0, x0 = self._sample_placement(h_s, w_s, target_shape)
+        y0, x0 = self._sample_placement(h_s, w_s, target_shape, sampling)
 
         if scaled["semantic_mask"] is not None and semantic_canvas_holder[0] is None:
             semantic_canvas_holder[0] = np.zeros(target_shape, dtype=scaled["semantic_mask"].dtype)
@@ -1011,6 +1020,7 @@ class CopyAndPaste(DualTransform):
         data: dict[str, Any],
         target_shape: tuple[int, int],
         scale_jitter: float,
+        sampling: SamplingContext,
     ) -> tuple[list[dict[str, Any]], list[np.ndarray], np.ndarray, np.ndarray | None] | None:
         """Iterate donors through `_process_one_donor` to collect stamped items and masks, and
         emit the no-footprint UserWarning if any donors lacked both mask and bbox.
@@ -1043,6 +1053,7 @@ class CopyAndPaste(DualTransform):
                 bbox_processor,
                 kp_processor,
                 scale_jitter,
+                sampling,
             )
             if outcome is None:
                 continue
@@ -1066,21 +1077,22 @@ class CopyAndPaste(DualTransform):
             return None
         return stamped_items, pasted_masks_list, composite_image, semantic_canvas_holder[0]
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
-        # Sample blend_sigma + scale_jitter upfront so applied_config records them even when the
+        # Sample blend_sigma + scale_jitter upfront so the applied record captures them even when the
         # no-op path is taken (e.g. no valid paste items provided). scale_jitter is shared across
         # all donors in a single call so the recorded value matches what was actually applied.
-        blend_sigma = self.py_random.uniform(*self.blend_sigma_range)
-        self.applied_config["blend_sigma_range"] = blend_sigma
-        scale_jitter = self.py_random.uniform(*self.scale_range)
-        self.applied_config["scale_range"] = scale_jitter
+        blend_sigma = sampling.py_random.uniform(*self.blend_sigma_range)
+        sampling.applied_overrides["blend_sigma_range"] = blend_sigma
+        scale_jitter = sampling.py_random.uniform(*self.scale_range)
+        sampling.applied_overrides["scale_range"] = scale_jitter
 
         target_shape = params["shape"][:2]
-        gathered = self._gather_valid_copy_paste_items(data, target_shape, scale_jitter)
+        gathered = self._gather_valid_copy_paste_items(data, target_shape, scale_jitter, sampling)
         if gathered is None:
             return self._no_op_params()
 

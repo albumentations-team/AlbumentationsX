@@ -8,6 +8,7 @@ import torch.nn.functional as torch_f
 
 import albumentations as A
 from albumentations.augmentations.transforms3d import functional as f3d
+from albumentations.core.invocation import SamplingContext
 from tests.conftest import RECTANGULAR_UINT8_IMAGE
 from tests.utils import (
     get_primary_2d_transform_params,
@@ -395,7 +396,10 @@ def test_pad3d_2d_equivalence(pad3d_padding, pad2d_padding):
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_primary_3d_transform_params(
-        custom_arguments={A.RandomRotate90_3D: {"axis_pair": (0, 2), "group_element": "r90"}},
+        custom_arguments={
+            A.Flip3D: {"flip_axes": (0,)},
+            A.RandomRotate90_3D: {"axis_pair": (0, 2), "group_element": "r90"},
+        },
         except_augmentations={},
     ),
 )
@@ -1476,7 +1480,10 @@ def test_flip3d_random_mode_samples_the_full_reflection_group() -> None:
     transform.set_random_seed(137)
     volume = np.zeros((2, 3, 5, 1), dtype=np.uint8)
 
-    sampled_axes = {transform.get_params_dependent_on_data({}, {"volume": volume})["flip_axes"] for _ in range(64)}
+    sampled_axes = {
+        transform.sample_parameters({}, {"volume": volume}, SamplingContext.from_owner(transform, {}))["flip_axes"]
+        for _ in range(64)
+    }
 
     assert sampled_axes == {(), (0,), (2,), (0, 2)}
 

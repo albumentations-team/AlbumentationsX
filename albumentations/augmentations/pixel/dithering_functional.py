@@ -291,7 +291,8 @@ def random_dither_uint8(
     img: ImageUInt8,
     n_colors: int,
     noise_range: tuple[float, float],
-    random_generator: np.random.Generator,
+    random_generator: np.random.Generator | None = None,
+    random_noise: np.ndarray | None = None,
 ) -> ImageUInt8:
     """Random dithering for uint8: add noise then quantize with LUT. n_colors, noise_range,
     random_generator. Fast path for Dithering transform when input is uint8.
@@ -300,18 +301,25 @@ def random_dither_uint8(
         img (ImageUInt8): Input uint8 image with shape (H, W, C) in [0, 255] range.
         n_colors (int): Number of colors per channel after quantization.
         noise_range (tuple[float, float]): Range of noise to add (min_noise, max_noise) in [0, 1] range.
-        random_generator (np.random.Generator): Random number generator for reproducible results.
+        random_generator (np.random.Generator | None): Random source when a pre-sampled noise map is unavailable.
+        random_noise (np.ndarray | None): Pre-sampled int16 noise values for replayable transform execution.
 
     Returns:
         ImageUInt8: Dithered uint8 image in [0, 255] range.
 
     """
     # Add random noise (scale noise_range to uint8 range)
-    noise_uint8 = random_generator.uniform(
-        noise_range[0] * 255,
-        noise_range[1] * 255,
-        size=img.shape,
-    ).astype(np.int16)  # Use int16 to avoid overflow
+    if random_noise is None:
+        if random_generator is None:
+            msg = "random dithering requires random_noise or random_generator"
+            raise ValueError(msg)
+        noise_uint8 = random_generator.uniform(
+            noise_range[0] * 255,
+            noise_range[1] * 255,
+            size=img.shape,
+        ).astype(np.int16)
+    else:
+        noise_uint8 = random_noise
 
     # Add noise and clip to valid range
     noisy = np.clip(img.astype(np.int16) + noise_uint8, 0, 255).astype(np.uint8)
@@ -334,7 +342,8 @@ def random_dither(
     img: ImageFloat32,
     n_colors: int,
     noise_range: tuple[float, float],
-    random_generator: np.random.Generator,
+    random_generator: np.random.Generator | None = None,
+    random_noise: np.ndarray | None = None,
 ) -> ImageFloat32:
     """Random dithering for float32: add noise then quantize to n_colors. noise_range and
     random_generator control the dither. Float32 input and output in [0, 1].
@@ -343,14 +352,21 @@ def random_dither(
         img (ImageFloat32): Input float32 image with shape (H, W, C) in [0, 1] range.
         n_colors (int): Number of colors per channel after quantization.
         noise_range (tuple[float, float]): Range of noise to add (min_noise, max_noise).
-        random_generator (np.random.Generator): Random number generator for reproducible results.
+        random_generator (np.random.Generator | None): Random source when a pre-sampled noise map is unavailable.
+        random_noise (np.ndarray | None): Pre-sampled noise values for replayable transform execution.
 
     Returns:
         ImageFloat32: Dithered float32 image in [0, 1] range.
 
     """
     # Add random noise
-    noisy = random_generator.uniform(noise_range[0], noise_range[1], size=img.shape)
+    if random_noise is None:
+        if random_generator is None:
+            msg = "random dithering requires random_noise or random_generator"
+            raise ValueError(msg)
+        noisy = random_generator.uniform(noise_range[0], noise_range[1], size=img.shape)
+    else:
+        noisy = random_noise.copy()
     np.add(noisy, img, out=noisy)
     np.clip(noisy, 0, 1, out=noisy)
 
@@ -622,15 +638,17 @@ def _apply_single_dithering_method(
     if img.dtype == np.uint8 and method == "ordered":
         return ordered_dither_uint8(cast("ImageUInt8", img), n_colors, kwargs.get("matrix_size", 4))
     if img.dtype == np.uint8 and method == "random":
+        random_noise = kwargs.get("random_noise")
         random_generator = kwargs.get("random_generator")
-        if random_generator is None:
-            msg = "random_generator is required for random dithering method"
+        if random_noise is None and random_generator is None:
+            msg = "random dithering requires random_noise or random_generator"
             raise ValueError(msg)
         return random_dither_uint8(
             cast("ImageUInt8", img),
             n_colors,
             kwargs.get("noise_range", (-0.5, 0.5)),
             random_generator,
+            random_noise,
         )
     if (
         img.dtype == np.uint8
@@ -645,15 +663,17 @@ def _apply_single_dithering_method(
     # Use float32 versions
     float_img = cast("ImageFloat32", img)
     if method == "random":
+        random_noise = kwargs.get("random_noise")
         random_generator = kwargs.get("random_generator")
-        if random_generator is None:
-            msg = "random_generator is required for random dithering method"
+        if random_noise is None and random_generator is None:
+            msg = "random dithering requires random_noise or random_generator"
             raise ValueError(msg)
         return random_dither(
             float_img,
             n_colors,
             kwargs.get("noise_range", (-0.5, 0.5)),
             random_generator,
+            random_noise,
         )
     if method == "ordered":
         return ordered_dither(float_img, n_colors, kwargs.get("matrix_size", 4))

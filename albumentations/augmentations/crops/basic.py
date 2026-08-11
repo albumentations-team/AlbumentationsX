@@ -5,6 +5,8 @@ from typing import Annotated, Any, Literal, cast
 
 from typing_extensions import Self
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     ALL_TARGETS,
     CV2_BORDER_CONSTANT,
@@ -158,10 +160,11 @@ class RandomCrop(BaseCropAndPad):
         self.height = height
         self.width = width
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
         image_height, image_width = image_shape
@@ -173,7 +176,7 @@ class RandomCrop(BaseCropAndPad):
             )
 
         # Get padding params first if needed
-        pad_params = self._get_pad_params(image_shape, (self.height, self.width))
+        pad_params = self._get_pad_params(image_shape, (self.height, self.width), sampling)
 
         # If padding is needed, adjust the image shape for crop calculation
         if pad_params is not None:
@@ -187,13 +190,13 @@ class RandomCrop(BaseCropAndPad):
             padded_shape = (padded_height, padded_width)
 
             # Get random crop coordinates based on padded dimensions
-            h_start = self.py_random.random()
-            w_start = self.py_random.random()
+            h_start = sampling.py_random.random()
+            w_start = sampling.py_random.random()
             crop_coords = fcrops.get_crop_coords(padded_shape, (self.height, self.width), h_start, w_start)
         else:
             # Get random crop coordinates based on original dimensions
-            h_start = self.py_random.random()
-            w_start = self.py_random.random()
+            h_start = sampling.py_random.random()
+            w_start = sampling.py_random.random()
             crop_coords = fcrops.get_crop_coords(image_shape, (self.height, self.width), h_start, w_start)
 
         return {
@@ -334,10 +337,11 @@ class CenterCrop(BaseCropAndPad):
         self.height = height
         self.width = width
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
         image_height, image_width = image_shape
@@ -349,7 +353,7 @@ class CenterCrop(BaseCropAndPad):
             )
 
         # Get padding params first if needed
-        pad_params = self._get_pad_params(image_shape, (self.height, self.width))
+        pad_params = self._get_pad_params(image_shape, (self.height, self.width), sampling)
 
         # If padding is needed, adjust the image shape for crop calculation
         if pad_params is not None:
@@ -547,7 +551,14 @@ class Crop(BaseCropAndPad):
         return pad_top, pad_bottom, pad_left, pad_right
 
     # New helper function for distributing and adjusting padding
-    def _compute_adjusted_padding(self, pad_top: int, pad_bottom: int, pad_left: int, pad_right: int) -> dict[str, int]:
+    def _compute_adjusted_padding(
+        self,
+        pad_top: int,
+        pad_bottom: int,
+        pad_left: int,
+        pad_right: int,
+        sampling: SamplingContext,
+    ) -> dict[str, int]:
         delta_h = pad_top + pad_bottom
         delta_w = pad_left + pad_right
         pad_top_dist = delta_h // 2
@@ -561,7 +572,7 @@ class Crop(BaseCropAndPad):
             w_left=pad_left_dist,
             w_right=pad_right_dist,
             position=self.pad_position,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         final_top = max(pad_top_adj, pad_top)
@@ -576,7 +587,12 @@ class Crop(BaseCropAndPad):
             "pad_right": final_right,
         }
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
         image_height, image_width = image_shape
 
@@ -587,7 +603,7 @@ class Crop(BaseCropAndPad):
         pad_params = None
 
         if any([pad_top, pad_bottom, pad_left, pad_right]):
-            pad_params = self._compute_adjusted_padding(pad_top, pad_bottom, pad_left, pad_right)
+            pad_params = self._compute_adjusted_padding(pad_top, pad_bottom, pad_left, pad_right, sampling)
 
         return {"crop_coords": (self.x_min, self.y_min, self.x_max, self.y_max), "pad_params": pad_params}
 
@@ -910,14 +926,19 @@ class CropAndPad(DualTransform):
 
         return [max(top, 0), max(right, 0), max(bottom, 0), max(left, 0)]
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         height, width = params["shape"][:2]
         percent_params: list[float] | None = None
 
         if self.px is not None:
-            new_params = self._get_px_params()
+            new_params = self._get_px_params(sampling)
         else:
-            percent_params = self._get_percent_params()
+            percent_params = self._get_percent_params(sampling)
             new_params = [
                 int(percent_params[0] * height),
                 int(percent_params[1] * width),
@@ -944,9 +965,11 @@ class CropAndPad(DualTransform):
         else:
             pad_params = []
 
-        sampled_fill = None if pad_params is None else self._get_pad_value(self.fill)
+        sampled_fill = None if pad_params is None else self._get_pad_value(self.fill, sampling)
         sampled_fill_mask = (
-            None if pad_params is None else self._get_pad_value(cast("tuple[float, ...] | float", self.fill_mask))
+            None
+            if pad_params is None
+            else self._get_pad_value(cast("tuple[float, ...] | float", self.fill_mask), sampling)
         )
 
         applied_config: dict[str, Any] = {}
@@ -960,7 +983,7 @@ class CropAndPad(DualTransform):
             applied_config["fill"] = sampled_fill
         if sampled_fill_mask is not None:
             applied_config["fill_mask"] = sampled_fill_mask
-        self.applied_config = applied_config
+        sampling.applied_overrides.update(applied_config)
 
         return {
             "crop_params": tuple(crop_params) if crop_params else None,
@@ -970,7 +993,7 @@ class CropAndPad(DualTransform):
             "result_shape": (result_rows, result_cols),
         }
 
-    def _get_px_params(self) -> list[int]:
+    def _get_px_params(self, sampling: SamplingContext) -> list[int]:
         if self.px is None:
             msg = "px is not set"
             raise ValueError(msg)
@@ -979,15 +1002,15 @@ class CropAndPad(DualTransform):
             return [self.px] * 4
         if len(self.px) == PAIR:
             if self.sample_independently:
-                return [self.py_random.randrange(*self.px) for _ in range(4)]
-            px = self.py_random.randrange(*self.px)
+                return [sampling.py_random.randrange(*self.px) for _ in range(4)]
+            px = sampling.py_random.randrange(*self.px)
             return [px] * 4
         if isinstance(self.px[0], int):
             return list(cast("tuple[int, int, int, int]", self.px))
         # len(self.px[0]) == PAIR case - each element is a range tuple
-        return [self.py_random.randrange(*cast("tuple[int, int]", i)) for i in self.px]
+        return [sampling.py_random.randrange(*cast("tuple[int, int]", i)) for i in self.px]
 
-    def _get_percent_params(self) -> list[float]:
+    def _get_percent_params(self, sampling: SamplingContext) -> list[float]:
         if self.percent is None:
             msg = "percent is not set"
             raise ValueError(msg)
@@ -996,29 +1019,30 @@ class CropAndPad(DualTransform):
             params = [self.percent] * 4
         elif len(self.percent) == PAIR:
             if self.sample_independently:
-                params = [self.py_random.uniform(*self.percent) for _ in range(4)]
+                params = [sampling.py_random.uniform(*self.percent) for _ in range(4)]
             else:
-                px = self.py_random.uniform(*self.percent)
+                px = sampling.py_random.uniform(*self.percent)
                 params = [px] * 4
         elif isinstance(self.percent[0], (int, float)):
             params = list(cast("tuple[float, float, float, float]", self.percent))
         else:
             # len(self.percent[0]) == PAIR case - each element is a range tuple
-            params = [self.py_random.uniform(*cast("tuple[float, float]", i)) for i in self.percent]
+            params = [sampling.py_random.uniform(*cast("tuple[float, float]", i)) for i in self.percent]
 
         return params  # params = [top, right, bottom, left]
 
     def _get_pad_value(
         self,
         fill: Sequence[float] | float,
+        sampling: SamplingContext,
     ) -> int | float:
         if isinstance(fill, (list, tuple)):
             if len(fill) == PAIR:
                 a, b = fill
                 if isinstance(a, int) and isinstance(b, int):
-                    return self.py_random.randint(a, b)
-                return self.py_random.uniform(a, b)
-            return self.py_random.choice(fill)
+                    return sampling.py_random.randint(a, b)
+                return sampling.py_random.uniform(a, b)
+            return sampling.py_random.choice(fill)
 
         if isinstance(fill, (int, float)):
             return fill

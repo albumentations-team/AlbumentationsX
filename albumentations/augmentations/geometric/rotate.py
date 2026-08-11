@@ -16,6 +16,7 @@ from typing_extensions import Self
 
 from albumentations.augmentations.crops import functional as fcrops
 from albumentations.augmentations.geometric.transforms import Affine
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -190,22 +191,23 @@ class RandomRotate90(DualTransform):
     ) -> ImageType:
         return fgeometric.rot90(img, group_element)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Literal["e", "r90", "r180", "r270"]]:
         if self.group_element is not None:
             group_element = self.group_element
         elif self.group_elements is not None:
-            group_element = self.random_generator.choice(self.group_elements)
+            group_element = sampling.random_generator.choice(self.group_elements)
         else:
-            group_element = self.random_generator.choice(c4_group_elements)
+            group_element = sampling.random_generator.choice(c4_group_elements)
 
         # Explicitly clear group_elements so that _build_applied_config() does not
         # merge the unused constructor tuple (e.g. ("r90", "r270")) into the record,
         # which would cause InitSchema to reject the replay as mutually exclusive.
-        self.applied_config = {"group_element": group_element, "group_elements": None}
+        sampling.applied_overrides.update({"group_element": group_element, "group_elements": None})
         return {"group_element": group_element}
 
     def apply_to_bboxes(
@@ -526,14 +528,15 @@ class Rotate(DualTransform):
             "y_max": min(height, int(height / 2 + hr / 2)),
         }
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
-        angle = self.py_random.uniform(*self.angle_range)
+        angle = sampling.py_random.uniform(*self.angle_range)
 
-        self.applied_config = {"angle_range": angle}
+        sampling.applied_overrides["angle_range"] = angle
 
         if self.crop_border:
             height, width = params["shape"][:2]
@@ -722,15 +725,16 @@ class SafeRotate(Affine):
 
         return matrix, {"x": scale_x, "y": scale_y}
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        angle = self.py_random.uniform(*self.angle_range)
+        angle = sampling.py_random.uniform(*self.angle_range)
 
-        self.applied_config = {"angle_range": angle}
+        sampling.applied_overrides["angle_range"] = angle
 
         image_center = fgeometric.center(image_shape)
         bbox_center = fgeometric.center_bbox(image_shape)

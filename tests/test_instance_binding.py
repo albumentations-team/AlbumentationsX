@@ -6,6 +6,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import albumentations as A
+from albumentations.core.bbox_utils import BboxProcessor
 
 
 def _make_image(height: int = 100, width: int = 100) -> np.ndarray:
@@ -18,6 +19,46 @@ def _make_mask(height: int = 100, width: int = 100, region: tuple[int, int, int,
         y1, y2, x1, x2 = region
         mask[y1:y2, x1:x2] = 1
     return mask
+
+
+@pytest.mark.parametrize("check_each_transform", [True, False])
+def test_instance_binding_filters_bboxes_once_per_root_call(
+    monkeypatch: pytest.MonkeyPatch,
+    check_each_transform: bool,
+) -> None:
+    """The root binding pass and processor postprocess share one final bbox filter."""
+    calls = 0
+    original_filter = BboxProcessor.filter_with_keep_mask
+
+    def count_filter(
+        processor: BboxProcessor,
+        data: np.ndarray,
+        shape: tuple[int, int] | tuple[int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        nonlocal calls
+        calls += 1
+        return original_filter(processor, data, shape)
+
+    monkeypatch.setattr(BboxProcessor, "filter_with_keep_mask", count_filter)
+    transform = A.Compose(
+        [A.NoOp(p=1.0)],
+        bbox_params=A.BboxParams("pascal_voc", check_each_transform=check_each_transform),
+        instance_binding=["masks", "bboxes"],
+        telemetry=False,
+    )
+
+    result = transform(
+        image=np.zeros((16, 16, 3), dtype=np.uint8),
+        instances=[
+            {
+                "mask": np.ones((16, 16), dtype=np.uint8),
+                "bbox": np.array([2, 2, 14, 14], dtype=np.float32),
+            },
+        ],
+    )
+
+    assert calls == 1
+    assert len(result["instances"]) == 1
 
 
 class TestInstanceBindingInit:
@@ -2979,8 +3020,5 @@ class TestStructuralInvariantContract:
             seed=0,
             strict_instance_invariant=False,
         )
-        # Legacy mode downgrades the invariant violation to a warning at the resync, then
-        # lets downstream code (here `_repack_instances`) hit whatever followup error the
-        # bad contract produces — the point of strict mode is to catch this earlier.
         with pytest.warns(UserWarning, match="Instance-binding invariant violated"), pytest.raises(IndexError):
             aug(image=image, instances=instances)

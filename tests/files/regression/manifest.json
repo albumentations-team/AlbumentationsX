@@ -199,9 +199,9 @@
     {
       "behavior_epoch": "2.4",
       "environment": {
-        "albumentations": "2.3.1",
+        "albumentations": "2.3.10",
         "numpy": "2.2.6",
-        "opencv": "4.13.0",
+        "opencv": "5.0.0",
         "platform": "macOS-26.4.1-arm64-arm-64bit",
         "python": "3.10.16"
       },
@@ -261,15 +261,15 @@
           "sum": 10.0
         },
         "bboxes": {
-          "dtype": "float64",
-          "max": 17.999999523162842,
+          "dtype": "float32",
+          "max": 18.0,
           "min": 2.0,
-          "sha256": "79890962d38a6ad8d96cab95ad4a32e04f73cf0d142c339dcf58c25f1b0d8d41",
+          "sha256": "5d98bf61e87fe0b3be2df071128da7fa3e777d92262401ecc701020ee073b8c4",
           "shape": [
             2,
             4
           ],
-          "sum": 68.0000002682209
+          "sum": 68.0
         },
         "keypoint_labels": {
           "dtype": "float64",

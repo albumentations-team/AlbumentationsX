@@ -1,7 +1,8 @@
 """Runtime value objects for observing one composition execution."""
 
 import copy
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
@@ -158,3 +159,101 @@ class _TraceContext:
         if isinstance(value, torch.Tensor):
             return value.clone()
         return copy.deepcopy(value)
+
+
+class _ExecutionTrace:
+    """Attach an opt-in observer to ordinary graph execution so metadata and snapshots describe
+    decisions without a duplicate interpreter.
+
+    The session carries structural paths and the snapshot view for the current
+    execution branch.  It contains no transform decisions: Compose nodes make
+    those decisions exactly once in their normal execution methods and report
+    the resulting events here.
+    """
+
+    def __init__(self, options: TraceOptions):
+        self.context = _TraceContext(options)
+        self._node_path: tuple[int, ...] = ()
+        self._snapshot_data_factory: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
+
+    @property
+    def node_path(self) -> tuple[int, ...]:
+        """Return the active composition path so trace events can be joined with the configured
+        graph node that was executing when each event was recorded.
+        """
+        return self._node_path
+
+    def child_path(self, index: int) -> tuple[int, ...]:
+        """Append `index` to the active path so sibling records remain stable even if a selector
+        leaves neighboring configured branches unexecuted.
+        """
+        return (*self._node_path, index)
+
+    @contextmanager
+    def node_scope(self, path: tuple[int, ...]) -> Iterator[None]:
+        """Set `path` while one configured node dispatches so its leaf, composition, and skip records
+        share the same structural graph identity.
+        """
+        previous_path = self._node_path
+        self._node_path = path
+        try:
+            yield
+        finally:
+            self._node_path = previous_path
+
+    @contextmanager
+    def snapshot_scope(self, factory: Callable[[Mapping[str, Any]], Mapping[str, Any]]) -> Iterator[None]:
+        """Map nested working data to the public target view so trace snapshots describe values at
+        the root boundary instead of internal aliases.
+        """
+        previous_factory = self._snapshot_data_factory
+        self._snapshot_data_factory = factory
+        try:
+            yield
+        finally:
+            self._snapshot_data_factory = previous_factory
+
+    def snapshot_data(self, data: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Adapt data using the active snapshot scope so observer callbacks receive public target
+        names rather than aliases used by nested graph execution.
+        """
+        return data if self._snapshot_data_factory is None else self._snapshot_data_factory(data)
+
+    def emit_leaf(
+        self,
+        *,
+        class_fullname: str,
+        status: str,
+        params: dict[str, Any] | None,
+        data: Mapping[str, Any] | None,
+        elapsed_ns: int | None,
+    ) -> None:
+        """Publish one leaf result at the active path, adding parameters, snapshots, and timing only
+        when enabled by the requested trace options.
+        """
+        self.context.emit(
+            node_path=self._node_path,
+            class_fullname=class_fullname,
+            node_kind="leaf",
+            status=status,
+            params=params,
+            data=None if data is None else self.snapshot_data(data),
+            elapsed_ns=elapsed_ns,
+        )
+
+    def emit_composition(self, *, class_fullname: str, status: str) -> None:
+        """Publish one composition result at the active path so completed containers can be
+        reconstructed with their configured child records.
+        """
+        self.context.emit(
+            node_path=self._node_path,
+            class_fullname=class_fullname,
+            node_kind="composition",
+            status=status,
+        )
+
+    def finish(self, data: dict[str, Any]) -> TraceResult:
+        """Return immutable trace output after root finalization so final data has the same public
+        representation and annotation processing as an ordinary Compose call.
+        """
+        return self.context.finish(data)

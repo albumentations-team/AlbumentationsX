@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, ClassVar, Literal, cast
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     ALL_TARGETS,
     CV2_INTER_LINEAR,
@@ -34,13 +36,13 @@ class CropSizeError(Exception):
 
 class BaseCrop(DualTransform):
     """Abstract base for crop-only transforms. Subclasses return crop_coords from
-    get_params_dependent_on_data. All targets cropped consistently.
+    sample_parameters. All targets cropped consistently.
 
     This abstract class provides the foundation for all cropping transformations.
     It handles cropping of different data types including images, masks, bounding boxes,
     keypoints, and volume data while keeping their spatial relationships intact.
 
-    Child classes must implement the `get_params_dependent_on_data` method to determine
+    Child classes must implement the `sample_parameters` method to determine
     crop coordinates based on transform-specific logic. This method should return a dictionary
     containing at least a 'crop_coords' key with a tuple value (x_min, y_min, x_max, y_max).
 
@@ -70,7 +72,7 @@ class BaseCrop(DualTransform):
         ...         self.crop_height = crop_height
         ...         self.crop_width = crop_width
         ...
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         '''Calculate crop coordinates based on center of image'''
         ...         image_height, image_width = params["shape"][:2]
         ...
@@ -225,7 +227,7 @@ class BaseCropAndPad(BaseCrop):
     these operations to different data types (images, masks, bounding boxes, keypoints) while
     maintaining their spatial relationships.
 
-    Child classes must implement the `get_params_dependent_on_data` method to determine
+    Child classes must implement the `sample_parameters` method to determine
     crop coordinates and padding parameters based on transform-specific logic.
 
     Args:
@@ -284,7 +286,7 @@ class BaseCropAndPad(BaseCrop):
         ...         self.offset_x = offset_x
         ...         self.offset_y = offset_y
         ...
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         '''Calculate crop coordinates and padding if needed'''
         ...         image_shape = params["shape"][:2]
         ...         image_height, image_width = image_shape
@@ -298,7 +300,8 @@ class BaseCropAndPad(BaseCrop):
         ...         # Get padding params if needed
         ...         pad_params = self._get_pad_params(
         ...             image_shape,
-        ...             (self.height, self.width)
+        ...             (self.height, self.width),
+        ...             sampling,
         ...         ) if self.pad_if_needed else None
         ...
         ...         return {
@@ -371,7 +374,12 @@ class BaseCropAndPad(BaseCrop):
         self.fill_mask = fill_mask
         self.pad_position = pad_position
 
-    def _get_pad_params(self, image_shape: tuple[int, int], target_shape: tuple[int, int]) -> dict[str, Any] | None:
+    def _get_pad_params(
+        self,
+        image_shape: tuple[int, int],
+        target_shape: tuple[int, int],
+        sampling: SamplingContext,
+    ) -> dict[str, Any] | None:
         """Compute pad amounts (top, right, bottom, left) and position so image reaches
         target_shape. Returns None if no padding needed or pad_if_needed is False.
         """
@@ -395,7 +403,7 @@ class BaseCropAndPad(BaseCrop):
             w_left=w_pad_left,
             w_right=w_pad_right,
             position=self.pad_position,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         return {
@@ -579,7 +587,7 @@ class _BaseRandomSizedCrop(DualTransform):
     It handles cropping and resizing for different data types (image, mask, bboxes, keypoints) while
     maintaining their spatial relationships.
 
-    Child classes must implement the `get_params_dependent_on_data` method to determine how the
+    Child classes must implement the `sample_parameters` method to determine how the
     crop coordinates are selected according to transform-specific parameters and logic.
 
     Args:
@@ -634,7 +642,7 @@ class _BaseRandomSizedCrop(DualTransform):
         ...         )
         ...         self.custom_parameter = custom_parameter
         ...
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         # Custom logic to select crop coordinates
         ...         image_height, image_width = params["shape"][:2]
         ...
@@ -643,8 +651,8 @@ class _BaseRandomSizedCrop(DualTransform):
         ...         crop_width = int(image_width * self.custom_parameter)
         ...
         ...         # Random position
-        ...         y1 = self.py_random.randint(0, image_height - crop_height + 1)
-        ...         x1 = self.py_random.randint(0, image_width - crop_width + 1)
+        ...         y1 = sampling.py_random.randint(0, image_height - crop_height + 1)
+        ...         x1 = sampling.py_random.randint(0, image_width - crop_width + 1)
         ...         y2 = y1 + crop_height
         ...         x2 = x1 + crop_width
         ...

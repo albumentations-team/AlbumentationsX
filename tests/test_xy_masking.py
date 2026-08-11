@@ -7,7 +7,7 @@ import albumentations as A
 
 
 def _sample_holes(transform: A.XYMasking, shape: tuple[int, int, int], seed: int = 137) -> np.ndarray:
-    pipeline = A.Compose([transform], seed=seed, strict=True)
+    pipeline = A.Compose([transform], save_applied_params=True, seed=seed, strict=True)
     pipeline(image=np.ones(shape, dtype=np.uint8))
     return transform.get_applied_params()["holes"]
 
@@ -91,6 +91,7 @@ def test_fractional_zero_length_is_noop_for_every_supported_target() -> None:
             label_fields=["bbox_labels"],
         ),
         keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
+        save_applied_params=True,
         seed=137,
         strict=True,
     )
@@ -181,7 +182,7 @@ def test_fractional_zero_length_is_noop_for_float32_inpainting() -> None:
         p=1,
     )
 
-    result = A.Compose([transform], seed=137, strict=True)(image=image)
+    result = A.Compose([transform], save_applied_params=True, seed=137, strict=True)(image=image)
 
     _assert_canonical_empty_holes(transform.get_applied_params()["holes"])
     np.testing.assert_array_equal(result["image"], image)
@@ -330,7 +331,7 @@ def test_float_range_transport_preserves_integral_valued_float_identity(value: o
         mask_y_length_range=value,
         p=1,
     )
-    pipeline = A.Compose([transform], seed=137)
+    pipeline = A.Compose([transform], save_applied_params=True, seed=137)
     transported = json.loads(json.dumps(A.to_dict(pipeline), allow_nan=False))
     restored = A.from_dict(transported)
     restored_transform = restored.transforms[0]
@@ -407,13 +408,16 @@ def test_integer_dimension_error_does_not_advance_rng(invalid_axis: str) -> None
         retried(image=invalid_image)
 
     retried_result = retried(image=valid_image)
+    retried_holes = retried.get_applied_params()["holes"]
     fresh_result = fresh(image=valid_image)
-    np.testing.assert_array_equal(retried.get_applied_params()["holes"], fresh.get_applied_params()["holes"])
+    fresh_holes = fresh.get_applied_params()["holes"]
+    np.testing.assert_array_equal(retried_holes, fresh_holes)
     np.testing.assert_array_equal(retried_result["image"], fresh_result["image"])
 
     retried(image=valid_image)
+    retried_holes = retried.get_applied_params()["holes"]
     fresh(image=valid_image)
-    np.testing.assert_array_equal(retried.get_applied_params()["holes"], fresh.get_applied_params()["holes"])
+    np.testing.assert_array_equal(retried_holes, fresh.get_applied_params()["holes"])
 
 
 def test_integer_dimension_preflight_checks_x_before_y() -> None:
@@ -461,7 +465,7 @@ def test_strict_json_applied_configuration_reconstructs_runnable_policy_at_new_r
 
     result = pipeline(image=image)
     transported = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
-    reconstructed = A.Compose.from_applied_transforms(transported, seed=151)
+    reconstructed = A.Compose.from_applied_transforms(transported, save_applied_params=True, seed=151)
     reconstructed_transform = reconstructed.transforms[0]
     reconstructed(image=np.ones((24, 40, 1), dtype=np.uint8))
     holes = reconstructed_transform.get_applied_params()["holes"]
@@ -487,6 +491,7 @@ def test_one_serialized_relative_pipeline_scales_across_resolutions() -> None:
                                 p=1,
                             ),
                         ],
+                        save_applied_params=True,
                         seed=137,
                     ),
                 ),

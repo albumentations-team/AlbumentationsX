@@ -21,6 +21,7 @@ from albumentations.core.composition import (
     Sequential,
     SomeOf,
 )
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import DualTransform, ImageOnlyTransform, NoOp
 from tests.conftest import (
     IMAGES,
@@ -121,7 +122,7 @@ def test_image_only_transform(image):
     with mock.patch.object(ImageOnlyTransform, "apply") as mocked_apply:
         with mock.patch.object(
             ImageOnlyTransform,
-            "get_params_dependent_on_data",
+            "sample_parameters",
             return_value={"interpolation": cv2.INTER_LINEAR},
         ):
             aug = ImageOnlyTransform(p=1)
@@ -139,7 +140,7 @@ def test_dual_transform(image):
     mask = image.copy()
 
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "get_params_dependent_on_data", return_value={}):
+        with mock.patch.object(DualTransform, "sample_parameters", return_value={}):
             aug = DualTransform(p=1)
             aug(image=image, mask=mask)
 
@@ -176,7 +177,7 @@ def test_additional_targets(image):
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
         with mock.patch.object(
             DualTransform,
-            "get_params_dependent_on_data",
+            "sample_parameters",
             return_value={"interpolation": cv2.INTER_LINEAR},
         ):
             aug = DualTransform(p=1)
@@ -272,15 +273,15 @@ def test_deterministic_sequential() -> None:
 
 def test_replay_compose_reproducibility():
     image = (np.random.random((8, 8)) * 255).astype(np.uint8)
-    aug1 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3)), A.HorizontalFlip(p=0.5)], seed=137)
+    aug1 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3), p=1.0), A.HorizontalFlip(p=0.5)], seed=137)
     actual1 = aug1(image=image)["image"]
 
-    aug2 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3)), A.HorizontalFlip(p=0.5)], seed=137)
+    aug2 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3), p=1.0), A.HorizontalFlip(p=0.5)], seed=137)
     actual2 = aug2(image=image)["image"]
 
     np.testing.assert_allclose(actual1, actual2)
 
-    aug3 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3)), A.HorizontalFlip(p=0.5)], seed=17)
+    aug3 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3), p=1.0), A.HorizontalFlip(p=0.5)], seed=17)
     actual3 = aug3(image=image)["image"]
 
     assert not np.array_equal(actual1, actual3)
@@ -520,6 +521,20 @@ def test_check_each_transform_compose(targets, bbox_params, keypoint_params, exp
         np.testing.assert_allclose(np.array(item), np.array(res[key]), rtol=1e-6, atol=1e-6)
 
 
+def test_nested_compose_reuses_the_root_preprocess_and_postprocess_boundary() -> None:
+    nested = Compose([A.NoOp(p=1.0)], seed=137)
+    pipeline = Compose([nested], seed=137)
+    image = np.zeros((5, 7, 3), dtype=np.uint8)
+
+    with mock.patch.object(nested, "preprocess", wraps=nested.preprocess) as preprocess:
+        with mock.patch.object(nested, "postprocess", wraps=nested.postprocess) as postprocess:
+            result = pipeline(image=image)
+
+    np.testing.assert_array_equal(result["image"], image)
+    preprocess.assert_not_called()
+    postprocess.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ["targets", "bbox_params", "keypoint_params", "expected"],
     [
@@ -731,7 +746,7 @@ def test_single_transform_compose(
 
     with pytest.warns(UserWarning):
         res_transform = compose_cls(transforms=transform, **compose_kwargs)  # type: ignore
-    assert isinstance(res_transform.transforms, list)
+    assert isinstance(res_transform.transforms, tuple)
 
 
 @pytest.mark.parametrize(
@@ -2815,13 +2830,13 @@ def test_user_data_custom_override_returns_new_object() -> None:
 
 
 def test_user_data_targets_as_params() -> None:
-    """get_params_dependent_on_data receives user_data when in targets_as_params."""
+    """sample_parameters receives user_data when it is in targets_as_params."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class UserDataAwareTransform(A.NoOp):
         targets_as_params = ("user_data",)
 
-        def get_params_dependent_on_data(self, params: dict, data: dict) -> dict:
+        def sample_parameters(self, params: dict, data: dict, sampling: SamplingContext) -> dict:
             ud = data.get("user_data")
             return {"seen_user_data": ud is not None, "ud_value": ud}
 
@@ -2888,8 +2903,8 @@ def test_applied_config_invalid_key_raises():
     """Transforms that set invalid applied_config keys must raise ValueError."""
 
     class BadTransform(A.NoOp):
-        def get_params_dependent_on_data(self, params, data):
-            self.applied_config = {"not_a_real_constructor_param_xyz": 42}
+        def sample_parameters(self, params, data, sampling: SamplingContext):
+            sampling.applied_overrides["not_a_real_constructor_param_xyz"] = 42
             return {}
 
     aug = BadTransform(p=1.0)
@@ -3020,7 +3035,7 @@ def test_applied_config_resolves_range_param_to_scalar(aug_cls, range_param, ini
     assert not isinstance(sampled, (tuple, list)), (
         f"{aug_cls.__name__}.applied_config[{range_param!r}] is still a tuple {sampled!r}; "
         f"parameter generation likely sampled but forgot to record the scalar via "
-        f"`self.applied_config = {{{range_param!r}: sampled_value, ...}}`"
+        f"`applied_overrides[{range_param!r}] = sampled_value`"
     )
     assert isinstance(sampled, (int, float, np.integer, np.floating)), (
         f"{aug_cls.__name__}.applied_config[{range_param!r}] should be a scalar, got {type(sampled).__name__}"

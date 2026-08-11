@@ -264,7 +264,7 @@ When adding or changing a transform:
 2. give every public parameter a non-default registered value;
 3. separate standard target data from transform-required context instead of adding class-name branches in runners;
 4. set `ReplayProfile.EXACT` only when applied configuration resolves all relevant randomness;
-5. write `self.applied_config` overrides for every realized constructor field;
+5. write every realized constructor field to `sampling.applied_overrides` in `sample_parameters`;
 6. clear source policy fields that conflict with those realized values;
 7. declare `_applied_replay_class` only when the emitted state belongs to a different canonical constructor;
 8. confirm every declared target collects through the generated target-cluster matrix;

@@ -100,8 +100,10 @@ Skipped subtrees also receive lightweight records, allowing a debugger to map ev
 tree. The trace consumes the existing RNG stream only; a normal and traced pipeline with the same seed have equal
 final outputs and equal continuation on the next call.
 
-Nested `Compose` nodes run their own preprocess and postprocess boundaries while tracing, so shape validation,
-grayscale normalization, and nested policy match an ordinary pipeline call.
+Nested `Compose` nodes execute inside the root preprocessing and postprocessing boundary while tracing. They run their
+own additional-target and shape-policy checks, then contribute their structural records to the same invocation. This
+matches ordinary execution and avoids duplicate grayscale normalization, processor sessions, Tensor bridges, and
+output restoration.
 
 ## Snapshot and timing ownership
 

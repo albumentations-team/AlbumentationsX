@@ -27,6 +27,7 @@ from albumentations.core.bbox_utils import (
     denormalize_bboxes,
     normalize_bboxes,
 )
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -303,10 +304,11 @@ class Pad(DualTransform):
             value=self.fill,
         )
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         if isinstance(self.padding, Real):
             pad_top = pad_bottom = pad_left = pad_right = self.padding
@@ -555,10 +557,11 @@ class PadIfNeeded(Pad):
         self.pad_width_divisor = pad_width_divisor
         self.position = position
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         h_pad_top, h_pad_bottom, w_pad_left, w_pad_right = fgeometric.get_padding_params(
             image_shape=params["shape"][:2],
@@ -574,7 +577,7 @@ class PadIfNeeded(Pad):
             w_left=w_pad_left,
             w_right=w_pad_right,
             position=self.position,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         return {

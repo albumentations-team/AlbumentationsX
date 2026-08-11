@@ -1,4 +1,5 @@
 import copy
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -59,6 +60,20 @@ def test_replay_with_trace_replays_output_and_trace_tree() -> None:
     assert [(record.node_path, record.node_kind, record.status) for record in replayed.records] == [
         (record.node_path, record.node_kind, record.status) for record in original.records
     ]
+
+
+def test_replay_preserves_each_occurrence_of_one_reused_transform() -> None:
+    """Repeated visits record separate parameter samples instead of overwriting by object id."""
+    transform = A.RandomBrightnessContrast(p=1.0)
+    pipeline = A.ReplayCompose([transform, transform], seed=137)
+    image = np.full((3, 3, 3), 128, dtype=np.uint8)
+
+    original = pipeline(image=image)
+    replayed = A.ReplayCompose.replay(original["replay"], image=image)
+
+    np.testing.assert_array_equal(replayed["image"], original["image"])
+    first, second = original["replay"]["transforms"]
+    assert first["params"] != second["params"]
 
 
 def test_trace_matches_nested_replay_compose_execution() -> None:
@@ -385,6 +400,20 @@ def test_trace_runs_nested_compose_preprocess() -> None:
 
     with pytest.raises(ValueError, match="Height and Width"):
         pipeline.run_with_trace(**data)
+
+
+def test_trace_reuses_the_root_prepare_and_finalize_boundary_for_nested_compose() -> None:
+    nested = A.Compose([A.NoOp(p=1.0)], seed=137)
+    pipeline = A.Compose([nested], seed=137)
+    image = np.zeros((3, 5, 3), dtype=np.uint8)
+
+    with mock.patch.object(nested, "preprocess", wraps=nested.preprocess) as preprocess:
+        with mock.patch.object(nested, "postprocess", wraps=nested.postprocess) as postprocess:
+            traced = pipeline.run_with_trace(image=image)
+
+    np.testing.assert_array_equal(traced.data["image"], image)
+    preprocess.assert_not_called()
+    postprocess.assert_not_called()
 
 
 def test_replay_trace_marks_skipped_some_of_as_skipped_replay() -> None:

@@ -13,6 +13,7 @@ from pydantic import Field, model_validator
 from typing_extensions import Self
 
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
@@ -202,19 +203,20 @@ class RandomScale(DualTransform):
         self.mask_interpolation = mask_interpolation
         self.area_for_downscale = area_for_downscale
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, float]:
         if isinstance(self.scale_range, dict):
-            scale_x = self.py_random.uniform(*self.scale_range["x"]) + 1.0
-            scale_y = self.py_random.uniform(*self.scale_range["y"]) + 1.0
-            self.applied_config = {"scale_range": {"x": scale_x - 1.0, "y": scale_y - 1.0}}
+            scale_x = sampling.py_random.uniform(*self.scale_range["x"]) + 1.0
+            scale_y = sampling.py_random.uniform(*self.scale_range["y"]) + 1.0
+            sampling.applied_overrides["scale_range"] = {"x": scale_x - 1.0, "y": scale_y - 1.0}
         else:
-            scale = self.py_random.uniform(*self.scale_range) + 1.0
+            scale = sampling.py_random.uniform(*self.scale_range) + 1.0
             scale_x = scale_y = scale
-            self.applied_config = {"scale_range": scale - 1.0}
+            sampling.applied_overrides["scale_range"] = scale - 1.0
         return {"scale_x": scale_x, "scale_y": scale_y}
 
     def apply(
@@ -318,7 +320,7 @@ class MaxSizeTransform(DualTransform):
         >>>
         >>> # Example of creating a custom transform that extends MaxSizeTransform
         >>> class CustomMaxSize(A.MaxSizeTransform):
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         img_h, img_w = params["shape"][:2]
         ...         # Calculate scale factor - here we scale to make the image area constant
         ...         target_area = 300 * 300  # Target area of 300x300
@@ -545,15 +547,20 @@ class LongestMaxSize(MaxSizeTransform):
 
     """
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         img_h, img_w = params["shape"][:2]
 
         if self.max_size is not None:
             if isinstance(self.max_size, (list, tuple)):
-                max_size = self.py_random.choice(self.max_size)
+                max_size = sampling.py_random.choice(self.max_size)
             else:
                 max_size = self.max_size
-            self.applied_config = {"max_size": max_size}
+            sampling.applied_overrides["max_size"] = max_size
             scale = max_size / max(img_h, img_w)
         elif self.max_size_hw is not None:
             max_h, max_w = self.max_size_hw
@@ -663,15 +670,20 @@ class SmallestMaxSize(MaxSizeTransform):
 
     """
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         img_h, img_w = params["shape"][:2]
 
         if self.max_size is not None:
             if isinstance(self.max_size, (list, tuple)):
-                max_size = self.py_random.choice(self.max_size)
+                max_size = sampling.py_random.choice(self.max_size)
             else:
                 max_size = self.max_size
-            self.applied_config = {"max_size": max_size}
+            sampling.applied_overrides["max_size"] = max_size
             scale = max_size / min(img_h, img_w)
         elif self.max_size_hw is not None:
             max_h, max_w = self.max_size_hw
@@ -1038,7 +1050,12 @@ class LetterBox(DualTransform):
             image_shape=(new_height, new_width),
         )
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         img_h, img_w = params["shape"][:2]
         target_h, target_w = self.size
 
@@ -1059,7 +1076,7 @@ class LetterBox(DualTransform):
             w_left=pad_left,
             w_right=pad_right,
             position=self.position,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         return {

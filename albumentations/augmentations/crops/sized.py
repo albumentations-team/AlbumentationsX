@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, Literal
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     ALL_TARGETS,
     CV2_INTER_LINEAR,
@@ -154,26 +156,25 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
         self.min_max_height = min_max_height
         self.w2h_ratio = w2h_ratio
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, tuple[int, int, int, int]]:
         image_shape = params["shape"][:2]
 
-        crop_height = self.py_random.randint(*self.min_max_height)
+        crop_height = sampling.py_random.randint(*self.min_max_height)
         crop_width = int(crop_height * self.w2h_ratio)
 
         crop_shape = (crop_height, crop_width)
 
-        h_start = self.py_random.random()
-        w_start = self.py_random.random()
+        h_start = sampling.py_random.random()
+        w_start = sampling.py_random.random()
 
         crop_coords = fcrops.get_crop_coords(image_shape, crop_shape, h_start, w_start)
 
-        self.applied_config = {
-            "min_max_height": (crop_height, crop_height),
-        }
+        sampling.applied_overrides["min_max_height"] = (crop_height, crop_height)
 
         return {"crop_coords": crop_coords}
 
@@ -321,10 +322,11 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         self.scale = scale
         self.ratio = ratio
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, tuple[int, int, int, int]]:
         image_shape = params["shape"][:2]
         image_height, image_width = image_shape
@@ -338,21 +340,23 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         log_ratio_max = math.log(self.ratio[1])
 
         for _ in range(10):
-            target_area = self.py_random.uniform(scale_min_area, scale_max_area)
-            aspect_ratio = math.exp(self.py_random.uniform(log_ratio_min, log_ratio_max))
+            target_area = sampling.py_random.uniform(scale_min_area, scale_max_area)
+            aspect_ratio = math.exp(sampling.py_random.uniform(log_ratio_min, log_ratio_max))
 
             width = round(math.sqrt(target_area * aspect_ratio))
             height = round(math.sqrt(target_area / aspect_ratio))
 
             if 0 < width <= image_width and 0 < height <= image_height:
-                h_start = self.py_random.random()
-                w_start = self.py_random.random()
+                h_start = sampling.py_random.random()
+                w_start = sampling.py_random.random()
                 crop_coords = fcrops.get_crop_coords(image_shape, (height, width), h_start, w_start)
                 sampled_scale = target_area / area
-                self.applied_config = {
-                    "scale": (sampled_scale, sampled_scale),
-                    "ratio": (aspect_ratio, aspect_ratio),
-                }
+                sampling.applied_overrides.update(
+                    {
+                        "scale": (sampled_scale, sampled_scale),
+                        "ratio": (aspect_ratio, aspect_ratio),
+                    },
+                )
                 return {"crop_coords": crop_coords}
 
         # Fallback to central crop - use proper function
@@ -370,10 +374,12 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         crop_coords = fcrops.get_center_crop_coords(image_shape, (height, width))
         fallback_scale = (width * height) / area
         fallback_ratio = width / height if height > 0 else 1.0
-        self.applied_config = {
-            "scale": (fallback_scale, fallback_scale),
-            "ratio": (fallback_ratio, fallback_ratio),
-        }
+        sampling.applied_overrides.update(
+            {
+                "scale": (fallback_scale, fallback_scale),
+                "ratio": (fallback_ratio, fallback_ratio),
+            },
+        )
         return {"crop_coords": crop_coords}
 
 

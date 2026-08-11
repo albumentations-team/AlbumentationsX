@@ -386,6 +386,19 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
     return result
 
 
+@float32_io
+def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: float, **params: Any) -> ImageType:
+    """Applies one sampled linear gradient to every `(N, H, W, C)` image, matching the single-image kernel's
+    normalization, clipping, and dtype-conversion semantics.
+    """
+    height, width = images.shape[1:3]
+    gradient = create_directional_gradient(height, width, angle)
+    _multiply_scalar_inplace(gradient, intensity)
+    result = images + gradient[..., np.newaxis]
+    np.clip(result, 0, 1, out=result)
+    return result
+
+
 @clipped
 def apply_corner_illumination(
     img: ImageType,
@@ -1200,6 +1213,7 @@ __all__ = [
     "apply_halftone",
     "apply_lens_flare",
     "apply_linear_illumination",
+    "apply_linear_illumination_batch",
     "apply_plasma_brightness_contrast",
     "apply_plasma_shadow",
     "apply_vignette",

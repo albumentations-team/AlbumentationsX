@@ -21,6 +21,7 @@ from albumentations.augmentations.dropout.functional import (
 )
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, normalize_bboxes
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
@@ -63,7 +64,7 @@ class BaseDropoutInitSchema(BaseTransformInitSchema):
 
 class BaseDropout(DualTransform):
     """Base class for dropout-style transforms. Shared cutout, fill, fill_mask; subclasses implement
-    get_params_dependent_on_data and hole generation.
+    sample_parameters and hole generation.
 
     This class provides common functionality for various dropout techniques,
     including applying cutouts to images and masks.
@@ -92,19 +93,19 @@ class BaseDropout(DualTransform):
         ...         self.num_holes_range = num_holes_range
         ...         self.hole_size_range = hole_size_range
         ...
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         img = data["image"]
         ...         height, width = img.shape[:2]
         ...
         ...         # Generate random holes
-        ...         num_holes = self.py_random.randint(*self.num_holes_range)
-        ...         hole_sizes = self.py_random.randint(*self.hole_size_range, size=num_holes)
+        ...         num_holes = sampling.py_random.randint(*self.num_holes_range)
+        ...         hole_sizes = [sampling.py_random.randint(*self.hole_size_range) for _ in range(num_holes)]
         ...
         ...         holes = []
         ...         for i in range(num_holes):
         ...             # Random position for each hole
-        ...             x1 = self.py_random.randint(0, max(1, width - hole_sizes[i]))
-        ...             y1 = self.py_random.randint(0, max(1, height - hole_sizes[i]))
+        ...             x1 = sampling.py_random.randint(0, max(1, width - hole_sizes[i]))
+        ...             y1 = sampling.py_random.randint(0, max(1, height - hole_sizes[i]))
         ...             x2 = min(width, x1 + hole_sizes[i])
         ...             y2 = min(height, y1 + hole_sizes[i])
         ...             holes.append([x1, y1, x2, y2])
@@ -112,7 +113,7 @@ class BaseDropout(DualTransform):
         ...         # Return holes and random seed
         ...         return {
         ...             "holes": np.array(holes) if holes else np.empty((0, 4), dtype=np.int32),
-        ...             "seed": self.py_random.integers(0, 100000)
+        ...             "seed": int(sampling.random_generator.integers(0, 100000))
         ...         }
         >>>
         >>> # Prepare sample data
@@ -232,7 +233,12 @@ class BaseDropout(DualTransform):
 
         return filter_keypoints_in_holes(keypoints, holes)
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         raise NotImplementedError("Subclasses must implement this method.")
 
 
@@ -393,10 +399,11 @@ class PixelDropout(DualTransform):
     ) -> np.ndarray:
         return keypoints
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         reference_array = _get_pixel_dropout_reference(data)
 
@@ -405,12 +412,12 @@ class PixelDropout(DualTransform):
             reference_array.shape,
             self.per_channel,
             self.dropout_prob,
-            self.random_generator,
+            sampling.random_generator,
         )
         drop_values = fpixel.prepare_drop_values(
             reference_array,
             self.drop_value,
-            self.random_generator,
+            sampling.random_generator,
         )
 
         # Handle mask drop values if specified
@@ -422,17 +429,15 @@ class PixelDropout(DualTransform):
                 mask.shape,
                 self.per_channel,
                 self.dropout_prob,
-                self.random_generator,
+                sampling.random_generator,
             )
             mask_drop_values = fpixel.prepare_drop_values(
                 mask,
                 self.mask_drop_value,
-                self.random_generator,
+                sampling.random_generator,
             )
 
-        self.applied_config = {
-            "dropout_prob": self.dropout_prob,
-        }
+        sampling.applied_overrides["dropout_prob"] = self.dropout_prob
 
         return {
             "drop_mask": drop_mask,

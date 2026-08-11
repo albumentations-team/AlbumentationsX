@@ -10,6 +10,7 @@ from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
 
 from albumentations.augmentations.other import annotation_artifacts_functional as fannotation
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
@@ -289,23 +290,26 @@ class AnnotationArtifacts(ImageOnlyTransform):
     ) -> ImageType:
         return fannotation.draw_annotation_artifacts(img, artifacts)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         shape = params["shape"]
         image_height, image_width = shape[:2]
         num_channels = shape[2] if len(shape) > 2 else 1
-        artifacts = self._generate_artifacts(image_height, image_width, num_channels)
+        artifacts = self._generate_artifacts(image_height, image_width, num_channels, sampling)
         record_line_length_ratio = self.line_geometry != "random_endpoints" and not (
             self.line_geometry == "random_angle" and self.line_length_range is not None
         )
-        self.applied_config = self._get_applied_config(
-            artifacts,
-            image_height,
-            image_width,
-            record_line_length_ratio=record_line_length_ratio,
+        sampling.applied_overrides.update(
+            self._get_applied_config(
+                artifacts,
+                image_height,
+                image_width,
+                record_line_length_ratio=record_line_length_ratio,
+            )
         )
         return {"artifacts": artifacts}
 
@@ -362,12 +366,13 @@ class AnnotationArtifacts(ImageOnlyTransform):
         image_height: int,
         image_width: int,
         num_channels: int,
+        sampling: SamplingContext,
     ) -> list[dict[str, Any]]:
         if image_height <= 1 or image_width <= 1:
             return []
 
-        artifact_count = self.py_random.randint(*self.count_range)
-        artifact_types = self.py_random.choices(
+        artifact_count = sampling.py_random.randint(*self.count_range)
+        artifact_types = sampling.py_random.choices(
             self.element_types,
             weights=self.element_probabilities,
             k=artifact_count,
@@ -375,7 +380,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
 
         artifacts = []
         for artifact_type in artifact_types:
-            artifact = self._generate_artifact(artifact_type, image_height, image_width, num_channels)
+            artifact = self._generate_artifact(artifact_type, image_height, image_width, num_channels, sampling)
             if artifact is not None:
                 artifacts.append(artifact)
 
@@ -387,6 +392,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
         image_height: int,
         image_width: int,
         num_channels: int,
+        sampling: SamplingContext,
     ) -> dict[str, Any] | None:
         generators = {
             "text": self._generate_text_artifact,
@@ -395,18 +401,24 @@ class AnnotationArtifacts(ImageOnlyTransform):
             "line": self._generate_line_artifact,
             "callout": self._generate_callout_artifact,
         }
-        return generators[artifact_type](image_height, image_width, num_channels)
+        return generators[artifact_type](image_height, image_width, num_channels, sampling)
 
-    def _generate_text_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
-        text_length = self.py_random.randint(*self.text_length_range)
-        text = "".join(self.py_random.choices(TEXT_ALPHABET, k=text_length))
-        font = self.py_random.choice(FONT_OPTIONS)
-        font_scale = self.py_random.uniform(*self.font_scale_range)
-        thickness = self.py_random.randint(*self.thickness_range)
+    def _generate_text_artifact(
+        self,
+        image_height: int,
+        image_width: int,
+        num_channels: int,
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        text_length = sampling.py_random.randint(*self.text_length_range)
+        text = "".join(sampling.py_random.choices(TEXT_ALPHABET, k=text_length))
+        font = sampling.py_random.choice(FONT_OPTIONS)
+        font_scale = sampling.py_random.uniform(*self.font_scale_range)
+        thickness = sampling.py_random.randint(*self.thickness_range)
         text_size, _ = cv2.getTextSize(text, font, font_scale, thickness)
         text_width, text_height = text_size
-        margin = self._sample_margin(image_height, image_width)
-        origin = self._sample_text_origin(image_height, image_width, text_width, text_height, margin)
+        margin = self._sample_margin(image_height, image_width, sampling)
+        origin = self._sample_text_origin(image_height, image_width, text_width, text_height, margin, sampling)
 
         return {
             "type": "text",
@@ -414,13 +426,19 @@ class AnnotationArtifacts(ImageOnlyTransform):
             "origin": origin,
             "font": font,
             "font_scale": font_scale,
-            "color": self._sample_color(num_channels),
+            "color": self._sample_color(num_channels, sampling),
             "thickness": thickness,
         }
 
-    def _generate_rectangle_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
-        box_width, box_height = self._sample_box_size(image_height, image_width)
-        top_left = self._sample_box_origin(image_height, image_width, box_width, box_height)
+    def _generate_rectangle_artifact(
+        self,
+        image_height: int,
+        image_width: int,
+        num_channels: int,
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        box_width, box_height = self._sample_box_size(image_height, image_width, sampling)
+        top_left = self._sample_box_origin(image_height, image_width, box_width, box_height, sampling)
         top_left_col, top_left_row = top_left
         bottom_right = (top_left_col + box_width, top_left_row + box_height)
 
@@ -428,63 +446,79 @@ class AnnotationArtifacts(ImageOnlyTransform):
             "type": "rectangle",
             "top_left": top_left,
             "bottom_right": bottom_right,
-            "color": self._sample_color(num_channels),
-            "thickness": self.py_random.randint(*self.thickness_range),
+            "color": self._sample_color(num_channels, sampling),
+            "thickness": sampling.py_random.randint(*self.thickness_range),
             "filled": False,
         }
 
-    def _generate_callout_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
-        artifact = self._generate_rectangle_artifact(image_height, image_width, num_channels)
+    def _generate_callout_artifact(
+        self,
+        image_height: int,
+        image_width: int,
+        num_channels: int,
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        artifact = self._generate_rectangle_artifact(image_height, image_width, num_channels, sampling)
         artifact["type"] = "callout"
-        artifact["style"] = self._sample_line_style()
-        artifact["lines"] = self._sample_callout_lines(artifact, image_height, image_width)
+        artifact["style"] = self._sample_line_style(sampling)
+        artifact["lines"] = self._sample_callout_lines(artifact, image_height, image_width, sampling)
         return artifact
 
-    def _generate_line_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
+    def _generate_line_artifact(
+        self,
+        image_height: int,
+        image_width: int,
+        num_channels: int,
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         if self.line_geometry == "axis_aligned":
-            margin = self._sample_margin(image_height, image_width)
-            is_vertical = self.py_random.choice([True, False])
-            line_length = self._sample_line_length(image_height, image_width, margin, is_vertical)
+            margin = self._sample_margin(image_height, image_width, sampling)
+            is_vertical = sampling.py_random.choice([True, False])
+            line_length = self._sample_line_length(image_height, image_width, margin, is_vertical, sampling)
 
             if is_vertical:
                 min_row = margin
                 max_row = max(margin, image_height - 1 - margin)
-                start_row = self.py_random.randint(min_row, max_row - line_length)
-                line_col = self.py_random.randint(margin, max(margin, image_width - 1 - margin))
+                start_row = sampling.py_random.randint(min_row, max_row - line_length)
+                line_col = sampling.py_random.randint(margin, max(margin, image_width - 1 - margin))
                 start = (line_col, start_row)
                 end = (line_col, start_row + line_length)
             else:
                 min_col = margin
                 max_col = max(margin, image_width - 1 - margin)
-                start_col = self.py_random.randint(min_col, max_col - line_length)
-                line_row = self.py_random.randint(margin, max(margin, image_height - 1 - margin))
+                start_col = sampling.py_random.randint(min_col, max_col - line_length)
+                line_row = sampling.py_random.randint(margin, max(margin, image_height - 1 - margin))
                 start = (start_col, line_row)
                 end = (start_col + line_length, line_row)
         elif self.line_geometry == "random_endpoints":
-            start, end = self._sample_random_endpoints(image_height, image_width)
+            start, end = self._sample_random_endpoints(image_height, image_width, sampling)
         else:
-            start, end = self._sample_random_angle_line(image_height, image_width)
+            start, end = self._sample_random_angle_line(image_height, image_width, sampling)
 
         return {
             "type": "line",
             "start": start,
             "end": end,
-            "color": self._sample_color(num_channels),
-            "thickness": self.py_random.randint(*self.thickness_range),
-            "style": self._sample_line_style(),
+            "color": self._sample_color(num_channels, sampling),
+            "thickness": sampling.py_random.randint(*self.thickness_range),
+            "style": self._sample_line_style(sampling),
         }
 
-    def _sample_random_endpoints(self, image_height: int, image_width: int) -> tuple[Point, Point]:
+    def _sample_random_endpoints(
+        self, image_height: int, image_width: int, sampling: SamplingContext
+    ) -> tuple[Point, Point]:
         return (
-            (self.py_random.randint(0, image_width - 1), self.py_random.randint(0, image_height - 1)),
-            (self.py_random.randint(0, image_width - 1), self.py_random.randint(0, image_height - 1)),
+            (sampling.py_random.randint(0, image_width - 1), sampling.py_random.randint(0, image_height - 1)),
+            (sampling.py_random.randint(0, image_width - 1), sampling.py_random.randint(0, image_height - 1)),
         )
 
-    def _sample_random_angle_line(self, image_height: int, image_width: int) -> tuple[Point, Point]:
-        start_col = self.py_random.randint(0, image_width - 1)
-        start_row = self.py_random.randint(0, image_height - 1)
-        angle = self.py_random.uniform(0, 2 * np.pi)
-        line_length = self._sample_unbounded_line_length(image_height, image_width)
+    def _sample_random_angle_line(
+        self, image_height: int, image_width: int, sampling: SamplingContext
+    ) -> tuple[Point, Point]:
+        start_col = sampling.py_random.randint(0, image_width - 1)
+        start_row = sampling.py_random.randint(0, image_height - 1)
+        angle = sampling.py_random.uniform(0, 2 * np.pi)
+        line_length = self._sample_unbounded_line_length(image_height, image_width, sampling)
         end = (
             round(start_col + line_length * np.cos(angle)),
             round(start_row + line_length * np.sin(angle)),
@@ -497,69 +531,78 @@ class AnnotationArtifacts(ImageOnlyTransform):
         image_width: int,
         margin: int,
         is_vertical: bool,
+        sampling: SamplingContext,
     ) -> int:
         max_length = max(0, (image_height if is_vertical else image_width) - 1 - (2 * margin))
-        sampled_length = round(self.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width))
+        sampled_length = round(
+            sampling.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width)
+        )
         return min(max_length, max(1, sampled_length))
 
-    def _sample_unbounded_line_length(self, image_height: int, image_width: int) -> int:
+    def _sample_unbounded_line_length(self, image_height: int, image_width: int, sampling: SamplingContext) -> int:
         if self.line_length_range is not None:
-            return self.py_random.randint(*self.line_length_range)
+            return sampling.py_random.randint(*self.line_length_range)
 
-        return max(1, round(self.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width)))
+        return max(1, round(sampling.py_random.uniform(*self.line_length_ratio_range) * min(image_height, image_width)))
 
-    def _generate_arrow_artifact(self, image_height: int, image_width: int, num_channels: int) -> dict[str, Any]:
-        start = self._sample_arrow_start(image_height, image_width)
-        end = self._sample_arrow_end(start, image_height, image_width)
+    def _generate_arrow_artifact(
+        self,
+        image_height: int,
+        image_width: int,
+        num_channels: int,
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        start = self._sample_arrow_start(image_height, image_width, sampling)
+        end = self._sample_arrow_end(start, image_height, image_width, sampling)
 
         return {
             "type": "arrow",
             "start": start,
             "end": end,
-            "color": self._sample_color(num_channels),
-            "thickness": self.py_random.randint(*self.thickness_range),
-            "tip_length": self.py_random.uniform(*self.tip_length_range),
-            "style": self._sample_line_style(),
+            "color": self._sample_color(num_channels, sampling),
+            "thickness": sampling.py_random.randint(*self.thickness_range),
+            "tip_length": sampling.py_random.uniform(*self.tip_length_range),
+            "style": self._sample_line_style(sampling),
         }
 
-    def _sample_color(self, num_channels: int) -> tuple[int, ...]:
+    def _sample_color(self, num_channels: int, sampling: SamplingContext) -> tuple[int, ...]:
         if self._use_legacy_color_policy:
-            if self.py_random.random() < self.black_white_prob:
-                return self.py_random.choice([BLACK, WHITE])
+            if sampling.py_random.random() < self.black_white_prob:
+                return sampling.py_random.choice([BLACK, WHITE])
 
             return RED
 
         if self.random_color_prob == 1 or (
-            self.random_color_prob > 0 and self.py_random.random() < self.random_color_prob
+            self.random_color_prob > 0 and sampling.py_random.random() < self.random_color_prob
         ):
-            return tuple(self.py_random.randint(0, 255) for _ in range(num_channels))
+            return tuple(sampling.py_random.randint(0, 255) for _ in range(num_channels))
 
         if self.color_palette is not None:
             if self.color_palette_probabilities is None:
-                return self.py_random.choice(self.color_palette)
+                return sampling.py_random.choice(self.color_palette)
 
-            return self.py_random.choices(
+            return sampling.py_random.choices(
                 self.color_palette,
                 weights=self.color_palette_probabilities,
                 k=1,
             )[0]
 
-        if self.py_random.random() < self.black_white_prob:
-            return self.py_random.choice([BLACK, WHITE])
+        if sampling.py_random.random() < self.black_white_prob:
+            return sampling.py_random.choice([BLACK, WHITE])
 
         return RED
 
-    def _sample_line_style(self) -> LineStyle:
-        return self.py_random.choices(self.line_styles, weights=self.line_style_probabilities, k=1)[0]
+    def _sample_line_style(self, sampling: SamplingContext) -> LineStyle:
+        return sampling.py_random.choices(self.line_styles, weights=self.line_style_probabilities, k=1)[0]
 
-    def _sample_margin(self, image_height: int, image_width: int) -> int:
+    def _sample_margin(self, image_height: int, image_width: int, sampling: SamplingContext) -> int:
         max_margin = max(1, min(10, min(image_height, image_width) // 8))
-        return self.py_random.randint(1, max_margin)
+        return sampling.py_random.randint(1, max_margin)
 
-    def _sample_box_size(self, image_height: int, image_width: int) -> tuple[int, int]:
+    def _sample_box_size(self, image_height: int, image_width: int, sampling: SamplingContext) -> tuple[int, int]:
         min_ratio, max_ratio = self.size_ratio_range
-        box_width = max(1, int(self.py_random.uniform(min_ratio, max_ratio) * image_width))
-        box_height = max(1, int(self.py_random.uniform(min_ratio, max_ratio) * image_height))
+        box_width = max(1, int(sampling.py_random.uniform(min_ratio, max_ratio) * image_width))
+        box_height = max(1, int(sampling.py_random.uniform(min_ratio, max_ratio) * image_height))
         return min(box_width, image_width - 1), min(box_height, image_height - 1)
 
     def _sample_box_origin(
@@ -568,21 +611,24 @@ class AnnotationArtifacts(ImageOnlyTransform):
         image_width: int,
         box_width: int,
         box_height: int,
+        sampling: SamplingContext,
     ) -> Point:
         max_origin_col = max(0, image_width - 1 - box_width)
         max_origin_row = max(0, image_height - 1 - box_height)
-        margin = self._sample_margin(image_height, image_width)
+        margin = self._sample_margin(image_height, image_width, sampling)
 
-        if self.py_random.random() < self.corner_prob:
-            return self._sample_corner_origin(max_origin_col, max_origin_row, margin)
+        if sampling.py_random.random() < self.corner_prob:
+            return self._sample_corner_origin(max_origin_col, max_origin_row, margin, sampling)
 
         return (
-            self.py_random.randint(0, max_origin_col),
-            self.py_random.randint(0, max_origin_row),
+            sampling.py_random.randint(0, max_origin_col),
+            sampling.py_random.randint(0, max_origin_row),
         )
 
-    def _sample_corner_origin(self, max_origin_col: int, max_origin_row: int, margin: int) -> Point:
-        corner = self.py_random.choice(["top_left", "top_right", "bottom_left", "bottom_right"])
+    def _sample_corner_origin(
+        self, max_origin_col: int, max_origin_row: int, margin: int, sampling: SamplingContext
+    ) -> Point:
+        corner = sampling.py_random.choice(["top_left", "top_right", "bottom_left", "bottom_right"])
         left_col = min(margin, max_origin_col)
         right_col = max(0, max_origin_col - margin)
         top_row = min(margin, max_origin_row)
@@ -603,20 +649,21 @@ class AnnotationArtifacts(ImageOnlyTransform):
         text_width: int,
         text_height: int,
         margin: int,
+        sampling: SamplingContext,
     ) -> Point:
         max_origin_col = max(0, image_width - 1 - text_width)
         min_origin_row = min(image_height - 1, text_height)
         max_origin_row = max(min_origin_row, image_height - 1 - margin)
 
-        if self.py_random.random() < self.corner_prob:
-            corner = self.py_random.choice(["top_left", "top_right", "bottom_left", "bottom_right"])
+        if sampling.py_random.random() < self.corner_prob:
+            corner = sampling.py_random.choice(["top_left", "top_right", "bottom_left", "bottom_right"])
             origin_col = min(margin, max_origin_col) if "left" in corner else max(0, max_origin_col - margin)
             origin_row = min_origin_row + margin if "top" in corner else max_origin_row
             return (origin_col, min(origin_row, image_height - 1))
 
         return (
-            self.py_random.randint(0, max_origin_col),
-            self.py_random.randint(min_origin_row, max_origin_row),
+            sampling.py_random.randint(0, max_origin_col),
+            sampling.py_random.randint(min_origin_row, max_origin_row),
         )
 
     def _sample_callout_lines(
@@ -624,11 +671,12 @@ class AnnotationArtifacts(ImageOnlyTransform):
         artifact: dict[str, Any],
         image_height: int,
         image_width: int,
+        sampling: SamplingContext,
     ) -> list[tuple[Point, Point]]:
         top_left_col, top_left_row = artifact["top_left"]
         bottom_right_col, bottom_right_row = artifact["bottom_right"]
-        side_count = self.py_random.randint(1, 2)
-        sides = self.py_random.sample(["left", "right", "top", "bottom"], side_count)
+        side_count = sampling.py_random.randint(1, 2)
+        sides = sampling.py_random.sample(["left", "right", "top", "bottom"], side_count)
         side_points = {
             "left": (
                 (top_left_col, (top_left_row + bottom_right_row) // 2),
@@ -649,33 +697,33 @@ class AnnotationArtifacts(ImageOnlyTransform):
         }
         return [side_points[side] for side in sides]
 
-    def _sample_arrow_start(self, image_height: int, image_width: int) -> Point:
-        margin = self._sample_margin(image_height, image_width)
+    def _sample_arrow_start(self, image_height: int, image_width: int, sampling: SamplingContext) -> Point:
+        margin = self._sample_margin(image_height, image_width, sampling)
         max_col = max(margin, image_width - 1 - margin)
         max_row = max(margin, image_height - 1 - margin)
 
-        if self.py_random.random() >= self.corner_prob:
+        if sampling.py_random.random() >= self.corner_prob:
             return (
-                self.py_random.randint(margin, max_col),
-                self.py_random.randint(margin, max_row),
+                sampling.py_random.randint(margin, max_col),
+                sampling.py_random.randint(margin, max_row),
             )
 
-        edge = self.py_random.choice(["left", "right", "top", "bottom"])
+        edge = sampling.py_random.choice(["left", "right", "top", "bottom"])
         edge_points = {
-            "left": (margin, self.py_random.randint(margin, max_row)),
-            "right": (max_col, self.py_random.randint(margin, max_row)),
-            "top": (self.py_random.randint(margin, max_col), margin),
-            "bottom": (self.py_random.randint(margin, max_col), max_row),
+            "left": (margin, sampling.py_random.randint(margin, max_row)),
+            "right": (max_col, sampling.py_random.randint(margin, max_row)),
+            "top": (sampling.py_random.randint(margin, max_col), margin),
+            "bottom": (sampling.py_random.randint(margin, max_col), max_row),
         }
         return edge_points[edge]
 
-    def _sample_arrow_end(self, start: Point, image_height: int, image_width: int) -> Point:
+    def _sample_arrow_end(self, start: Point, image_height: int, image_width: int, sampling: SamplingContext) -> Point:
         start_col, start_row = start
         center_col = image_width / 2
         center_row = image_height / 2
         base_angle = np.arctan2(center_row - start_row, center_col - start_col)
-        angle = base_angle + self.py_random.uniform(-np.pi / 4, np.pi / 4)
-        length = int(self.py_random.uniform(*self.line_length_ratio_range) * min(image_width, image_height))
+        angle = base_angle + sampling.py_random.uniform(-np.pi / 4, np.pi / 4)
+        length = int(sampling.py_random.uniform(*self.line_length_ratio_range) * min(image_width, image_height))
         end_col = int(start_col + length * np.cos(angle))
         end_row = int(start_row + length * np.sin(angle))
 

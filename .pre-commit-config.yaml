@@ -122,6 +122,13 @@ repos:
       types: [python]
       files: ^albumentations/
       pass_filenames: true
+    - id: check-removed-sampling-hooks
+      name: Forbid obsolete get_params sampling hooks
+      entry: python tools/check_removed_sampling_hooks.py
+      language: python
+      types: [python]
+      files: ^albumentations/
+      pass_filenames: true
     - id: check-scalar-numpy-math
       name: Check NumPy math is not used for proven Python scalars
       entry: python tools/check_scalar_numpy_math.py

@@ -261,12 +261,14 @@ class DataProcessor(ABC, Generic[ParamsT]):
 
         """
 
-    def postprocess(self, data: dict[str, Any]) -> dict[str, Any]:
+    def postprocess(self, data: dict[str, Any], *, filter_already_applied: bool = False) -> dict[str, Any]:
         """Convert data from Albumentations format back to user format and remove label fields.
         Uses shape from get_shape(data). Called after all transforms applied.
 
         Args:
             data (dict[str, Any]): Data dictionary after transformation.
+            filter_already_applied (bool): Skip the final filter when target-aware execution already produced the
+                current annotation rows.
 
         Returns:
             dict[str, Any]: Processed data dictionary.
@@ -280,16 +282,23 @@ class DataProcessor(ABC, Generic[ParamsT]):
             if volume_shape is not None:
                 shape = volume_shape
 
-        data = self._process_data_fields(data, shape)
+        data = self._process_data_fields(data, shape, filter_already_applied=filter_already_applied)
         return self.remove_label_fields_from_data(data)
 
     def _process_data_fields(
         self,
         data: dict[str, Any],
         shape: tuple[int, int] | tuple[int, int, int],
+        *,
+        filter_already_applied: bool,
     ) -> dict[str, Any]:
         for data_name in set(self.data_fields) & set(data.keys()):
-            data[data_name] = self._process_single_field(data_name, data[data_name], shape)
+            data[data_name] = self._process_single_field(
+                data_name,
+                data[data_name],
+                shape,
+                filter_already_applied=filter_already_applied,
+            )
         return data
 
     def _process_single_field(
@@ -297,8 +306,11 @@ class DataProcessor(ABC, Generic[ParamsT]):
         data_name: str,
         field_data: Any,
         shape: tuple[int, int] | tuple[int, int, int],
+        *,
+        filter_already_applied: bool,
     ) -> Any:
-        field_data = self.filter(field_data, shape)
+        if not filter_already_applied:
+            field_data = self.filter(field_data, shape)
 
         if data_name == "keypoints" and len(field_data) == 0:
             field_data = self._create_empty_keypoints_array()
@@ -458,13 +470,25 @@ class DataProcessor(ABC, Generic[ParamsT]):
 
     def _process_label_fields(self, data: dict[str, Any], data_name: str) -> np.ndarray:
         data_array = data[data_name]
-        if self.params.label_fields is not None:
-            for label_field in self.params.label_fields:
-                self._validate_label_field_length(data, data_name, label_field)
-                encoded_labels = self.label_manager.process_field(data_name, label_field, data[label_field])
-                data_array = np.hstack((data_array, encoded_labels))
-                del data[label_field]
-        return data_array
+        label_fields = self.params.label_fields
+        if not label_fields:
+            return data_array
+
+        encoded_columns: list[np.ndarray] = []
+        for label_field in label_fields:
+            self._validate_label_field_length(data, data_name, label_field)
+            encoded_columns.append(self.label_manager.process_field(data_name, label_field, data[label_field]))
+
+        result = np.empty(
+            (data_array.shape[0], data_array.shape[1] + len(encoded_columns)),
+            dtype=np.result_type(data_array, *encoded_columns),
+        )
+        result[:, : data_array.shape[1]] = data_array
+        for index, encoded_column in enumerate(encoded_columns, start=data_array.shape[1]):
+            result[:, index] = encoded_column[:, 0]
+        for label_field in label_fields:
+            del data[label_field]
+        return result
 
     def _validate_label_field_length(self, data: dict[str, Any], data_name: str, label_field: str) -> None:
         if len(data[data_name]) != len(data[label_field]):

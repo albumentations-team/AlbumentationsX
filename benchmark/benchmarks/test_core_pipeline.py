@@ -29,6 +29,13 @@ class TimeCorePipeline:
         self.images = make_batch(size_name, channels, batch_size=4)
         self.single = albumentations.Compose([albumentations.HorizontalFlip(p=1.0)], strict=True)
         self.skip = albumentations.Compose([albumentations.HorizontalFlip(p=0.0)], strict=True)
+        self.noop = albumentations.Compose([albumentations.NoOp(p=1.0)], strict=True)
+        self.noop_probability = albumentations.Compose([albumentations.NoOp(p=0.5)], strict=True)
+        self.observed_noop = albumentations.Compose(
+            [albumentations.NoOp(p=1.0)],
+            save_applied_params=True,
+            strict=True,
+        )
         self.additional_targets = albumentations.Compose(
             [albumentations.HorizontalFlip(p=1.0)],
             additional_targets={"image2": "image", "mask2": "mask"},
@@ -54,6 +61,15 @@ class TimeCorePipeline:
     def time_skip_transform_compose(self, size_name: str, channels: int) -> None:
         self.skip(image=self.image)
 
+    def time_noop_compose(self, size_name: str, channels: int) -> None:
+        self.noop(image=self.image)
+
+    def time_noop_probability_compose(self, size_name: str, channels: int) -> None:
+        self.noop_probability(image=self.image)
+
+    def time_observed_noop_compose(self, size_name: str, channels: int) -> None:
+        self.observed_noop(image=self.image)
+
     def time_multi_transform_compose(self, size_name: str, channels: int) -> None:
         self.multi(image=self.image)
 
@@ -68,37 +84,6 @@ class TimeCorePipeline:
 
     def peakmem_batch_image_compose(self, size_name: str, channels: int) -> None:
         self.single(images=self.images)
-
-
-class TimeCorePipelineSetup:
-    """Benchmark Compose construction and processor setup costs."""
-
-    def time_single_transform_compose_setup(self) -> None:
-        albumentations.Compose([albumentations.HorizontalFlip(p=1.0)], strict=True)
-
-    def time_multi_transform_compose_setup(self) -> None:
-        albumentations.Compose(
-            [
-                albumentations.HorizontalFlip(p=1.0),
-                albumentations.VerticalFlip(p=1.0),
-                albumentations.RandomRotate90(p=1.0),
-            ],
-            seed=137,
-            strict=True,
-        )
-
-    def time_bbox_keypoint_processor_setup(self) -> None:
-        albumentations.Compose(
-            [albumentations.NoOp(p=1.0)],
-            bbox_params=albumentations.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
-            keypoint_params=albumentations.KeypointParams(
-                coord_format="xy",
-                label_fields=["keypoint_labels"],
-                label_mapping={},
-                remove_invisible=False,
-            ),
-            strict=True,
-        )
 
 
 class TimeCorePipelineTargetProcessors:

@@ -621,11 +621,11 @@ class Illumination(ImageOnlyTransform):
         )
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        if self.mode == "linear":
-            return fpixel.apply_linear_illumination_batch(images, **params)
-
         if images.shape[0] == 0:
             return images.copy()
+
+        if self.mode == "linear":
+            return fpixel.apply_linear_illumination_batch(images, **params)
 
         height, width = images.shape[1], images.shape[2]
         gradient = fpixel.create_illumination_gradient(height, width, self.mode, params)[..., np.newaxis]

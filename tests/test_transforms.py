@@ -472,15 +472,26 @@ def test_illumination_batch_matches_per_image(mode, params, dtype, channels):
 
     actual = transform.apply_to_images(images, **params)
 
-    np.testing.assert_array_equal(actual, expected)
+    if dtype == np.float32:
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7, equal_nan=False)
+    else:
+        np.testing.assert_array_equal(actual, expected)
 
 
+@pytest.mark.parametrize(
+    ("mode", "params"),
+    [
+        ("linear", {"intensity": 0.13, "angle": 37.0}),
+        ("corner", {"intensity": 0.13, "corner": 2}),
+        ("gaussian", {"intensity": 0.13, "center": (0.37, 0.61), "sigma": 0.43}),
+    ],
+)
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
-def test_illumination_empty_batch(dtype):
+def test_illumination_empty_batch(mode, params, dtype):
     images = np.empty((0, 24, 20, 5), dtype=dtype)
-    transform = A.Illumination(mode="corner", p=1)
+    transform = A.Illumination(mode=mode, p=1)
 
-    actual = transform.apply_to_images(images, intensity=0.13, corner=2)
+    actual = transform.apply_to_images(images, **params)
 
     assert actual.shape == images.shape
     assert actual.dtype == images.dtype

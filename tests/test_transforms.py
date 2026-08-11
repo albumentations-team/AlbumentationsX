@@ -1957,6 +1957,40 @@ def test_additive_noise_patch_channel_sampling(per_channel: bool) -> None:
     np.testing.assert_equal(channel_noise_is_shared, not per_channel)
 
 
+def test_additive_noise_patch_uniform_channel_ranges() -> None:
+    image = np.zeros((8, 8, 3), dtype=np.float32)
+    transform = A.AdditiveNoise(
+        noise_type="uniform",
+        spatial_mode="patch",
+        noise_params={"ranges": [(0.1, 0.1), (0.2, 0.2), (0.3, 0.3)]},
+        patch_height_range=(1.0, 1.0),
+        patch_width_range=(1.0, 1.0),
+        per_channel=True,
+        p=1.0,
+    )
+
+    result = transform(image=image)["image"]
+
+    expected = np.broadcast_to(np.array([0.1, 0.2, 0.3], dtype=np.float32), image.shape)
+    np.testing.assert_allclose(result, expected)
+
+
+def test_additive_noise_patch_uniform_rejects_too_few_channel_ranges() -> None:
+    image = np.zeros((8, 8, 3), dtype=np.float32)
+    transform = A.AdditiveNoise(
+        noise_type="uniform",
+        spatial_mode="patch",
+        noise_params={"ranges": [(0.1, 0.1), (0.2, 0.2)]},
+        patch_height_range=(1.0, 1.0),
+        patch_width_range=(1.0, 1.0),
+        per_channel=True,
+        p=1.0,
+    )
+
+    with pytest.raises(ValueError, match="Not enough ranges provided"):
+        transform(image=image)
+
+
 def test_additive_noise_patch_handles_single_pixel_grayscale() -> None:
     image = np.zeros((1, 1), dtype=np.uint8)
     transform = A.ReplayCompose(

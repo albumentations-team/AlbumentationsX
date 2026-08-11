@@ -5,7 +5,7 @@ ISO, multiplicative, shot, salt-and-pepper, additive, and film grain noise.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Any, ClassVar, Literal, TypeAlias
+from typing import Annotated, Any, ClassVar, Literal, TypeAlias, cast
 
 import cv2
 import numpy as np
@@ -773,6 +773,7 @@ class AdditiveNoise(ImageOnlyTransform):
             return {"noise_map": noise_map}
 
         if self.spatial_mode == "patch":
+            noise_params = cast("dict[str, Any]", self.noise_params)
             patch_count = self.py_random.randint(*self.patch_count_range)
             patch_heights = np.ceil(
                 metadata["height"] * self.random_generator.uniform(*self.patch_height_range, size=patch_count),
@@ -786,7 +787,7 @@ class AdditiveNoise(ImageOnlyTransform):
             noise_map = fpixel.generate_patch_noise(
                 noise_type=self.noise_type,
                 shape=shape,
-                params=self.noise_params,
+                params=noise_params,
                 max_value=max_value,
                 random_generator=self.random_generator,
                 patches=patches,

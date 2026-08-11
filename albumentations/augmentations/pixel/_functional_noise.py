@@ -338,8 +338,8 @@ def sample_uniform(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample from uniform distribution for spatial noise. params['ranges'][0] per channel.
-    Returns array of given size. Used by noise augmentation.
+    """Sample spatial uniform noise, using per-channel ranges for multichannel maps and the first range for shared
+    maps. Return the requested shape.
 
     Args:
         size (tuple[int, ...]): Size of the output array
@@ -350,8 +350,15 @@ def sample_uniform(
         np.ndarray: Sampled values
 
     """
-    # use first range for spatial noise
-    low, high = params["ranges"][0]
+    ranges = params["ranges"]
+    if len(size) > MONO_CHANNEL_DIMENSIONS and len(ranges) > 1:
+        num_channels = size[-1]
+        if len(ranges) < num_channels:
+            raise ValueError(f"Not enough ranges provided. Expected {num_channels}, got {len(ranges)}")
+        lows, highs = np.asarray(ranges[:num_channels], dtype=np.float32).T
+        return random_generator.uniform(lows, highs, size=size)
+
+    low, high = ranges[0]
     return random_generator.uniform(low, high, size=size)
 
 
@@ -485,7 +492,7 @@ def generate_shared_noise(
 def generate_patch_noise(
     noise_type: Literal["uniform", "gaussian", "laplace", "beta"],
     shape: tuple[int, int, int],
-    params: dict[str, Any] | None,
+    params: dict[str, Any],
     max_value: float,
     random_generator: np.random.Generator,
     patches: np.ndarray,
@@ -497,7 +504,7 @@ def generate_patch_noise(
     Args:
         noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): Distribution used inside each patch.
         shape (tuple[int, int, int]): Image shape in `(height, width, channels)` order.
-        params (dict[str, Any] | None): Parameters for the selected distribution.
+        params (dict[str, Any]): Parameters for the selected distribution.
         max_value (float): Maximum value for the image dtype.
         random_generator (np.random.Generator): Random number generator used for noise sampling.
         patches (np.ndarray): Integer patch coordinates in `(x_min, y_min, x_max, y_max)` format.
@@ -512,9 +519,6 @@ def generate_patch_noise(
 
     """
     height, width, num_channels = shape
-    if params is None:
-        return np.zeros(shape, dtype=np.float32)
-
     is_full_image_patch = len(patches) == 1 and np.array_equal(patches[0], (0, 0, width, height))
 
     cv2_seed = int(random_generator.integers(0, 2**16))

@@ -27,7 +27,7 @@ scikit-learn>=1.7.2
 tomli>=2.4.1
 torch>=2.13.0
 torchvision>=0.28.0
-twine
+twine>=7.0.0
 types-PyYAML>=6.0.12.20260518
 types-setuptools>=83.0.0.20260706
 zizmor>=1.27.0

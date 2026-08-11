@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Event, Lock
@@ -66,6 +67,23 @@ class _BlockingRandomProbe(_BlockingNumpyOnlyProbe):
         with self._ids_lock:
             self.py_random_ids.append(id(sampling.py_random))
         return super().sample_parameters(params, data, sampling)
+
+
+class _NumpyRandomMarker(ImageOnlyTransform):
+    """Expose one NumPy-sampled value through the image for worker-stream tests."""
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        del params, data
+        return {"marker": int(sampling.random_generator.integers(np.iinfo(np.int64).max, dtype=np.int64))}
+
+    def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
+        del params
+        return np.full_like(image, marker)
 
 
 class _BlockingDeterministicFlip(A.HorizontalFlip):
@@ -269,12 +287,41 @@ def test_compose_concurrent_threads_have_private_random_streams() -> None:
     assert len(set(probe.py_random_ids)) == 2
 
 
+def test_manual_numpy_random_state_seeds_worker_streams() -> None:
+    """A worker must preserve the manual NumPy source instead of deriving both streams from Python RNG state."""
+    image = np.zeros((1, 1, 1), dtype=np.int64)
+
+    def make_compose(numpy_seed: int) -> A.Compose:
+        compose = A.Compose([_NumpyRandomMarker(p=1.0)])
+        compose.set_random_state(np.random.default_rng(numpy_seed), random.Random(137))
+        return compose
+
+    first = make_compose(11)
+    second = make_compose(29)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        first_marker = int(executor.submit(lambda: first(image=image)["image"][0, 0, 0]).result(timeout=5))
+        second_marker = int(executor.submit(lambda: second(image=image)["image"][0, 0, 0]).result(timeout=5))
+
+    assert first_marker != second_marker
+
+
 def test_root_probability_uses_the_invocation_random_stream() -> None:
     compose = _ContextOnlyRootProbabilityCompose([A.NoOp(p=1.0)], p=0.5, seed=137)
 
     result = compose(image=np.zeros((5, 7, 3), dtype=np.uint8))
 
     assert result["image"].shape == (5, 7, 3)
+
+
+def test_unactivated_compose_preserves_shape_validation_for_explicit_channel_targets() -> None:
+    """Mismatched explicit-channel targets must not bypass the root shape contract."""
+    compose = A.Compose([A.NoOp(p=1.0)])
+
+    with pytest.raises(ValueError, match="Height and Width of image, mask or masks should be equal"):
+        compose(
+            image=np.zeros((5, 7, 3), dtype=np.uint8),
+            mask=np.zeros((4, 7, 1), dtype=np.uint8),
+        )
 
 
 def test_public_compose_called_inside_a_transform_opens_an_independent_root() -> None:

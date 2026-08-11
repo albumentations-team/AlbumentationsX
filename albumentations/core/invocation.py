@@ -114,6 +114,7 @@ class InvocationRngOwner:
             self._rng_context = runtime_context
             self._invocation_index = 1
             self._rng_epoch = 0
+            self._concurrent_random_generator = copy.deepcopy(self._configured_random_generator)
             self._concurrent_py_random = copy.copy(self._configured_py_random)
             self._rng_process_id = os.getpid()
             self._rng_source_thread_id = threading.get_ident()
@@ -171,6 +172,9 @@ class InvocationRngOwner:
         self._manual_random_state = True
         self._invocation_index = 1
         self._rng_epoch += 1
+        configured_random_generator = self._configured_random_generator
+        if configured_random_generator is not None:
+            self._concurrent_random_generator = copy.deepcopy(configured_random_generator)
         configured_py_random = self._configured_py_random
         if configured_py_random is not None:
             self._concurrent_py_random = copy.copy(configured_py_random)
@@ -252,7 +256,13 @@ class InvocationRngOwner:
                 )
             else:
                 if self._manual_random_state or self._base_seed is None:
-                    seed = self._concurrent_py_random.getrandbits(64)
+                    numpy_seed = int(
+                        self._concurrent_random_generator.integers(
+                            np.iinfo(np.uint64).max,
+                            dtype=np.uint64,
+                        ),
+                    )
+                    python_seed = self._concurrent_py_random.getrandbits(64)
                 else:
                     seed = _derive_invocation_seed(
                         base_seed=self._base_seed,
@@ -262,9 +272,11 @@ class InvocationRngOwner:
                         py_random=None,
                         manual=False,
                     )
+                    numpy_seed = seed
+                    python_seed = seed
                 streams = _ReservedRandomStreams(
-                    random_generator_factory=lambda: np.random.default_rng(seed),
-                    py_random_factory=lambda: random.Random(seed),
+                    random_generator_factory=lambda: np.random.default_rng(numpy_seed),
+                    py_random_factory=lambda: random.Random(python_seed),
                     epoch=self._rng_epoch,
                 )
             self._invocation_index += 1
@@ -309,6 +321,7 @@ class InvocationRngOwner:
             # The configured thread owns stream zero; derived thread sources start at a distinct index.
             self._invocation_index = 1
             self._rng_epoch += 1
+            self._concurrent_random_generator = copy.deepcopy(random_generator)
             self._concurrent_py_random = copy.copy(py_random)
             self._rng_process_id = os.getpid()
             self._rng_source_thread_id = threading.get_ident()
@@ -369,6 +382,7 @@ class InvocationRngOwner:
         state = self.__dict__.copy()
         state.pop("_seed_lock", None)
         state.pop("_thread_rng_streams", None)
+        state.pop("_concurrent_random_generator", None)
         return state
 
     def _restore_invocation_pickle_state(self, state: dict[str, Any]) -> None:
@@ -385,6 +399,11 @@ class InvocationRngOwner:
             if configured_py_random is None:
                 msg = "pickled invocation owner has no configured Python random stream"
                 raise RuntimeError(msg)
+            configured_random_generator = self._configured_random_generator
+            if configured_random_generator is None:
+                msg = "pickled invocation owner has no configured NumPy random stream"
+                raise RuntimeError(msg)
+            self._concurrent_random_generator = copy.deepcopy(configured_random_generator)
             self._concurrent_py_random = copy.copy(configured_py_random)
         _restore_runtime_rng_state(self)
 

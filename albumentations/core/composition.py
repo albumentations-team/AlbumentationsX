@@ -2202,18 +2202,31 @@ class Compose(BaseCompose, HubMixin):
         repair, processors, tracing, and observation are absent.
 
         The loop passes its invocation to every built-in edge and sampler explicitly.
-        Its only root-local state would be grayscale repair, Tensor bridging, or
-        annotation processors, all of which select another executor.
+        Its only root-local state would be grayscale repair, Tensor bridging,
+        annotation processors, or shape validation, all of which select another
+        executor.
         """
-        return (
-            self._unactivated_compiled_graph
-            and tensor_call_state is _EMPTY_TENSOR_CALL_STATE
-            and not any(
-                isinstance(value, np.ndarray) and value.ndim == expected_ndim
-                for key, value in data.items()
-                if (expected_ndim := self._GRAYSCALE_KEYS.get(self._additional_targets.get(key, key))) is not None
-            )
-        )
+        if not self._unactivated_compiled_graph or tensor_call_state is not _EMPTY_TENSOR_CALL_STATE:
+            return False
+
+        shape_checked_inputs = 0
+        for key, value in data.items():
+            canonical_key = self._additional_targets.get(key, key)
+            if not isinstance(value, np.ndarray):
+                continue
+
+            expected_ndim = self._GRAYSCALE_KEYS.get(canonical_key)
+            if expected_ndim is not None and value.ndim == expected_ndim:
+                return False
+            if not self.is_check_shapes or canonical_key not in self._GRAYSCALE_KEYS or value.size == 0:
+                continue
+
+            if canonical_key in {"images", "masks", "volume", "mask3d"} and value.ndim not in {3, 4}:
+                return False
+            shape_checked_inputs += 1
+            if shape_checked_inputs > 1:
+                return False
+        return True
 
     def validate_nested_boundary(self, data: dict[str, Any]) -> None:
         """Runs nested policy validation without a second boundary, preserving root Tensor conversion and preprocessing

@@ -25,7 +25,7 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
-    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 11
+    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 12
     assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 8
 
 
@@ -118,6 +118,22 @@ def test_benchmark_coverage_details_map_spatter_modes_to_batch_matrix() -> None:
         "spatter_rain|images|small|3|uint8|4",
         "spatter_rain|images|large|3|float32|16",
     }.issubset({case["case_id"] for case in spatter["asv_cases"] if case["layer"] == "batch_matrix"})
+
+
+def test_benchmark_coverage_details_map_illumination_modes_to_batch_matrix() -> None:
+    illumination = _coverage_for("Illumination")
+
+    assert illumination["performance_contract"]["batch"]["status"] == "covered"
+    assert illumination["scenario_contract"]["channels"] == [1, 3, 5]
+    assert illumination["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert illumination["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
+    assert illumination["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert {"compose_batch", "direct_batch"}.issubset(illumination["scenario_contract"]["scopes"])
+    assert {
+        "illumination_corner|direct_images|large|5|float32|16",
+        "illumination_gaussian|images|medium|3|uint8|8",
+        "illumination_linear|direct_images|small|1|uint8|2",
+    }.issubset({case["case_id"] for case in illumination["asv_cases"] if case["layer"] == "batch_matrix"})
 
 
 def test_benchmark_coverage_details_map_median_blur_kernel_and_dtype_routes() -> None:

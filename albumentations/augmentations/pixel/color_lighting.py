@@ -624,9 +624,22 @@ class Illumination(ImageOnlyTransform):
         if self.mode == "linear":
             return fpixel.apply_linear_illumination_batch(images, **params)
 
+        if images.shape[0] == 0:
+            return images.copy()
+
         height, width = images.shape[1], images.shape[2]
         gradient = fpixel.create_illumination_gradient(height, width, self.mode, params)[..., np.newaxis]
-        return self._apply_to_batch_same_shape(images, lambda image: albucore.multiply_by_array(image, gradient))
+        clip_required = (self.mode == "corner" and params["intensity"] < 0) or (
+            self.mode == "gaussian" and params["intensity"] > 0
+        )
+        # The uint8 4D path and clipped low-channel float32 path regress against the per-image kernels.
+        if images.dtype == np.uint8 or (images.shape[-1] <= 4 and clip_required):
+            result = self._apply_to_batch_same_shape(images, lambda image: albucore.multiply_by_array(image, gradient))
+        else:
+            result = albucore.multiply_by_array(images, gradient)
+        if images.dtype == np.float32 and clip_required:
+            return albucore.clip(result, images.dtype, inplace=True)
+        return result
 
 
 class Vignetting(ImageOnlyTransform):

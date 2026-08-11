@@ -482,6 +482,65 @@ def generate_shared_noise(
     return noise_map
 
 
+def generate_patch_noise(
+    noise_type: Literal["uniform", "gaussian", "laplace", "beta"],
+    shape: tuple[int, int, int],
+    params: dict[str, Any],
+    max_value: float,
+    random_generator: np.random.Generator,
+    patches: np.ndarray,
+    per_channel: bool,
+) -> np.ndarray:
+    """Generate noise only inside rectangular image patches.
+
+    Args:
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): Distribution used inside each patch.
+        shape (tuple[int, int, int]): Image shape in ``(height, width, channels)`` order.
+        params (dict[str, Any]): Parameters for the selected distribution.
+        max_value (float): Maximum value for the image dtype.
+        random_generator (np.random.Generator): Random number generator used for noise sampling.
+        patches (np.ndarray): Integer patch coordinates in ``(x_min, y_min, x_max, y_max)`` format.
+        per_channel (bool): Whether to sample independent noise for each channel.
+
+    Returns:
+        np.ndarray: A float32 noise map that is zero outside the sampled patches.
+
+    Note:
+        Patches are processed in order. If patches overlap, noise from a later patch replaces noise from an earlier
+        patch in the overlapping region.
+
+    """
+    height, width, num_channels = shape
+    is_full_image_patch = len(patches) == 1 and np.array_equal(patches[0], (0, 0, width, height))
+
+    cv2_seed = int(random_generator.integers(0, 2**16))
+    cv2.setRNGSeed(cv2_seed)
+
+    if is_full_image_patch:
+        if per_channel:
+            return generate_per_pixel_noise(noise_type, shape, params, max_value, random_generator)
+        return generate_shared_noise(noise_type, shape, params, max_value, random_generator)
+
+    noise_shape = shape if per_channel else (height, width)
+    noise_map = np.zeros(noise_shape, dtype=np.float32)
+
+    for x_min, y_min, x_max, y_max in patches:
+        patch_height = y_max - y_min
+        patch_width = x_max - x_min
+        patch_shape = (patch_height, patch_width, num_channels) if per_channel else (patch_height, patch_width)
+        noise_map[y_min:y_max, x_min:x_max] = sample_noise(
+            noise_type,
+            patch_shape,
+            params,
+            max_value,
+            random_generator,
+        )
+
+    if not per_channel:
+        return np.broadcast_to(noise_map[..., None], shape)
+    return noise_map
+
+
 @clipped
 @preserve_channel_dim
 def sharpen_gaussian(
@@ -638,6 +697,7 @@ __all__ = [
     "apply_salt_and_pepper",
     "generate_constant_noise_with_py_random",
     "generate_enhance_matrix",
+    "generate_patch_noise",
     "generate_per_pixel_noise",
     "generate_shared_noise",
     "generate_spatial_noise",

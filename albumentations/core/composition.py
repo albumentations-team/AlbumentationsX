@@ -1578,8 +1578,7 @@ class Compose(BaseCompose, HubMixin):
             KeyError: If positional arguments are provided.
 
         """
-        self._call_lock.acquire()
-        try:
+        with self._call_lock:
             self._sync_runtime_random_state()
 
             if args:
@@ -1617,8 +1616,6 @@ class Compose(BaseCompose, HubMixin):
                 # Clear per-call unpack/repack flags if preprocess or a transform raised mid-call.
                 if self.main_compose and self._instance_binding:
                     self._clear_instance_binding_call_state_if_pending()
-        finally:
-            self._call_lock.release()
 
     def run_with_trace(
         self,
@@ -1639,8 +1636,7 @@ class Compose(BaseCompose, HubMixin):
             TraceResult: Final targets and, unless observer-only mode was selected, trace records.
 
         """
-        self._call_lock.acquire()
-        try:
+        with self._call_lock:
             options = TraceOptions() if options is None else options
             self._validate_trace_options(options, data)
             trace_context = _TraceContext(options)
@@ -1674,8 +1670,6 @@ class Compose(BaseCompose, HubMixin):
             finally:
                 if self.main_compose and self._instance_binding:
                     self._clear_instance_binding_call_state_if_pending()
-        finally:
-            self._call_lock.release()
 
     def _validate_trace_options(self, options: TraceOptions, data: dict[str, Any]) -> None:
         known_targets = set(data) | self._available_keys | set(AVAILABLE_KEYS)

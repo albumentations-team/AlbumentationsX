@@ -84,7 +84,7 @@ One configured `Compose` or `ReplayCompose` instance is reentrant through serial
 reentrant lock covers each complete `__call__()` and `run_with_trace()` invocation, including worker RNG
 synchronization, probability and parameter sampling, Tensor route selection, preprocessing, transform dispatch,
 processor work, tracing, restoration, replay finalization, and cleanup. Overlapping callers therefore observe results
-consistent with one serial order and cannot replace another call's grayscale, instance-binding, applied-parameter, or
+consistent with one serial order and cannot replace another call's grayscale, instance-binding, applied parameter, or
 representation bookkeeping.
 
 This contract does not provide parallel augmentation from one pipeline object. Lock acquisition order determines

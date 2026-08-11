@@ -1,5 +1,6 @@
 """Threaded regression coverage for the public Compose reentrancy contract."""
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from typing import Any, Literal
@@ -7,6 +8,7 @@ from typing import Any, Literal
 import numpy as np
 import pytest
 import torch
+from typing_extensions import Self
 
 import albumentations as A
 
@@ -14,9 +16,10 @@ import albumentations as A
 class _BlockingAppliedConfigTransform(A.ImageOnlyTransform):
     """Hold one invocation inside transform dispatch while detecting a second invocation."""
 
-    def __init__(self, marker: int = 0, p: float = 1.0):
+    def __init__(self, marker: int = 0, raise_markers: tuple[int, ...] = (), p: float = 1.0):
         super().__init__(p=p)
         self.marker = marker
+        self.raise_markers = raise_markers
         self.first_entered = Event()
         self.second_entered = Event()
         self.release_first = Event()
@@ -39,7 +42,52 @@ class _BlockingAppliedConfigTransform(A.ImageOnlyTransform):
                 raise TimeoutError("First Compose invocation was not released")
         elif marker == 2:
             self.second_entered.set()
+        if marker in self.raise_markers:
+            raise RuntimeError(f"Transform failed for marker {marker}")
         return image
+
+
+class _ObservedRLock:
+    """Expose when another thread reaches a held reentrant lock without relying on scheduler timing."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._state_lock = threading.Lock()
+        self._owner: int | None = None
+        self._depth = 0
+        self.blocked_caller_attempted = Event()
+
+    def acquire(self) -> bool:
+        caller = threading.get_ident()
+        with self._state_lock:
+            if self._owner is not None and self._owner != caller:
+                self.blocked_caller_attempted.set()
+        acquired = self._lock.acquire()
+        with self._state_lock:
+            if self._owner == caller:
+                self._depth += 1
+            else:
+                self._owner = caller
+                self._depth = 1
+        return acquired
+
+    def release(self) -> None:
+        caller = threading.get_ident()
+        with self._state_lock:
+            self._depth -= 1
+            final_release = self._depth == 0
+        self._lock.release()
+        if final_release:
+            with self._state_lock:
+                if self._owner == caller and self._depth == 0:
+                    self._owner = None
+
+    def __enter__(self) -> Self:
+        self.acquire()
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.release()
 
 
 def _invoke(
@@ -63,10 +111,10 @@ def _run_overlapping_calls(
     tuple[dict[str, Any], tuple[A.TraceRecord, ...]],
     tuple[dict[str, Any], tuple[A.TraceRecord, ...]],
 ]:
-    second_attempted = Event()
+    observed_lock = _ObservedRLock()
+    pipeline._call_lock = observed_lock
 
     def run_second() -> tuple[dict[str, Any], tuple[A.TraceRecord, ...]]:
-        second_attempted.set()
         return _invoke(pipeline, "call", second_data)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -76,9 +124,9 @@ def _run_overlapping_calls(
             if not probe.first_entered.wait(timeout=5):
                 raise TimeoutError("First Compose invocation did not reach transform dispatch")
             second_future = executor.submit(run_second)
-            if not second_attempted.wait(timeout=5):
-                raise TimeoutError("Second Compose invocation did not start")
-            second_overlapped = probe.second_entered.wait(timeout=0.25)
+            if not observed_lock.blocked_caller_attempted.wait(timeout=5):
+                raise TimeoutError("Second Compose invocation did not attempt to acquire the held call lock")
+            second_overlapped = probe.second_entered.is_set()
         finally:
             probe.release_first.set()
 
@@ -164,6 +212,21 @@ def test_overlapping_calls_preserve_instance_binding_bookkeeping() -> None:
     np.testing.assert_array_equal(first_result["instances"][0]["mask"], first_instances[0]["mask"])
     for actual, expected in zip(second_result["instances"], second_instances, strict=True):
         np.testing.assert_array_equal(actual["mask"], expected["mask"])
+
+
+def test_call_lock_and_tensor_state_recover_after_transform_exception() -> None:
+    probe = _BlockingAppliedConfigTransform(raise_markers=(1,), p=1.0)
+    probe.release_first.set()
+    pipeline = A.Compose([probe], save_applied_params=True, telemetry=False)
+
+    with pytest.raises(RuntimeError, match="Transform failed for marker 1"):
+        pipeline(image=torch.ones((1, 8, 8), dtype=torch.uint8))
+
+    numpy_image = np.full((8, 8), 2, dtype=np.uint8)
+    result = pipeline(image=numpy_image)
+    assert isinstance(result["image"], np.ndarray)
+    np.testing.assert_array_equal(result["image"], numpy_image)
+    assert result["applied_transforms"][0][1]["marker"] == 2
 
 
 def test_overlapping_seeded_calls_match_lock_acquisition_order() -> None:

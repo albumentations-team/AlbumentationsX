@@ -679,7 +679,7 @@ class AdditiveNoise(ImageOnlyTransform):
             If False, the same noise is shared across channels. Default: False.
 
     Targets:
-        image, images, volume
+        image, volume
 
     Image types:
         uint8, float32

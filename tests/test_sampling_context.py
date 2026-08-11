@@ -5,6 +5,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
+import albumentations as A
+
 
 def _core_modules() -> tuple[Path, ...]:
     core_root = Path(__file__).parents[1] / "albumentations" / "core"
@@ -60,3 +64,10 @@ def test_execution_entry_points_require_explicit_invocations() -> None:
                 violations.append(f"{source_path.name}:{node.lineno}: dynamic invocation fallback")
 
     assert violations == [], "Configured dispatch must stay explicit:\n" + "\n".join(violations)
+
+
+@pytest.mark.parametrize("hook_name", ("get_params", "get_params_dependent_on_data"))
+def test_declaring_a_removed_sampling_hook_fails_without_an_invocation(hook_name: str) -> None:
+    """Fail when legacy code is defined rather than adding a branch to transform execution."""
+    with pytest.raises(TypeError, match=rf"LegacyTransform defines removed sampling hook\(s\): {hook_name}"):
+        type("LegacyTransform", (A.ImageOnlyTransform,), {hook_name: lambda self: {}})

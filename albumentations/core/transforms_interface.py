@@ -145,6 +145,24 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _supports_cpu_tensor: ClassVar[bool] = False
     _cpu_tensor_targets: ClassVar[frozenset[str] | None] = None
     _cpu_tensor_channels: ClassVar[frozenset[int] | None] = None
+    _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Reject removed sampling hooks when a transform subclass is declared, keeping the execution hot path free
+        from legacy compatibility checks.
+
+        Only methods declared directly on the new class are considered. This lets
+        an unrelated base class retain a same-named helper while making a former
+        Albumentations sampling override fail at import or class-definition time.
+        """
+        super().__init_subclass__(**kwargs)
+        removed_hooks = sorted(cls._removed_sampling_hooks.intersection(cls.__dict__))
+        if removed_hooks:
+            names = ", ".join(removed_hooks)
+            raise TypeError(
+                f"{cls.__name__} defines removed sampling hook(s): {names}. "
+                "Implement sample_parameters(params, data, sampling) instead.",
+            )
 
     @property
     def supports_cpu_tensor(self) -> bool:

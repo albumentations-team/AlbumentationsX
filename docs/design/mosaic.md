@@ -6,7 +6,7 @@ Design the `Mosaic` transform to correctly handle bounding box and keypoint prep
 
 ## 2. Design
 
-This workflow outlines the data processing logic within the `Mosaic` transform, primarily executed within its `get_params_dependent_on_data` method or delegated helper functions/methods.
+This workflow outlines the data processing logic within the `Mosaic` transform, primarily executed within its `sample_parameters` method or delegated helper functions/methods.
 
 1. **Calculate Geometry & Visible Cell Placements:**
    * Calculate the mosaic center point (`center_x`, `center_y`).

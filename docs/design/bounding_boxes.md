@@ -195,7 +195,7 @@ BboxParams(coord_format='yolo', clip_bboxes_on_input=True)  # Fix invalid input 
 **OBB warning**: For OBB, clipping converts boxes whose corners extend outside [0, 1] to axis-aligned boxes (angle=0). This destroys orientation and causes misalignment with Affine/rotation transforms. **Recommend `clip_bboxes_on_input=False` for OBB** unless you only need to fix minor coordinate errors (boxes fully inside bounds are not affected).
 
 #### `clip_after_transform: bool = True`
-Controls how bboxes are clipped **after each transform** in the pipeline:
+Controls how bboxes are clipped after a transform that can change bboxes, and during final bbox postprocessing:
 
 - `True` (default): Clip based on actual geometry.
   - **For HBB**: Clips `(x_min, y_min, x_max, y_max)` to [0, 1]. Fast, current behavior.
@@ -304,7 +304,7 @@ Each transform receives normalized bboxes and returns transformed normalized bbo
 
 #### Step 3: Post-Transform Filtering
 
-After **each** transform, `Compose` applies filtering (in `filter_bboxes()`):
+After a transform that can change bboxes, `Compose` applies filtering (in `filter_bboxes()`):
 
 ```python
 # 1. Apply clip_after_transform

@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     LENGTH_RAW_BBOX,
     BaseTransformInitSchema,
@@ -206,14 +208,19 @@ class OverlayElements(DualTransform):
 
         return result
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         metadata = data[self.metadata_key]
         img_shape = params["shape"]
 
         if isinstance(metadata, list):
-            overlay_data = [self.preprocess_metadata(md, img_shape, self.py_random) for md in metadata]
+            overlay_data = [self.preprocess_metadata(md, img_shape, sampling.py_random) for md in metadata]
         else:
-            overlay_data = [self.preprocess_metadata(metadata, img_shape, self.py_random)]
+            overlay_data = [self.preprocess_metadata(metadata, img_shape, sampling.py_random)]
 
         return {
             "overlay_data": overlay_data,

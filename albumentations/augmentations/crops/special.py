@@ -4,6 +4,8 @@ from typing import Annotated, Any
 
 from typing_extensions import Self
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     ALL_TARGETS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
@@ -177,10 +179,11 @@ class CropNonEmptyMaskIfExists(BaseCrop):
 
         return mask
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         if "mask" in data:
             mask = self._preprocess_mask(data["mask"])
@@ -201,17 +204,17 @@ class CropNonEmptyMaskIfExists(BaseCrop):
             non_empty_mask = np.asarray(mask_sum) > 0
             non_zero_xy = cv2.findNonZero(non_empty_mask.astype(np.uint8))
             non_zero_yx = non_zero_xy.reshape(-1, 2)[:, ::-1]
-            y, x = self.py_random.choice(non_zero_yx)
+            y, x = sampling.py_random.choice(non_zero_yx)
 
             # Calculate crop coordinates centered around chosen point
-            x_min = x - self.py_random.randint(0, self.width - 1)
-            y_min = y - self.py_random.randint(0, self.height - 1)
+            x_min = x - sampling.py_random.randint(0, self.width - 1)
+            y_min = y - sampling.py_random.randint(0, self.height - 1)
             x_min = np.clip(x_min, 0, mask_width - self.width)
             y_min = np.clip(y_min, 0, mask_height - self.height)
         else:
             # Random crop if no non-zero regions
-            x_min = self.py_random.randint(0, mask_width - self.width)
-            y_min = self.py_random.randint(0, mask_height - self.height)
+            x_min = sampling.py_random.randint(0, mask_width - self.width)
+            y_min = sampling.py_random.randint(0, mask_height - self.height)
 
         x_max = x_min + self.width
         y_max = y_min + self.height
@@ -265,10 +268,11 @@ class RandomCropNearBBox(BaseCrop):
         self.max_part_shift = max_part_shift
         self.cropping_bbox_key = cropping_bbox_key
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, tuple[float, ...]]:
         bbox = data[self.cropping_bbox_key]
 
@@ -279,11 +283,11 @@ class RandomCropNearBBox(BaseCrop):
         h_max_shift = round((bbox[3] - bbox[1]) * self.max_part_shift[0])
         w_max_shift = round((bbox[2] - bbox[0]) * self.max_part_shift[1])
 
-        x_min = bbox[0] - self.py_random.randint(-w_max_shift, w_max_shift)
-        x_max = bbox[2] + self.py_random.randint(-w_max_shift, w_max_shift)
+        x_min = bbox[0] - sampling.py_random.randint(-w_max_shift, w_max_shift)
+        x_max = bbox[2] + sampling.py_random.randint(-w_max_shift, w_max_shift)
 
-        y_min = bbox[1] - self.py_random.randint(-h_max_shift, h_max_shift)
-        y_max = bbox[3] + self.py_random.randint(-h_max_shift, h_max_shift)
+        y_min = bbox[1] - sampling.py_random.randint(-h_max_shift, h_max_shift)
+        y_max = bbox[3] + sampling.py_random.randint(-h_max_shift, h_max_shift)
 
         crop_coords = self._clip_bbox((x_min, y_min, x_max, y_max), image_shape)
 
@@ -429,27 +433,30 @@ class RandomCropFromBorders(BaseCrop):
         self.crop_top = crop_top
         self.crop_bottom = crop_bottom
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, tuple[int, int, int, int]]:
         height, width = params["shape"][:2]
 
-        x_min = self.py_random.randint(0, int(self.crop_left * width))
-        x_max = self.py_random.randint(max(x_min + 1, int((1 - self.crop_right) * width)), width)
+        x_min = sampling.py_random.randint(0, int(self.crop_left * width))
+        x_max = sampling.py_random.randint(max(x_min + 1, int((1 - self.crop_right) * width)), width)
 
-        y_min = self.py_random.randint(0, int(self.crop_top * height))
-        y_max = self.py_random.randint(max(y_min + 1, int((1 - self.crop_bottom) * height)), height)
+        y_min = sampling.py_random.randint(0, int(self.crop_top * height))
+        y_max = sampling.py_random.randint(max(y_min + 1, int((1 - self.crop_bottom) * height)), height)
 
         crop_coords = x_min, y_min, x_max, y_max
 
-        self.applied_config = {
-            "crop_left": x_min / width if width > 0 else 0.0,
-            "crop_right": 1.0 - x_max / width if width > 0 else 0.0,
-            "crop_top": y_min / height if height > 0 else 0.0,
-            "crop_bottom": 1.0 - y_max / height if height > 0 else 0.0,
-        }
+        sampling.applied_overrides.update(
+            {
+                "crop_left": x_min / width if width > 0 else 0.0,
+                "crop_right": 1.0 - x_max / width if width > 0 else 0.0,
+                "crop_top": y_min / height if height > 0 else 0.0,
+                "crop_bottom": 1.0 - y_max / height if height > 0 else 0.0,
+            },
+        )
 
         return {"crop_coords": crop_coords}
 

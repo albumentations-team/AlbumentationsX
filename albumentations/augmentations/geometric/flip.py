@@ -29,6 +29,7 @@ import numpy as np
 import torch
 from albucore import hflip, vflip
 
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -568,16 +569,17 @@ class D4(DualTransform):
             return mask3d
         return self.apply_to_images(mask3d, group_element)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
         if self.group_element is not None:
             group_element = self.group_element
         else:
-            group_element = self.random_generator.choice(d4_group_elements)
-        self.applied_config = {"group_element": group_element}
+            group_element = sampling.random_generator.choice(d4_group_elements)
+        sampling.applied_overrides["group_element"] = group_element
         return {"group_element": group_element}
 
     def inverse(self) -> D4:

@@ -110,11 +110,11 @@ def test_hestain_preserve_residual_reconstructs_identity() -> None:
     np.testing.assert_allclose(result, image, rtol=1e-5, atol=1e-6)
 
 
-def test_hestain_default_project_mode_preserves_seeded_parameter_sequence() -> None:
+def test_hestain_default_project_mode_does_not_consume_a_root_probability_draw() -> None:
     image = np.random.default_rng(137).integers(0, 256, size=(8, 7, 3), dtype=np.uint8)
     transform = A.HEStain(method="custom", stain_matrix=CUSTOM_STAIN_MATRIX, p=1.0)
 
-    result = A.Compose([transform], seed=137, strict=True)(image=image)["image"]
+    result = A.Compose([transform], save_applied_params=True, seed=137, strict=True)(image=image)["image"]
     params = transform.get_applied_params()
     explicit_project = A.Compose(
         [A.HEStain(method="custom", stain_matrix=CUSTOM_STAIN_MATRIX, residual_mode="project", p=1.0)],
@@ -122,13 +122,17 @@ def test_hestain_default_project_mode_preserves_seeded_parameter_sequence() -> N
         strict=True,
     )(image=image)["image"]
 
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         params["scale_factors"],
-        np.array([0.9460570722474746, 1.2941528299113085]),
+        np.array([0.7434199412949428, 0.9460570722474746]),
+        rtol=0,
+        atol=1e-7,
     )
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         params["shift_values"],
-        np.array([-0.10763109776870272, -0.06048900184007305]),
+        np.array([0.19610188709225677, -0.10763109776870272]),
+        rtol=0,
+        atol=1e-7,
     )
     np.testing.assert_array_equal(result, explicit_project)
 

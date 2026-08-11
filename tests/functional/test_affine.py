@@ -626,7 +626,7 @@ def test_get_scale_balanced_one_sided_ranges_stay_within_bounds():
 def test_affine_balanced_one_sided_ranges_through_compose():
     scale = {"x": (0.5, 0.8), "y": (1.2, 1.5)}
     affine = A.Affine(scale=scale, keep_ratio=False, balanced_scale=True, p=1.0)
-    transform = A.Compose([affine], seed=137)
+    transform = A.Compose([affine], save_applied_params=True, seed=137)
 
     transform(image=SQUARE_UINT8_IMAGE)
 

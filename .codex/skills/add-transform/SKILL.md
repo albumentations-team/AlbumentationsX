@@ -32,7 +32,7 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
     ...
 ```
 
-- No randomness — all random values come from `get_params_dependent_on_data`
+- No randomness — all random values come from `sample_parameters`
 - Delete redundant work and full-array passes before selecting a backend
 - Compare applicable NumPy, OpenCV, NumKong, StringZilla, and LUT implementations
 - Consider `np.bincount` for repeated reductions over dense non-negative integer labels
@@ -42,8 +42,10 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
 
 ## 3. Write the transform class
 
-- Keep sampling in `get_params_dependent_on_data`; `apply_*` receives realized parameters only.
-- Use `self.py_random` for scalar sampling and `self.random_generator` only for array-valued samples.
+- Keep sampling in `sample_parameters`; `apply_*` receives realized parameters only.
+- Accept `sampling: SamplingContext` in `sample_parameters`. Use `sampling.py_random` for scalar draws and
+  `sampling.random_generator` only for array-valued draws. Record replay policy through
+  `sampling.applied_overrides` when the transform supports observed execution.
 - Use relative parameters where users should transfer a policy across image sizes.
 - Use `ImageType` for image, mask, and volume signatures; reserve `np.ndarray` for bboxes and keypoints.
 - Compose inputs always have a channel dimension: `(H, W, C)`, `(N, H, W, C)`, and `(D, H, W, C)`; grayscale is
@@ -109,9 +111,9 @@ new profile only when the same workload should apply to a cluster of transforms;
 class inventories or constructor kwargs. Keep exact geometry, sampling, validation, and metamorphic semantics in
 focused tests.
 
-If the transform samples constructor fields, write the realized values to `self.applied_config`. Clear any original
-policy field that becomes mutually exclusive with the realized value. If a convenience alias emits the canonical
-constructor's state, declare `_applied_replay_class`.
+If the transform samples constructor fields, write the realized values to `sampling.applied_overrides`.
+Clear any original policy field that becomes mutually exclusive with the realized value. If a convenience alias emits
+the canonical constructor's state, declare `_applied_replay_class`.
 
 Check edge cases: uint8, float32, single channel, multichannel.
 

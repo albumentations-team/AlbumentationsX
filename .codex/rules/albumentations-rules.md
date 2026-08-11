@@ -15,7 +15,7 @@ always_apply: true
 
 ## Code Style
 - Avoid unclear variable names (e.g., single-letter `k`); use descriptive names like `rot90_count`
-- `get_params_dependent_on_data` should be minimal and clear - just call other functions from it
+- `sample_parameters` should be minimal and clear - just call other functions from it
 - Use `fill`, not `fill_value`. Use `fill_mask`, not `fill_mask_value`
 - NO default values in InitSchema classes (except discriminator fields for Pydantic unions)
 - Prefer reusable `Annotated` validators for standard single-field checks. Use `field_validator` only when validation

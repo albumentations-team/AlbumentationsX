@@ -2,11 +2,11 @@
 """Pre-commit hook to check that transforms don't use np.random or random module directly.
 
 Enforces the rule: "NEVER use np.random or random module directly.
-Use self.py_random or self.random_generator instead."
+Use the SamplingContext passed to sample_parameters instead."
 
 Allowed:
 - np.random.default_rng() — creates a Generator object, used legitimately for seeded RNG forwarding
-- random.Random() — constructor for self.py_random setup
+- random.Random() — constructor for invocation RNG setup
 - Type annotations (not calls): np.random.Generator etc.
 - Docstring examples (inside string literals — not parsed by AST)
 
@@ -145,7 +145,7 @@ class RandomUsageChecker(ast.NodeVisitor):
         self.errors.append(
             (
                 lineno,
-                f"Direct use of '{call_str}' is forbidden. Use self.py_random or self.random_generator instead.",
+                f"Direct use of '{call_str}' is forbidden. Use SamplingContext RNG streams instead.",
             ),
         )
 

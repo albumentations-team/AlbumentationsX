@@ -173,6 +173,16 @@ def test_filter_keypoints_with_int_image_shape():
     np.testing.assert_array_equal(result, expected)
 
 
+def test_filter_keypoints_returns_a_detached_array_when_every_point_is_visible() -> None:
+    """The public filter result must not alias the caller's keypoint array."""
+    keypoints = np.array([[10.0, 20.0, 0.0, 0.5, 1.0], [30.0, 40.0, 0.0, 1.5, 1.0]], dtype=np.float32)
+
+    result = filter_keypoints(keypoints, (100, 100), remove_invisible=True)
+
+    assert result is not keypoints
+    assert not np.shares_memory(result, keypoints)
+
+
 @pytest.mark.parametrize(
     "keypoints, source_format, image_shape, check_validity, angle_in_degrees, expected",
     [

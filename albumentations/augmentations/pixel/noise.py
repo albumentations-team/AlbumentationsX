@@ -21,6 +21,7 @@ from typing_extensions import Self
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.utils import non_rgb_error
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -124,19 +125,20 @@ class GaussNoise(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, noise_map: np.ndarray, **params: Any) -> ImageType:
         return fpixel.add_noise(images, noise_map)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, np.ndarray]:
         metadata = self.get_image_data(data)
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
         shape = (metadata["height"], metadata["width"], metadata["num_channels"])
 
-        sigma = self.py_random.uniform(*self.std_range)
-        mean = self.py_random.uniform(*self.mean_range)
+        sigma = sampling.py_random.uniform(*self.std_range)
+        mean = sampling.py_random.uniform(*self.mean_range)
 
-        self.applied_config = {"std_range": sigma, "mean_range": mean}
+        sampling.applied_overrides.update({"std_range": sigma, "mean_range": mean})
 
         noise_map = fpixel.generate_spatial_noise(
             noise_type="gaussian",
@@ -144,7 +146,7 @@ class GaussNoise(ImageOnlyTransform):
             shape=shape,
             params={"mean_range": (mean, mean), "std_range": (sigma, sigma)},
             max_value=max_value,
-            random_generator=self.random_generator,
+            random_generator=sampling.random_generator,
         )
         return {"noise_map": noise_map}
 
@@ -252,16 +254,17 @@ class ISONoise(ImageOnlyTransform):
             np.random.default_rng(random_seed),
         )
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
-        random_seed = self.random_generator.integers(0, 2**32 - 1)
-        color_shift = self.py_random.uniform(*self.color_shift_range)
-        intensity = self.py_random.uniform(*self.intensity_range)
+        random_seed = sampling.random_generator.integers(0, 2**32 - 1)
+        color_shift = sampling.py_random.uniform(*self.color_shift_range)
+        intensity = sampling.py_random.uniform(*self.intensity_range)
 
-        self.applied_config = {"color_shift_range": color_shift, "intensity_range": intensity}
+        sampling.applied_overrides.update({"color_shift_range": color_shift, "intensity_range": intensity})
 
         return {
             "color_shift": color_shift,
@@ -357,11 +360,19 @@ class MultiplicativeNoise(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, multiplier: float | np.ndarray, **kwargs: Any) -> ImageType:
         return self.apply(images, multiplier, **kwargs)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
+        del params, sampling.applied_overrides
+        return self._sample_multiplier(data, sampling)
+
+    def _sample_multiplier(self, data: dict[str, Any], sampling: SamplingContext) -> dict[str, Any]:
+        """Generates the multiplier for the current layout without replay-policy overrides, keeping pixel execution
+        independent from constructor serialization concerns.
+        """
         metadata = self.get_image_data(data)
         image_shape = (metadata["height"], metadata["width"], metadata["num_channels"])
         num_channels = image_shape[-1]
@@ -371,7 +382,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
         else:
             multiplier_shape = (num_channels,) if self.per_channel else (1,)
 
-        multiplier = self.random_generator.uniform(
+        multiplier = sampling.random_generator.uniform(
             self.multiplier[0],
             self.multiplier[1],
             multiplier_shape,
@@ -461,16 +472,17 @@ class ShotNoise(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.shot_noise(img, scale, np.random.default_rng(random_seed))
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
-        scale = self.py_random.uniform(*self.scale_range)
-        self.applied_config = {"scale_range": scale}
+        scale = sampling.py_random.uniform(*self.scale_range)
+        sampling.applied_overrides["scale_range"] = scale
         return {
             "scale": scale,
-            "random_seed": self.random_generator.integers(0, 2**32 - 1),
+            "random_seed": sampling.random_generator.integers(0, 2**32 - 1),
         }
 
 
@@ -753,11 +765,19 @@ class AdditiveNoise(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
+        del params, sampling.applied_overrides
+        return self._sample_noise_map(data, sampling)
+
+    def _sample_noise_map(self, data: dict[str, Any], sampling: SamplingContext) -> dict[str, Any]:
+        """Generates the noise map for the current layout without replay-policy overrides, keeping pixel execution
+        independent from constructor serialization concerns.
+        """
         metadata = self.get_image_data(data)
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
         shape = (metadata["height"], metadata["width"], metadata["num_channels"])
@@ -768,28 +788,28 @@ class AdditiveNoise(ImageOnlyTransform):
                 shape=shape,
                 params=self.noise_params,
                 max_value=max_value,
-                py_random=self.py_random,
+                py_random=sampling.py_random,
             )
             return {"noise_map": noise_map}
 
         if self.spatial_mode == "patch":
             noise_params = cast("dict[str, Any]", self.noise_params)
-            patch_count = self.py_random.randint(*self.patch_count_range)
+            patch_count = sampling.py_random.randint(*self.patch_count_range)
             patch_heights = np.ceil(
-                metadata["height"] * self.random_generator.uniform(*self.patch_height_range, size=patch_count),
+                metadata["height"] * sampling.random_generator.uniform(*self.patch_height_range, size=patch_count),
             ).astype(np.int32)
             patch_widths = np.ceil(
-                metadata["width"] * self.random_generator.uniform(*self.patch_width_range, size=patch_count),
+                metadata["width"] * sampling.random_generator.uniform(*self.patch_width_range, size=patch_count),
             ).astype(np.int32)
-            y_min = self.random_generator.integers(0, metadata["height"] - patch_heights + 1)
-            x_min = self.random_generator.integers(0, metadata["width"] - patch_widths + 1)
+            y_min = sampling.random_generator.integers(0, metadata["height"] - patch_heights + 1)
+            x_min = sampling.random_generator.integers(0, metadata["width"] - patch_widths + 1)
             patches = np.stack([x_min, y_min, x_min + patch_widths, y_min + patch_heights], axis=-1)
             noise_map = fpixel.generate_patch_noise(
                 noise_type=self.noise_type,
                 shape=shape,
                 params=noise_params,
                 max_value=max_value,
-                random_generator=self.random_generator,
+                random_generator=sampling.random_generator,
                 patches=patches,
                 per_channel=self.per_channel,
             )
@@ -801,7 +821,7 @@ class AdditiveNoise(ImageOnlyTransform):
             shape=shape,
             params=self.noise_params,
             max_value=max_value,
-            random_generator=self.random_generator,
+            random_generator=sampling.random_generator,
         )
         return {"noise_map": noise_map}
 
@@ -902,18 +922,19 @@ class SaltAndPepper(ImageOnlyTransform):
         self.amount_range = amount_range
         self.salt_vs_pepper_range = salt_vs_pepper_range
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
-        total_amount = self.py_random.uniform(*self.amount_range)
-        salt_ratio = self.py_random.uniform(*self.salt_vs_pepper_range)
+        total_amount = sampling.py_random.uniform(*self.amount_range)
+        salt_ratio = sampling.py_random.uniform(*self.salt_vs_pepper_range)
 
-        self.applied_config = {"amount_range": total_amount, "salt_vs_pepper_range": salt_ratio}
+        sampling.applied_overrides.update({"amount_range": total_amount, "salt_vs_pepper_range": salt_ratio})
 
         area = height * width
 
@@ -921,7 +942,7 @@ class SaltAndPepper(ImageOnlyTransform):
         num_salt = int(num_pixels * salt_ratio)
 
         # Generate all positions at once
-        noise_positions = self.random_generator.choice(area, size=num_pixels, replace=False)
+        noise_positions = sampling.random_generator.choice(area, size=num_pixels, replace=False)
 
         # Create masks
         salt_mask = np.zeros(area, dtype=bool)
@@ -1032,17 +1053,18 @@ class FilmGrain(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
         height, width = image_shape
 
-        intensity = self.py_random.uniform(*self.intensity_range)
+        intensity = sampling.py_random.uniform(*self.intensity_range)
         grain_size = (
-            self.py_random.randint(*self.grain_size_range)
+            sampling.py_random.randint(*self.grain_size_range)
             if self.grain_size_range[0] != self.grain_size_range[1]
             else self.grain_size_range[0]
         )
@@ -1050,14 +1072,14 @@ class FilmGrain(ImageOnlyTransform):
         grain_h = max(1, height // grain_size)
         grain_w = max(1, width // grain_size)
 
-        grain = self.random_generator.standard_normal((grain_h, grain_w, 1), dtype=np.float32)
+        grain = sampling.random_generator.standard_normal((grain_h, grain_w, 1), dtype=np.float32)
 
         if grain_h != height or grain_w != width:
             grain = fgeometric.resize(grain, (height, width), interpolation=cv2.INTER_LINEAR)
 
         grain = grain[:, :, 0]
 
-        self.applied_config = {"intensity_range": intensity, "grain_size_range": grain_size}
+        sampling.applied_overrides.update({"intensity_range": intensity, "grain_size_range": grain_size})
         return {
             "grain": grain,
             "intensity": intensity,

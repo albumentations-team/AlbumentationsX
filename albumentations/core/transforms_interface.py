@@ -8,8 +8,7 @@ and serialization capabilities that are inherited by concrete transform implemen
 """
 
 import inspect
-import random
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from typing import Any, ClassVar, cast
 from warnings import warn
@@ -22,16 +21,18 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
 from albumentations.core.bbox_utils import BboxProcessor
+from albumentations.core.invocation import (
+    InvocationContext,
+    InvocationRngOwner,
+    SamplingContext,
+    TransformInvocationState,
+    get_completed_transform_state,
+    get_current_invocation,
+    publish_completed_transform_state,
+)
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.validation import ValidatedTransformMeta
 
-from .random_utils import (
-    _derive_effective_seed,
-    _get_runtime_rng_context,
-    _restore_runtime_rng_state,
-    _RuntimeRngContext,
-    _should_sync_runtime_rng,
-)
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
 from .type_definitions import ALL_TARGETS, ImageType, StackedMasks4D, Targets, VolumeType
 from .utils import format_args
@@ -43,6 +44,7 @@ __all__ = [
     "DualTransform",
     "ImageOnlyTransform",
     "NoOp",
+    "SamplingContext",
     "Transform3D",
     "VolumeOnlyTransform",
 ]
@@ -68,7 +70,30 @@ class CombinedMeta(SerializableMeta, ValidatedTransformMeta):
     pass
 
 
-class BasicTransform(Serializable, metaclass=CombinedMeta):
+class _DiscardedAppliedOverrides:
+    """Discards realized policy when no replay, trace, or observation consumer exists, avoiding a temporary dictionary
+    in ordinary Compose calls.
+
+    This is deliberately not a `dict` subclass. A no-op mapping inherits mutation
+    methods such as `setdefault` and `|=` that can retain data globally even when
+    `__setitem__` is overridden. Sampling supports only assignment and `update`.
+    """
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        return
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        """Discards bulk realized-policy writes for non-observing calls, preserving dictionary-update compatibility
+        without retaining replay data.
+        """
+        return
+
+
+_DISCARDED_APPLIED_OVERRIDES = _DiscardedAppliedOverrides()
+_EMPTY_APPLIED_OVERRIDES: Mapping[str, Any] = {}
+
+
+class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     """Base class for all transforms in Albumentations. Provides core functionality for application,
     serialization, and params.
 
@@ -120,6 +145,24 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
     _supports_cpu_tensor: ClassVar[bool] = False
     _cpu_tensor_targets: ClassVar[frozenset[str] | None] = None
     _cpu_tensor_channels: ClassVar[frozenset[int] | None] = None
+    _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Reject removed sampling hooks when a transform subclass is declared, keeping the execution hot path free
+        from legacy compatibility checks.
+
+        Only methods declared directly on the new class are considered. This lets
+        an unrelated base class retain a same-named helper while making a former
+        Albumentations sampling override fail at import or class-definition time.
+        """
+        super().__init_subclass__(**kwargs)
+        removed_hooks = sorted(cls._removed_sampling_hooks.intersection(cls.__dict__))
+        if removed_hooks:
+            names = ", ".join(removed_hooks)
+            raise TypeError(
+                f"{cls.__name__} defines removed sampling hook(s): {names}. "
+                "Implement sample_parameters(params, data, sampling) instead.",
+            )
 
     @property
     def supports_cpu_tensor(self) -> bool:
@@ -174,17 +217,12 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
     def __init__(self, p: float = 0.5):
         self.p = p
+        self.invocation_key = object()
         self._additional_targets: dict[str, str] = {}
-        self.params: dict[Any, Any] = {}
-        self.applied_config: dict[str, Any] = {}
+        self._replay_params: dict[Any, Any] = {}
         self._key2func = {}
         self._set_keys()
-        self.processors: dict[str, BboxProcessor | KeypointsProcessor] = {}
-        self.seed: int | None = None
-        self._base_seed: int | None = None
-        self._manual_random_state = False
-        self._rng_context: _RuntimeRngContext | None = None
-        self.set_random_seed(self.seed)
+        self._initialize_invocation_rng(None)
         self._strict = False  # Use private attribute
         self.invalid_args: list[str] = []  # Store invalid args found during init
 
@@ -227,102 +265,62 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
 
         self._strict = value
 
-    def set_random_state(
-        self,
-        random_generator: np.random.Generator,
-        py_random: random.Random,
-        *,
-        runtime_context: _RuntimeRngContext | None = None,
-        manual: bool = True,
-    ) -> None:
-        """Set random state directly from numpy and Python random generators. Used for
-        reproducibility and replay. Called by Compose.
-
-        Args:
-            random_generator (np.random.Generator): numpy random generator to use
-            py_random (random.Random): python random generator to use
-            runtime_context (_RuntimeRngContext | None): DataLoader worker context for internal propagation.
-                User calls should leave this as None.
-            manual (bool): Whether this state came from explicit user control. Internal callers
-                set False so automatic worker synchronization can still refresh copied RNG state.
-
+    @property
+    def params(self) -> dict[Any, Any]:
+        """Returns active parameters or caller-local observations. Normal Compose runs expose no child state, avoiding
+        stale or shared data.
         """
-        self._set_random_state(
-            random_generator,
-            py_random,
-            runtime_context=runtime_context,
-            manual=manual,
-        )
+        invocation = get_current_invocation()
+        if invocation is None:
+            state = get_completed_transform_state(self)
+            return {} if state is None or state.params is None else state.params
+        if not invocation.collect_applied:
+            return {}
+        state = invocation.get_transform_state(self)
+        return {} if state is None or state.params is None else state.params
 
-    def _set_random_state(
-        self,
-        random_generator: np.random.Generator,
-        py_random: random.Random,
-        *,
-        runtime_context: _RuntimeRngContext | None,
-        manual: bool,
-    ) -> None:
-        """Set RNG objects and record whether automatic worker synchronization may replace them
-        after DataLoader process boundaries copy parent RNG state.
-        """
-        self.random_generator = random_generator
-        self.py_random = py_random
-        self._rng_context = runtime_context
-        self._manual_random_state = manual
-
-    def set_random_seed(self, seed: int | None) -> None:
-        """Set random state from a single integer seed. Initializes both numpy and Python random
-        generators for reproducibility. Called from __init__.
-
-        Args:
-            seed (int | None): Random seed to use
-
-        """
-        self.seed = seed
-        self._base_seed = seed
-        runtime_context = _get_runtime_rng_context(seed)
-        effective_seed = runtime_context.effective_seed if runtime_context else seed
-        self._set_random_state(
-            np.random.default_rng(effective_seed),
-            random.Random(effective_seed),
-            runtime_context=runtime_context,
-            manual=False,
-        )
-
-    def _sync_runtime_random_state(self) -> None:
-        """Refresh copied RNG state inside PyTorch DataLoader workers unless the user explicitly
-        installed exact RNG objects through set_random_state.
-        """
-        runtime_context = _get_runtime_rng_context(self._base_seed)
-        if runtime_context is None or not _should_sync_runtime_rng(
-            manual=self._manual_random_state,
-            current_context=self._rng_context,
-            runtime_context=runtime_context,
-        ):
+    @params.setter
+    def params(self, value: dict[Any, Any]) -> None:
+        invocation = get_current_invocation()
+        if invocation is None:
+            self._replay_params = value
             return
+        if not invocation.collect_applied:
+            msg = "Transform parameters are available only for direct calls, save_applied_params, or tracing"
+            raise RuntimeError(msg)
+        invocation.transform_state(self).params = value
 
-        self._set_random_state(
-            np.random.default_rng(runtime_context.effective_seed),
-            random.Random(runtime_context.effective_seed),
-            runtime_context=runtime_context,
-            manual=False,
-        )
-
-    def _get_effective_seed(self, base_seed: int | None) -> int | None:
-        """Return the seed that would be used in the current runtime context while preserving
-        None outside DataLoader workers for unseeded transforms.
+    @property
+    def applied_config(self) -> dict[str, Any]:
+        """Returns caller-local realized configuration observations. Normal Compose runs expose no child configuration,
+        avoiding stale or shared data.
         """
-        runtime_context = _get_runtime_rng_context(base_seed)
-        if runtime_context is None:
-            return _derive_effective_seed(base_seed, None)
-        return runtime_context.effective_seed
+        invocation = get_current_invocation()
+        if invocation is None:
+            state = get_completed_transform_state(self)
+            return {} if state is None or state.applied_config is None else state.applied_config
+        if not invocation.collect_applied:
+            return {}
+        state = invocation.get_transform_state(self)
+        return {} if state is None or state.applied_config is None else state.applied_config
+
+    def _new_invocation_context(self) -> InvocationContext:
+        """Creates a call-local observing context for direct execution, exposing parameters without storing sampled
+        values or generators on the transform instance.
+        """
+        return super()._create_invocation_context(collect_applied=True)
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         """Restore pickled transforms and clear runtime worker context so the first worker call
         can resynchronize against the active DataLoader seed.
         """
-        self.__dict__.update(state)
-        _restore_runtime_rng_state(self)
+        self._restore_invocation_pickle_state(state)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Returns pickle-safe configuration, omitting runtime locks and thread reservations so workers create local
+        execution machinery in their receiving process.
+        """
+        return self._get_invocation_pickle_state()
 
     def get_dict_with_id(self) -> dict[str, Any]:
         """Return a dictionary representation of the transform with its ID. Used for replay and
@@ -357,29 +355,12 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         type.__setattr__(transform_cls, "_transform_init_args_names_cache", result)
         return result
 
-    def set_processors(self, processors: dict[str, BboxProcessor | KeypointsProcessor]) -> None:
-        """Set the processors dictionary used for processing bbox and keypoint transformations.
-        Called by Compose when building pipeline.
-
-        Args:
-            processors (dict[str, BboxProcessor | KeypointsProcessor]): Dictionary mapping processor
-                names to processor instances.
-
-        """
-        self.processors = processors
-
     def get_processor(self, key: str) -> BboxProcessor | KeypointsProcessor | None:
-        """Get the processor for a specific key (e.g. bboxes, keypoints). Returns None
-        if the key has no processor. Used when applying transforms with params.
-
-        Args:
-            key (str): The processor key to retrieve.
-
-        Returns:
-            BboxProcessor | KeypointsProcessor | None: The processor instance if found, None otherwise.
-
+        """Return the active annotation session for this invocation, keeping a leaf detached from
+        root configuration and mutable processor state owned by other callers.
         """
-        return self.processors.get(key)
+        invocation = get_current_invocation()
+        return None if invocation is None else invocation.get_processor(key)
 
     def __call__(self, *args: Any, force_apply: bool = False, **kwargs: Any) -> Any:
         """Apply the transform to the input data. Accepts named kwargs (image, mask, bboxes, etc.);
@@ -400,37 +381,144 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         if args:
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
             raise KeyError(msg)
-        if self.replay_mode:
-            if self.applied_in_replay:
-                return self.apply_with_params(self.params, **kwargs)
+        invocation = get_current_invocation()
+        if invocation is None:
+            if self.can_apply_without_invocation(force_apply=force_apply):
+                return self.apply_without_invocation(force_apply=force_apply, publish_observation=True, **kwargs)
+            context = self._new_invocation_context()
+            with context:
+                return self.apply_in_invocation(context, *args, force_apply=force_apply, **kwargs)
+        return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **kwargs)
+
+    def can_apply_without_invocation(self, *, force_apply: bool) -> bool:
+        """Recognizes a pure direct leaf that needs no active state, preserving fast deterministic calls while all
+        other leaves retain full invocation isolation.
+
+        The base sampler deliberately has no data-dependent or random behavior. Concrete samplers, probabilistic
+        leaves, replay, deterministic replay recording, and processor-backed leaves retain the full invocation
+        context so custom code always sees isolated state.
+        """
+        return (
+            (force_apply or self.p >= 1.0)
+            and not self.replay_mode
+            and not self.deterministic
+            and type(self).sample_parameters is BasicTransform.sample_parameters
+        )
+
+    def apply_without_invocation(
+        self,
+        *,
+        force_apply: bool,
+        publish_observation: bool,
+        **kwargs: Any,
+    ) -> Any:
+        """Run a deterministic leaf without invocation state so Compose skips ContextVar and stream
+        setup while direct calls still publish their caller-local observations.
+        """
+        if not self.can_apply_without_invocation(force_apply=force_apply):
+            msg = "Transform requires an active invocation"
+            raise RuntimeError(msg)
+        state = TransformInvocationState() if publish_observation else None
+        result = self._apply_sampled(state, publish_observation, None, **kwargs)
+        if state is not None:
+            publish_completed_transform_state(self, state)
+        return result
+
+    def apply_in_invocation(
+        self,
+        invocation: InvocationContext,
+        /,
+        *args: Any,
+        force_apply: bool,
+        **kwargs: Any,
+    ) -> Any:
+        """Applies one leaf through the active root invocation, returning early for skipped leaves without allocating
+        child observations on ordinary Compose calls.
+        """
+        if args:
+            msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
+            raise KeyError(msg)
+        if not self.replay_mode and not force_apply and self.p <= 0.0:
             return kwargs
+        if self.replay_mode:
+            state = invocation.transform_state(self) if invocation.collect_applied else None
+            return self._apply_replay(state, **kwargs)
 
-        self._sync_runtime_random_state()
+        state = invocation.get_transform_state(self) if invocation.collect_applied else None
+        if state is not None:
+            state.params = None
+            state.applied_config = None
 
-        self.params = {}
-        self.applied_config = {}
+        if not self._should_apply_in_invocation(invocation, force_apply=force_apply):
+            return kwargs
+        state = invocation.transform_state(self) if invocation.collect_applied else None
+        return self._apply_sampled(state, invocation.collect_applied, invocation, **kwargs)
 
-        if self.should_apply(force_apply=force_apply):
-            params = self.update_transform_params(params={}, data=kwargs)
+    def _apply_sampled(
+        self,
+        state: TransformInvocationState | None,
+        collect_applied: bool,
+        invocation: InvocationContext | None,
+        **kwargs: Any,
+    ) -> Any:
+        """Samples parameters after probability succeeds and records policy only for replay, trace, or explicit
+        observation that needs the durable artifact.
+        """
+        params = self.update_transform_params(params={}, data=kwargs, invocation=invocation)
 
-            if self.targets_as_params:
-                missing_keys = set(self.targets_as_params).difference(kwargs.keys())
-                if missing_keys and not (missing_keys == {"image"} and "images" in kwargs):
-                    msg = f"{self.__class__.__name__} requires {self.targets_as_params} missing keys: {missing_keys}"
-                    raise ValueError(msg)
+        if self.targets_as_params:
+            missing_keys = set(self.targets_as_params).difference(kwargs.keys())
+            if missing_keys and not (missing_keys == {"image"} and "images" in kwargs):
+                msg = f"{self.__class__.__name__} requires {self.targets_as_params} missing keys: {missing_keys}"
+                raise ValueError(msg)
 
-            params_dependent_on_data = self.get_params_dependent_on_data(params=params, data=kwargs)
-            params.update(params_dependent_on_data)
+        if type(self).sample_parameters is BasicTransform.sample_parameters:
+            applied_overrides = _EMPTY_APPLIED_OVERRIDES
+        else:
+            if invocation is None:
+                msg = "sampling transforms require an active sampling context"
+                raise RuntimeError(msg)
+            applied_overrides = {} if collect_applied else cast("dict[str, Any]", _DISCARDED_APPLIED_OVERRIDES)
+            params.update(
+                self.sample_parameters(
+                    params=params,
+                    data=kwargs,
+                    sampling=invocation.sampling_context(applied_overrides),
+                ),
+            )
 
-            self.params = params
+        if state is not None:
+            state.params = params
+            self._build_applied_config(state=state, overrides=applied_overrides)
 
-            self._build_applied_config()
+        if self.deterministic:
+            saved_params = kwargs[self.save_key]
+            transform_id = id(self)
+            existing = saved_params.get(transform_id)
+            if existing is None:
+                saved_params[transform_id] = [deepcopy(params)]
+            elif isinstance(existing, list):
+                existing.append(deepcopy(params))
+            else:
+                saved_params[transform_id] = [existing, deepcopy(params)]
+        return self.apply_with_params(params, **kwargs)
 
-            if self.deterministic:
-                kwargs[self.save_key][id(self)] = deepcopy(params)
-            return self.apply_with_params(params, **kwargs)
+    def _should_apply_in_invocation(self, invocation: InvocationContext, *, force_apply: bool) -> bool:
+        """Evaluates this leaf's probability against the root Python stream, avoiding configured mutable generators
+        while concurrent calls execute on the same graph.
+        """
+        return force_apply or self.p >= 1.0 or invocation.py_random.random() < self.p
 
-        return kwargs
+    def _apply_replay(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
+        """Applies recorded replay parameters without new sampling, preserving the optional caller-local observation
+        behavior of sampled leaves.
+        """
+        if not self.applied_in_replay:
+            return kwargs
+        params = deepcopy(self._replay_params)
+        if state is not None:
+            state.params = params
+        return self.apply_with_params(params, **kwargs)
 
     def get_applied_params(self) -> dict[str, Any]:
         """Returns the parameters that were used in the last transform application; returns empty
@@ -443,7 +531,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         transport and public pipeline reconstruction.
 
         The result is empty when the transform was not applied. Realized values written by
-        get_params_dependent_on_data replaces its source constructor policy,
+        sample_parameters replaces its source constructor policy,
         and aliases expose the fields of their canonical replay class. Values are JSON-safe.
         """
         return self.applied_config
@@ -481,7 +569,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             raise RuntimeError(msg)
         return cached_keys
 
-    def _build_applied_config(self) -> None:
+    def _build_applied_config(self, *, state: TransformInvocationState, overrides: Mapping[str, Any]) -> None:
         """Merge constructor state with values realized by the latest application, then retain only fields accepted
         by the selected replay class.
 
@@ -489,7 +577,6 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         selected replay class, and discard fields that are not part of that class's public
         constructor.
         """
-        overrides = self.applied_config
         replay_cls = self.get_applied_replay_class()
         valid_keys = replay_cls._get_valid_config_keys()  # noqa: SLF001 - replay classes share this base contract.
 
@@ -507,7 +594,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         config.update(self.get_transform_init_args())
         config.update(overrides)
 
-        self.applied_config = {key: value for key, value in config.items() if key in valid_keys}
+        state.applied_config = {key: value for key, value in config.items() if key in valid_keys}
 
     def inverse(self) -> "BasicTransform":
         """Return a new transform that is the mathematical inverse of this one. Useful for TTA to
@@ -529,23 +616,6 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
             f"{self.__class__.__name__} does not support inverse(). "
             "Only transforms that override `inverse()` can be used for TTA inversion.",
         )
-
-    def should_apply(self, force_apply: bool = False) -> bool:
-        """Determine whether to apply the transform based on probability (p) and force_apply flag.
-        Used internally before apply_with_params.
-
-        Args:
-            force_apply (bool, optional): If True, always apply the transform regardless of probability.
-
-        Returns:
-            bool: True if the transform should be applied, False otherwise.
-
-        """
-        if self.p <= 0.0:
-            return False
-        if self.p >= 1.0 or force_apply:
-            return True
-        return self.py_random.random() < self.p
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Apply transforms with parameters. Dispatches each target (image, mask, bboxes, etc.) to
@@ -584,8 +654,8 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         return f"{self.__class__.__name__}({format_args(state)})"
 
     def apply(self, img: ImageType, *args: Any, **params: Any) -> ImageType:
-        """Apply transform on image. Override in subclasses; receives parameters from
-        get_params_dependent_on_data. Single image only.
+        """Applies an image with invocation-supplied parameters. Subclasses implement pixel kernels while sampling stays
+        outside execution.
         """
         raise NotImplementedError
 
@@ -690,13 +760,19 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         """
         return self.apply_to_images(volume, *args, **params)
 
-    def update_transform_params(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def update_transform_params(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        invocation: InvocationContext | None = None,
+    ) -> dict[str, Any]:
         """Update parameters with input shape and transform-specific settings (interpolation, fill,
         fill_mask, bbox type) before data-aware parameter sampling.
 
         Args:
             params (dict[str, Any]): Parameters to be updated
             data (dict[str, Any]): Input data dictionary containing images and volume data
+            invocation (InvocationContext | None): Active call state, when this transform runs in a Compose graph.
 
         Returns:
             dict[str, Any]: Updated parameters dictionary with shape and transform-specific params
@@ -707,7 +783,7 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         if shape is not None:
             params["shape"] = shape
 
-        bbox_processor = self.processors.get("bboxes")
+        bbox_processor = None if invocation is None else invocation.get_processor("bboxes")
         if isinstance(bbox_processor, BboxProcessor):
             params["bbox_type"] = bbox_processor.params.bbox_type
 
@@ -761,10 +837,20 @@ class BasicTransform(Serializable, metaclass=CombinedMeta):
         if hasattr(self, "fill_mask"):
             params["fill_mask"] = self.fill_mask
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        """Generate all transform parameters, including random values and data-dependent values.
-        Override in subclasses; default returns an empty mapping.
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        """Generates parameters and stores realized replay policy in call-local data, never retaining per-sample values
+        on transform instances.
+
+        Override this method in every transform that samples data-dependent parameters. Return values consumed by
+        `apply_*` methods and write constructor-valid realized policy values to `sampling.applied_overrides`. The
+        default supports deterministic transforms with no sampled parameters.
         """
+        del params, data, sampling
         return {}
 
     @property
@@ -1096,7 +1182,7 @@ class DualTransform(BasicTransform):
           out-of-frame culling), it MUST drop the corresponding mask rows from
           `apply_to_masks`. Compose's bbox-processor mirror covers the case where
           BboxProcessor is the SOLE filter; transform-internal filters need their own
-          shared keep-mask plumbed via `get_params_dependent_on_data` (see Mosaic /
+          shared keep-mask plumbed via `sample_parameters` (see Mosaic /
           CopyAndPaste for the canonical pattern).
         - The default per-row implementation below preserves alignment for transforms
           whose `apply_to_mask` is total (no row drops).
@@ -1173,7 +1259,7 @@ class DualTransform(BasicTransform):
 
         """
         # Get the keypoint processor
-        processor = self.processors.get("keypoints") if hasattr(self, "processors") else None
+        processor = self.get_processor("keypoints")
         if not processor or not hasattr(processor, "encoded_label_mappings"):
             return keypoints
 
@@ -1538,7 +1624,7 @@ class CustomTransformsApplyMixin:
 
     Define methods named `apply_to_<key>` in your transform subclass; they are
     discovered at init time and routed through the standard `apply_with_params`
-    pipeline. Custom targets receive the same parameters from `get_params_dependent_on_data`, respect
+    pipeline. Custom targets receive the same parameters from `sample_parameters`, respect
     the `p=` probability, and compose correctly with Compose and ReplayCompose.
 
     Placement in inheritance list
@@ -1562,7 +1648,7 @@ class CustomTransformsApplyMixin:
         >>> mask = np.random.randint(0, 2, (64, 64), dtype=np.uint8)
         >>>
         >>> class Rotate90WithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         return {"k": 1}
         ...     def apply(self, img, k=0, **p):
         ...         return np.rot90(img, k)

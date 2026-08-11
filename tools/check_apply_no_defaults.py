@@ -3,7 +3,7 @@
 
 Enforces the coding guideline: "No default arguments in apply_xxx methods."
 Default argument values in apply methods hide bugs where params are not properly
-forwarded from get_params_dependent_on_data.
+forwarded from sample_parameters.
 
 Allowed: self, *args, **kwargs, **params (keyword-only catch-alls)
 Flagged: any named parameter with a default value

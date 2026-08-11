@@ -513,6 +513,9 @@ class BboxProcessor(DataProcessor[BboxParams]):
                 )
 
             if self.params.clip_bboxes_on_input and converted_data.size > 0:
+                # Canonical input is caller-owned. Clipping is the first operation that
+                # writes coordinates, so take one working copy only for this opt-in path.
+                converted_data = converted_data.copy()
                 np.clip(converted_data[:, :4], 0, 1, out=converted_data[:, :4])
 
             # Then filter invalid boxes if requested
@@ -1059,8 +1062,8 @@ def check_bboxes(bboxes: np.ndarray) -> None:
 
 @handle_empty_array("bboxes")
 def clip_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """Clip normalized bboxes to image bounds. Denormalize, clip, renormalize. shape (H,W).
-    Label/extra columns unchanged. See Note for boundary semantics.
+    """Clip normalized boxes on a fresh array, retaining caller ownership, source dtype, and all
+    trailing payload columns without mutating input data.
 
     Args:
         bboxes (np.ndarray): A numpy array of bounding boxes with shape (num_bboxes, 4+).
@@ -1070,33 +1073,10 @@ def clip_bboxes(bboxes: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
         np.ndarray: A numpy array of bounding boxes with shape (num_bboxes, 4+).
 
     """
-    height, width = shape
-
-    # Denormalize bboxes
-    denorm_bboxes = denormalize_bboxes(bboxes, shape)
-
-    ## Note:
-    # It could be tempting to use cols - 1 and rows - 1 as the upper bounds for the clipping
-
-    # But this would cause the bounding box to be clipped to the image dimensions - 1 which is not what we want.
-    # Bounding box lives not in the middle of pixels but between them.
-
-    # Examples: for image with height 100, width 100, the pixel values are in the range [0, 99]
-    # but if we want bounding box to be 1 pixel width and height and lie on the boundary of the image
-    # it will be described as [99, 99, 100, 100] => clip by image_size - 1 will lead to [99, 99, 99, 99]
-    # which is incorrect
-
-    # It could be also tempting to clip `x_min`` to `cols - 1`` and `y_min` to `rows - 1`, but this also leads
-    # to another error. If image fully lies outside of the visible area and min_area is set to 0, then
-    # the bounding box will be clipped to the image size - 1 and will be 1 pixel in size and fully visible,
-    # but it should be completely removed.
-
-    # Clip coordinates
-    denorm_bboxes[:, [0, 2]] = np.clip(denorm_bboxes[:, [0, 2]], 0, width, out=denorm_bboxes[:, [0, 2]])
-    denorm_bboxes[:, [1, 3]] = np.clip(denorm_bboxes[:, [1, 3]], 0, height, out=denorm_bboxes[:, [1, 3]])
-
-    # Normalize clipped bboxes
-    return normalize_bboxes(denorm_bboxes, shape)
+    del shape
+    result = bboxes.copy()
+    np.clip(result[:, :4], 0, 1, out=result[:, :4])
+    return result
 
 
 @handle_empty_array("bboxes")
@@ -1211,6 +1191,18 @@ def filter_bboxes_with_mask(
     if len(bboxes) == 0:
         return _empty_filter_result(bboxes, bbox_type), np.zeros(0, dtype=bool)
 
+    if bbox_type == "hbb":
+        return _filter_hbb_with_mask(
+            bboxes,
+            shape,
+            min_area=min_area,
+            min_visibility=min_visibility,
+            min_width=min_width,
+            min_height=min_height,
+            max_accept_ratio=max_accept_ratio,
+            clip_after_transform=clip_after_transform,
+        )
+
     denormalized_box_areas = calculate_bbox_areas_in_pixels(bboxes, shape)
 
     clipped_bboxes = bboxes if not clip_after_transform else clip_bboxes_geometry(bboxes, shape, bbox_type)
@@ -1246,6 +1238,56 @@ def filter_bboxes_with_mask(
     if len(filtered_bboxes) == 0:
         return _empty_filter_result(bboxes, bbox_type), keep_mask
 
+    return filtered_bboxes, keep_mask
+
+
+def _filter_hbb_with_mask(
+    bboxes: np.ndarray,
+    shape: tuple[int, int],
+    *,
+    min_area: float,
+    min_visibility: float,
+    min_width: float,
+    min_height: float,
+    max_accept_ratio: float | None,
+    clip_after_transform: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Filter normalized HBBs with one optional clipping copy, evaluating geometric keep conditions
+    without materializing a full denormalized bounding-box array.
+    """
+    epsilon = 1e-7
+    height, width = shape
+    original_widths = (bboxes[:, 2] - bboxes[:, 0]) * width
+    original_heights = (bboxes[:, 3] - bboxes[:, 1]) * height
+    original_areas = original_widths * original_heights
+
+    if clip_after_transform:
+        clipped_bboxes = bboxes.copy()
+        np.clip(clipped_bboxes[:, :4], 0, 1, out=clipped_bboxes[:, :4])
+    else:
+        clipped_bboxes = bboxes
+
+    clipped_widths = (clipped_bboxes[:, 2] - clipped_bboxes[:, 0]) * width
+    clipped_heights = (clipped_bboxes[:, 3] - clipped_bboxes[:, 1]) * height
+    clipped_areas = clipped_widths * clipped_heights
+    keep_mask = (
+        (original_areas >= epsilon)
+        & (clipped_areas >= epsilon)
+        & (clipped_areas >= min_area - epsilon)
+        & (clipped_areas / (original_areas + epsilon) >= min_visibility)
+        & (clipped_widths >= min_width - epsilon)
+        & (clipped_heights >= min_height - epsilon)
+    )
+    if max_accept_ratio is not None:
+        ratios = np.maximum(
+            clipped_widths / (clipped_heights + epsilon),
+            clipped_heights / (clipped_widths + epsilon),
+        )
+        keep_mask &= ratios <= max_accept_ratio
+
+    filtered_bboxes = clipped_bboxes[keep_mask]
+    if len(filtered_bboxes) == 0:
+        return _empty_filter_result(bboxes, "hbb"), keep_mask
     return filtered_bboxes, keep_mask
 
 

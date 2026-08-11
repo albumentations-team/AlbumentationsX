@@ -5,6 +5,7 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
+from albumentations.core.invocation import SamplingContext
 
 DISTORTION_TRANSFORMS = [
     pytest.param(A.ElasticTransform, {"alpha": 2, "sigma": 20}, id="ElasticTransform"),
@@ -59,7 +60,11 @@ def test_low_map_resolution_returns_full_size_maps(transform_cls, params):
     transform = transform_cls(**params, map_resolution_range=(0.25, 0.25), p=1.0)
     transform.set_random_seed(137)
 
-    result = transform.get_params_dependent_on_data({"shape": image.shape}, {"image": image})
+    result = transform.sample_parameters(
+        {"shape": image.shape},
+        {"image": image},
+        SamplingContext.from_owner(transform, {}),
+    )
 
     assert result["map_x"].shape == image.shape[:2]
     assert result["map_y"].shape == image.shape[:2]
@@ -74,7 +79,11 @@ def test_low_map_resolution_returns_full_size_maps_for_tiny_images(transform_cls
     transform = transform_cls(**params, map_resolution_range=(0.25, 0.25), p=1.0)
     transform.set_random_seed(137)
 
-    result = transform.get_params_dependent_on_data({"shape": image.shape}, {"image": image})
+    result = transform.sample_parameters(
+        {"shape": image.shape},
+        {"image": image},
+        SamplingContext.from_owner(transform, {}),
+    )
 
     assert result["map_x"].shape == image.shape[:2]
     assert result["map_y"].shape == image.shape[:2]

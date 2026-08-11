@@ -42,6 +42,7 @@ from albumentations.core.bbox_utils import (
     denormalize_bboxes,
     normalize_bboxes,
 )
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -108,7 +109,7 @@ class BaseDistortion(DualTransform):
 
     Note:
         - This is an abstract base class and should not be used directly.
-        - Subclasses should implement the `get_params_dependent_on_data` method to generate
+        - Subclasses should implement the `sample_parameters` method to generate
           the distortion maps (map_x and map_y).
         - The distortion is applied consistently across all targets (image, mask, bboxes, keypoints)
           to maintain coherence in the augmented data.
@@ -123,7 +124,7 @@ class BaseDistortion(DualTransform):
         ...         super().__init__(*args, **kwargs)
         ...         self.distort_range = distort_range
         ...
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         height, width = params["shape"][:2]
         ...         # Create distortion maps - a simple radial distortion in this example
         ...         map_x = np.zeros((height, width), dtype=np.float32)
@@ -222,14 +223,18 @@ class BaseDistortion(DualTransform):
         self.fill_mask = fill_mask
         self.map_resolution_range = map_resolution_range
 
-    def _get_map_resolution_and_shape(self, image_shape: tuple[int, int]) -> tuple[float, tuple[int, int]]:
+    def _get_map_resolution_and_shape(
+        self,
+        image_shape: tuple[int, int],
+        sampling: SamplingContext,
+    ) -> tuple[float, tuple[int, int]]:
         min_resolution, max_resolution = self.map_resolution_range
         map_resolution = (
             min_resolution
             if min_resolution == max_resolution
-            else self.py_random.uniform(min_resolution, max_resolution)
+            else sampling.py_random.uniform(min_resolution, max_resolution)
         )
-        self.applied_config["map_resolution_range"] = map_resolution
+        sampling.applied_overrides["map_resolution_range"] = map_resolution
 
         height, width = image_shape
         min_height = min(2, height)
@@ -432,13 +437,14 @@ class ElasticTransform(BaseDistortion):
         self.same_dxdy = same_dxdy
         self.noise_distribution = noise_distribution
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
         kernel_size = (17, 17) if self.approximate else (0, 0)
 
@@ -448,7 +454,7 @@ class ElasticTransform(BaseDistortion):
             self.sigma * map_resolution,
             same_dxdy=self.same_dxdy,
             kernel_size=kernel_size,
-            random_generator=self.random_generator,
+            random_generator=sampling.random_generator,
             noise_distribution=self.noise_distribution,
         )
 
@@ -574,28 +580,29 @@ class PiecewiseAffine(BaseDistortion):
         self.nb_cols_range = nb_cols_range
         self.absolute_scale = absolute_scale
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
-        nb_rows = np.clip(self.py_random.randint(*self.nb_rows_range), 2, None)
-        nb_cols = np.clip(self.py_random.randint(*self.nb_cols_range), 2, None)
-        scale = self.py_random.uniform(*self.scale_range)
+        nb_rows = np.clip(sampling.py_random.randint(*self.nb_rows_range), 2, None)
+        nb_cols = np.clip(sampling.py_random.randint(*self.nb_cols_range), 2, None)
+        scale = sampling.py_random.uniform(*self.scale_range)
 
-        self.applied_config["scale_range"] = scale
-        self.applied_config["nb_rows_range"] = int(nb_rows)
-        self.applied_config["nb_cols_range"] = int(nb_cols)
+        sampling.applied_overrides["scale_range"] = scale
+        sampling.applied_overrides["nb_rows_range"] = int(nb_rows)
+        sampling.applied_overrides["nb_cols_range"] = int(nb_cols)
 
         map_x, map_y = fgeometric.create_piecewise_affine_maps(
             image_shape=scaled_shape,
             grid=(nb_rows, nb_cols),
             scale=scale,
             absolute_scale=self.absolute_scale,
-            random_generator=self.random_generator,
+            random_generator=sampling.random_generator,
         )
         if map_x is None or map_y is None:
             map_y, map_x = np.meshgrid(
@@ -709,17 +716,18 @@ class OpticalDistortion(BaseDistortion):
         self.distort_range = distort_range
         self.mode = mode
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
-        k = self.py_random.uniform(*self.distort_range)
+        k = sampling.py_random.uniform(*self.distort_range)
 
-        self.applied_config["distort_range"] = k
+        sampling.applied_overrides["distort_range"] = k
 
         if k == 0:
             height, width = image_shape
@@ -850,22 +858,23 @@ class GridDistortion(BaseDistortion):
         self.distort_range = distort_range
         self.normalized = normalized
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         num_steps = min(self.num_steps, *scaled_shape)
 
-        steps_x = (1 + self.random_generator.uniform(*self.distort_range, size=num_steps + 1)).tolist()
-        steps_y = (1 + self.random_generator.uniform(*self.distort_range, size=num_steps + 1)).tolist()
+        steps_x = (1 + sampling.random_generator.uniform(*self.distort_range, size=num_steps + 1)).tolist()
+        steps_y = (1 + sampling.random_generator.uniform(*self.distort_range, size=num_steps + 1)).tolist()
 
         # distort_range is per-cell uniform bounds; record realized (min, max) of sampled distortions
         # (steps are stored as 1+sample, so subtract 1 to get the raw distortion values).
         all_steps = np.array(steps_x + steps_y) - 1.0
-        self.applied_config["distort_range"] = (float(all_steps.min()), float(all_steps.max()))
+        sampling.applied_overrides["distort_range"] = (float(all_steps.min()), float(all_steps.max()))
 
         if np.all(all_steps == 0):
             height, width = image_shape
@@ -1053,22 +1062,23 @@ class ThinPlateSpline(BaseDistortion):
         self.scale_range = scale_range
         self.num_control_points = num_control_points
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         height, width = params["shape"][:2]
         image_shape = (height, width)
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
 
         src_points = fgeometric.generate_control_points(self.num_control_points)
 
-        scale = self.py_random.uniform(*self.scale_range) / 10
+        scale = sampling.py_random.uniform(*self.scale_range) / 10
 
-        self.applied_config["scale_range"] = scale * 10
-        dst_points = src_points + self.random_generator.normal(
+        sampling.applied_overrides["scale_range"] = scale * 10
+        dst_points = src_points + sampling.random_generator.normal(
             0,
             scale,
             src_points.shape,
@@ -1193,23 +1203,24 @@ class WaterRefraction(BaseDistortion):
         self.wavelength_range = wavelength_range
         self.num_waves_range = num_waves_range
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
 
         img_size = min(scaled_height, scaled_width)
-        amplitude_frac = self.py_random.uniform(*self.amplitude_range)
-        wavelength_frac = self.py_random.uniform(*self.wavelength_range)
-        num_waves = self.py_random.randint(*self.num_waves_range)
+        amplitude_frac = sampling.py_random.uniform(*self.amplitude_range)
+        wavelength_frac = sampling.py_random.uniform(*self.wavelength_range)
+        num_waves = sampling.py_random.randint(*self.num_waves_range)
 
-        self.applied_config["amplitude_range"] = amplitude_frac
-        self.applied_config["wavelength_range"] = wavelength_frac
-        self.applied_config["num_waves_range"] = num_waves
+        sampling.applied_overrides["amplitude_range"] = amplitude_frac
+        sampling.applied_overrides["wavelength_range"] = wavelength_frac
+        sampling.applied_overrides["num_waves_range"] = num_waves
 
         amplitude = amplitude_frac * img_size
         wavelength = wavelength_frac * img_size
@@ -1219,7 +1230,7 @@ class WaterRefraction(BaseDistortion):
             amplitude,
             wavelength,
             num_waves,
-            self.random_generator,
+            sampling.random_generator,
         )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
@@ -1333,13 +1344,14 @@ class PixelSpread(BaseDistortion):
         )
         self.radius = radius
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
-        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape)
+        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
 
         row_coords, col_coords = np.meshgrid(
@@ -1348,7 +1360,7 @@ class PixelSpread(BaseDistortion):
             indexing="ij",
         )
         scaled_radius = max(1, round(self.radius * map_resolution))
-        offsets = self.random_generator.integers(
+        offsets = sampling.random_generator.integers(
             -scaled_radius,
             scaled_radius + 1,
             size=(scaled_height, scaled_width, 2),

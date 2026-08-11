@@ -22,7 +22,7 @@ target to its established channel-last NumPy layout once before the pipeline and
 postprocessing. This keeps arbitrary transform combinations usable without letting individual helpers call `.numpy()`
 or `torch.from_numpy()` themselves.
 
-The boundary continues to reject accelerators, autograd inputs, mixed spatial representations, and legacy terminal
+The boundary continues to reject accelerators, autograd inputs, mixed spatial representations, and terminal
 Tensor transforms. Bbox and keypoint processors use the same central bridge and return `float32` Tensor matrices at the
 public boundary. Tensor capabilities now choose the direct fast path; they no longer decide whether a valid `Compose`
 pipeline can accept Tensor input. `NoOp` accepts every supported Tensor target. `Flip3D` accepts Tensor `volume` and
@@ -149,6 +149,17 @@ The implementation keeps one transform hierarchy. The central bridge converts Te
 and restores Tensor output. The bridge owns conversion, layout, and ownership checks. No transform-specific helper may
 convert an annotation silently.
 
+### Invocation concurrency
+
+One configured `Compose` object supports overlapping `__call__()` and `run_with_trace()` invocations. Tensor route
+selection, bridge planning, preprocessing, parameter sampling, transform execution, applied-configuration capture,
+postprocessing, restoration, and cleanup belong to that call's `InvocationContext`.
+
+A short seed-reservation lock protects only the configured worker-stream counter. Each caller receives private Python
+and NumPy streams, so work after reservation can run concurrently. Default seeded results follow reservation order;
+`invocation_seed` makes a result independent of worker scheduling. Separate `DataLoader` worker processes still own
+separate Python pipeline objects.
+
 ### CPU-only boundary
 
 The first stage accepts CPU tensors with `requires_grad=False`.
@@ -159,8 +170,8 @@ The first stage accepts CPU tensors with `requires_grad=False`.
   caller's grad mode, RNG state, deterministic-algorithm setting, or default dtype.
 - `DataLoader(pin_memory=True)` and host-to-device transfer remain training-code responsibilities after `Compose`.
 
-Existing `ToTensorV2` and `ToTensor3D` remain explicit NumPy-to-Tensor terminal transforms. The CPU routing work does
-not change their legacy NumPy behavior. A Tensor-native pipeline does not contain either transform because its input is
+`ToTensorV2` and `ToTensor3D` remain explicit NumPy-to-Tensor terminal transforms. The CPU routing work does
+not change their NumPy behavior. A Tensor-native pipeline does not contain either transform because its input is
 already Tensor. Tensor capability validation reports a clear error when a Tensor-input pipeline still contains one and
 asks the caller to remove it.
 

@@ -28,6 +28,31 @@ A mismatch blocks completion.
    seeded-replay contracts unless the change explicitly documents a compatibility break.
 7. Run the project validation workflow after the final implementation.
 
+## Compose Execution Changes
+
+For `composition.py`, `transforms_interface.py`, or invocation-state work, keep configured graph policy separate from
+per-call state. Sampled parameters, applied records, processor sessions, Tensor bridge metadata, grayscale repair, and
+instance-binding bookkeeping belong to `InvocationContext`; a configured transform or `Compose` must not become a
+mailbox for any of them.
+
+- Reserve a default DataLoader seed only at the root. The reservation lock may cover the counter and configured RNG
+  source; array conversion, preprocessing, transform execution, tracing, and finalization must remain outside it.
+- Preserve one root prepare/finalize boundary. Nested `Compose` nodes run focused additional-target and shape checks
+  without opening a second processor, grayscale, Tensor, or restoration boundary.
+- Keep `BaseCompose._apply_child()` as the sole configured-graph dispatcher. `run_with_trace()` may attach an
+  invocation-local observer, but it must not introduce a second node-selection or execution traversal.
+- Schedule bbox/keypoint filtering from declared target effects. Image-only nodes must not pay for shape discovery,
+  clipping, filtering, or instance re-alignment; a final conversion must not repeat a filter already current for the
+  invocation.
+- Optimize repeated application before construction. `Compose.__init__()` may compile the graph and eagerly prepare
+  root-owned execution state when that removes work from the per-sample path. Report construction cost only as
+  context; do not reject a call-time speedup because pipeline construction becomes slower.
+- Keep `invocation_seed` sample-keyed and side-effect free with respect to the worker stream.
+- Measure root skip, no-op, probabilistic no-op, always-applied cheap transform, applied-configuration capture, trace,
+  Tensor, processor, and concurrent-call routes. Include the complete before/after cells in the handoff.
+- Exercise `tests/test_compose_reentrancy.py`, `tests/test_per_worker_seed.py`,
+  `tests/test_composition_tracing.py`, and the affected Tensor, processor, replay, and instance-binding suites.
+
 ## AlbumentationsX Boundary
 
 Keep transform policy, parameter sampling, target dispatch, and annotation semantics in AlbumentationsX.

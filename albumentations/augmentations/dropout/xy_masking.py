@@ -13,6 +13,7 @@ from pydantic.functional_validators import AfterValidator, BeforeValidator
 from typing_extensions import Self
 
 from albumentations.augmentations.dropout.transforms import BaseDropout, DropoutFillValue
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -169,10 +170,11 @@ class XYMasking(BaseDropout):
         self._mask_x_length_is_integer = type(mask_x_length_range[0]) is int
         self._mask_y_length_is_integer = type(mask_y_length_range[0]) is int
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, int | np.ndarray]:
         image_shape = params["shape"][:2]
 
@@ -183,27 +185,31 @@ class XYMasking(BaseDropout):
             image_shape,
             self.mask_x_length_range,
             axis="x",
+            sampling=sampling,
         )
         masks_y = self._generate_axis_masks(
             self.num_masks_y_range,
             image_shape,
             self.mask_y_length_range,
             axis="y",
+            sampling=sampling,
         )
 
         rectangles = masks_x + masks_y
         holes = np.array(rectangles) if rectangles else np.empty((0, 4), dtype=np.int32)
 
-        self.applied_config = {
-            "num_masks_x_range": len(masks_x),
-            "num_masks_y_range": len(masks_y),
-            "mask_x_length_range": self.mask_x_length_range,
-            "mask_y_length_range": self.mask_y_length_range,
-            "fill": self.fill,
-            "fill_mask": self.fill_mask,
-        }
+        sampling.applied_overrides.update(
+            {
+                "num_masks_x_range": len(masks_x),
+                "num_masks_y_range": len(masks_y),
+                "mask_x_length_range": self.mask_x_length_range,
+                "mask_y_length_range": self.mask_y_length_range,
+                "fill": self.fill,
+                "fill_mask": self.fill_mask,
+            },
+        )
 
-        return {"holes": holes, "seed": int(self.random_generator.integers(0, 2**32 - 1))}
+        return {"holes": holes, "seed": int(sampling.random_generator.integers(0, 2**32 - 1))}
 
     def _validate_integer_axis_ranges(self, image_shape: tuple[int, int]) -> None:
         if self._mask_x_length_is_integer and self.mask_x_length_range[1] > image_shape[1]:
@@ -221,6 +227,7 @@ class XYMasking(BaseDropout):
         image_shape: tuple[int, int],
         mask_length_range: MaskLengthRange,
         axis: Literal["x", "y"],
+        sampling: SamplingContext,
     ) -> list[tuple[int, int, int, int]]:
         first_length = mask_length_range[0]
         if type(first_length) is int:
@@ -229,6 +236,7 @@ class XYMasking(BaseDropout):
                 image_shape,
                 cast("tuple[int, int]", mask_length_range),
                 axis,
+                sampling,
             )
 
         return self._generate_relative_masks(
@@ -236,10 +244,11 @@ class XYMasking(BaseDropout):
             image_shape,
             cast("tuple[float, float]", mask_length_range),
             axis,
+            sampling,
         )
 
-    def _generate_mask_size(self, mask_length: tuple[int, int]) -> int:
-        return self.py_random.randint(*mask_length)
+    def _generate_mask_size(self, mask_length: tuple[int, int], sampling: SamplingContext) -> int:
+        return sampling.py_random.randint(*mask_length)
 
     def _generate_masks(
         self,
@@ -247,23 +256,24 @@ class XYMasking(BaseDropout):
         image_shape: tuple[int, int],
         max_length: tuple[int, int],
         axis: Literal["x", "y"],
+        sampling: SamplingContext,
     ) -> list[tuple[int, int, int, int]]:
         height, width = image_shape
         if max_length[1] == 0 or num_masks[1] == 0:
             return []
 
         masks = []
-        num_masks_integer = self.py_random.randint(num_masks[0], num_masks[1])
+        num_masks_integer = sampling.py_random.randint(num_masks[0], num_masks[1])
 
         for _ in range(num_masks_integer):
-            length = self._generate_mask_size(max_length)
+            length = self._generate_mask_size(max_length, sampling)
 
             if axis == "x":
-                x_min = self.py_random.randint(0, width - length)
+                x_min = sampling.py_random.randint(0, width - length)
                 y_min = 0
                 x_max, y_max = x_min + length, height
             else:  # axis == 'y'
-                y_min = self.py_random.randint(0, height - length)
+                y_min = sampling.py_random.randint(0, height - length)
                 x_min = 0
                 x_max, y_max = width, y_min + length
 
@@ -276,25 +286,26 @@ class XYMasking(BaseDropout):
         image_shape: tuple[int, int],
         max_length: tuple[float, float],
         axis: Literal["x", "y"],
+        sampling: SamplingContext,
     ) -> list[tuple[int, int, int, int]]:
         if max_length[1] == 0 or num_masks[1] == 0:
             return []
 
         masks = []
-        num_masks_integer = self.py_random.randint(num_masks[0], num_masks[1])
+        num_masks_integer = sampling.py_random.randint(num_masks[0], num_masks[1])
 
         height, width = image_shape
 
         dimension_size = width if axis == "x" else height
         for _ in range(num_masks_integer):
-            length = int(self.py_random.uniform(*max_length) * dimension_size)
+            length = int(sampling.py_random.uniform(*max_length) * dimension_size)
 
             if axis == "x":
-                x_min = self.py_random.randint(0, width - length)
+                x_min = sampling.py_random.randint(0, width - length)
                 y_min = 0
                 x_max, y_max = x_min + length, height
             else:  # axis == 'y'
-                y_min = self.py_random.randint(0, height - length)
+                y_min = sampling.py_random.randint(0, height - length)
                 x_min = 0
                 x_max, y_max = width, y_min + length
 

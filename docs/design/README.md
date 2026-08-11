@@ -41,13 +41,20 @@ Coverage contract for the shared transform-case registry and reusable target pro
 
 Canonical composition policy, JSON/YAML transport, and opt-in per-step trace paths, snapshots, and timing.
 
+## Compose Architecture
+
+### [Greenfield Compose Architecture](compose-greenfield-architecture.md)
+
+Execution architecture for compiling an immutable `Compose` graph at construction time so repeated training calls perform only
+sample-dependent work, with separate branch-free executors for ordinary, observed, trace, and replay routes.
+
 ## Active Design Work
 
 ### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
 
 Plan for making Torch a required dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
-the existing `Compose`. The future route planner may cross the representation boundary in either direction when the
-complete measured path does not regress.
+the existing `Compose`. The route planner may cross the representation boundary in either direction when the complete
+measured path does not regress.
 
 **Status**: In progress. The CPU Tensor boundary is implemented; capability routing and per-family Tensor paths remain
 planned.

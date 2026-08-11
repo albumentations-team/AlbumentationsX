@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import Any, Final
 
+import numpy as np
+import torch
+
 _UINT32_MODULUS: Final = 1 << 32
+_UINT64_MASK: Final = (1 << 64) - 1
+_SPLITMIX64_INCREMENT: Final = 0x9E3779B97F4A7C15
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,14 +26,8 @@ class _RuntimeRngContext:
 
 def _get_torch_worker_seed() -> int | None:
     """Return PyTorch's current DataLoader worker seed inside worker processes, or None when
-    PyTorch is unavailable or the call happens outside DataLoader workers.
+    the call happens outside DataLoader workers.
     """
-    try:
-        import torch
-        import torch.utils.data
-    except ImportError:
-        return None
-
     try:
         if torch.utils.data.get_worker_info() is None:
             return None
@@ -86,3 +86,40 @@ def _restore_runtime_rng_state(target: Any) -> None:
     target_state.setdefault("_base_seed", getattr(target, "seed", None))
     target_state.setdefault("_manual_random_state", False)
     target_state["_rng_context"] = None
+
+
+def _derive_invocation_seed(
+    *,
+    base_seed: int | None,
+    runtime_context: _RuntimeRngContext | None,
+    invocation_index: int,
+    random_generator: np.random.Generator | None,
+    py_random: random.Random | None,
+    manual: bool,
+) -> int:
+    """Derives a call-local seed from configured, worker, and reservation state, preserving manual and unseeded
+    generator contracts.
+
+    Automatic streams mix the configured base seed, active DataLoader worker seed, and monotonically reserved
+    invocation index. Explicit `set_random_state` streams reserve one seed from the user-supplied NumPy generator
+    under the owner's short seed lock. Unseeded automatic streams reserve entropy from the configured Python stream.
+    """
+    if manual:
+        if random_generator is None:
+            msg = "manual invocation seed derivation requires a NumPy generator"
+            raise RuntimeError(msg)
+        return int(random_generator.integers(0, _UINT64_MASK, dtype=np.uint64))
+
+    effective_seed = runtime_context.effective_seed if runtime_context is not None else base_seed
+    if effective_seed is None:
+        if py_random is None:
+            msg = "unseeded invocation seed derivation requires a Python random stream"
+            raise RuntimeError(msg)
+        return py_random.getrandbits(64)
+    if invocation_index == 0:
+        return effective_seed
+
+    value = (effective_seed + _SPLITMIX64_INCREMENT * (invocation_index + 1)) & _UINT64_MASK
+    value = ((value ^ (value >> 30)) * 0xBF58476D1CE4E5B9) & _UINT64_MASK
+    value = ((value ^ (value >> 27)) * 0x94D049BB133111EB) & _UINT64_MASK
+    return (value ^ (value >> 31)) & _UINT64_MASK

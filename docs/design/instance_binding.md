@@ -22,7 +22,7 @@ construction, not by per-transform discipline. Wrong states are unrepresentable;
 ## Structural contracts
 
 Both contracts are zero-cost at runtime: one comes from a `NewType` brand, the other from a
-single resync hook in `Compose`'s transform loop plus a mirror-drop in
+target-aware resync after bbox-affecting nodes plus a mirror-drop in
 `check_data_post_transform`.
 
 ### 1. Canonical 4-D mask shape (`StackedMasks4D`)
@@ -62,8 +62,8 @@ Returning a raw `np.ndarray` from any `apply_to_masks` override breaks CI.
 
 ### 2. Single positional-alignment invariant
 
-After every transform's `__call__` returns AND after `check_data_post_transform` runs, the
-following hold simultaneously when `instance_binding` is active:
+After every bbox-affecting transform has been finalized, the following hold simultaneously when
+`instance_binding` is active:
 
 1. `len(data["masks"]) == len(data["bboxes"])` (when both bound).
 2. Row `i` of masks describes the same instance as row `i` of bboxes.
@@ -71,9 +71,9 @@ following hold simultaneously when `instance_binding` is active:
    `data["bboxes"][:, -1]`. No orphan keypoints.
 4. Going into the next transform, `data["bboxes"][:, -1] == arange(N)`.
 
-Violating (1) or (3) raises `RuntimeError` immediately from `_resync_instance_ids`. In legacy
-mode (`Compose(..., strict_instance_invariant=False)`, kept for one minor version) it
-downgrades to a `UserWarning` and falls through to the previous permissive behavior.
+Violating (1) or (3) raises `RuntimeError` immediately from `_resync_instance_ids`.
+`strict_instance_invariant=False` instead emits a `UserWarning` and continues; new pipelines
+should keep the default, `True`.
 
 #### How the invariant is enforced (one chokepoint, three layers)
 
@@ -81,7 +81,7 @@ downgrades to a `UserWarning` and falls through to the previous permissive behav
 flowchart TB
   subgraph T [transform t.__call__]
     direction TB
-    GP[get_params_dependent_on_data computes shared keep_mask] --> AB[apply_to_bboxes uses keep_mask]
+    GP[sample_parameters computes shared keep_mask] --> AB[apply_to_bboxes uses keep_mask]
     GP --> AM[apply_to_masks uses same keep_mask]
     GP --> AK[apply_to_keypoints filters by surviving _instance_id]
     AB --> OUT[t OUT: positional 1:1 always]
@@ -91,7 +91,7 @@ flowchart TB
   OUT --> CHK[check_data_post_transform]
   subgraph CHK_DETAIL [check_data_post_transform]
     direction TB
-    PRE[Pre-filter realignment for legacy in-transform filters]
+    PRE[Realign transform-filtered targets]
     BPF[BboxProcessor.filter_with_keep_mask]
     MIRROR[Mirror keep_mask: masks positional, keypoints by surviving id]
     PRE --> BPF --> MIRROR
@@ -101,14 +101,13 @@ flowchart TB
   ASSERT --> NEXT[next transform]
 ```
 
-##### Layer 1 — shared survival decision in transforms that filter (Phase 2)
+##### Layer 1 — shared survival decision in transforms that filter
 
 Mosaic and CopyAndPaste compute a single `keep_mask` (or surviving id set) inside
-`get_params_dependent_on_data` and ferry it through `params` to all three apply methods. This
-removes the historical bug where `apply_to_bboxes` filtered N→K bboxes but `apply_to_masks`
-emitted all N masks.
+`sample_parameters` and ferry it through `params` to all three apply methods. This keeps every
+bound target aligned when a transform removes bbox rows.
 
-- `Mosaic.get_params_dependent_on_data` calls `_compute_mosaic_survival(...)` once. The
+- `Mosaic.sample_parameters` calls `_compute_mosaic_survival(...)` once. The
   resulting `keep_mask`, `surviving_instance_ids`, and `filtered_bboxes` are read by
   `apply_to_{bboxes,masks,keypoints}`.
 - A per-cell pre-pass `_filter_cell_masks_to_surviving_bboxes` runs *before*
@@ -116,13 +115,12 @@ emitted all N masks.
   surviving bboxes; otherwise concatenation across cells would produce orphan mask rows.
 - `CopyAndPaste.apply_to_bboxes` re-stamps `_bbox_instance_id = arange(N)` at output;
   `apply_to_keypoints` calls `_restamp_keypoint_ids` with the matching old→new table. The
-  legacy "sparse-id positional" layout no longer exists.
+  outputs use one dense positional id namespace.
 
-##### Layer 2 — mirror-drop in the processor layer (Phase 3 / 3b)
+##### Layer 2 — mirror-drop in the processor layer
 
 `BboxProcessor.filter_with_keep_mask` returns `(filtered_bboxes, keep_mask: np.ndarray[bool])`.
-The legacy `BboxProcessor.filter` and module-level `filter_bboxes` are kept as one-line
-wrappers around this primitive (public API preserved).
+`BboxProcessor.filter` and module-level `filter_bboxes` delegate to this primitive.
 
 `Compose.check_data_post_transform` delegates to `_bbox_filter_with_mirror` whenever the
 `BboxProcessor` is in `self.check_each_transform` and `instance_binding` is active. That
@@ -133,24 +131,23 @@ helper does two stages:
    point `len(masks) > len(bboxes)` and the surviving bboxes still carry their original
    `_bbox_instance_id` in the last column. That id is the row index into the still-id-indexed
    mask stack, so we fancy-index masks down to the surviving id set and drop keypoints whose
-   `_kp_instance_id` is no longer present. This collapses the legacy "id-indexed masks +
-   sparse ids" layout into the positional layout the rest of the method assumes.
+   `_kp_instance_id` is no longer present. This establishes the positional layout used by the
+   rest of the method.
 2. **BboxProcessor filter + post-filter mirror.** Standard `filter_with_keep_mask` on bboxes;
    mirror the resulting `keep_mask` positionally onto masks and by surviving id onto
    keypoints.
 
-##### Layer 3 — `_resync_instance_ids` (Phase 4)
+##### Layer 3 — `_resync_instance_ids`
 
 Once Layers 1 and 2 are in place, the resync's only job is to:
 
-1. Assert `len(masks) == len(bboxes)` (raises `RuntimeError` in strict mode, `UserWarning` in
-   legacy mode).
+1. Assert `len(masks) == len(bboxes)` (raises `RuntimeError` when strict, `UserWarning`
+   otherwise).
 2. Translate `_kp_instance_id` from old bbox ids to the new positional ids.
 3. Stamp `_bbox_instance_id = arange(N)` so the next transform sees a dense namespace.
 
-The pre-2.2.2 snapshot machinery (`_snapshot_pre_processor_bbox_ids`,
-`_mask_positions_for_surviving_ids`) is gone. The resync no longer encodes any recovery branch
-for dual mask layouts; that case is impossible by construction now.
+The resync does not encode recovery branches for alternative mask layouts; the positional
+layout is established before it runs.
 
 ### Consequence: a single repack path
 
@@ -212,9 +209,8 @@ Valid binding targets: `"mask"`, `"masks"`, `"bboxes"`, `"keypoints"`. Minimum 2
 `"masks"` are mutually exclusive.
 
 `strict_instance_invariant=True` (default) raises `RuntimeError` from `_resync_instance_ids`
-on contract violations. Setting it to `False` downgrades to a `UserWarning` and falls back to
-legacy permissive behavior; this escape hatch exists for one minor version so users with
-custom transforms that violate the row-alignment contract have time to migrate.
+on contract violations. Setting it to `False` downgrades the error to a `UserWarning`; use it
+only when a caller deliberately defers enforcement while updating a custom transform.
 
 ## Preprocessing (Unpack)
 
@@ -257,7 +253,7 @@ instance survival (driven by their parent bbox).
 
 If you write a `DualTransform` whose `apply_to_bboxes` drops rows (min-area culling,
 out-of-frame removal, etc.), your `apply_to_masks` MUST drop the corresponding rows. The
-canonical pattern is to compute the keep-mask once in `get_params_dependent_on_data` and ferry
+canonical pattern is to compute the keep-mask once in `sample_parameters` and ferry
 it to both apply methods via `params` (see `Mosaic` / `CopyAndPaste`).
 
 The default `BasicTransform.apply_to_masks` is total — it preserves alignment for transforms

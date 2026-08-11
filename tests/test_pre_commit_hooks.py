@@ -8,6 +8,7 @@ from tools import (
     check_internal_workspace,
     check_local_markdown_links,
     check_range_parameter_annotations,
+    check_removed_sampling_hooks,
     check_transform_init_args_override,
 )
 
@@ -72,6 +73,30 @@ def test_range_parameter_annotations_require_pair_types(tmp_path: Path) -> None:
     assert check_range_parameter_annotations.collect_errors((valid,)) == []
     assert check_range_parameter_annotations.collect_errors((invalid,)) == [
         f"{invalid}:2: `blur_range` must describe a pair: tuple[T, T], an optional pair form, or an axis-to-pair map",
+    ]
+
+
+def test_removed_sampling_hooks_rejects_only_method_declarations() -> None:
+    source = """
+class Current:
+    def sample_parameters(self, params, data, sampling):
+        return params
+
+
+class Obsolete:
+    def get_params(self):
+        return {}
+
+    async def get_params_dependent_on_data(self, params, data):
+        return params
+"""
+
+    assert check_removed_sampling_hooks.find_removed_sampling_hooks(source, "example.py") == [
+        ("example.py:8: Obsolete.get_params was removed; implement sample_parameters(params, data, sampling) instead"),
+        (
+            "example.py:11: Obsolete.get_params_dependent_on_data was removed; "
+            "implement sample_parameters(params, data, sampling) instead"
+        ),
     ]
 
 

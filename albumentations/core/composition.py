@@ -10,10 +10,12 @@ import contextlib
 import copy
 import inspect
 import random
+import threading
 import types
 import warnings
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from time import perf_counter_ns
 from typing import Any, ClassVar, Union, cast
 
@@ -84,6 +86,16 @@ _TRACE_STATUS_SKIPPED_REPLAY = "skipped_replay"
 _TRACE_STATUS_SKIPPED_SELECTION = "skipped_selection"
 
 _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
+
+
+@dataclass(frozen=True, slots=True)
+class _TensorCallState:
+    annotation_targets: tuple[tuple[str, str], ...] = ()
+    spatial_targets: tuple[tuple[str, str], ...] = ()
+    requires_numpy_bridge: bool = False
+
+
+_EMPTY_TENSOR_CALL_STATE = _TensorCallState()
 
 
 def _normalize_semantic_mask_label(label: Any, label_kind: str) -> int:
@@ -319,9 +331,6 @@ class BaseCompose(Serializable):
     check_each_transform: tuple[DataProcessor[Any], ...] | None = None
     main_compose: bool = True
     _tensor_capability_is_transparent: bool = True
-    _tensor_annotation_targets: tuple[tuple[str, str], ...] = ()
-    _tensor_spatial_targets: tuple[tuple[str, str], ...] = ()
-    _tensor_requires_numpy_bridge: bool = False
 
     @property
     def tensor_capability_is_transparent(self) -> bool:
@@ -1278,6 +1287,9 @@ class Compose(BaseCompose, HubMixin):
         - Pipeline modification operators (+, -, __radd__) preserve all Compose parameters including
           bbox_params, keypoint_params, additional_targets, and other configuration settings.
         - All operators return new Compose instances without modifying the original pipeline.
+        - Overlapping calls to one Compose instance are supported but execute serially. The complete invocation,
+          including RNG draws and tracing, runs under a reentrant lock, so acquisition order determines which caller
+          receives the next seeded random draw. Use independent Compose instances for parallel augmentation work.
 
     """
 
@@ -1311,6 +1323,7 @@ class Compose(BaseCompose, HubMixin):
             seed=seed,
             save_applied_params=save_applied_params,
         )
+        self._call_lock = threading.RLock()
 
         self.telemetry = telemetry
         self._resolve_processors(bbox_params, keypoint_params)
@@ -1342,6 +1355,21 @@ class Compose(BaseCompose, HubMixin):
 
         # Telemetry runs after nested composes so main_compose=False is already set on them.
         self._maybe_send_telemetry(telemetry)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Return pipeline state without its invocation lock so synchronization remains process-local across worker
+        serialization boundaries.
+        """
+        state = self.__dict__.copy()
+        state.pop("_call_lock", None)
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore a pickled pipeline with fresh RNG context and locking so runtime synchronization never crosses
+        process boundaries.
+        """
+        super().__setstate__(state)
+        self._call_lock = threading.RLock()
 
     def _set_semantic_mask_label_mappings_for_transforms(
         self,
@@ -1550,45 +1578,47 @@ class Compose(BaseCompose, HubMixin):
             KeyError: If positional arguments are provided.
 
         """
-        self._sync_runtime_random_state()
-
-        if args:
-            msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
-            raise KeyError(msg)
-
-        if self._additional_targets:
-            self._validate_additional_target_sources(data)
-        self._validate_tensor_inputs(data)
-
-        # Initialize applied_transforms only in top-level Compose if requested
-        if self.save_applied_params and self.main_compose:
-            data["applied_transforms"] = []
-
-        need_to_run = force_apply or self.py_random.random() < self.p
-        if not need_to_run:
-            self._clear_tensor_annotation_targets()
-            return data
-
+        self._call_lock.acquire()
         try:
-            self._bridge_tensor_data_to_numpy(data)
-            self.preprocess(data)
-            resync = self._resync_instance_ids if self.main_compose and self._instance_binding else None
-            for t in self.transforms:
-                data = t(**data)
-                self._track_transform_params(t, data)
-                data = self.check_data_post_transform(data)
-                if resync is not None:
-                    resync(data)
+            self._sync_runtime_random_state()
 
-            result = self.postprocess(data)
-            self._restore_tensor_spatial_data(result)
-            self._restore_tensor_annotations(result)
-            return result
+            if args:
+                msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
+                raise KeyError(msg)
+
+            if self._additional_targets:
+                self._validate_additional_target_sources(data)
+            tensor_call_state = self._validate_tensor_inputs(data)
+
+            # Initialize applied_transforms only in top-level Compose if requested
+            if self.save_applied_params and self.main_compose:
+                data["applied_transforms"] = []
+
+            need_to_run = force_apply or self.py_random.random() < self.p
+            if not need_to_run:
+                return data
+
+            try:
+                self._bridge_tensor_data_to_numpy(data, tensor_call_state)
+                self.preprocess(data, tensor_call_state)
+                resync = self._resync_instance_ids if self.main_compose and self._instance_binding else None
+                for t in self.transforms:
+                    data = t(**data)
+                    self._track_transform_params(t, data)
+                    data = self.check_data_post_transform(data)
+                    if resync is not None:
+                        resync(data)
+
+                result = self.postprocess(data)
+                self._restore_tensor_spatial_data(result, tensor_call_state)
+                self._restore_tensor_annotations(result, tensor_call_state)
+                return result
+            finally:
+                # Clear per-call unpack/repack flags if preprocess or a transform raised mid-call.
+                if self.main_compose and self._instance_binding:
+                    self._clear_instance_binding_call_state_if_pending()
         finally:
-            # Clear per-call unpack/repack flags if preprocess or a transform raised mid-call.
-            if self.main_compose and self._instance_binding:
-                self._clear_instance_binding_call_state_if_pending()
-            self._clear_tensor_annotation_targets()
+            self._call_lock.release()
 
     def run_with_trace(
         self,
@@ -1609,41 +1639,43 @@ class Compose(BaseCompose, HubMixin):
             TraceResult: Final targets and, unless observer-only mode was selected, trace records.
 
         """
-        options = TraceOptions() if options is None else options
-        self._validate_trace_options(options, data)
-        trace_context = _TraceContext(options)
-        self._sync_runtime_random_state()
-
-        if self._additional_targets:
-            self._validate_additional_target_sources(data)
-        self._validate_tensor_inputs(data)
-        if self.save_applied_params and self.main_compose:
-            data["applied_transforms"] = []
-
-        if not (force_apply or self.py_random.random() < self.p):
-            self._emit_skipped_trace_tree(self, trace_context, (), _TRACE_STATUS_SKIPPED_PROBABILITY)
-            self._clear_tensor_annotation_targets()
-            return trace_context.finish(data)
-
+        self._call_lock.acquire()
         try:
-            self._bridge_tensor_data_to_numpy(data)
-            self.preprocess(data)
-            data = self._run_traced_node_children(
-                self,
-                data,
-                trace_context,
-                (),
-                post_transform_container=self,
-            )
-            self._emit_composition_record(self, trace_context, (), _TRACE_STATUS_APPLIED)
-            result = self.postprocess(data)
-            self._restore_tensor_spatial_data(result)
-            self._restore_tensor_annotations(result)
-            return trace_context.finish(result)
+            options = TraceOptions() if options is None else options
+            self._validate_trace_options(options, data)
+            trace_context = _TraceContext(options)
+            self._sync_runtime_random_state()
+
+            if self._additional_targets:
+                self._validate_additional_target_sources(data)
+            tensor_call_state = self._validate_tensor_inputs(data)
+            if self.save_applied_params and self.main_compose:
+                data["applied_transforms"] = []
+
+            if not (force_apply or self.py_random.random() < self.p):
+                self._emit_skipped_trace_tree(self, trace_context, (), _TRACE_STATUS_SKIPPED_PROBABILITY)
+                return trace_context.finish(data)
+
+            try:
+                self._bridge_tensor_data_to_numpy(data, tensor_call_state)
+                self.preprocess(data, tensor_call_state)
+                data = self._run_traced_node_children(
+                    self,
+                    data,
+                    trace_context,
+                    (),
+                    post_transform_container=self,
+                )
+                self._emit_composition_record(self, trace_context, (), _TRACE_STATUS_APPLIED)
+                result = self.postprocess(data)
+                self._restore_tensor_spatial_data(result, tensor_call_state)
+                self._restore_tensor_annotations(result, tensor_call_state)
+                return trace_context.finish(result)
+            finally:
+                if self.main_compose and self._instance_binding:
+                    self._clear_instance_binding_call_state_if_pending()
         finally:
-            if self.main_compose and self._instance_binding:
-                self._clear_instance_binding_call_state_if_pending()
-            self._clear_tensor_annotation_targets()
+            self._call_lock.release()
 
     def _validate_trace_options(self, options: TraceOptions, data: dict[str, Any]) -> None:
         known_targets = set(data) | self._available_keys | set(AVAILABLE_KEYS)
@@ -1807,50 +1839,77 @@ class Compose(BaseCompose, HubMixin):
         finalize_leaf: bool,
         post_transform_container: "BaseCompose",
     ) -> dict[str, Any]:
+        with transform._call_lock:  # noqa: SLF001 - nested Compose shares the internal invocation boundary.
+            return self._run_traced_compose_impl(
+                transform,
+                data,
+                trace_context,
+                path,
+                force_apply=force_apply,
+                tracking_data=tracking_data,
+                event_data_factory=event_data_factory,
+                finalize_leaf=finalize_leaf,
+                post_transform_container=post_transform_container,
+            )
+
+    def _run_traced_compose_impl(
+        self,
+        transform: "Compose",
+        data: dict[str, Any],
+        trace_context: _TraceContext,
+        path: tuple[int, ...],
+        *,
+        force_apply: bool,
+        tracking_data: dict[str, Any] | None,
+        event_data_factory: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        finalize_leaf: bool,
+        post_transform_container: "BaseCompose",
+    ) -> dict[str, Any]:
         replay_compose = transform if isinstance(transform, ReplayCompose) else None
         if replay_compose is not None:
             data[replay_compose.save_key] = defaultdict(dict)
-        self._prepare_traced_compose_input(transform, data)
+        tensor_call_state = self._prepare_traced_compose_input(transform, data)
         if not (transform.replay_mode or force_apply or transform.py_random.random() < transform.p):
             self._emit_skipped_trace_tree(transform, trace_context, path, _TRACE_STATUS_SKIPPED_PROBABILITY)
             if replay_compose is not None:
                 self._finalize_traced_replay_compose(replay_compose, data)
             return data
-        try:
-            transform.preprocess(data)
-            data = self._run_traced_node_children(
-                transform,
-                data,
-                trace_context,
-                path,
-                tracking_data=tracking_data,
-                event_data_factory=event_data_factory,
-                finalize_leaf=finalize_leaf,
-                post_transform_container=transform,
-            )
-            result = transform.postprocess(data)
-            self._restore_traced_compose_tensor_annotations(transform, result)
-            if replay_compose is not None:
-                self._finalize_traced_replay_compose(replay_compose, result)
-            data = self._finalize_traced_leaf(result, post_transform_container)
-            self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
-            return data
-        finally:
-            Compose._clear_tensor_annotation_targets(transform)
+
+        transform.preprocess(data, tensor_call_state)
+        data = self._run_traced_node_children(
+            transform,
+            data,
+            trace_context,
+            path,
+            tracking_data=tracking_data,
+            event_data_factory=event_data_factory,
+            finalize_leaf=finalize_leaf,
+            post_transform_container=transform,
+        )
+        result = transform.postprocess(data)
+        self._restore_traced_compose_tensor_annotations(transform, result, tensor_call_state)
+        if replay_compose is not None:
+            self._finalize_traced_replay_compose(replay_compose, result)
+        data = self._finalize_traced_leaf(result, post_transform_container)
+        self._emit_composition_record(transform, trace_context, path, _TRACE_STATUS_APPLIED)
+        return data
 
     @staticmethod
-    def _prepare_traced_compose_input(transform: "Compose", data: dict[str, Any]) -> None:
+    def _prepare_traced_compose_input(transform: "Compose", data: dict[str, Any]) -> _TensorCallState:
         Compose._sync_runtime_random_state(transform)
         if transform.additional_targets:
             Compose._validate_additional_target_sources(transform, data)
         if any(isinstance(value, torch.Tensor) for value in data.values()):
-            Compose._validate_tensor_inputs(transform, data)
-        else:
-            Compose._clear_tensor_annotation_targets(transform)
+            return Compose._validate_tensor_inputs(transform, data)
+        return _EMPTY_TENSOR_CALL_STATE
 
     @staticmethod
-    def _restore_traced_compose_tensor_annotations(transform: "Compose", data: dict[str, Any]) -> None:
-        Compose._restore_tensor_annotations(transform, data)
+    def _restore_traced_compose_tensor_annotations(
+        transform: "Compose",
+        data: dict[str, Any],
+        tensor_call_state: _TensorCallState,
+    ) -> None:
+        Compose._restore_tensor_annotations(transform, data, tensor_call_state)
 
     @staticmethod
     def _finalize_traced_replay_compose(transform: "ReplayCompose", data: dict[str, Any]) -> None:
@@ -2178,7 +2237,7 @@ class Compose(BaseCompose, HubMixin):
                 msg = f"Additional target '{alias}' requires canonical target '{target}' to be present."
                 raise ValueError(msg)
 
-    def _validate_tensor_inputs(self, data: dict[str, Any]) -> None:
+    def _validate_tensor_inputs(self, data: dict[str, Any]) -> _TensorCallState:
         """Validate Tensor boundary contracts before Compose samples probability or parameters,
         ensuring each spatial target uses a single representation.
 
@@ -2189,7 +2248,6 @@ class Compose(BaseCompose, HubMixin):
         tensor_targets: list[tuple[str, str, torch.Tensor]] = []
         spatial_representations: set[str] = set()
         annotation_targets: list[tuple[str, str]] = []
-        self._clear_tensor_annotation_targets()
 
         for data_name, value in data.items():
             canonical_name = self._additional_targets.get(data_name, data_name)
@@ -2207,7 +2265,7 @@ class Compose(BaseCompose, HubMixin):
                 spatial_representations.add("numpy")
 
         if not tensor_targets:
-            return
+            return _EMPTY_TENSOR_CALL_STATE
 
         for data_name, canonical_name, value in tensor_targets:
             validate_tensor_input(value, data_name, canonical_name)
@@ -2218,19 +2276,20 @@ class Compose(BaseCompose, HubMixin):
                 "when Compose receives a Tensor image, masks, bboxes, and keypoints must also be Tensors",
             )
 
-        self._tensor_annotation_targets = tuple(annotation_targets)
-        self._tensor_spatial_targets = tuple(
-            (data_name, canonical_name) for data_name, canonical_name, _ in tensor_targets
-        )
+        spatial_targets = tuple((data_name, canonical_name) for data_name, canonical_name, _ in tensor_targets)
 
         tensor_image_inputs = tuple(
             (canonical_name, value)
             for _, canonical_name, value in tensor_targets
             if canonical_name not in TENSOR_ANNOTATION_TARGETS
         )
-        self._tensor_requires_numpy_bridge = not self._tensor_pipeline_supports_cpu_inputs(
-            self.transforms,
-            tensor_image_inputs,
+        return _TensorCallState(
+            annotation_targets=tuple(annotation_targets),
+            spatial_targets=spatial_targets,
+            requires_numpy_bridge=not self._tensor_pipeline_supports_cpu_inputs(
+                self.transforms,
+                tensor_image_inputs,
+            ),
         )
 
     def _tensor_pipeline_supports_cpu_inputs(
@@ -2305,7 +2364,11 @@ class Compose(BaseCompose, HubMixin):
         """
         self._sync_runtime_random_state()
 
-    def preprocess(self, data: Any) -> None:
+    def preprocess(
+        self,
+        data: Any,
+        tensor_call_state: _TensorCallState = _EMPTY_TENSOR_CALL_STATE,
+    ) -> None:
         """Preprocess input data before applying transforms. Validates shapes (if
         is_check_shapes), validates data keys (if strict), ensures contiguous, adds channels.
         """
@@ -2325,25 +2388,33 @@ class Compose(BaseCompose, HubMixin):
 
         # Add channel dimensions first, before processors run
         self._preprocess_arrays(data)
-        self._bridge_tensor_annotations_to_numpy(data)
+        self._bridge_tensor_annotations_to_numpy(data, tensor_call_state)
         self._preprocess_processors(data)
 
-    def _bridge_tensor_annotations_to_numpy(self, data: dict[str, Any]) -> None:
+    def _bridge_tensor_annotations_to_numpy(
+        self,
+        data: dict[str, Any],
+        tensor_call_state: _TensorCallState,
+    ) -> None:
         """Convert accepted Tensor bbox and keypoint matrices once for existing NumPy-only
         processors, keeping all public annotations Tensor at Compose entry and exit.
         """
-        for data_name, canonical_name in self._tensor_annotation_targets:
+        for data_name, canonical_name in tensor_call_state.annotation_targets:
             value = data.get(data_name)
             if isinstance(value, torch.Tensor):
                 data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
 
-    def _bridge_tensor_data_to_numpy(self, data: dict[str, Any]) -> None:
+    def _bridge_tensor_data_to_numpy(
+        self,
+        data: dict[str, Any],
+        tensor_call_state: _TensorCallState,
+    ) -> None:
         """Convert all Tensor spatial targets to NumPy once before a pipeline containing a transform without a direct
         Tensor route.
         """
-        if not self._tensor_requires_numpy_bridge:
+        if not tensor_call_state.requires_numpy_bridge:
             return
-        for data_name, canonical_name in self._tensor_spatial_targets:
+        for data_name, canonical_name in tensor_call_state.spatial_targets:
             value = data.get(data_name)
             if isinstance(value, torch.Tensor):
                 data[data_name] = tensor_to_numpy_spatial(value, canonical_name)
@@ -2554,30 +2625,33 @@ class Compose(BaseCompose, HubMixin):
 
         return data
 
-    def _restore_tensor_annotations(self, data: dict[str, Any]) -> None:
+    def _restore_tensor_annotations(
+        self,
+        data: dict[str, Any],
+        tensor_call_state: _TensorCallState,
+    ) -> None:
         """Restore Tensor bbox and keypoint matrices after NumPy processing so all spatial
         targets in the public Compose result remain Tensors.
         """
-        for data_name, canonical_name in self._tensor_annotation_targets:
+        for data_name, canonical_name in tensor_call_state.annotation_targets:
             value = data.get(data_name)
             if isinstance(value, np.ndarray):
                 data[data_name] = numpy_to_tensor_annotation(value, canonical_name)
 
-    def _restore_tensor_spatial_data(self, data: dict[str, Any]) -> None:
+    def _restore_tensor_spatial_data(
+        self,
+        data: dict[str, Any],
+        tensor_call_state: _TensorCallState,
+    ) -> None:
         """Convert NumPy spatial results back to public Tensor layouts after Compose finishes a pipeline using its
         central representation bridge.
         """
-        if not self._tensor_requires_numpy_bridge:
+        if not tensor_call_state.requires_numpy_bridge:
             return
-        for data_name, canonical_name in self._tensor_spatial_targets:
+        for data_name, canonical_name in tensor_call_state.spatial_targets:
             value = data.get(data_name)
             if isinstance(value, np.ndarray) and canonical_name not in TENSOR_ANNOTATION_TARGETS:
                 data[data_name] = numpy_to_tensor_spatial(value, canonical_name)
-
-    def _clear_tensor_annotation_targets(self) -> None:
-        self._tensor_annotation_targets = ()
-        self._tensor_spatial_targets = ()
-        self._tensor_requires_numpy_bridge = False
 
     def _filter_bound_bboxes_before_postprocess(self, data: dict[str, Any]) -> None:
         """Filter bound bboxes at the final boundary and mirror their keep mask before postprocessing removes internal
@@ -3744,13 +3818,14 @@ class ReplayCompose(Compose):
             dict[str, Any]: Dictionary with transformed data and replay information.
 
         """
-        kwargs[self.save_key] = defaultdict(dict)
-        result = super().__call__(force_apply=force_apply, **kwargs)
-        serialized = self.get_dict_with_id()
-        self.fill_with_params(serialized, result[self.save_key])
-        self.fill_applied(serialized)
-        result[self.save_key] = serialized
-        return result
+        with self._call_lock:
+            kwargs[self.save_key] = defaultdict(dict)
+            result = super().__call__(force_apply=force_apply, **kwargs)
+            serialized = self.get_dict_with_id()
+            self.fill_with_params(serialized, result[self.save_key])
+            self.fill_applied(serialized)
+            result[self.save_key] = serialized
+            return result
 
     def run_with_trace(
         self,
@@ -3763,13 +3838,14 @@ class ReplayCompose(Compose):
         configuration part of the saved augmentation payload.
 
         """
-        data[self.save_key] = defaultdict(dict)
-        trace_result = super().run_with_trace(options=options, force_apply=force_apply, **data)
-        serialized = self.get_dict_with_id()
-        self.fill_with_params(serialized, trace_result.data[self.save_key])
-        self.fill_applied(serialized)
-        trace_result.data[self.save_key] = serialized
-        return trace_result
+        with self._call_lock:
+            data[self.save_key] = defaultdict(dict)
+            trace_result = super().run_with_trace(options=options, force_apply=force_apply, **data)
+            serialized = self.get_dict_with_id()
+            self.fill_with_params(serialized, trace_result.data[self.save_key])
+            self.fill_applied(serialized)
+            trace_result.data[self.save_key] = serialized
+            return trace_result
 
     @staticmethod
     def replay(saved_augmentations: dict[str, Any], **kwargs: Any) -> dict[str, Any]:

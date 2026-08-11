@@ -78,6 +78,22 @@ dictionary. None of these runtime objects is serialized or retained in a DataLoa
 Tracing is off by default. `Compose.__call__` does not allocate a trace context, create records, call a callback, copy
 targets, or read a clock.
 
+## Concurrent invocation contract
+
+One configured `Compose` or `ReplayCompose` instance is reentrant through serialized execution. A process-local
+reentrant lock covers each complete `__call__()` and `run_with_trace()` invocation, including worker RNG
+synchronization, probability and parameter sampling, Tensor route selection, preprocessing, transform dispatch,
+processor work, tracing, restoration, replay finalization, and cleanup. Overlapping callers therefore observe results
+consistent with one serial order and cannot replace another call's grayscale, instance-binding, applied-parameter, or
+representation bookkeeping.
+
+This contract does not provide parallel augmentation from one pipeline object. Lock acquisition order determines
+which overlapping caller receives the next draw from a seeded shared RNG stream. Applications that require parallel
+CPU augmentation should use independent pipeline instances, as normal multi-process `DataLoader` workers do.
+
+The Tensor route plan is call-local rather than serialized policy or mutable pipeline state. Runtime locks are also
+excluded from pickle payloads and recreated after unpickling, so worker processes never share synchronization objects.
+
 ## Trace records and paths
 
 A `TraceRecord` contains:
@@ -127,6 +143,10 @@ include every public constructor field.
 `tests/test_composition_tracing.py` covers nested control flow, repeated selections, skipped nodes, snapshots,
 filtering, timing, observer-only mode, replay, RNG continuation, serialization-stable paths, and
 `save_applied_params` parity.
+
+`tests/test_compose_reentrancy.py` uses explicit thread events to force overlapping call attempts and covers normal
+execution, tracing, replay, Tensor/NumPy restoration, grayscale layout, applied parameters, instance binding, and the
+seeded serial order.
 
 When the relevant core code or either test changes, the scoped `Check Compose policy and tracing contracts`
 pre-commit hook runs both suites before a commit is created.

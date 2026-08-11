@@ -149,6 +149,16 @@ The implementation keeps one transform hierarchy. The central bridge converts Te
 and restores Tensor output. The bridge owns conversion, layout, and ownership checks. No transform-specific helper may
 convert an annotation silently.
 
+### Concurrent calls and Tensor route ownership
+
+Tensor route selection is local to one invocation. The supplied spatial and annotation target names and the decision
+to use the whole-pipeline NumPy bridge are never stored as mutable pipeline state.
+
+Overlapping calls to one `Compose` instance execute serially under the public Compose reentrancy contract. This keeps
+Tensor layout restoration, shared transform parameters, processors, tracing, and seeded RNG progress consistent with
+one serial order. It does not claim parallel Tensor augmentation; callers that need parallel CPU work use independent
+pipeline instances.
+
 ### CPU-only boundary
 
 The first stage accepts CPU tensors with `requires_grad=False`.

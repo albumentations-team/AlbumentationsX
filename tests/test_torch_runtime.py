@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from tools import torch_runtime
 
 
@@ -57,3 +59,18 @@ def test_install_cpu_torch_uses_the_shared_cpu_index(monkeypatch, tmp_path) -> N
         ],
     ]
     assert checked == [(interpreter, "cpu")]
+
+
+def test_resolve_wheel_expands_a_literal_glob_for_windows_shells(tmp_path) -> None:
+    wheel = tmp_path / "albumentationsx-2.4.0-py3-none-any.whl"
+    wheel.touch()
+
+    assert torch_runtime._resolve_wheel(tmp_path / "*.whl") == wheel
+
+
+def test_resolve_wheel_rejects_ambiguous_matches(tmp_path) -> None:
+    (tmp_path / "one.whl").touch()
+    (tmp_path / "two.whl").touch()
+
+    with pytest.raises(RuntimeError, match="Expected exactly one wheel"):
+        torch_runtime._resolve_wheel(tmp_path / "*.whl")

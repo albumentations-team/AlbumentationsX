@@ -340,8 +340,8 @@ def _check_torch_free_install_surfaces() -> list[str]:
     development_requirements = _read_text(DEVELOPMENT_REQUIREMENTS)
     if re.search(r"(?im)^\s*(?:torch|torchvision)\b", development_requirements):
         issues.append("requirements-dev.txt must not select Torch or TorchVision")
-    if "download.pytorch.org" in development_requirements:
-        issues.append("requirements-dev.txt must not select a PyTorch package index")
+    if re.search(r"(?im)^\s*--(?:extra-)?index-url\b", development_requirements):
+        issues.append("requirements-dev.txt must not select a package index")
 
     conda_metadata = _read_text(CONDA_RECIPE)
     run_dependencies = re.search(r"(?ms)^  run:\s*\n(.*?)(?=^\S|\Z)", conda_metadata)

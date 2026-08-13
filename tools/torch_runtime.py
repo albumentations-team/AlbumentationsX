@@ -134,8 +134,17 @@ def _run_import_smoke(interpreter: Path) -> None:
     )
 
 
+def _resolve_wheel(wheel: Path) -> Path:
+    wheels = sorted(wheel.parent.glob(wheel.name))
+    if len(wheels) != 1:
+        msg = f"Expected exactly one wheel matching {wheel}, found {len(wheels)}."
+        raise RuntimeError(msg)
+    return wheels[0]
+
+
 def verify_install_contract(wheel: Path, python_version: str, opencv_requirement: str) -> None:
     """Prove the Torch-free wheel state and the CPU-Torch import state from a clean environment."""
+    wheel = _resolve_wheel(wheel)
     with tempfile.TemporaryDirectory(prefix="albumentationsx-install-contract-") as temporary_directory:
         environment = Path(temporary_directory) / "environment"
         _run(["uv", "venv", "--python", python_version, str(environment)])

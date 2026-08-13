@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from tools.ci_matrix import TORCH_RUNTIME_JOBS
+from tools.ci_matrix import CI_FOUNDATION_SHA, TORCH_RUNTIME_JOBS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SETUP_ACTION = REPO_ROOT / ".github" / "actions" / "setup-ci" / "action.yml"
@@ -25,7 +25,9 @@ def test_setup_action_composes_tools_with_an_explicit_runtime_profile() -> None:
     assert action["inputs"]["runtime-profile"]["default"] == "none"
     assert "--group ci-torch-cpu" in text
     assert "cache-suffix: ${{ inputs.dependency-group }}-${{ inputs.runtime-profile }}" in text
-    assert "tools/torch_runtime.py check --expect cpu" in text
+    assert f"albumentations-team/ci-foundation/actions/setup-python-uv@{CI_FOUNDATION_SHA}" in text
+    assert f"albumentations-team/ci-foundation/actions/torch-cpu@{CI_FOUNDATION_SHA}" in text
+    assert "mode: verify" in text
     assert "CI_DEPENDENCY_GROUP: ${{ inputs.dependency-group }}" in text
     assert "ALBU_CI_RUNTIME_PROFILE=${CI_RUNTIME_PROFILE}" in text
 

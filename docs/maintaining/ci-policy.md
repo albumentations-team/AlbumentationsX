@@ -96,11 +96,14 @@ job or a missing required status is not.
 
 ## Purpose-specific environments
 
-CI jobs sync one locked tool group and one runtime profile through
-`.github/actions/setup-ci/action.yml`. The default `none` runtime does not
-install Torch. `torch-cpu` adds `ci-torch-cpu` in the same locked sync, verifies
-`torch.version.cuda is None`, rejects installed CUDA/NVIDIA distributions, and
-records the selected profile in environment evidence.
+CI jobs choose one locked tool group and one runtime profile through
+`.github/actions/setup-ci/action.yml`. That local action owns the AX dependency
+group mapping. It delegates Python and uv bootstrap to the pinned ci-foundation
+action, then runs the local locked sync. The default `none` runtime does not
+install Torch. `torch-cpu` adds `ci-torch-cpu` in the same locked sync and
+delegates verification to ci-foundation, which rejects CUDA and NVIDIA
+distributions without calling accelerator APIs. The local action records the
+selected profile in environment evidence.
 
 - `ci-test`: base pytest suite and optional test libraries;
 - `ci-quality`: Ruff, pre-commit, the isolated mypy hook, and repository contracts;
@@ -169,10 +172,12 @@ for non-draft, same-repository pull requests whose paths select source, tests,
 workflows, legal policy, or unknown high-risk changes. Ordinary Markdown and
 dependency-only changes do not invoke the model.
 
-The `pull_request_target` workflow checks out only the trusted base revision.
-Gemini receives pull-request metadata and diff as untrusted review data, has
-read-only repository tools, and has no shell or pull-request write token. A
-separate publisher job posts the one-day review artifact.
+The thin `pull_request_target` caller supplies the local trigger, cloud
+variables, and data-only review policy to the pinned ci-foundation reusable
+workflow. The foundation checks out only the trusted base revision. Gemini
+receives pull-request metadata and diff as untrusted review data, has read-only
+repository tools, and has no shell or pull-request write token. A separate
+publisher job posts the one-day review artifact.
 
 Configure these repository variables:
 
@@ -184,9 +189,11 @@ Configure these repository variables:
 | `ANTIGRAVITY_GCP_WIF_PROVIDER` | `projects/663083315901/locations/global/workloadIdentityPools/github-actions/providers/albumentationsx-pr-review` |
 
 The Workload Identity provider condition must match repository ID
-`1005218687`, owner ID `57894582`, event `pull_request_target`, base branch
-`main`, and workflow ref
-`albumentations-team/AlbumentationsX/.github/workflows/antigravity-pr-checks.yml@refs/heads/main`.
+`1005218687`, owner ID `57894582`, event `pull_request_target`, and base
+branch `main`. It must also match the caller workflow ref
+`albumentations-team/AlbumentationsX/.github/workflows/antigravity-pr-checks.yml@refs/heads/main`
+and the reusable-workflow claim
+`albumentations-team/ci-foundation/.github/workflows/antigravity-review.yml@2468af6e982545e2fd1d5ba4249f1b44154149fe`.
 
 ## Local validation and evidence
 

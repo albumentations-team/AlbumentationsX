@@ -50,12 +50,14 @@ sample-dependent work, with separate branch-free executors for ordinary, observe
 
 ## Active Design Work
 
-### [Greenfield Shared CI Foundation](ecosystem-ci-foundation-greenfield.md)
+### [Shared CI Foundation](https://github.com/albumentations-team/ci-foundation/blob/main/docs/architecture.md)
 
-Plan for moving Python/uv bootstrap, CPU-only Torch automation, and Antigravity review orchestration into one public,
-SHA-pinned repository while keeping dependency graphs, test policy, releases, legal checks, and deployments local.
+The public, SHA-pinned foundation owns Python and uv bootstrap, CPU-only Torch mechanics, and trusted Antigravity
+orchestration. AlbumentationsX keeps its dependency groups, test selection, release policy, legal checks, deployment,
+and project-specific review policy here.
 
-**Status**: Proposed. The shared `albumentations-team/ci-foundation` repository has not been created yet.
+**Status**: Implemented. The local CI profile action and Antigravity caller pin ci-foundation commit
+2468af6e982545e2fd1d5ba4249f1b44154149fe.
 
 ### [Greenfield Torch Dependency and CI Architecture](torch-dependency-and-ci-greenfield.md)
 

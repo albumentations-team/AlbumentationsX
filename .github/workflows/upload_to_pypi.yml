@@ -51,10 +51,12 @@ jobs:
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
       - name: Set up release identity runtime
-        uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+        uses: albumentations-team/ci-foundation/actions/setup-python-uv@2468af6e982545e2fd1d5ba4249f1b44154149fe
         with:
-          activate-environment: true
-          enable-cache: false
+          activate-environment: "true"
+          cache-dependency-glob: release-automation/uv.lock
+          cache-enabled: "false"
+          cache-suffix: release-identity
           python-version: "3.12"
       - name: Verify tag and compute released source identity
         id: metadata

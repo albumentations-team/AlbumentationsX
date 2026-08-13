@@ -48,7 +48,8 @@ flowchart LR
     Sync --> Environment["purpose-specific environment"]
 ```
 
-The shared setup action accepts this contract:
+The local AX CI-profile action accepts this contract and delegates Python/uv
+bootstrap and CPU-only Torch verification to the pinned ci-foundation actions:
 
 ```yaml
 with:
@@ -57,11 +58,10 @@ with:
   runtime-profile: torch-cpu
 ```
 
-`runtime-profile` defaults to `none`. `torch-cpu` adds `ci-torch-cpu` to the
-same locked `uv sync`, uses the explicit PyTorch CPU index, checks that
+`runtime-profile` defaults to `none`. `torch-cpu` adds `ci-torch-cpu` to
+the same locked `uv sync`. The foundation verification action checks that
 `torch.version.cuda is None`, rejects installed `cuda*` and `nvidia-*`
-distributions, and records the selected profile in the job environment.
-Cache keys include both axes.
+distributions, and records no accelerator state. Cache keys include both axes.
 
 ## Package and contributor contracts
 
@@ -115,24 +115,25 @@ imports package code must likewise select `torch-cpu`.
 
 ## Clean-wheel contract
 
-`tools/torch_runtime.py install-contract` is the one cross-platform clean
-install check used by PR smoke jobs and release preflight. It performs this
-state machine in a temporary virtual environment:
+`tools/install_contract.py` owns the package-specific half of the
+cross-platform clean install check used by PR smoke jobs and release preflight.
+It performs this state machine in a temporary virtual environment:
 
 1. Install the built AlbumentationsX wheel and one OpenCV distribution.
 2. Verify that Torch and CUDA/NVIDIA distributions are absent.
 3. Verify that importing AlbumentationsX fails with the documented
    missing-Torch guidance.
-4. Install the validated Torch floor from the PyTorch CPU index.
-5. Verify the CPU-only runtime contract.
+4. The ci-foundation Torch action installs the validated Torch floor from the
+   PyTorch CPU index.
+5. The same action verifies the CPU-only runtime contract.
 6. Import AlbumentationsX and run a small NumPy transform.
 
-The tool owns subprocess invocation and assertions. Workflows do not encode
-shell inversions, platform-specific venv paths, or inline Torch installs.
-Nightly lower-bound tests use the same tool to add CPU Torch after their exact
-minimum dependencies are installed. ASV creates its own isolated benchmark
-environment, so its configuration installs the same Torch requirement from the
-same CPU index.
+The local tool owns wheel behavior assertions and platform-specific venv paths;
+ci-foundation owns Torch installation and verification. Workflows do not encode
+inline Torch installs. Nightly lower-bound tests call the same foundation action
+after their exact minimum dependencies are installed. ASV creates its own
+isolated benchmark environment, so its configuration installs the same Torch
+requirement from the same CPU index.
 
 ## Permanent verification
 

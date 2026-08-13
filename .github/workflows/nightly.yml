@@ -77,12 +77,13 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-    - name: Install uv and Python 3.10
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Install shared Python and uv bootstrap
+      uses: albumentations-team/ci-foundation/actions/setup-python-uv@2468af6e982545e2fd1d5ba4249f1b44154149fe
       with:
-        enable-cache: true
-        python-version: "3.10"
         activate-environment: true
+        cache-dependency-glob: pyproject.toml
+        cache-suffix: nightly-lower-bound
+        python-version: "3.10"
     - name: Install declared minimum runtime dependencies
       run: >
         uv pip install -e .
@@ -94,7 +95,11 @@ jobs:
         hypothesis
         pytest
     - name: Install CPU-only Torch runtime
-      run: python tools/torch_runtime.py install-cpu --python python
+      uses: albumentations-team/ci-foundation/actions/torch-cpu@2468af6e982545e2fd1d5ba4249f1b44154149fe
+      with:
+        mode: install
+        python: python
+        requirement: "torch>=2.13.0"
     - name: Prepare nightly evidence directory
       run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Collect lower-bound environment evidence

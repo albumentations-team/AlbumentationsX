@@ -51,6 +51,7 @@ RELEASE_CANDIDATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-cand
 SECURITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "security.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
 SETUP_CI_ACTION = REPO_ROOT / ".github" / "actions" / "setup-ci" / "action.yml"
+CI_FOUNDATION_SHA = "2468af6e982545e2fd1d5ba4249f1b44154149fe"
 CONDA_RECIPE = REPO_ROOT / "conda.recipe" / "meta.yaml"
 DEVELOPMENT_REQUIREMENTS = REPO_ROOT / "requirements-dev.txt"
 CODEQL_ACTIONS_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql-actions.yml"
@@ -443,11 +444,13 @@ def _check_setup_ci_action() -> list[str]:
         return [*issues, f"{SETUP_CI_ACTION} runs.steps must be a list"]
     action_text = _read_text(SETUP_CI_ACTION)
     required_contracts = (
+        f"albumentations-team/ci-foundation/actions/setup-python-uv@{CI_FOUNDATION_SHA}",
+        f"albumentations-team/ci-foundation/actions/torch-cpu@{CI_FOUNDATION_SHA}",
         "cache-suffix: ${{ inputs.dependency-group }}-${{ inputs.runtime-profile }}",
         "ci-benchmark|ci-package|ci-quality|ci-release|ci-security|ci-test|ci-types",
         "torch-cpu) runtime_group=(--group ci-torch-cpu)",
         "Unknown CI runtime profile",
-        "tools/torch_runtime.py check --expect cpu",
+        "mode: verify",
         "ALBU_CI_RUNTIME_PROFILE=${CI_RUNTIME_PROFILE}",
     )
     issues.extend(
@@ -471,7 +474,7 @@ def _check_expected_torch_runtime_jobs(expected_jobs: dict[tuple[Path, str], str
             continue
         inputs = _setup_ci_inputs(job)
         if inputs is None:
-            issues.append(f"{path} job {job_id!r} must use the shared setup-ci action")
+            issues.append(f"{path} job {job_id!r} must use the local dependency-profile action")
             continue
         if inputs.get("dependency-group") != expected_group:
             issues.append(
@@ -509,7 +512,9 @@ def _check_lower_bound_torch_runtime() -> list[str]:
     nightly_lower_bound = _workflow_jobs(NIGHTLY_WORKFLOW).get("lower_bound_dependencies")
     if not isinstance(nightly_lower_bound, dict):
         issues.append(f"{NIGHTLY_WORKFLOW} is missing lower_bound_dependencies")
-    elif "tools/torch_runtime.py install-cpu --python python" not in _workflow_job_run_text(nightly_lower_bound):
+    elif f"albumentations-team/ci-foundation/actions/torch-cpu@{CI_FOUNDATION_SHA}" not in _read_text(
+        NIGHTLY_WORKFLOW,
+    ):
         issues.append(f"{NIGHTLY_WORKFLOW} lower_bound_dependencies must install the shared CPU Torch runtime")
     return issues
 
@@ -519,7 +524,7 @@ def _check_workflow_torch_cleanup() -> list[str]:
     for path in _workflow_files():
         workflow_text = _read_text(path)
         if re.search(r"(?:uv |python -m )?pip install[^\n]*torch", workflow_text, flags=re.IGNORECASE):
-            issues.append(f"{path} must use tools/torch_runtime.py instead of installing Torch inline")
+            issues.append(f"{path} must use the ci-foundation Torch action instead of installing Torch inline")
     return issues
 
 
@@ -632,6 +637,8 @@ def _check_workflow_job_timeouts() -> list[str]:
             if not isinstance(job, dict):
                 issues.append(f"{path} job {job_name!r} is not a YAML mapping")
                 continue
+            if "uses" in job:
+                continue
             timeout = job.get("timeout-minutes")
             if not isinstance(timeout, int):
                 issues.append(f"{path} job {job_name!r} is missing integer timeout-minutes")
@@ -715,7 +722,7 @@ def _check_nightly_workflow() -> list[str]:
                 "environment-optional-extras.json",
                 "dependency-group: ci-test",
                 "runtime-profile: torch-cpu",
-                "tools/torch_runtime.py install-cpu --python python",
+                f"albumentations-team/ci-foundation/actions/torch-cpu@{CI_FOUNDATION_SHA}",
                 "python -m tools.ci_shard select",
                 '-m "not pytorch"',
                 "-m pytorch",

@@ -41,7 +41,7 @@ relevant checks. These are the normal profiles:
 
 | Changed paths | Required work | Work intentionally skipped |
 | --- | --- | --- |
-| Ordinary Markdown | Changed-file Markdown hooks | pytest, typing, packaging, security audits |
+| Ordinary Markdown | Changed-file Markdown hooks; CPU runtime when the transform-table generator runs | pytest, typing, packaging, security audits |
 | CI policy Markdown | Markdown hooks and repository contracts | product pytest |
 | Runtime source | Ruff, mypy, Pyrefly, contracts, full 3 × 5 compatibility, one coverage lane | package builds and workflow audit |
 | Isolated test module | Changed module on the primary and OS/version boundary lanes | full product matrix |
@@ -114,9 +114,11 @@ records the selected profile in environment evidence.
 
 The contributor-facing `dev` group includes tools but no Torch runtime. CI must
 not sync the broad `dev` group. Package builds, dependency audits, source legal
-checks, Markdown checks, and static documentation work use `none`. A clean-wheel
-install contract first proves the Torch-free error and then installs the shared
-CPU profile before importing AlbumentationsX.
+checks, link-only Markdown checks, and static documentation work use `none`.
+The Markdown leaf selects `torch-cpu` because its transform-table generator
+imports AlbumentationsX. A clean-wheel install contract first proves the
+Torch-free error and then installs the shared CPU profile before importing
+AlbumentationsX.
 
 ## ASV performance evidence
 

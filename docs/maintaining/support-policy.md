@@ -61,8 +61,8 @@ The `headless` extra is the default runtime path. The `contrib-headless`,
 smoke tests. Torch is a soft-required runtime dependency: the base install does
 not select a CPU, CUDA, or MPS build, while importing `albumentations` requires
 an installed Torch runtime. CI jobs that import AlbumentationsX explicitly
-select the CPU-only profile; static, packaging, audit, and static-documentation
-jobs do not select Torch. The `pyvips` extra is scheduled-only when binary
+select the CPU-only profile; link-only static, packaging, audit, and
+static-documentation jobs do not select Torch. The `pyvips` extra is scheduled-only when binary
 availability is stable.
 
 ## Retiring Support

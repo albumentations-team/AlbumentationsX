@@ -94,6 +94,7 @@ def test_coverage_and_pytorch_are_not_duplicated_across_matrix_cells() -> None:
 
 def test_every_importing_pr_job_explicitly_selects_cpu_torch() -> None:
     expected_groups = {
+        "markdown": "ci-quality",
         "contracts": "ci-quality",
         "compatibility": "ci-test",
         "coverage": "ci-test",

@@ -100,7 +100,7 @@ who wants the CI runtime adds `--group ci-torch-cpu` explicitly.
 
 | Job class | Tool group | Runtime profile |
 | --- | --- | --- |
-| Markdown, lint, typing, package, audit, legal, and static docs | matching tool group | `none` |
+| Link-only Markdown, lint, typing, package, audit, legal, and static docs | matching tool group | `none` |
 | Repository contracts | `ci-quality` | `torch-cpu` |
 | Compatibility, coverage, primary, targeted, and Tensor tests | `ci-test` | `torch-cpu` |
 | ASV evidence and timing | `ci-benchmark` | `torch-cpu` |
@@ -108,9 +108,10 @@ who wants the CI runtime adds `--group ci-torch-cpu` explicitly.
 | Lower-bound test environment | explicit lower bounds | CPU runtime tool |
 | Autodoc, doctests, executed examples, and notebooks | docs tool group | `torch-cpu` |
 
-The current repository has no executed documentation workflow. When one is
-added, importing package code requires `torch-cpu`; Markdown and link-only
-builds remain `none`.
+The PR Markdown job runs the generated transform-table check, which imports
+package code and therefore selects `torch-cpu`. Link-only Markdown and static
+documentation work remain `none`. Any standalone documentation workflow that
+imports package code must likewise select `torch-cpu`.
 
 ## Clean-wheel contract
 
@@ -161,7 +162,7 @@ The architecture is correct when all of the following remain true:
 - importing without Torch gives the documented error, and importing with CPU,
   CUDA, or MPS Torch does not initialize an accelerator;
 - package-importing CI jobs use CPU Torch and report no CUDA/NVIDIA packages;
-- static CI and static documentation work stay Torch-free;
+- non-importing CI and static documentation work stay Torch-free;
 - package smoke validates both states from a clean wheel; and
 - the CI matrix validator, workflow tests, install contract, and selected PR
   checks pass at the same head SHA.

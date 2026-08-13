@@ -165,6 +165,20 @@ def test_move_tone_curve_uint8_per_channel_golden_vector() -> None:
     np.testing.assert_array_equal(result, expected)
 
 
+@pytest.mark.parametrize("shape", [(8, 8, 1), (2, 8, 8, 1)])
+def test_move_tone_curve_uint8_per_channel_preserves_channel_dimension(shape: tuple[int, ...]) -> None:
+    image = np.arange(np.prod(shape), dtype=np.uint8).reshape(shape)
+    low_y = np.array([0.1], dtype=np.float64)
+    high_y = np.array([0.9], dtype=np.float64)
+
+    result = fpixel.move_tone_curve(image, low_y, high_y, num_channels=1)
+    expected = fpixel.move_tone_curve(image, 0.1, 0.9, num_channels=1)
+
+    np.testing.assert_array_equal(result, expected)
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize(
     ("low_y", "high_y"),

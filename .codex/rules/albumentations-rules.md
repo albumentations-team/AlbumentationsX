@@ -58,6 +58,10 @@ always_apply: true
   and must also pass the NumPy-Compose-plus-terminal-conversion versus Tensor-Compose model-ready-output benchmark.
   Run `DataLoader`/collation benchmarks for shared Compose, bridge, planner, batching, and milestone changes; do not
   require them in every isolated transform-family pull request.
+- For Torch packaging, dependency-profile, or CI setup work, follow
+  `docs/design/torch-dependency-and-ci-greenfield.md`. Package metadata must not select Torch or TorchVision. CI and
+  documentation jobs that import AlbumentationsX must request the shared CPU-only runtime profile explicitly; static
+  jobs remain Torch-free.
 - After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
   complete when the environment can support it.
 

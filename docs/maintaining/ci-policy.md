@@ -41,12 +41,12 @@ relevant checks. These are the normal profiles:
 
 | Changed paths | Required work | Work intentionally skipped |
 | --- | --- | --- |
-| Ordinary Markdown | Changed-file Markdown hooks | pytest, typing, packaging, security audits |
+| Ordinary Markdown | Changed-file Markdown hooks; CPU runtime when the transform-table generator runs | pytest, typing, packaging, security audits |
 | CI policy Markdown | Markdown hooks and repository contracts | product pytest |
 | Runtime source | Ruff, mypy, Pyrefly, contracts, full 3 × 5 compatibility, one coverage lane | package builds and workflow audit |
 | Isolated test module | Changed module on the primary and OS/version boundary lanes | full product matrix |
 | Shared pytest infrastructure | Full 3 × 5 compatibility | unrelated package and workflow policy jobs |
-| PyTorch source or tests | Dedicated CPU-only PyTorch job plus relevant base checks | Torch installation in ordinary compatibility jobs |
+| PyTorch source or tests | Dedicated CPU-only PyTorch job plus relevant base checks | CUDA or MPS Torch installation in CI |
 | Dependency metadata or lockfile | Primary suite, PyTorch, dependency audit, legal/package checks, clean install matrix | ASV timing comparison |
 | Packaging or legal inputs | Source legal verification, wheel/sdist verification, metadata check, clean installs when relevant | product compatibility matrix |
 | `.github/**` | Repository contracts and `zizmor` | product pytest unless the PR workflow/router itself changed |
@@ -66,9 +66,10 @@ Runtime changes retain every supported operating-system and Python pair:
 - Python 3.10, 3.11, 3.12, 3.13, and 3.14;
 - the locked `ci-test` dependency profile.
 
-Compatibility jobs do not collect coverage and do not install PyTorch. Branch
-coverage runs once on Ubuntu and Python 3.12. PyTorch-marked tests run once in a
-dedicated CPU-only environment.
+Compatibility jobs do not collect coverage. Every pytest lane explicitly uses
+the CPU-only Torch runtime because pytest imports `tests/conftest.py` before it
+applies the `not pytorch` marker. Branch coverage runs once on Ubuntu and Python
+3.12. PyTorch-marked tests run once in the same CPU-only runtime profile.
 
 Windows 3.11, 3.12, and 3.13 are split into two duration-balanced test-file
 shards because the measured baseline exceeded two minutes. The committed
@@ -95,21 +96,29 @@ job or a missing required status is not.
 
 ## Purpose-specific environments
 
-CI jobs sync one locked dependency group through
-`.github/actions/setup-ci/action.yml`:
+CI jobs sync one locked tool group and one runtime profile through
+`.github/actions/setup-ci/action.yml`. The default `none` runtime does not
+install Torch. `torch-cpu` adds `ci-torch-cpu` in the same locked sync, verifies
+`torch.version.cuda is None`, rejects installed CUDA/NVIDIA distributions, and
+records the selected profile in environment evidence.
 
 - `ci-test`: base pytest suite and optional test libraries;
 - `ci-quality`: Ruff, pre-commit, the isolated mypy hook, and repository contracts;
 - `ci-types`: Pyrefly and standalone typing tools;
-- `ci-pytorch`: base test dependencies before the CPU-only Torch install;
 - `ci-security`: pip-audit and zizmor;
 - `ci-package`: build, twine, and legal verifier tests;
 - `ci-benchmark`: ASV;
 - `ci-release`: version-bump preflight, final distributions, release evidence,
   and bundle tooling.
+- `ci-torch-cpu`: the one validated CPU-only Torch floor and package index.
 
-The contributor-facing `dev` group includes all of these capabilities plus
-normal PyTorch packages. CI must not sync the broad `dev` group.
+The contributor-facing `dev` group includes tools but no Torch runtime. CI must
+not sync the broad `dev` group. Package builds, dependency audits, source legal
+checks, link-only Markdown checks, and static documentation work use `none`.
+The Markdown leaf selects `torch-cpu` because its transform-table generator
+imports AlbumentationsX. A clean-wheel install contract first proves the
+Torch-free error and then installs the shared CPU profile before importing
+AlbumentationsX.
 
 ## ASV performance evidence
 

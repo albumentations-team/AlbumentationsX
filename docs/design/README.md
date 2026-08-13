@@ -50,9 +50,16 @@ sample-dependent work, with separate branch-free executors for ordinary, observe
 
 ## Active Design Work
 
+### [Greenfield Torch Dependency and CI Architecture](torch-dependency-and-ci-greenfield.md)
+
+Plan for keeping Torch out of package metadata while making every import-capable CI and documentation job request the
+shared CPU-only runtime profile explicitly.
+
+**Status**: Implemented. The repository uses explicit `none` and `torch-cpu` runtime profiles.
+
 ### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
 
-Plan for making Torch a required dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
+Plan for making Torch a soft-required runtime dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
 the existing `Compose`. The route planner may cross the representation boundary in either direction when the complete
 measured path does not regress.
 

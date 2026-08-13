@@ -2,7 +2,8 @@
 
 **Status:** In progress
 
-**Decision:** `torch` becomes a required dependency. The existing `Compose` accepts both NumPy arrays and CPU
+**Decision:** `torch` becomes a soft-required runtime dependency. Users install a CPU, CUDA, or MPS build before
+installing AlbumentationsX. The existing `Compose` accepts both NumPy arrays and CPU
 `torch.Tensor` values. Every valid Tensor pipeline returns Tensor output. Before transform parameters are sampled,
 `Compose` chooses one representation for the entire pipeline: direct Tensor execution when every selectable child
 supports the supplied Tensor targets, otherwise one Tensor-to-NumPy bridge before the pipeline and one NumPy-to-Tensor
@@ -15,7 +16,7 @@ without rebuilding and timing a complete loader for every matrix cell.
 
 ## Current implementation status
 
-The repository is in the foundation stage. `torch` is now a required dependency. `Compose` accepts every validated CPU
+The repository is in the foundation stage. Public imports require an installed `torch` runtime. `Compose` accepts every validated CPU
 Tensor pipeline and returns Tensor output. If every selectable transform supports the supplied Tensor targets, the
 pipeline runs directly on Tensor values. If any transform lacks that direct route, `Compose` converts every spatial
 target to its established channel-last NumPy layout once before the pipeline and restores Tensor layouts once after
@@ -310,13 +311,13 @@ not an implicit fallback hidden inside a helper.
 
 ### Phase 0 — dependency and baselines
 
-1. Add the validated Torch floor to runtime dependencies. Keep TorchVision optional.
+1. Declare the validated Torch floor only in the CPU-only CI dependency groups; package installation stays independent.
 2. Update lockfile, CI, platform/Python support checks, SBOM/security inputs, and environment reporting.
 3. Measure baseline variance on a stable Linux x86-64 machine. Calibrate a repeatability threshold no larger than 1%.
 4. Add the route-result JSON schema: environment, input representation, transform IDs, selected route, every bridge,
    raw samples, correctness result, memory result, and decision.
 
-Exit: a default install includes Torch, and the benchmark runner can distinguish a real regression from noise.
+Exit: the CPU CI environment includes Torch, and the benchmark runner can distinguish a real regression from noise.
 
 ### Phase 1 — prove the complete Compose Tensor lifecycle once
 
@@ -411,7 +412,7 @@ unrelated migration work.
 
 The CPU program is complete when:
 
-- Torch is a required dependency on supported platforms;
+- public imports require an installed Torch runtime on supported platforms;
 - `Compose` accepts every valid declared CPU Tensor pipeline and returns Tensor output for Tensor input;
 - `Compose` selects either direct Tensor execution or the whole-pipeline NumPy route before parameter sampling;
 - every accepted route has permanent correctness tests and full per-cell performance evidence;

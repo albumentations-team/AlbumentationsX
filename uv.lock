@@ -91,51 +91,10 @@ text = [
 ci-benchmark = [
     { name = "asv" },
     { name = "opencv-python-headless" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version < '3.15' and sys_platform == 'darwin'" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version >= '3.15' or sys_platform != 'darwin'" },
-]
-ci-contracts = [
-    { name = "defusedxml" },
-    { name = "google-docstring-parser" },
-    { name = "hypothesis" },
-    { name = "opencv-python-headless" },
-    { name = "packaging" },
-    { name = "pillow" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "ruff" },
-    { name = "tomli" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version < '3.15' and sys_platform == 'darwin'" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version >= '3.15' or sys_platform != 'darwin'" },
 ]
 ci-package = [
     { name = "pytest" },
     { name = "twine" },
-]
-ci-pytorch = [
-    { name = "albu-spec" },
-    { name = "deepdiff" },
-    { name = "defusedxml" },
-    { name = "eval-type-backport" },
-    { name = "huggingface-hub" },
-    { name = "hypothesis" },
-    { name = "opencv-python-headless" },
-    { name = "pillow" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "pytest-randomly" },
-    { name = "pytest-xdist" },
-    { name = "pytz" },
-    { name = "pyvips", extra = ["binary"] },
-    { name = "requests" },
-    { name = "scikit-image", version = "0.25.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-image", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "tomli" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version < '3.15' and sys_platform == 'darwin'" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version >= '3.15' or sys_platform != 'darwin'" },
 ]
 ci-quality = [
     { name = "defusedxml" },
@@ -203,6 +162,10 @@ ci-test = [
     { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "tomli" },
 ]
+ci-torch-cpu = [
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version < '3.15' and sys_platform == 'darwin'" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version >= '3.15' or sys_platform != 'darwin'" },
+]
 ci-types = [
     { name = "mypy" },
     { name = "opencv-python-headless" },
@@ -241,8 +204,6 @@ dev = [
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "tomli" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version < '3.15' and sys_platform == 'darwin'" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version >= '3.15' or sys_platform != 'darwin'" },
     { name = "twine" },
     { name = "types-pyyaml" },
     { name = "types-setuptools" },
@@ -273,46 +234,10 @@ provides-extras = ["contrib", "contrib-headless", "gui", "headless", "hub", "pil
 ci-benchmark = [
     { name = "asv" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
-    { name = "torch", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cpu" },
-]
-ci-contracts = [
-    { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "google-docstring-parser", specifier = ">=0.0.11" },
-    { name = "hypothesis", specifier = ">=6.165.5" },
-    { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
-    { name = "packaging", specifier = ">=26.3" },
-    { name = "pillow", specifier = ">=12.3.0" },
-    { name = "pre-commit", specifier = ">=4.6.2" },
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "ruff", specifier = ">=0.16.2" },
-    { name = "tomli", specifier = ">=2.4.1" },
-    { name = "torch", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cpu" },
 ]
 ci-package = [
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "twine", specifier = ">=7.0.0" },
-]
-ci-pytorch = [
-    { name = "albu-spec", specifier = ">=0.0.6" },
-    { name = "deepdiff", specifier = ">=9.1.0" },
-    { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "eval-type-backport", specifier = ">=0.4.0" },
-    { name = "huggingface-hub", specifier = ">=1.27.0" },
-    { name = "hypothesis", specifier = ">=6.165.5" },
-    { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
-    { name = "pillow", specifier = ">=12.3.0" },
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "pytest-mock", specifier = ">=3.15.1" },
-    { name = "pytest-randomly", specifier = ">=4.1.0" },
-    { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "pytz", specifier = ">=2026.3.post1" },
-    { name = "pyvips", extras = ["binary"], specifier = ">=3.1.1" },
-    { name = "requests", specifier = ">=2.34.2" },
-    { name = "scikit-image", specifier = ">=0.25.2" },
-    { name = "scikit-learn", specifier = ">=1.7.2" },
-    { name = "tomli", specifier = ">=2.4.1" },
-    { name = "torch", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cpu" },
 ]
 ci-quality = [
     { name = "defusedxml", specifier = ">=0.7.1" },
@@ -376,6 +301,7 @@ ci-test = [
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "tomli", specifier = ">=2.4.1" },
 ]
+ci-torch-cpu = [{ name = "torch", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cpu" }]
 ci-types = [
     { name = "mypy", specifier = ">=2.3.0" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
@@ -412,7 +338,6 @@ dev = [
     { name = "scikit-image", specifier = ">=0.25.2" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "tomli", specifier = ">=2.4.1" },
-    { name = "torch", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "twine", specifier = ">=7.0.0" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260724" },
     { name = "types-setuptools", specifier = ">=84.0.0.20260812" },

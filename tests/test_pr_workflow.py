@@ -87,19 +87,44 @@ def test_coverage_and_pytorch_are_not_duplicated_across_matrix_cells() -> None:
     compatibility = text.split("\n  compatibility:\n", maxsplit=1)[1].split("\n  coverage:\n", maxsplit=1)[0]
 
     assert "--cov=albumentations" not in compatibility
-    assert "Verify CPU-only PyTorch profile" not in compatibility
     assert text.count("--cov=albumentations") == 1
-    assert text.count("Verify CPU-only PyTorch profile") == 1
-    assert "torch.version.cuda is None" in text
     assert "tests/test_benchmark_coverage.py" in text
     assert "tests/test_serialization.py" in text
 
 
-def test_repository_contracts_use_the_cpu_only_torch_profile() -> None:
-    contracts = _workflow()["jobs"]["contracts"]
-    setup_step = next(step for step in contracts["steps"] if step["name"] == "Set up contract environment")
+def test_every_importing_pr_job_explicitly_selects_cpu_torch() -> None:
+    expected_groups = {
+        "contracts": "ci-quality",
+        "compatibility": "ci-test",
+        "coverage": "ci-test",
+        "primary": "ci-test",
+        "targeted": "ci-test",
+        "pytorch": "ci-test",
+        "release_preflight": "ci-release",
+    }
 
-    assert setup_step["with"]["dependency-group"] == "ci-contracts"
+    for job_name, expected_group in expected_groups.items():
+        job = _workflow()["jobs"][job_name]
+        setup_step = next(step for step in job["steps"] if step.get("uses") == "./.github/actions/setup-ci")
+
+        assert setup_step["with"] == {
+            "python-version": setup_step["with"]["python-version"],
+            "dependency-group": expected_group,
+            "runtime-profile": "torch-cpu",
+        }
+
+
+def test_install_smoke_uses_the_shared_two_phase_torch_contract() -> None:
+    workflow = _workflow()
+    install_smoke = workflow["jobs"]["install_smoke"]
+    release_preflight = workflow["jobs"]["release_preflight"]
+    install_smoke_text = "\n".join(str(step.get("run", "")) for step in install_smoke["steps"])
+    release_smoke_text = "\n".join(str(step.get("run", "")) for step in release_preflight["steps"])
+
+    assert "tools/torch_runtime.py install-contract" in install_smoke_text
+    assert "tools/torch_runtime.py install-contract" in release_smoke_text
+    assert "find_spec('torch')" not in install_smoke_text
+    assert "uv pip install" not in install_smoke_text
 
 
 def test_version_bump_preflight_builds_publishable_bundle_in_core_profile() -> None:

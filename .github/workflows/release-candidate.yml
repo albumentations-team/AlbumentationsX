@@ -38,6 +38,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Verify matrix and regression vectors
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.12'
       run: |
@@ -108,9 +109,8 @@ jobs:
       uses: ./.github/actions/setup-ci
       with:
         python-version: "3.12"
-        dependency-group: ci-pytorch
-    - name: Verify CPU-only PyTorch profile
-      run: python -c "import torch; assert torch.version.cuda is None, torch.version.cuda"
+        dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Run PyTorch-marked tests
       run: >-
         python -m pytest -n 2 --dist=worksteal -m pytorch
@@ -134,6 +134,7 @@ jobs:
       with:
         python-version: "3.12"
         dependency-group: ci-benchmark
+        runtime-profile: torch-cpu
     - name: Prepare release candidate performance evidence directory
       run: python -c "from pathlib import Path; Path('release-candidate-performance-evidence').mkdir(exist_ok=True)"
     - name: Collect release candidate performance environment

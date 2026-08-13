@@ -26,6 +26,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Run complete base suite
       shell: bash
       run: |
@@ -58,9 +59,8 @@ jobs:
       uses: ./.github/actions/setup-ci
       with:
         python-version: "3.12"
-        dependency-group: ci-pytorch
-    - name: Verify CPU-only PyTorch profile
-      run: python -c "import torch; assert torch.version.cuda is None, torch.version.cuda"
+        dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Run PyTorch-marked tests
       run: >-
         python -m pytest -n 2 --dist=worksteal -m pytorch
@@ -93,6 +93,8 @@ jobs:
         opencv-python-headless==5.0.0.93
         hypothesis
         pytest
+    - name: Install CPU-only Torch runtime
+      run: python tools/torch_runtime.py install-cpu --python python
     - name: Prepare nightly evidence directory
       run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Collect lower-bound environment evidence
@@ -133,6 +135,7 @@ jobs:
       with:
         python-version: "3.14"
         dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Prepare nightly evidence directory
       run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Verify golden vectors
@@ -175,9 +178,11 @@ jobs:
       with:
         python-version: "3.14"
         dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Install optional extras
       run: >
         uv sync --locked --no-default-groups --group ci-test --inexact
+        --group ci-torch-cpu
         --extra pillow
         --extra text
         --extra hub

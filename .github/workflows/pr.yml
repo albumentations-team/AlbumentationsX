@@ -168,7 +168,8 @@ jobs:
         uses: ./.github/actions/setup-ci
         with:
           python-version: "3.12"
-          dependency-group: ci-contracts
+          dependency-group: ci-quality
+          runtime-profile: torch-cpu
       - name: Download changed paths
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -260,6 +261,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           dependency-group: ci-test
+          runtime-profile: torch-cpu
       - name: Run duration-balanced base-suite shard
         shell: bash
         run: |
@@ -311,6 +313,7 @@ jobs:
         with:
           python-version: "3.12"
           dependency-group: ci-test
+          runtime-profile: torch-cpu
       - name: Run base suite with branch coverage
         shell: bash
         run: |
@@ -349,6 +352,7 @@ jobs:
         with:
           python-version: "3.12"
           dependency-group: ci-test
+          runtime-profile: torch-cpu
       - name: Run complete base suite
         shell: bash
         run: |
@@ -388,6 +392,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           dependency-group: ci-test
+          runtime-profile: torch-cpu
       - name: Run changed test modules
         env:
           PYTEST_TARGETS: ${{ needs.plan.outputs.pytest_targets }}
@@ -411,9 +416,8 @@ jobs:
         uses: ./.github/actions/setup-ci
         with:
           python-version: "3.12"
-          dependency-group: ci-pytorch
-      - name: Verify CPU-only PyTorch profile
-        run: python -c "import torch; assert torch.version.cuda is None, torch.version.cuda"
+          dependency-group: ci-test
+          runtime-profile: torch-cpu
       - name: Run PyTorch-marked tests
         run: >-
           python -m pytest -n 2 --dist=worksteal -m pytorch
@@ -561,26 +565,9 @@ jobs:
       - name: Build wheel
         run: uv build --wheel --out-dir dist
       - name: Install wheel into a clean environment
-        shell: bash
-        run: |
-          uv venv --python "${{ matrix.python-version }}" "${RUNNER_TEMP}/install-smoke"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            smoke_python="${RUNNER_TEMP}/install-smoke/Scripts/python.exe"
-          else
-            smoke_python="${RUNNER_TEMP}/install-smoke/bin/python"
-          fi
-          uv pip install --python "${smoke_python}" dist/*.whl "opencv-python-headless>=5.0.0.93"
-          if "${smoke_python}" -I -c "import importlib.util; raise SystemExit(importlib.util.find_spec('torch') is not None)"; then
-            echo "base wheel installation unexpectedly installed PyTorch"
-            exit 1
-          fi
-          if "${smoke_python}" -I -c "import albumentations" 2> import-without-torch.txt; then
-            echo "AlbumentationsX imported without PyTorch"
-            exit 1
-          fi
-          grep -F 'pip install "albumentationsx[headless]"' import-without-torch.txt
-          uv pip install --python "${smoke_python}" "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
-          "${smoke_python}" -I -c "import albumentations; print(albumentations.__version__)"
+        run: >-
+          python tools/torch_runtime.py install-contract
+          --wheel dist/*.whl --python "${{ matrix.python-version }}"
 
   release_preflight:
     name: Release preflight
@@ -601,6 +588,7 @@ jobs:
         with:
           python-version: "3.12"
           dependency-group: ci-release
+          runtime-profile: torch-cpu
       - name: Prepare release bundle
         id: metadata
         run: |
@@ -620,26 +608,9 @@ jobs:
       - name: Check final distribution metadata
         run: twine check "${RUNNER_TEMP}"/release-bundle/dist/*
       - name: Smoke test final wheel
-        shell: bash
-        run: |
-          smoke_venv="${RUNNER_TEMP}/albumentationsx-release-smoke"
-          uv venv --clear --python 3.12 "${smoke_venv}"
-          wheels=("${RUNNER_TEMP}"/release-bundle/dist/*.whl)
-          uv pip install \
-            --python "${smoke_venv}/bin/python" \
-            "${wheels[0]}" "opencv-python-headless>=5.0.0.93"
-          uv pip install \
-            --python "${smoke_venv}/bin/python" \
-            "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
-          cd "${RUNNER_TEMP}"
-          "${smoke_venv}/bin/python" -I - <<'PY'
-          import albumentations
-          import numpy as np
-
-          image = np.zeros((64, 64, 3), dtype=np.uint8)
-          albumentations.HorizontalFlip(p=1)(image=image)
-          print("albumentations release smoke passed:", albumentations.__version__)
-          PY
+        run: >-
+          python tools/torch_runtime.py install-contract
+          --wheel "${RUNNER_TEMP}"/release-bundle/dist/*.whl --python "3.12"
       - name: Verify lock freshness
         run: uv lock --check
       - name: Collect release environment evidence

@@ -55,3 +55,17 @@ def test_asv_install_commands_are_separate_cpu_torch_steps() -> None:
         assert config["build_command"] == "python -m pip wheel --no-deps -w {build_cache_dir} {build_dir}"
         assert "{wheel_file}" in commands[1]
         assert "&&" not in " ".join(commands)
+
+
+def test_every_asv_job_explicitly_uses_the_cpu_torch_runtime() -> None:
+    workflow = yaml.safe_load(PERFORMANCE_WORKFLOW.read_text())
+    for job_name in ("benchmark_evidence", "asv_comparison"):
+        setup_step = next(
+            step for step in workflow["jobs"][job_name]["steps"] if step.get("uses") == "./.github/actions/setup-ci"
+        )
+
+        assert setup_step["with"] == {
+            "python-version": "3.12",
+            "dependency-group": "ci-benchmark",
+            "runtime-profile": "torch-cpu",
+        }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import subprocess
 import sys
@@ -99,7 +100,7 @@ def parse_args() -> argparse.Namespace:
     prepare.add_argument("--wheel", type=Path, required=True)
     prepare.add_argument("--python", dest="python_version", required=True)
     prepare.add_argument("--opencv", default=DEFAULT_OPENCV_REQUIREMENT)
-    prepare.add_argument("--github-output", type=Path, required=True)
+    prepare.add_argument("--github-output", type=Path)
 
     smoke = commands.add_parser("smoke", help="Run the package import smoke check.")
     smoke.add_argument("--python", dest="interpreter", type=Path, required=True)
@@ -110,10 +111,20 @@ def main() -> int:
     args = parse_args()
     if args.command == "prepare":
         interpreter = prepare_install_contract(args.wheel, args.python_version, args.opencv)
-        _write_github_output(args.github_output, "python", str(interpreter))
+        _write_github_output(_github_output_path(args.github_output), "python", str(interpreter))
     else:
         run_import_smoke(args.interpreter)
     return 0
+
+
+def _github_output_path(argument: Path | None) -> Path:
+    if argument is not None:
+        return argument
+    value = os.environ.get("GITHUB_OUTPUT")
+    if not value:
+        msg = "GITHUB_OUTPUT is required when --github-output is not provided."
+        raise RuntimeError(msg)
+    return Path(value)
 
 
 if __name__ == "__main__":

@@ -570,7 +570,6 @@ jobs:
         run: >-
           python tools/install_contract.py prepare
           --wheel dist/*.whl --python "${{ matrix.python-version }}"
-          --github-output "${GITHUB_OUTPUT}"
       - name: Install and verify CPU-only Torch
         uses: albumentations-team/ci-foundation/actions/torch-cpu@2468af6e982545e2fd1d5ba4249f1b44154149fe
         with:
@@ -625,7 +624,6 @@ jobs:
         run: >-
           python tools/install_contract.py prepare
           --wheel "${RUNNER_TEMP}"/release-bundle/dist/*.whl --python "3.12"
-          --github-output "${GITHUB_OUTPUT}"
       - name: Install and verify CPU-only Torch
         uses: albumentations-team/ci-foundation/actions/torch-cpu@2468af6e982545e2fd1d5ba4249f1b44154149fe
         with:

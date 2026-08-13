@@ -45,3 +45,20 @@ def test_main_records_prepared_interpreter_for_the_foundation_action(
 
     assert install_contract.main() == 0
     assert output.read_text(encoding="utf-8") == f"python={interpreter}\n"
+
+
+def test_main_uses_github_output_environment_when_cli_argument_is_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "github-output"
+    interpreter = tmp_path / "environment" / "bin" / "python"
+    monkeypatch.setattr(install_contract, "prepare_install_contract", lambda *_: interpreter)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.setattr(
+        "sys.argv",
+        ["install_contract.py", "prepare", "--wheel", "dist/*.whl", "--python", "3.12"],
+    )
+
+    assert install_contract.main() == 0
+    assert output.read_text(encoding="utf-8") == f"python={interpreter}\n"

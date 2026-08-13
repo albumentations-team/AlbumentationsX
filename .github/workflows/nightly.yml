@@ -78,12 +78,13 @@ jobs:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
     - name: Install shared Python and uv bootstrap
-      uses: albumentations-team/ci-foundation/actions/setup-python-uv@2468af6e982545e2fd1d5ba4249f1b44154149fe
+      uses: albumentations-team/ci-foundation/actions/setup-python-uv@6b9045dbea58026a1e8f96b0392c411934a27199
       with:
         activate-environment: true
         cache-dependency-glob: pyproject.toml
         cache-suffix: nightly-lower-bound
         python-version: "3.10"
+        uv-version: "0.12.0"
     - name: Install declared minimum runtime dependencies
       run: >
         uv pip install -e .
@@ -95,7 +96,7 @@ jobs:
         hypothesis
         pytest
     - name: Install CPU-only Torch runtime
-      uses: albumentations-team/ci-foundation/actions/torch-cpu@2468af6e982545e2fd1d5ba4249f1b44154149fe
+      uses: albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199
       with:
         mode: install
         python: python

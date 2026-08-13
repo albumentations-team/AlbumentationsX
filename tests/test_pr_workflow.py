@@ -128,7 +128,7 @@ def test_install_smoke_uses_the_shared_two_phase_torch_contract() -> None:
     assert "tools/install_contract.py smoke" in install_smoke_text
     assert "tools/install_contract.py smoke" in release_smoke_text
     assert (
-        "albumentations-team/ci-foundation/actions/torch-cpu@2468af6e982545e2fd1d5ba4249f1b44154149fe" in workflow_text
+        "albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199" in workflow_text
     )
     assert "find_spec('torch')" not in install_smoke_text
     assert "uv pip install" not in install_smoke_text

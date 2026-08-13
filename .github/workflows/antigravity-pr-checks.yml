@@ -26,7 +26,7 @@ jobs:
       contents: read
       id-token: write
       pull-requests: write
-    uses: albumentations-team/ci-foundation/.github/workflows/antigravity-review.yml@2468af6e982545e2fd1d5ba4249f1b44154149fe
+    uses: albumentations-team/ci-foundation/.github/workflows/antigravity-review.yml@6b9045dbea58026a1e8f96b0392c411934a27199
     with:
       policy-path: .github/ci-foundation/antigravity.toml
       gcp-location: ${{ vars.ANTIGRAVITY_GCP_LOCATION }}

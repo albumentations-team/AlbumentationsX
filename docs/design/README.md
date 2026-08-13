@@ -57,7 +57,7 @@ orchestration. AlbumentationsX keeps its dependency groups, test selection, rele
 and project-specific review policy here.
 
 **Status**: Implemented. The local CI profile action and Antigravity caller pin ci-foundation commit
-2468af6e982545e2fd1d5ba4249f1b44154149fe.
+6b9045dbea58026a1e8f96b0392c411934a27199.
 
 ### [Greenfield Torch Dependency and CI Architecture](torch-dependency-and-ci-greenfield.md)
 

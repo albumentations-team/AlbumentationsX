@@ -10,7 +10,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 uses the locked ba
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "antigravity-pr-checks.yml"
 POLICY = Path(__file__).resolve().parents[1] / ".github" / "ci-foundation" / "antigravity.toml"
 INSTRUCTIONS = Path(__file__).resolve().parents[1] / ".github" / "ci-foundation" / "antigravity-review.md"
-FOUNDATION_SHA = "2468af6e982545e2fd1d5ba4249f1b44154149fe"
+FOUNDATION_SHA = "6b9045dbea58026a1e8f96b0392c411934a27199"
 
 
 def test_local_caller_has_only_trigger_security_and_project_configuration() -> None:

@@ -51,13 +51,14 @@ jobs:
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
       - name: Set up release identity runtime
-        uses: albumentations-team/ci-foundation/actions/setup-python-uv@2468af6e982545e2fd1d5ba4249f1b44154149fe
+        uses: albumentations-team/ci-foundation/actions/setup-python-uv@6b9045dbea58026a1e8f96b0392c411934a27199
         with:
           activate-environment: "true"
           cache-dependency-glob: release-automation/uv.lock
           cache-enabled: "false"
           cache-suffix: release-identity
           python-version: "3.12"
+          uv-version: "0.12.0"
       - name: Verify tag and compute released source identity
         id: metadata
         working-directory: release-automation

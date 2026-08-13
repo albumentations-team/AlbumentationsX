@@ -193,7 +193,7 @@ The Workload Identity provider condition must match repository ID
 branch `main`. It must also match the caller workflow ref
 `albumentations-team/AlbumentationsX/.github/workflows/antigravity-pr-checks.yml@refs/heads/main`
 and the reusable-workflow claim
-`albumentations-team/ci-foundation/.github/workflows/antigravity-review.yml@2468af6e982545e2fd1d5ba4249f1b44154149fe`.
+`albumentations-team/ci-foundation/.github/workflows/antigravity-review.yml@6b9045dbea58026a1e8f96b0392c411934a27199`.
 
 ## Local validation and evidence
 

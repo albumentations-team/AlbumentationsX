@@ -187,6 +187,10 @@ ci-quality = [
   "ruff>=0.16.2",
   "tomli>=2.4.1",
 ]
+ci-contracts = [
+  { include-group = "ci-quality" },
+  "torch>=2.13.0",
+]
 ci-types = [
   "mypy>=2.3.0",
   "opencv-python-headless>=5.0.0.93",
@@ -220,6 +224,7 @@ ci-pytorch = [
 dev = [
   { include-group = "ci-test" },
   { include-group = "ci-quality" },
+  { include-group = "ci-contracts" },
   { include-group = "ci-types" },
   { include-group = "ci-security" },
   { include-group = "ci-package" },

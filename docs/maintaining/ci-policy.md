@@ -99,7 +99,8 @@ CI jobs sync one locked dependency group through
 `.github/actions/setup-ci/action.yml`:
 
 - `ci-test`: base pytest suite and optional test libraries, without Torch;
-- `ci-quality`: Ruff, pre-commit, the isolated mypy hook, and repository contracts;
+- `ci-quality`: Ruff, pre-commit, and the isolated mypy hook, without Torch;
+- `ci-contracts`: repository contracts plus the CPU-only Torch profile required for package imports;
 - `ci-types`: Pyrefly and standalone typing tools;
 - `ci-pytorch`: base test dependencies plus the CPU-only Torch profile;
 - `ci-security`: pip-audit and zizmor;

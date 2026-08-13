@@ -33,7 +33,7 @@ This is the canonical setup path for contributors and coding agents. It installs
 including Ruff, mypy, Pyrefly, pytest, pre-commit, and security tooling.
 
 CI itself uses smaller locked groups so unrelated jobs do not install the full
-toolchain: `ci-test`, `ci-quality`, `ci-types`, `ci-pytorch`, `ci-security`,
+toolchain: `ci-test`, `ci-quality`, `ci-contracts`, `ci-types`, `ci-pytorch`, `ci-security`,
 `ci-package`, `ci-benchmark`, and `ci-release`. Contributors normally should
 keep using `dev`; the purpose-specific groups are useful when reproducing one
 CI leaf, for example:

@@ -95,6 +95,13 @@ def test_coverage_and_pytorch_are_not_duplicated_across_matrix_cells() -> None:
     assert "tests/test_serialization.py" in text
 
 
+def test_repository_contracts_use_the_cpu_only_torch_profile() -> None:
+    contracts = _workflow()["jobs"]["contracts"]
+    setup_step = next(step for step in contracts["steps"] if step["name"] == "Set up contract environment")
+
+    assert setup_step["with"]["dependency-group"] == "ci-contracts"
+
+
 def test_version_bump_preflight_builds_publishable_bundle_in_core_profile() -> None:
     workflow = _workflow()
     job = workflow["jobs"]["release_preflight"]

@@ -89,6 +89,7 @@ LOWER_BOUND_REQUIREMENTS = (
 )
 CI_DEPENDENCY_GROUPS = {
     "ci-benchmark": {"asv", "opencv-python-headless", "torch"},
+    "ci-contracts": {"torch"},
     "ci-package": {"pytest", "twine"},
     "ci-pytorch": {"torch"},
     "ci-quality": {
@@ -270,7 +271,7 @@ def _check_ci_dependency_groups(dependency_groups: dict[str, Any]) -> list[str]:
             issues.append(f"pyproject.toml group {group!r} is missing {sorted(missing_packages)!r}")
         if "torchvision" in packages:
             issues.append(f"pyproject.toml group {group!r} must not install torchvision")
-        if "torch" in packages and group not in {"ci-benchmark", "ci-pytorch"}:
+        if "torch" in packages and group not in {"ci-benchmark", "ci-contracts", "ci-pytorch"}:
             issues.append(f"pyproject.toml group {group!r} must not install Torch directly")
     return issues
 
@@ -356,6 +357,7 @@ def _check_pr_workflow() -> list[str]:
                 "python -m tools.ci_gate",
                 "dependency-group: ci-test",
                 "dependency-group: ci-quality",
+                "dependency-group: ci-contracts",
                 "dependency-group: ci-types",
                 "dependency-group: ci-security",
                 "dependency-group: ci-package",

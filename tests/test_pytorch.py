@@ -1,9 +1,6 @@
 import numpy as np
 import pytest
 import torch
-from PIL import Image
-from torchvision.transforms import ColorJitter
-from torchvision.transforms.functional import adjust_brightness, adjust_contrast
 
 import albumentations as A
 from tests.conftest import RECTANGULAR_UINT8_IMAGE, SQUARE_UINT8_IMAGE, UINT8_IMAGES
@@ -144,98 +141,6 @@ def test_with_replaycompose() -> None:
     assert res["mask"].dtype == torch.uint8
     assert res2["image"].dtype == torch.uint8
     assert res2["mask"].dtype == torch.uint8
-
-
-@pytest.mark.parametrize(
-    ["brightness", "contrast", "saturation", "hue"],
-    [
-        [1, 1, 1, 0],
-        [0.123, 1, 1, 0],
-        [1.321, 1, 1, 0],
-        [1, 0.234, 1, 0],
-        [1, 1.432, 1, 0],
-        [1, 1, 0.345, 0],
-        [1, 1, 1.543, 0],
-    ],
-)
-def test_color_jitter(brightness, contrast, saturation, hue):
-    img = np.random.randint(0, 256, [100, 100, 3], dtype=np.uint8)
-    pil_image = Image.fromarray(img)
-
-    transform = A.Compose(
-        [
-            A.ColorJitter(
-                brightness_range=[brightness, brightness],
-                contrast_range=[contrast, contrast],
-                saturation_range=[saturation, saturation],
-                hue_range=[hue, hue],
-                p=1,
-            ),
-        ],
-        strict=True,
-    )
-
-    pil_transform = ColorJitter(
-        brightness=[brightness, brightness],
-        contrast=[contrast, contrast],
-        saturation=[saturation, saturation],
-        hue=[hue, hue],
-    )
-
-    res1 = transform(image=img)["image"]
-    res2 = np.array(pil_transform(pil_image))
-
-    assert np.abs(res1.astype(np.int16) - res2.astype(np.int16)).max() <= 2
-
-
-def test_random_brightness_contrast_matches_torchvision_brightness_and_contrast():
-    image = np.array(
-        [
-            [[255, 0, 0], [0, 255, 0]],
-            [[0, 0, 255], [100, 120, 140]],
-        ],
-        dtype=np.uint8,
-    )
-    transform = A.RandomBrightnessContrast(
-        brightness_range=(0.2, 0.2),
-        contrast_range=(0.5, 0.5),
-        p=1,
-    )
-
-    result = transform(image=image)["image"]
-    expected = np.asarray(
-        adjust_brightness(
-            adjust_contrast(Image.fromarray(image), 1.5),
-            1.2,
-        ),
-    )
-
-    assert np.abs(result.astype(np.int16) - expected.astype(np.int16)).max() <= 1
-
-
-def test_random_brightness_contrast_preserves_intermediate_uint8_quantization() -> None:
-    image = np.array(
-        [
-            [[17, 23, 35], [47, 7, 10]],
-            [[46, 37, 20], [14, 16, 18]],
-        ],
-        dtype=np.uint8,
-    )
-    transform = A.RandomBrightnessContrast(
-        brightness_range=(9.0, 9.0),
-        contrast_range=(-0.9, -0.9),
-        p=1,
-    )
-
-    result = transform(image=image)["image"]
-    expected = np.asarray(
-        adjust_brightness(
-            adjust_contrast(Image.fromarray(image), 0.1),
-            10.0,
-        ),
-    )
-
-    np.testing.assert_array_equal(result, expected)
 
 
 def test_post_data_check():

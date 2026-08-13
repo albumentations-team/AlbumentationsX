@@ -412,10 +412,8 @@ jobs:
         with:
           python-version: "3.12"
           dependency-group: ci-pytorch
-      - name: Install CPU-only PyTorch
-        run: >-
-          uv pip install torch==2.13.0+cpu torchvision==0.28.0+cpu
-          --extra-index-url https://download.pytorch.org/whl/cpu
+      - name: Verify CPU-only PyTorch profile
+        run: python -c "import torch; assert torch.version.cuda is None, torch.version.cuda"
       - name: Run PyTorch-marked tests
         run: >-
           python -m pytest -n 2 --dist=worksteal -m pytorch
@@ -572,6 +570,16 @@ jobs:
             smoke_python="${RUNNER_TEMP}/install-smoke/bin/python"
           fi
           uv pip install --python "${smoke_python}" dist/*.whl "opencv-python-headless>=5.0.0.93"
+          if "${smoke_python}" -I -c "import importlib.util; raise SystemExit(importlib.util.find_spec('torch') is not None)"; then
+            echo "base wheel installation unexpectedly installed PyTorch"
+            exit 1
+          fi
+          if "${smoke_python}" -I -c "import albumentations" 2> import-without-torch.txt; then
+            echo "AlbumentationsX imported without PyTorch"
+            exit 1
+          fi
+          grep -F 'pip install "albumentationsx[headless]"' import-without-torch.txt
+          uv pip install --python "${smoke_python}" "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
           "${smoke_python}" -I -c "import albumentations; print(albumentations.__version__)"
 
   release_preflight:
@@ -620,6 +628,9 @@ jobs:
           uv pip install \
             --python "${smoke_venv}/bin/python" \
             "${wheels[0]}" "opencv-python-headless>=5.0.0.93"
+          uv pip install \
+            --python "${smoke_venv}/bin/python" \
+            "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
           cd "${RUNNER_TEMP}"
           "${smoke_venv}/bin/python" -I - <<'PY'
           import albumentations

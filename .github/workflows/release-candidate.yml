@@ -109,10 +109,8 @@ jobs:
       with:
         python-version: "3.12"
         dependency-group: ci-pytorch
-    - name: Install CPU-only PyTorch
-      run: >-
-        uv pip install torch==2.13.0+cpu torchvision==0.28.0+cpu
-        --extra-index-url https://download.pytorch.org/whl/cpu
+    - name: Verify CPU-only PyTorch profile
+      run: python -c "import torch; assert torch.version.cuda is None, torch.version.cuda"
     - name: Run PyTorch-marked tests
       run: >-
         python -m pytest -n 2 --dist=worksteal -m pytorch

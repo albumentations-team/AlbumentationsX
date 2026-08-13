@@ -84,13 +84,13 @@ LOWER_BOUND_REQUIREMENTS = (
     "numpy==2.2.6",
     "scipy==1.15.3",
     "pydantic==2.12.4",
-    "albucore==0.2.12",
+    "albucore==0.2.13",
     "opencv-python-headless==5.0.0.93",
 )
 CI_DEPENDENCY_GROUPS = {
-    "ci-benchmark": {"asv", "opencv-python-headless"},
+    "ci-benchmark": {"asv", "opencv-python-headless", "torch"},
     "ci-package": {"pytest", "twine"},
-    "ci-pytorch": set(),
+    "ci-pytorch": {"torch"},
     "ci-quality": {
         "defusedxml",
         "google-docstring-parser",
@@ -255,6 +255,26 @@ def _ci_operating_systems(workflow: dict[str, Any]) -> set[str]:
     return _workflow_matrix_values(workflow, "operating-system")
 
 
+def _check_ci_dependency_groups(dependency_groups: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    for group, required_packages in sorted(CI_DEPENDENCY_GROUPS.items()):
+        entries = dependency_groups.get(group)
+        if not isinstance(entries, list):
+            issues.append(f"pyproject.toml is missing CI dependency group {group!r}")
+            continue
+        packages = {
+            re.split(r"[<>=!~\[]", entry, maxsplit=1)[0].casefold() for entry in entries if isinstance(entry, str)
+        }
+        missing_packages = required_packages - packages
+        if missing_packages:
+            issues.append(f"pyproject.toml group {group!r} is missing {sorted(missing_packages)!r}")
+        if "torchvision" in packages:
+            issues.append(f"pyproject.toml group {group!r} must not install torchvision")
+        if "torch" in packages and group not in {"ci-benchmark", "ci-pytorch"}:
+            issues.append(f"pyproject.toml group {group!r} must not install Torch directly")
+    return issues
+
+
 def _check_pyproject() -> list[str]:
     pyproject = _load_pyproject()
     project = pyproject.get("project", {})
@@ -276,19 +296,11 @@ def _check_pyproject() -> list[str]:
         issues.append("pyproject.toml dependency-groups must be a table")
         return issues
 
-    for group, required_packages in sorted(CI_DEPENDENCY_GROUPS.items()):
-        entries = dependency_groups.get(group)
-        if not isinstance(entries, list):
-            issues.append(f"pyproject.toml is missing CI dependency group {group!r}")
-            continue
-        packages = {
-            re.split(r"[<>=!~\[]", entry, maxsplit=1)[0].casefold() for entry in entries if isinstance(entry, str)
-        }
-        missing_packages = required_packages - packages
-        if missing_packages:
-            issues.append(f"pyproject.toml group {group!r} is missing {sorted(missing_packages)!r}")
-        if packages & {"torch", "torchvision"}:
-            issues.append(f"pyproject.toml group {group!r} must not install PyTorch directly")
+    issues.extend(_check_ci_dependency_groups(dependency_groups))
+
+    uv = pyproject.get("tool", {}).get("uv", {})
+    if not isinstance(uv, dict) or uv.get("sources", {}).get("torch") != {"index": "pytorch-cpu"}:
+        issues.append("pyproject.toml must route Torch through the explicit pytorch-cpu index")
 
     dev_entries = dependency_groups.get("dev", [])
     if not isinstance(dev_entries, list):

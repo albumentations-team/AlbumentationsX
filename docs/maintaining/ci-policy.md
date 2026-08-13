@@ -46,7 +46,7 @@ relevant checks. These are the normal profiles:
 | Runtime source | Ruff, mypy, Pyrefly, contracts, full 3 × 5 compatibility, one coverage lane | package builds and workflow audit |
 | Isolated test module | Changed module on the primary and OS/version boundary lanes | full product matrix |
 | Shared pytest infrastructure | Full 3 × 5 compatibility | unrelated package and workflow policy jobs |
-| PyTorch source or tests | Dedicated CPU-only PyTorch job plus relevant base checks | Torch installation in ordinary compatibility jobs |
+| PyTorch source or tests | Dedicated CPU-only PyTorch job plus relevant base checks | CUDA or MPS Torch installation in CI |
 | Dependency metadata or lockfile | Primary suite, PyTorch, dependency audit, legal/package checks, clean install matrix | ASV timing comparison |
 | Packaging or legal inputs | Source legal verification, wheel/sdist verification, metadata check, clean installs when relevant | product compatibility matrix |
 | `.github/**` | Repository contracts and `zizmor` | product pytest unless the PR workflow/router itself changed |
@@ -98,18 +98,18 @@ job or a missing required status is not.
 CI jobs sync one locked dependency group through
 `.github/actions/setup-ci/action.yml`:
 
-- `ci-test`: base pytest suite and optional test libraries;
+- `ci-test`: base pytest suite and optional test libraries, without Torch;
 - `ci-quality`: Ruff, pre-commit, the isolated mypy hook, and repository contracts;
 - `ci-types`: Pyrefly and standalone typing tools;
-- `ci-pytorch`: base test dependencies before the CPU-only Torch install;
+- `ci-pytorch`: base test dependencies plus the CPU-only Torch profile;
 - `ci-security`: pip-audit and zizmor;
 - `ci-package`: build, twine, and legal verifier tests;
 - `ci-benchmark`: ASV;
 - `ci-release`: version-bump preflight, final distributions, release evidence,
   and bundle tooling.
 
-The contributor-facing `dev` group includes all of these capabilities plus
-normal PyTorch packages. CI must not sync the broad `dev` group.
+The contributor-facing `dev` group includes all of these capabilities, including
+the CPU-only Torch profile. CI must not sync the broad `dev` group.
 
 ## ASV performance evidence
 

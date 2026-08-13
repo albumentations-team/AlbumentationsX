@@ -87,9 +87,10 @@ def test_coverage_and_pytorch_are_not_duplicated_across_matrix_cells() -> None:
     compatibility = text.split("\n  compatibility:\n", maxsplit=1)[1].split("\n  coverage:\n", maxsplit=1)[0]
 
     assert "--cov=albumentations" not in compatibility
-    assert "Install CPU-only PyTorch" not in compatibility
+    assert "Verify CPU-only PyTorch profile" not in compatibility
     assert text.count("--cov=albumentations") == 1
-    assert text.count("Install CPU-only PyTorch") == 1
+    assert text.count("Verify CPU-only PyTorch profile") == 1
+    assert "torch.version.cuda is None" in text
     assert "tests/test_benchmark_coverage.py" in text
     assert "tests/test_serialization.py" in text
 

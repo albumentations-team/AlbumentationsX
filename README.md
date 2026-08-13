@@ -39,11 +39,11 @@ agreement or order form expressly says so. See the [AGPL text](LICENSE),
 ### Quick Start
 
 ```bash
-# Install AlbumentationsX with OpenCV
-pip install albumentationsx[headless]
+# Install the PyTorch build for your platform first. For Linux CPU-only:
+pip install "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
 
-# Or if you already have OpenCV installed
-pip install albumentationsx
+# Then install AlbumentationsX with OpenCV.
+pip install "albumentationsx[headless]"
 ```
 
 ```python
@@ -124,7 +124,17 @@ AlbumentationsX requires Python 3.10 or higher. To install the latest version fr
 
 ### Basic Installation
 
-If you already have OpenCV installed (any variant), simply install AlbumentationsX:
+Install the PyTorch build for your CPU, CUDA, or MPS environment before installing AlbumentationsX. For a Linux
+CPU-only environment:
+
+```bash
+pip install "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
+```
+
+For CUDA or macOS (MPS), use the matching command from the [PyTorch installation selector](https://pytorch.org/get-started/locally/).
+AlbumentationsX does not choose or install a PyTorch accelerator build.
+
+If you already have OpenCV installed (any variant), install AlbumentationsX:
 
 ```bash
 pip install -U albumentationsx
@@ -136,7 +146,7 @@ If you don't have OpenCV installed yet, choose the appropriate variant:
 
 ```bash
 # For servers/Docker (no GUI support, lighter package)
-pip install -U albumentationsx[headless]
+pip install -U "albumentationsx[headless]"
 
 # For local development with GUI support (cv2.imshow, etc.)
 pip install opencv-python && pip install -U albumentationsx
@@ -145,7 +155,7 @@ pip install opencv-python && pip install -U albumentationsx
 pip install opencv-contrib-python && pip install -U albumentationsx
 
 # For contrib + headless
-pip install -U albumentationsx[contrib-headless]
+pip install -U "albumentationsx[contrib-headless]"
 ```
 
 **Note:** AlbumentationsX works with any OpenCV variant:
@@ -156,6 +166,9 @@ pip install -U albumentationsx[contrib-headless]
 - `opencv-contrib-python-headless` (contrib + headless)
 
 Choose the one that fits your needs. The library will detect whichever is installed.
+
+`pip install albumentationsx` installs the base dependency set without PyTorch. It is useful for dependency-only
+consumers such as documentation builds. Importing `albumentations` requires the PyTorch build you selected above.
 
 Other installation options are described in the [documentation](https://albumentations.ai/docs/1-introduction/installation/?utm_source=github&utm_medium=referral&utm_campaign=readme).
 

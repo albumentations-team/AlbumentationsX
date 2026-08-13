@@ -59,10 +59,8 @@ jobs:
       with:
         python-version: "3.12"
         dependency-group: ci-pytorch
-    - name: Install CPU-only PyTorch
-      run: >-
-        uv pip install torch==2.13.0+cpu torchvision==0.28.0+cpu
-        --extra-index-url https://download.pytorch.org/whl/cpu
+    - name: Verify CPU-only PyTorch profile
+      run: python -c "import torch; assert torch.version.cuda is None, torch.version.cuda"
     - name: Run PyTorch-marked tests
       run: >-
         python -m pytest -n 2 --dist=worksteal -m pytorch
@@ -91,7 +89,7 @@ jobs:
         numpy==2.2.6
         scipy==1.15.3
         pydantic==2.12.4
-        albucore==0.2.12
+        albucore==0.2.13
         opencv-python-headless==5.0.0.93
         hypothesis
         pytest
@@ -184,8 +182,6 @@ jobs:
         --extra text
         --extra hub
         --extra contrib-headless
-        --no-install-package torch
-        --no-install-package torchvision
     - name: Run optional extras smoke tests
       run: python -m pytest -q tests/test_text.py tests/test_hub_mixin.py
     - name: Collect optional extras environment

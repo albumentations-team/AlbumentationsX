@@ -1017,6 +1017,21 @@ def test_to_gray_from_lab(dtype):
     np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1)
 
 
+@pytest.mark.parametrize(
+    ("function", "kwargs"),
+    [
+        (fpixel.linear_transformation_rgb, {"transformation_matrix": np.eye(3, dtype=np.float32)}),
+        (fpixel.to_gray_weighted_average, {}),
+        (fpixel.to_gray_from_lab, {}),
+    ],
+)
+def test_channel_color_operations_reject_five_dimensional_inputs(function, kwargs):
+    image = np.zeros((2, 3, 5, 7, 3), dtype=np.uint8)
+
+    with pytest.raises(ValueError):
+        function(image, **kwargs)
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize("channels", [3, 4, 5])
 def test_to_gray_desaturation(dtype, channels):
@@ -1375,6 +1390,16 @@ def test_auto_contrast_multichannel_cdf_matches_per_channel():
     )
 
     np.testing.assert_array_equal(fpixel.auto_contrast(img, cutoff=0, ignore=None, method="cdf"), expected)
+
+
+def test_auto_contrast_multichannel_lut_preserves_channel_dimension():
+    rng = np.random.default_rng(137)
+    img = rng.integers(0, 256, (512, 512, 1), dtype=np.uint8)
+
+    result = fpixel.auto_contrast(img, cutoff=0, ignore=None, method="cdf")
+
+    assert result.shape == img.shape
+    assert result.dtype == img.dtype
 
 
 @pytest.mark.parametrize(

@@ -50,6 +50,13 @@ sample-dependent work, with separate branch-free executors for ordinary, observe
 
 ## Active Design Work
 
+### [Greenfield Shared CI Foundation](ecosystem-ci-foundation-greenfield.md)
+
+Plan for moving Python/uv bootstrap, CPU-only Torch automation, and Antigravity review orchestration into one public,
+SHA-pinned repository while keeping dependency graphs, test policy, releases, legal checks, and deployments local.
+
+**Status**: Proposed. The shared `albumentations-team/ci-foundation` repository has not been created yet.
+
 ### [Greenfield Torch Dependency and CI Architecture](torch-dependency-and-ci-greenfield.md)
 
 Plan for keeping Torch out of package metadata while making every import-capable CI and documentation job request the

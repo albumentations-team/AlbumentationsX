@@ -381,11 +381,13 @@ def _is_version_only_release(
     if base_pyproject is None or head_pyproject is None or base_lock is None or head_lock is None:
         return False
 
-    return _without_project_version(base_pyproject) == _without_project_version(
-        head_pyproject
-    ) and _without_editable_package_version(base_lock, base_version) == _without_editable_package_version(
-        head_lock, head_version
-    )
+    base_project = _without_project_version(base_pyproject)
+    head_project = _without_project_version(head_pyproject)
+    base_lockfile = _without_editable_package_version(base_lock, base_version)
+    head_lockfile = _without_editable_package_version(head_lock, head_version)
+    if base_project is None or head_project is None or base_lockfile is None or head_lockfile is None:
+        return False
+    return base_project == head_project and base_lockfile == head_lockfile
 
 
 def build_plan(

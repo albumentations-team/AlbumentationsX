@@ -191,12 +191,17 @@ def test_version_increase_selects_complete_release_preflight() -> None:
 
 
 @pytest.mark.parametrize(
-    ("head_dependency", "version_only"),
-    [("numpy>=2", True), ("numpy>=3", False)],
+    ("head_dependency", "lock_source", "version_only"),
+    [
+        ("numpy>=2", '{ editable = "." }', True),
+        ("numpy>=3", '{ editable = "." }', False),
+        ("numpy>=2", '{ registry = "https://example.invalid" }', False),
+    ],
 )
 def test_version_bump_selects_minimal_release_only_when_metadata_is_unchanged(
     tmp_path: Path,
     head_dependency: str,
+    lock_source: str,
     *,
     version_only: bool,
 ) -> None:
@@ -212,12 +217,12 @@ def test_version_bump_selects_minimal_release_only_when_metadata_is_unchanged(
     )
     base_lock = tmp_path / "base-uv.lock"
     base_lock.write_text(
-        'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.2"\nsource = { editable = "." }\n',
+        f'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.2"\nsource = {lock_source}\n',
         encoding="utf-8",
     )
     head_lock = tmp_path / "head-uv.lock"
     head_lock.write_text(
-        'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.3"\nsource = { editable = "." }\n',
+        f'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.3"\nsource = {lock_source}\n',
         encoding="utf-8",
     )
 

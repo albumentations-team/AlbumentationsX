@@ -13,9 +13,22 @@
 
 **AlbumentationsX** is a Python library for image augmentation. It provides high-performance, robust implementations and cutting-edge features for computer vision tasks. Image augmentation is used in deep learning and computer vision to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
 
-> 📚 **Research paper:** If AlbumentationsX supports your research, please cite our
-> [preprint](https://arxiv.org/abs/2608.11123). Citations make the project's research impact visible to
-> funders and help sustain its maintenance. The BibTeX entry is in [Citing](#citing).
+## Citing
+
+If AlbumentationsX supports your research, please cite
+[AlbumentationsX: One Augmentation Pipeline for Images and Related Annotations](https://arxiv.org/abs/2608.11123).
+Your citation makes the project's research impact visible to funders and helps sustain maintenance.
+
+```bibtex
+@article{iglovikov2026albumentationsx,
+    title = {AlbumentationsX: One Augmentation Pipeline for Images and Related Annotations},
+    author = {Iglovikov, Vladimir},
+    journal = {arXiv preprint arXiv:2608.11123},
+    year = {2026},
+    doi = {10.48550/arXiv.2608.11123},
+    url = {https://arxiv.org/abs/2608.11123}
+}
+```
 
 ## 📢 Licensing: commercial use is allowed
 
@@ -503,23 +516,6 @@ repository-level details.
 ## 📞 Contact
 
 For bug reports and feature requests related to AlbumentationsX, please visit [GitHub Issues](https://github.com/albumentations-team/AlbumentationsX/issues). For questions, discussions, and community support, join our active communities on [Discord](https://discord.gg/AKPrrDYNAt), [Twitter](https://twitter.com/albumentations), [LinkedIn](https://www.linkedin.com/company/albumentations/), and [Reddit](https://www.reddit.com/r/Albumentations/). We're here to help with all things AlbumentationsX!
-
-## Citing
-
-If AlbumentationsX supports your research, please cite
-[AlbumentationsX: One Augmentation Pipeline for Images and Related Annotations](https://arxiv.org/abs/2608.11123).
-Your citation makes the project's research impact visible to funders and helps sustain maintenance.
-
-```bibtex
-@article{iglovikov2026albumentationsx,
-    title = {AlbumentationsX: One Augmentation Pipeline for Images and Related Annotations},
-    author = {Iglovikov, Vladimir},
-    journal = {arXiv preprint arXiv:2608.11123},
-    year = {2026},
-    doi = {10.48550/arXiv.2608.11123},
-    url = {https://arxiv.org/abs/2608.11123}
-}
-```
 
 ---
 

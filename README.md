@@ -13,9 +13,9 @@
 
 **AlbumentationsX** is a Python library for image augmentation. It provides high-performance, robust implementations and cutting-edge features for computer vision tasks. Image augmentation is used in deep learning and computer vision to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
 
-## GitAds Sponsored
-
-[![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=albumentations-team/albumentationsx@github)](https://gitads.dev/v1/ad-track?source=albumentations-team/albumentationsx@github)
+> 📚 **Research paper:** If AlbumentationsX supports your research, please cite our
+> [preprint](https://arxiv.org/abs/2608.11123). Citations make the project's research impact visible to
+> funders and help sustain its maintenance. The BibTeX entry is in [Citing](#citing).
 
 ## 📢 Licensing: commercial use is allowed
 
@@ -506,20 +506,18 @@ For bug reports and feature requests related to AlbumentationsX, please visit [G
 
 ## Citing
 
-If you find this library useful for your research, please consider citing [Albumentations: Fast and Flexible Image Augmentations](https://www.mdpi.com/2078-2489/11/2/125):
+If AlbumentationsX supports your research, please cite
+[AlbumentationsX: One Augmentation Pipeline for Images and Related Annotations](https://arxiv.org/abs/2608.11123).
+Your citation makes the project's research impact visible to funders and helps sustain maintenance.
 
 ```bibtex
-@Article{info11020125,
-    AUTHOR = {Buslaev, Alexander and Iglovikov, Vladimir I. and Khvedchenya, Eugene and Parinov, Alex and Druzhinin, Mikhail and Kalinin, Alexandr A.},
-    TITLE = {Albumentations: Fast and Flexible Image Augmentations},
-    JOURNAL = {Information},
-    VOLUME = {11},
-    YEAR = {2020},
-    NUMBER = {2},
-    ARTICLE-NUMBER = {125},
-    URL = {https://www.mdpi.com/2078-2489/11/2/125},
-    ISSN = {2078-2489},
-    DOI = {10.3390/info11020125}
+@article{iglovikov2026albumentationsx,
+    title = {AlbumentationsX: One Augmentation Pipeline for Images and Related Annotations},
+    author = {Iglovikov, Vladimir},
+    journal = {arXiv preprint arXiv:2608.11123},
+    year = {2026},
+    doi = {10.48550/arXiv.2608.11123},
+    url = {https://arxiv.org/abs/2608.11123}
 }
 ```
 
@@ -528,5 +526,3 @@ If you find this library useful for your research, please consider citing [Album
 ## 📫 Stay Connected
 
 Never miss updates, tutorials, and tips from the AlbumentationsX team! [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme).
-
-<!-- GitAds-Verify: 99ZXCN5GQ9CQN3QEMO5H4RAOI8C5YTKV -->

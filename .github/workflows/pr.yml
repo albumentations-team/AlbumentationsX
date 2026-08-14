@@ -59,6 +59,8 @@ jobs:
           git diff --name-only -z "${BASE_SHA}" "${HEAD_SHA}" -- > ci-plan/changed-files.z
           git show "${BASE_SHA}:pyproject.toml" > ci-plan/base-pyproject.toml
           cp pyproject.toml ci-plan/head-pyproject.toml
+          git show "${BASE_SHA}:uv.lock" > ci-plan/base-uv.lock
+          cp uv.lock ci-plan/head-uv.lock
 
       - name: Select pull-request checks
         id: plan
@@ -70,6 +72,8 @@ jobs:
           --paths-file ci-plan/changed-files.z --null
           --base-pyproject ci-plan/base-pyproject.toml
           --head-pyproject ci-plan/head-pyproject.toml
+          --base-lock ci-plan/base-uv.lock
+          --head-lock ci-plan/head-uv.lock
           --draft "${DRAFT}" --force-full "${FORCE_FULL}"
           --github-output "${GITHUB_OUTPUT}"
           --summary "${GITHUB_STEP_SUMMARY}"

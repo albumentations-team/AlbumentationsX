@@ -3,7 +3,8 @@
 AlbumentationsX pull-request CI optimizes for merge-ready wall time while
 preserving the supported compatibility guarantee. The workflow always starts,
 classifies the changed paths, and runs only the checks that can produce useful
-signal for those paths. Unknown paths fail closed to the complete profile.
+signal for those paths. Every selected job must name a concrete failure it can
+expose. Unknown paths fail closed to the complete profile.
 
 The implementation lives in `.github/workflows/pr.yml`. Routing is owned by
 `tools/ci_plan.py`; stable gate aggregation is owned by `tools/ci_gate.py`.
@@ -49,6 +50,7 @@ relevant checks. These are the normal profiles:
 | PyTorch source or tests | Dedicated CPU-only PyTorch job plus relevant base checks | CUDA or MPS Torch installation in CI |
 | Dependency metadata or lockfile | Primary suite, PyTorch, dependency audit, legal/package checks, clean install matrix | ASV timing comparison |
 | Packaging or legal inputs | Source legal verification, wheel/sdist verification, metadata check, clean installs when relevant | product compatibility matrix |
+| Version-only release (`pyproject.toml` and `uv.lock`) | Release preflight | Ruff, mypy, Pyrefly, contracts, product tests, standalone audit, package, legal, and install jobs |
 | `.github/**` | Repository contracts and `zizmor` | product pytest unless the PR workflow/router itself changed |
 | Benchmark source or tooling | Benchmark contracts and advisory ASV evidence | product pytest |
 | Unknown path | Complete conservative profile | Nothing |
@@ -143,10 +145,13 @@ leaf globally required.
 
 The pull-request workflow routes dependency audit, workflow audit, source legal
 verification, artifact verification, and clean install smoke tests by path.
-Any valid `project.version` increase also selects the complete profile and the
-release preflight that creates the final publishable bundle. The later
-`release: published` workflow only verifies and delivers that bundle; it does
-not repeat the release checks.
+A version-only release changes exactly `[project].version` and the matching
+editable-package version in `uv.lock`; the router compares the base and head
+metadata to prove that condition. It selects only release preflight, which
+creates and verifies the publishable bundle. A version bump that also changes
+metadata or locked dependencies selects the complete profile. The later
+`release: published` workflow verifies and delivers that bundle without
+repeating the release checks.
 The scheduled Security workflow still runs dependency audit, `zizmor`, and
 OpenSSF Scorecard evidence independently of pull-request routing.
 

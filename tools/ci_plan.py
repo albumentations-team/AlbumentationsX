@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import sys
 from dataclasses import asdict, dataclass
@@ -328,6 +329,67 @@ def _version_change(base_version: str | None, head_version: str | None) -> str:
     return "unchanged"
 
 
+def _without_project_version(path: Path) -> dict[str, Any] | None:
+    with path.open("rb") as pyproject_file:
+        data = tomllib.load(pyproject_file)
+    project = data.get("project")
+    if not isinstance(project, dict) or not isinstance(project.get("version"), str):
+        return None
+
+    normalized = copy.deepcopy(data)
+    normalized["project"].pop("version")
+    return normalized
+
+
+def _without_editable_package_version(path: Path, expected_version: str) -> dict[str, Any] | None:
+    with path.open("rb") as lock_file:
+        data = tomllib.load(lock_file)
+    packages = data.get("package")
+    if not isinstance(packages, list):
+        return None
+
+    editable_package_indexes = [
+        index
+        for index, package in enumerate(packages)
+        if isinstance(package, dict)
+        and package.get("name") == "albumentationsx"
+        and package.get("source") == {"editable": "."}
+    ]
+    if len(editable_package_indexes) != 1:
+        return None
+
+    normalized = copy.deepcopy(data)
+    editable_package = normalized["package"][editable_package_indexes[0]]
+    if editable_package.get("version") != expected_version:
+        return None
+    editable_package.pop("version")
+    return normalized
+
+
+def _is_version_only_release(
+    changed_files: tuple[str, ...],
+    *,
+    base_version: str | None,
+    head_version: str | None,
+    base_pyproject: Path | None,
+    head_pyproject: Path | None,
+    base_lock: Path | None,
+    head_lock: Path | None,
+) -> bool:
+    if changed_files != ("pyproject.toml", "uv.lock") or base_version is None or head_version is None:
+        return False
+    if base_pyproject is None or head_pyproject is None or base_lock is None or head_lock is None:
+        return False
+
+    base_project = _without_project_version(base_pyproject)
+    head_project = _without_project_version(head_pyproject)
+    base_lockfile = _without_editable_package_version(base_lock, base_version)
+    head_lockfile = _without_editable_package_version(head_lock, head_version)
+    if base_project is None or head_project is None or base_lockfile is None or head_lockfile is None:
+        return False
+    return base_project == head_project and base_lockfile == head_lockfile
+
+
 def build_plan(
     paths: list[str] | tuple[str, ...],
     *,
@@ -335,6 +397,10 @@ def build_plan(
     force_full: bool = False,
     base_version: str | None = None,
     head_version: str | None = None,
+    base_pyproject: Path | None = None,
+    head_pyproject: Path | None = None,
+    base_lock: Path | None = None,
+    head_lock: Path | None = None,
 ) -> CIPlan:
     """Build the final CI plan for the supplied changed paths."""
     changed_files = tuple(sorted({_normalise_path(path) or "<invalid-path>" for path in paths}))
@@ -342,12 +408,23 @@ def build_plan(
     domains = set().union(*classified) if classified else {"unknown"}
     checks = _new_checks()
     version_change = _version_change(base_version, head_version)
+    version_only_release = version_change == "increase" and _is_version_only_release(
+        changed_files,
+        base_version=base_version,
+        head_version=head_version,
+        base_pyproject=base_pyproject,
+        head_pyproject=head_pyproject,
+        base_lock=base_lock,
+        head_lock=head_lock,
+    )
 
     _select_fast_checks(checks, domains)
     _select_correctness_checks(checks, domains, changed_files)
     _select_policy_checks(checks, domains, changed_files)
-    if force_full or "unknown" in domains or version_change == "increase":
+    if force_full or "unknown" in domains or (version_change == "increase" and not version_only_release):
         _select_everything(checks)
+    elif version_only_release:
+        checks = _new_checks()
     checks["release_preflight"] = version_change == "increase"
     if draft and not force_full:
         _disable_heavy_checks(checks)
@@ -363,7 +440,7 @@ def build_plan(
         "policy": _gate_jobs(checks, POLICY_CHECKS),
     }
     advisory_asv = not draft and bool(domains & {"runtime", "benchmarks", "unknown"})
-    reasons = (
+    reasons = [
         f"Classified {len(changed_files)} changed path(s).",
         f"Selected domains: {', '.join(sorted(domains))}.",
         f"Project version change: {version_change}.",
@@ -372,7 +449,9 @@ def build_plan(
             if "unknown" in domains
             else "All paths matched known domains."
         ),
-    )
+    ]
+    if version_only_release:
+        reasons.append("Version-only release bump selects release preflight without product, type, or audit lanes.")
 
     return CIPlan(
         schema_version=SCHEMA_VERSION,
@@ -387,7 +466,7 @@ def build_plan(
         advisory_asv=advisory_asv,
         draft=draft,
         forced_full=force_full,
-        reasons=reasons,
+        reasons=tuple(reasons),
     )
 
 
@@ -470,6 +549,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force-full", type=_parse_bool, default=False, help="Select the complete CI profile.")
     parser.add_argument("--base-pyproject", type=Path, help="Base revision pyproject.toml.")
     parser.add_argument("--head-pyproject", type=Path, help="Head revision pyproject.toml.")
+    parser.add_argument("--base-lock", type=Path, help="Base revision uv.lock.")
+    parser.add_argument("--head-lock", type=Path, help="Head revision uv.lock.")
     parser.add_argument("--github-output", type=Path, help="Append scalar outputs for GitHub Actions.")
     parser.add_argument("--summary", type=Path, help="Write a human-readable job summary.")
     return parser.parse_args()
@@ -505,6 +586,10 @@ def main() -> int:
             force_full=args.force_full,
             base_version=base_version,
             head_version=head_version,
+            base_pyproject=args.base_pyproject,
+            head_pyproject=args.head_pyproject,
+            base_lock=args.base_lock,
+            head_lock=args.head_lock,
         )
     except (OSError, TypeError, ValueError) as error:
         print(f"CI plan failed: {error}", file=sys.stderr)

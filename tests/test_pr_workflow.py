@@ -41,8 +41,11 @@ def test_pr_plan_compares_base_and_head_project_versions() -> None:
     assert plan["outputs"]["release_preflight"] == "${{ steps.plan.outputs.release_preflight }}"
     assert plan["outputs"]["version_change"] == "${{ steps.plan.outputs.version_change }}"
     assert 'git show "${BASE_SHA}:pyproject.toml"' in text
+    assert 'git show "${BASE_SHA}:uv.lock"' in text
     assert "--base-pyproject ci-plan/base-pyproject.toml" in text
     assert "--head-pyproject ci-plan/head-pyproject.toml" in text
+    assert "--base-lock ci-plan/base-uv.lock" in text
+    assert "--head-lock ci-plan/head-uv.lock" in text
 
 
 def test_runtime_compatibility_covers_every_supported_os_python_pair() -> None:

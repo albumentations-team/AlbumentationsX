@@ -62,6 +62,11 @@ always_apply: true
   `docs/design/torch-dependency-and-ci-greenfield.md`. Package metadata must not select Torch or TorchVision. CI and
   documentation jobs that import AlbumentationsX must request the shared CPU-only runtime profile explicitly; static
   jobs remain Torch-free.
+- For CI code shared across AlbumentationsX, Albucore, and albumentations.ai, follow
+  the ci-foundation architecture at
+  https://github.com/albumentations-team/ci-foundation/blob/main/docs/architecture.md. Shared actions own bootstrap,
+  CPU-Torch mechanics, and generic review orchestration; repository dependency graphs, job policy, releases, legal
+  checks, and deployments stay local.
 - After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
   complete when the environment can support it.
 

@@ -565,10 +565,21 @@ jobs:
           dependency-group: ci-package
       - name: Build wheel
         run: uv build --wheel --out-dir dist
-      - name: Install wheel into a clean environment
+      - name: Prepare Torch-free wheel environment
+        id: install-contract
         run: >-
-          python tools/torch_runtime.py install-contract
+          python tools/install_contract.py prepare
           --wheel dist/*.whl --python "${{ matrix.python-version }}"
+      - name: Install and verify CPU-only Torch
+        uses: albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199
+        with:
+          mode: install
+          python: ${{ steps.install-contract.outputs.python }}
+          requirement: "torch>=2.13.0"
+      - name: Smoke test wheel with CPU-only Torch
+        run: >-
+          python tools/install_contract.py smoke
+          --python "${{ steps.install-contract.outputs.python }}"
 
   release_preflight:
     name: Release preflight
@@ -608,10 +619,21 @@ jobs:
           --artifacts "${RUNNER_TEMP}"/release-bundle/dist/*.whl "${RUNNER_TEMP}"/release-bundle/dist/*.tar.gz
       - name: Check final distribution metadata
         run: twine check "${RUNNER_TEMP}"/release-bundle/dist/*
-      - name: Smoke test final wheel
+      - name: Prepare Torch-free final wheel environment
+        id: release-install-contract
         run: >-
-          python tools/torch_runtime.py install-contract
+          python tools/install_contract.py prepare
           --wheel "${RUNNER_TEMP}"/release-bundle/dist/*.whl --python "3.12"
+      - name: Install and verify CPU-only Torch
+        uses: albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199
+        with:
+          mode: install
+          python: ${{ steps.release-install-contract.outputs.python }}
+          requirement: "torch>=2.13.0"
+      - name: Smoke test final wheel with CPU-only Torch
+        run: >-
+          python tools/install_contract.py smoke
+          --python "${{ steps.release-install-contract.outputs.python }}"
       - name: Verify lock freshness
         run: uv lock --check
       - name: Collect release environment evidence

@@ -117,13 +117,19 @@ def test_every_importing_pr_job_explicitly_selects_cpu_torch() -> None:
 
 def test_install_smoke_uses_the_shared_two_phase_torch_contract() -> None:
     workflow = _workflow()
+    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
     install_smoke = workflow["jobs"]["install_smoke"]
     release_preflight = workflow["jobs"]["release_preflight"]
     install_smoke_text = "\n".join(str(step.get("run", "")) for step in install_smoke["steps"])
     release_smoke_text = "\n".join(str(step.get("run", "")) for step in release_preflight["steps"])
 
-    assert "tools/torch_runtime.py install-contract" in install_smoke_text
-    assert "tools/torch_runtime.py install-contract" in release_smoke_text
+    assert "tools/install_contract.py prepare" in install_smoke_text
+    assert "tools/install_contract.py prepare" in release_smoke_text
+    assert "tools/install_contract.py smoke" in install_smoke_text
+    assert "tools/install_contract.py smoke" in release_smoke_text
+    assert (
+        "albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199" in workflow_text
+    )
     assert "find_spec('torch')" not in install_smoke_text
     assert "uv pip install" not in install_smoke_text
 

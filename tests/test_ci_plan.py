@@ -37,7 +37,6 @@ def test_markdown_only_plan_never_selects_python_tests() -> None:
     assert plan.gates["correctness"] == ()
     assert plan.gates["policy"] == ()
     assert not plan.advisory_asv
-    assert not plan.antigravity
 
 
 def test_readme_runs_package_policy_without_product_tests() -> None:
@@ -66,7 +65,6 @@ def test_runtime_plan_keeps_full_compatibility_and_performance_evidence() -> Non
     assert plan.checks["contracts"]
     assert not plan.checks["primary"]
     assert plan.advisory_asv
-    assert plan.antigravity
 
 
 def test_core_runtime_change_also_selects_dedicated_pytorch_coverage() -> None:
@@ -113,7 +111,6 @@ def test_workflow_change_runs_security_contracts_without_product_matrix() -> Non
     assert plan.checks["workflow_audit"]
     assert plan.checks["contracts"]
     assert not plan.checks["compatibility"]
-    assert plan.antigravity
 
 
 def test_quality_configuration_runs_tools_without_product_tests() -> None:
@@ -150,7 +147,6 @@ def test_draft_disables_heavy_checks_but_preserves_fast_feedback() -> None:
     assert plan.gates["correctness"] == ()
     assert plan.gates["policy"] == ()
     assert not plan.advisory_asv
-    assert not plan.antigravity
 
 
 def test_force_full_overrides_draft_and_selects_conservative_profile() -> None:

@@ -150,7 +150,6 @@ class CIPlan:
     gates: dict[str, tuple[str, ...]]
     pytest_targets: tuple[str, ...]
     advisory_asv: bool
-    antigravity: bool
     draft: bool
     forced_full: bool
     reasons: tuple[str, ...]
@@ -364,7 +363,6 @@ def build_plan(
         "policy": _gate_jobs(checks, POLICY_CHECKS),
     }
     advisory_asv = not draft and bool(domains & {"runtime", "benchmarks", "unknown"})
-    antigravity = not draft and bool(domains & {"runtime", "tests", "workflows", "legal", "self_ci", "unknown"})
     reasons = (
         f"Classified {len(changed_files)} changed path(s).",
         f"Selected domains: {', '.join(sorted(domains))}.",
@@ -387,7 +385,6 @@ def build_plan(
         gates=gates,
         pytest_targets=pytest_targets,
         advisory_asv=advisory_asv,
-        antigravity=antigravity,
         draft=draft,
         forced_full=force_full,
         reasons=reasons,
@@ -436,7 +433,6 @@ def _write_github_outputs(path: Path, plan: CIPlan) -> None:
     lines.extend(
         (
             f"advisory_asv={str(plan.advisory_asv).lower()}",
-            f"antigravity={str(plan.antigravity).lower()}",
             f"base_version={plan.base_version or ''}",
             f"head_version={plan.head_version or ''}",
             f"version_change={plan.version_change}",
@@ -456,7 +452,6 @@ def _write_summary(path: Path, plan: CIPlan) -> None:
         f"Domains: {', '.join(plan.domains)}",
         f"Selected checks: {', '.join(selected) if selected else 'none'}",
         f"Advisory ASV: {'yes' if plan.advisory_asv else 'no'}",
-        f"Antigravity review: {'yes' if plan.antigravity else 'no'}",
         f"Version: {plan.base_version or 'unspecified'} → {plan.head_version or 'unspecified'} ({plan.version_change})",
         "",
         *[f"- {reason}" for reason in plan.reasons],

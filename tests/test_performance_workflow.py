@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 PERFORMANCE_WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "performance.yml"
+REPO_ROOT = PERFORMANCE_WORKFLOW.parents[2]
 
 
 def _performance_jobs() -> dict[str, dict[str, Any]]:
@@ -39,3 +41,31 @@ def test_performance_workflow_keeps_full_asv_timing_opt_in() -> None:
     assert "asv --config asv.conf.json run" in run_text
     assert "benchmark-asv-evidence/changed-files.txt" in run_text
     assert "tools/select_benchmark_filters.py" in run_text
+
+
+def test_asv_install_commands_are_separate_cpu_torch_steps() -> None:
+    for config_name in ("asv.conf.json", "asv-pytorch.conf.json"):
+        config = json.loads((REPO_ROOT / "benchmark" / config_name).read_text())
+        commands = config["install_command"]
+
+        assert isinstance(commands, list)
+        assert len(commands) == 2
+        assert "torch>=2.13.0" in commands[0]
+        assert "https://download.pytorch.org/whl/cpu" in commands[0]
+        assert config["build_command"] == "python -m pip wheel --no-deps -w {build_cache_dir} {build_dir}"
+        assert "{wheel_file}" in commands[1]
+        assert "&&" not in " ".join(commands)
+
+
+def test_every_asv_job_explicitly_uses_the_cpu_torch_runtime() -> None:
+    workflow = yaml.safe_load(PERFORMANCE_WORKFLOW.read_text())
+    for job_name in ("benchmark_evidence", "asv_comparison"):
+        setup_step = next(
+            step for step in workflow["jobs"][job_name]["steps"] if step.get("uses") == "./.github/actions/setup-ci"
+        )
+
+        assert setup_step["with"] == {
+            "python-version": "3.12",
+            "dependency-group": "ci-benchmark",
+            "runtime-profile": "torch-cpu",
+        }

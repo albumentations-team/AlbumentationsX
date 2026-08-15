@@ -26,6 +26,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Run complete base suite
       shell: bash
       run: |
@@ -58,11 +59,8 @@ jobs:
       uses: ./.github/actions/setup-ci
       with:
         python-version: "3.12"
-        dependency-group: ci-pytorch
-    - name: Install CPU-only PyTorch
-      run: >-
-        uv pip install torch==2.13.0+cpu torchvision==0.28.0+cpu
-        --extra-index-url https://download.pytorch.org/whl/cpu
+        dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Run PyTorch-marked tests
       run: >-
         python -m pytest -n 2 --dist=worksteal -m pytorch
@@ -79,22 +77,30 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-    - name: Install uv and Python 3.10
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Install shared Python and uv bootstrap
+      uses: albumentations-team/ci-foundation/actions/setup-python-uv@6b9045dbea58026a1e8f96b0392c411934a27199
       with:
-        enable-cache: true
-        python-version: "3.10"
         activate-environment: true
+        cache-dependency-glob: pyproject.toml
+        cache-suffix: nightly-lower-bound
+        python-version: "3.10"
+        uv-version: "0.12.0"
     - name: Install declared minimum runtime dependencies
       run: >
         uv pip install -e .
         numpy==2.2.6
         scipy==1.15.3
         pydantic==2.12.4
-        albucore==0.2.12
+        albucore==0.2.13
         opencv-python-headless==5.0.0.93
         hypothesis
         pytest
+    - name: Install CPU-only Torch runtime
+      uses: albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199
+      with:
+        mode: install
+        python: python
+        requirement: "torch>=2.13.0"
     - name: Prepare nightly evidence directory
       run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Collect lower-bound environment evidence
@@ -135,6 +141,7 @@ jobs:
       with:
         python-version: "3.14"
         dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Prepare nightly evidence directory
       run: python -c "from pathlib import Path; Path('nightly-evidence').mkdir(exist_ok=True)"
     - name: Verify golden vectors
@@ -177,15 +184,15 @@ jobs:
       with:
         python-version: "3.14"
         dependency-group: ci-test
+        runtime-profile: torch-cpu
     - name: Install optional extras
       run: >
         uv sync --locked --no-default-groups --group ci-test --inexact
+        --group ci-torch-cpu
         --extra pillow
         --extra text
         --extra hub
         --extra contrib-headless
-        --no-install-package torch
-        --no-install-package torchvision
     - name: Run optional extras smoke tests
       run: python -m pytest -q tests/test_text.py tests/test_hub_mixin.py
     - name: Collect optional extras environment

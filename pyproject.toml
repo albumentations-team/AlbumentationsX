@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "albumentationsx"
 
-version = "2.4.0"
+version = "2.4.1"
 
 description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volume data, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Licensed under AGPL-3.0-only; alternative commercial terms are also available."
 readme = "README.md"
@@ -126,13 +126,12 @@ classifiers = [
 ]
 
 dependencies = [
-  "albucore==0.2.12",
-  "numkong!=7.7.1",
+  "albucore==0.2.13",
+  "numkong>=7.8.0",
   "numpy>=2.2.6",
   "pydantic>=2.12.4",
   "pyyaml",
   "scipy>=1.15.3",
-  "torch>=2.13.0",
   "typing-extensions>=4.9.0",
 ]
 
@@ -146,14 +145,22 @@ pillow = ["pillow"]
 pyvips = ["pyvips[binary]"]
 text = ["pillow"]
 
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [dependency-groups]
 ci-test = [
   "albu-spec>=0.0.6",
   "deepdiff>=9.1.0",
   "defusedxml>=0.7.1",
   "eval-type-backport>=0.4.0",
-  "huggingface-hub>=1.23.0",
-  "hypothesis>=6.156.6",
+  "huggingface-hub>=1.27.0",
+  "hypothesis>=6.165.5",
   "opencv-python-headless>=5.0.0.93",
   "pillow>=12.3.0",
   "pyvips[binary]>=3.1.1",
@@ -162,7 +169,7 @@ ci-test = [
   "pytest-mock>=3.15.1",
   "pytest-randomly>=4.1.0",
   "pytest-xdist>=3.8.0",
-  "pytz>=2026.2",
+  "pytz>=2026.3.post1",
   "requests>=2.34.2",
   "scikit-image>=0.25.2",
   "scikit-learn>=1.7.2",
@@ -171,25 +178,25 @@ ci-test = [
 ci-quality = [
   "defusedxml>=0.7.1",
   "google-docstring-parser>=0.0.11",
-  "hypothesis>=6.156.6",
+  "hypothesis>=6.165.5",
   "opencv-python-headless>=5.0.0.93",
-  "packaging>=25.0",
+  "packaging>=26.3",
   "pillow>=12.3.0",
-  "pre-commit>=4.6.0",
+  "pre-commit>=4.6.2",
   "pytest>=9.1.1",
-  "ruff>=0.16.0",
+  "ruff>=0.16.2",
   "tomli>=2.4.1",
 ]
 ci-types = [
   "mypy>=2.3.0",
   "opencv-python-headless>=5.0.0.93",
-  "pyrefly>=1.2.0.dev3",
-  "types-PyYAML>=6.0.12.20260518",
-  "types-setuptools>=83.0.0.20260706",
+  "pyrefly>=1.2.0",
+  "types-PyYAML>=6.0.12.20260724",
+  "types-setuptools>=84.0.0.20260812",
 ]
 ci-security = [
   "pip-audit>=2.10.1",
-  "zizmor>=1.27.0",
+  "zizmor>=1.29.0",
 ]
 ci-package = [
   "pytest>=9.1.1",
@@ -203,10 +210,10 @@ ci-release = [
   { include-group = "ci-test" },
   { include-group = "ci-package" },
   { include-group = "ci-security" },
-  "cyclonedx-bom",
+  "cyclonedx-bom>=7.3.1",
 ]
-ci-pytorch = [
-  { include-group = "ci-test" },
+ci-torch-cpu = [
+  "torch>=2.13.0",
 ]
 dev = [
   { include-group = "ci-test" },
@@ -216,9 +223,6 @@ dev = [
   { include-group = "ci-package" },
   { include-group = "ci-benchmark" },
   { include-group = "ci-release" },
-  { include-group = "ci-pytorch" },
-  "torch>=2.13.0",
-  "torchvision>=0.28.0",
 ]
 
 [project.urls]
@@ -520,7 +524,6 @@ markers = [
 filterwarnings = [
     "ignore::UserWarning",
     "ignore::DeprecationWarning:torch.*",
-    "ignore::UserWarning:torchvision.*",
     "ignore::pytest_benchmark.logger.PytestBenchmarkWarning",
 ]
 

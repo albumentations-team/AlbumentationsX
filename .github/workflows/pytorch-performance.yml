@@ -24,6 +24,7 @@ jobs:
       with:
         python-version: "3.12"
         dependency-group: ci-benchmark
+        runtime-profile: torch-cpu
     - name: Collect PyTorch benchmark environment evidence
       run: >
         python tools/collect_test_environment.py

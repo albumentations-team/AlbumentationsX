@@ -23,7 +23,7 @@ from ._functional_shared import (
     add,
     add_array,
     add_weighted,
-    apply_multichannel_lut,
+    apply_uint8_lut,
     clip,
     clipped,
     cv2,
@@ -525,14 +525,16 @@ def _auto_contrast_multichannel_lut(
     """Apply per-channel autocontrast LUTs with one OpenCV pass for large RGB
     images and multispectral inputs where split channel assignment is slower.
     """
-    luts = []
-    for channel_idx in range(get_num_channels(img)):
+    num_channels = get_num_channels(img)
+    lut = np.empty((256, 1, num_channels), dtype=np.uint8)
+    identity_lut = np.arange(256, dtype=np.uint8)
+    for channel_idx in range(num_channels):
         channel = img[..., channel_idx]
         hist = cv2.calcHist([channel], [0], None, [256], [0, max_value]).ravel()
-        lut = _create_auto_contrast_lut(hist, cutoff, None, method, max_value)
-        luts.append(np.arange(256, dtype=np.uint8) if lut is None else lut)
+        channel_lut = _create_auto_contrast_lut(hist, cutoff, None, method, max_value)
+        lut[:, 0, channel_idx] = identity_lut if channel_lut is None else channel_lut
 
-    return cast("ImageUInt8", apply_multichannel_lut(img, np.stack(luts), get_num_channels(img)))
+    return apply_uint8_lut(img, lut)
 
 
 def _auto_contrast_multichannel_hist(

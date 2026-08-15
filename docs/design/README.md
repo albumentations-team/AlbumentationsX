@@ -50,9 +50,25 @@ sample-dependent work, with separate branch-free executors for ordinary, observe
 
 ## Active Design Work
 
+### [Shared CI Foundation](https://github.com/albumentations-team/ci-foundation/blob/main/docs/architecture.md)
+
+The public, SHA-pinned foundation owns Python and uv bootstrap, CPU-only Torch mechanics, and trusted Antigravity
+orchestration. AlbumentationsX keeps its dependency groups, test selection, release policy, legal checks, deployment,
+and project-specific review policy here.
+
+**Status**: Implemented. The local CI profile action and Antigravity caller pin ci-foundation commit
+6b9045dbea58026a1e8f96b0392c411934a27199.
+
+### [Greenfield Torch Dependency and CI Architecture](torch-dependency-and-ci-greenfield.md)
+
+Plan for keeping Torch out of package metadata while making every import-capable CI and documentation job request the
+shared CPU-only runtime profile explicitly.
+
+**Status**: Implemented. The repository uses explicit `none` and `torch-cpu` runtime profiles.
+
 ### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
 
-Plan for making Torch a required dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
+Plan for making Torch a soft-required runtime dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
 the existing `Compose`. The route planner may cross the representation boundary in either direction when the complete
 measured path does not regress.
 

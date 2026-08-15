@@ -58,6 +58,7 @@ jobs:
       with:
         python-version: "3.12"
         dependency-group: ci-benchmark
+        runtime-profile: torch-cpu
     - name: Collect benchmark environment evidence
       run: >
         python tools/collect_test_environment.py
@@ -168,6 +169,7 @@ jobs:
       with:
         python-version: "3.12"
         dependency-group: ci-benchmark
+        runtime-profile: torch-cpu
     - name: Collect ASV environment evidence
       run: >
         python tools/collect_test_environment.py

@@ -50,6 +50,10 @@ PYTORCH_PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pytorch-pe
 RELEASE_CANDIDATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-candidate.yml"
 SECURITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "security.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
+SETUP_CI_ACTION = REPO_ROOT / ".github" / "actions" / "setup-ci" / "action.yml"
+CI_FOUNDATION_SHA = "6b9045dbea58026a1e8f96b0392c411934a27199"
+CONDA_RECIPE = REPO_ROOT / "conda.recipe" / "meta.yaml"
+DEVELOPMENT_REQUIREMENTS = REPO_ROOT / "requirements-dev.txt"
 CODEQL_ACTIONS_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql-actions.yml"
 CODEQL_PYTHON_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql-python.yml"
 WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
@@ -84,13 +88,12 @@ LOWER_BOUND_REQUIREMENTS = (
     "numpy==2.2.6",
     "scipy==1.15.3",
     "pydantic==2.12.4",
-    "albucore==0.2.12",
+    "albucore==0.2.13",
     "opencv-python-headless==5.0.0.93",
 )
 CI_DEPENDENCY_GROUPS = {
     "ci-benchmark": {"asv", "opencv-python-headless"},
     "ci-package": {"pytest", "twine"},
-    "ci-pytorch": set(),
     "ci-quality": {
         "defusedxml",
         "google-docstring-parser",
@@ -104,7 +107,37 @@ CI_DEPENDENCY_GROUPS = {
     "ci-release": {"cyclonedx-bom"},
     "ci-security": {"pip-audit", "zizmor"},
     "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-cov", "pytest-xdist"},
+    "ci-torch-cpu": {"torch"},
     "ci-types": {"mypy", "opencv-python-headless", "pyrefly"},
+}
+CI_RUNTIME_PROFILES = frozenset({"none", "torch-cpu"})
+TORCH_RUNTIME_JOBS = {
+    PR_WORKFLOW: {
+        "markdown": "ci-quality",
+        "contracts": "ci-quality",
+        "compatibility": "ci-test",
+        "coverage": "ci-test",
+        "primary": "ci-test",
+        "targeted": "ci-test",
+        "pytorch": "ci-test",
+        "release_preflight": "ci-release",
+    },
+    NIGHTLY_WORKFLOW: {
+        "compatibility_matrix": "ci-test",
+        "pytorch": "ci-test",
+        "property_and_regression": "ci-test",
+        "optional_extras": "ci-test",
+    },
+    RELEASE_CANDIDATE_WORKFLOW: {
+        "release_candidate": "ci-test",
+        "release_candidate_pytorch": "ci-test",
+        "release_candidate_performance": "ci-benchmark",
+    },
+    PERFORMANCE_WORKFLOW: {
+        "benchmark_evidence": "ci-benchmark",
+        "asv_comparison": "ci-benchmark",
+    },
+    PYTORCH_PERFORMANCE_WORKFLOW: {"pytorch_tensor_asv": "ci-benchmark"},
 }
 
 SUPPORT_POLICY_TABLE_ROWS = (
@@ -255,10 +288,99 @@ def _ci_operating_systems(workflow: dict[str, Any]) -> set[str]:
     return _workflow_matrix_values(workflow, "operating-system")
 
 
+def _direct_dependency_names(entries: list[Any]) -> set[str]:
+    return {re.split(r"[<>=!~\[]", entry, maxsplit=1)[0].casefold() for entry in entries if isinstance(entry, str)}
+
+
+def _check_ci_dependency_groups(dependency_groups: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    unexpected_groups = set(dependency_groups) - {*CI_DEPENDENCY_GROUPS, "dev"}
+    if unexpected_groups:
+        issues.append(f"pyproject.toml defines unsupported dependency groups {sorted(unexpected_groups)!r}")
+
+    for group, required_packages in sorted(CI_DEPENDENCY_GROUPS.items()):
+        entries = dependency_groups.get(group)
+        if not isinstance(entries, list):
+            issues.append(f"pyproject.toml is missing CI dependency group {group!r}")
+            continue
+        packages = _direct_dependency_names(entries)
+        missing_packages = required_packages - packages
+        if missing_packages:
+            issues.append(f"pyproject.toml group {group!r} is missing {sorted(missing_packages)!r}")
+    for group, entries in dependency_groups.items():
+        if not isinstance(entries, list):
+            continue
+        packages = _direct_dependency_names(entries)
+        if "torchvision" in packages:
+            issues.append(f"pyproject.toml group {group!r} must not install torchvision")
+        if "torch" in packages and group != "ci-torch-cpu":
+            issues.append(f"pyproject.toml group {group!r} must not install Torch directly")
+
+    return issues
+
+
+def _check_project_torch_metadata(project: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    project_dependencies = project.get("dependencies")
+    if not isinstance(project_dependencies, list):
+        issues.append("pyproject.toml project.dependencies must be a list")
+    elif {"torch", "torchvision"} & _direct_dependency_names(project_dependencies):
+        issues.append("pyproject.toml project.dependencies must not select Torch or TorchVision")
+
+    optional_dependencies = project.get("optional-dependencies", {})
+    if not isinstance(optional_dependencies, dict):
+        issues.append("pyproject.toml project.optional-dependencies must be a table")
+    else:
+        for extra, entries in optional_dependencies.items():
+            if isinstance(entries, list) and {"torch", "torchvision"} & _direct_dependency_names(entries):
+                issues.append(f"pyproject.toml extra {extra!r} must not select Torch or TorchVision")
+    return issues
+
+
+def _check_torch_free_install_surfaces() -> list[str]:
+    issues: list[str] = []
+    development_requirements = _read_text(DEVELOPMENT_REQUIREMENTS)
+    if re.search(r"(?im)^\s*(?:torch|torchvision)\b", development_requirements):
+        issues.append("requirements-dev.txt must not select Torch or TorchVision")
+    if re.search(r"(?im)^\s*--(?:extra-)?index-url\b", development_requirements):
+        issues.append("requirements-dev.txt must not select a package index")
+
+    conda_metadata = _read_text(CONDA_RECIPE)
+    run_dependencies = re.search(r"(?ms)^  run:\s*\n(.*?)(?=^\S|\Z)", conda_metadata)
+    if run_dependencies is None:
+        issues.append("conda.recipe/meta.yaml must define a run dependency section")
+    elif re.search(r"(?im)^\s*-\s*(?:pytorch|torchvision)\b", run_dependencies.group(1)):
+        issues.append("conda.recipe/meta.yaml run dependencies must not select Torch or TorchVision")
+    return issues
+
+
+def _check_dev_group(dependency_groups: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    dev_entries = dependency_groups.get("dev", [])
+    if not isinstance(dev_entries, list):
+        return ["pyproject.toml dependency group 'dev' must be a list"]
+
+    included_groups = {
+        entry.get("include-group")
+        for entry in dev_entries
+        if isinstance(entry, dict) and isinstance(entry.get("include-group"), str)
+    }
+    expected_dev_groups = set(CI_DEPENDENCY_GROUPS) - {"ci-torch-cpu"}
+    missing_includes = expected_dev_groups - included_groups
+    if missing_includes:
+        issues.append(f"pyproject.toml dev group does not include {sorted(missing_includes)!r}")
+    if "ci-torch-cpu" in included_groups:
+        issues.append("pyproject.toml dev group must not install the CI CPU Torch profile implicitly")
+    return issues
+
+
 def _check_pyproject() -> list[str]:
     pyproject = _load_pyproject()
     project = pyproject.get("project", {})
     issues: list[str] = []
+
+    if not isinstance(project, dict):
+        return ["pyproject.toml project must be a table"]
 
     requires_python = project.get("requires-python")
     if requires_python != f">={OLDEST_PYTHON}":
@@ -271,39 +393,149 @@ def _check_pyproject() -> list[str]:
             f"pyproject.toml Python classifiers are {sorted(classifiers)!r}, expected {sorted(expected)!r}",
         )
 
+    issues.extend(_check_project_torch_metadata(project))
+    issues.extend(_check_torch_free_install_surfaces())
+
     dependency_groups = pyproject.get("dependency-groups", {})
     if not isinstance(dependency_groups, dict):
-        issues.append("pyproject.toml dependency-groups must be a table")
-        return issues
+        return [*issues, "pyproject.toml dependency-groups must be a table"]
 
-    for group, required_packages in sorted(CI_DEPENDENCY_GROUPS.items()):
-        entries = dependency_groups.get(group)
-        if not isinstance(entries, list):
-            issues.append(f"pyproject.toml is missing CI dependency group {group!r}")
-            continue
-        packages = {
-            re.split(r"[<>=!~\[]", entry, maxsplit=1)[0].casefold() for entry in entries if isinstance(entry, str)
-        }
-        missing_packages = required_packages - packages
-        if missing_packages:
-            issues.append(f"pyproject.toml group {group!r} is missing {sorted(missing_packages)!r}")
-        if packages & {"torch", "torchvision"}:
-            issues.append(f"pyproject.toml group {group!r} must not install PyTorch directly")
+    issues.extend(_check_ci_dependency_groups(dependency_groups))
+    issues.extend(_check_dev_group(dependency_groups))
 
-    dev_entries = dependency_groups.get("dev", [])
-    if not isinstance(dev_entries, list):
-        issues.append("pyproject.toml dependency group 'dev' must be a list")
-        return issues
-    included_groups = {
-        entry.get("include-group")
-        for entry in dev_entries
-        if isinstance(entry, dict) and isinstance(entry.get("include-group"), str)
-    }
-    missing_includes = set(CI_DEPENDENCY_GROUPS) - included_groups
-    if missing_includes:
-        issues.append(f"pyproject.toml dev group does not include {sorted(missing_includes)!r}")
+    uv = pyproject.get("tool", {}).get("uv", {})
+    if not isinstance(uv, dict) or uv.get("sources", {}).get("torch") != {"index": "pytorch-cpu"}:
+        issues.append("pyproject.toml must route Torch through the explicit pytorch-cpu index")
 
     return issues
+
+
+def _setup_ci_step(job: dict[str, Any]) -> dict[str, Any] | None:
+    steps = job.get("steps", [])
+    if not isinstance(steps, list):
+        return None
+    for step in steps:
+        if isinstance(step, dict) and step.get("uses") == "./.github/actions/setup-ci":
+            return step
+    return None
+
+
+def _setup_ci_inputs(job: dict[str, Any]) -> dict[str, Any] | None:
+    step = _setup_ci_step(job)
+    if step is None:
+        return None
+    inputs = step.get("with", {})
+    return inputs if isinstance(inputs, dict) else None
+
+
+def _check_setup_ci_action() -> list[str]:
+    action = _load_yaml(SETUP_CI_ACTION)
+    inputs = action.get("inputs", {})
+    runs = action.get("runs", {})
+    issues: list[str] = []
+
+    if not isinstance(inputs, dict):
+        return [f"{SETUP_CI_ACTION} inputs must be a mapping"]
+    runtime_input = inputs.get("runtime-profile")
+    if not isinstance(runtime_input, dict) or runtime_input.get("default") != "none":
+        issues.append(f"{SETUP_CI_ACTION} must define runtime-profile with default 'none'")
+
+    if not isinstance(runs, dict) or not isinstance(runs.get("steps"), list):
+        return [*issues, f"{SETUP_CI_ACTION} runs.steps must be a list"]
+    action_text = _read_text(SETUP_CI_ACTION)
+    required_contracts = (
+        f"albumentations-team/ci-foundation/actions/setup-python-uv@{CI_FOUNDATION_SHA}",
+        f"albumentations-team/ci-foundation/actions/torch-cpu@{CI_FOUNDATION_SHA}",
+        "cache-suffix: ${{ inputs.dependency-group }}-${{ inputs.runtime-profile }}",
+        "ci-benchmark|ci-package|ci-quality|ci-release|ci-security|ci-test|ci-types",
+        "torch-cpu) runtime_group=(--group ci-torch-cpu)",
+        "Unknown CI runtime profile",
+        "mode: verify",
+        "ALBU_CI_RUNTIME_PROFILE=${CI_RUNTIME_PROFILE}",
+    )
+    issues.extend(
+        f"{SETUP_CI_ACTION} is missing runtime-profile contract: {required}"
+        for required in required_contracts
+        if required not in action_text
+    )
+    return issues
+
+
+def _expected_torch_runtime_jobs() -> dict[tuple[Path, str], str]:
+    return {(path, job_id): group for path, jobs in TORCH_RUNTIME_JOBS.items() for job_id, group in jobs.items()}
+
+
+def _check_expected_torch_runtime_jobs(expected_jobs: dict[tuple[Path, str], str]) -> list[str]:
+    issues: list[str] = []
+    for (path, job_id), expected_group in expected_jobs.items():
+        job = _workflow_jobs(path).get(job_id)
+        if not isinstance(job, dict):
+            issues.append(f"{path} is missing Torch runtime job {job_id!r}")
+            continue
+        inputs = _setup_ci_inputs(job)
+        if inputs is None:
+            issues.append(f"{path} job {job_id!r} must use the local dependency-profile action")
+            continue
+        if inputs.get("dependency-group") != expected_group:
+            issues.append(
+                f"{path} job {job_id!r} must use dependency group {expected_group!r}, "
+                f"found {inputs.get('dependency-group')!r}",
+            )
+        if inputs.get("runtime-profile") != "torch-cpu":
+            issues.append(f"{path} job {job_id!r} must explicitly use runtime-profile 'torch-cpu'")
+    return issues
+
+
+def _check_declared_workflow_runtime_profiles(expected_jobs: dict[tuple[Path, str], str]) -> list[str]:
+    issues: list[str] = []
+    for path in _workflow_files():
+        for job_id, job in _workflow_jobs(path).items():
+            if not isinstance(job, dict):
+                continue
+            inputs = _setup_ci_inputs(job)
+            if inputs is None:
+                continue
+            dependency_group = inputs.get("dependency-group")
+            allowed_groups = set(CI_DEPENDENCY_GROUPS) - {"ci-torch-cpu"}
+            if dependency_group not in allowed_groups:
+                issues.append(f"{path} job {job_id!r} uses unsupported dependency group {dependency_group!r}")
+            runtime_profile = inputs.get("runtime-profile", "none")
+            if runtime_profile not in CI_RUNTIME_PROFILES:
+                issues.append(f"{path} job {job_id!r} uses unknown runtime profile {runtime_profile!r}")
+            if runtime_profile == "torch-cpu" and (path, job_id) not in expected_jobs:
+                issues.append(f"{path} job {job_id!r} requests an undocumented CPU Torch runtime")
+    return issues
+
+
+def _check_lower_bound_torch_runtime() -> list[str]:
+    issues: list[str] = []
+    nightly_lower_bound = _workflow_jobs(NIGHTLY_WORKFLOW).get("lower_bound_dependencies")
+    if not isinstance(nightly_lower_bound, dict):
+        issues.append(f"{NIGHTLY_WORKFLOW} is missing lower_bound_dependencies")
+    elif f"albumentations-team/ci-foundation/actions/torch-cpu@{CI_FOUNDATION_SHA}" not in _read_text(
+        NIGHTLY_WORKFLOW,
+    ):
+        issues.append(f"{NIGHTLY_WORKFLOW} lower_bound_dependencies must install the shared CPU Torch runtime")
+    return issues
+
+
+def _check_workflow_torch_cleanup() -> list[str]:
+    issues: list[str] = []
+    for path in _workflow_files():
+        workflow_text = _read_text(path)
+        if re.search(r"(?:uv |python -m )?pip install[^\n]*torch", workflow_text, flags=re.IGNORECASE):
+            issues.append(f"{path} must use the ci-foundation Torch action instead of installing Torch inline")
+    return issues
+
+
+def _check_torch_runtime_jobs() -> list[str]:
+    expected_jobs = _expected_torch_runtime_jobs()
+    return [
+        *_check_expected_torch_runtime_jobs(expected_jobs),
+        *_check_declared_workflow_runtime_profiles(expected_jobs),
+        *_check_lower_bound_torch_runtime(),
+        *_check_workflow_torch_cleanup(),
+    ]
 
 
 def _check_pr_workflow() -> list[str]:
@@ -347,7 +579,7 @@ def _check_pr_workflow() -> list[str]:
                 "dependency-group: ci-types",
                 "dependency-group: ci-security",
                 "dependency-group: ci-package",
-                "dependency-group: ci-pytorch",
+                "runtime-profile: torch-cpu",
                 "python -m tools.ci_shard select",
                 "--dist=worksteal",
                 '-m "not pytorch"',
@@ -404,6 +636,8 @@ def _check_workflow_job_timeouts() -> list[str]:
         for job_name, job in _workflow_jobs(path).items():
             if not isinstance(job, dict):
                 issues.append(f"{path} job {job_name!r} is not a YAML mapping")
+                continue
+            if "uses" in job:
                 continue
             timeout = job.get("timeout-minutes")
             if not isinstance(timeout, int):
@@ -487,7 +721,8 @@ def _check_nightly_workflow() -> list[str]:
                 "environment-property-regression.json",
                 "environment-optional-extras.json",
                 "dependency-group: ci-test",
-                "dependency-group: ci-pytorch",
+                "runtime-profile: torch-cpu",
+                f"albumentations-team/ci-foundation/actions/torch-cpu@{CI_FOUNDATION_SHA}",
                 "python -m tools.ci_shard select",
                 '-m "not pytorch"',
                 "-m pytorch",
@@ -513,8 +748,8 @@ def _check_release_candidate_workflow() -> list[str]:
                 "python -m tools.performance_budget summarize",
                 "benchmark-performance-budget-",
                 "dependency-group: ci-test",
-                "dependency-group: ci-pytorch",
                 "dependency-group: ci-benchmark",
+                "runtime-profile: torch-cpu",
                 "python -m tools.ci_shard select",
                 '-m "not pytorch"',
                 "-m pytorch",
@@ -582,6 +817,7 @@ def _check_pytorch_performance_workflow() -> list[str]:
             "workflow_dispatch:",
             "continue-on-error: true",
             "dependency-group: ci-benchmark",
+            "runtime-profile: torch-cpu",
             "asv --config asv-pytorch.conf.json check --verbose",
             "asv --config asv-pytorch.conf.json run",
             "pytorch-benchmark-evidence/",
@@ -664,6 +900,8 @@ def _check_workflows() -> list[str]:
         *_check_workflow_python_versions(),
         *_check_workflow_job_timeouts(),
         *_check_workflow_push_triggers(),
+        *_check_setup_ci_action(),
+        *_check_torch_runtime_jobs(),
         *_check_pr_workflow(),
         *_check_full_matrix_workflow(RELEASE_CANDIDATE_WORKFLOW),
         *_check_nightly_workflow(),

@@ -2005,6 +2005,13 @@ class CubicSymmetry(Transform3D):
         volume_shape = _get_volume_shape(data)
         return {"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape}
 
+    def _get_label_transform_name(self, **params: Any) -> str | None:
+        """Return the CubicSymmetry mapping event for a rotoreflection, while pure cube rotations preserve class
+        meanings and must not alter semantic labels.
+        """
+        index = params.get("index")
+        return "CubicSymmetry" if isinstance(index, int) and index >= 24 else None
+
     def apply_to_volume(self, volume: VolumeType, index: int, **params: Any) -> VolumeType:
         return f3d.transform_cube(volume, index)
 

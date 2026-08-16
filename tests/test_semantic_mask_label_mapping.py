@@ -116,6 +116,46 @@ def test_semantic_mask_label_mapping_flip3d_ignores_even_reflections(flip_axes: 
     np.testing.assert_array_equal(result["mask3d"], np.flip(mask3d, axis=flip_axes))
 
 
+@pytest.mark.parametrize(("index", "swap_labels"), [(0, False), (24, True)])
+def test_semantic_mask_label_mapping_follows_realized_cubic_symmetry_operation(
+    monkeypatch: pytest.MonkeyPatch,
+    index: int,
+    swap_labels: bool,
+) -> None:
+    """Only rotoreflections rename class IDs after their mask3d geometry is transformed."""
+    volume = np.arange(2 * 4 * 4, dtype=np.float32).reshape(2, 4, 4, 1)
+    mask3d = np.array(
+        [
+            [[2, 0, 3, 4], [4, 3, 0, 2], [2, 4, 3, 0], [0, 2, 4, 3]],
+            [[3, 2, 4, 0], [0, 4, 2, 3], [4, 3, 0, 2], [2, 0, 3, 4]],
+        ],
+        dtype=np.uint8,
+    )
+
+    def fixed_index(
+        self: A.CubicSymmetry,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: Any,
+    ) -> dict[str, Any]:
+        return {"index": index, "volume_shape": data["volume"].shape}
+
+    monkeypatch.setattr(A.CubicSymmetry, "sample_parameters", fixed_index)
+    result = A.Compose(
+        [A.CubicSymmetry(p=1.0)],
+        semantic_mask_label_mappings={"CubicSymmetry": {2: 3, 3: 2}},
+        strict=True,
+        telemetry=False,
+    )(volume=volume, mask3d=mask3d)
+
+    expected = A.CubicSymmetry().apply_to_mask3d(mask3d, index=index)
+    if swap_labels:
+        source_labels = expected.copy()
+        expected[source_labels == 2] = 3
+        expected[source_labels == 3] = 2
+    np.testing.assert_array_equal(result["mask3d"], expected)
+
+
 def test_semantic_mask_label_mapping_preserves_custom_apply_with_params_hook() -> None:
     image = np.zeros((1, 4, 3), dtype=np.uint8)
     mask = np.array([[2, 0, 3, 2]], dtype=np.uint8)

@@ -143,10 +143,11 @@ def test_semantic_mask_label_mapping_follows_realized_cubic_symmetry_operation(
     monkeypatch.setattr(A.CubicSymmetry, "sample_parameters", fixed_index)
     result = A.Compose(
         [A.CubicSymmetry(p=1.0)],
+        additional_targets={"mask3d_alias": "mask3d"},
         semantic_mask_label_mappings={"CubicSymmetry": {2: 3, 3: 2}},
         strict=True,
         telemetry=False,
-    )(volume=volume, mask3d=mask3d)
+    )(volume=volume, mask3d=mask3d, mask3d_alias=mask3d.copy())
 
     expected = A.CubicSymmetry().apply_to_mask3d(mask3d, index=index)
     if swap_labels:
@@ -154,6 +155,7 @@ def test_semantic_mask_label_mapping_follows_realized_cubic_symmetry_operation(
         expected[source_labels == 2] = 3
         expected[source_labels == 3] = 2
     np.testing.assert_array_equal(result["mask3d"], expected)
+    np.testing.assert_array_equal(result["mask3d_alias"], expected)
 
 
 def test_semantic_mask_label_mapping_preserves_custom_apply_with_params_hook() -> None:

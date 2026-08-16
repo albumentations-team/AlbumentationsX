@@ -58,9 +58,12 @@ are outside normal Linux CI unless a workflow has a real GUI reason.
 
 The `headless` extra is the default runtime path. The `contrib-headless`,
 `pillow`, `text`, and `hub` extras get targeted import or small functional
-smoke tests. Torch is a required runtime dependency; TorchVision-specific
-coverage remains in the dedicated PyTorch CI lane. The `pyvips` extra is
-scheduled-only when binary availability is stable.
+smoke tests. Torch is a soft-required runtime dependency: the base install does
+not select a CPU, CUDA, or MPS build, while importing `albumentations` requires
+an installed Torch runtime. CI jobs that import AlbumentationsX explicitly
+select the CPU-only profile; link-only static, packaging, audit, and
+static-documentation jobs do not select Torch. The `pyvips` extra is scheduled-only when binary
+availability is stable.
 
 ## Retiring Support
 

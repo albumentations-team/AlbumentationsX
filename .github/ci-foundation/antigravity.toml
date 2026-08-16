@@ -1,0 +1,24 @@
+[paths]
+include = [
+  "albumentations/**",
+  "tests/**",
+  "tools/**",
+  ".github/**",
+  ".codex/**",
+  "legal/**",
+  "THIRD_PARTY_LICENSES/**",
+  "CLA.md",
+  "CONTRIBUTING.md",
+  "LICENSE",
+  "LICENSE_HISTORY.md",
+  "LICENSING.md",
+  "MANIFEST.in",
+  "README.md",
+  "THIRD_PARTY_NOTICES.md",
+  "conda.recipe/meta.yaml",
+  "docs/maintaining/license-provenance.md",
+  "pyproject.toml",
+]
+
+[review]
+instructions = ".github/ci-foundation/antigravity-review.md"

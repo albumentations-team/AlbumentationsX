@@ -527,7 +527,7 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
         params: dict[str, Any],
         data: dict[str, Any],
         sampling: SamplingContext,
-    ) -> dict[str, tuple[int, int, int, int]]:
+    ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
 
         if len(data["bboxes"]) == 0:
@@ -572,7 +572,10 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
 
             ratio = height / width
             if self.aspect_ratio_range[0] <= ratio <= self.aspect_ratio_range[1]:
-                return {"crop_coords": (crop_x_min, crop_y_min, crop_x_max, crop_y_max)}
+                return {
+                    "crop_coords": (crop_x_min, crop_y_min, crop_x_max, crop_y_max),
+                    "bbox_indices": tuple(sorted(int(i) for i in bbox_indices)),
+                }
 
         crop_coords = self._get_coords_no_bbox(image_shape, sampling)
         return {"crop_coords": crop_coords}

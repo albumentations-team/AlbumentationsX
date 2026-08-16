@@ -110,6 +110,7 @@ BBOX_ROUTE_TRANSFORMS = frozenset(
     {
         "AtLeastOneBBoxRandomCrop",
         "BBoxSafeRandomCrop",
+        "BBoxSubsetSafeRandomCrop",
         "RandomSizedBBoxSafeCrop",
     },
 )

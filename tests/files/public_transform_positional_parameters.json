@@ -9,6 +9,7 @@
   "AtmosphericFog": ["density_range", "fog_color", "depth_mode", "p"],
   "AutoContrast": ["cutoff", "ignore", "method", "p"],
   "BBoxSafeRandomCrop": ["erosion_rate", "p"],
+  "BBoxSubsetSafeRandomCrop": ["subset_fraction_range", "erosion_rate", "aspect_ratio_range", "max_attempts", "p"],
   "Blur": ["blur_range", "p"],
   "CLAHE": ["clip_range", "tile_grid_size", "p"],
   "CenterCrop": ["height", "width", "pad_if_needed", "pad_position", "border_mode", "fill", "fill_mask", "p"],

@@ -8,13 +8,17 @@ from ._transforms_shared import (
     ALL_TARGETS,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
+    AfterValidator,
     BaseTransformInitSchema,
     Field,
     FullInterpolationType,
     ImageType,
+    check_range_bounds,
     denormalize_bboxes,
     fcrops,
     fgeometric,
+    math,
+    nondecreasing,
     np,
     union_of_bboxes,
 )
@@ -395,6 +399,185 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
         return fgeometric.keypoints_scale(keypoints, scale_x=scale_x, scale_y=scale_y)
 
 
+class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
+    """Random crop around the union of a randomly sampled subset of bboxes, for use when
+    preserving every box is unnecessary and a variable-size crop is preferable.
+
+    Unlike BBoxSafeRandomCrop, which guarantees every bbox survives the crop, this transform
+    samples a random subset of the available bboxes (sized between subset_fraction_range[0] and
+    subset_fraction_range[1] of the total count), computes the union of only that subset, and
+    crops around it. Bboxes outside the sampled subset may remain complete, be clipped, or be
+    removed entirely depending on where they fall relative to the crop.
+
+    This makes BBoxSubsetSafeRandomCrop useful for:
+    - Dense-detection datasets (e.g. Global Wheat Detection) with many overlapping/nearby objects,
+      where forcing every box into one crop would be too restrictive
+    - Training pipelines that benefit from varied, object-focused crops without a fixed output size
+
+    The algorithm:
+    1. If no bboxes exist, falls back to the same erosion-based random crop as BBoxSafeRandomCrop.
+    2. Otherwise, for up to max_attempts tries:
+        - Samples a random count k of bboxes to select, bounded by subset_fraction_range.
+        - Samples k unique bbox indices without replacement.
+        - Computes the union of the selected subset, eroded by erosion_rate.
+        - Expands the crop randomly beyond the eroded union, same as BBoxSafeRandomCrop.
+        - Accepts the crop if its aspect ratio (height / width) falls within aspect_ratio_range.
+    3. If no attempt satisfies aspect_ratio_range, falls back to the no-bbox random crop.
+
+    Args:
+        subset_fraction_range (tuple[float, float]): Fraction of bboxes to select for the union,
+            as (min_fraction, max_fraction). Must satisfy 0 < min_fraction <= max_fraction <= 1.
+            A value of (1.0, 1.0) always selects every bbox, matching BBoxSafeRandomCrop's
+            all-box union. Defaults to (0.5, 1.0).
+        erosion_rate (float): Controls how much the valid crop region can deviate from the
+            selected bboxes' union. Must be in range [0.0, 1.0].
+            - 0.0: crop must contain the exact union of the selected bboxes (guarantees every
+              selected bbox is preserved)
+            - 1.0: crop can deviate maximally from the union
+            Defaults to 0.0.
+        aspect_ratio_range (tuple[float, float]): Acceptable (height / width) range for the
+            sampled crop. Candidate crops outside this range are rejected and resampled.
+            Defaults to (0.5, 2.0).
+        max_attempts (int): Maximum number of subset/crop resampling attempts before falling
+            back to a plain random crop. Must be >= 1. Defaults to 50.
+        p (float, optional): Probability of applying the transform. Defaults to 1.0.
+
+    Targets:
+        image, mask, bboxes, keypoints, volume, mask3d
+
+    Image types:
+        uint8, float32
+
+    Supported bboxes:
+        hbb, obb
+
+    Raises:
+        CropSizeError: If requested crop size exceeds image dimensions
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>>
+        >>> image = np.random.randint(0, 256, (200, 200, 3), dtype=np.uint8)
+        >>> mask = np.random.randint(0, 2, (200, 200), dtype=np.uint8)
+        >>> bboxes = np.array(
+        ...     [[10, 10, 40, 40], [60, 60, 90, 90], [120, 20, 150, 50], [30, 120, 70, 160]],
+        ...     dtype=np.float32,
+        ... )
+        >>> bbox_labels = [1, 2, 3, 4]
+        >>>
+        >>> transform = A.Compose(
+        ...     [
+        ...         A.BBoxSubsetSafeRandomCrop(
+        ...             subset_fraction_range=(0.5, 1.0),
+        ...             erosion_rate=0.2,
+        ...             aspect_ratio_range=(0.5, 2.0),
+        ...             max_attempts=50,
+        ...         ),
+        ...     ],
+        ...     bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        ... )
+        >>>
+        >>> result = transform(image=image, mask=mask, bboxes=bboxes, bbox_labels=bbox_labels)
+        >>> transformed_image = result["image"]  # Variable-size crop around a bbox subset union
+        >>> transformed_bboxes = result["bboxes"]  # Selected boxes kept, others may be clipped/removed
+
+    Note:
+        - IMPORTANT: only bboxes selected in the sampled subset are guaranteed to survive when
+          erosion_rate=0.0. Non-selected bboxes may be clipped or removed like any ordinary crop.
+        - With subset_fraction_range=(1.0, 1.0) and erosion_rate=0.0, geometry matches
+          BBoxSafeRandomCrop's all-box union behavior.
+        - The crop size is not fixed; add A.Resize afterward for a fixed output shape.
+        - The randomly selected bbox subset is not currently exposed through replay/applied
+          configuration, since there is no constructor parameter it can be pinned to.
+
+    """
+
+    _targets = ALL_TARGETS
+
+    class InitSchema(BaseTransformInitSchema):
+        subset_fraction_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+        erosion_rate: float = Field(ge=0.0, le=1.0)
+        aspect_ratio_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+        max_attempts: Annotated[int, Field(ge=1)]
+
+    def __init__(
+        self,
+        subset_fraction_range: tuple[float, float] = (0.5, 1.0),
+        erosion_rate: float = 0.0,
+        aspect_ratio_range: tuple[float, float] = (0.5, 2.0),
+        max_attempts: int = 50,
+        p: float = 1.0,
+    ):
+        super().__init__(erosion_rate=erosion_rate, p=p)
+        self.subset_fraction_range = subset_fraction_range
+        self.aspect_ratio_range = aspect_ratio_range
+        self.max_attempts = max_attempts
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, tuple[int, int, int, int]]:
+        image_shape = params["shape"][:2]
+
+        if len(data["bboxes"]) == 0:
+            crop_coords = self._get_coords_no_bbox(image_shape, sampling)
+            return {"crop_coords": crop_coords}
+
+        n = len(data["bboxes"])
+        kmin = math.ceil(n * self.subset_fraction_range[0])
+        kmax = min(math.ceil(n * self.subset_fraction_range[1]), n)
+
+        for _ in range(self.max_attempts):
+            k = sampling.random_generator.integers(kmin, kmax + 1)
+            bbox_indices = sampling.random_generator.choice(n, size=k, replace=False)
+            subset = data["bboxes"][bbox_indices]
+            bbox_union = union_of_bboxes(bboxes=subset, erosion_rate=self.erosion_rate)
+
+            if bbox_union is None:
+                continue
+
+            x_min, y_min, x_max, y_max = bbox_union
+
+            x_min = np.clip(x_min, 0, 1)
+            y_min = np.clip(y_min, 0, 1)
+            x_max = np.clip(x_max, x_min, 1)
+            y_max = np.clip(y_max, y_min, 1)
+
+            image_height, image_width = image_shape
+
+            crop_x_min = int(x_min * sampling.py_random.random() * image_width)
+            crop_y_min = int(y_min * sampling.py_random.random() * image_height)
+
+            bbox_xmax = x_max + (1 - x_max) * sampling.py_random.random()
+            bbox_ymax = y_max + (1 - y_max) * sampling.py_random.random()
+            crop_x_max = int(bbox_xmax * image_width)
+            crop_y_max = int(bbox_ymax * image_height)
+
+            width = crop_x_max - crop_x_min
+            height = crop_y_max - crop_y_min
+
+            if width <= 0 or height <= 0:
+                continue
+
+            ratio = height / width
+            if self.aspect_ratio_range[0] <= ratio <= self.aspect_ratio_range[1]:
+                return {"crop_coords": (crop_x_min, crop_y_min, crop_x_max, crop_y_max)}
+
+        crop_coords = self._get_coords_no_bbox(image_shape, sampling)
+        return {"crop_coords": crop_coords}
+
+
 class AtLeastOneBBoxRandomCrop(BaseCrop):
     """Random crop of fixed size that contains at least one bbox. erosion_factor controls
     overlap with reference box. Use when some object loss is acceptable.
@@ -640,5 +823,6 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
 __all__ = [
     "AtLeastOneBBoxRandomCrop",
     "BBoxSafeRandomCrop",
+    "BBoxSubsetSafeRandomCrop",
     "RandomSizedBBoxSafeCrop",
 ]

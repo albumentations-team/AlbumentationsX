@@ -26,7 +26,6 @@ from albumentations.core.type_definitions import (
     CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
-    NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
     C4GroupElement,
     Targets,
     VolumeType,
@@ -1844,35 +1843,6 @@ class Flip3D(Transform3D):
         flip_axes = params.get("flip_axes", ())
         return "Flip3D" if len(flip_axes) % 2 else None
 
-    def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        """Rename keypoint label values after a realized orientation-reversing reflection while preserving transformed
-        coordinates and input row order.
-        """
-        processor = self.get_processor("keypoints")
-        transform_name = self._get_label_transform_name(**params)
-        if (
-            not isinstance(processor, KeypointsProcessor)
-            or not processor.params.label_fields
-            or keypoints.size == 0
-            or transform_name is None
-        ):
-            return keypoints
-
-        field_mappings = processor.encoded_label_mappings.get(transform_name)
-        if not field_mappings:
-            return keypoints
-
-        result = keypoints.copy()
-        for label_offset, label_field in enumerate(processor.params.label_fields):
-            mapping = field_mappings.get(label_field)
-            column_index = NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS + label_offset
-            if not mapping or column_index >= keypoints.shape[1]:
-                continue
-            source_values = keypoints[:, column_index]
-            for source_label, target_label in mapping.items():
-                result[source_values == source_label, column_index] = target_label
-        return result
-
     def apply_to_volume(
         self,
         volume: VolumeType,
@@ -1959,6 +1929,9 @@ class CubicSymmetry(Transform3D):
         - All transformations preserve the object's chirality (handedness) when using
           pure rotations (indices 0-23) and invert it when using rotoreflections
           (indices 24-47).
+        - A realized rotoreflection emits the `CubicSymmetry` label-mapping event. Configured semantic-mask mappings
+          remap `mask3d` labels and aliases; configured keypoint mappings remap label fields without moving their
+          transformed coordinate rows. Rotations do not emit this event.
 
     Examples:
         >>> import numpy as np
@@ -2004,6 +1977,13 @@ class CubicSymmetry(Transform3D):
         # Randomly select one of 48 possible transformations
         volume_shape = _get_volume_shape(data)
         return {"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape}
+
+    def _get_label_transform_name(self, **params: Any) -> str | None:
+        """Return the CubicSymmetry mapping event for a rotoreflection, while pure cube rotations preserve class
+        meanings and must not alter semantic labels.
+        """
+        index = params.get("index")
+        return "CubicSymmetry" if isinstance(index, int) and index >= 24 else None
 
     def apply_to_volume(self, volume: VolumeType, index: int, **params: Any) -> VolumeType:
         return f3d.transform_cube(volume, index)

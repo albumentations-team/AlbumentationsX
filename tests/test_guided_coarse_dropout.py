@@ -449,3 +449,31 @@ class TestGuidancePreservation:
             result.get("user_data", {}).get("sal", full_guidance_100),
             original_guidance,
         )
+
+
+# ===========================================================================
+# 9.  Guidance mask validation
+# ===========================================================================
+
+class TestGuidanceValidation:
+    """Validate shape and dimensionality checks on the guidance mask."""
+
+    def test_wrong_ndim_raises(self, image_100):
+        bad_mask = np.ones((100, 100, 3), dtype=np.uint8)
+        transform = A.GuidedCoarseDropout(region_key="sal", fill=0, p=1.0)
+        with pytest.raises(ValueError, match="must be 2-D"):
+            transform(image=image_100, user_data={"sal": bad_mask})
+
+    def test_shape_mismatch_raises(self, image_100):
+        wrong_shape = np.ones((50, 50), dtype=np.uint8)
+        transform = A.GuidedCoarseDropout(region_key="sal", fill=0, p=1.0)
+        with pytest.raises(ValueError, match="does not match image shape"):
+            transform(image=image_100, user_data={"sal": wrong_shape})
+
+    def test_3d_with_channel_1_is_squeezed(self, image_100):
+        mask_3d = np.ones((100, 100, 1), dtype=np.uint8)
+        transform = A.GuidedCoarseDropout(
+            region_key="sal", num_holes_range=(3, 5), fill=0, p=1.0,
+        )
+        result = transform(image=image_100, user_data={"sal": mask_3d})
+        assert result["image"].shape == image_100.shape

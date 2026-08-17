@@ -168,7 +168,7 @@ class GuidedCoarseDropout(DualTransform):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_guidance_mask(self, data: dict[str, Any]) -> np.ndarray | None:
+    def _get_guidance_mask(self, data: dict[str, Any], image_shape: tuple[int, int]) -> np.ndarray | None:
         """Read the binary guidance mask from user_data[region_key].
 
         Returns a boolean 2-D array or None when the key is absent.
@@ -183,7 +183,24 @@ class GuidedCoarseDropout(DualTransform):
 
         # Squeeze channel dim if present (e.g. (H, W, 1))
         if mask.ndim == 3:
-            mask = np.squeeze(mask, axis=-1) if mask.shape[-1] == 1 else np.squeeze(mask, axis=0)
+            if mask.shape[-1] == 1:
+                mask = np.squeeze(mask, axis=-1)
+            elif mask.shape[0] == 1:
+                mask = np.squeeze(mask, axis=0)
+
+        if mask.ndim != 2:
+            msg = (
+                f"Guidance mask must be 2-D (H, W), got {mask.ndim}-D with shape {mask.shape}. "
+                f"Key: user_data['{self.region_key}']"
+            )
+            raise ValueError(msg)
+
+        if mask.shape != image_shape:
+            msg = (
+                f"Guidance mask shape {mask.shape} does not match image shape {image_shape}. "
+                f"Key: user_data['{self.region_key}']"
+            )
+            raise ValueError(msg)
 
         return mask.astype(bool, copy=False)
 
@@ -334,7 +351,7 @@ class GuidedCoarseDropout(DualTransform):
         height, width = image_shape
 
         # 1. Guidance mask
-        guidance_mask = self._get_guidance_mask(data)
+        guidance_mask = self._get_guidance_mask(data, image_shape)
         if guidance_mask is None:
             return {"dropout_mask": None}
 

@@ -8,7 +8,7 @@ dilated before rasterization to guarantee strict spatial protection.
 Ref: https://github.com/albumentations-team/AlbumentationsX/issues/338
 """
 
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, cast
 
 import cv2
 import numpy as np
@@ -117,6 +117,7 @@ class GuidedCoarseDropout(DualTransform):
 
     References:
         - Issue: https://github.com/albumentations-team/AlbumentationsX/issues/338
+
     """
 
     _targets = ALL_TARGETS

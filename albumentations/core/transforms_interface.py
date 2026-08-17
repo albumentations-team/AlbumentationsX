@@ -34,7 +34,14 @@ from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.validation import ValidatedTransformMeta
 
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
-from .type_definitions import ALL_TARGETS, ImageType, StackedMasks4D, Targets, VolumeType
+from .type_definitions import (
+    ALL_TARGETS,
+    NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
+    ImageType,
+    StackedMasks4D,
+    Targets,
+    VolumeType,
+)
 from .utils import format_args
 from .utils import get_image_data as _get_image_data_impl
 
@@ -1584,6 +1591,35 @@ class Transform3D(DualTransform):
         (D, H, W, C). Output shape unchanged. For VolumeTransform.
         """
         return self.apply_to_volume(mask3d, *args, **params)
+
+    def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
+        """Remap keypoint label fields after 3D geometry while retaining transformed coordinates and row order so each
+        record matches manual annotation.
+        """
+        processor = self.get_processor("keypoints")
+        transform_name = self._get_label_transform_name(**params)
+        if (
+            not isinstance(processor, KeypointsProcessor)
+            or not processor.params.label_fields
+            or keypoints.size == 0
+            or transform_name is None
+        ):
+            return keypoints
+
+        field_mappings = processor.encoded_label_mappings.get(transform_name)
+        if not field_mappings:
+            return keypoints
+
+        result = keypoints.copy()
+        for label_offset, label_field in enumerate(processor.params.label_fields):
+            mapping = field_mappings.get(label_field)
+            column_index = NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS + label_offset
+            if not mapping or column_index >= keypoints.shape[1]:
+                continue
+            source_values = keypoints[:, column_index]
+            for source_label, target_label in mapping.items():
+                result[source_values == source_label, column_index] = target_label
+        return result
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:

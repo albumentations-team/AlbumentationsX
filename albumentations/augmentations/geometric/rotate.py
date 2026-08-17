@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
-from albucore import warp_affine
+from albucore import clip, warp_affine
 from pydantic import model_validator
 from typing_extensions import Self
 
@@ -39,6 +39,7 @@ from . import functional as fgeometric
 __all__ = ["RandomRotate90", "Rotate", "SafeRotate"]
 
 SMALL_NUMBER = 1e-10
+RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4})
 
 
 class RandomRotate90(DualTransform):
@@ -409,7 +410,9 @@ class Rotate(DualTransform):
             border_value=self.fill,
         )
         if self.crop_border:
-            return fcrops.crop(img_out, x_min, y_min, x_max, y_max)
+            img_out = fcrops.crop(img_out, x_min, y_min, x_max, y_max)
+        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
+            return clip(img_out, img.dtype, inplace=True)
         return img_out
 
     def apply_to_mask(

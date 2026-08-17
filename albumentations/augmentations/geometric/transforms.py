@@ -11,7 +11,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import batch_transform, is_grayscale_image, is_rgb_image, warp_affine
+from albucore import batch_transform, clip, is_grayscale_image, is_rgb_image, warp_affine
 from pydantic import (
     Field,
     ValidationInfo,
@@ -61,6 +61,7 @@ __all__ = [
 
 NUM_PADS_XY = 2
 NUM_PADS_ALL_SIDES = 4
+RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4})
 RangeValueT = TypeVar("RangeValueT", int, float)
 
 
@@ -204,7 +205,7 @@ class Perspective(DualTransform):
         max_width: int,
         **params: Any,
     ) -> ImageType:
-        return fgeometric.perspective(
+        result = fgeometric.perspective(
             img,
             matrix,
             max_width,
@@ -214,6 +215,9 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
+        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
+            return clip(result, img.dtype, inplace=True)
+        return result
 
     def apply_to_images(
         self,
@@ -223,7 +227,7 @@ class Perspective(DualTransform):
         max_width: int,
         **params: Any,
     ) -> ImageType:
-        return fgeometric.perspective_images(
+        result = fgeometric.perspective_images(
             images,
             matrix,
             max_width,
@@ -233,6 +237,9 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
+        if images.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
+            return clip(result, images.dtype, inplace=True)
+        return result
 
     def apply_to_mask(
         self,
@@ -605,14 +612,17 @@ class Affine(DualTransform):
     ) -> ImageType:
         height, width = output_shape
 
-        return warp_affine(
+        result = warp_affine(
             img,
             matrix,
+            dsize=(width, height),
             flags=self.interpolation,
             border_mode=self.border_mode,
             border_value=self.fill,
-            dsize=(width, height),
         )
+        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
+            return clip(result, img.dtype, inplace=True)
+        return result
 
     def apply_to_images(
         self,
@@ -627,11 +637,13 @@ class Affine(DualTransform):
             result[i] = warp_affine(
                 image,
                 matrix,
+                dsize=(width, height),
                 flags=self.interpolation,
                 border_mode=self.border_mode,
                 border_value=self.fill,
-                dsize=(width, height),
             )
+        if images.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
+            return clip(cast("ImageType", result), images.dtype, inplace=True)
         return cast("ImageType", result)
 
     def apply_to_mask(
@@ -1176,7 +1188,10 @@ class GridElasticDeform(DualTransform):
     ) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             raise ValueError("GridElasticDeform transform is only supported for RGB and grayscale images.")
-        return fgeometric.distort_image(img, generated_mesh, self.interpolation)
+        result = fgeometric.distort_image(img, generated_mesh, self.interpolation)
+        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
+            return clip(result, img.dtype, inplace=True)
+        return result
 
     def apply_to_mask(
         self,

@@ -186,60 +186,6 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     return np.clip(img_pca, 0, 1, out=img_pca)
 
 
-@preserve_channel_dim
-def adjust_brightness_torchvision(img: ImageType, factor: float) -> ImageType:
-    """Adjust brightness by multiplying pixels by a scalar factor, matching TorchVision behavior for uint8 and
-    float32 images without changing shape.
-
-    This function adjusts the brightness of an image by multiplying each pixel value by a factor.
-    The brightness is adjusted by multiplying the image by the factor.
-
-    Args:
-        img (ImageType): Input image as a numpy array.
-        factor (float): The factor to adjust the brightness by.
-
-    Returns:
-        ImageType: The adjusted image.
-
-    """
-    if factor == 0:
-        return np.zeros_like(img)
-    if factor == 1:
-        return img
-
-    return multiply(img, factor, inplace=False)
-
-
-@preserve_channel_dim
-def adjust_contrast_torchvision(img: ImageType, factor: float) -> ImageType:
-    """Adjust contrast by multiplying by factor (relative to grayscale mean). Torchvision-compatible;
-    uint8 and float32. factor 0 yields flat gray.
-
-    This function adjusts the contrast of an image by multiplying each pixel value by a factor.
-    The contrast is adjusted by multiplying the image by the factor.
-
-    Args:
-        img (ImageType): Input image as a numpy array.
-        factor (float): The factor to adjust the contrast by.
-
-    Returns:
-        ImageType: The adjusted image.
-
-    """
-    if factor == 1:
-        return img
-
-    gray_img = img if is_grayscale_image(img) else cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
-    img_mean = float(mean(gray_img))
-
-    if factor == 0:
-        if img.dtype != np.float32:
-            img_mean = int(img_mean + 0.5)
-        return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
-
-    return multiply_add(img, factor, img_mean * (1 - factor), inplace=False)
-
-
 @clipped
 @preserve_channel_dim
 def adjust_saturation_torchvision(
@@ -306,7 +252,7 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
 
-def apply_brightness_contrast_torchvision(
+def apply_brightness_contrast_torchvision(  # noqa: C901, PLR0912
     img: ImageType,
     brightness_factor: float,
     contrast_factor: float,
@@ -334,6 +280,28 @@ def apply_brightness_contrast_torchvision(
         ImageType: Adjusted image with the same dtype as input.
 
     """
+    if contrast_factor == 1:
+        if brightness_factor == 0:
+            return np.zeros_like(img)
+        if brightness_factor == 1:
+            return img
+        result = multiply(img, brightness_factor, inplace=False)
+        if result.dtype == np.float32:
+            return np.clip(result, 0.0, 1.0, out=result)
+        return result
+
+    if brightness_factor == 1:
+        gray_img = img if is_grayscale_image(img) else cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+        img_mean = float(mean(gray_img))
+        if contrast_factor == 0:
+            if img.dtype != np.float32:
+                img_mean = int(img_mean + 0.5)
+            return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
+        result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor), inplace=False)
+        if result.dtype == np.float32:
+            return np.clip(result, 0.0, 1.0, out=result)
+        return result
+
     # Compute original grayscale mean once, normalised to [0, 1].
     # For non-RGB inputs, the global mean is unchanged by first averaging each
     # pixel's channels, so no intermediate grayscale array is needed.
@@ -534,8 +502,6 @@ def slic(
 
 __all__ = [
     "_adjust_hue_torchvision_uint8",
-    "adjust_brightness_torchvision",
-    "adjust_contrast_torchvision",
     "adjust_hue_torchvision",
     "adjust_saturation_torchvision",
     "apply_brightness_contrast_torchvision",

@@ -205,9 +205,9 @@ class ColorJitter(ImageOnlyTransform):
                     brightness_first=False,
                 )
             elif op == "brightness":
-                img = fpixel.adjust_brightness_torchvision(img, brightness)
+                img = fpixel.apply_brightness_contrast_torchvision(img, brightness, 1.0, brightness_first=True)
             elif op == "contrast":
-                img = fpixel.adjust_contrast_torchvision(img, contrast)
+                img = fpixel.apply_brightness_contrast_torchvision(img, 1.0, contrast, brightness_first=False)
             elif op == "saturation":
                 img = fpixel.adjust_saturation_torchvision(img, saturation)
             elif op == "hue":
@@ -1295,9 +1295,9 @@ class PhotoMetricDistort(ImageOnlyTransform):
                 brightness_first=True,
             )
         if brightness_factor is not None:
-            return fpixel.adjust_brightness_torchvision(img, brightness_factor)
+            return fpixel.apply_brightness_contrast_torchvision(img, brightness_factor, 1.0, brightness_first=True)
         if contrast_factor is not None:
-            return fpixel.adjust_contrast_torchvision(img, contrast_factor)
+            return fpixel.apply_brightness_contrast_torchvision(img, 1.0, contrast_factor, brightness_first=False)
         return img
 
     def apply(
@@ -1322,7 +1322,12 @@ class PhotoMetricDistort(ImageOnlyTransform):
                 contrast_factor,
             )
         elif brightness_factor is not None:
-            img = fpixel.adjust_brightness_torchvision(img, brightness_factor)
+            img = fpixel.apply_brightness_contrast_torchvision(
+                img,
+                brightness_factor,
+                1.0,
+                brightness_first=True,
+            )
 
         if saturation_factor is not None:
             img = fpixel.adjust_saturation_torchvision(img, saturation_factor)
@@ -1330,7 +1335,12 @@ class PhotoMetricDistort(ImageOnlyTransform):
             img = fpixel.adjust_hue_torchvision(img, hue_factor)
 
         if not contrast_before and contrast_factor is not None:
-            img = fpixel.adjust_contrast_torchvision(img, contrast_factor)
+            img = fpixel.apply_brightness_contrast_torchvision(
+                img,
+                1.0,
+                contrast_factor,
+                brightness_first=False,
+            )
 
         if channel_permutation is not None:
             img = fpixel.channel_shuffle(img, channel_permutation)

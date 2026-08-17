@@ -23,7 +23,9 @@ We've organized our contribution guidelines into focused documents:
 1. **Find an Issue**: Look for open issues or propose a new one. For newcomers, look for issues labeled "good first issue"
 2. **Fork & Set Up**: Fork the repository and follow our [Environment Setup Guide](docs/contributing/environment_setup.md)
 3. **Create a Branch**: In your fork, create a new branch: `git checkout -b feature/my-new-feature`
-4. **Make Changes**: Write code following our [Coding Guidelines](docs/contributing/coding_guidelines.md)
+4. **Make Changes**: Write code following our [Coding Guidelines](docs/contributing/coding_guidelines.md). Image
+   operations must preserve their dtype range; clip the operation itself, never through a forwarding wrapper added
+   only to attach a decorator.
 5. **Test**: Add tests and ensure all tests pass
 6. **Submit**: Open a Pull Request from your fork with a clear description of your changes
 

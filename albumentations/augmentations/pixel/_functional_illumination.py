@@ -404,14 +404,12 @@ def apply_illumination_batch(
     mode: Literal["linear", "corner", "gaussian"],
     **params: Any,
 ) -> ImageType:
-    """Apply one sampled illumination pattern to an image batch.
-
-    This centralizes empty-batch handling, gradient construction, optimized-kernel routing, and clipping for
-    Illumination's batch path.
+    """Apply one sampled illumination pattern to an image batch, with empty-input handling, gradient reuse, kernel
+    routing, and clipping in one functional operation.
 
     Args:
-        images (ImageType): Input batch in ``(N, H, W, C)`` format.
-        mode (Literal["linear", "corner", "gaussian"]): Illumination pattern.
+        images (ImageType): Input batch in `(N, H, W, C)` format.
+        mode (Literal['linear', 'corner', 'gaussian']): Illumination pattern.
         **params (Any): Sampled parameters for the selected mode.
 
     Returns:

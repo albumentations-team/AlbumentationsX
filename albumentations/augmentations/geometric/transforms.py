@@ -11,7 +11,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import batch_transform, clip, is_grayscale_image, is_rgb_image, warp_affine
+from albucore import batch_transform, is_grayscale_image, is_rgb_image, warp_affine
 from pydantic import (
     Field,
     ValidationInfo,
@@ -61,7 +61,6 @@ __all__ = [
 
 NUM_PADS_XY = 2
 NUM_PADS_ALL_SIDES = 4
-RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4})
 RangeValueT = TypeVar("RangeValueT", int, float)
 
 
@@ -215,9 +214,7 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
-        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_images(
         self,
@@ -237,9 +234,7 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
-        if images.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, images.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,
@@ -620,9 +615,7 @@ class Affine(DualTransform):
             border_mode=self.border_mode,
             border_value=self.fill,
         )
-        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_images(
         self,
@@ -642,9 +635,7 @@ class Affine(DualTransform):
                 border_mode=self.border_mode,
                 border_value=self.fill,
             )
-        if images.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(cast("ImageType", result), images.dtype, inplace=True)
-        return cast("ImageType", result)
+        return fgeometric.clip_if_interpolation_can_overshoot(cast("ImageType", result), self.interpolation)
 
     def apply_to_mask(
         self,
@@ -1189,9 +1180,7 @@ class GridElasticDeform(DualTransform):
         if not is_rgb_image(img) and not is_grayscale_image(img):
             raise ValueError("GridElasticDeform transform is only supported for RGB and grayscale images.")
         result = fgeometric.distort_image(img, generated_mesh, self.interpolation)
-        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,

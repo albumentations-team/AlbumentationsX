@@ -27,9 +27,8 @@ target types.
 
 from typing import Annotated, Any, Literal
 
-import cv2
 import numpy as np
-from albucore import clip, remap
+from albucore import remap
 from pydantic import (
     AfterValidator,
     Field,
@@ -75,8 +74,6 @@ __all__ = [
     "ThinPlateSpline",
     "WaterRefraction",
 ]
-
-RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4})
 
 
 class BaseDistortion(DualTransform):
@@ -271,9 +268,7 @@ class BaseDistortion(DualTransform):
             border_mode=self.border_mode,
             border_value=self.fill,
         )
-        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return self._apply_to_batch_same_shape(mask3d, lambda mask: self.apply_to_mask(mask, **params))

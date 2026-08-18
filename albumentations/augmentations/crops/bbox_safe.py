@@ -2,8 +2,6 @@
 
 from typing import Annotated, Any, ClassVar
 
-from albucore import clip
-
 from albumentations.core.invocation import SamplingContext
 
 from ._transforms_shared import (
@@ -21,7 +19,6 @@ from ._transforms_shared import (
     union_of_bboxes,
 )
 from .base import (
-    RANGE_OVERSHOOT_INTERPOLATIONS,
     BaseCrop,
     CropSizeError,
 )
@@ -372,9 +369,7 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
     ) -> ImageType:
         crop = fcrops.crop(img, *crop_coords)
         result = fgeometric.resize(crop, (self.height, self.width), self.interpolation)
-        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,

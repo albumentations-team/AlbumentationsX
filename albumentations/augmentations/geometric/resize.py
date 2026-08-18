@@ -9,7 +9,6 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
-from albucore import clip
 from pydantic import Field, model_validator
 from typing_extensions import Self
 
@@ -27,8 +26,6 @@ from albumentations.core.type_definitions import (
 from . import functional as fgeometric
 
 __all__ = ["LetterBox", "LongestMaxSize", "RandomScale", "Resize", "SmallestMaxSize"]
-
-RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4})
 
 
 class RandomScale(DualTransform):
@@ -235,9 +232,7 @@ class RandomScale(DualTransform):
             interpolation = cv2.INTER_AREA
 
         result = fgeometric.scale_xy(img, scale_x, scale_y, interpolation)
-        if img.dtype == np.float32 and interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(
         self,
@@ -430,9 +425,7 @@ class MaxSizeTransform(DualTransform):
             interpolation = cv2.INTER_AREA
 
         result = fgeometric.resize(img, (new_height, new_width), interpolation=interpolation)
-        if img.dtype == np.float32 and interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(
         self,
@@ -836,9 +829,7 @@ class Resize(DualTransform):
             interpolation = cv2.INTER_AREA
 
         result = fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
-        if img.dtype == np.float32 and interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         height, width = mask.shape[:2]
@@ -980,9 +971,7 @@ class LetterBox(DualTransform):
             border_mode=cv2.BORDER_CONSTANT,
             value=self.fill,
         )
-        if img.dtype == np.float32 and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,

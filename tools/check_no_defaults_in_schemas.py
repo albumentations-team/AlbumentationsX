@@ -54,68 +54,47 @@ class DefaultValueChecker(ast.NodeVisitor):
         # Indirect inheritance (recursive check)
         return any(base in self.class_inheritance and self._inherits_from_basemodel(base) for base in bases)
 
-    def _check_class_fields(self, node: ast.ClassDef) -> None:  # noqa: C901, PLR0912
+    def _check_class_fields(self, node: ast.ClassDef) -> None:
         """Check for default values in class field annotations."""
         for item in node.body:
-            if isinstance(item, ast.AnnAssign) and item.value is not None:
-                # This is an annotated assignment with a default value
-                field_name = ast.unparse(item.target) if hasattr(ast, "unparse") else str(item.target)
-
-                # Skip special fields that are allowed to have defaults
-                if self._is_allowed_default_field(field_name):
-                    continue
-
-                # Skip discriminator fields (Literal types used for Pydantic discriminated unions)
-                if self._is_discriminator_field(item):
-                    continue
-
-                # Check if it's a Field() call with default
-                if isinstance(item.value, ast.Call):
-                    if isinstance(item.value.func, ast.Name) and item.value.func.id == "Field":
-                        # Check if Field() has a default parameter or positional arg
-                        has_default = False
-
-                        # Check positional arguments (first arg is default if present)
-                        if item.value.args:
-                            has_default = True
-
-                        # Check keyword arguments for 'default'
-                        for keyword in item.value.keywords:
-                            if keyword.arg == "default":
-                                has_default = True
-                                break
-
-                        if has_default:
-                            self.errors.append(
-                                (
-                                    self.current_file,
-                                    item.lineno,
-                                    f"Field '{field_name}' in BaseModel class '{node.name}' has a default value",
-                                ),
-                            )
-                else:
-                    # Direct assignment (not Field())
-                    self.errors.append(
-                        (
-                            self.current_file,
-                            item.lineno,
-                            f"Field '{field_name}' in BaseModel class '{node.name}' has a default value",
-                        ),
-                    )
-
+            if isinstance(item, ast.AnnAssign):
+                self._check_annotated_field(item, node.name)
             elif isinstance(item, ast.Assign):
-                # Handle regular assignments (var = value)
-                for target in item.targets:
-                    if isinstance(target, ast.Name):
-                        field_name = target.id
-                        if not self._is_allowed_default_field(field_name):
-                            self.errors.append(
-                                (
-                                    self.current_file,
-                                    item.lineno,
-                                    f"Field '{field_name}' in BaseModel class '{node.name}' has a default value",
-                                ),
-                            )
+                self._check_assigned_fields(item, node.name)
+
+    def _check_annotated_field(self, item: ast.AnnAssign, class_name: str) -> None:
+        if item.value is None:
+            return
+
+        field_name = ast.unparse(item.target) if hasattr(ast, "unparse") else str(item.target)
+        if self._is_allowed_default_field(field_name) or self._is_discriminator_field(item):
+            return
+
+        if not self._is_field_without_default(item.value):
+            self._add_error(field_name, class_name, item.lineno)
+
+    def _check_assigned_fields(self, item: ast.Assign, class_name: str) -> None:
+        for target in item.targets:
+            if isinstance(target, ast.Name) and not self._is_allowed_default_field(target.id):
+                self._add_error(target.id, class_name, item.lineno)
+
+    def _is_field_without_default(self, value: ast.expr) -> bool:
+        return (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "Field"
+            and not value.args
+            and all(keyword.arg != "default" for keyword in value.keywords)
+        )
+
+    def _add_error(self, field_name: str, class_name: str, line_number: int) -> None:
+        self.errors.append(
+            (
+                self.current_file,
+                line_number,
+                f"Field '{field_name}' in BaseModel class '{class_name}' has a default value",
+            ),
+        )
 
     def _is_allowed_default_field(self, field_name: str) -> bool:
         """Check if a field is allowed to have default values."""

@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 
-from albucore import clip
 from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
@@ -28,7 +27,6 @@ from ._transforms_shared import (
     np,
 )
 from .base import (
-    RANGE_OVERSHOOT_INTERPOLATIONS,
     BaseCropAndPad,
     CropSizeError,
 )
@@ -848,8 +846,8 @@ class CropAndPad(DualTransform):
             self.border_mode,
             self.keep_size,
         )
-        if img.dtype == np.float32 and self.keep_size and self.interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
+        if self.keep_size:
+            return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
         return result
 
     def apply_to_mask(

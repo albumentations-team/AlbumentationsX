@@ -252,7 +252,72 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
 
-def apply_brightness_contrast_torchvision(  # noqa: C901, PLR0912
+def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float) -> ImageType:
+    if brightness_factor == 0:
+        return np.zeros_like(img)
+    if brightness_factor == 1:
+        return img
+
+    result = multiply(img, brightness_factor, inplace=False)
+    return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
+
+
+def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> ImageType:
+    gray_img = img if is_grayscale_image(img) else cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+    img_mean = float(mean(gray_img))
+    if contrast_factor == 0:
+        if img.dtype != np.float32:
+            img_mean = int(img_mean + 0.5)
+        return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
+
+    result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor), inplace=False)
+    return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
+
+
+def _apply_brightness_contrast_uint8(
+    img: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    mean_at_contrast: float,
+    brightness_first: bool,
+) -> ImageType:
+    lut = np.arange(256, dtype=np.float32)
+    if brightness_first:
+        lut = np.clip(lut * brightness_factor, 0.0, 255.0)
+        lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+    else:
+        lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+        # Values are non-negative after clipping, so floor matches the uint8 cast between torchvision operations.
+        np.floor(lut, out=lut)
+        lut = np.clip(lut * brightness_factor, 0.0, 255.0)
+    return sz_lut(img, lut.astype(np.uint8), inplace=False)
+
+
+def _apply_brightness_contrast_float32(
+    img: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    mean_at_contrast: float,
+    brightness_first: bool,
+) -> ImageType:
+    offset = mean_at_contrast * (1.0 - contrast_factor)
+    out = np.empty_like(img)
+    if brightness_first:
+        np.multiply(img, brightness_factor, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+        np.multiply(out, contrast_factor, out=out)
+        np.add(out, offset, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+    else:
+        np.multiply(img, contrast_factor, out=out)
+        np.add(out, offset, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+        np.multiply(out, brightness_factor, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+    return out
+
+
+def apply_brightness_contrast_torchvision(
     img: ImageType,
     brightness_factor: float,
     contrast_factor: float,
@@ -281,26 +346,10 @@ def apply_brightness_contrast_torchvision(  # noqa: C901, PLR0912
 
     """
     if contrast_factor == 1:
-        if brightness_factor == 0:
-            return np.zeros_like(img)
-        if brightness_factor == 1:
-            return img
-        result = multiply(img, brightness_factor, inplace=False)
-        if result.dtype == np.float32:
-            return np.clip(result, 0.0, 1.0, out=result)
-        return result
+        return _apply_brightness_only_torchvision(img, brightness_factor)
 
     if brightness_factor == 1:
-        gray_img = img if is_grayscale_image(img) else cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
-        img_mean = float(mean(gray_img))
-        if contrast_factor == 0:
-            if img.dtype != np.float32:
-                img_mean = int(img_mean + 0.5)
-            return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
-        result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor), inplace=False)
-        if result.dtype == np.float32:
-            return np.clip(result, 0.0, 1.0, out=result)
-        return result
+        return _apply_contrast_only_torchvision(img, contrast_factor)
 
     # Compute original grayscale mean once, normalised to [0, 1].
     # For non-RGB inputs, the global mean is unchanged by first averaging each
@@ -313,33 +362,20 @@ def apply_brightness_contrast_torchvision(  # noqa: C901, PLR0912
     mean_at_contrast = float(np.clip(img_mean * brightness_factor, 0.0, 1.0)) if brightness_first else img_mean
 
     if img.dtype == np.uint8:
-        lut = np.arange(256, dtype=np.float32)
-        if brightness_first:
-            lut = np.clip(lut * brightness_factor, 0.0, 255.0)
-            lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
-        else:
-            lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
-            # Values are non-negative after clipping, so floor matches the uint8 cast between torchvision operations.
-            np.floor(lut, out=lut)
-            lut = np.clip(lut * brightness_factor, 0.0, 255.0)
-        return sz_lut(img, lut.astype(np.uint8), inplace=False)
-
-    # float32: two clipped passes, single buffer, in-place ops
-    offset = mean_at_contrast * (1.0 - contrast_factor)
-    out = np.empty_like(img)
-    if brightness_first:
-        np.multiply(img, brightness_factor, out=out)
-        np.clip(out, 0.0, 1.0, out=out)
-        np.multiply(out, contrast_factor, out=out)
-        np.add(out, offset, out=out)
-        np.clip(out, 0.0, 1.0, out=out)
-    else:
-        np.multiply(img, contrast_factor, out=out)
-        np.add(out, offset, out=out)
-        np.clip(out, 0.0, 1.0, out=out)
-        np.multiply(out, brightness_factor, out=out)
-        np.clip(out, 0.0, 1.0, out=out)
-    return out
+        return _apply_brightness_contrast_uint8(
+            img,
+            brightness_factor,
+            contrast_factor,
+            mean_at_contrast,
+            brightness_first,
+        )
+    return _apply_brightness_contrast_float32(
+        img,
+        brightness_factor,
+        contrast_factor,
+        mean_at_contrast,
+        brightness_first,
+    )
 
 
 @uint8_io

@@ -53,6 +53,12 @@ repos:
         entry: python tools/check_internal_workspace.py
         language: python
         files: ^_internal/
+      - id: check-quality-suppressions
+        name: Reject suppression of mandatory complexity checks
+        entry: python tools/check_quality_suppressions.py
+        language: python
+        types_or: [python, toml]
+        files: ^(albumentations/|tools/|pyproject\.toml$)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

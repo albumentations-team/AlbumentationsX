@@ -2,8 +2,6 @@
 
 from typing import Annotated, Any, ClassVar, Literal, cast
 
-from albucore import clip
-
 from albumentations.core.invocation import SamplingContext
 
 from ._transforms_shared import (
@@ -34,9 +32,6 @@ class CropSizeError(Exception):
 
     Used by crop transforms to fail early before generating invalid crop coordinates.
     """
-
-
-RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4})
 
 
 class BaseCrop(DualTransform):
@@ -749,9 +744,7 @@ class _BaseRandomSizedCrop(DualTransform):
         crop = fcrops.crop(img, *crop_coords)
         interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[:2]), "image")
         result = fgeometric.resize(crop, self.size, interpolation)
-        if img.dtype == np.float32 and interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(result, img.dtype, inplace=True)
-        return result
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(
         self,
@@ -807,9 +800,7 @@ class _BaseRandomSizedCrop(DualTransform):
         result = np.empty((images.shape[0], self.size[0], self.size[1], crop.shape[-1]), dtype=crop.dtype)
         for i in range(images.shape[0]):
             result[i] = fgeometric.resize(crop[i], self.size, interpolation)
-        if images.dtype == np.float32 and interpolation in RANGE_OVERSHOOT_INTERPOLATIONS:
-            return clip(cast("ImageType", result), images.dtype, inplace=True)
-        return cast("ImageType", result)
+        return fgeometric.clip_if_interpolation_can_overshoot(cast("ImageType", result), interpolation)
 
     def apply_to_mask3d(
         self,

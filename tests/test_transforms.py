@@ -462,10 +462,10 @@ def test_illumination_explicit_grayscale_channel(mode):
     ],
 )
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
-@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("channels", [None, 1, 3, 5])
 def test_illumination_batch_helper_matches_per_image(mode, params, dtype, channels):
     rng = np.random.default_rng(137)
-    shape = (3, 24, 20, channels)
+    shape = (3, 24, 20) if channels is None else (3, 24, 20, channels)
     images = rng.integers(0, 256, shape, dtype=np.uint8) if dtype == np.uint8 else rng.random(shape, dtype=np.float32)
     transform = A.Illumination(mode=mode, p=1)
     expected = np.stack([transform.apply(image, **params) for image in images])
@@ -490,8 +490,9 @@ def test_illumination_batch_helper_matches_per_image(mode, params, dtype, channe
     ],
 )
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
-def test_illumination_empty_batch(mode, params, dtype):
-    images = np.empty((0, 24, 20, 5), dtype=dtype)
+@pytest.mark.parametrize("shape", [(0, 24, 20), (0, 24, 20, 5)])
+def test_illumination_empty_batch(mode, params, dtype, shape):
+    images = np.empty(shape, dtype=dtype)
     transform = A.Illumination(mode=mode, p=1)
 
     actual = fpixel.apply_illumination_batch(images, mode, **params)

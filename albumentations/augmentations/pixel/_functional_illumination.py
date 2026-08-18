@@ -394,7 +394,8 @@ def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: 
     height, width = images.shape[1:3]
     gradient = create_directional_gradient(height, width, angle)
     _multiply_scalar_inplace(gradient, intensity)
-    result = images + gradient[..., np.newaxis]
+    batch_gradient = gradient if images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else gradient[..., np.newaxis]
+    result = images + batch_gradient
     np.clip(result, 0, 1, out=result)
     return result
 
@@ -408,7 +409,7 @@ def apply_illumination_batch(
     routing, and clipping in one functional operation.
 
     Args:
-        images (ImageType): Input batch in `(N, H, W, C)` format.
+        images (ImageType): Input batch in `(N, H, W, C)` format, or `(N, H, W)` for direct implicit-grayscale calls.
         mode (Literal['linear', 'corner', 'gaussian']): Illumination pattern.
         **params (Any): Sampled parameters for the selected mode.
 
@@ -423,11 +424,15 @@ def apply_illumination_batch(
         return apply_linear_illumination_batch(images, **params)
 
     height, width = images.shape[1:3]
-    gradient = create_illumination_gradient(height, width, mode, params)[..., np.newaxis]
+    implicit_grayscale = images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS
+    gradient = create_illumination_gradient(height, width, mode, params)
+    if not implicit_grayscale:
+        gradient = gradient[..., np.newaxis]
     clip_required = (mode == "corner" and params["intensity"] < 0) or (mode == "gaussian" and params["intensity"] > 0)
+    num_channels = 1 if implicit_grayscale else images.shape[-1]
 
-    # The uint8 4D path and clipped low-channel float32 path regress against the per-image kernels.
-    if images.dtype == np.uint8 or (images.shape[-1] <= 4 and clip_required):
+    # The uint8 path and clipped low-channel float32 path regress against the per-image kernels.
+    if images.dtype == np.uint8 or (num_channels <= 4 and clip_required):
         result = np.empty_like(images)
         for index, image in enumerate(images):
             result[index] = multiply_by_array(image, gradient)

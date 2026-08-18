@@ -157,6 +157,13 @@ repos:
       types: [python]
       files: ^albumentations/
       pass_filenames: true
+    - id: check-apply-method-length
+      name: Keep apply methods thin
+      entry: python tools/check_apply_method_length.py
+      language: python
+      types: [python]
+      files: ^albumentations/(augmentations/|pytorch/)
+      pass_filenames: true
     - id: check-fill-naming
       name: Check fill/fill_mask naming convention (not fill_value/fill_mask_value)
       entry: python tools/check_fill_naming.py

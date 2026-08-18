@@ -801,6 +801,13 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         beta: float,
         **params: Any,
     ) -> ImageType:
+        if not self.brightness_by_max and not self.ensure_safe_output:
+            return fpixel.apply_brightness_contrast_torchvision(
+                img,
+                brightness_factor=1.0 + beta,
+                contrast_factor=alpha,
+                brightness_first=False,
+            )
         return fpixel.apply_random_brightness_contrast(
             img,
             alpha,

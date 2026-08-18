@@ -84,7 +84,7 @@ class DefaultValueChecker(ast.NodeVisitor):
             and isinstance(value.func, ast.Name)
             and value.func.id == "Field"
             and not value.args
-            and all(keyword.arg != "default" for keyword in value.keywords)
+            and all(keyword.arg not in {"default", "default_factory"} for keyword in value.keywords)
         )
 
     def _add_error(self, field_name: str, class_name: str, line_number: int) -> None:

@@ -7,11 +7,26 @@ from pathlib import Path
 from tools import (
     check_internal_workspace,
     check_local_markdown_links,
+    check_no_defaults_in_schemas,
     check_quality_suppressions,
     check_range_parameter_annotations,
     check_removed_sampling_hooks,
     check_transform_init_args_override,
 )
+
+
+def test_schema_default_hook_rejects_default_factory(tmp_path: Path) -> None:
+    source = tmp_path / "schema.py"
+    source.write_text(
+        "from pydantic import BaseModel, Field\n"
+        "class Schema(BaseModel):\n"
+        "    values: list[int] = Field(default_factory=list)\n",
+        encoding="utf-8",
+    )
+
+    assert check_no_defaults_in_schemas.check_file(source) == [
+        (str(source), 3, "Field 'values' in BaseModel class 'Schema' has a default value"),
+    ]
 
 
 def test_quality_suppression_hook_rejects_inline_complexity_suppressions(tmp_path: Path) -> None:

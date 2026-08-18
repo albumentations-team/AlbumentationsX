@@ -26,9 +26,10 @@ always_apply: true
   different units or behavior.
 - Keep public docstrings focused on user-facing behavior. Omit post-initialization, serialization, replay, and other
   implementation details unless they are part of the supported public contract.
-- Keep `apply*` methods as thin dispatchers (15 code-bearing body lines at most). Move image arithmetic, array
-  construction, clipping, and kernel-routing branches into a functional helper; the pre-commit hook excludes
+- Keep transform `apply*` methods as thin dispatchers (15 code-bearing body lines at most). Move image arithmetic,
+  array construction, clipping, and kernel-routing branches into a functional helper; the pre-commit hook excludes
   docstrings, blank lines, and standalone comments and requires a legacy over-limit method to shrink when changed.
+  It does not apply to `Compose` orchestration.
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite

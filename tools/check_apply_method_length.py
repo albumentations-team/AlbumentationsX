@@ -21,6 +21,10 @@ from pathlib import Path
 MAX_APPLY_BODY_LINES = 15
 BASELINE_PATH = Path(__file__).with_name("apply_method_length_baseline.json")
 REPO_ROOT = Path(__file__).resolve().parents[1]
+TRANSFORM_SOURCE_PREFIXES = (
+    "albumentations/augmentations/",
+    "albumentations/pytorch/",
+)
 IGNORED_TOKEN_TYPES = {
     tokenize.COMMENT,
     tokenize.DEDENT,
@@ -135,12 +139,23 @@ def _load_baseline() -> dict[str, str]:
     return data
 
 
+def _is_transform_source(path: Path) -> bool:
+    """Return whether a repository file implements a transform rather than Compose orchestration."""
+    try:
+        path_key = path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return True
+    return path_key.startswith(TRANSFORM_SOURCE_PREFIXES)
+
+
 def collect_errors(paths: Iterable[Path], baseline: Mapping[str, str] | None = None) -> list[str]:
     """Return line-limit violations for the supplied Python files."""
     baseline = _load_baseline() if baseline is None else baseline
     errors: list[str] = []
 
     for path in paths:
+        if not _is_transform_source(path):
+            continue
         try:
             source = path.read_text(encoding="utf-8")
             tree = ast.parse(source, filename=str(path))

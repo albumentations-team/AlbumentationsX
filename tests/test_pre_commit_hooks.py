@@ -65,6 +65,20 @@ def test_apply_method_length_hook_requires_changed_legacy_method_to_shrink(tmp_p
     ]
 
 
+def test_apply_method_length_hook_excludes_compose_orchestration(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(check_apply_method_length, "REPO_ROOT", tmp_path)
+    source = tmp_path / "albumentations/core/composition.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "class Compose:\n"
+        "    def apply_in_invocation(self, data):\n"
+        "        value = data\n" + "".join("        value = value\n" for _ in range(15)) + "        return value\n",
+        encoding="utf-8",
+    )
+
+    assert check_apply_method_length.collect_errors((source,), baseline={}) == []
+
+
 def test_schema_default_hook_rejects_default_factory(tmp_path: Path) -> None:
     source = tmp_path / "schema.py"
     source.write_text(

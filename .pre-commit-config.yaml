@@ -162,7 +162,7 @@ repos:
       entry: python tools/check_apply_method_length.py
       language: python
       types: [python]
-      files: ^albumentations/
+      files: ^albumentations/(augmentations/|pytorch/)
       pass_filenames: true
     - id: check-fill-naming
       name: Check fill/fill_mask naming convention (not fill_value/fill_mask_value)

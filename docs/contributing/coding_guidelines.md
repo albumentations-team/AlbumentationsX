@@ -413,9 +413,10 @@ pixel kernels. They may select a target-specific functional operation and pass s
 gradient or mask construction, dtype routing, clipping, and kernel-selection branches belong in a named helper in the
 functional layer (or Albucore when the operation is reusable there).
 
-Each `apply*` body is limited to 15 code-bearing physical lines. Its signature, docstring, blank lines, and standalone
-comments do not count; a line that contains code and an inline comment does. Existing legacy methods are baselined, but
-once one is changed it must be brought below the limit instead of being extended. This rule is enforced by the
+Each transform `apply*` body is limited to 15 code-bearing physical lines. Its signature, docstring, blank lines, and
+standalone comments do not count; a line that contains code and an inline comment does. Existing legacy transform
+methods are baselined, but once one is changed it must be brought below the limit instead of being extended. This rule
+does not apply to `Compose` orchestration such as `apply_in_invocation`; it is enforced by the
 `check-apply-method-length` pre-commit hook.
 
 ### Parameter Generation

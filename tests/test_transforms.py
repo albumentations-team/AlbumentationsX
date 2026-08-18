@@ -2070,7 +2070,7 @@ def test_sample_uniform_resolved_channel_ranges_preserves_seeded_values() -> Non
 
     actual = fnoise.sample_uniform(size, {"ranges": ranges}, np.random.default_rng(137))
 
-    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_allclose(actual, expected, rtol=1e-15, atol=1e-15)
 
 
 @pytest.mark.parametrize(

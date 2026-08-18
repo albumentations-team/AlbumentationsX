@@ -87,7 +87,7 @@ class RandomScale(DualTransform):
 
     Examples:
         >>> import numpy as np
-        >>> from albumentations.augmentations.geometric.resize import BaseMaxSizeTransform
+        >>> import albumentations as A
         >>> import cv2
         >>>
         >>> # Create sample data for demonstration
@@ -316,7 +316,7 @@ class BaseMaxSizeTransform(DualTransform):
 
     Examples:
         >>> import numpy as np
-        >>> import albumentations as A
+        >>> from albumentations.augmentations.geometric.resize import BaseMaxSizeTransform
         >>> import cv2
         >>>
         >>> # Example of creating a custom transform that extends BaseMaxSizeTransform

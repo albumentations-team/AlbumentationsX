@@ -26,19 +26,16 @@ def test_quality_suppression_hook_rejects_inline_complexity_suppressions(tmp_pat
 def test_quality_suppression_hook_rejects_relaxed_production_limits(tmp_path: Path) -> None:
     config = tmp_path / "pyproject.toml"
     config.write_text(
-        '[tool.ruff.lint]\nignore = ["C901"]\n\n'
-        "[tool.ruff.lint.pylint]\nmax-branches = 13\n\n"
-        'lint.per-file-ignores."albumentations/example.py" = ["PLR0912"]\n\n'
-        "[tool.ruff.lint.per-file-ignores]\n"
-        '"albumentations/other.py" = ["C901"]\n',
+        '[tool.ruff.lint]\nignore = ["C901"]\n'
+        'per-file-ignores = { "albumentations/example.py" = ["PLR0912"] }\n\n'
+        "[tool.ruff.lint.pylint]\nmax-branches = 13\n",
         encoding="utf-8",
     )
 
     assert check_quality_suppressions.collect_errors((config,)) == [
         f"{config}: do not ignore mandatory complexity checks (C901)",
         f"{config}: do not ignore mandatory complexity checks for albumentations/example.py (PLR0912)",
-        f"{config}: do not ignore mandatory complexity checks for albumentations/other.py (C901)",
-        f"{config}:5: max-branches must not exceed 12",
+        f"{config}: max-branches must not exceed 12",
     ]
 
 

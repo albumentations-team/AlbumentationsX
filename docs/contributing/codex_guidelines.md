@@ -139,6 +139,11 @@ Inside `Compose`, image batches are normalized to `(N, H, W, C)`, including gray
 When optimizing `apply_to_images` for Compose-routed transforms, do not add redundant `ndim == 4` checks.
 Direct calls to the public `apply_to_images` method may still pass raw grayscale batches as `(N, H, W)`.
 
+Keep every `apply*` method as a thin dispatcher (at most 15 code-bearing body lines). Move pixel arithmetic, gradient
+or mask construction, dtype routing, clipping, and batch/per-image kernel selection into a functional helper. The
+pre-commit hook excludes signatures, docstrings, blank lines, and standalone comments; a legacy over-limit method must
+shrink when its implementation changes.
+
 #### Patterns (in order of impact)
 
 1. **Pre-compute expensive setup once** — kernels, LUTs, gradient maps computed per-batch instead of per-image:

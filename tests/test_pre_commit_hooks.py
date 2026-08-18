@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tools import (
+    check_apply_method_length,
     check_internal_workspace,
     check_local_markdown_links,
     check_no_defaults_in_schemas,
@@ -13,6 +14,55 @@ from tools import (
     check_removed_sampling_hooks,
     check_transform_init_args_override,
 )
+
+
+def test_apply_method_length_hook_excludes_docstrings_and_comments(tmp_path: Path) -> None:
+    source = tmp_path / "thin.py"
+    source.write_text(
+        "class Thin:\n"
+        "    def apply(self, image):\n"
+        '        """A deliberately long docstring.\n'
+        "\n"
+        "        It does not count toward the body limit.\n"
+        '        """\n'
+        "        # Nor does this standalone comment.\n"
+        "        result = image  # This is code and must count.\n"
+        "        return result\n",
+        encoding="utf-8",
+    )
+
+    assert check_apply_method_length.collect_errors((source,), baseline={}) == []
+
+
+def test_apply_method_length_hook_requires_changed_legacy_method_to_shrink(tmp_path: Path) -> None:
+    source = tmp_path / "long.py"
+    source.write_text(
+        "class Long:\n"
+        "    def apply(self, image):\n"
+        "        value = image\n" + "".join("        value = value\n" for _ in range(14)) + "        return value\n",
+        encoding="utf-8",
+    )
+
+    source_text = source.read_text(encoding="utf-8")
+    tree = check_apply_method_length.ast.parse(source_text)
+    qualified_name, method = next(check_apply_method_length._iter_apply_methods(tree))
+    tokens_by_line = check_apply_method_length._code_tokens_by_line(source_text)
+    baseline = {
+        f"{source}:{qualified_name}": check_apply_method_length._method_fingerprint(method, tokens_by_line),
+    }
+
+    assert check_apply_method_length.collect_errors((source,), baseline=baseline) == []
+
+    source.write_text(
+        source_text.replace("        return value\n", "        value = value\n        return value\n"), encoding="utf-8"
+    )
+
+    assert check_apply_method_length.collect_errors((source,), baseline=baseline) == [
+        (
+            f"{source}:2: Long.apply has 17 code-bearing body lines; limit is 15. "
+            "Move image arithmetic and routing into a functional helper."
+        ),
+    ]
 
 
 def test_schema_default_hook_rejects_default_factory(tmp_path: Path) -> None:

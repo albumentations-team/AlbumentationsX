@@ -406,6 +406,18 @@ all stochastic parameters before `apply`, then pass the generated values to `app
   def apply_to_mask(self, mask: np.ndarray, fill_mask: int = 0) -> np.ndarray:
   ```
 
+#### Keep `apply*` Methods Thin
+
+`apply`, `apply_to_images`, and other `apply*` methods are transform-layer dispatch points, not places to implement
+pixel kernels. They may select a target-specific functional operation and pass sampled parameters, but image arithmetic,
+gradient or mask construction, dtype routing, clipping, and kernel-selection branches belong in a named helper in the
+functional layer (or Albucore when the operation is reusable there).
+
+Each `apply*` body is limited to 15 code-bearing physical lines. Its signature, docstring, blank lines, and standalone
+comments do not count; a line that contains code and an inline comment does. Existing legacy methods are baselined, but
+once one is changed it must be brought below the limit instead of being extended. This rule is enforced by the
+`check-apply-method-length` pre-commit hook.
+
 ### Parameter Generation
 
 #### Using sample_parameters
@@ -531,6 +543,10 @@ serialization or applied-configuration boundary. Overriding this method can caus
 ### Batch Performance (`apply_to_images`)
 
 Images in batch mode are always `(N, H, W, C)`. Never check `ndim == 4` — it's always true.
+
+Keep `apply_to_images` as a short delegation method. Put the complete batch image operation—including empty-batch
+handling, shared setup, routing between native and per-image kernels, and clipping—in one functional helper so it has a
+single direct correctness and benchmark boundary.
 
 Override `apply_to_images` when you can do better than the default per-image loop:
 

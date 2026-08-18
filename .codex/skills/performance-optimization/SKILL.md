@@ -57,6 +57,12 @@ mailbox for any of them.
 
 Keep transform policy, parameter sampling, target dispatch, and annotation semantics in AlbumentationsX.
 
+Keep `apply*` methods as thin dispatchers. A method may select a functional operation and forward sampled parameters,
+but pixel arithmetic, temporary-array construction, clipping, dtype routing, and kernel-selection branches belong in
+the functional helper that owns the operation. The repository's pre-commit hook limits `apply*` bodies to 15
+code-bearing lines (excluding signatures, docstrings, blank lines, and standalone comments); an existing over-limit
+method must shrink when its implementation changes.
+
 Propose an Albucore primitive when an operation:
 
 - is useful to more than one transform or image-processing caller;

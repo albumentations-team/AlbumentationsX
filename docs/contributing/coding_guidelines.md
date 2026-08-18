@@ -209,6 +209,15 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
     return result
 ```
 
+### Image Value Ranges and `@clipped`
+
+- Image transforms preserve `[0, 255]` for `uint8` and `[0, 1]` for `float32`, unless the transform explicitly sets
+  `_preserves_input_image_range = False`.
+- Use `@clipped` when every route of a functional image operation can leave this range. When only a known float32 mode
+  can overshoot, branch on that mode and call `albucore.clip(..., inplace=True)` there. Do not clip masks or annotations.
+- Do not add a forwarding wrapper around a one-line call merely to attach a decorator. Add a function only when it
+  owns a real image operation and separates image policy from mask or annotation semantics.
+
 ### Channel Flexibility
 
 - Support arbitrary number of channels unless specifically constrained:

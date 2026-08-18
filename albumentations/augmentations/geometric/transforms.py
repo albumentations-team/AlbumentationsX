@@ -204,7 +204,7 @@ class Perspective(DualTransform):
         max_width: int,
         **params: Any,
     ) -> ImageType:
-        return fgeometric.perspective(
+        result = fgeometric.perspective(
             img,
             matrix,
             max_width,
@@ -214,6 +214,7 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_images(
         self,
@@ -223,7 +224,7 @@ class Perspective(DualTransform):
         max_width: int,
         **params: Any,
     ) -> ImageType:
-        return fgeometric.perspective_images(
+        result = fgeometric.perspective_images(
             images,
             matrix,
             max_width,
@@ -233,6 +234,7 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,
@@ -605,14 +607,15 @@ class Affine(DualTransform):
     ) -> ImageType:
         height, width = output_shape
 
-        return warp_affine(
+        result = warp_affine(
             img,
             matrix,
+            dsize=(width, height),
             flags=self.interpolation,
             border_mode=self.border_mode,
             border_value=self.fill,
-            dsize=(width, height),
         )
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_images(
         self,
@@ -627,12 +630,12 @@ class Affine(DualTransform):
             result[i] = warp_affine(
                 image,
                 matrix,
+                dsize=(width, height),
                 flags=self.interpolation,
                 border_mode=self.border_mode,
                 border_value=self.fill,
-                dsize=(width, height),
             )
-        return cast("ImageType", result)
+        return fgeometric.clip_if_interpolation_can_overshoot(cast("ImageType", result), self.interpolation)
 
     def apply_to_mask(
         self,
@@ -1176,7 +1179,8 @@ class GridElasticDeform(DualTransform):
     ) -> ImageType:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             raise ValueError("GridElasticDeform transform is only supported for RGB and grayscale images.")
-        return fgeometric.distort_image(img, generated_mesh, self.interpolation)
+        result = fgeometric.distort_image(img, generated_mesh, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,

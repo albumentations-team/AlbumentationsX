@@ -53,6 +53,13 @@ repos:
         entry: python tools/check_internal_workspace.py
         language: python
         files: ^_internal/
+      - id: check-quality-suppressions
+        name: Reject suppression of mandatory complexity checks
+        entry: python tools/check_quality_suppressions.py
+        language: python
+        additional_dependencies: [tomli>=2.4.1]
+        types_or: [python, toml]
+        files: ^(albumentations/|tools/|pyproject\.toml$)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -199,7 +206,7 @@ repos:
         pass_filenames: false
         files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.2
+    rev: v0.16.3
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -228,7 +235,7 @@ repos:
       - id: codespell
         additional_dependencies: ["tomli>=2.4.1"]
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.3.0
+    rev: v2.3.1
     hooks:
       - id: mypy
         files: ^albumentations/

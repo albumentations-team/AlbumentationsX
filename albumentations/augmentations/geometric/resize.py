@@ -275,7 +275,7 @@ class RandomScale(DualTransform):
         return fgeometric.keypoints_scale(keypoints, scale_x, scale_y)
 
 
-class MaxSizeTransform(DualTransform):
+class BaseMaxSizeTransform(DualTransform):
     """Resize so longest or smallest side meets a maximum; aspect ratio fixed. Use
     LongestMaxSize or SmallestMaxSize; max_size or max_size_hw sets the constraint.
 
@@ -316,11 +316,11 @@ class MaxSizeTransform(DualTransform):
 
     Examples:
         >>> import numpy as np
-        >>> import albumentations as A
+        >>> from albumentations.augmentations.geometric.resize import BaseMaxSizeTransform
         >>> import cv2
         >>>
-        >>> # Example of creating a custom transform that extends MaxSizeTransform
-        >>> class CustomMaxSize(A.MaxSizeTransform):
+        >>> # Example of creating a custom transform that extends BaseMaxSizeTransform
+        >>> class CustomMaxSize(BaseMaxSizeTransform):
         ...     def sample_parameters(self, params, data, sampling):
         ...         img_h, img_w = params["shape"][:2]
         ...         # Calculate scale factor - here we scale to make the image area constant
@@ -455,7 +455,7 @@ class MaxSizeTransform(DualTransform):
         return fgeometric.keypoints_scale(keypoints, scale, scale)
 
 
-class LongestMaxSize(MaxSizeTransform):
+class LongestMaxSize(BaseMaxSizeTransform):
     """Rescale an image so that the longest side is equal to max_size or sides meet max_size_hw constraints,
         keeping the aspect ratio.
 
@@ -582,7 +582,7 @@ class LongestMaxSize(MaxSizeTransform):
         return {"scale": scale}
 
 
-class SmallestMaxSize(MaxSizeTransform):
+class SmallestMaxSize(BaseMaxSizeTransform):
     """Rescale an image so that minimum side is equal to max_size or sides meet max_size_hw constraints,
     keeping the aspect ratio.
 

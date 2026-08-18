@@ -55,6 +55,41 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
     return add_array(img, noise)
 
 
+def add_noise_by_patches(img: ImageType, noise: np.ndarray, patches: np.ndarray) -> ImageType:
+    """Add pre-generated noise inside rectangular patches while preserving pixels outside the sampled regions and
+    replacing earlier values where patches overlap.
+
+    Args:
+        img (ImageType): Input image or image batch in channel-last layout.
+        noise (np.ndarray): Dense noise map whose spatial dimensions match the image.
+        patches (np.ndarray): Integer patch coordinates in `(x_min, y_min, x_max, y_max)` format.
+
+    Returns:
+        ImageType: A copy of the input with noise applied inside the patches.
+
+    Note:
+        Every patch is evaluated against the original image. Later patches therefore overwrite earlier ones in
+        overlapping regions instead of accumulating noise twice.
+
+    """
+    height, width = noise.shape[:2]
+    if len(patches) == 1 and np.array_equal(patches[0], (0, 0, width, height)):
+        return add_noise(img, noise)
+
+    result = img.copy()
+    for x_min, y_min, x_max, y_max in patches:
+        image_slices = (
+            (slice(y_min, y_max), slice(x_min, x_max))
+            if img.ndim < 4
+            else (slice(None), slice(y_min, y_max), slice(x_min, x_max))
+        )
+        patch_noise = noise[y_min:y_max, x_min:x_max]
+        if img.ndim == MONO_CHANNEL_DIMENSIONS and patch_noise.ndim > MONO_CHANNEL_DIMENSIONS:
+            patch_noise = patch_noise[..., 0]
+        result[image_slices] = add_noise(img[image_slices], patch_noise)
+    return result
+
+
 @preserve_channel_dim
 @float32_io
 def shot_noise(
@@ -338,8 +373,8 @@ def sample_uniform(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample spatial uniform noise, using per-channel ranges for multichannel maps and the first range for shared
-    maps. Return the requested shape.
+    """Sample spatial uniform noise from a resolved shared range or one range per channel while preserving the seeded
+    generator's value order.
 
     Args:
         size (tuple[int, ...]): Size of the output array
@@ -351,12 +386,14 @@ def sample_uniform(
 
     """
     ranges = params["ranges"]
-    if len(size) > MONO_CHANNEL_DIMENSIONS and len(ranges) > 1:
-        num_channels = size[-1]
-        if len(ranges) < num_channels:
-            raise ValueError(f"Not enough ranges provided. Expected {num_channels}, got {len(ranges)}")
-        lows, highs = np.asarray(ranges[:num_channels], dtype=np.float32).T
-        return random_generator.uniform(lows, highs, size=size)
+    if len(ranges) > 1:
+        lows_float32, highs_float32 = np.asarray(ranges, dtype=np.float32).T
+        lows = lows_float32.astype(np.float64)
+        spans = highs_float32.astype(np.float64) - lows
+        samples = random_generator.random(size)
+        np.multiply(samples, spans, out=samples)
+        np.add(samples, lows, out=samples)
+        return samples
 
     low, high = ranges[0]
     return random_generator.uniform(low, high, size=size)
@@ -702,6 +739,7 @@ __all__ = [
     "_ENHANCE_IDENTITY",
     "_ENHANCE_KERNELS",
     "add_noise",
+    "add_noise_by_patches",
     "apply_salt_and_pepper",
     "generate_constant_noise_with_py_random",
     "generate_enhance_matrix",

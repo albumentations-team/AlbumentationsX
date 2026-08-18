@@ -2033,16 +2033,27 @@ def test_additive_noise_patch_channel_sampling(per_channel: bool) -> None:
     np.testing.assert_equal(channel_noise_is_shared, not per_channel)
 
 
-def test_additive_noise_patch_uniform_channel_ranges() -> None:
+@pytest.mark.parametrize(
+    ("spatial_mode", "per_channel"),
+    [("constant", False), ("per_pixel", False), ("patch", True)],
+)
+def test_additive_noise_uniform_channel_ranges(spatial_mode: str, per_channel: bool) -> None:
     image = np.zeros((8, 8, 3), dtype=np.float32)
+    patch_options = (
+        {
+            "patch_height_range": (1.0, 1.0),
+            "patch_width_range": (1.0, 1.0),
+            "per_channel": per_channel,
+        }
+        if spatial_mode == "patch"
+        else {}
+    )
     transform = A.AdditiveNoise(
         noise_type="uniform",
-        spatial_mode="patch",
+        spatial_mode=spatial_mode,
         noise_params={"ranges": [(0.1, 0.1), (0.2, 0.2), (0.3, 0.3)]},
-        patch_height_range=(1.0, 1.0),
-        patch_width_range=(1.0, 1.0),
-        per_channel=True,
         p=1.0,
+        **patch_options,
     )
 
     result = transform(image=image)["image"]
@@ -2051,20 +2062,70 @@ def test_additive_noise_patch_uniform_channel_ranges() -> None:
     np.testing.assert_allclose(result, expected)
 
 
-def test_additive_noise_patch_uniform_rejects_too_few_channel_ranges() -> None:
+def test_sample_uniform_resolved_channel_ranges_preserves_seeded_values() -> None:
+    size = (6, 8, 3)
+    ranges = [(-0.2, -0.1), (0.0, 0.1), (0.2, 0.3)]
+    lows, highs = np.asarray(ranges, dtype=np.float32).T
+    expected = np.random.default_rng(137).uniform(lows, highs, size=size)
+
+    actual = fnoise.sample_uniform(size, {"ranges": ranges}, np.random.default_rng(137))
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize(
+    ("spatial_mode", "per_channel"),
+    [("constant", False), ("per_pixel", False), ("patch", True)],
+)
+def test_additive_noise_uniform_rejects_too_few_channel_ranges_before_sampling(
+    spatial_mode: str,
+    per_channel: bool,
+) -> None:
     image = np.zeros((8, 8, 3), dtype=np.float32)
+    patch_options = (
+        {
+            "patch_height_range": (1.0, 1.0),
+            "patch_width_range": (1.0, 1.0),
+            "per_channel": per_channel,
+        }
+        if spatial_mode == "patch"
+        else {}
+    )
     transform = A.AdditiveNoise(
         noise_type="uniform",
-        spatial_mode="patch",
+        spatial_mode=spatial_mode,
         noise_params={"ranges": [(0.1, 0.1), (0.2, 0.2)]},
-        patch_height_range=(1.0, 1.0),
-        patch_width_range=(1.0, 1.0),
-        per_channel=True,
         p=1.0,
+        **patch_options,
     )
+    sampling = SamplingContext.from_owner(transform, {})
+    py_random_state = sampling.py_random.getstate()
+    numpy_random_state = copy.deepcopy(sampling.random_generator.bit_generator.state)
 
     with pytest.raises(ValueError, match="Not enough ranges provided"):
-        transform(image=image)
+        transform.sample_parameters(params={}, data={"image": image}, sampling=sampling)
+
+    np.testing.assert_equal(sampling.py_random.getstate(), py_random_state)
+    np.testing.assert_equal(sampling.random_generator.bit_generator.state, numpy_random_state)
+
+
+@pytest.mark.parametrize(("spatial_mode", "per_channel"), [("shared", False), ("patch", False)])
+def test_additive_noise_uniform_shared_modes_use_first_range(spatial_mode: str, per_channel: bool) -> None:
+    image = np.zeros((8, 8, 3), dtype=np.float32)
+    patch_options = (
+        {"patch_height_range": (1.0, 1.0), "patch_width_range": (1.0, 1.0), "per_channel": per_channel}
+        if spatial_mode == "patch"
+        else {}
+    )
+    transform = A.AdditiveNoise(
+        noise_type="uniform",
+        spatial_mode=spatial_mode,
+        noise_params={"ranges": [(0.1, 0.1), (0.2, 0.2)]},
+        p=1.0,
+        **patch_options,
+    )
+
+    np.testing.assert_allclose(transform(image=image)["image"], 0.1)
 
 
 def test_additive_noise_patch_handles_single_pixel_grayscale() -> None:
@@ -2210,6 +2271,24 @@ def test_generate_patch_noise_overlapping_border_patches(monkeypatch: pytest.Mon
     expected[2:6, 2:6] = 2.0
 
     np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("shape", [(6, 6), (6, 6, 3), (2, 6, 6, 3)])
+def test_add_noise_by_patches_matches_dense_application_for_overlaps(dtype: np.dtype, shape: tuple[int, ...]) -> None:
+    fill = 128 if dtype == np.uint8 else 0.5
+    image = np.full(shape, fill, dtype=dtype)
+    noise = np.zeros((6, 6, 1 if len(shape) == 2 else shape[-1]), dtype=np.float32)
+    patches = np.array([[0, 0, 4, 4], [2, 2, 6, 6]], dtype=np.int32)
+    noise[0:4, 0:4] = 0.1 * MAX_VALUES_BY_DTYPE[dtype]
+    noise[2:6, 2:6] = -0.2 * MAX_VALUES_BY_DTYPE[dtype]
+    expected_noise = noise[..., 0] if len(shape) == 2 else noise
+
+    expected = fnoise.add_noise(image, expected_noise)
+    result = fnoise.add_noise_by_patches(image, noise, patches)
+
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(image, np.full(shape, fill, dtype=dtype))
 
 
 @pytest.mark.parametrize(

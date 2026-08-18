@@ -760,6 +760,9 @@ class AdditiveNoise(ImageOnlyTransform):
         noise_map: np.ndarray,
         **params: Any,
     ) -> ImageType:
+        patches = params.get("patches")
+        if patches is not None:
+            return fpixel.add_noise_by_patches(img, noise_map, patches)
         return fpixel.add_noise(img, noise_map)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
@@ -780,20 +783,36 @@ class AdditiveNoise(ImageOnlyTransform):
         """
         metadata = self.get_image_data(data)
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
-        shape = (metadata["height"], metadata["width"], metadata["num_channels"])
+        num_channels = metadata["num_channels"]
+        shape = (metadata["height"], metadata["width"], num_channels)
+        noise_params = cast("dict[str, Any]", self.noise_params)
+
+        if self.noise_type == "uniform":
+            ranges = noise_params["ranges"]
+            range_count = len(ranges)
+            if range_count > 1:
+                uses_channel_ranges = self.spatial_mode in {"constant", "per_pixel"} or (
+                    self.spatial_mode == "patch" and self.per_channel
+                )
+                if uses_channel_ranges and range_count < num_channels:
+                    raise ValueError(
+                        f"Not enough ranges provided. Expected 1 or at least {num_channels}, got {range_count}",
+                    )
+                if not uses_channel_ranges or range_count != num_channels:
+                    resolved_count = num_channels if uses_channel_ranges else 1
+                    noise_params = {**noise_params, "ranges": ranges[:resolved_count]}
 
         if self.spatial_mode == "constant":
             noise_map = fpixel.generate_constant_noise_with_py_random(
                 noise_type=self.noise_type,
                 shape=shape,
-                params=self.noise_params,
+                params=noise_params,
                 max_value=max_value,
                 py_random=sampling.py_random,
             )
             return {"noise_map": noise_map}
 
         if self.spatial_mode == "patch":
-            noise_params = cast("dict[str, Any]", self.noise_params)
             patch_count = sampling.py_random.randint(*self.patch_count_range)
             patch_heights = np.ceil(
                 metadata["height"] * sampling.random_generator.uniform(*self.patch_height_range, size=patch_count),
@@ -819,7 +838,7 @@ class AdditiveNoise(ImageOnlyTransform):
             noise_type=self.noise_type,
             spatial_mode=self.spatial_mode,
             shape=shape,
-            params=self.noise_params,
+            params=noise_params,
             max_value=max_value,
             random_generator=sampling.random_generator,
         )

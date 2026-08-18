@@ -80,16 +80,33 @@ def test_apply_method_length_hook_excludes_base_classes(tmp_path: Path) -> None:
         "class BaseTransform:\n"
         "    def apply(self, image):\n"
         + method_body
-        + "\nclass MaxSizeTransform:\n"
+        + "\nclass BaseMaxSizeTransform:\n"
         + "    def apply(self, image):\n"
         + method_body
-        + "\nclass _TensorTransform:\n"
+        + "\nclass BaseTensorTransform:\n"
         + "    def apply(self, image):\n"
         + method_body,
         encoding="utf-8",
     )
 
     assert check_apply_method_length.collect_errors((source,)) == []
+
+
+def test_apply_method_length_hook_requires_base_prefix(tmp_path: Path) -> None:
+    source = tmp_path / "non_concrete.py"
+    source.write_text(
+        "class MaxSizeTransform:\n"
+        "    def apply(self, image):\n"
+        "        value = image\n" + "".join("        value = value\n" for _ in range(20)) + "        return value\n",
+        encoding="utf-8",
+    )
+
+    assert check_apply_method_length.collect_errors((source,)) == [
+        (
+            f"{source}:2: MaxSizeTransform.apply has 22 code-bearing body lines; limit is 20. "
+            "Move image arithmetic and routing into a functional helper."
+        ),
+    ]
 
 
 def test_schema_default_hook_rejects_default_factory(tmp_path: Path) -> None:

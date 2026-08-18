@@ -28,8 +28,8 @@ always_apply: true
   implementation details unless they are part of the supported public contract.
 - Keep concrete transform `apply*` methods as thin dispatchers (20 code-bearing body lines at most). Move image arithmetic,
   array construction, clipping, and kernel-routing branches into a functional helper; the pre-commit hook excludes
-  docstrings, blank lines, standalone comments, and base infrastructure classes such as `MaxSizeTransform`. It does not
-  apply to `Compose` orchestration.
+  docstrings, blank lines, standalone comments, and base infrastructure classes whose names begin with `Base`. A
+  non-public base class must use that prefix. It does not apply to `Compose` orchestration.
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite

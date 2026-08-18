@@ -141,8 +141,8 @@ Direct calls to the public `apply_to_images` method may still pass raw grayscale
 
 Keep every concrete transform `apply*` method as a thin dispatcher (at most 20 code-bearing body lines). Move pixel arithmetic,
 gradient or mask construction, dtype routing, clipping, and batch/per-image kernel selection into a functional helper.
-The pre-commit hook excludes signatures, docstrings, blank lines, standalone comments, base infrastructure classes
-(including `MaxSizeTransform`), and `Compose` orchestration.
+The pre-commit hook excludes signatures, docstrings, blank lines, standalone comments, and base infrastructure classes
+whose names begin with `Base`; non-public base classes must use that prefix. It also excludes `Compose` orchestration.
 
 #### Patterns (in order of impact)
 

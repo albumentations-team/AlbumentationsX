@@ -21,7 +21,6 @@ TRANSFORM_SOURCE_PREFIXES = (
     "albumentations/augmentations/",
     "albumentations/pytorch/",
 )
-NON_CONCRETE_TRANSFORM_CLASS_NAMES = frozenset({"MaxSizeTransform", "_TensorTransform"})
 IGNORED_TOKEN_TYPES = {
     tokenize.COMMENT,
     tokenize.DEDENT,
@@ -59,16 +58,11 @@ def _docstring_lines(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[int]:
 def _iter_apply_methods(tree: ast.AST) -> Iterable[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
     """Yield public-transform methods whose names start with ``apply``."""
     for class_node in ast.walk(tree):
-        if not isinstance(class_node, ast.ClassDef) or _is_non_concrete_transform_class(class_node.name):
+        if not isinstance(class_node, ast.ClassDef) or class_node.name.startswith("Base"):
             continue
         for item in class_node.body:
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name.startswith("apply"):
                 yield f"{class_node.name}.{item.name}", item
-
-
-def _is_non_concrete_transform_class(class_name: str) -> bool:
-    """Return whether a transform class is shared infrastructure rather than a public transform."""
-    return class_name.startswith("Base") or class_name in NON_CONCRETE_TRANSFORM_CLASS_NAMES
 
 
 def _code_tokens_by_line(source: str) -> dict[int, list[tokenize.TokenInfo]]:

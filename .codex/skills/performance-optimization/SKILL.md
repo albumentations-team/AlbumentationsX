@@ -61,7 +61,8 @@ Keep transform `apply*` methods as thin dispatchers. A method may select a funct
 parameters, but pixel arithmetic, temporary-array construction, clipping, dtype routing, and kernel-selection branches
 belong in the functional helper that owns the operation. The repository's pre-commit hook limits transform `apply*`
 bodies to 20 code-bearing lines (excluding signatures, docstrings, blank lines, and standalone comments). Base
-infrastructure classes (including `MaxSizeTransform`) and `Compose` orchestration are excluded.
+infrastructure classes whose names begin with `Base` and `Compose` orchestration are excluded; a non-public base class
+must use that prefix.
 
 Propose an Albucore primitive when an operation:
 

@@ -70,7 +70,8 @@ Priority order to check:
 - [ ] **Custom `apply_to_images`** if expensive setup (kernels, LUTs, gradient maps) can be computed once per batch
 - [ ] **Thin concrete-transform `apply*` methods**: at most 20 code-bearing body lines. Move image arithmetic,
   clipping, routing, and temporary-array construction into a functional helper; docstrings and standalone comments do
-  not count. Base infrastructure classes, including `MaxSizeTransform`, are excluded.
+  not count. Only base infrastructure classes whose names begin with `Base` are excluded; non-public base classes must
+  use that prefix.
 - [ ] **No redundant `ndim == 4` checks** on images — they're always 4D in batch context
 - [ ] **No 2D grayscale branches** in Compose functional paths — grayscale images are `(H,W,1)`
 - [ ] **No reshape trick**: Do NOT reshape `(N,H,W,1)` to `(H,W,N)` for cv2 — 2–4× slower due to non-contiguous copy + sequential channel processing

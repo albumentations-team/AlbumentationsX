@@ -830,6 +830,32 @@ def test_random_brightness_contrast_max_mode_preserves_opencv_formula():
     np.testing.assert_array_equal(result, np.full_like(image, 151))
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("image", (2, 2, 3)),
+        ("images", (2, 2, 2, 3)),
+        ("volume", (2, 2, 2, 3)),
+    ],
+)
+def test_random_brightness_contrast_max_mode_clips_normalized_float_outputs(
+    dtype: type[np.uint8] | type[np.float32],
+    target: str,
+    shape: tuple[int, ...],
+) -> None:
+    transform = A.RandomBrightnessContrast(
+        brightness_range=(-0.15, -0.15),
+        contrast_range=(0, 0),
+        brightness_by_max=True,
+        p=1,
+    )
+
+    result = transform(**{target: np.zeros(shape, dtype=dtype)})[target]
+
+    np.testing.assert_array_equal(result, np.zeros_like(result))
+
+
 @pytest.mark.parametrize(
     "transform_kwargs",
     [
@@ -2794,16 +2820,19 @@ def test_letterbox_positions(position):
     assert result.shape == (200, 200, 3)
 
 
-def test_letterbox_fill_value():
+@pytest.mark.parametrize(
+    ("dtype", "fill_value"),
+    [(np.uint8, 114), (np.float32, 114 / 255)],
+)
+def test_letterbox_fill_value(dtype, fill_value):
     """Padding region should be exactly the fill value."""
-    image = np.zeros((100, 200, 3), dtype=np.uint8)
-    fill_val = 114
+    image = np.zeros((100, 200, 3), dtype=dtype)
     target_size = (200, 200)
-    aug = A.Compose([A.LetterBox(size=target_size, fill=fill_val, position="top_left", p=1.0)])
+    aug = A.Compose([A.LetterBox(size=target_size, fill=fill_value, position="top_left", p=1.0)])
     result = aug(image=image)["image"]
     # wide image (100x200) -> fits width exactly at scale=1, pad_top=50
     pad_bottom = result[150:, :, :]
-    np.testing.assert_array_equal(pad_bottom, fill_val)
+    np.testing.assert_allclose(pad_bottom, fill_value)
 
 
 def test_letterbox_preserves_aspect_ratio():

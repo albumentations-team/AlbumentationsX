@@ -140,6 +140,8 @@ class Normalize(ImageOnlyTransform):
 
     """
 
+    _preserves_input_image_range = False
+
     class InitSchema(BaseTransformInitSchema):
         mean: tuple[float, ...] | float | None
         std: tuple[float, ...] | float | None

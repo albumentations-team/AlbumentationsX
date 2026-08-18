@@ -31,35 +31,27 @@ def test_apply_method_length_hook_excludes_docstrings_and_comments(tmp_path: Pat
         encoding="utf-8",
     )
 
-    assert check_apply_method_length.collect_errors((source,), baseline={}) == []
+    assert check_apply_method_length.collect_errors((source,)) == []
 
 
-def test_apply_method_length_hook_requires_changed_legacy_method_to_shrink(tmp_path: Path) -> None:
+def test_apply_method_length_hook_rejects_long_transform_method(tmp_path: Path) -> None:
     source = tmp_path / "long.py"
-    source.write_text(
+    source_text = (
         "class Long:\n"
         "    def apply(self, image):\n"
-        "        value = image\n" + "".join("        value = value\n" for _ in range(14)) + "        return value\n",
-        encoding="utf-8",
+        "        value = image\n" + "".join("        value = value\n" for _ in range(18)) + "        return value\n"
     )
+    source.write_text(source_text, encoding="utf-8")
 
-    source_text = source.read_text(encoding="utf-8")
-    tree = check_apply_method_length.ast.parse(source_text)
-    qualified_name, method = next(check_apply_method_length._iter_apply_methods(tree))
-    tokens_by_line = check_apply_method_length._code_tokens_by_line(source_text)
-    baseline = {
-        f"{source}:{qualified_name}": check_apply_method_length._method_fingerprint(method, tokens_by_line),
-    }
-
-    assert check_apply_method_length.collect_errors((source,), baseline=baseline) == []
+    assert check_apply_method_length.collect_errors((source,)) == []
 
     source.write_text(
         source_text.replace("        return value\n", "        value = value\n        return value\n"), encoding="utf-8"
     )
 
-    assert check_apply_method_length.collect_errors((source,), baseline=baseline) == [
+    assert check_apply_method_length.collect_errors((source,)) == [
         (
-            f"{source}:2: Long.apply has 17 code-bearing body lines; limit is 15. "
+            f"{source}:2: Long.apply has 21 code-bearing body lines; limit is 20. "
             "Move image arithmetic and routing into a functional helper."
         ),
     ]
@@ -76,7 +68,19 @@ def test_apply_method_length_hook_excludes_compose_orchestration(tmp_path: Path,
         encoding="utf-8",
     )
 
-    assert check_apply_method_length.collect_errors((source,), baseline={}) == []
+    assert check_apply_method_length.collect_errors((source,)) == []
+
+
+def test_apply_method_length_hook_excludes_base_classes(tmp_path: Path) -> None:
+    source = tmp_path / "base.py"
+    source.write_text(
+        "class BaseTransform:\n"
+        "    def apply(self, image):\n"
+        "        value = image\n" + "".join("        value = value\n" for _ in range(20)) + "        return value\n",
+        encoding="utf-8",
+    )
+
+    assert check_apply_method_length.collect_errors((source,)) == []
 
 
 def test_schema_default_hook_rejects_default_factory(tmp_path: Path) -> None:

@@ -6,14 +6,18 @@ from collections.abc import Sequence
 from typing import cast
 
 from ._functional_color import (
+    channel_shuffle,
     grayscale_to_multichannel,
     to_gray_average,
     to_gray_weighted_average,
 )
+from ._functional_noise import get_safe_brightness_contrast_params
 from ._functional_shared import (
+    MAX_VALUES_BY_DTYPE,
     ImageType,
     ImageUInt8,
     add_weighted,
+    clip,
     clipped,
     cv2,
     fgeometric,
@@ -378,6 +382,104 @@ def apply_brightness_contrast_torchvision(
     )
 
 
+def apply_color_jitter(
+    img: ImageType,
+    brightness: float,
+    contrast: float,
+    saturation: float,
+    hue: float,
+    order: list[str],
+) -> ImageType:
+    """Apply ColorJitter's sampled brightness, contrast, saturation, and hue operations in randomized order with
+    RGB validation and TorchVision adjustment semantics.
+    """
+    if not is_rgb_image(img) and not is_grayscale_image(img):
+        msg = "ColorJitter transformation expects 1-channel or 3-channel images."
+        raise TypeError(msg)
+    for operation in order:
+        if operation == "brightness_contrast":
+            img = apply_brightness_contrast_torchvision(img, brightness, contrast, brightness_first=True)
+        elif operation == "contrast_brightness":
+            img = apply_brightness_contrast_torchvision(img, brightness, contrast, brightness_first=False)
+        elif operation == "brightness":
+            img = apply_brightness_contrast_torchvision(img, brightness, 1.0, brightness_first=True)
+        elif operation == "contrast":
+            img = apply_brightness_contrast_torchvision(img, 1.0, contrast, brightness_first=False)
+        elif operation == "saturation":
+            img = adjust_saturation_torchvision(img, saturation)
+        elif operation == "hue":
+            img = adjust_hue_torchvision(img, hue)
+    return img
+
+
+def apply_photometric_distort(
+    img: ImageType,
+    brightness_factor: float | None,
+    contrast_factor: float | None,
+    saturation_factor: float | None,
+    hue_factor: float | None,
+    contrast_before: bool,
+    channel_permutation: list[int] | None,
+) -> ImageType:
+    """Apply PhotoMetricDistort's sampled brightness, contrast, saturation, hue, and channel permutation in its
+    configured order with RGB validation.
+    """
+    if not is_rgb_image(img) and not is_grayscale_image(img):
+        msg = "PhotoMetricDistort expects 1-channel or 3-channel images."
+        raise TypeError(msg)
+    if contrast_before:
+        img = _apply_optional_brightness_contrast(img, brightness_factor, contrast_factor)
+    elif brightness_factor is not None:
+        img = apply_brightness_contrast_torchvision(img, brightness_factor, 1.0, brightness_first=True)
+    if saturation_factor is not None:
+        img = adjust_saturation_torchvision(img, saturation_factor)
+    if hue_factor is not None:
+        img = adjust_hue_torchvision(img, hue_factor)
+    if not contrast_before and contrast_factor is not None:
+        img = apply_brightness_contrast_torchvision(img, 1.0, contrast_factor, brightness_first=False)
+    return channel_shuffle(img, channel_permutation) if channel_permutation is not None else img
+
+
+def _apply_optional_brightness_contrast(
+    img: ImageType,
+    brightness_factor: float | None,
+    contrast_factor: float | None,
+) -> ImageType:
+    if brightness_factor is not None and contrast_factor is not None:
+        return apply_brightness_contrast_torchvision(img, brightness_factor, contrast_factor, brightness_first=True)
+    if brightness_factor is not None:
+        return apply_brightness_contrast_torchvision(img, brightness_factor, 1.0, brightness_first=True)
+    if contrast_factor is not None:
+        return apply_brightness_contrast_torchvision(img, 1.0, contrast_factor, brightness_first=False)
+    return img
+
+
+def apply_random_brightness_contrast(
+    img: ImageType,
+    alpha: float,
+    beta: float,
+    brightness_by_max: bool,
+    ensure_safe_output: bool,
+) -> ImageType:
+    """Apply RandomBrightnessContrast coefficients using the requested brightness mode, output-safety policy,
+    dtype routing, and clipping semantics.
+    """
+    max_value = MAX_VALUES_BY_DTYPE[img.dtype]
+    if not brightness_by_max:
+        brightness_factor = 1.0 + beta
+        if not ensure_safe_output:
+            return apply_brightness_contrast_torchvision(img, brightness_factor, alpha, brightness_first=False)
+        image_mean = float(mean(to_gray_weighted_average(img))) if is_rgb_image(img) else float(mean(img))
+        beta = brightness_factor * (1.0 - alpha) * image_mean
+        alpha *= brightness_factor
+    else:
+        beta *= max_value
+    if ensure_safe_output:
+        alpha, beta = get_safe_brightness_contrast_params(alpha, beta, max_value)
+    result = multiply_add(img, alpha, beta, inplace=False)
+    return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
+
+
 @uint8_io
 @preserve_channel_dim
 def superpixels(
@@ -541,6 +643,9 @@ __all__ = [
     "adjust_hue_torchvision",
     "adjust_saturation_torchvision",
     "apply_brightness_contrast_torchvision",
+    "apply_color_jitter",
+    "apply_photometric_distort",
+    "apply_random_brightness_contrast",
     "fancy_pca",
     "slic",
     "superpixels",

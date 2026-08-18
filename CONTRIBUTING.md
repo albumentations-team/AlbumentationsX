@@ -25,7 +25,8 @@ We've organized our contribution guidelines into focused documents:
 3. **Create a Branch**: In your fork, create a new branch: `git checkout -b feature/my-new-feature`
 4. **Make Changes**: Write code following our [Coding Guidelines](docs/contributing/coding_guidelines.md). Image
    operations must preserve their dtype range; clip the operation itself, never through a forwarding wrapper added
-   only to attach a decorator.
+   only to attach a decorator. Keep `apply*` methods as short dispatchers: move image arithmetic, routing, and clipping
+   into a functional helper.
 5. **Test**: Add tests and ensure all tests pass
 6. **Submit**: Open a Pull Request from your fork with a clear description of your changes
 

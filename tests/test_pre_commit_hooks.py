@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tools import (
+    check_apply_method_length,
     check_internal_workspace,
     check_local_markdown_links,
     check_no_defaults_in_schemas,
@@ -13,6 +14,99 @@ from tools import (
     check_removed_sampling_hooks,
     check_transform_init_args_override,
 )
+
+
+def test_apply_method_length_hook_excludes_docstrings_and_comments(tmp_path: Path) -> None:
+    source = tmp_path / "thin.py"
+    source.write_text(
+        "class Thin:\n"
+        "    def apply(self, image):\n"
+        '        """A deliberately long docstring.\n'
+        "\n"
+        "        It does not count toward the body limit.\n"
+        '        """\n'
+        "        # Nor does this standalone comment.\n"
+        "        result = image  # This is code and must count.\n"
+        "        return result\n",
+        encoding="utf-8",
+    )
+
+    assert check_apply_method_length.collect_errors((source,)) == []
+
+
+def test_apply_method_length_hook_rejects_long_transform_method(tmp_path: Path) -> None:
+    source = tmp_path / "long.py"
+    source_text = (
+        "class Long:\n"
+        "    def apply(self, image):\n"
+        "        value = image\n" + "".join("        value = value\n" for _ in range(18)) + "        return value\n"
+    )
+    source.write_text(source_text, encoding="utf-8")
+
+    assert check_apply_method_length.collect_errors((source,)) == []
+
+    source.write_text(
+        source_text.replace("        return value\n", "        value = value\n        return value\n"), encoding="utf-8"
+    )
+
+    assert check_apply_method_length.collect_errors((source,)) == [
+        (
+            f"{source}:2: Long.apply has 21 code-bearing body lines; limit is 20. "
+            "Move image arithmetic and routing into a functional helper."
+        ),
+    ]
+
+
+def test_apply_method_length_hook_excludes_compose_orchestration(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(check_apply_method_length, "REPO_ROOT", tmp_path)
+    source = tmp_path / "albumentations/core/composition.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "class Compose:\n"
+        "    def apply_in_invocation(self, data):\n"
+        "        value = data\n" + "".join("        value = value\n" for _ in range(15)) + "        return value\n",
+        encoding="utf-8",
+    )
+
+    assert check_apply_method_length.collect_errors((source,)) == []
+
+
+def test_apply_method_length_hook_excludes_base_classes(tmp_path: Path) -> None:
+    source = tmp_path / "base.py"
+    method_body = (
+        "        value = image\n" + "".join("        value = value\n" for _ in range(20)) + "        return value\n"
+    )
+    source.write_text(
+        "class BaseTransform:\n"
+        "    def apply(self, image):\n"
+        + method_body
+        + "\nclass BaseMaxSizeTransform:\n"
+        + "    def apply(self, image):\n"
+        + method_body
+        + "\nclass BaseTensorTransform:\n"
+        + "    def apply(self, image):\n"
+        + method_body,
+        encoding="utf-8",
+    )
+
+    assert check_apply_method_length.collect_errors((source,)) == []
+
+
+def test_apply_method_length_hook_requires_base_prefix(tmp_path: Path) -> None:
+    source = tmp_path / "non_concrete.py"
+    source.write_text(
+        "class MaxSizeTransform:\n"
+        "    def apply(self, image):\n"
+        "        value = image\n" + "".join("        value = value\n" for _ in range(20)) + "        return value\n",
+        encoding="utf-8",
+    )
+
+    assert check_apply_method_length.collect_errors((source,)) == [
+        (
+            f"{source}:2: MaxSizeTransform.apply has 22 code-bearing body lines; limit is 20. "
+            "Move image arithmetic and routing into a functional helper."
+        ),
+    ]
 
 
 def test_schema_default_hook_rejects_default_factory(tmp_path: Path) -> None:

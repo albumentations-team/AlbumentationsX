@@ -414,8 +414,8 @@ gradient or mask construction, dtype routing, clipping, and kernel-selection bra
 functional layer (or Albucore when the operation is reusable there).
 
 Each concrete transform `apply*` body is limited to 20 code-bearing physical lines. Its signature, docstring, blank
-lines, and standalone comments do not count; a line that contains code and an inline comment does. `Base*` classes are
-excluded because they provide shared transform infrastructure. This rule
+lines, and standalone comments do not count; a line that contains code and an inline comment does. Base infrastructure
+classes (for example, `BaseCrop` and `MaxSizeTransform`) are excluded. This rule
 does not apply to `Compose` orchestration such as `apply_in_invocation`; it is enforced by the
 `check-apply-method-length` pre-commit hook.
 

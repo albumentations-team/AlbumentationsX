@@ -73,10 +73,19 @@ def test_apply_method_length_hook_excludes_compose_orchestration(tmp_path: Path,
 
 def test_apply_method_length_hook_excludes_base_classes(tmp_path: Path) -> None:
     source = tmp_path / "base.py"
+    method_body = (
+        "        value = image\n" + "".join("        value = value\n" for _ in range(20)) + "        return value\n"
+    )
     source.write_text(
         "class BaseTransform:\n"
         "    def apply(self, image):\n"
-        "        value = image\n" + "".join("        value = value\n" for _ in range(20)) + "        return value\n",
+        + method_body
+        + "\nclass MaxSizeTransform:\n"
+        + "    def apply(self, image):\n"
+        + method_body
+        + "\nclass _TensorTransform:\n"
+        + "    def apply(self, image):\n"
+        + method_body,
         encoding="utf-8",
     )
 

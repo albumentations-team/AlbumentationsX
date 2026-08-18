@@ -112,6 +112,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         _targets (tuple[Targets, ...] | Targets): Target types this transform can work with.
         _available_keys (set[str]): String representations of valid target keys.
         _key2func (dict[str, Callable[..., Any]]): Mapping between target keys and their processing functions.
+        _preserves_input_image_range (bool): Whether image targets retain the normalized range of their input dtype.
 
     Args:
         interpolation (int): Interpolation method for image transforms.
@@ -152,6 +153,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _supports_cpu_tensor: ClassVar[bool] = False
     _cpu_tensor_targets: ClassVar[frozenset[str] | None] = None
     _cpu_tensor_channels: ClassVar[frozenset[int] | None] = None
+    _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

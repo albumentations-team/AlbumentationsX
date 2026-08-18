@@ -828,7 +828,8 @@ class RandomBrightnessContrast(ImageOnlyTransform):
                 max_value,
             )
 
-        return albucore.multiply_add(img, alpha, beta, inplace=False)
+        result = albucore.multiply_add(img, alpha, beta, inplace=False)
+        return fpixel.clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         if not self.brightness_by_max:

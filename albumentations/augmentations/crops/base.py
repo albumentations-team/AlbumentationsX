@@ -743,7 +743,8 @@ class _BaseRandomSizedCrop(DualTransform):
     ) -> ImageType:
         crop = fcrops.crop(img, *crop_coords)
         interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[:2]), "image")
-        return fgeometric.resize(crop, self.size, interpolation)
+        result = fgeometric.resize(crop, self.size, interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(
         self,
@@ -799,7 +800,7 @@ class _BaseRandomSizedCrop(DualTransform):
         result = np.empty((images.shape[0], self.size[0], self.size[1], crop.shape[-1]), dtype=crop.dtype)
         for i in range(images.shape[0]):
             result[i] = fgeometric.resize(crop[i], self.size, interpolation)
-        return cast("ImageType", result)
+        return fgeometric.clip_if_interpolation_can_overshoot(cast("ImageType", result), interpolation)
 
     def apply_to_mask3d(
         self,

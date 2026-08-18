@@ -67,6 +67,14 @@ Propose an Albucore primitive when an operation:
 Do not create a local helper merely to avoid coordinating an Albucore change when the operation satisfies these
 conditions.
 
+If investigation identifies an Albucore defect, pause AlbumentationsX changes and open an Albucore Issue and PR
+before resuming.
+
+Do not add a forwarding wrapper around a one-line call merely to attach a decorator. Use `@clipped` when every route
+of an image operation can leave the public range; branch and call `albucore.clip(..., inplace=True)` when only a known
+float32 mode (such as cubic interpolation) can. A separate function is justified only when it owns a real image
+operation and keeps that image policy distinct from masks or annotations.
+
 ## Required Handoff
 
 Report:

@@ -7,10 +7,58 @@ from pathlib import Path
 from tools import (
     check_internal_workspace,
     check_local_markdown_links,
+    check_no_defaults_in_schemas,
+    check_quality_suppressions,
     check_range_parameter_annotations,
     check_removed_sampling_hooks,
     check_transform_init_args_override,
 )
+
+
+def test_schema_default_hook_rejects_default_factory(tmp_path: Path) -> None:
+    source = tmp_path / "schema.py"
+    source.write_text(
+        "from pydantic import BaseModel, Field\n"
+        "class Schema(BaseModel):\n"
+        "    values: list[int] = Field(default_factory=list)\n",
+        encoding="utf-8",
+    )
+
+    assert check_no_defaults_in_schemas.check_file(source) == [
+        (str(source), 3, "Field 'values' in BaseModel class 'Schema' has a default value"),
+    ]
+
+
+def test_quality_suppression_hook_rejects_inline_complexity_suppressions(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("def transform():  # noqa: C901, PLR0912 - temporary\n    pass\n", encoding="utf-8")
+
+    assert check_quality_suppressions.collect_errors((source,)) == [
+        f"{source}:1: do not suppress mandatory complexity checks (C901, PLR0912)",
+    ]
+
+
+def test_quality_suppression_hook_rejects_relaxed_production_limits(tmp_path: Path) -> None:
+    config = tmp_path / "pyproject.toml"
+    config.write_text(
+        '[tool.ruff.lint]\nignore = ["C901"]\n'
+        'per-file-ignores = { "albumentations/example.py" = ["PLR0912"] }\n\n'
+        "[tool.ruff.lint.pylint]\nmax-branches = 13\n",
+        encoding="utf-8",
+    )
+
+    assert check_quality_suppressions.collect_errors((config,)) == [
+        f"{config}: do not ignore mandatory complexity checks (C901)",
+        f"{config}: do not ignore mandatory complexity checks for albumentations/example.py (PLR0912)",
+        f"{config}: max-branches must not exceed 12",
+    ]
+
+
+def test_quality_suppression_hook_keeps_test_complexity_policy(tmp_path: Path) -> None:
+    config = tmp_path / "pyproject.toml"
+    config.write_text('lint.per-file-ignores."tests/*" = ["C901", "PLR0912"]\n', encoding="utf-8")
+
+    assert check_quality_suppressions.collect_errors((config,)) == []
 
 
 def test_internal_workspace_rejects_everything_except_gitkeep() -> None:

@@ -408,10 +408,11 @@ all stochastic parameters before `apply`, then pass the generated values to `app
 
 #### Keep `apply*` Methods Thin
 
-`apply`, `apply_to_images`, and other `apply*` methods are transform-layer dispatch points, not places to implement
-pixel kernels. They may select a target-specific functional operation and pass sampled parameters, but image arithmetic,
-gradient or mask construction, dtype routing, clipping, and kernel-selection branches belong in a named helper in the
-functional layer (or Albucore when the operation is reusable there).
+`apply`, `apply_to_images`, and other `apply*` methods are transform-layer policy and dispatch points, not places to
+implement pixel kernels. Keep a transform-specific runtime input check here, so the transform's supported contract is
+visible next to its public application method. Then select a target-specific functional operation and pass sampled
+parameters. Image arithmetic, gradient or mask construction, dtype routing, clipping, and kernel-selection branches
+belong in a named helper in the functional layer (or Albucore when the operation is reusable there).
 
 Each concrete transform `apply*` body is limited to 20 code-bearing physical lines. Its signature, docstring, blank
 lines, and standalone comments do not count; a line that contains code and an inline comment does. Only base

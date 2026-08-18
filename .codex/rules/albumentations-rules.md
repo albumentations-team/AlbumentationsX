@@ -26,8 +26,9 @@ always_apply: true
   different units or behavior.
 - Keep public docstrings focused on user-facing behavior. Omit post-initialization, serialization, replay, and other
   implementation details unless they are part of the supported public contract.
-- Keep concrete transform `apply*` methods as thin dispatchers (20 code-bearing body lines at most). Move image arithmetic,
-  array construction, clipping, and kernel-routing branches into a functional helper; the pre-commit hook excludes
+- Keep concrete transform `apply*` methods as thin policy and dispatch methods (20 code-bearing body lines at most).
+  Keep a transform-specific runtime input check here, then move image arithmetic, array construction, clipping, and
+  kernel-routing branches into a functional helper; the pre-commit hook excludes
   docstrings, blank lines, standalone comments, and base infrastructure classes whose names begin with `Base`. A
   non-public base class must use that prefix. It does not apply to `Compose` orchestration.
 - Use `pytest.mark.parametrize` for parameterized tests

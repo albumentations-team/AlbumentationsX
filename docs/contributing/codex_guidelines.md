@@ -139,8 +139,9 @@ Inside `Compose`, image batches are normalized to `(N, H, W, C)`, including gray
 When optimizing `apply_to_images` for Compose-routed transforms, do not add redundant `ndim == 4` checks.
 Direct calls to the public `apply_to_images` method may still pass raw grayscale batches as `(N, H, W)`.
 
-Keep every concrete transform `apply*` method as a thin dispatcher (at most 20 code-bearing body lines). Move pixel arithmetic,
-gradient or mask construction, dtype routing, clipping, and batch/per-image kernel selection into a functional helper.
+Keep every concrete transform `apply*` method as a thin policy and dispatcher method (at most 20 code-bearing body
+lines). Keep its transform-specific runtime input validation here; move pixel arithmetic, gradient or mask construction,
+dtype routing, clipping, and batch/per-image kernel selection into a functional helper.
 The pre-commit hook excludes signatures, docstrings, blank lines, standalone comments, and base infrastructure classes
 whose names begin with `Base`; non-public base classes must use that prefix. It also excludes `Compose` orchestration.
 

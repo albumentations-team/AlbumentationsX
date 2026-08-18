@@ -740,6 +740,18 @@ def test_color_jitter_float_uint8_equal(brightness, contrast, saturation, hue):
         assert _max <= 2, f"Max: {_max}"
 
 
+@pytest.mark.parametrize(
+    ("transform_class", "message"),
+    [
+        (A.ColorJitter, "ColorJitter transformation expects 1-channel or 3-channel images."),
+        (A.PhotoMetricDistort, "PhotoMetricDistort expects 1-channel or 3-channel images."),
+    ],
+)
+def test_color_transforms_validate_channel_contract_in_apply(transform_class, message):
+    with pytest.raises(TypeError, match=message):
+        transform_class(p=1)(image=np.zeros((8, 8, 2), dtype=np.uint8))
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 def test_random_brightness_contrast_torchvision_mode_matches_expected_formula(dtype):
     if dtype == np.uint8:

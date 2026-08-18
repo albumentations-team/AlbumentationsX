@@ -19,6 +19,8 @@ from ._color_shared import (
     check_range_bounds,
     field_validator,
     fpixel,
+    is_grayscale_image,
+    is_rgb_image,
     model_validator,
     non_rgb_error,
     nondecreasing,
@@ -183,6 +185,9 @@ class ColorJitter(ImageOnlyTransform):
         order: list[str],
         **params: Any,
     ) -> ImageType:
+        if not is_rgb_image(img) and not is_grayscale_image(img):
+            msg = "ColorJitter transformation expects 1-channel or 3-channel images."
+            raise TypeError(msg)
         return fpixel.apply_color_jitter(img, brightness, contrast, saturation, hue, order)
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
@@ -1263,6 +1268,9 @@ class PhotoMetricDistort(ImageOnlyTransform):
         channel_permutation: list[int] | None,
         **params: Any,
     ) -> ImageType:
+        if not is_rgb_image(img) and not is_grayscale_image(img):
+            msg = "PhotoMetricDistort expects 1-channel or 3-channel images."
+            raise TypeError(msg)
         return fpixel.apply_photometric_distort(
             img,
             brightness_factor,

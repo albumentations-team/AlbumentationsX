@@ -390,12 +390,9 @@ def apply_color_jitter(
     hue: float,
     order: list[str],
 ) -> ImageType:
-    """Apply ColorJitter's sampled brightness, contrast, saturation, and hue operations in randomized order with
-    RGB validation and TorchVision adjustment semantics.
+    """Apply ColorJitter's sampled brightness, contrast, saturation, and hue operations in randomized order to a
+    prevalidated one- or three-channel image.
     """
-    if not is_rgb_image(img) and not is_grayscale_image(img):
-        msg = "ColorJitter transformation expects 1-channel or 3-channel images."
-        raise TypeError(msg)
     for operation in order:
         if operation == "brightness_contrast":
             img = apply_brightness_contrast_torchvision(img, brightness, contrast, brightness_first=True)
@@ -421,12 +418,9 @@ def apply_photometric_distort(
     contrast_before: bool,
     channel_permutation: list[int] | None,
 ) -> ImageType:
-    """Apply PhotoMetricDistort's sampled brightness, contrast, saturation, hue, and channel permutation in its
-    configured order with RGB validation.
+    """Apply PhotoMetricDistort's sampled brightness, contrast, saturation, hue, and channel permutation to a
+    prevalidated one- or three-channel image.
     """
-    if not is_rgb_image(img) and not is_grayscale_image(img):
-        msg = "PhotoMetricDistort expects 1-channel or 3-channel images."
-        raise TypeError(msg)
     if contrast_before:
         img = _apply_optional_brightness_contrast(img, brightness_factor, contrast_factor)
     elif brightness_factor is not None:

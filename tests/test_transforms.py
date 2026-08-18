@@ -463,19 +463,22 @@ def test_illumination_explicit_grayscale_channel(mode):
 )
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize("channels", [1, 3, 5])
-def test_illumination_batch_matches_per_image(mode, params, dtype, channels):
+def test_illumination_batch_helper_matches_per_image(mode, params, dtype, channels):
     rng = np.random.default_rng(137)
     shape = (3, 24, 20, channels)
     images = rng.integers(0, 256, shape, dtype=np.uint8) if dtype == np.uint8 else rng.random(shape, dtype=np.float32)
     transform = A.Illumination(mode=mode, p=1)
     expected = np.stack([transform.apply(image, **params) for image in images])
 
-    actual = transform.apply_to_images(images, **params)
+    actual = fpixel.apply_illumination_batch(images, mode, **params)
+    delegated = transform.apply_to_images(images, **params)
 
     if dtype == np.float32:
         np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7, equal_nan=False)
+        np.testing.assert_allclose(delegated, actual, rtol=1e-6, atol=1e-7, equal_nan=False)
     else:
         np.testing.assert_array_equal(actual, expected)
+        np.testing.assert_array_equal(delegated, actual)
 
 
 @pytest.mark.parametrize(
@@ -491,10 +494,13 @@ def test_illumination_empty_batch(mode, params, dtype):
     images = np.empty((0, 24, 20, 5), dtype=dtype)
     transform = A.Illumination(mode=mode, p=1)
 
-    actual = transform.apply_to_images(images, **params)
+    actual = fpixel.apply_illumination_batch(images, mode, **params)
+    delegated = transform.apply_to_images(images, **params)
 
     assert actual.shape == images.shape
     assert actual.dtype == images.dtype
+    assert delegated.shape == images.shape
+    assert delegated.dtype == images.dtype
 
 
 def test_crop_non_empty_mask():

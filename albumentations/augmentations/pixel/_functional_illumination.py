@@ -399,6 +399,48 @@ def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: 
     return result
 
 
+def apply_illumination_batch(
+    images: ImageType,
+    mode: Literal["linear", "corner", "gaussian"],
+    **params: Any,
+) -> ImageType:
+    """Apply one sampled illumination pattern to an image batch.
+
+    This centralizes empty-batch handling, gradient construction, optimized-kernel routing, and clipping for
+    Illumination's batch path.
+
+    Args:
+        images (ImageType): Input batch in ``(N, H, W, C)`` format.
+        mode (Literal["linear", "corner", "gaussian"]): Illumination pattern.
+        **params (Any): Sampled parameters for the selected mode.
+
+    Returns:
+        ImageType: Illuminated batch with the input shape and dtype.
+
+    """
+    if images.shape[0] == 0:
+        return images.copy()
+
+    if mode == "linear":
+        return apply_linear_illumination_batch(images, **params)
+
+    height, width = images.shape[1:3]
+    gradient = create_illumination_gradient(height, width, mode, params)[..., np.newaxis]
+    clip_required = (mode == "corner" and params["intensity"] < 0) or (mode == "gaussian" and params["intensity"] > 0)
+
+    # The uint8 4D path and clipped low-channel float32 path regress against the per-image kernels.
+    if images.dtype == np.uint8 or (images.shape[-1] <= 4 and clip_required):
+        result = np.empty_like(images)
+        for index, image in enumerate(images):
+            result[index] = multiply_by_array(image, gradient)
+    else:
+        result = multiply_by_array(images, gradient)
+
+    if images.dtype == np.float32 and clip_required:
+        return clip(result, images.dtype, inplace=True)
+    return result
+
+
 @clipped
 def apply_corner_illumination(
     img: ImageType,
@@ -1213,6 +1255,7 @@ __all__ = [
     "apply_film_grain",
     "apply_gaussian_illumination",
     "apply_halftone",
+    "apply_illumination_batch",
     "apply_lens_flare",
     "apply_linear_illumination",
     "apply_linear_illumination_batch",

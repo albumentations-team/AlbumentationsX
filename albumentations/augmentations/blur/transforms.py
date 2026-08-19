@@ -208,6 +208,9 @@ class MotionBlur(Blur):
 
         p (float): Probability of applying the transform. Default: 0.5
 
+    Targets:
+        image, volume
+
     Examples of angle vs direction:
         1. Horizontal motion (angle=0°):
            - direction=0.0:   ←•→   (symmetric blur)

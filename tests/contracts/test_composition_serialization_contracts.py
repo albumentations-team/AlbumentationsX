@@ -3,7 +3,7 @@
 import copy
 import inspect
 import io
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import cv2
 import pytest
@@ -31,10 +31,9 @@ def _portable_constructor_parameters(composition_type: type[BaseCompose]) -> set
 
 
 def _non_default_witness(parameter_name: str) -> object:
-    if parameter_name == "transforms":
-        return [A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0)]
-    if parameter_name == "bbox_params":
-        return A.BboxParams(
+    factories: dict[str, Callable[[], object]] = {
+        "transforms": lambda: [A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0)],
+        "bbox_params": lambda: A.BboxParams(
             "pascal_voc",
             label_fields=["bbox_labels"],
             min_area=1.0,
@@ -46,48 +45,36 @@ def _non_default_witness(parameter_name: str) -> object:
             max_accept_ratio=3.0,
             clip_bboxes_on_input=True,
             clip_after_transform=False,
-        )
-    if parameter_name == "keypoint_params":
-        return A.KeypointParams(
+        ),
+        "keypoint_params": lambda: A.KeypointParams(
             "xy",
             label_fields=["keypoint_labels"],
             remove_invisible=False,
             angle_in_degrees=False,
             check_each_transform=False,
             label_mapping={"HorizontalFlip": {"keypoint_labels": {0: 1, 1: 0}}},
-        )
-    if parameter_name == "additional_targets":
-        return {"image2": "image"}
-    if parameter_name == "p":
-        return 0.73
-    if parameter_name == "is_check_shapes":
-        return False
-    if parameter_name == "save_key":
-        return "captured_replay"
-    if parameter_name == "seed":
-        return 137
-    if parameter_name == "instance_binding":
-        return ("mask", "bboxes")
-    if parameter_name == "semantic_mask_label_mappings":
-        return {"HorizontalFlip": {0: 1, 1: 0}}
-    if parameter_name == "strict":
-        return True
-    if parameter_name == "mask_interpolation":
-        return cv2.INTER_LINEAR
-    if parameter_name == "save_applied_params":
-        return True
-    if parameter_name == "telemetry":
-        return False
-    if parameter_name == "strict_instance_invariant":
-        return False
-    if parameter_name == "n":
-        return 2
-    if parameter_name == "replace":
-        return True
-    if parameter_name == "channels":
-        return (1,)
-    msg = f"Add a non-default portable-constructor witness for '{parameter_name}'."
-    raise AssertionError(msg)
+        ),
+        "additional_targets": lambda: {"image2": "image"},
+        "p": lambda: 0.73,
+        "is_check_shapes": lambda: False,
+        "save_key": lambda: "captured_replay",
+        "seed": lambda: 137,
+        "instance_binding": lambda: ("mask", "bboxes"),
+        "semantic_mask_label_mappings": lambda: {"HorizontalFlip": {0: 1, 1: 0}},
+        "strict": lambda: True,
+        "mask_interpolation": lambda: cv2.INTER_LINEAR,
+        "save_applied_params": lambda: True,
+        "telemetry": lambda: False,
+        "strict_instance_invariant": lambda: False,
+        "n": lambda: 2,
+        "replace": lambda: True,
+        "channels": lambda: (1,),
+    }
+    factory = factories.get(parameter_name)
+    if factory is None:
+        msg = f"Add a non-default portable-constructor witness for '{parameter_name}'."
+        raise AssertionError(msg)
+    return factory()
 
 
 COMPOSITION_TYPES = tuple(sorted(_iter_public_composition_types(BaseCompose), key=lambda cls: cls.__name__))

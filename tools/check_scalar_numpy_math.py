@@ -160,8 +160,11 @@ class ScalarNumPyMathChecker(ast.NodeVisitor):
             left_kind = self._annotation_kind(node.left)
             right_kind = self._annotation_kind(node.right)
             return left_kind if left_kind == right_kind else None
-        if not isinstance(node, ast.Subscript):
-            return None
+        if isinstance(node, ast.Subscript):
+            return self._subscript_annotation_kind(node)
+        return None
+
+    def _subscript_annotation_kind(self, node: ast.Subscript) -> str | None:
         base_name = self._canonical_name(node.value)
         if base_name is None or base_name.rsplit(".", 1)[-1] not in MAPPING_TYPE_NAMES:
             return None

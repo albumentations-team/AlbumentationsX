@@ -801,28 +801,26 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         return params
 
+    @staticmethod
+    def _shape_from_data_key(key: str, value: Any) -> tuple[int, ...]:
+        if key == "image":
+            if isinstance(value, torch.Tensor):
+                return value.shape[1], value.shape[2], value.shape[0]
+            return value.shape
+        if key in {"images", "volume"}:
+            if isinstance(value, torch.Tensor):
+                return value.shape[2], value.shape[3], value.shape[0]
+            return value.shape[1:]
+        return value.shape if key == "mask" else value.shape[1:]
+
     def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
         """Return the raw canonical spatial shape using the layout convention expected by every data-aware
         transform parameter sampler.
         """
-        if (image := data.get("image")) is not None:
-            if isinstance(image, torch.Tensor):
-                return image.shape[1], image.shape[2], image.shape[0]
-            return image.shape
-        if (images := data.get("images")) is not None:
-            if isinstance(images, torch.Tensor):
-                return images.shape[2], images.shape[3], images.shape[0]
-            return images.shape[1:]
-        if (volume := data.get("volume")) is not None:
-            if isinstance(volume, torch.Tensor):
-                return volume.shape[2], volume.shape[3], volume.shape[0]
-            return volume.shape[1:]
-        if (mask := data.get("mask")) is not None:
-            return mask.shape
-        if (masks := data.get("masks")) is not None:
-            return masks.shape[1:]
-        if (mask3d := data.get("mask3d")) is not None:
-            return mask3d.shape[1:]
+        for key in ("image", "images", "volume", "mask", "masks", "mask3d"):
+            value = data.get(key)
+            if value is not None:
+                return self._shape_from_data_key(key, value)
         return None
 
     def get_image_data(self, data: dict[str, Any]) -> dict[str, Any]:

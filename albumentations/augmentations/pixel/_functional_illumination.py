@@ -216,41 +216,41 @@ def create_directional_gradient(height: int, width: int, angle: float) -> np.nda
         np.ndarray: The directional gradient.
 
     """
-    # Fast path for horizontal gradients
-    if angle == 0:
-        gradient = np.empty((height, width), dtype=np.float32)
-        gradient[:] = np.linspace(0, 1, width, dtype=np.float32)
-        return gradient
-    if angle == 180:
-        gradient = np.empty((height, width), dtype=np.float32)
-        gradient[:] = np.linspace(1, 0, width, dtype=np.float32)
-        return gradient
-
-    # Fast path for vertical gradients
-    if angle == 90:
-        gradient = np.empty((height, width), dtype=np.float32)
-        gradient[:] = np.linspace(0, 1, height, dtype=np.float32)[:, np.newaxis]
-        return gradient
-    if angle == 270:
-        gradient = np.empty((height, width), dtype=np.float32)
-        gradient[:] = np.linspace(1, 0, height, dtype=np.float32)[:, np.newaxis]
-        return gradient
-
-    # Fast path for diagonal gradients using broadcasting
+    if angle in (0, 90, 180, 270):
+        return _create_cardinal_gradient(height, width, angle)
     if angle in (45, 135, 225, 315):
-        x = np.linspace(0, 1, width, dtype=np.float32)[None, :]  # Horizontal
-        y = np.linspace(0, 1, height, dtype=np.float32)[:, None]  # Vertical
+        return _create_diagonal_gradient(height, width, angle)
+    return _create_arbitrary_gradient(height, width, angle)
 
-        if angle == 45:  # Bottom-left to top-right
-            return _normalize_minmax_float32(x + y)
-        if angle == 135:  # Bottom-right to top-left
-            return _normalize_minmax_float32((1 - x) + y)
-        if angle == 225:  # Top-right to bottom-left
-            return _normalize_minmax_float32((1 - x) + (1 - y))
-        # angle == 315:  # Top-left to bottom-right
-        return _normalize_minmax_float32(x + (1 - y))
 
-    # General case for arbitrary angles using broadcasting
+def _create_cardinal_gradient(height: int, width: int, angle: float) -> np.ndarray:
+    horizontal = angle in (0, 180)
+    reversed_direction = angle in (180, 270)
+    size = width if horizontal else height
+    start, stop = (1, 0) if reversed_direction else (0, 1)
+    values = np.linspace(start, stop, size, dtype=np.float32)
+    gradient = np.empty((height, width), dtype=np.float32)
+    gradient[:] = values if horizontal else values[:, np.newaxis]
+    return gradient
+
+
+def _create_diagonal_gradient(height: int, width: int, angle: float) -> np.ndarray:
+    x = np.linspace(0, 1, width, dtype=np.float32)[None, :]  # Horizontal
+    y = np.linspace(0, 1, height, dtype=np.float32)[:, None]  # Vertical
+    if angle == 45:  # Bottom-left to top-right
+        return _normalize_minmax_float32(x + y)
+    if angle == 135:  # Bottom-right to top-left
+        return _normalize_minmax_float32((1 - x) + y)
+    if angle == 225:  # Top-right to bottom-left
+        return _normalize_minmax_float32((1 - x) + (1 - y))
+    # angle == 315: Top-left to bottom-right
+    return _normalize_minmax_float32(x + (1 - y))
+
+
+def _create_arbitrary_gradient(height: int, width: int, angle: float) -> np.ndarray:
+    """Create a directional gradient for arbitrary angles without a specialized cardinal or diagonal fast path,
+    preserving the normalized float32 output range.
+    """
     y = np.linspace(0, 1, height, dtype=np.float32)[:, None]  # Column vector
     x = np.linspace(0, 1, width, dtype=np.float32)[None, :]  # Row vector
 

@@ -460,10 +460,8 @@ def _check_data_compatibility(
     """
     # 1. Check if item has the required data (image is always required)
     if item_data is None:
-        if data_key == "image":
-            return False, "Item is missing required key 'image'"
-        # Mask is optional, missing is compatible
-        return True, None
+        is_required = data_key == "image"
+        return not is_required, "Item is missing required key 'image'" if is_required else None
 
     # 2. If item data exists, check against primary data (if primary data exists)
     if primary_data is None:  # No primary data to compare against

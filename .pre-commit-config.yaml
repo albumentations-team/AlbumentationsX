@@ -58,7 +58,7 @@ repos:
     hooks:
       - id: check-ruff-suppressions
         name: Protect mandatory Ruff complexity diagnostics
-        args: [--protect=C901,PLR0912]
+        args: [--protect=C901,PLR0912,PLR0915]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

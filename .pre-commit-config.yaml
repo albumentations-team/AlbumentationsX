@@ -54,7 +54,7 @@ repos:
         language: python
         files: ^_internal/
   - repo: https://github.com/ternaus/ruff-policy-hooks
-    rev: v0.3.0
+    rev: v0.4.0
     hooks:
       - id: check-ruff-suppressions
         name: Protect mandatory Ruff complexity diagnostics

@@ -3,10 +3,24 @@
 import pytest
 from google_docstring_parser import parse_google_docstring
 
+import albumentations as A
 from albumentations.core.type_definitions import Targets
-from tests.utils import get_primary_public_transform_params
+from tests.utils import get_all_valid_transforms
 
-PUBLIC_TRANSFORM_CLASSES = tuple(transform_cls for transform_cls, _ in get_primary_public_transform_params())
+_TRANSFORM_BASE_CLASSES = frozenset(
+    {
+        A.BasicTransform,
+        A.DualTransform,
+        A.ImageOnlyTransform,
+        A.Transform3D,
+        A.VolumeOnlyTransform,
+    },
+)
+PUBLIC_TRANSFORM_CLASSES = tuple(
+    transform_cls
+    for transform_cls in get_all_valid_transforms()
+    if issubclass(transform_cls, A.BasicTransform) and transform_cls not in _TRANSFORM_BASE_CLASSES
+)
 
 
 def parse_targets_from_docstring(docstring_targets: str) -> set[str]:

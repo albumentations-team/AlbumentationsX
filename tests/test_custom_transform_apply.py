@@ -564,7 +564,7 @@ class TestReplayComposeIntegration:
             def apply_to_label(self, label: int, **params: Any) -> int:
                 return label + 100  # obvious change
 
-        transform = A.ReplayCompose([FlipWithLabel(p=0.0)], seed=137)
+        transform = A.ReplayCompose([FlipWithLabel(p=0.0)])
         result = transform(image=uint8_image, label=5)
         saved = result["replay"]
         # On replay, recorded applied=False means label should still be passed through unchanged

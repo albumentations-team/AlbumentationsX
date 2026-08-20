@@ -1808,10 +1808,8 @@ class Compose(BaseCompose, HubMixin):
         save_applied_params: bool = False,
         telemetry: bool = True,
         instance_binding: Sequence[str] | None = None,
-        strict_instance_invariant: bool = True,
         semantic_mask_label_mappings: dict[str, dict[int, int]] | None = None,
     ):
-        self._strict_instance_invariant = strict_instance_invariant
         super().__init__(
             transforms=transforms,
             p=p,
@@ -2865,8 +2863,7 @@ class Compose(BaseCompose, HubMixin):
         and keypoints (by surviving id). All this method has to do is:
 
         1. Assert that the bound `masks` row count or packed `mask` instance-axis count
-           equals `len(bboxes)` (raises `RuntimeError` in strict mode, `UserWarning` in
-           legacy mode for one minor version's worth of grace).
+           equals `len(bboxes)`.
         2. Translate `_kp_instance_id` from old bbox ids to the new positional ids.
         3. Stamp `_bbox_instance_id = arange(N)` so the next transform sees a dense namespace.
 
@@ -2885,7 +2882,7 @@ class Compose(BaseCompose, HubMixin):
         n = bboxes_arr.shape[0]
         old_ids = bboxes_arr[:, -1].astype(np.int64, copy=True)
 
-        self._validate_bound_mask_alignment(data, binding, n)
+        self._raise_if_bound_mask_alignment_is_invalid(data, binding, n)
 
         if "keypoints" in binding:
             kp_arr = data.get("keypoints")
@@ -2898,7 +2895,7 @@ class Compose(BaseCompose, HubMixin):
                 bbox_id_set = set(old_ids.tolist())
                 orphans = [int(k) for k in kp_ids_col.tolist() if int(k) not in bbox_id_set]
                 if orphans:
-                    self._raise_or_warn_orphan_keypoints(orphans)
+                    self._raise_for_orphan_keypoints(orphans)
                     keep_kp = np.isin(kp_ids_col, old_ids)
                     if not keep_kp.all():
                         kp_arr = kp_arr[keep_kp]
@@ -2913,7 +2910,7 @@ class Compose(BaseCompose, HubMixin):
 
         bboxes_arr[:, -1] = np.arange(n, dtype=bboxes_arr.dtype)
 
-    def _validate_bound_mask_alignment(
+    def _raise_if_bound_mask_alignment_is_invalid(
         self,
         data: dict[str, Any],
         binding: frozenset[str],
@@ -2925,15 +2922,15 @@ class Compose(BaseCompose, HubMixin):
         if "masks" in binding:
             masks = data.get("masks")
             if masks is not None and isinstance(masks, (np.ndarray, torch.Tensor)) and len(masks) != bboxes_len:
-                self._raise_or_warn_invariant_violation(len(masks), bboxes_len)
+                self._raise_for_invariant_violation(len(masks), bboxes_len)
         elif "mask" in binding:
             mask = data.get("mask")
             instance_axis = self._mask_instance_axis(data, mask)
             mask_count = None if mask is None or instance_axis is None else int(mask.shape[instance_axis])
             if mask_count != bboxes_len:
-                self._raise_or_warn_invariant_violation(mask_count, bboxes_len, target_name="mask")
+                self._raise_for_invariant_violation(mask_count, bboxes_len, target_name="mask")
 
-    def _raise_or_warn_invariant_violation(
+    def _raise_for_invariant_violation(
         self,
         mask_count: int | None,
         bboxes_len: int,
@@ -2956,16 +2953,9 @@ class Compose(BaseCompose, HubMixin):
                 "`apply_to_mask` instead of filtering them independently."
             )
         msg = f"Instance-binding invariant violated: {mismatch}. {guidance}"
-        if getattr(self, "_strict_instance_invariant", True):
-            raise RuntimeError(msg)
-        warnings.warn(
-            msg + " Falling back to legacy permissive mode "
-            "(strict_instance_invariant=False); this fallback will be removed in 2.3.",
-            UserWarning,
-            stacklevel=3,
-        )
+        raise RuntimeError(msg)
 
-    def _raise_or_warn_orphan_keypoints(self, orphans: list[int]) -> None:
+    def _raise_for_orphan_keypoints(self, orphans: list[int]) -> None:
         sample = orphans[:5]
         more = "" if len(orphans) <= 5 else f" (+{len(orphans) - 5} more)"
         msg = (
@@ -2974,15 +2964,7 @@ class Compose(BaseCompose, HubMixin):
             "The last transform must drop keypoints whose parent bbox was filtered out, "
             "or `_bbox_filter_with_mirror` must mirror the bbox keep-mask onto keypoints."
         )
-        if getattr(self, "_strict_instance_invariant", True):
-            raise RuntimeError(msg)
-        warnings.warn(
-            msg + " Falling back to legacy permissive mode "
-            "(strict_instance_invariant=False) — orphan keypoints will be dropped silently. "
-            "This fallback will be removed in 2.3.",
-            UserWarning,
-            stacklevel=3,
-        )
+        raise RuntimeError(msg)
 
     def _unpack_instances(self, data: dict[str, Any]) -> None:
         binding = self._instance_binding
@@ -3367,7 +3349,6 @@ class Compose(BaseCompose, HubMixin):
             "save_applied_params": self.save_applied_params,
             "telemetry": self.telemetry,
             "instance_binding": sorted(self._instance_binding) if self._instance_binding else None,
-            "strict_instance_invariant": self._strict_instance_invariant,
         }
 
     def get_dict_with_id(self) -> dict[str, Any]:
@@ -4039,7 +4020,6 @@ class ReplayCompose(Compose):
         mask_interpolation: int | None = None,
         save_applied_params: bool = False,
         telemetry: bool = True,
-        strict_instance_invariant: bool = True,
     ):
         super().__init__(
             transforms,
@@ -4054,7 +4034,6 @@ class ReplayCompose(Compose):
             save_applied_params=save_applied_params,
             telemetry=telemetry,
             instance_binding=instance_binding,
-            strict_instance_invariant=strict_instance_invariant,
             semantic_mask_label_mappings=semantic_mask_label_mappings,
         )
         self.set_deterministic(True, save_key=save_key)

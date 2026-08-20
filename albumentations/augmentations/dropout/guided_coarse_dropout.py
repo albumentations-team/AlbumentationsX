@@ -116,7 +116,7 @@ class GuidedCoarseDropout(DualTransform):
         ... )
 
     References:
-        - Issue: https://github.com/albumentations-team/AlbumentationsX/issues/338
+        Issue: https://github.com/albumentations-team/AlbumentationsX/issues/338
 
     """
 

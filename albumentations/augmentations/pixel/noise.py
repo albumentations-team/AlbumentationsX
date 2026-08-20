@@ -699,6 +699,9 @@ class AdditiveNoise(ImageOnlyTransform):
     Number of channels:
         Any
 
+    Targets:
+        image, volume
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A

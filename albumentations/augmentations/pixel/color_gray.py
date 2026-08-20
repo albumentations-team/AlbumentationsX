@@ -65,6 +65,9 @@ class ToGray(ImageOnlyTransform):
           such as in some medical imaging applications.
         - "pca" might be used in advanced image analysis tasks or when dealing with hyperspectral images.
 
+    Targets:
+        image, volume
+
     Image types:
         uint8, float32
 

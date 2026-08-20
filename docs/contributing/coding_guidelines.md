@@ -26,8 +26,8 @@ already present.
 
 ### Code Complexity
 
-- Ruff enforces McCabe complexity (`C901`, limit 10) and branch count (`PLR0912`, limit 12).
-- **Never** suppress these with `# noqa: C901`, `# noqa: PLR0912`, or any other inline suppression.
+- Ruff enforces McCabe complexity (`C901`, limit 10), return count (`PLR0911`), branch count (`PLR0912`, limit 12), and statement count (`PLR0915`).
+- **Never** suppress these with `# noqa: C901`, `# noqa: PLR0911`, `# noqa: PLR0912`, `# noqa: PLR0915`, or any other inline suppression.
 - **Never** raise the limit in `pyproject.toml`.
 - **Fix**: Extract private helper methods that each own a single concern. A function over the limit is a signal it is doing too many things and should be split.
 

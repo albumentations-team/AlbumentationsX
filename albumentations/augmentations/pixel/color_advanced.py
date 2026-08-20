@@ -188,31 +188,7 @@ class ColorJitter(ImageOnlyTransform):
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "ColorJitter transformation expects 1-channel or 3-channel images."
             raise TypeError(msg)
-
-        for op in order:
-            if op == "brightness_contrast":
-                img = fpixel.apply_brightness_contrast_torchvision(
-                    img,
-                    brightness,
-                    contrast,
-                    brightness_first=True,
-                )
-            elif op == "contrast_brightness":
-                img = fpixel.apply_brightness_contrast_torchvision(
-                    img,
-                    brightness,
-                    contrast,
-                    brightness_first=False,
-                )
-            elif op == "brightness":
-                img = fpixel.adjust_brightness_torchvision(img, brightness)
-            elif op == "contrast":
-                img = fpixel.adjust_contrast_torchvision(img, contrast)
-            elif op == "saturation":
-                img = fpixel.adjust_saturation_torchvision(img, saturation)
-            elif op == "hue":
-                img = fpixel.adjust_hue_torchvision(img, hue)
-        return img
+        return fpixel.apply_color_jitter(img, brightness, contrast, saturation, hue, order)
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
@@ -1281,25 +1257,6 @@ class PhotoMetricDistort(ImageOnlyTransform):
             "channel_permutation": channel_permutation,
         }
 
-    def _apply_brightness_contrast_before(
-        self,
-        img: ImageType,
-        brightness_factor: float | None,
-        contrast_factor: float | None,
-    ) -> ImageType:
-        if brightness_factor is not None and contrast_factor is not None:
-            return fpixel.apply_brightness_contrast_torchvision(
-                img,
-                brightness_factor,
-                contrast_factor,
-                brightness_first=True,
-            )
-        if brightness_factor is not None:
-            return fpixel.adjust_brightness_torchvision(img, brightness_factor)
-        if contrast_factor is not None:
-            return fpixel.adjust_contrast_torchvision(img, contrast_factor)
-        return img
-
     def apply(
         self,
         img: ImageType,
@@ -1314,27 +1271,15 @@ class PhotoMetricDistort(ImageOnlyTransform):
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "PhotoMetricDistort expects 1-channel or 3-channel images."
             raise TypeError(msg)
-
-        if contrast_before:
-            img = self._apply_brightness_contrast_before(
-                img,
-                brightness_factor,
-                contrast_factor,
-            )
-        elif brightness_factor is not None:
-            img = fpixel.adjust_brightness_torchvision(img, brightness_factor)
-
-        if saturation_factor is not None:
-            img = fpixel.adjust_saturation_torchvision(img, saturation_factor)
-        if hue_factor is not None:
-            img = fpixel.adjust_hue_torchvision(img, hue_factor)
-
-        if not contrast_before and contrast_factor is not None:
-            img = fpixel.adjust_contrast_torchvision(img, contrast_factor)
-
-        if channel_permutation is not None:
-            img = fpixel.channel_shuffle(img, channel_permutation)
-        return img
+        return fpixel.apply_photometric_distort(
+            img,
+            brightness_factor,
+            contrast_factor,
+            saturation_factor,
+            hue_factor,
+            contrast_before,
+            channel_permutation,
+        )
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))

@@ -8,7 +8,6 @@ from albumentations.core.invocation import SamplingContext
 
 from ._transforms_shared import (
     _BBOX_INSTANCE_ID,
-    _KP_INSTANCE_ID,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     AfterValidator,
@@ -663,46 +662,13 @@ class Mosaic(DualTransform):
         mosaic_survival: dict[str, Any] | None,
         **params: Any,
     ) -> np.ndarray:
-        all_shifted_keypoints = []
-
-        for cell_data in processed_cells.values():
-            shifted_keypoints = cell_data.get("keypoints")
-            if shifted_keypoints is not None and np.asarray(shifted_keypoints).size > 0:
-                all_shifted_keypoints.append(shifted_keypoints)
-
-        if not all_shifted_keypoints:
-            return np.empty((0, keypoints.shape[1]), dtype=keypoints.dtype)
-
-        combined_keypoints = np.concatenate(all_shifted_keypoints, axis=0)
-
-        keypoint_processor = self.get_processor("keypoints")
-        kp_fields = (
-            keypoint_processor.params.label_fields
-            if isinstance(keypoint_processor, KeypointsProcessor) and keypoint_processor.params.label_fields
-            else []
+        return fmixing.assemble_mosaic_keypoints(
+            keypoints,
+            processed_cells,
+            mosaic_survival,
+            self.get_processor("keypoints"),
+            self.target_size,
         )
-
-        if _KP_INSTANCE_ID in kp_fields:
-            # Under binding: drop keypoints whose instance was filtered from bboxes so the
-            # post-transform `_resync_instance_ids` invariant (no orphan keypoints) holds.
-            if mosaic_survival is not None and mosaic_survival.get("surviving_instance_ids") is not None:
-                surviving_ids = mosaic_survival["surviving_instance_ids"]
-                n_kf = len(kp_fields)
-                id_col = combined_keypoints.shape[1] - n_kf + kp_fields.index(_KP_INSTANCE_ID)
-                kp_inst = combined_keypoints[:, id_col].astype(np.int64, copy=False)
-                in_surviving = np.fromiter((int(k) in surviving_ids for k in kp_inst), dtype=bool, count=kp_inst.size)
-                return combined_keypoints[in_surviving]
-            return combined_keypoints
-
-        target_h, target_w = self.target_size
-        valid_indices = (
-            (combined_keypoints[:, 0] >= 0)
-            & (combined_keypoints[:, 0] < target_w)
-            & (combined_keypoints[:, 1] >= 0)
-            & (combined_keypoints[:, 1] < target_h)
-        )
-
-        return combined_keypoints[valid_indices]
 
 
 __all__ = [

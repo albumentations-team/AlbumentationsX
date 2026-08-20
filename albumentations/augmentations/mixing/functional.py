@@ -77,6 +77,148 @@ def copy_and_paste_blend(
     return blended_image
 
 
+def combine_copy_paste_bboxes(
+    bboxes: np.ndarray,
+    paste_alpha: np.ndarray | None,
+    paste_surviving_indices: np.ndarray | None,
+    paste_surviving_ids_ordered: list[int] | None,
+    paste_bboxes: np.ndarray | None,
+    bbox_label_fields: Sequence[str],
+) -> np.ndarray:
+    """Filter primary boxes by selected surviving instances, append usable donor boxes, and re-stamp bound instance IDs densely."""
+    if paste_alpha is None:
+        return bboxes
+    surviving = _select_copy_paste_bboxes(
+        bboxes, paste_surviving_indices, paste_surviving_ids_ordered, bbox_label_fields
+    )
+    combined = _append_copy_paste_annotations(surviving, paste_bboxes)
+    if _BBOX_INSTANCE_ID in bbox_label_fields and combined.size > 0:
+        id_col = combined.shape[1] - len(bbox_label_fields) + bbox_label_fields.index(_BBOX_INSTANCE_ID)
+        combined[:, id_col] = np.arange(combined.shape[0], dtype=combined.dtype)
+    return combined
+
+
+def _select_copy_paste_bboxes(
+    bboxes: np.ndarray,
+    paste_surviving_indices: np.ndarray | None,
+    paste_surviving_ids_ordered: list[int] | None,
+    bbox_label_fields: Sequence[str],
+) -> np.ndarray:
+    if paste_surviving_indices is None or bboxes.size == 0:
+        return bboxes
+    if _BBOX_INSTANCE_ID not in bbox_label_fields:
+        return bboxes[paste_surviving_indices]
+    id_col = bboxes.shape[1] - len(bbox_label_fields) + bbox_label_fields.index(_BBOX_INSTANCE_ID)
+    surviving_ids = [] if paste_surviving_ids_ordered is None else paste_surviving_ids_ordered
+    return bboxes[np.isin(bboxes[:, id_col].astype(np.int64, copy=False), np.asarray(surviving_ids, dtype=np.int64))]
+
+
+def _append_copy_paste_annotations(existing: np.ndarray, pasted: np.ndarray | None) -> np.ndarray:
+    if pasted is None or pasted.size == 0:
+        return existing
+    return pasted if existing.size == 0 else np.concatenate([existing, pasted], axis=0)
+
+
+def combine_copy_paste_keypoints(
+    keypoints: np.ndarray,
+    paste_alpha: np.ndarray | None,
+    paste_keypoints: np.ndarray | None,
+    paste_surviving_indices: np.ndarray | None,
+    paste_surviving_ids_ordered: list[int] | None,
+    paste_primary_instance_count: int | None,
+    paste_instance_ids: list[int] | None,
+    keypoint_label_fields: Sequence[str],
+) -> np.ndarray:
+    """Filter primary keypoints by selected surviving instances, append usable donor keypoints, and rebase bound IDs densely for alignment."""
+    if paste_alpha is None:
+        return keypoints
+    surviving = _select_copy_paste_keypoints(
+        keypoints,
+        paste_surviving_indices,
+        paste_surviving_ids_ordered,
+        paste_primary_instance_count,
+        keypoint_label_fields,
+    )
+    combined = _append_copy_paste_annotations(surviving, paste_keypoints)
+    if _KP_INSTANCE_ID in keypoint_label_fields and combined.size > 0:
+        _restamp_copy_paste_keypoint_ids(
+            combined, keypoint_label_fields, paste_surviving_ids_ordered, paste_instance_ids
+        )
+    return combined
+
+
+def _select_copy_paste_keypoints(
+    keypoints: np.ndarray,
+    paste_surviving_indices: np.ndarray | None,
+    paste_surviving_ids_ordered: list[int] | None,
+    paste_primary_instance_count: int | None,
+    keypoint_label_fields: Sequence[str],
+) -> np.ndarray:
+    if paste_surviving_indices is None or keypoints.size == 0:
+        return keypoints
+    if _KP_INSTANCE_ID in keypoint_label_fields:
+        id_col = keypoints.shape[1] - len(keypoint_label_fields) + keypoint_label_fields.index(_KP_INSTANCE_ID)
+        surviving_ids = [] if paste_surviving_ids_ordered is None else paste_surviving_ids_ordered
+        return keypoints[
+            np.isin(keypoints[:, id_col].astype(np.int64, copy=False), np.asarray(surviving_ids, dtype=np.int64))
+        ]
+    if paste_primary_instance_count is None or keypoints.shape[0] != paste_primary_instance_count:
+        return keypoints
+    survivor_idx = np.asarray(paste_surviving_indices)
+    if survivor_idx.size == 0:
+        return keypoints[:0]
+    return keypoints[survivor_idx] if survivor_idx.min() >= 0 and survivor_idx.max() < keypoints.shape[0] else keypoints
+
+
+def _restamp_copy_paste_keypoint_ids(
+    keypoints: np.ndarray,
+    keypoint_label_fields: Sequence[str],
+    paste_surviving_ids_ordered: list[int] | None,
+    paste_instance_ids: list[int] | None,
+) -> None:
+    id_col = keypoints.shape[1] - len(keypoint_label_fields) + keypoint_label_fields.index(_KP_INSTANCE_ID)
+    old_ids = (paste_surviving_ids_ordered or []) + (paste_instance_ids or [])
+    old_to_new = {old_id: new_id for new_id, old_id in enumerate(old_ids)}
+    keypoints[:, id_col] = np.asarray(
+        [old_to_new.get(int(old_id), int(old_id)) for old_id in keypoints[:, id_col]], dtype=keypoints.dtype
+    )
+
+
+def assemble_mosaic_keypoints(
+    keypoints: np.ndarray,
+    processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
+    mosaic_survival: dict[str, Any] | None,
+    keypoint_processor: BboxProcessor | KeypointsProcessor | None,
+    target_size: tuple[int, int],
+) -> np.ndarray:
+    """Gather shifted Mosaic keypoints, retain bbox-surviving bound instances or in-canvas unbound points, and preserve row layout."""
+    shifted = [
+        cell_keypoints
+        for cell_data in processed_cells.values()
+        if (cell_keypoints := cell_data.get("keypoints")) is not None and np.asarray(cell_keypoints).size > 0
+    ]
+    if not shifted:
+        return np.empty((0, keypoints.shape[1]), dtype=keypoints.dtype)
+    combined = np.concatenate(shifted, axis=0)
+    label_fields = (
+        keypoint_processor.params.label_fields
+        if isinstance(keypoint_processor, KeypointsProcessor) and keypoint_processor.params.label_fields
+        else []
+    )
+    if _KP_INSTANCE_ID in label_fields:
+        if mosaic_survival is None or mosaic_survival.get("surviving_instance_ids") is None:
+            return combined
+        id_col = combined.shape[1] - len(label_fields) + label_fields.index(_KP_INSTANCE_ID)
+        surviving_ids = mosaic_survival["surviving_instance_ids"]
+        keep = np.fromiter(
+            (int(instance_id) in surviving_ids for instance_id in combined[:, id_col]), bool, len(combined)
+        )
+        return combined[keep]
+    target_h, target_w = target_size
+    keep = (combined[:, 0] >= 0) & (combined[:, 0] < target_w) & (combined[:, 1] >= 0) & (combined[:, 1] < target_h)
+    return combined[keep]
+
+
 def _soft_blend_clip_high(base_image: np.ndarray, donor_image: np.ndarray) -> float:
     """Choose the upper clip for soft alpha blends: 255 for uint8 inputs, and for floats either 1.0 or 255.0 based on
     observed max channel values.
@@ -318,10 +460,8 @@ def _check_data_compatibility(
     """
     # 1. Check if item has the required data (image is always required)
     if item_data is None:
-        if data_key == "image":
-            return False, "Item is missing required key 'image'"
-        # Mask is optional, missing is compatible
-        return True, None
+        is_required = data_key == "image"
+        return not is_required, "Item is missing required key 'image'" if is_required else None
 
     # 2. If item data exists, check against primary data (if primary data exists)
     if primary_data is None:  # No primary data to compare against

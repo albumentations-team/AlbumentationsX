@@ -231,7 +231,8 @@ class RandomScale(DualTransform):
         if self.area_for_downscale in ["image", "image_mask"] and is_downscale:
             interpolation = cv2.INTER_AREA
 
-        return fgeometric.scale_xy(img, scale_x, scale_y, interpolation)
+        result = fgeometric.scale_xy(img, scale_x, scale_y, interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(
         self,
@@ -274,7 +275,7 @@ class RandomScale(DualTransform):
         return fgeometric.keypoints_scale(keypoints, scale_x, scale_y)
 
 
-class MaxSizeTransform(DualTransform):
+class BaseMaxSizeTransform(DualTransform):
     """Resize so longest or smallest side meets a maximum; aspect ratio fixed. Use
     LongestMaxSize or SmallestMaxSize; max_size or max_size_hw sets the constraint.
 
@@ -315,11 +316,11 @@ class MaxSizeTransform(DualTransform):
 
     Examples:
         >>> import numpy as np
-        >>> import albumentations as A
+        >>> from albumentations.augmentations.geometric.resize import BaseMaxSizeTransform
         >>> import cv2
         >>>
-        >>> # Example of creating a custom transform that extends MaxSizeTransform
-        >>> class CustomMaxSize(A.MaxSizeTransform):
+        >>> # Example of creating a custom transform that extends BaseMaxSizeTransform
+        >>> class CustomMaxSize(BaseMaxSizeTransform):
         ...     def sample_parameters(self, params, data, sampling):
         ...         img_h, img_w = params["shape"][:2]
         ...         # Calculate scale factor - here we scale to make the image area constant
@@ -423,7 +424,8 @@ class MaxSizeTransform(DualTransform):
         if self.area_for_downscale in ["image", "image_mask"] and scale < 1.0:
             interpolation = cv2.INTER_AREA
 
-        return fgeometric.resize(img, (new_height, new_width), interpolation=interpolation)
+        result = fgeometric.resize(img, (new_height, new_width), interpolation=interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(
         self,
@@ -453,7 +455,7 @@ class MaxSizeTransform(DualTransform):
         return fgeometric.keypoints_scale(keypoints, scale, scale)
 
 
-class LongestMaxSize(MaxSizeTransform):
+class LongestMaxSize(BaseMaxSizeTransform):
     """Rescale an image so that the longest side is equal to max_size or sides meet max_size_hw constraints,
         keeping the aspect ratio.
 
@@ -580,7 +582,7 @@ class LongestMaxSize(MaxSizeTransform):
         return {"scale": scale}
 
 
-class SmallestMaxSize(MaxSizeTransform):
+class SmallestMaxSize(BaseMaxSizeTransform):
     """Rescale an image so that minimum side is equal to max_size or sides meet max_size_hw constraints,
     keeping the aspect ratio.
 
@@ -826,7 +828,8 @@ class Resize(DualTransform):
         if self.area_for_downscale in ["image", "image_mask"] and is_downscale:
             interpolation = cv2.INTER_AREA
 
-        return fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
+        result = fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         height, width = mask.shape[:2]
@@ -867,7 +870,7 @@ class LetterBox(DualTransform):
         mask_interpolation (OpenCV flag): Interpolation method used when resizing masks.
             Default: `cv2.INTER_NEAREST`.
         fill (tuple[float, ...] | float): Constant pixel value for image padding.
-            Default: `114`.
+            Default: `0`. For YOLO-style padding, use `114` with uint8 images or `114 / 255` with float32 images.
         fill_mask (tuple[float, ...] | float): Constant pixel value for mask padding.
             Default: `0`.
         position (Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"]):
@@ -887,7 +890,7 @@ class LetterBox(DualTransform):
         - The output size is always exactly `(height, width)`.
         - Images smaller than the target are upscaled; images larger are downscaled.
         - Bounding boxes and keypoints are adjusted for both the resize and padding steps.
-        - `fill=114` is the YOLO convention for letterbox padding.
+        - YOLO uses `fill=114` for uint8 images. Use `fill=114 / 255` for normalized float32 images.
 
     Examples:
         >>> import numpy as np
@@ -934,7 +937,7 @@ class LetterBox(DualTransform):
         size: tuple[int, int],
         interpolation: FullInterpolationType = CV2_INTER_LINEAR,
         mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
-        fill: tuple[float, ...] | float = 114,
+        fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         position: Literal["center", "top_left", "top_right", "bottom_left", "bottom_right", "random"] = "center",
         p: float = 1.0,
@@ -958,12 +961,8 @@ class LetterBox(DualTransform):
         pad_right: int,
         **params: Any,
     ) -> ImageType:
-        resized = fgeometric.resize(
-            img,
-            (new_height, new_width),
-            interpolation=self.interpolation,
-        )
-        return fgeometric.pad_with_params(
+        resized = fgeometric.resize(img, (new_height, new_width), interpolation=self.interpolation)
+        result = fgeometric.pad_with_params(
             resized,
             pad_top,
             pad_bottom,
@@ -972,6 +971,7 @@ class LetterBox(DualTransform):
             border_mode=cv2.BORDER_CONSTANT,
             value=self.fill,
         )
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,

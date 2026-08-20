@@ -6,7 +6,6 @@ from typing import Annotated, Any, Literal
 from albumentations.core.invocation import SamplingContext
 
 from ._color_shared import (
-    MAX_VALUES_BY_DTYPE,
     PAIR,
     SEVEN,
     AfterValidator,
@@ -23,7 +22,6 @@ from ._color_shared import (
     fpixel,
     is_grayscale_image,
     is_rgb_image,
-    mean,
     model_validator,
     nondecreasing,
     np,
@@ -803,32 +801,20 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         beta: float,
         **params: Any,
     ) -> ImageType:
-        max_value = MAX_VALUES_BY_DTYPE[img.dtype]
-
-        if not self.brightness_by_max:
-            brightness_factor = 1.0 + beta
-            if not self.ensure_safe_output:
-                return fpixel.apply_brightness_contrast_torchvision(
-                    img,
-                    brightness_factor=brightness_factor,
-                    contrast_factor=alpha,
-                    brightness_first=False,
-                )
-
-            image_mean = float(mean(fpixel.to_gray_weighted_average(img))) if is_rgb_image(img) else float(mean(img))
-            beta = brightness_factor * (1.0 - alpha) * image_mean
-            alpha *= brightness_factor
-        else:
-            beta *= max_value
-
-        if self.ensure_safe_output:
-            alpha, beta = fpixel.get_safe_brightness_contrast_params(
-                alpha,
-                beta,
-                max_value,
+        if not self.brightness_by_max and not self.ensure_safe_output:
+            return fpixel.apply_brightness_contrast_torchvision(
+                img,
+                brightness_factor=1.0 + beta,
+                contrast_factor=alpha,
+                brightness_first=False,
             )
-
-        return albucore.multiply_add(img, alpha, beta, inplace=False)
+        return fpixel.apply_random_brightness_contrast(
+            img,
+            alpha,
+            beta,
+            self.brightness_by_max,
+            self.ensure_safe_output,
+        )
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         if not self.brightness_by_max:

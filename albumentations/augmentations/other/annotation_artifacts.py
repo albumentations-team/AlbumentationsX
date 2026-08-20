@@ -587,10 +587,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
                 k=1,
             )[0]
 
-        if sampling.py_random.random() < self.black_white_prob:
-            return sampling.py_random.choice([BLACK, WHITE])
-
-        return RED
+        return sampling.py_random.choice([BLACK, WHITE]) if sampling.py_random.random() < self.black_white_prob else RED
 
     def _sample_line_style(self, sampling: SamplingContext) -> LineStyle:
         return sampling.py_random.choices(self.line_styles, weights=self.line_style_probabilities, k=1)[0]

@@ -400,6 +400,42 @@ def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: 
     return result
 
 
+def _apply_clipped_illumination_batch(
+    images: ImageType,
+    gradient: np.ndarray,
+    implicit_grayscale: bool,
+    num_channels: int,
+) -> ImageType:
+    """Multiply float32 illumination batches into preallocated output and upper-clip factors of at least one without
+    a second full-batch pass.
+
+    Args:
+        images (ImageType): Input float32 image batch.
+        gradient (np.ndarray): Shared multiplicative illumination gradient.
+        implicit_grayscale (bool): Whether the batch omits an explicit channel dimension.
+        num_channels (int): Number of image channels.
+
+    Returns:
+        ImageType: Multiplied and upper-clipped image batch.
+
+    """
+    result = np.empty_like(images)
+    # Whole-batch iteration wins for tiny single-channel batches; the per-image path has better cache locality beyond 4.
+    if num_channels == 1 and images.shape[0] <= 4:
+        image_view = images if implicit_grayscale else images[..., 0]
+        result_view = result if implicit_grayscale else result[..., 0]
+        gradient_view = gradient if implicit_grayscale else gradient[..., 0]
+        np.multiply(image_view, gradient_view, out=result_view)
+        np.minimum(result_view, 1.0, out=result_view)
+        return result
+
+    # These clipped modes only use multipliers >= 1, so the lower image bound cannot be crossed.
+    for index, image in enumerate(images):
+        np.multiply(image, gradient, out=result[index])
+        np.minimum(result[index], 1.0, out=result[index])
+    return result
+
+
 def apply_illumination_batch(
     images: ImageType,
     mode: Literal["linear", "corner", "gaussian"],
@@ -431,16 +467,17 @@ def apply_illumination_batch(
     clip_required = (mode == "corner" and params["intensity"] < 0) or (mode == "gaussian" and params["intensity"] > 0)
     num_channels = 1 if implicit_grayscale else images.shape[-1]
 
-    # The uint8 path and clipped low-channel float32 path regress against the per-image kernels.
-    if images.dtype == np.uint8 or (num_channels <= 4 and clip_required):
+    # The uint8 path regresses against the per-image kernels.
+    if images.dtype == np.uint8:
         result = np.empty_like(images)
         for index, image in enumerate(images):
             result[index] = multiply_by_array(image, gradient)
+    elif num_channels <= 4 and clip_required:
+        result = _apply_clipped_illumination_batch(images, gradient, implicit_grayscale, num_channels)
     else:
         result = multiply_by_array(images, gradient)
-
-    if images.dtype == np.float32 and clip_required:
-        return clip(result, images.dtype, inplace=True)
+        if images.dtype == np.float32 and clip_required:
+            result = clip(result, images.dtype, inplace=True)
     return result
 
 

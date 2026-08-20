@@ -86,8 +86,8 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 
 ### Code Complexity
 
-- Ruff enforces McCabe complexity (`C901`, limit 10) and branch count (`PLR0912`, limit 12).
-- **Never** suppress with `# noqa: C901`, `# noqa: PLR0912`, or raise the limits in `pyproject.toml`.
+- Ruff enforces McCabe complexity (`C901`, limit 10), return count (`PLR0911`), branch count (`PLR0912`, limit 12), and statement count (`PLR0915`).
+- **Never** suppress with `# noqa: C901`, `# noqa: PLR0911`, `# noqa: PLR0912`, `# noqa: PLR0915`, or raise the limits in `pyproject.toml`.
 - **Fix**: Extract private helper methods — a function over the limit is doing too many things.
 
 ### Code Patterns
@@ -138,6 +138,12 @@ def __init__(self, brightness: float | tuple[float, float] = 0.2):
 Inside `Compose`, image batches are normalized to `(N, H, W, C)`, including grayscale as `(N, H, W, 1)`.
 When optimizing `apply_to_images` for Compose-routed transforms, do not add redundant `ndim == 4` checks.
 Direct calls to the public `apply_to_images` method may still pass raw grayscale batches as `(N, H, W)`.
+
+Keep every concrete transform `apply*` method as a thin policy and dispatcher method (at most 20 code-bearing body
+lines). Keep its transform-specific runtime input validation here; move pixel arithmetic, gradient or mask construction,
+dtype routing, clipping, and batch/per-image kernel selection into a functional helper.
+The pre-commit hook excludes signatures, docstrings, blank lines, standalone comments, and base infrastructure classes
+whose names begin with `Base`; non-public base classes must use that prefix. It also excludes `Compose` orchestration.
 
 #### Patterns (in order of impact)
 

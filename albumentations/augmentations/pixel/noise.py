@@ -659,6 +659,9 @@ class AdditiveNoise(ImageOnlyTransform):
                     Smaller scale for subtler noise
                     Range for sampling output scale, in [0, 1]
 
+    Targets:
+        image, volume
+
     Examples:
         >>> # Constant RGB shift with different ranges per channel:
         >>> transform = AdditiveNoise(

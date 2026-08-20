@@ -25,7 +25,7 @@ from albumentations.core.type_definitions import (
 __all__ = ["ToTensor3D", "ToTensorV2"]
 
 
-class _TensorTransform(BasicTransform):
+class BaseTensorTransform(BasicTransform):
     """Bridge for tensor-producing terminal transforms that keep public methods typed as torch.Tensor while isolating
     the core array-return contract.
     """
@@ -42,7 +42,7 @@ class _TensorTransform(BasicTransform):
         raise NotImplementedError
 
 
-class ToTensorV2(_TensorTransform):
+class ToTensorV2(BaseTensorTransform):
     """Converts images/masks to PyTorch Tensors, inheriting from BasicTransform.
     For images:
         Converts `HWC` format to PyTorch `CHW` format
@@ -105,7 +105,7 @@ class ToTensorV2(_TensorTransform):
         return torch.from_numpy(np.ascontiguousarray(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
 
 
-class ToTensor3D(_TensorTransform):
+class ToTensor3D(BaseTensorTransform):
     """Convert 3D volume data and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
     For 3D medical imaging pipelines; p=1.0 by default.
 

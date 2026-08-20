@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -2744,31 +2745,27 @@ class TestPipelineInvariantsHypothesis:
 
     @staticmethod
     def _build(name: str) -> A.BasicTransform:
-        if name == "affine":
-            return A.Affine(p=1.0)
-        if name == "perspective":
-            return A.Perspective(scale=(0.05, 0.2), p=1.0, keep_size=True)
-        if name == "shift_scale_rotate":
-            return A.ShiftScaleRotate(p=1.0)
-        if name == "horizontal_flip":
-            return A.HorizontalFlip(p=1.0)
-        if name == "rotate":
-            return A.Rotate(p=1.0)
-        if name == "random_crop":
-            return A.RandomCrop(80, 80, p=1.0)
-        if name == "mosaic":
-            return A.Mosaic(grid_yx=(2, 2), target_size=(100, 100), cell_shape=(100, 100), p=1.0)
-        if name == "copy_and_paste":
-            return A.CopyAndPaste(p=1.0)
-        if name == "coarse_dropout":
-            return A.CoarseDropout(
+        builders: dict[str, Callable[[], A.BasicTransform]] = {
+            "affine": lambda: A.Affine(p=1.0),
+            "perspective": lambda: A.Perspective(scale=(0.05, 0.2), p=1.0, keep_size=True),
+            "shift_scale_rotate": lambda: A.ShiftScaleRotate(p=1.0),
+            "horizontal_flip": lambda: A.HorizontalFlip(p=1.0),
+            "rotate": lambda: A.Rotate(p=1.0),
+            "random_crop": lambda: A.RandomCrop(80, 80, p=1.0),
+            "mosaic": lambda: A.Mosaic(grid_yx=(2, 2), target_size=(100, 100), cell_shape=(100, 100), p=1.0),
+            "copy_and_paste": lambda: A.CopyAndPaste(p=1.0),
+            "coarse_dropout": lambda: A.CoarseDropout(
                 num_holes_range=(1, 3),
                 hole_height_range=(10, 20),
                 hole_width_range=(10, 20),
                 fill=0,
                 p=1.0,
-            )
-        raise ValueError(name)
+            ),
+        }
+        builder = builders.get(name)
+        if builder is None:
+            raise ValueError(name)
+        return builder()
 
     @settings(
         max_examples=100,

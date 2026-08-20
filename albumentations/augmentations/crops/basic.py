@@ -836,7 +836,7 @@ class CropAndPad(DualTransform):
         fill: tuple[float, ...] | float,
         **params: Any,
     ) -> ImageType:
-        return fcrops.crop_and_pad(
+        result = fcrops.crop_and_pad(
             img,
             crop_params,
             pad_params,
@@ -846,6 +846,9 @@ class CropAndPad(DualTransform):
             self.border_mode,
             self.keep_size,
         )
+        if self.keep_size:
+            return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return result
 
     def apply_to_mask(
         self,

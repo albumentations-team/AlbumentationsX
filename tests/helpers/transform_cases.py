@@ -1276,20 +1276,24 @@ def _case_data(
     transform_cls: type[A.BasicTransform],
     init_kwargs: Mapping[str, Any],
 ) -> tuple[ContractDataFactory, ContractContextFactory, dict[str, Any], frozenset[str]]:
+    compose_kwargs: dict[str, Any] = {}
+    metadata_keys = frozenset[str]()
     if issubclass(transform_cls, (A.Transform3D, A.VolumeOnlyTransform)):
-        return make_volume_data, make_empty_context, {}, frozenset()
-    if transform_cls in _BBOX_TRANSFORMS:
+        case = (make_volume_data, make_empty_context)
+    elif transform_cls in _BBOX_TRANSFORMS:
         compose_kwargs = {
             "bbox_params": A.BboxParams(
                 coord_format="albumentations",
                 label_fields=["bbox_labels"],
             ),
         }
+        context_factory = make_empty_context
         if transform_cls is A.RandomCropNearBBox:
             key = init_kwargs.get("cropping_bbox_key", "cropping_bbox")
-            return make_hbb_data, make_crop_near_bbox_context(key), compose_kwargs, frozenset({key})
-        return make_hbb_data, make_empty_context, compose_kwargs, frozenset()
-    if transform_cls in _MASK_TRANSFORMS:
+            context_factory = make_crop_near_bbox_context(key)
+            metadata_keys = frozenset({key})
+        case = (make_hbb_data, context_factory)
+    elif transform_cls in _MASK_TRANSFORMS:
         if transform_cls is A.ConstrainedCoarseDropout and init_kwargs.get("bbox_labels") is not None:
             compose_kwargs = {
                 "bbox_params": A.BboxParams(
@@ -1297,30 +1301,38 @@ def _case_data(
                     label_fields=["bbox_labels"],
                 ),
             }
-            return make_hbb_data, make_empty_context, compose_kwargs, frozenset()
-        return make_mask_data, make_empty_context, {}, frozenset()
-    if transform_cls in _REFERENCE_METADATA_KEYS:
+            case = (make_hbb_data, make_empty_context)
+        else:
+            case = (make_mask_data, make_empty_context)
+    elif transform_cls in _REFERENCE_METADATA_KEYS:
         key = init_kwargs.get("metadata_key", _REFERENCE_METADATA_KEYS[transform_cls])
-        return make_image_data, make_reference_context(key), {}, frozenset({key})
-    if transform_cls is A.Mosaic:
+        case = (make_image_data, make_reference_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls is A.Mosaic:
         key = init_kwargs.get("metadata_key", "mosaic_metadata")
-        return make_mask_data, make_mosaic_context(key), {}, frozenset({key})
-    if transform_cls is A.CopyAndPaste:
+        case = (make_mask_data, make_mosaic_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls is A.CopyAndPaste:
         key = init_kwargs.get("metadata_key", "copy_paste_metadata")
-        return make_mask_data, make_copy_and_paste_context(key), {}, frozenset({key})
-    if transform_cls is A.OverlayElements:
+        case = (make_mask_data, make_copy_and_paste_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls is A.OverlayElements:
         key = init_kwargs.get("metadata_key", "overlay_metadata")
-        return make_image_data, make_overlay_context(key), {}, frozenset({key})
-    if transform_cls is A.TextImage:
+        case = (make_image_data, make_overlay_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls is A.TextImage:
         key = init_kwargs.get("metadata_key", "textimage_metadata")
-        return make_image_data, make_text_context(key), {}, frozenset({key})
-    if transform_cls in {A.Colorize, A.ToRGB}:
-        return make_grayscale_image_data, make_empty_context, {}, frozenset()
-    if transform_cls is A.FromFloat:
-        return make_float_image_data, make_empty_context, {}, frozenset()
-    if transform_cls is A.Equalize and init_kwargs.get("mask_params"):
-        return make_mask_data, make_empty_context, {}, frozenset()
-    return make_image_data, make_empty_context, {}, frozenset()
+        case = (make_image_data, make_text_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls in {A.Colorize, A.ToRGB}:
+        case = (make_grayscale_image_data, make_empty_context)
+    elif transform_cls is A.FromFloat:
+        case = (make_float_image_data, make_empty_context)
+    elif transform_cls is A.Equalize and init_kwargs.get("mask_params"):
+        case = (make_mask_data, make_empty_context)
+    else:
+        case = (make_image_data, make_empty_context)
+    return (*case, compose_kwargs, metadata_keys)
 
 
 def _slugify(name: str) -> str:

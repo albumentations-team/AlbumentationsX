@@ -131,6 +131,19 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         ],
     ],
     [
+        A.GuidedCoarseDropout,
+        {
+            "region_key": "sal",
+            "num_holes_range": (3, 5),
+            "hole_height_range": (0.05, 0.15),
+            "hole_width_range": (0.05, 0.15),
+            "fill": 128,
+            "fill_mask": 0,
+            "protected_bbox_labels": [1],
+            "protection_margin": 0.1,
+        },
+    ],
+    [
         A.RandomSnow,
         {"snow_point_range": (0.2, 0.4), "brightness_coeff": 4},
     ],
@@ -793,6 +806,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     ("bbox-label-selection", A.ConstrainedCoarseDropout, {"fill": 7, "bbox_labels": [1], "mask_indices": None}),
+    ("guided-protection", A.GuidedCoarseDropout, {"region_key": "sal", "fill": 7, "fill_mask": 0, "protected_bbox_labels": [1], "protection_margin": 0.15}),
     (
         "gaussian-scaled-donor",
         A.CopyAndPaste,
@@ -1327,6 +1341,8 @@ def _case_data(
         key = init_kwargs.get("metadata_key", "textimage_metadata")
         case = (make_image_data, make_text_context(key))
         metadata_keys = frozenset({key})
+    elif transform_cls is A.GuidedCoarseDropout:
+        case = (make_image_data, make_empty_context)
     elif transform_cls in {A.Colorize, A.ToRGB}:
         case = (make_grayscale_image_data, make_empty_context)
     elif transform_cls is A.FromFloat:

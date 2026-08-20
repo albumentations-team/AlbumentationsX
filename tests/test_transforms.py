@@ -131,7 +131,7 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
         data["copy_paste_metadata"] = []
     elif augmentation_cls == A.GuidedCoarseDropout:
         guidance = np.ones_like(image)[:, :, 0]
-        data["user_data"] = {"guidance_mask": guidance}
+        data["user_data"] = {"sal": guidance}
 
     result = aug(**data)
     np.testing.assert_array_equal(np.unique(result["mask"]), np.array([0, 1]))
@@ -1587,7 +1587,7 @@ def test_change_image(augmentation_cls, params, image):
         data["copy_paste_metadata"] = []
     elif augmentation_cls == A.GuidedCoarseDropout:
         guidance = np.ones_like(image)[:, :, 0]
-        data["user_data"] = {"guidance_mask": guidance}
+        data["user_data"] = {"sal": guidance}
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [
             np.random.randint(0, 255, image.shape, dtype=image.dtype),
@@ -1680,7 +1680,7 @@ def test_selective_channel(
 
     data = {"image": image}
     if augmentation_cls == A.GuidedCoarseDropout:
-        data["user_data"] = {"guidance_mask": np.ones(image.shape[:2], dtype=np.uint8)}
+        data["user_data"] = {"sal": np.ones(image.shape[:2], dtype=np.uint8)}
 
     transformed_image = aug(**data)["image"]
 
@@ -2406,7 +2406,7 @@ def test_return_nonzero(augmentation_cls, params):
         data["copy_paste_metadata"] = []
     elif augmentation_cls == A.GuidedCoarseDropout:
         guidance = np.ones_like(image)[:, :, 0]
-        data["user_data"] = {"guidance_mask": guidance}
+        data["user_data"] = {"sal": guidance}
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
@@ -2526,7 +2526,7 @@ def test_empty_bboxes_keypoints(augmentation_cls, params):
         data["copy_paste_metadata"] = []
     elif augmentation_cls == A.GuidedCoarseDropout:
         guidance = np.ones_like(image)[:, :, 0]
-        data["user_data"] = {"guidance_mask": guidance}
+        data["user_data"] = {"sal": guidance}
 
     data = aug(**data)
 

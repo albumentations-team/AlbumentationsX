@@ -226,8 +226,7 @@ class GuidedCoarseDropout(DualTransform):
             label_fields = bbox_processor.params.label_fields
             if label_fields is None:
                 raise ValueError(
-                    "BboxParams.label_fields must be specified when using string labels "
-                    "in protected_bbox_labels",
+                    "BboxParams.label_fields must be specified when using string labels in protected_bbox_labels",
                 )
             first_class_label = label_fields[0]
             metadata = bbox_processor.label_manager.metadata["bboxes"][first_class_label]

@@ -3,8 +3,24 @@
 import pytest
 from google_docstring_parser import parse_google_docstring
 
+import albumentations as A
 from albumentations.core.type_definitions import Targets
 from tests.utils import get_all_valid_transforms
+
+_TRANSFORM_BASE_CLASSES = frozenset(
+    {
+        A.BasicTransform,
+        A.DualTransform,
+        A.ImageOnlyTransform,
+        A.Transform3D,
+        A.VolumeOnlyTransform,
+    },
+)
+PUBLIC_TRANSFORM_CLASSES = tuple(
+    transform_cls
+    for transform_cls in get_all_valid_transforms()
+    if issubclass(transform_cls, A.BasicTransform) and transform_cls not in _TRANSFORM_BASE_CLASSES
+)
 
 
 def parse_targets_from_docstring(docstring_targets: str) -> set[str]:
@@ -56,14 +72,13 @@ def get_class_bbox_types(cls) -> set[str]:
     return set()
 
 
-@pytest.mark.parametrize("transform_cls", get_all_valid_transforms())
+@pytest.mark.parametrize("transform_cls", PUBLIC_TRANSFORM_CLASSES)
 def test_docstring_targets_match_class_property(transform_cls):
     """Test that 'Targets:' in docstring matches _targets class property."""
     transform_name = transform_cls.__name__
     docstring = transform_cls.__doc__
 
-    if not docstring:
-        pytest.skip(f"{transform_name} has no docstring")
+    assert docstring, f"{transform_name} has no docstring"
 
     parsed = parse_google_docstring(docstring)
     docstring_targets_str = parsed.get("Targets")
@@ -74,11 +89,8 @@ def test_docstring_targets_match_class_property(transform_cls):
     # Get targets from class property
     class_targets = get_class_targets(transform_cls)
 
-    if not docstring_targets:
-        pytest.skip(f"{transform_name} has no 'Targets:' section in docstring")
-
-    if not class_targets:
-        pytest.skip(f"{transform_name} has no _targets property")
+    assert docstring_targets, f"{transform_name} has no 'Targets:' section in docstring"
+    assert class_targets, f"{transform_name} has no _targets property"
 
     # Check they match
     assert docstring_targets == class_targets, (
@@ -86,14 +98,13 @@ def test_docstring_targets_match_class_property(transform_cls):
     )
 
 
-@pytest.mark.parametrize("transform_cls", get_all_valid_transforms())
+@pytest.mark.parametrize("transform_cls", PUBLIC_TRANSFORM_CLASSES)
 def test_docstring_bbox_types_match_class_property(transform_cls):
     """Test that 'Supported bboxes:' in docstring matches _supported_bbox_types class property."""
     transform_name = transform_cls.__name__
     docstring = transform_cls.__doc__
 
-    if not docstring:
-        pytest.skip(f"{transform_name} has no docstring")
+    assert docstring, f"{transform_name} has no docstring"
 
     parsed = parse_google_docstring(docstring)
     docstring_bbox_types_str = parsed.get("Supported bboxes")

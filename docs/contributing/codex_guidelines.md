@@ -86,8 +86,8 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 
 ### Code Complexity
 
-- Ruff enforces McCabe complexity (`C901`, limit 10) and branch count (`PLR0912`, limit 12).
-- **Never** suppress with `# noqa: C901`, `# noqa: PLR0912`, or raise the limits in `pyproject.toml`.
+- Ruff enforces McCabe complexity (`C901`, limit 10), return count (`PLR0911`), branch count (`PLR0912`, limit 12), and statement count (`PLR0915`).
+- **Never** suppress with `# noqa: C901`, `# noqa: PLR0911`, `# noqa: PLR0912`, `# noqa: PLR0915`, or raise the limits in `pyproject.toml`.
 - **Fix**: Extract private helper methods — a function over the limit is doing too many things.
 
 ### Code Patterns

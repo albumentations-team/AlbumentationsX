@@ -329,7 +329,6 @@ lint.ignore = [
   "FBT003",
   "G004",
   "PLC0415",
-  "PLR0911",
   "PLR0913",
   "PLR0917", # Preserve the positional compatibility of existing public transforms and functional APIs.
   "PLR2004",

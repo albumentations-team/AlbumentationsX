@@ -5,7 +5,7 @@ ISO, multiplicative, shot, salt-and-pepper, additive, and film grain noise.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Any, ClassVar, Literal, TypeAlias
+from typing import Annotated, Any, ClassVar, Literal, TypeAlias, cast
 
 import cv2
 import numpy as np
@@ -38,6 +38,7 @@ __all__ = [
     "GaussNoise",
     "ISONoise",
     "MultiplicativeNoise",
+    "RicianNoise",
     "SaltAndPepper",
     "ShotNoise",
 ]
@@ -509,7 +510,7 @@ class UniformParams(NoiseParamsBase):
             if not (-1 <= min_val <= max_val <= 1):
                 raise ValueError("Range values must be in [-1, 1] and min <= max")
             result.append((min_val, max_val))
-        return result
+        return result  # pyrefly: ignore[bad-return]
 
 
 class GaussianParams(NoiseParamsBase):
@@ -560,8 +561,24 @@ NoiseParams: TypeAlias = Annotated[
 
 class _AdditiveNoiseInitSchema(BaseTransformInitSchema):
     noise_type: Literal["uniform", "gaussian", "laplace", "beta"]
-    spatial_mode: Literal["constant", "per_pixel", "shared"]
+    spatial_mode: Literal["constant", "per_pixel", "shared", "patch"]
     noise_params: dict[str, Any] | None
+    patch_count_range: Annotated[
+        tuple[int, int],
+        AfterValidator(check_range_bounds(1, None)),
+        AfterValidator(nondecreasing),
+    ]
+    patch_height_range: Annotated[
+        tuple[float, float],
+        AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+        AfterValidator(nondecreasing),
+    ]
+    patch_width_range: Annotated[
+        tuple[float, float],
+        AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+        AfterValidator(nondecreasing),
+    ]
+    per_channel: bool
 
     @model_validator(mode="after")
     def _validate_noise_params(self) -> Self:
@@ -603,28 +620,34 @@ class _AdditiveNoiseInitSchema(BaseTransformInitSchema):
 
         return self
 
+    @model_validator(mode="after")
+    def _validate_patch_options(self) -> Self:
+        if self.spatial_mode != "patch" and (
+            self.patch_count_range != (1, 1)
+            or self.patch_height_range != (0.1, 1.0)
+            or self.patch_width_range != (0.1, 1.0)
+            or self.per_channel
+        ):
+            raise ValueError("Patch options can only be used when spatial_mode='patch'")
+        return self
+
 
 class AdditiveNoise(ImageOnlyTransform):
-    """Random noise to channels: uniform, gaussian, laplace, or beta. spatial_mode: constant,
-    per_pixel, or shared. Params depend on noise_type.
+    """Add uniform, Gaussian, Laplace, or beta-distributed noise in constant, per-pixel, channel-shared, or randomly
+    localized rectangular patch modes.
 
-    This transform generates noise using different probability distributions and applies it
-    to image channels. The noise can be generated in three spatial modes and supports
-    multiple noise distributions, each with configurable parameters.
+    Noise can be constant per channel, independent per pixel and channel, shared across channels, or localized inside
+    one or more randomly sampled rectangular patches. Patch-localized noise is useful when spatially restricted
+    corruption should improve robustness without perturbing the complete image.
 
     Args:
-        noise_type(Literal['uniform', 'gaussian', 'laplace', 'beta']): Type of noise distribution to use. Options:
-            - "uniform": Uniform distribution, good for simple random perturbations
-            - "gaussian": Normal distribution, models natural random processes
-            - "laplace": Similar to Gaussian but with heavier tails, good for outliers
-            - "beta": Flexible bounded distribution, can be symmetric or skewed
-
-        spatial_mode(Literal['constant', 'per_pixel', 'shared']): How to generate and apply the noise. Options:
-            - "constant": One noise value per channel, fastest
-            - "per_pixel": Independent noise value for each pixel and channel, slowest
-            - "shared": One noise map shared across all channels, medium speed
-
-        noise_params(dict[str, Any] | None): Parameters for the chosen noise distribution.
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): Noise distribution. Default: "uniform".
+        spatial_mode (Literal['constant', 'per_pixel', 'shared', 'patch']): Spatial sampling mode. Default: "constant".
+            - `"constant"` samples one value per channel.
+            - `"per_pixel"` samples each pixel and channel independently.
+            - `"shared"` samples one spatial map and shares it across channels.
+            - `"patch"` samples noise only inside random rectangular patches.
+        noise_params (dict[str, Any] | None): Parameters for the chosen noise distribution.
             Must match the noise_type:
 
             uniform:
@@ -658,41 +681,57 @@ class AdditiveNoise(ImageOnlyTransform):
                 scale_range: tuple[float, float], default (0.1, 0.3)
                     Smaller scale for subtler noise
                     Range for sampling output scale, in [0, 1]
+        p (float): Probability of applying the transform. Default: 0.5.
+        patch_count_range (tuple[int, int]): Inclusive range for the number of patches when
+            `spatial_mode="patch"`. Default: (1, 1).
+        patch_height_range (tuple[float, float]): Patch height as a fraction of image height. Values must be in
+            `(0, 1]`. Default: (0.1, 1.0).
+        patch_width_range (tuple[float, float]): Patch width as a fraction of image width. Values must be in
+            `(0, 1]`. Default: (0.1, 1.0).
+        per_channel (bool): When `spatial_mode="patch"`, whether to sample independent noise for every channel.
+            If False, the same noise is shared across channels. Default: False.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
 
     Targets:
         image, volume
 
     Examples:
-        >>> # Constant RGB shift with different ranges per channel:
-        >>> transform = AdditiveNoise(
-        ...     noise_type="uniform",
-        ...     spatial_mode="constant",
-        ...     noise_params={"ranges": [(-0.2, 0.2), (-0.1, 0.1), (-0.1, 0.1)]}
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.Compose(
+        ...     [
+        ...         A.AdditiveNoise(
+        ...             noise_type="gaussian",
+        ...             spatial_mode="patch",
+        ...             noise_params={"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)},
+        ...             patch_count_range=(1, 3),
+        ...             patch_height_range=(0.1, 0.4),
+        ...             patch_width_range=(0.1, 0.4),
+        ...             p=1.0,
+        ...         ),
+        ...     ],
+        ...     seed=137,
         ... )
-
-        Gaussian noise shared across channels:
-        >>> transform = AdditiveNoise(
-        ...     noise_type="gaussian",
-        ...     spatial_mode="shared",
-        ...     noise_params={"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)}
-        ... )
+        >>> noisy_image = transform(image=image)["image"]
 
     Note:
-        Performance considerations:
-            - "constant" mode is fastest as it generates only C values (C = number of channels)
-            - "shared" mode generates HxW values and reuses them for all channels
-            - "per_pixel" mode generates HxWxC values, slowest but most flexible
+        - Patch positions and sizes are shared across channels. `per_channel` controls only the sampled noise values.
+        - Overlapping patches are processed in order, and later patch noise replaces earlier noise in the overlap.
+        - Image batches and volume slices receive the same sampled patch program, matching the existing batch behavior.
+        - All noise is generated in normalized units and scaled by the image dtype maximum.
 
-        Distribution characteristics:
-            - uniform: Equal probability within range, good for simple perturbations
-            - gaussian: Bell-shaped, symmetric, good for natural noise
-            - laplace: Like gaussian but with heavier tails, good for outliers
-            - beta: Very flexible shape, can be uniform, bell-shaped, or U-shaped
-
-        Implementation details:
-            - All noise is generated in normalized range and scaled by image max value
-            - For uint8 images, final noise range is [-255, 255]
-            - For float images, final noise range is [-1, 1]
+    References:
+        Patch Gaussian: Improving Generalization of Convolutional Neural Networks without Encouraging Invariance:
+          https://openreview.net/forum?id=HkxWXkStDB
 
     """
 
@@ -701,14 +740,23 @@ class AdditiveNoise(ImageOnlyTransform):
     def __init__(
         self,
         noise_type: Literal["uniform", "gaussian", "laplace", "beta"] = "uniform",
-        spatial_mode: Literal["constant", "per_pixel", "shared"] = "constant",
+        spatial_mode: Literal["constant", "per_pixel", "shared", "patch"] = "constant",
         noise_params: dict[str, Any] | None = None,
         p: float = 0.5,
+        *,
+        patch_count_range: tuple[int, int] = (1, 1),
+        patch_height_range: tuple[float, float] = (0.1, 1.0),
+        patch_width_range: tuple[float, float] = (0.1, 1.0),
+        per_channel: bool = False,
     ):
         super().__init__(p=p)
         self.noise_type = noise_type
         self.spatial_mode = spatial_mode
         self.noise_params = noise_params
+        self.patch_count_range = patch_count_range
+        self.patch_height_range = patch_height_range
+        self.patch_width_range = patch_width_range
+        self.per_channel = per_channel
 
     def apply(
         self,
@@ -716,6 +764,9 @@ class AdditiveNoise(ImageOnlyTransform):
         noise_map: np.ndarray,
         **params: Any,
     ) -> ImageType:
+        patches = params.get("patches")
+        if patches is not None:
+            return fpixel.add_noise_by_patches(img, noise_map, patches)
         return fpixel.add_noise(img, noise_map)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
@@ -736,25 +787,65 @@ class AdditiveNoise(ImageOnlyTransform):
         """
         metadata = self.get_image_data(data)
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
-        shape = (metadata["height"], metadata["width"], metadata["num_channels"])
+        num_channels = metadata["num_channels"]
+        shape = (metadata["height"], metadata["width"], num_channels)
+        noise_params = cast("dict[str, Any]", self.noise_params)
+
+        if self.noise_type == "uniform":
+            ranges = noise_params["ranges"]
+            range_count = len(ranges)
+            if range_count > 1:
+                uses_channel_ranges = self.spatial_mode in {"constant", "per_pixel"} or (
+                    self.spatial_mode == "patch" and self.per_channel
+                )
+                if uses_channel_ranges and range_count < num_channels:
+                    raise ValueError(
+                        f"Not enough ranges provided. Expected 1 or at least {num_channels}, got {range_count}",
+                    )
+                if not uses_channel_ranges or range_count != num_channels:
+                    resolved_count = num_channels if uses_channel_ranges else 1
+                    noise_params = {**noise_params, "ranges": ranges[:resolved_count]}
 
         if self.spatial_mode == "constant":
             noise_map = fpixel.generate_constant_noise_with_py_random(
                 noise_type=self.noise_type,
                 shape=shape,
-                params=self.noise_params,
+                params=noise_params,
                 max_value=max_value,
                 py_random=sampling.py_random,
             )
-        else:
-            noise_map = fpixel.generate_spatial_noise(
+            return {"noise_map": noise_map}
+
+        if self.spatial_mode == "patch":
+            patch_count = sampling.py_random.randint(*self.patch_count_range)
+            patch_heights = np.ceil(
+                metadata["height"] * sampling.random_generator.uniform(*self.patch_height_range, size=patch_count),
+            ).astype(np.int32)
+            patch_widths = np.ceil(
+                metadata["width"] * sampling.random_generator.uniform(*self.patch_width_range, size=patch_count),
+            ).astype(np.int32)
+            y_min = sampling.random_generator.integers(0, metadata["height"] - patch_heights + 1)
+            x_min = sampling.random_generator.integers(0, metadata["width"] - patch_widths + 1)
+            patches = np.stack([x_min, y_min, x_min + patch_widths, y_min + patch_heights], axis=-1)
+            noise_map = fpixel.generate_patch_noise(
                 noise_type=self.noise_type,
-                spatial_mode=self.spatial_mode,
                 shape=shape,
-                params=self.noise_params,
+                params=noise_params,
                 max_value=max_value,
                 random_generator=sampling.random_generator,
+                patches=patches,
+                per_channel=self.per_channel,
             )
+            return {"noise_map": noise_map, "patches": patches}
+
+        noise_map = fpixel.generate_spatial_noise(
+            noise_type=self.noise_type,
+            spatial_mode=self.spatial_mode,
+            shape=shape,
+            params=noise_params,
+            max_value=max_value,
+            random_generator=sampling.random_generator,
+        )
         return {"noise_map": noise_map}
 
 
@@ -1015,4 +1106,174 @@ class FilmGrain(ImageOnlyTransform):
         return {
             "grain": grain,
             "intensity": intensity,
+        }
+
+
+class RicianNoise(ImageOnlyTransform):
+    """Add Rician noise to the input to simulate magnitude-reconstruction artifacts
+    characteristic of MRI acquisition where Gaussian noise corrupts both channels.
+
+    In MRI, independent Gaussian noise is present in the real and imaginary
+    channels. After magnitude reconstruction the noise follows a Rician
+    distribution:
+
+        output = sqrt((signal + n_real)^2 + n_imag^2)
+
+    where `n_real` and `n_imag` are independent zero-mean Gaussian fields
+    with standard deviation `std`.
+
+    Unlike additive Gaussian noise, Rician noise is signal-dependent: at high
+    SNR it is approximately Gaussian, but at low SNR it introduces a positive
+    bias (the noise floor). This makes it the appropriate augmentation for
+    magnitude MRI data.
+
+    For volumes the noise is generated over all spatial axes `(D, H, W)` in a
+    single call — it is **not** applied independently per slice.
+
+    Args:
+        std_range (tuple[float, float]): Range for the noise standard deviation,
+            expressed as a fraction of the maximum value (255 for uint8, 1.0 for
+            float32). Both bounds must be finite and non-negative; the pair must
+            be non-decreasing. Default: (0.05, 0.15).
+        per_channel (bool): If `True`, sample a different `std` for each
+            channel. If `False` (default), the same `std` is used for all
+            channels. Default: False.
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Note:
+        - `std_range` values are fractions of the dtype maximum, identical
+          to the convention used by :class:`GaussNoise`.
+        - Zero `std` is an exact identity (no allocation, no copy).
+        - Masks, bounding boxes, and keypoints are **not** modified.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>>
+        >>> # Moderate Rician noise
+        >>> transform = A.RicianNoise(std_range=(0.05, 0.15), p=1.0)
+        >>> noisy_image = transform(image=image)["image"]
+        >>>
+        >>> # Volume usage
+        >>> volume = np.random.randint(0, 256, (32, 64, 64), dtype=np.uint8)
+        >>> transform = A.Compose([A.RicianNoise(std_range=(0.05, 0.10), p=1.0)])
+        >>> noisy_volume = transform(volume=volume)["volume"]
+
+    References:
+        - Rician distribution: https://en.wikipedia.org/wiki/Rice_distribution
+        - Gudbjartsson & Patz (1995): https://doi.org/10.1002/mrm.1910340618
+
+    See Also:
+        - GaussNoise: Additive Gaussian noise; simulates sensor/transmission noise.
+        - ShotNoise: Poisson noise in linear space; sensor-realistic for low light.
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        std_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        per_channel: bool
+
+    def __init__(
+        self,
+        std_range: tuple[float, float] = (0.05, 0.15),
+        per_channel: bool = False,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.std_range = std_range
+        self.per_channel = per_channel
+
+    def apply(
+        self,
+        img: ImageType,
+        std: float | np.ndarray,
+        random_seed: int,
+        **params: Any,
+    ) -> ImageType:
+        return self._apply_rician(img, std, random_seed)
+
+    def apply_to_images(
+        self,
+        images: ImageType,
+        std: float | np.ndarray,
+        random_seed: int,
+        **params: Any,
+    ) -> ImageType:
+        # Apply per-image with the same seed so every image in the batch
+        # receives identical noise (required by the images-as-target contract).
+        return np.stack([self._apply_rician(images[i], std, random_seed) for i in range(images.shape[0])])
+
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        std: float | np.ndarray,
+        random_seed: int,
+        **params: Any,
+    ) -> ImageType:
+        # For volumes, generate noise over all spatial axes in one call.
+        return self._apply_rician(volume, std, random_seed)
+
+    @staticmethod
+    def _apply_rician(
+        img: ImageType,
+        std: float | np.ndarray,
+        random_seed: int,
+    ) -> ImageType:
+        """Apply Rician noise to a single image or volume, dispatching to per-channel
+        application when std is provided as an array of per-channel values.
+        """
+        rng = np.random.default_rng(random_seed)
+
+        if not isinstance(std, np.ndarray):
+            return fpixel.rician_noise(img, std, rng)
+
+        num_channels = img.shape[-1] if img.ndim >= 3 else 1
+
+        if num_channels == 1 or img.ndim < 3:
+            return fpixel.rician_noise(img, float(std[0]), rng)
+
+        result = img.copy()
+        for c in range(num_channels):
+            result[..., c] = fpixel.rician_noise(img[..., c], float(std[c]), rng)
+        return result
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        metadata = self.get_image_data(data)
+
+        if self.per_channel:
+            num_channels = metadata["num_channels"]
+            std_values = np.array(
+                [sampling.py_random.uniform(*self.std_range) for _ in range(num_channels)],
+                dtype=np.float64,
+            )
+            sampling.applied_overrides["std_range"] = std_values.tolist()
+            return {
+                "std": std_values,
+                "random_seed": int(sampling.random_generator.integers(0, 2**32 - 1)),
+            }
+
+        std = sampling.py_random.uniform(*self.std_range)
+        sampling.applied_overrides["std_range"] = std
+        return {
+            "std": std,
+            "random_seed": int(sampling.random_generator.integers(0, 2**32 - 1)),
         }

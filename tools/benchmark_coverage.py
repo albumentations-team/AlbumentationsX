@@ -183,6 +183,7 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "salt_and_pepper": "SaltAndPepper",
     "sharpen": "Sharpen",
     "shot_noise": "ShotNoise",
+    "rician_noise": "RicianNoise",
     "posterize": "Posterize",
     "solarize": "Solarize",
     "spatter": "Spatter",

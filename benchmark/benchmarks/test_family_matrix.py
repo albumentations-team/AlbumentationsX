@@ -148,6 +148,7 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "multiplicative_noise": PixelSpec(lambda: albumentations.MultiplicativeNoise(p=1.0)),
     "noop": PixelSpec(lambda: albumentations.NoOp(p=1.0)),
     "shot_noise": PixelSpec(lambda: albumentations.ShotNoise(p=1.0), dtypes=("uint8",)),
+    "rician_noise": PixelSpec(lambda: albumentations.RicianNoise(p=1.0)),
     "normalize": PixelSpec(lambda: albumentations.Normalize(p=1.0)),
     "photometric_distort": PixelSpec(lambda: albumentations.PhotoMetricDistort(p=1.0), channels=(1, 3)),
     "pixel_dropout": PixelSpec(lambda: albumentations.PixelDropout(dropout_prob=0.05, p=1.0)),

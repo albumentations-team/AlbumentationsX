@@ -564,15 +564,9 @@ class TestReplayComposeIntegration:
             def apply_to_label(self, label: int, **params: Any) -> int:
                 return label + 100  # obvious change
 
-        transform = A.ReplayCompose([FlipWithLabel(p=0.5)], seed=137)
-        # Run until we get one where transform was NOT applied (label unchanged)
-        for _ in range(20):
-            result = transform(image=uint8_image, label=5)
-            if result["label"] == 5:  # not applied
-                saved = result["replay"]
-                break
-        else:
-            pytest.skip("RNG always applied transform in 20 tries")
+        transform = A.ReplayCompose([FlipWithLabel(p=0.0)], seed=137)
+        result = transform(image=uint8_image, label=5)
+        saved = result["replay"]
         # On replay, recorded applied=False means label should still be passed through unchanged
         replayed = A.ReplayCompose.replay(saved, image=uint8_image, label=5)
         assert replayed["label"] == 5

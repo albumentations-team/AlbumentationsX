@@ -55,6 +55,41 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
     return add_array(img, noise)
 
 
+def add_noise_by_patches(img: ImageType, noise: np.ndarray, patches: np.ndarray) -> ImageType:
+    """Add pre-generated noise inside rectangular patches while preserving pixels outside the sampled regions and
+    replacing earlier values where patches overlap.
+
+    Args:
+        img (ImageType): Input image or image batch in channel-last layout.
+        noise (np.ndarray): Dense noise map whose spatial dimensions match the image.
+        patches (np.ndarray): Integer patch coordinates in `(x_min, y_min, x_max, y_max)` format.
+
+    Returns:
+        ImageType: A copy of the input with noise applied inside the patches.
+
+    Note:
+        Every patch is evaluated against the original image. Later patches therefore overwrite earlier ones in
+        overlapping regions instead of accumulating noise twice.
+
+    """
+    height, width = noise.shape[:2]
+    if len(patches) == 1 and np.array_equal(patches[0], (0, 0, width, height)):
+        return add_noise(img, noise)
+
+    result = img.copy()
+    for x_min, y_min, x_max, y_max in patches:
+        image_slices = (
+            (slice(y_min, y_max), slice(x_min, x_max))
+            if img.ndim < 4
+            else (slice(None), slice(y_min, y_max), slice(x_min, x_max))
+        )
+        patch_noise = noise[y_min:y_max, x_min:x_max]
+        if img.ndim == MONO_CHANNEL_DIMENSIONS and patch_noise.ndim > MONO_CHANNEL_DIMENSIONS:
+            patch_noise = patch_noise[..., 0]
+        result[image_slices] = add_noise(img[image_slices], patch_noise)
+    return result
+
+
 @preserve_channel_dim
 @float32_io
 def shot_noise(
@@ -338,8 +373,8 @@ def sample_uniform(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample from uniform distribution for spatial noise. params['ranges'][0] per channel.
-    Returns array of given size. Used by noise augmentation.
+    """Sample spatial uniform noise from a resolved shared range or one range per channel while preserving the seeded
+    generator's value order.
 
     Args:
         size (tuple[int, ...]): Size of the output array
@@ -350,8 +385,17 @@ def sample_uniform(
         np.ndarray: Sampled values
 
     """
-    # use first range for spatial noise
-    low, high = params["ranges"][0]
+    ranges = params["ranges"]
+    if len(ranges) > 1:
+        lows_float32, highs_float32 = np.asarray(ranges, dtype=np.float32).T
+        lows = lows_float32.astype(np.float64)
+        spans = highs_float32.astype(np.float64) - lows
+        samples = random_generator.random(size)
+        np.multiply(samples, spans, out=samples)
+        np.add(samples, lows, out=samples)
+        return samples
+
+    low, high = ranges[0]
     return random_generator.uniform(low, high, size=size)
 
 
@@ -478,6 +522,66 @@ def generate_shared_noise(
 
     # If input is multichannel, broadcast noise to all channels
     if len(shape) > MONO_CHANNEL_DIMENSIONS:
+        return np.broadcast_to(noise_map[..., None], shape)
+    return noise_map
+
+
+def generate_patch_noise(
+    noise_type: Literal["uniform", "gaussian", "laplace", "beta"],
+    shape: tuple[int, int, int],
+    params: dict[str, Any],
+    max_value: float,
+    random_generator: np.random.Generator,
+    patches: np.ndarray,
+    per_channel: bool,
+) -> np.ndarray:
+    """Generate a float32 noise map inside rectangular patches, leaving zero values elsewhere and optionally sampling
+    each channel independently.
+
+    Args:
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): Distribution used inside each patch.
+        shape (tuple[int, int, int]): Image shape in `(height, width, channels)` order.
+        params (dict[str, Any]): Parameters for the selected distribution.
+        max_value (float): Maximum value for the image dtype.
+        random_generator (np.random.Generator): Random number generator used for noise sampling.
+        patches (np.ndarray): Integer patch coordinates in `(x_min, y_min, x_max, y_max)` format.
+        per_channel (bool): Whether to sample independent noise for each channel.
+
+    Returns:
+        np.ndarray: A float32 noise map that is zero outside the sampled patches.
+
+    Note:
+        Patches are processed in order. If patches overlap, noise from a later patch replaces noise from an earlier
+        patch in the overlapping region.
+
+    """
+    height, width, num_channels = shape
+    is_full_image_patch = len(patches) == 1 and np.array_equal(patches[0], (0, 0, width, height))
+
+    cv2_seed = int(random_generator.integers(0, 2**16))
+    cv2.setRNGSeed(cv2_seed)
+
+    if is_full_image_patch:
+        if per_channel:
+            return generate_per_pixel_noise(noise_type, shape, params, max_value, random_generator)
+        return generate_shared_noise(noise_type, shape, params, max_value, random_generator)
+
+    noise_shape = shape if per_channel else (height, width)
+    noise_map = np.zeros(noise_shape, dtype=np.float32)
+
+    for x_min, y_min, x_max, y_max in patches:
+        patch_height = y_max - y_min
+        patch_width = x_max - x_min
+        patch_shape = (patch_height, patch_width, num_channels) if per_channel else (patch_height, patch_width)
+        noise_map[y_min:y_max, x_min:x_max] = sample_noise(
+            noise_type,
+            patch_shape,
+            params,
+            max_value,
+            random_generator,
+        )
+
+    if not per_channel:
         return np.broadcast_to(noise_map[..., None], shape)
     return noise_map
 
@@ -635,9 +739,11 @@ __all__ = [
     "_ENHANCE_IDENTITY",
     "_ENHANCE_KERNELS",
     "add_noise",
+    "add_noise_by_patches",
     "apply_salt_and_pepper",
     "generate_constant_noise_with_py_random",
     "generate_enhance_matrix",
+    "generate_patch_noise",
     "generate_per_pixel_noise",
     "generate_shared_noise",
     "generate_spatial_noise",

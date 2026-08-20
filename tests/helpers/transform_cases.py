@@ -693,6 +693,19 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     (
+        "patch-per-channel",
+        A.AdditiveNoise,
+        {
+            "noise_type": "gaussian",
+            "spatial_mode": "patch",
+            "noise_params": {"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)},
+            "patch_count_range": (2, 3),
+            "patch_height_range": (0.2, 0.4),
+            "patch_width_range": (0.3, 0.5),
+            "per_channel": True,
+        },
+    ),
+    (
         "alternate-ranges",
         A.AdvancedBlur,
         {"sigma_x_range": (0.3, 0.8), "sigma_y_range": (0.4, 0.9), "beta_range": (0.7, 1.3), "noise_range": (0.8, 1.2)},

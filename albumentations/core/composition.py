@@ -2960,7 +2960,8 @@ class Compose(BaseCompose, HubMixin):
             raise RuntimeError(msg)
         warnings.warn(
             msg + " Falling back to legacy permissive mode "
-            "(strict_instance_invariant=False); this fallback will be removed in 2.3.",
+            "(strict_instance_invariant=False); this fallback is deprecated and will be "
+            "removed in a future major release.",
             UserWarning,
             stacklevel=3,
         )
@@ -2979,7 +2980,7 @@ class Compose(BaseCompose, HubMixin):
         warnings.warn(
             msg + " Falling back to legacy permissive mode "
             "(strict_instance_invariant=False) — orphan keypoints will be dropped silently. "
-            "This fallback will be removed in 2.3.",
+            "This fallback is deprecated and will be removed in a future major release.",
             UserWarning,
             stacklevel=3,
         )

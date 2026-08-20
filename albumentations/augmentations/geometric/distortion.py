@@ -260,7 +260,7 @@ class BaseDistortion(DualTransform):
         map_y: np.ndarray,
         **params: Any,
     ) -> ImageType:
-        return remap(
+        result = remap(
             img,
             map_x,
             map_y,
@@ -268,6 +268,7 @@ class BaseDistortion(DualTransform):
             border_mode=self.border_mode,
             border_value=self.fill,
         )
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
         return self._apply_to_batch_same_shape(mask3d, lambda mask: self.apply_to_mask(mask, **params))

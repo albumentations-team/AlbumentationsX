@@ -26,6 +26,11 @@ always_apply: true
   different units or behavior.
 - Keep public docstrings focused on user-facing behavior. Omit post-initialization, serialization, replay, and other
   implementation details unless they are part of the supported public contract.
+- Keep concrete transform `apply*` methods as thin policy and dispatch methods (20 code-bearing body lines at most).
+  Keep a transform-specific runtime input check here, then move image arithmetic, array construction, clipping, and
+  kernel-routing branches into a functional helper; the pre-commit hook excludes
+  docstrings, blank lines, standalone comments, and base infrastructure classes whose names begin with `Base`. A
+  non-public base class must use that prefix. It does not apply to `Compose` orchestration.
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite
@@ -58,6 +63,15 @@ always_apply: true
   and must also pass the NumPy-Compose-plus-terminal-conversion versus Tensor-Compose model-ready-output benchmark.
   Run `DataLoader`/collation benchmarks for shared Compose, bridge, planner, batching, and milestone changes; do not
   require them in every isolated transform-family pull request.
+- For Torch packaging, dependency-profile, or CI setup work, follow
+  `docs/design/torch-dependency-and-ci-greenfield.md`. Package metadata must not select Torch or TorchVision. CI and
+  documentation jobs that import AlbumentationsX must request the shared CPU-only runtime profile explicitly; static
+  jobs remain Torch-free.
+- For CI code shared across AlbumentationsX, Albucore, and albumentations.ai, follow
+  the ci-foundation architecture at
+  https://github.com/albumentations-team/ci-foundation/blob/main/docs/architecture.md. Shared actions own bootstrap,
+  CPU-Torch mechanics, and generic review orchestration; repository dependency graphs, job policy, releases, legal
+  checks, and deployments stay local.
 - After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
   complete when the environment can support it.
 

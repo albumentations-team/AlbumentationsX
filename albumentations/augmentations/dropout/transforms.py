@@ -370,21 +370,9 @@ class PixelDropout(DualTransform):
         image_shape = params["shape"][:2]
 
         denormalized_bboxes = denormalize_bboxes(bboxes, image_shape)
-
-        # If per_channel is True, we need to create a single channel mask
-        # by combining the multi-channel mask (considering a pixel dropped if it's dropped in any channel)
-        if self.per_channel and len(drop_mask.shape) > 2:
-            # Create a single channel mask where a pixel is considered dropped if it's dropped in any channel
-            combined_mask = np.any(drop_mask, axis=-1 if drop_mask.shape[-1] <= 4 else 0)
-            # Ensure the mask has the right shape for the bboxes function
-            if combined_mask.ndim == 3 and combined_mask.shape[0] == 1:
-                combined_mask = combined_mask[0]
-        else:
-            combined_mask = drop_mask
-
         result = fdropout.mask_dropout_bboxes(
             denormalized_bboxes,
-            combined_mask,
+            drop_mask,
             image_shape,
             processor.params.min_area,
             processor.params.min_visibility,

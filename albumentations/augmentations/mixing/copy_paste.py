@@ -1278,48 +1278,15 @@ class CopyAndPaste(DualTransform):
     ) -> np.ndarray:
         if paste_alpha is None:
             return bboxes
-
         bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
-        bbox_label_fields = bbox_processor.params.label_fields or []
-
-        if paste_surviving_indices is not None and bboxes.size > 0:
-            if _BBOX_INSTANCE_ID in bbox_label_fields:
-                # Filter by _bbox_instance_id values against the resolved surviving ID set.
-                # Mixing IDs with positions (the old `paste_surviving_indices` path) silently
-                # mis-attached bboxes whenever upstream filtering broke position == ID.
-                surviving_ids = paste_surviving_ids_ordered if paste_surviving_ids_ordered is not None else []
-                n_lf = len(bbox_label_fields)
-                id_col = bboxes.shape[1] - n_lf + bbox_label_fields.index(_BBOX_INSTANCE_ID)
-                inst_col = bboxes[:, id_col].astype(np.int64, copy=False)
-                keep = np.isin(inst_col, np.asarray(surviving_ids, dtype=np.int64))
-                surviving_bboxes = bboxes[keep]
-            else:
-                surviving_bboxes = bboxes[paste_surviving_indices]
-        else:
-            surviving_bboxes = bboxes
-
-        if paste_bboxes is not None and paste_bboxes.size > 0:
-            combined = (
-                paste_bboxes
-                if surviving_bboxes.size == 0
-                else np.concatenate(
-                    [surviving_bboxes, paste_bboxes],
-                    axis=0,
-                )
-            )
-        else:
-            combined = surviving_bboxes
-
-        # Re-stamp `_bbox_instance_id` to dense `arange(N_out)` so the output is positionally
-        # equal to its id index. Without this, the output had sparse ids (`[0,1,2,3,donor_id]`)
-        # and any subsequent bbox processor drop broke the implicit `masks[id]` assumption that
-        # the resync used. Phase 2b of the rewrite moves this re-stamp into the transform
-        # itself so `_resync_instance_ids` becomes a pure assertion + keypoint-rebase.
-        if _BBOX_INSTANCE_ID in bbox_label_fields and combined.size > 0:
-            n_lf = len(bbox_label_fields)
-            id_col = combined.shape[1] - n_lf + bbox_label_fields.index(_BBOX_INSTANCE_ID)
-            combined[:, id_col] = np.arange(combined.shape[0], dtype=combined.dtype)
-        return combined
+        return fmixing.combine_copy_paste_bboxes(
+            bboxes,
+            paste_alpha,
+            paste_surviving_indices,
+            paste_surviving_ids_ordered,
+            paste_bboxes,
+            bbox_processor.params.label_fields or [],
+        )
 
     def apply_to_keypoints(
         self,
@@ -1330,86 +1297,16 @@ class CopyAndPaste(DualTransform):
     ) -> np.ndarray:
         if paste_alpha is None:
             return keypoints
-
-        paste_surviving_indices = params.get("paste_surviving_indices")
-        paste_surviving_ids_ordered = params.get("paste_surviving_ids_ordered")
-        paste_primary_instance_count = params.get("paste_primary_instance_count")
         keypoint_processor = cast("KeypointsProcessor", self.get_processor("keypoints"))
-        kp_label_fields = keypoint_processor.params.label_fields or []
-
-        surviving_keypoints = keypoints
-        if paste_surviving_indices is not None and keypoints.size > 0:
-            if _KP_INSTANCE_ID in kp_label_fields:
-                # Filter keypoints by _kp_instance_id against the resolved surviving ID set
-                # (same set that drives bbox/mask survival), not raw mask positions.
-                surviving_ids = paste_surviving_ids_ordered if paste_surviving_ids_ordered is not None else []
-                n_kf = len(kp_label_fields)
-                id_col = keypoints.shape[1] - n_kf + kp_label_fields.index(_KP_INSTANCE_ID)
-                inst_col = keypoints[:, id_col].astype(np.int64, copy=False)
-                keep = np.isin(inst_col, np.asarray(surviving_ids, dtype=np.int64))
-                surviving_keypoints = keypoints[keep]
-            else:
-                aligned = (
-                    paste_primary_instance_count is not None and keypoints.shape[0] == paste_primary_instance_count
-                )
-                if aligned:
-                    survivor_idx = np.asarray(paste_surviving_indices)
-                    if survivor_idx.size == 0:
-                        surviving_keypoints = keypoints[:0]
-                    elif int(survivor_idx.max()) < keypoints.shape[0] and int(survivor_idx.min()) >= 0:
-                        surviving_keypoints = keypoints[survivor_idx]
-
-        if paste_keypoints is not None and paste_keypoints.size > 0:
-            combined = (
-                paste_keypoints
-                if surviving_keypoints.size == 0
-                else np.concatenate(
-                    [surviving_keypoints, paste_keypoints],
-                    axis=0,
-                )
-            )
-        else:
-            combined = surviving_keypoints
-
-        # Re-stamp `_kp_instance_id` to refer to the new dense bbox positions emitted by
-        # `apply_to_bboxes` (Phase 2b). The mapping mirrors the bbox concatenation order:
-        # surviving first (indexed by `paste_surviving_ids_ordered`) then pasted (indexed by
-        # `paste_instance_ids`). After this, no `_resync_instance_ids` keypoint rebase is
-        # needed for the CopyAndPaste boundary.
-        if _KP_INSTANCE_ID in kp_label_fields and combined.size > 0:
-            self._restamp_keypoint_ids(
-                combined,
-                kp_label_fields,
-                paste_surviving_ids_ordered,
-                params.get("paste_instance_ids"),
-            )
-        return combined
-
-    @staticmethod
-    def _restamp_keypoint_ids(
-        keypoints: np.ndarray,
-        kp_label_fields: Sequence[str],
-        paste_surviving_ids_ordered: list[int] | None,
-        paste_instance_ids: list[int] | None,
-    ) -> None:
-        n_kf = len(kp_label_fields)
-        id_col = keypoints.shape[1] - n_kf + kp_label_fields.index(_KP_INSTANCE_ID)
-
-        old_to_new: dict[int, int] = {}
-        new_idx = 0
-        if paste_surviving_ids_ordered:
-            for old in paste_surviving_ids_ordered:
-                old_to_new[old] = new_idx
-                new_idx += 1
-        if paste_instance_ids:
-            for old in paste_instance_ids:
-                old_to_new[old] = new_idx
-                new_idx += 1
-
-        kp_old = keypoints[:, id_col].astype(np.int64, copy=False)
-        keypoints[:, id_col] = np.array(
-            [old_to_new.get(int(k), int(k)) for k in kp_old],
-            dtype=keypoints.dtype,
+        return fmixing.combine_copy_paste_keypoints(
+            keypoints,
+            paste_alpha,
+            paste_keypoints,
+            params.get("paste_surviving_indices"),
+            params.get("paste_surviving_ids_ordered"),
+            params.get("paste_primary_instance_count"),
+            params.get("paste_instance_ids"),
+            keypoint_processor.params.label_fields or [],
         )
 
 

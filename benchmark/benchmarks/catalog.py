@@ -171,19 +171,15 @@ def _route_for_transform(name: str, transform_cls: type[BasicTransform]) -> str:
         return "dedicated_tensor"
     if issubclass(transform_cls, (Transform3D, VolumeOnlyTransform)):
         return "volume"
-    if name in BBOX_ROUTE_TRANSFORMS:
-        return "bboxes"
-    if name in MASK_ROUTE_TRANSFORMS:
-        return "mask"
-    if name in METADATA_ROUTE_TRANSFORMS:
-        return "metadata"
-    if name in MIXING_ROUTE_TRANSFORMS:
-        return "mixing"
-    if name == "RandomCropNearBBox":
-        return "crop_bbox"
-    if name == "TextImage":
-        return "text"
-    return "image"
+    for route, transform_names in (
+        ("bboxes", BBOX_ROUTE_TRANSFORMS),
+        ("mask", MASK_ROUTE_TRANSFORMS),
+        ("metadata", METADATA_ROUTE_TRANSFORMS),
+        ("mixing", MIXING_ROUTE_TRANSFORMS),
+    ):
+        if name in transform_names:
+            return route
+    return {"RandomCropNearBBox": "crop_bbox", "TextImage": "text"}.get(name, "image")
 
 
 def benchmark_specs() -> dict[str, TransformBenchmarkSpec]:

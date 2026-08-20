@@ -26,8 +26,8 @@ already present.
 
 ### Code Complexity
 
-- Ruff enforces McCabe complexity (`C901`, limit 10) and branch count (`PLR0912`, limit 12).
-- **Never** suppress these with `# noqa: C901`, `# noqa: PLR0912`, or any other inline suppression.
+- Ruff enforces McCabe complexity (`C901`, limit 10), return count (`PLR0911`), branch count (`PLR0912`, limit 12), and statement count (`PLR0915`).
+- **Never** suppress these with `# noqa: C901`, `# noqa: PLR0911`, `# noqa: PLR0912`, `# noqa: PLR0915`, or any other inline suppression.
 - **Never** raise the limit in `pyproject.toml`.
 - **Fix**: Extract private helper methods that each own a single concern. A function over the limit is a signal it is doing too many things and should be split.
 
@@ -208,6 +208,15 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
         result = result.astype(np.float32) / 255
     return result
 ```
+
+### Image Value Ranges and `@clipped`
+
+- Image transforms preserve `[0, 255]` for `uint8` and `[0, 1]` for `float32`, unless the transform explicitly sets
+  `_preserves_input_image_range = False`.
+- Use `@clipped` when every route of a functional image operation can leave this range. When only a known float32 mode
+  can overshoot, branch on that mode and call `albucore.clip(..., inplace=True)` there. Do not clip masks or annotations.
+- Do not add a forwarding wrapper around a one-line call merely to attach a decorator. Add a function only when it
+  owns a real image operation and separates image policy from mask or annotation semantics.
 
 ### Channel Flexibility
 
@@ -397,6 +406,21 @@ all stochastic parameters before `apply`, then pass the generated values to `app
   def apply_to_mask(self, mask: np.ndarray, fill_mask: int = 0) -> np.ndarray:
   ```
 
+#### Keep `apply*` Methods Thin
+
+`apply`, `apply_to_images`, and other `apply*` methods are transform-layer policy and dispatch points, not places to
+implement pixel kernels. Keep a transform-specific runtime input check here, so the transform's supported contract is
+visible next to its public application method. Then select a target-specific functional operation and pass sampled
+parameters. Image arithmetic, gradient or mask construction, dtype routing, clipping, and kernel-selection branches
+belong in a named helper in the functional layer (or Albucore when the operation is reusable there).
+
+Each concrete transform `apply*` body is limited to 20 code-bearing physical lines. Its signature, docstring, blank
+lines, and standalone comments do not count; a line that contains code and an inline comment does. Only base
+infrastructure classes whose names begin with `Base` (for example, `BaseCrop` and `BaseMaxSizeTransform`) are excluded.
+Name a non-public base class `BaseX`, not `X`. This rule
+does not apply to `Compose` orchestration such as `apply_in_invocation`; it is enforced by the
+`check-apply-method-length` pre-commit hook.
+
 ### Parameter Generation
 
 #### Using sample_parameters
@@ -522,6 +546,10 @@ serialization or applied-configuration boundary. Overriding this method can caus
 ### Batch Performance (`apply_to_images`)
 
 Images in batch mode are always `(N, H, W, C)`. Never check `ndim == 4` — it's always true.
+
+Keep `apply_to_images` as a short delegation method. Put the complete batch image operation—including empty-batch
+handling, shared setup, routing between native and per-image kernels, and clipping—in one functional helper so it has a
+single direct correctness and benchmark boundary.
 
 Override `apply_to_images` when you can do better than the default per-image loop:
 

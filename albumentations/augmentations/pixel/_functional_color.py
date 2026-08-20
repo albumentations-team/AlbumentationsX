@@ -18,7 +18,7 @@ from ._functional_shared import (
     ImageUInt8,
     add_array,
     add_constant,
-    apply_multichannel_lut,
+    apply_uint8_lut,
     clip,
     clipped,
     cv2,
@@ -35,9 +35,7 @@ from ._functional_shared import (
     power,
     preserve_channel_dim,
     reduce_sum,
-    reshape_ndhwc_channel,
     reshape_xhwc_channel,
-    restore_ndhwc_channel,
     restore_xhwc_channel,
     sz_lut,
     uint8_io,
@@ -264,14 +262,16 @@ def _equalize_cv_multichannel_lut(img: ImageType) -> ImageType:
     """Apply OpenCV-style equalization with one multichannel LUT pass for large
     RGB images and multispectral inputs where per-channel assignment is slower.
     """
-    luts = []
-    for channel_idx in range(get_num_channels(img)):
+    num_channels = get_num_channels(img)
+    lut = np.empty((256, 1, num_channels), dtype=np.uint8)
+    identity_lut = np.arange(256, dtype=np.uint8)
+    for channel_idx in range(num_channels):
         channel = img[..., channel_idx]
         histogram = cv2.calcHist([channel], [0], None, [256], (0, 256)).ravel()
-        lut = _create_equalize_cv_lut(histogram)
-        luts.append(np.arange(256, dtype=np.uint8) if lut is None else lut)
+        channel_lut = _create_equalize_cv_lut(histogram)
+        lut[:, 0, channel_idx] = identity_lut if channel_lut is None else channel_lut
 
-    return apply_multichannel_lut(img, np.stack(luts), get_num_channels(img))
+    return apply_uint8_lut(cast("ImageUInt8", img), lut)
 
 
 def _check_preconditions(
@@ -487,15 +487,15 @@ def move_tone_curve(
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
         if img.dtype == np.float32:
             return _move_tone_curve_float32(cast("ImageFloat32", img), low_y, high_y)
-        luts = cast(
+        lut = cast(
             "ImageUInt8",
             clip(
-                np.rint(evaluate_bez(low_y, high_y).T),
+                np.rint(evaluate_bez(low_y, high_y)),
                 np.dtype(np.uint8),
                 inplace=False,
             ),
         )
-        return apply_multichannel_lut(img, luts, num_channels)
+        return apply_uint8_lut(cast("ImageUInt8", img), lut[:, np.newaxis, :])
 
     raise TypeError(
         f"low_y and high_y must both be of type float or np.ndarray. Got {type(low_y)} and {type(high_y)}",
@@ -508,14 +508,13 @@ def linear_transformation_rgb(
     transformation_matrix: np.ndarray,
 ) -> ImageType:
     """3x3 linear transformation to RGB. transformation_matrix (or batch) multiplies channel
-    vector. Supports (H,W,3), (B,H,W,3), (B,D,H,W,3).
+    vector. Supports (H,W,3) and (B,H,W,3).
 
     This function applies a 3x3 linear transformation matrix (or batch of matrices)
     to the RGB channels of either a single image or a batch of images.
 
     Args:
-        img (ImageType): A single RGB image of shape (H, W, 3), a batch of images (B, H, W, 3),
-            or a five-dimensional tensor (B, D, H, W, 3).
+        img (ImageType): A single RGB image of shape (H, W, 3) or a batch of images (B, H, W, 3).
         transformation_matrix (np.ndarray): A 3x3 matrix
 
     Returns:
@@ -531,11 +530,7 @@ def linear_transformation_rgb(
         transformed, original_shape = reshape_xhwc_channel(img)
         transformed = cast("ImageType", cv2.transform(transformed, transformation_matrix))
         return cast("ImageType", restore_xhwc_channel(transformed, original_shape))
-    if img.ndim == 5:
-        transformed, original_shape = reshape_ndhwc_channel(img)
-        transformed = cast("ImageType", cv2.transform(transformed, transformation_matrix))
-        return cast("ImageType", restore_ndhwc_channel(transformed, original_shape))
-    raise ValueError(f"Expected input shape (H, W, 3), (B, H, W, 3), (B, D, H, W, 3), got {img.shape}")
+    raise ValueError(f"Expected input shape (H, W, 3) or (B, H, W, 3), got {img.shape}")
 
 
 @uint8_io
@@ -919,7 +914,6 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
             - Single image: (H, W, 3)
             - Batch of images: (N, H, W, 3)
             - Volume: (D, H, W, 3)
-            - Five-dimensional tensor: (N, D, H, W, 3)
 
     Returns:
         ImageType: Grayscale image as a 2D numpy array.
@@ -940,14 +934,6 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
         new_shape = (*original_shape[:-1], 1)
 
         return cast("ImageType", restore_xhwc_channel(im, new_shape))
-
-    if img.ndim == 5:
-        img, original_shape = reshape_ndhwc_channel(img)
-        img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
-
-        new_shape = (*original_shape[:-1], 1)
-
-        return cast("ImageType", restore_ndhwc_channel(img, new_shape))
 
     raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 
@@ -974,7 +960,6 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
             - Single image: (H, W, 3)
             - Batch of images: (N, H, W, 3)
             - Volume: (D, H, W, 3)
-            - Five-dimensional tensor: (N, D, H, W, 3)
 
             Supported dtypes:
             - np.uint8: Values in range [0, 255]
@@ -985,7 +970,6 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
             - Single image: (H, W)
             - Batch of images: (N, H, W)
             - Volume: (D, H, W)
-            - Five-dimensional tensor: (N, D, H, W)
 
         The output dtype matches the input dtype. For float inputs, the L channel
         is normalized to [0, 1] by dividing by 100.
@@ -1029,14 +1013,6 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
         new_shape = (*original_shape[:-1], 1)
 
         return cast("ImageType", restore_xhwc_channel(im, new_shape))
-
-    if img.ndim == 5:
-        img, original_shape = reshape_ndhwc_channel(img)
-        img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0])
-
-        new_shape = (*original_shape[:-1], 1)
-
-        return cast("ImageType", restore_ndhwc_channel(img, new_shape))
 
     raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 

@@ -34,7 +34,14 @@ from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.validation import ValidatedTransformMeta
 
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
-from .type_definitions import ALL_TARGETS, ImageType, StackedMasks4D, Targets, VolumeType
+from .type_definitions import (
+    ALL_TARGETS,
+    NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
+    ImageType,
+    StackedMasks4D,
+    Targets,
+    VolumeType,
+)
 from .utils import format_args
 from .utils import get_image_data as _get_image_data_impl
 
@@ -105,6 +112,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         _targets (tuple[Targets, ...] | Targets): Target types this transform can work with.
         _available_keys (set[str]): String representations of valid target keys.
         _key2func (dict[str, Callable[..., Any]]): Mapping between target keys and their processing functions.
+        _preserves_input_image_range (bool): Whether image targets retain the normalized range of their input dtype.
 
     Args:
         interpolation (int): Interpolation method for image transforms.
@@ -145,6 +153,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _supports_cpu_tensor: ClassVar[bool] = False
     _cpu_tensor_targets: ClassVar[frozenset[str] | None] = None
     _cpu_tensor_channels: ClassVar[frozenset[int] | None] = None
+    _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -792,28 +801,26 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         return params
 
+    @staticmethod
+    def _shape_from_data_key(key: str, value: Any) -> tuple[int, ...]:
+        if key == "image":
+            if isinstance(value, torch.Tensor):
+                return value.shape[1], value.shape[2], value.shape[0]
+            return value.shape
+        if key in {"images", "volume"}:
+            if isinstance(value, torch.Tensor):
+                return value.shape[2], value.shape[3], value.shape[0]
+            return value.shape[1:]
+        return value.shape if key == "mask" else value.shape[1:]
+
     def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
         """Return the raw canonical spatial shape using the layout convention expected by every data-aware
         transform parameter sampler.
         """
-        if (image := data.get("image")) is not None:
-            if isinstance(image, torch.Tensor):
-                return image.shape[1], image.shape[2], image.shape[0]
-            return image.shape
-        if (images := data.get("images")) is not None:
-            if isinstance(images, torch.Tensor):
-                return images.shape[2], images.shape[3], images.shape[0]
-            return images.shape[1:]
-        if (volume := data.get("volume")) is not None:
-            if isinstance(volume, torch.Tensor):
-                return volume.shape[2], volume.shape[3], volume.shape[0]
-            return volume.shape[1:]
-        if (mask := data.get("mask")) is not None:
-            return mask.shape
-        if (masks := data.get("masks")) is not None:
-            return masks.shape[1:]
-        if (mask3d := data.get("mask3d")) is not None:
-            return mask3d.shape[1:]
+        for key in ("image", "images", "volume", "mask", "masks", "mask3d"):
+            value = data.get(key)
+            if value is not None:
+                return self._shape_from_data_key(key, value)
         return None
 
     def get_image_data(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -1584,6 +1591,35 @@ class Transform3D(DualTransform):
         (D, H, W, C). Output shape unchanged. For VolumeTransform.
         """
         return self.apply_to_volume(mask3d, *args, **params)
+
+    def _apply_label_mapping_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
+        """Remap keypoint label fields after 3D geometry while retaining transformed coordinates and row order so each
+        record matches manual annotation.
+        """
+        processor = self.get_processor("keypoints")
+        transform_name = self._get_label_transform_name(**params)
+        if (
+            not isinstance(processor, KeypointsProcessor)
+            or not processor.params.label_fields
+            or keypoints.size == 0
+            or transform_name is None
+        ):
+            return keypoints
+
+        field_mappings = processor.encoded_label_mappings.get(transform_name)
+        if not field_mappings:
+            return keypoints
+
+        result = keypoints.copy()
+        for label_offset, label_field in enumerate(processor.params.label_fields):
+            mapping = field_mappings.get(label_field)
+            column_index = NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS + label_offset
+            if not mapping or column_index >= keypoints.shape[1]:
+                continue
+            source_values = keypoints[:, column_index]
+            for source_label, target_label in mapping.items():
+                result[source_values == source_label, column_index] = target_label
+        return result
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:

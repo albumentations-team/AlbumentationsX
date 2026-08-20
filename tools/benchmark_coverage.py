@@ -557,46 +557,33 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
 
 def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
     """Return the expected benchmark coverage layers for a public transform."""
+    required_any_layers: tuple[frozenset[str], ...] = ()
     if name in PYTORCH_TERMINAL_TENSOR_TRANSFORMS:
-        return CoverageExpectation(
-            required_layers=frozenset({"pytorch_tensor"}),
-            reason="PyTorch Tensor transforms are benchmarked in the dedicated Tensor ASV lane",
-        )
-    if name in PYTORCH_NATIVE_VOLUME_TRANSFORMS:
-        return CoverageExpectation(
-            required_layers=frozenset({"catalog_smoke", "direct_kernel", "pytorch_tensor", "volumetric_matrix"}),
-            reason="the NumPy, direct kernel, and accepted CPU Tensor volume routes have dedicated evidence",
-        )
-    if name in PYTORCH_NATIVE_TENSOR_TRANSFORMS:
-        return CoverageExpectation(
-            required_layers=frozenset({"catalog_smoke", "family_matrix", "pytorch_tensor"}),
-            reason="the retained NumPy route and accepted CPU Tensor route both have dedicated Compose evidence",
-        )
-    if name in ALIAS_COVERAGE_TRANSFORMS:
-        return CoverageExpectation(
-            required_layers=frozenset({"catalog_smoke", "alias_coverage"}),
-            reason="warning alias is covered by its canonical transform and still smoke-tested directly",
-        )
-    if route == "volume":
-        return CoverageExpectation(
-            required_layers=frozenset({"catalog_smoke", "volumetric_matrix"}),
-            reason="public 3D transforms require volumetric matrix coverage",
-        )
-    if route in {"metadata", "mixing", "text"}:
-        return CoverageExpectation(
-            required_layers=frozenset({"catalog_smoke", "reference_data"}),
-            reason="reference-data transforms require metadata-path coverage beyond smoke",
-        )
-    if route in {"bboxes", "crop_bbox", "mask"}:
-        return CoverageExpectation(
-            required_layers=frozenset({"catalog_smoke"}),
-            required_any_layers=(frozenset({"annotation_scaling", "target_matrix"}),),
-            reason="target-specialized transforms require annotation or special-target scaling coverage",
-        )
-    return CoverageExpectation(
-        required_layers=frozenset({"catalog_smoke", "family_matrix"}),
-        reason="image transforms require transform-level size/channel/dtype matrix coverage",
-    )
+        required_layers = frozenset({"pytorch_tensor"})
+        reason = "PyTorch Tensor transforms are benchmarked in the dedicated Tensor ASV lane"
+    elif name in PYTORCH_NATIVE_VOLUME_TRANSFORMS:
+        required_layers = frozenset({"catalog_smoke", "direct_kernel", "pytorch_tensor", "volumetric_matrix"})
+        reason = "the NumPy, direct kernel, and accepted CPU Tensor volume routes have dedicated evidence"
+    elif name in PYTORCH_NATIVE_TENSOR_TRANSFORMS:
+        required_layers = frozenset({"catalog_smoke", "family_matrix", "pytorch_tensor"})
+        reason = "the retained NumPy route and accepted CPU Tensor route both have dedicated Compose evidence"
+    elif name in ALIAS_COVERAGE_TRANSFORMS:
+        required_layers = frozenset({"catalog_smoke", "alias_coverage"})
+        reason = "warning alias is covered by its canonical transform and still smoke-tested directly"
+    elif route == "volume":
+        required_layers = frozenset({"catalog_smoke", "volumetric_matrix"})
+        reason = "public 3D transforms require volumetric matrix coverage"
+    elif route in {"metadata", "mixing", "text"}:
+        required_layers = frozenset({"catalog_smoke", "reference_data"})
+        reason = "reference-data transforms require metadata-path coverage beyond smoke"
+    elif route in {"bboxes", "crop_bbox", "mask"}:
+        required_layers = frozenset({"catalog_smoke"})
+        required_any_layers = (frozenset({"annotation_scaling", "target_matrix"}),)
+        reason = "target-specialized transforms require annotation or special-target scaling coverage"
+    else:
+        required_layers = frozenset({"catalog_smoke", "family_matrix"})
+        reason = "image transforms require transform-level size/channel/dtype matrix coverage"
+    return CoverageExpectation(required_layers, required_any_layers, reason)
 
 
 def _format_any_layers(groups: tuple[frozenset[str], ...]) -> list[list[str]]:
@@ -645,19 +632,15 @@ def _case_name(case_id: str) -> str:
 
 def _route_targets(route: str) -> list[str]:
     """Return target names exercised by a catalog smoke route."""
-    if route == "bboxes":
-        return ["bboxes", "image"]
-    if route == "crop_bbox":
-        return ["bboxes", "cropping_bbox", "image"]
-    if route == "mask":
-        return ["image", "mask"]
-    if route in {"metadata", "mixing"}:
-        return ["image", "reference_metadata"]
-    if route == "text":
-        return ["image", "text_metadata"]
-    if route == "volume":
-        return ["mask3d", "volume"]
-    return ["image"]
+    return {
+        "bboxes": ["bboxes", "image"],
+        "crop_bbox": ["bboxes", "cropping_bbox", "image"],
+        "mask": ["image", "mask"],
+        "metadata": ["image", "reference_metadata"],
+        "mixing": ["image", "reference_metadata"],
+        "text": ["image", "text_metadata"],
+        "volume": ["mask3d", "volume"],
+    }.get(route, ["image"])
 
 
 def _memory_targets(case_id: str) -> list[str]:

@@ -6,14 +6,18 @@ from collections.abc import Sequence
 from typing import cast
 
 from ._functional_color import (
+    channel_shuffle,
     grayscale_to_multichannel,
     to_gray_average,
     to_gray_weighted_average,
 )
+from ._functional_noise import get_safe_brightness_contrast_params
 from ._functional_shared import (
+    MAX_VALUES_BY_DTYPE,
     ImageType,
     ImageUInt8,
     add_weighted,
+    clip,
     clipped,
     cv2,
     fgeometric,
@@ -186,60 +190,6 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     return np.clip(img_pca, 0, 1, out=img_pca)
 
 
-@preserve_channel_dim
-def adjust_brightness_torchvision(img: ImageType, factor: float) -> ImageType:
-    """Adjust brightness by multiplying pixels by a scalar factor, matching TorchVision behavior for uint8 and
-    float32 images without changing shape.
-
-    This function adjusts the brightness of an image by multiplying each pixel value by a factor.
-    The brightness is adjusted by multiplying the image by the factor.
-
-    Args:
-        img (ImageType): Input image as a numpy array.
-        factor (float): The factor to adjust the brightness by.
-
-    Returns:
-        ImageType: The adjusted image.
-
-    """
-    if factor == 0:
-        return np.zeros_like(img)
-    if factor == 1:
-        return img
-
-    return multiply(img, factor, inplace=False)
-
-
-@preserve_channel_dim
-def adjust_contrast_torchvision(img: ImageType, factor: float) -> ImageType:
-    """Adjust contrast by multiplying by factor (relative to grayscale mean). Torchvision-compatible;
-    uint8 and float32. factor 0 yields flat gray.
-
-    This function adjusts the contrast of an image by multiplying each pixel value by a factor.
-    The contrast is adjusted by multiplying the image by the factor.
-
-    Args:
-        img (ImageType): Input image as a numpy array.
-        factor (float): The factor to adjust the contrast by.
-
-    Returns:
-        ImageType: The adjusted image.
-
-    """
-    if factor == 1:
-        return img
-
-    gray_img = img if is_grayscale_image(img) else cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
-    img_mean = float(mean(gray_img))
-
-    if factor == 0:
-        if img.dtype != np.float32:
-            img_mean = int(img_mean + 0.5)
-        return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
-
-    return multiply_add(img, factor, img_mean * (1 - factor), inplace=False)
-
-
 @clipped
 @preserve_channel_dim
 def adjust_saturation_torchvision(
@@ -306,6 +256,71 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
 
+def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float) -> ImageType:
+    if brightness_factor == 0:
+        return np.zeros_like(img)
+    if brightness_factor == 1:
+        return img
+
+    result = multiply(img, brightness_factor, inplace=False)
+    return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
+
+
+def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> ImageType:
+    gray_img = img if is_grayscale_image(img) else cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+    img_mean = float(mean(gray_img))
+    if contrast_factor == 0:
+        if img.dtype != np.float32:
+            img_mean = int(img_mean + 0.5)
+        return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
+
+    result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor), inplace=False)
+    return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
+
+
+def _apply_brightness_contrast_uint8(
+    img: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    mean_at_contrast: float,
+    brightness_first: bool,
+) -> ImageType:
+    lut = np.arange(256, dtype=np.float32)
+    if brightness_first:
+        lut = np.clip(lut * brightness_factor, 0.0, 255.0)
+        lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+    else:
+        lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
+        # Values are non-negative after clipping, so floor matches the uint8 cast between torchvision operations.
+        np.floor(lut, out=lut)
+        lut = np.clip(lut * brightness_factor, 0.0, 255.0)
+    return sz_lut(img, lut.astype(np.uint8), inplace=False)
+
+
+def _apply_brightness_contrast_float32(
+    img: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    mean_at_contrast: float,
+    brightness_first: bool,
+) -> ImageType:
+    offset = mean_at_contrast * (1.0 - contrast_factor)
+    out = np.empty_like(img)
+    if brightness_first:
+        np.multiply(img, brightness_factor, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+        np.multiply(out, contrast_factor, out=out)
+        np.add(out, offset, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+    else:
+        np.multiply(img, contrast_factor, out=out)
+        np.add(out, offset, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+        np.multiply(out, brightness_factor, out=out)
+        np.clip(out, 0.0, 1.0, out=out)
+    return out
+
+
 def apply_brightness_contrast_torchvision(
     img: ImageType,
     brightness_factor: float,
@@ -334,6 +349,12 @@ def apply_brightness_contrast_torchvision(
         ImageType: Adjusted image with the same dtype as input.
 
     """
+    if contrast_factor == 1:
+        return _apply_brightness_only_torchvision(img, brightness_factor)
+
+    if brightness_factor == 1:
+        return _apply_contrast_only_torchvision(img, contrast_factor)
+
     # Compute original grayscale mean once, normalised to [0, 1].
     # For non-RGB inputs, the global mean is unchanged by first averaging each
     # pixel's channels, so no intermediate grayscale array is needed.
@@ -345,33 +366,112 @@ def apply_brightness_contrast_torchvision(
     mean_at_contrast = float(np.clip(img_mean * brightness_factor, 0.0, 1.0)) if brightness_first else img_mean
 
     if img.dtype == np.uint8:
-        lut = np.arange(256, dtype=np.float32)
-        if brightness_first:
-            lut = np.clip(lut * brightness_factor, 0.0, 255.0)
-            lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
-        else:
-            lut = np.clip(lut * contrast_factor + mean_at_contrast * 255.0 * (1.0 - contrast_factor), 0.0, 255.0)
-            # Values are non-negative after clipping, so floor matches the uint8 cast between torchvision operations.
-            np.floor(lut, out=lut)
-            lut = np.clip(lut * brightness_factor, 0.0, 255.0)
-        return sz_lut(img, lut.astype(np.uint8), inplace=False)
+        return _apply_brightness_contrast_uint8(
+            img,
+            brightness_factor,
+            contrast_factor,
+            mean_at_contrast,
+            brightness_first,
+        )
+    return _apply_brightness_contrast_float32(
+        img,
+        brightness_factor,
+        contrast_factor,
+        mean_at_contrast,
+        brightness_first,
+    )
 
-    # float32: two clipped passes, single buffer, in-place ops
-    offset = mean_at_contrast * (1.0 - contrast_factor)
-    out = np.empty_like(img)
-    if brightness_first:
-        np.multiply(img, brightness_factor, out=out)
-        np.clip(out, 0.0, 1.0, out=out)
-        np.multiply(out, contrast_factor, out=out)
-        np.add(out, offset, out=out)
-        np.clip(out, 0.0, 1.0, out=out)
+
+def apply_color_jitter(
+    img: ImageType,
+    brightness: float,
+    contrast: float,
+    saturation: float,
+    hue: float,
+    order: list[str],
+) -> ImageType:
+    """Apply ColorJitter's sampled brightness, contrast, saturation, and hue operations in randomized order to a
+    prevalidated one- or three-channel image.
+    """
+    for operation in order:
+        if operation == "brightness_contrast":
+            img = apply_brightness_contrast_torchvision(img, brightness, contrast, brightness_first=True)
+        elif operation == "contrast_brightness":
+            img = apply_brightness_contrast_torchvision(img, brightness, contrast, brightness_first=False)
+        elif operation == "brightness":
+            img = apply_brightness_contrast_torchvision(img, brightness, 1.0, brightness_first=True)
+        elif operation == "contrast":
+            img = apply_brightness_contrast_torchvision(img, 1.0, contrast, brightness_first=False)
+        elif operation == "saturation":
+            img = adjust_saturation_torchvision(img, saturation)
+        elif operation == "hue":
+            img = adjust_hue_torchvision(img, hue)
+    return img
+
+
+def apply_photometric_distort(
+    img: ImageType,
+    brightness_factor: float | None,
+    contrast_factor: float | None,
+    saturation_factor: float | None,
+    hue_factor: float | None,
+    contrast_before: bool,
+    channel_permutation: list[int] | None,
+) -> ImageType:
+    """Apply PhotoMetricDistort's sampled brightness, contrast, saturation, hue, and channel permutation to a
+    prevalidated one- or three-channel image.
+    """
+    if contrast_before:
+        img = _apply_optional_brightness_contrast(img, brightness_factor, contrast_factor)
+    elif brightness_factor is not None:
+        img = apply_brightness_contrast_torchvision(img, brightness_factor, 1.0, brightness_first=True)
+    if saturation_factor is not None:
+        img = adjust_saturation_torchvision(img, saturation_factor)
+    if hue_factor is not None:
+        img = adjust_hue_torchvision(img, hue_factor)
+    if not contrast_before and contrast_factor is not None:
+        img = apply_brightness_contrast_torchvision(img, 1.0, contrast_factor, brightness_first=False)
+    return channel_shuffle(img, channel_permutation) if channel_permutation is not None else img
+
+
+def _apply_optional_brightness_contrast(
+    img: ImageType,
+    brightness_factor: float | None,
+    contrast_factor: float | None,
+) -> ImageType:
+    if brightness_factor is not None and contrast_factor is not None:
+        return apply_brightness_contrast_torchvision(img, brightness_factor, contrast_factor, brightness_first=True)
+    if brightness_factor is not None:
+        return apply_brightness_contrast_torchvision(img, brightness_factor, 1.0, brightness_first=True)
+    if contrast_factor is not None:
+        return apply_brightness_contrast_torchvision(img, 1.0, contrast_factor, brightness_first=False)
+    return img
+
+
+def apply_random_brightness_contrast(
+    img: ImageType,
+    alpha: float,
+    beta: float,
+    brightness_by_max: bool,
+    ensure_safe_output: bool,
+) -> ImageType:
+    """Apply RandomBrightnessContrast coefficients using the requested brightness mode, output-safety policy,
+    dtype routing, and clipping semantics.
+    """
+    max_value = MAX_VALUES_BY_DTYPE[img.dtype]
+    if not brightness_by_max:
+        brightness_factor = 1.0 + beta
+        if not ensure_safe_output:
+            return apply_brightness_contrast_torchvision(img, brightness_factor, alpha, brightness_first=False)
+        image_mean = float(mean(to_gray_weighted_average(img))) if is_rgb_image(img) else float(mean(img))
+        beta = brightness_factor * (1.0 - alpha) * image_mean
+        alpha *= brightness_factor
     else:
-        np.multiply(img, contrast_factor, out=out)
-        np.add(out, offset, out=out)
-        np.clip(out, 0.0, 1.0, out=out)
-        np.multiply(out, brightness_factor, out=out)
-        np.clip(out, 0.0, 1.0, out=out)
-    return out
+        beta *= max_value
+    if ensure_safe_output:
+        alpha, beta = get_safe_brightness_contrast_params(alpha, beta, max_value)
+    result = multiply_add(img, alpha, beta, inplace=False)
+    return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
 
 @uint8_io
@@ -534,11 +634,12 @@ def slic(
 
 __all__ = [
     "_adjust_hue_torchvision_uint8",
-    "adjust_brightness_torchvision",
-    "adjust_contrast_torchvision",
     "adjust_hue_torchvision",
     "adjust_saturation_torchvision",
     "apply_brightness_contrast_torchvision",
+    "apply_color_jitter",
+    "apply_photometric_distort",
+    "apply_random_brightness_contrast",
     "fancy_pca",
     "slic",
     "superpixels",

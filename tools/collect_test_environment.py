@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import os
 import platform
@@ -56,6 +57,33 @@ def _albumentations_runtime_version() -> str | None:
     return albumentations.__version__
 
 
+def _torch_runtime() -> dict[str, Any]:
+    accelerator_distributions = sorted(
+        distribution.metadata["Name"]
+        for distribution in importlib.metadata.distributions()
+        if distribution.metadata.get("Name", "").casefold().startswith(("cuda", "nvidia-"))
+    )
+    if importlib.util.find_spec("torch") is None:
+        return {"cuda_version": None, "installed": False, "accelerator_distributions": accelerator_distributions}
+
+    try:
+        import torch
+    except Exception as error:  # noqa: BLE001 - capture the loader error as evidence instead of failing diagnostics.
+        return {
+            "cuda_version": None,
+            "installed": True,
+            "accelerator_distributions": accelerator_distributions,
+            "loader_error": str(error),
+        }
+
+    return {
+        "cuda_version": torch.version.cuda,
+        "installed": True,
+        "accelerator_distributions": accelerator_distributions,
+        "version": torch.__version__,
+    }
+
+
 def _git_commit() -> str | None:
     git_executable = which("git")
     if git_executable is None:
@@ -104,7 +132,12 @@ def collect_environment(command: str | None = None) -> dict[str, Any]:
             "github_runner_image": os.environ.get("IMAGEOS"),
         },
         "packages": package_versions,
+        "ci_environment": {
+            "dependency_group": os.environ.get("ALBU_CI_DEPENDENCY_GROUP"),
+            "runtime_profile": os.environ.get("ALBU_CI_RUNTIME_PROFILE"),
+        },
         "opencv_runtime_version": _opencv_runtime_version(),
+        "torch_runtime": _torch_runtime(),
         "git_commit": _git_commit(),
         "uv_lock_sha256": _file_sha256(REPO_ROOT / "uv.lock"),
         "github": {

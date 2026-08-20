@@ -13,9 +13,7 @@ from warnings import warn
 import cv2
 import numpy as np
 from albucore import (
-    copy_make_border as albucore_copy_make_border,
-)
-from albucore import (
+    clip,
     from_float,
     hflip,
     preserve_channel_dim,
@@ -24,6 +22,9 @@ from albucore import (
     to_float,
     vflip,
     warp_perspective,
+)
+from albucore import (
+    copy_make_border as albucore_copy_make_border,
 )
 from albucore import (
     resize as albucore_resize,
@@ -66,6 +67,7 @@ __all__ = [
     "bboxes_from_masks",
     "bboxes_to_mask",
     "cast",
+    "clip_if_interpolation_can_overshoot",
     "cv2",
     "defaultdict",
     "denormalize_bboxes",
@@ -89,3 +91,15 @@ __all__ = [
     "warn",
     "warp_perspective",
 ]
+
+
+_RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4})
+
+
+def clip_if_interpolation_can_overshoot(image: ImageType, interpolation: int) -> ImageType:
+    """Restore the public float32 range after cubic or Lanczos interpolation, whose kernels can overshoot it.
+    Use it for images, not masks.
+    """
+    if image.dtype == np.float32 and interpolation in _RANGE_OVERSHOOT_INTERPOLATIONS:
+        return clip(image, image.dtype, inplace=True)
+    return image

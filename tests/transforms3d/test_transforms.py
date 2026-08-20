@@ -1408,6 +1408,49 @@ def test_flip3d_odd_reflections_remap_keypoint_labels_without_reordering_rows(
 
 
 @pytest.mark.parametrize(
+    ("index", "expected_keypoints", "expected_side"),
+    [
+        (0, np.array([[1, 1, 0], [3, 2, 1]], dtype=np.float32), [2, 3]),
+        (24, np.array([[3, 1, 0], [1, 2, 1]], dtype=np.float32), [3, 2]),
+    ],
+)
+def test_cubic_symmetry_remaps_keypoint_labels_without_reordering_transformed_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    index: int,
+    expected_keypoints: np.ndarray,
+    expected_side: list[int],
+) -> None:
+    """A rotoreflection reassigns 3D semantic labels while every transformed keypoint stays in its own row."""
+    volume = np.zeros((2, 3, 5, 1), dtype=np.float32)
+    keypoints = np.array([[1, 1, 0], [3, 2, 1]], dtype=np.float32)
+    side = [2, 3]
+
+    def fixed_index(
+        self: A.CubicSymmetry,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: Any,
+    ) -> dict[str, Any]:
+        del self, params, sampling
+        return {"index": index, "volume_shape": data["volume"].shape}
+
+    monkeypatch.setattr(A.CubicSymmetry, "sample_parameters", fixed_index)
+    result = A.Compose(
+        [A.CubicSymmetry(p=1.0)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xyz",
+            label_fields=["side"],
+            label_mapping={"CubicSymmetry": {"side": {2: 3, 3: 2}}},
+        ),
+        strict=True,
+        telemetry=False,
+    )(volume=volume, keypoints=keypoints, side=side)
+
+    np.testing.assert_array_equal(result["keypoints"], expected_keypoints)
+    assert result["side"] == expected_side
+
+
+@pytest.mark.parametrize(
     ("label_mapping", "expected_side", "expected_view"),
     [
         ({"Flip3D": {"side": {2: 3, 3: 2}}}, [3, 2], [4, 5]),

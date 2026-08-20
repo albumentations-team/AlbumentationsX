@@ -372,7 +372,8 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
         **params: Any,
     ) -> ImageType:
         crop = fcrops.crop(img, *crop_coords)
-        return fgeometric.resize(crop, (self.height, self.width), self.interpolation)
+        result = fgeometric.resize(crop, (self.height, self.width), self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,

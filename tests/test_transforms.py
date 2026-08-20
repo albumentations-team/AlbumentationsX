@@ -102,6 +102,7 @@ def test_morphological_dilates_bboxes():
             A.HorizontalFlip,
             A.Transpose,
             A.MaskDropout,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -170,6 +171,7 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
             A.Transpose,
             A.Mosaic,
             A.CopyAndPaste,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -210,6 +212,7 @@ def __test_multiprocessing_support_proc(args):
             A.MaskDropout,
             A.Mosaic,
             A.CopyAndPaste,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1504,6 +1507,7 @@ def test_random_crop_from_borders(
             A.TimeMasking,
             A.RandomRotate90,
             A.CopyAndPaste,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1608,6 +1612,7 @@ def test_change_image(augmentation_cls, params, image):
             A.TimeMasking,
             A.Mosaic,
             A.CopyAndPaste,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1992,6 +1997,7 @@ def test_random_sun_flare_invalid_input(params):
             A.OverlayElements,
             A.NoOp,
             A.Lambda,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -2106,6 +2112,7 @@ def test_padding_color(transform, num_channels):
             A.OverlayElements,
             A.GridElasticDeform,
             A.CropNonEmptyMaskIfExists,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -2219,6 +2226,7 @@ def test_mask_dropout_bboxes(remove_invisible, expected_keypoints):
             A.CopyAndPaste,
             A.FrequencyMasking,
             A.GridMask,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )

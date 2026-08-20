@@ -654,6 +654,7 @@ def test2d_3d(volume, mask3d):
             A.HistogramMatching,
             A.RandomCropNearBBox,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -699,6 +700,7 @@ def test_image_volume_matching(image, augmentation_cls, params):
             A.HistogramMatching,
             A.RandomCropNearBBox,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -740,6 +742,7 @@ def test_image_transforms_matching(image, augmentation_cls, params):
             A.RandomSizedBBoxSafeCrop,
             A.ConstrainedCoarseDropout,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )

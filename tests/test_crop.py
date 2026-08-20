@@ -440,13 +440,14 @@ def _subset_safe_crop_bboxes() -> np.ndarray:
 
 def test_bbox_subset_safe_random_crop_count_distribution():
     """Statistical test: sampled subset size always falls within the fraction-derived
-    [kmin, kmax] range, both endpoints are reached, and indices within a draw are unique.
+    [min_subset_size, max_subset_size] range, both endpoints are reached, and indices within
+    a draw are unique.
     """
     bboxes = _subset_safe_crop_bboxes()
-    n = len(bboxes)
+    num_bboxes = len(bboxes)
     subset_fraction_range = (0.3, 0.8)
-    kmin = math.ceil(n * subset_fraction_range[0])
-    kmax = min(math.ceil(n * subset_fraction_range[1]), n)
+    min_subset_size = math.ceil(num_bboxes * subset_fraction_range[0])
+    max_subset_size = min(math.ceil(num_bboxes * subset_fraction_range[1]), num_bboxes)
 
     transform = A.BBoxSubsetSafeRandomCrop(
         subset_fraction_range=subset_fraction_range,
@@ -463,11 +464,11 @@ def test_bbox_subset_safe_random_crop_count_distribution():
         result = transform.sample_parameters({"shape": (400, 400, 3)}, {"bboxes": bboxes}, sampling)
         selected = result["bbox_indices"]
 
-        assert kmin <= len(selected) <= kmax
+        assert min_subset_size <= len(selected) <= max_subset_size
         assert len(set(selected)) == len(selected)
         observed_counts.add(len(selected))
 
-    assert observed_counts == set(range(kmin, kmax + 1))
+    assert observed_counts == set(range(min_subset_size, max_subset_size + 1))
 
 
 def test_bbox_subset_safe_random_crop_erosion_zero_survival():

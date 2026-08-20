@@ -410,7 +410,7 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
     removed entirely depending on where they fall relative to the crop.
 
     This makes BBoxSubsetSafeRandomCrop useful for:
-    - Dense-detection datasets (e.g. Global Wheat Detection) with many overlapping/nearby objects,
+    - Dense-detection datasets with many overlapping/nearby objects,
       where forcing every box into one crop would be too restrictive
     - Training pipelines that benefit from varied, object-focused crops without a fixed output size
 
@@ -534,13 +534,13 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
             crop_coords = self._get_coords_no_bbox(image_shape, sampling)
             return {"crop_coords": crop_coords}
 
-        n = len(data["bboxes"])
-        kmin = math.ceil(n * self.subset_fraction_range[0])
-        kmax = min(math.ceil(n * self.subset_fraction_range[1]), n)
+        num_bboxes = len(data["bboxes"])
+        min_subset_size = math.ceil(num_bboxes * self.subset_fraction_range[0])
+        max_subset_size = min(math.ceil(num_bboxes * self.subset_fraction_range[1]), num_bboxes)
 
         for _ in range(self.max_attempts):
-            k = sampling.random_generator.integers(kmin, kmax + 1)
-            bbox_indices = sampling.random_generator.choice(n, size=k, replace=False)
+            subset_size = sampling.random_generator.integers(min_subset_size, max_subset_size + 1)
+            bbox_indices = sampling.random_generator.choice(num_bboxes, size=subset_size, replace=False)
             subset = data["bboxes"][bbox_indices]
             bbox_union = union_of_bboxes(bboxes=subset, erosion_rate=self.erosion_rate)
 

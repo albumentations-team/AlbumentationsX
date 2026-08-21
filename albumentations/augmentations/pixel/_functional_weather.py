@@ -35,8 +35,8 @@ from ._functional_sharpness import (
 )
 
 _maybe_process_in_chunks = cast("Any", maybe_process_in_chunks)
-# Bound float32-to-uint8 temporaries and avoid the measured time/RSS penalty of converting a whole large batch.
-_FROM_FLOAT_BATCH_CHUNK_ELEMENTS = 256 * 1024
+# Keep sustained-batch chunks on Albucore's large-array route while bounding temporary conversion memory.
+_FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS = 512 * 1024
 
 
 def add_snow_bleach(
@@ -689,13 +689,19 @@ def add_shadow_batch(
         return images
 
     input_dtype = images.dtype
+    image_elements = images[0].size
+    conversion_chunk_elements = max(_FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS, image_elements)
+    if image_elements < _FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS and images.size < 2 * _FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS:
+        # Avoid switching a small batch to Albucore's large-array backend when every inherited per-item call stays
+        # below that threshold.
+        conversion_chunk_elements = image_elements
     if input_dtype == np.uint8:
         result = images.copy()
-    elif images.flags.c_contiguous and images.size >= 2 * _FROM_FLOAT_BATCH_CHUNK_ELEMENTS:
+    elif images.flags.c_contiguous and images.size >= 2 * conversion_chunk_elements:
         flat_images = images.reshape(-1)
         flat_result = np.empty(flat_images.shape, dtype=np.uint8)
-        for start in range(0, flat_images.size, _FROM_FLOAT_BATCH_CHUNK_ELEMENTS):
-            stop = start + _FROM_FLOAT_BATCH_CHUNK_ELEMENTS
+        for start in range(0, flat_images.size, conversion_chunk_elements):
+            stop = start + conversion_chunk_elements
             flat_result[start:stop] = from_float(
                 cast("ImageFloat32", flat_images[start:stop]),
                 target_dtype=np.dtype(np.uint8),

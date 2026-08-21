@@ -121,6 +121,9 @@ RANDOM_SHADOW_DIRECT_CASES = tuple(
     for case_id in IMAGE_BATCH_CASES
     if case_id.startswith("random_shadow|")
 )
+RANDOM_SHADOW_VOLUME_CASES = tuple(
+    case_id.replace("|images|", "|volume|", 1) for case_id in IMAGE_BATCH_CASES if case_id.startswith("random_shadow|")
+)
 RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES = tuple(
     case_id.replace("|images|", "|direct_images|", 1)
     for case_id in IMAGE_BATCH_CASES
@@ -217,6 +220,21 @@ class TimeRandomShadowDirectBatchMatrix:
 
     def time_apply_to_images(self, case_id: str) -> None:
         self.transform.apply_to_images(self.images, **self.params)
+
+
+class TimeRandomShadowVolumeBatchMatrix:
+    """Benchmark RandomShadow's public Compose `volume` route over the issue #46 matrix."""
+
+    params = (RANDOM_SHADOW_VOLUME_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = albumentations.Compose([IMAGE_BATCH_TRANSFORMS[name].factory()], seed=137, strict=True)
+        self.data = {"volume": _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)}
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
 
 
 class TimeRandomToneCurveDirectImageBatchMatrix:

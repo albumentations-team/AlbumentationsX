@@ -41,6 +41,7 @@ from benchmarks.test_batch_matrix import (  # noqa: E402
     MASK_BATCH_CASES,
     MASK_BATCH_TRANSFORMS,
     RANDOM_SHADOW_DIRECT_CASES,
+    RANDOM_SHADOW_VOLUME_CASES,
     RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
     SPATTER_DIRECT_CASES,
 )
@@ -411,6 +412,7 @@ ASV_BENCHMARKS = {
     "batch_illumination_direct": "benchmarks.test_batch_matrix.TimeIlluminationDirectBatchMatrix.time_apply_to_images",
     "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
     "batch_random_shadow_direct": "benchmarks.test_batch_matrix.TimeRandomShadowDirectBatchMatrix.time_apply_to_images",
+    "batch_random_shadow_volume": "benchmarks.test_batch_matrix.TimeRandomShadowVolumeBatchMatrix.time_transform",
     "batch_random_tone_curve_direct_image": (
         "benchmarks.test_batch_matrix.TimeRandomToneCurveDirectImageBatchMatrix.time_apply_to_images"
     ),
@@ -738,6 +740,7 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
         "direct_images": ["images"],
         "images": ["images"],
         "images_and_masks": ["images", "masks"],
+        "volume": ["volume"],
     }[target_route]
     scenario = {
         "batch_size": int(batch_size),
@@ -790,7 +793,10 @@ def _target_matrix_scenario(case: Mapping[str, str], route: str, transform_name:
 def _batch_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a batch matrix case."""
     scenario = _parse_batch_case(case["case_id"])
-    scope = "direct_batch" if scenario["target_route"].startswith("direct_") else "compose_batch"
+    if scenario["target_route"] == "volume":
+        scope = "compose_volume"
+    else:
+        scope = "direct_batch" if scenario["target_route"].startswith("direct_") else "compose_batch"
     return {**scenario, "scope": scope}
 
 
@@ -1133,6 +1139,13 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         cases,
         benchmark=ASV_BENCHMARKS["batch_random_shadow_direct"],
         case_ids=RANDOM_SHADOW_DIRECT_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_random_shadow_volume"],
+        case_ids=RANDOM_SHADOW_VOLUME_CASES,
         layer="batch_matrix",
         name_map=BATCH_ALIAS_TO_TRANSFORM,
     )

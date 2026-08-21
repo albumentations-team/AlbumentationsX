@@ -4,6 +4,7 @@ import pytest
 from albucore import from_float, to_float
 
 import albumentations as A
+from albumentations.augmentations.pixel import _functional_weather as fweather
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import ImageOnlyTransform
@@ -2051,6 +2052,33 @@ def test_random_shadow_apply_to_images_large_float32_conversion_matches_per_imag
         [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
     )
 
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("shape", [(2, 256, 256, 5), (2, 512, 512, 3)])
+def test_random_shadow_apply_to_images_preserves_per_image_float32_conversion_working_set(monkeypatch, shape):
+    images = np.random.default_rng(137).random(shape, dtype=np.float32)
+    vertices_list, intensities = _overlapping_shadow_params()
+    transform = A.RandomShadow(p=1.0)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+    conversion_sizes: list[int] = []
+    original_from_float = fweather.from_float
+
+    def tracked_from_float(
+        image: np.ndarray,
+        target_dtype: np.dtype[np.generic],
+        max_value: float | None = None,
+    ) -> np.ndarray:
+        conversion_sizes.append(image.size)
+        return original_from_float(image, target_dtype=target_dtype, max_value=max_value)
+
+    monkeypatch.setattr(fweather, "from_float", tracked_from_float)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+
+    assert conversion_sizes == [images[0].size] * len(images)
     np.testing.assert_array_equal(actual, expected)
 
 

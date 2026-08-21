@@ -56,6 +56,33 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
     return add_array(img, noise)
 
 
+@clipped
+def add_noise_channel_shared(img: ImageType, noise_map: np.ndarray) -> ImageType:
+    """Add a per-position single-channel noise map to a multi-channel image or volume without materializing a
+    channel-expanded float32 copy of the map.
+
+    The uint8 route reproduces `add_noise` semantics: noise is truncated toward zero (and quantized when entirely
+    non-negative) before the addition, matching the albucore OpenCV path without expanding the map across channels.
+
+    Args:
+        img (ImageType): Input image or volume in channel-last layout.
+        noise_map (np.ndarray): Noise map whose spatial shape matches the input and whose channel axis has size one.
+
+    Returns:
+        ImageType: The input with the noise map broadcast across channels and added.
+
+    """
+    if img.dtype == np.float32:
+        return img + noise_map
+    if np.all(noise_map >= 0):
+        noise = np.clip(noise_map, 0, MAX_VALUES_BY_DTYPE[img.dtype]).astype(np.uint8)
+    else:
+        noise = np.trunc(noise_map).astype(np.float32, copy=False)
+    result = img.astype(np.float32, copy=True)
+    np.add(result, noise, out=result)
+    return result
+
+
 def add_noise_by_patches(img: ImageType, noise: np.ndarray, patches: np.ndarray) -> ImageType:
     """Add pre-generated noise inside rectangular patches while preserving pixels outside the sampled regions and
     replacing earlier values where patches overlap.
@@ -747,9 +774,10 @@ def generate_volumetric_noise(
     the complete volume shape so consecutive slices are independent. The result is float32 with values scaled by
     `max_value`.
 
-    Sampling avoids full-size temporary arrays: uniform and gaussian draws use float32 numpy generator paths that
-    skip float64 intermediates, while laplace and beta are sampled depth slice by depth slice so the peak allocation
-    stays close to the output map.
+    Sampling follows the established seeded OpenCV routes where available: Gaussian draws fill a
+    preallocated float32 map with `cv2.randn`, while uniform draws use `cv2.randu` under a cv2 seed derived from the
+    passed generator. Multiple uniform ranges reuse one channel-sized OpenCV buffer. Laplace and beta are sampled depth
+    slice by depth slice so the peak allocation stays close to the output map.
 
     Args:
         noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): The type of noise to generate.
@@ -783,8 +811,8 @@ def _sample_volumetric_uniform(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample uniform noise for a complete volume shape in float32, using one range for every voxel or one range per
-    channel when multiple ranges are provided.
+    """Sample float32 uniform noise for a volume through seeded cv2.randu, filling either the whole map for
+    one range or a reusable channel buffer for multiple ranges.
 
     Args:
         shape (tuple[int, ...]): The shape of the noise to generate.
@@ -797,43 +825,35 @@ def _sample_volumetric_uniform(
     """
     ranges = params["ranges"]
     if len(ranges) == 1:
+        cv2_seed = int(random_generator.integers(0, 2**16))
+        cv2.setRNGSeed(cv2_seed)
         low, high = ranges[0]
-        return _sample_uniform_range(random_generator, shape, low, high)
+        noise_map = np.empty(shape, dtype=np.float32)
+        cv2.randu(
+            noise_map.reshape((*shape, 1)) if len(shape) == 3 else noise_map,
+            np.asarray([low], dtype=np.float32),
+            np.asarray([high], dtype=np.float32),
+        )
+        return noise_map
     if len(shape) != 4 or len(ranges) != shape[-1]:
         raise ValueError(
             "Multiple uniform ranges require a 4D volume shape with one range per channel. "
             f"Got shape {shape} and {len(ranges)} ranges.",
         )
 
+    cv2_seed = int(random_generator.integers(0, 2**16))
+    cv2.setRNGSeed(cv2_seed)
     noise_map = np.empty(shape, dtype=np.float32)
+    channel_noise = np.empty(shape[:-1], dtype=np.float32)
+    channel_view = channel_noise.reshape((*shape[:-1], 1))
     for channel, (low, high) in enumerate(ranges):
-        noise_map[..., channel] = _sample_uniform_range(random_generator, shape[:-1], low, high)
+        cv2.randu(
+            channel_view,
+            np.asarray([low], dtype=np.float32),
+            np.asarray([high], dtype=np.float32),
+        )
+        noise_map[..., channel] = channel_noise
     return noise_map
-
-
-def _sample_uniform_range(
-    random_generator: np.random.Generator,
-    size: tuple[int, ...],
-    low: float,
-    high: float,
-) -> np.ndarray:
-    """Sample float32 uniform noise in [low, high] without allocating a float64 intermediate
-    for the complete requested volume.
-
-    Args:
-        random_generator (np.random.Generator): The random number generator to use.
-        size (tuple[int, ...]): The size of the sample.
-        low (float): The lower bound.
-        high (float): The upper bound.
-
-    Returns:
-        np.ndarray: The uniform noise sampled.
-
-    """
-    samples = random_generator.random(size, dtype=np.float32)
-    np.multiply(samples, high - low, out=samples)
-    np.add(samples, low, out=samples)
-    return samples
 
 
 def _sample_volumetric_gaussian(
@@ -841,8 +861,8 @@ def _sample_volumetric_gaussian(
     params: dict[str, Any],
     random_generator: np.random.Generator,
 ) -> np.ndarray:
-    """Sample Gaussian noise for a complete volume shape in float32 with the provided isolated NumPy generator and
-    configured distribution parameters.
+    """Sample Gaussian noise for a complete volume shape in float32 with a seeded cv2.randn fill and generator-drawn
+    mean and standard deviation.
 
     Args:
         shape (tuple[int, ...]): The shape of the noise to generate.
@@ -853,12 +873,17 @@ def _sample_volumetric_gaussian(
         np.ndarray: The gaussian noise sampled.
 
     """
+    cv2_seed = int(random_generator.integers(0, 2**16))
+    cv2.setRNGSeed(cv2_seed)
     mean = random_generator.uniform(*params["mean_range"])
     std = random_generator.uniform(*params["std_range"])
-    samples = random_generator.standard_normal(shape, dtype=np.float32)
-    np.multiply(samples, std, out=samples)
-    np.add(samples, mean, out=samples)
-    return samples
+    noise_map = np.empty(shape, dtype=np.float32)
+    cv2.randn(
+        noise_map.reshape((*shape, 1)) if len(shape) == 3 else noise_map,
+        np.asarray([mean], dtype=np.float32),
+        np.asarray([std], dtype=np.float32),
+    )
+    return noise_map
 
 
 def _sample_volumetric_laplace(
@@ -950,6 +975,7 @@ __all__ = [
     "_ENHANCE_KERNELS",
     "add_noise",
     "add_noise_by_patches",
+    "add_noise_channel_shared",
     "apply_salt_and_pepper",
     "generate_constant_noise_with_py_random",
     "generate_enhance_matrix",

@@ -2383,36 +2383,23 @@ def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
     assert captured_noise[0].flags.c_contiguous
 
 
-@pytest.mark.parametrize("spatial_mode", ["constant", "patch"])
-def test_additive_noise_volumetric_modes_reject_2d_spatial_modes(spatial_mode: str) -> None:
-    with pytest.raises(ValueError, match="volume_noise_mode"):
-        A.AdditiveNoise(spatial_mode=spatial_mode, volume_noise_mode="volumetric")
-    with pytest.raises(ValueError, match="volume_noise_mode"):
-        A.AdditiveNoise(spatial_mode=spatial_mode, volume_noise_mode="volumetric_channel_shared")
-
-
 @pytest.mark.parametrize(
-    ["volume_noise_mode", "spatial_mode"],
-    [
-        ["volumetric", "per_pixel"],
-        ["volumetric", "shared"],
-        ["volumetric_channel_shared", "per_pixel"],
-        ["volumetric_channel_shared", "shared"],
-    ],
+    "spatial_mode",
+    ["constant", "per_pixel", "shared", "patch"],
 )
-def test_additive_noise_volume_modes_accept_per_pixel_and_shared(volume_noise_mode: str, spatial_mode: str) -> None:
-    transform = A.AdditiveNoise(spatial_mode=spatial_mode, volume_noise_mode=volume_noise_mode)
+def test_additive_noise_spatial_modes_define_volume_policy(spatial_mode: str) -> None:
+    transform = A.AdditiveNoise(noise_type="gaussian", spatial_mode=spatial_mode)
 
-    assert transform.volume_noise_mode == volume_noise_mode
+    assert transform.spatial_mode == spatial_mode
 
 
-@pytest.mark.parametrize("volume_noise_mode", ["slice_consistent", "volumetric", "volumetric_channel_shared"])
-def test_additive_noise_volume_noise_mode_serialization_roundtrip(volume_noise_mode: str) -> None:
-    transform = A.AdditiveNoise(spatial_mode="per_pixel", volume_noise_mode=volume_noise_mode)
-
+def test_additive_noise_serialization_roundtrip_keeps_public_contract() -> None:
+    transform = A.AdditiveNoise(noise_type="gaussian", spatial_mode="per_pixel", p=1.0)
     restored = A.from_dict(A.to_dict(transform))
 
-    assert restored.volume_noise_mode == volume_noise_mode
+    assert "volume_noise_mode" not in A.to_dict(transform)["transform"]
+    assert restored.spatial_mode == "per_pixel"
+    assert restored.noise_type == "gaussian"
 
 
 def test_additive_noise_volumetric_noise_differs_per_slice() -> None:
@@ -2422,7 +2409,6 @@ def test_additive_noise_volumetric_noise_differs_per_slice() -> None:
             A.AdditiveNoise(
                 noise_type="gaussian",
                 spatial_mode="per_pixel",
-                volume_noise_mode="volumetric",
                 noise_params={"mean_range": (0.0, 0.0), "std_range": (1.0, 1.0)},
                 p=1.0,
             ),
@@ -2445,7 +2431,6 @@ def test_additive_noise_volumetric_channel_shared_broadcasts_across_channels() -
             A.AdditiveNoise(
                 noise_type="gaussian",
                 spatial_mode="shared",
-                volume_noise_mode="volumetric_channel_shared",
                 noise_params={"mean_range": (0.0, 0.0), "std_range": (1.0, 1.0)},
                 p=1.0,
             ),
@@ -2460,13 +2445,12 @@ def test_additive_noise_volumetric_channel_shared_broadcasts_across_channels() -
     assert np.any(out[0] != out[1])
 
 
-@pytest.mark.parametrize("volume_noise_mode", ["volumetric", "volumetric_channel_shared"])
-def test_additive_noise_volumetric_seeded_determinism(volume_noise_mode: str) -> None:
+@pytest.mark.parametrize("spatial_mode", ["constant", "per_pixel", "shared", "patch"])
+def test_additive_noise_volumetric_seeded_determinism(spatial_mode: str) -> None:
     volume = np.random.default_rng(1).random((4, 16, 16, 1), dtype=np.float32)
     config = {
         "noise_type": "gaussian",
-        "spatial_mode": "per_pixel",
-        "volume_noise_mode": volume_noise_mode,
+        "spatial_mode": spatial_mode,
         "p": 1.0,
     }
 
@@ -2476,13 +2460,12 @@ def test_additive_noise_volumetric_seeded_determinism(volume_noise_mode: str) ->
     np.testing.assert_array_equal(first, second)
 
 
-@pytest.mark.parametrize("volume_noise_mode", ["volumetric", "volumetric_channel_shared"])
-def test_additive_noise_volumetric_replay(volume_noise_mode: str) -> None:
+@pytest.mark.parametrize("spatial_mode", ["constant", "per_pixel", "shared", "patch"])
+def test_additive_noise_volumetric_replay(spatial_mode: str) -> None:
     volume = np.zeros((3, 12, 12, 1), dtype=np.float32)
     config = {
         "noise_type": "gaussian",
-        "spatial_mode": "shared",
-        "volume_noise_mode": volume_noise_mode,
+        "spatial_mode": spatial_mode,
         "p": 1.0,
     }
     transform = A.ReplayCompose([A.AdditiveNoise(**config)], seed=137)
@@ -2497,13 +2480,12 @@ def test_additive_noise_volumetric_replay(volume_noise_mode: str) -> None:
     np.testing.assert_array_equal(first, second)
 
 
-@pytest.mark.parametrize("volume_noise_mode", ["volumetric", "volumetric_channel_shared"])
-def test_additive_noise_volumetric_serialized_pipeline_matches(volume_noise_mode: str) -> None:
+@pytest.mark.parametrize("spatial_mode", ["constant", "per_pixel", "shared", "patch"])
+def test_additive_noise_volumetric_serialized_pipeline_matches(spatial_mode: str) -> None:
     volume = np.zeros((3, 12, 12, 1), dtype=np.float32)
     config = {
         "noise_type": "gaussian",
-        "spatial_mode": "per_pixel",
-        "volume_noise_mode": volume_noise_mode,
+        "spatial_mode": spatial_mode,
         "p": 1.0,
     }
     transform = A.Compose([A.AdditiveNoise(**config)], seed=137)
@@ -2517,13 +2499,13 @@ def test_additive_noise_volumetric_serialized_pipeline_matches(volume_noise_mode
     )
 
 
-def test_additive_noise_slice_consistent_volume_reuses_2d_map() -> None:
+def test_additive_noise_constant_volume_is_identical_across_depth() -> None:
     volume = np.full((4, 16, 16, 3), 128, dtype=np.uint8)
     transform = A.Compose(
         [
             A.AdditiveNoise(
                 noise_type="gaussian",
-                spatial_mode="shared",
+                spatial_mode="constant",
                 noise_params={"mean_range": (0.0, 0.0), "std_range": (0.1, 0.1)},
                 p=1.0,
             ),
@@ -2539,6 +2521,32 @@ def test_additive_noise_slice_consistent_volume_reuses_2d_map() -> None:
     assert out.dtype == np.uint8
 
 
+def test_additive_noise_patch_volume_reuses_sampled_patch_program() -> None:
+    volume = np.zeros((4, 32, 32, 1), dtype=np.float32)
+    transform = A.Compose(
+        [
+            A.AdditiveNoise(
+                noise_type="gaussian",
+                spatial_mode="patch",
+                noise_params={"mean_range": (0.0, 0.0), "std_range": (0.5, 0.5)},
+                patch_count_range=(1, 1),
+                patch_height_range=(0.5, 0.5),
+                patch_width_range=(0.5, 0.5),
+                p=1.0,
+            ),
+        ],
+        seed=137,
+    )
+
+    out = transform(volume=volume)["volume"]
+
+    assert out.shape == volume.shape
+    assert out.dtype == np.float32
+    np.testing.assert_array_equal(out[0], out[1])
+    np.testing.assert_array_equal(out[1], out[2])
+    assert np.any(out[0] != 0)
+
+
 @pytest.mark.parametrize(
     ("noise_type", "noise_params"),
     [
@@ -2548,12 +2556,14 @@ def test_additive_noise_slice_consistent_volume_reuses_2d_map() -> None:
         ("beta", {"alpha_range": (0.5, 1.5), "beta_range": (0.5, 1.5), "scale_range": (0.1, 0.3)}),
     ],
 )
+@pytest.mark.parametrize("spatial_mode", ["per_pixel", "shared"])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
-@pytest.mark.parametrize("num_channels", [1, 3])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
 @pytest.mark.parametrize("volume_shape", [(5, 32, 48), (1, 16, 16)])
 def test_additive_noise_volumetric_shape_dtype_matrix(
     noise_type: str,
     noise_params: dict[str, Any],
+    spatial_mode: str,
     dtype: np.dtype,
     num_channels: int,
     volume_shape: tuple[int, int, int],
@@ -2563,8 +2573,7 @@ def test_additive_noise_volumetric_shape_dtype_matrix(
         [
             A.AdditiveNoise(
                 noise_type=noise_type,
-                spatial_mode="shared",
-                volume_noise_mode="volumetric",
+                spatial_mode=spatial_mode,
                 noise_params=noise_params,
                 p=1.0,
             ),
@@ -2584,7 +2593,6 @@ def test_additive_noise_volumetric_rejects_too_few_ranges_before_sampling() -> N
     transform = A.AdditiveNoise(
         noise_type="uniform",
         spatial_mode="per_pixel",
-        volume_noise_mode="volumetric",
         noise_params={"ranges": [(0.1, 0.1), (0.2, 0.2)]},
         p=1.0,
     )
@@ -2599,15 +2607,33 @@ def test_additive_noise_volumetric_rejects_too_few_ranges_before_sampling() -> N
     np.testing.assert_equal(sampling.random_generator.bit_generator.state, numpy_random_state)
 
 
-@pytest.mark.parametrize("spatial_mode", ["per_pixel", "shared"])
-def test_additive_noise_volumetric_channel_shared_uses_first_range(spatial_mode: str) -> None:
+def test_additive_noise_multitarget_rejects_too_few_ranges_before_sampling() -> None:
+    image = np.zeros((12, 12, 1), dtype=np.float32)
+    volume = np.zeros((4, 12, 12, 3), dtype=np.float32)
+    transform = A.AdditiveNoise(
+        noise_type="uniform",
+        spatial_mode="per_pixel",
+        noise_params={"ranges": [(0.1, 0.1), (0.2, 0.2)]},
+        p=1.0,
+    )
+    sampling = SamplingContext.from_owner(transform, {})
+    py_random_state = sampling.py_random.getstate()
+    numpy_random_state = copy.deepcopy(sampling.random_generator.bit_generator.state)
+
+    with pytest.raises(ValueError, match="Not enough ranges provided"):
+        transform.sample_parameters(params={}, data={"image": image, "volume": volume}, sampling=sampling)
+
+    np.testing.assert_equal(sampling.py_random.getstate(), py_random_state)
+    np.testing.assert_equal(sampling.random_generator.bit_generator.state, numpy_random_state)
+
+
+def test_additive_noise_volumetric_shared_uses_first_range() -> None:
     volume = np.zeros((4, 12, 12, 3), dtype=np.float32)
     transform = A.Compose(
         [
             A.AdditiveNoise(
                 noise_type="uniform",
-                spatial_mode=spatial_mode,
-                volume_noise_mode="volumetric_channel_shared",
+                spatial_mode="shared",
                 noise_params={"ranges": [(0.1, 0.1), (0.2, 0.2)]},
                 p=1.0,
             ),
@@ -2620,14 +2646,14 @@ def test_additive_noise_volumetric_channel_shared_uses_first_range(spatial_mode:
     np.testing.assert_allclose(out, 0.1)
 
 
-def test_additive_noise_volumetric_volume_only_skips_2d_noise_map() -> None:
+@pytest.mark.parametrize("spatial_mode", ["constant", "per_pixel", "shared", "patch"])
+def test_additive_noise_volumetric_volume_only_skips_2d_noise_map(spatial_mode: str) -> None:
     volume = np.zeros((3, 12, 12, 1), dtype=np.float32)
     transform = A.ReplayCompose(
         [
             A.AdditiveNoise(
                 noise_type="gaussian",
-                spatial_mode="per_pixel",
-                volume_noise_mode="volumetric",
+                spatial_mode=spatial_mode,
                 noise_params={"mean_range": (0.0, 0.0), "std_range": (0.1, 0.1)},
                 p=1.0,
             ),
@@ -2640,6 +2666,9 @@ def test_additive_noise_volumetric_volume_only_skips_2d_noise_map() -> None:
 
     assert "noise_map" not in params
     assert "volume_noise_map" in params
+    if spatial_mode == "patch":
+        assert "patches" not in params
+        assert "volume_patches" in params
 
 
 def test_additive_noise_volumetric_samples_channels_independently() -> None:
@@ -2649,7 +2678,6 @@ def test_additive_noise_volumetric_samples_channels_independently() -> None:
             A.AdditiveNoise(
                 noise_type="gaussian",
                 spatial_mode="per_pixel",
-                volume_noise_mode="volumetric",
                 noise_params={"mean_range": (0.0, 0.0), "std_range": (1.0, 1.0)},
                 p=1.0,
             ),
@@ -2662,13 +2690,13 @@ def test_additive_noise_volumetric_samples_channels_independently() -> None:
     assert np.any(out[..., 0] != out[..., 1])
 
 
-def test_additive_noise_volumetric_image_path_unaffected_by_volume() -> None:
+@pytest.mark.parametrize("spatial_mode", ["constant", "per_pixel", "shared", "patch"])
+def test_additive_noise_volumetric_image_path_unaffected_by_volume(spatial_mode: str) -> None:
     image = np.full((16, 16, 3), 128, dtype=np.uint8)
     volume = np.zeros((4, 16, 16, 3), dtype=np.float32)
     config = {
         "noise_type": "gaussian",
-        "spatial_mode": "per_pixel",
-        "volume_noise_mode": "volumetric",
+        "spatial_mode": spatial_mode,
         "noise_params": {"mean_range": (0.0, 0.0), "std_range": (0.1, 0.1)},
         "p": 1.0,
     }
@@ -2679,6 +2707,37 @@ def test_additive_noise_volumetric_image_path_unaffected_by_volume() -> None:
     np.testing.assert_array_equal(result["image"], image_only)
     assert result["volume"].shape == volume.shape
     assert np.any(result["volume"] != 0)
+
+
+@pytest.mark.parametrize("spatial_mode", ["constant", "per_pixel", "shared", "patch"])
+def test_additive_noise_uses_volume_dtype_with_mixed_image_and_volume_targets(spatial_mode: str) -> None:
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    volume = np.zeros((4, 16, 16, 3), dtype=np.float32)
+    patch_options = (
+        {
+            "patch_count_range": (1, 1),
+            "patch_height_range": (1.0, 1.0),
+            "patch_width_range": (1.0, 1.0),
+        }
+        if spatial_mode == "patch"
+        else {}
+    )
+    transform = A.Compose(
+        [
+            A.AdditiveNoise(
+                noise_type="uniform",
+                spatial_mode=spatial_mode,
+                noise_params={"ranges": [(0.2, 0.2)]},
+                p=1.0,
+                **patch_options,
+            ),
+        ],
+        seed=137,
+    )
+
+    result = transform(image=image, volume=volume)
+
+    np.testing.assert_allclose(result["volume"], 0.2)
 
 
 @pytest.mark.parametrize(

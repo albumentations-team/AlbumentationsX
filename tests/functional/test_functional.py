@@ -3941,6 +3941,30 @@ class TestGenerateVolumetricNoise:
         np.testing.assert_allclose(noise_map[..., 1], 51.0)
         np.testing.assert_allclose(noise_map[..., 2], 76.5)
 
+    def test_uniform_multi_range_is_deterministic(self):
+        shape = (4, 16, 20, 3)
+        params = {"ranges": [(-0.2, -0.1), (0.0, 0.1), (0.2, 0.3)]}
+
+        first = fpixel.generate_volumetric_noise(
+            noise_type="uniform",
+            shape=shape,
+            params=params,
+            max_value=1.0,
+            random_generator=np.random.default_rng(137),
+        )
+        second = fpixel.generate_volumetric_noise(
+            noise_type="uniform",
+            shape=shape,
+            params=params,
+            max_value=1.0,
+            random_generator=np.random.default_rng(137),
+        )
+
+        np.testing.assert_array_equal(first, second)
+        np.testing.assert_equal(np.all((first[..., 0] >= -0.2) & (first[..., 0] <= -0.1)), True)
+        np.testing.assert_equal(np.all((first[..., 1] >= 0.0) & (first[..., 1] <= 0.1)), True)
+        np.testing.assert_equal(np.all((first[..., 2] >= 0.2) & (first[..., 2] <= 0.3)), True)
+
     @pytest.mark.parametrize(
         ("shape", "ranges"),
         [
@@ -4006,3 +4030,34 @@ class TestAddNoiseVolumeShapedArrays:
         out = fpixel.add_noise(volume, noise)
 
         np.testing.assert_array_equal(out, np.full((4, 16, 16), 130, dtype=np.uint8))
+
+    @pytest.mark.parametrize(
+        ("volume", "noise_map"),
+        [
+            (
+                np.arange(3 * 12 * 12 * 3, dtype=np.uint8).reshape(3, 12, 12, 3),
+                (np.arange(3 * 12 * 12, dtype=np.float32).reshape(3, 12, 12, 1) % 41 - 20.25),
+            ),
+            (
+                np.zeros((3, 12, 12, 3), dtype=np.uint8),
+                np.linspace(0.25, 300.75, 3 * 12 * 12, dtype=np.float32).reshape(3, 12, 12, 1),
+            ),
+            (
+                np.linspace(0, 1, 3 * 12 * 12 * 3, dtype=np.float32).reshape(3, 12, 12, 3),
+                np.full((3, 12, 12, 1), -0.05, dtype=np.float32),
+            ),
+        ],
+    )
+    def test_channel_shared_matches_expanded_add_noise(
+        self,
+        volume: np.ndarray,
+        noise_map: np.ndarray,
+    ) -> None:
+        volume_before = volume.copy()
+        expanded = np.ascontiguousarray(np.broadcast_to(noise_map, volume.shape))
+        expected = fpixel.add_noise(volume.copy(), expanded)
+
+        out = fpixel.add_noise_channel_shared(volume, noise_map)
+
+        np.testing.assert_array_equal(out, expected)
+        np.testing.assert_array_equal(volume, volume_before)  # input unchanged

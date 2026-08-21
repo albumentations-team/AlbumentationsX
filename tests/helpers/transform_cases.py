@@ -701,8 +701,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         A.AdditiveNoise,
         {
             "noise_type": "gaussian",
-            "spatial_mode": "shared",
-            "volume_noise_mode": "volumetric",
+            "spatial_mode": "per_pixel",
             "noise_params": {"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)},
         },
     ),
@@ -711,8 +710,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         A.AdditiveNoise,
         {
             "noise_type": "uniform",
-            "spatial_mode": "per_pixel",
-            "volume_noise_mode": "volumetric_channel_shared",
+            "spatial_mode": "shared",
             "noise_params": {"ranges": [(0.05, 0.05)]},
         },
     ),

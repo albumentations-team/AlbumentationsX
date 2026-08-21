@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Literal, cast
 
 from ._functional_shared import (
@@ -731,6 +732,215 @@ SQUARE_KERNEL = np.array(
 
 INITIAL_GRID_SIZE = (3, 3)
 
+
+def generate_volumetric_noise(
+    noise_type: Literal["uniform", "gaussian", "laplace", "beta"],
+    shape: tuple[int, ...],
+    params: dict[str, Any] | None,
+    max_value: float,
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Generate independent per-voxel noise across every spatial axis of a volume,
+    returning a float32 map scaled for the input dtype and isolated random generator.
+
+    Unlike `generate_spatial_noise`, which samples a 2D map that is reused across depth slices, this helper samples
+    the complete volume shape so consecutive slices are independent. The result is float32 with values scaled by
+    `max_value`.
+
+    Sampling avoids full-size temporary arrays: uniform and gaussian draws use float32 numpy generator paths that
+    skip float64 intermediates, while laplace and beta are sampled depth slice by depth slice so the peak allocation
+    stays close to the output map.
+
+    Args:
+        noise_type (Literal['uniform', 'gaussian', 'laplace', 'beta']): The type of noise to generate.
+        shape (tuple[int, ...]): The shape of the noise to generate, typically (D, H, W) or (D, H, W, C).
+        params (dict[str, Any] | None): The parameters of the noise to generate.
+        max_value (float): The maximum value of the noise to generate.
+        random_generator (np.random.Generator): The random number generator to use.
+
+    Returns:
+        np.ndarray: The volumetric noise generated.
+
+    """
+    if params is None:
+        return np.zeros(shape, dtype=np.float32)
+
+    if noise_type == "uniform":
+        noise_map = _sample_volumetric_uniform(shape, params, random_generator)
+    elif noise_type == "gaussian":
+        noise_map = _sample_volumetric_gaussian(shape, params, random_generator)
+    elif noise_type == "laplace":
+        noise_map = _sample_volumetric_laplace(shape, params, random_generator)
+    else:
+        noise_map = _sample_volumetric_beta(shape, params, random_generator)
+
+    np.multiply(noise_map, max_value, out=noise_map)
+    return noise_map
+
+
+def _sample_volumetric_uniform(
+    shape: tuple[int, ...],
+    params: dict[str, Any],
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Sample uniform noise for a complete volume shape in float32, using one range for every voxel or one range per
+    channel when multiple ranges are provided.
+
+    Args:
+        shape (tuple[int, ...]): The shape of the noise to generate.
+        params (dict[str, Any]): The distribution parameters, containing 'ranges'.
+        random_generator (np.random.Generator): The random number generator to use.
+
+    Returns:
+        np.ndarray: The uniform noise sampled.
+
+    """
+    ranges = params["ranges"]
+    if len(ranges) == 1:
+        low, high = ranges[0]
+        return _sample_uniform_range(random_generator, shape, low, high)
+    if len(shape) != 4 or len(ranges) != shape[-1]:
+        raise ValueError(
+            "Multiple uniform ranges require a 4D volume shape with one range per channel. "
+            f"Got shape {shape} and {len(ranges)} ranges.",
+        )
+
+    noise_map = np.empty(shape, dtype=np.float32)
+    for channel, (low, high) in enumerate(ranges):
+        noise_map[..., channel] = _sample_uniform_range(random_generator, shape[:-1], low, high)
+    return noise_map
+
+
+def _sample_uniform_range(
+    random_generator: np.random.Generator,
+    size: tuple[int, ...],
+    low: float,
+    high: float,
+) -> np.ndarray:
+    """Sample float32 uniform noise in [low, high] without allocating a float64 intermediate
+    for the complete requested volume.
+
+    Args:
+        random_generator (np.random.Generator): The random number generator to use.
+        size (tuple[int, ...]): The size of the sample.
+        low (float): The lower bound.
+        high (float): The upper bound.
+
+    Returns:
+        np.ndarray: The uniform noise sampled.
+
+    """
+    samples = random_generator.random(size, dtype=np.float32)
+    np.multiply(samples, high - low, out=samples)
+    np.add(samples, low, out=samples)
+    return samples
+
+
+def _sample_volumetric_gaussian(
+    shape: tuple[int, ...],
+    params: dict[str, Any],
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Sample Gaussian noise for a complete volume shape in float32 with the provided isolated NumPy generator and
+    configured distribution parameters.
+
+    Args:
+        shape (tuple[int, ...]): The shape of the noise to generate.
+        params (dict[str, Any]): The distribution parameters, containing 'mean_range' and 'std_range'.
+        random_generator (np.random.Generator): The random number generator to use.
+
+    Returns:
+        np.ndarray: The gaussian noise sampled.
+
+    """
+    mean = random_generator.uniform(*params["mean_range"])
+    std = random_generator.uniform(*params["std_range"])
+    samples = random_generator.standard_normal(shape, dtype=np.float32)
+    np.multiply(samples, std, out=samples)
+    np.add(samples, mean, out=samples)
+    return samples
+
+
+def _sample_volumetric_laplace(
+    shape: tuple[int, ...],
+    params: dict[str, Any],
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Sample Laplace noise for a complete volume shape in depth-bounded chunks so no float64 intermediate spans the
+    whole volume and the returned map remains float32.
+
+    The numpy laplace generator does not support float32 output, so a single full-volume draw would allocate an
+    unnecessary float64 copy of the map. Sampling per depth slice caps peak memory near one float32 map.
+
+    Args:
+        shape (tuple[int, ...]): The shape of the noise to generate.
+        params (dict[str, Any]): The distribution parameters, containing 'mean_range' and 'scale_range'.
+        random_generator (np.random.Generator): The random number generator to use.
+
+    Returns:
+        np.ndarray: The laplace noise sampled.
+
+    """
+    loc = random_generator.uniform(*params["mean_range"])
+    scale = random_generator.uniform(*params["scale_range"])
+    return _sample_volumetric_per_depth(
+        shape,
+        lambda size: random_generator.laplace(loc=loc, scale=scale, size=size),
+    )
+
+
+def _sample_volumetric_beta(
+    shape: tuple[int, ...],
+    params: dict[str, Any],
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Sample beta noise for a complete volume shape in depth-bounded chunks so no float64 intermediate spans the
+    whole volume and the returned map remains float32.
+
+    The numpy beta generator does not support float32 output, so sampling per depth slice avoids a full-size
+    float64 intermediate.
+
+    Args:
+        shape (tuple[int, ...]): The shape of the noise to generate.
+        params (dict[str, Any]): The distribution parameters, containing 'alpha_range', 'beta_range', and
+            'scale_range'.
+        random_generator (np.random.Generator): The random number generator to use.
+
+    Returns:
+        np.ndarray: The beta noise sampled.
+
+    """
+    alpha = random_generator.uniform(*params["alpha_range"])
+    beta_value = random_generator.uniform(*params["beta_range"])
+    scale = random_generator.uniform(*params["scale_range"])
+    return _sample_volumetric_per_depth(
+        shape,
+        lambda size: (2 * random_generator.beta(alpha, beta_value, size=size) - 1) * scale,
+    )
+
+
+def _sample_volumetric_per_depth(
+    shape: tuple[int, ...],
+    sample_slice: Callable[[tuple[int, ...]], np.ndarray],
+) -> np.ndarray:
+    """Sample a complete volume map one depth slice at a time, bounding float64 intermediates while returning a
+    compact float32 output array.
+
+    Args:
+        shape (tuple[int, ...]): The shape of the noise to generate.
+        sample_slice (Callable[[tuple[int, ...]], np.ndarray]): Callable that draws one depth slice of the given
+            size.
+
+    Returns:
+        np.ndarray: The noise sampled per depth slice.
+
+    """
+    noise_map = np.empty(shape, dtype=np.float32)
+    for depth in range(shape[0]):
+        noise_map[depth] = sample_slice(shape[1:]).astype(np.float32, copy=False)
+    return noise_map
+
+
 __all__ = [
     "DIAMOND_KERNEL",
     "INITIAL_GRID_SIZE",
@@ -747,6 +957,7 @@ __all__ = [
     "generate_per_pixel_noise",
     "generate_shared_noise",
     "generate_spatial_noise",
+    "generate_volumetric_noise",
     "get_safe_brightness_contrast_params",
     "sample_beta",
     "sample_gaussian",

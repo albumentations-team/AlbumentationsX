@@ -1,5 +1,6 @@
 import hashlib
 from copy import deepcopy
+from typing import Any
 
 import cv2
 import numpy as np
@@ -3868,3 +3869,140 @@ class TestEqualizePilHistogramFilter:
         vec = histogram[histogram > 0]
 
         np.testing.assert_array_equal(vec, ref)
+
+
+class TestGenerateVolumetricNoise:
+    """Verify per-voxel noise generation covers the complete volume shape."""
+
+    @pytest.mark.parametrize(
+        ("noise_type", "params"),
+        [
+            ("uniform", {"ranges": [(-0.1, 0.1)]}),
+            ("gaussian", {"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)}),
+            ("laplace", {"mean_range": (0.0, 0.0), "scale_range": (0.05, 0.15)}),
+            ("beta", {"alpha_range": (0.5, 1.5), "beta_range": (0.5, 1.5), "scale_range": (0.1, 0.3)}),
+        ],
+    )
+    @pytest.mark.parametrize("shape", [(4, 16, 20, 3), (4, 16, 20, 1), (4, 16, 20)])
+    def test_shape_dtype_and_finiteness(self, noise_type: str, params: dict[str, Any], shape: tuple[int, ...]):
+        noise_map = fpixel.generate_volumetric_noise(
+            noise_type=noise_type,
+            shape=shape,
+            params=params,
+            max_value=255.0,
+            random_generator=np.random.default_rng(137),
+        )
+
+        assert noise_map.shape == shape
+        assert noise_map.dtype == np.float32
+        assert np.isfinite(noise_map).all()
+
+    def test_deterministic_under_seeded_generator(self):
+        params = {"mean_range": (0.0, 0.0), "std_range": (0.1, 0.1)}
+        first = fpixel.generate_volumetric_noise(
+            noise_type="gaussian",
+            shape=(4, 16, 16, 2),
+            params=params,
+            max_value=1.0,
+            random_generator=np.random.default_rng(137),
+        )
+        second = fpixel.generate_volumetric_noise(
+            noise_type="gaussian",
+            shape=(4, 16, 16, 2),
+            params=params,
+            max_value=1.0,
+            random_generator=np.random.default_rng(137),
+        )
+
+        np.testing.assert_array_equal(first, second)
+
+    def test_not_slice_repeated(self):
+        noise_map = fpixel.generate_volumetric_noise(
+            noise_type="gaussian",
+            shape=(4, 16, 16, 1),
+            params={"mean_range": (0.0, 0.0), "std_range": (1.0, 1.0)},
+            max_value=1.0,
+            random_generator=np.random.default_rng(137),
+        )
+
+        assert np.any(noise_map[0] != noise_map[1])
+
+    def test_uniform_multi_range_is_per_channel(self):
+        shape = (4, 16, 20, 3)
+        noise_map = fpixel.generate_volumetric_noise(
+            noise_type="uniform",
+            shape=shape,
+            params={"ranges": [(0.1, 0.1), (0.2, 0.2), (0.3, 0.3)]},
+            max_value=255.0,
+            random_generator=np.random.default_rng(137),
+        )
+
+        np.testing.assert_allclose(noise_map[..., 0], 25.5)
+        np.testing.assert_allclose(noise_map[..., 1], 51.0)
+        np.testing.assert_allclose(noise_map[..., 2], 76.5)
+
+    @pytest.mark.parametrize(
+        ("shape", "ranges"),
+        [
+            ((4, 16, 20), [(0.1, 0.1), (0.2, 0.2)]),
+            ((4, 16, 20, 3), [(0.1, 0.1), (0.2, 0.2)]),
+        ],
+    )
+    def test_uniform_multi_range_requires_matching_channel_axis(self, shape, ranges):
+        with pytest.raises(ValueError, match="one range per channel"):
+            fpixel.generate_volumetric_noise(
+                noise_type="uniform",
+                shape=shape,
+                params={"ranges": ranges},
+                max_value=255.0,
+                random_generator=np.random.default_rng(137),
+            )
+
+    def test_single_range_uniform_scales_by_max_value(self):
+        noise_map = fpixel.generate_volumetric_noise(
+            noise_type="uniform",
+            shape=(2, 8, 8, 1),
+            params={"ranges": [(0.1, 0.1)]},
+            max_value=255.0,
+            random_generator=np.random.default_rng(137),
+        )
+
+        np.testing.assert_allclose(noise_map, 25.5)
+
+
+class TestAddNoiseVolumeShapedArrays:
+    """Verify the additive noise application handles 4D volume arrays."""
+
+    def test_uint8_volume_with_dense_map(self):
+        volume = np.full((4, 16, 16, 3), 100, dtype=np.uint8)
+        noise = np.full((4, 16, 16, 3), 30, dtype=np.float32)
+
+        out = fpixel.add_noise(volume, noise)
+
+        assert out.dtype == np.uint8
+        np.testing.assert_array_equal(out, np.full((4, 16, 16, 3), 130, dtype=np.uint8))
+
+    def test_float32_volume_with_dense_map(self):
+        volume = np.zeros((4, 16, 16, 3), dtype=np.float32)
+        noise = np.full((4, 16, 16, 3), 0.2, dtype=np.float32)
+
+        out = fpixel.add_noise(volume, noise)
+
+        assert out.dtype == np.float32
+        np.testing.assert_allclose(out, 0.2)
+
+    def test_uint8_volume_with_channel_shared_map(self):
+        volume = np.full((4, 16, 16, 3), 100, dtype=np.uint8)
+        noise = np.full((4, 16, 16, 1), 30, dtype=np.float32)
+
+        out = fpixel.add_noise(volume, noise)
+
+        np.testing.assert_array_equal(out, np.full((4, 16, 16, 3), 130, dtype=np.uint8))
+
+    def test_uint8_volume_without_channel_axis(self):
+        volume = np.full((4, 16, 16), 100, dtype=np.uint8)
+        noise = np.full((4, 16, 16, 1), 30, dtype=np.float32)
+
+        out = fpixel.add_noise(volume, noise)
+
+        np.testing.assert_array_equal(out, np.full((4, 16, 16), 130, dtype=np.uint8))

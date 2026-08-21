@@ -28,6 +28,13 @@ A mismatch blocks completion.
    seeded-replay contracts unless the change explicitly documents a compatibility break.
 7. Run the project validation workflow after the final implementation.
 
+## Torch Runtime Contract
+
+Torch is already an externally managed, soft-required AlbumentationsX runtime dependency: package metadata does not
+select a CPU, CUDA, or MPS build, but importing `albumentations` requires an installed Torch runtime. Do not reject a
+Torch-backed implementation on the grounds that it would introduce a new runtime dependency. Benchmark the complete
+route, including NumPy/Tensor bridges, layout conversions, allocations, and return conversion.
+
 ## Compose Execution Changes
 
 For `composition.py`, `transforms_interface.py`, or invocation-state work, keep configured graph policy separate from

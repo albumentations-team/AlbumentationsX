@@ -65,7 +65,6 @@ def _non_default_witness(parameter_name: str) -> object:
         "mask_interpolation": lambda: cv2.INTER_LINEAR,
         "save_applied_params": lambda: True,
         "telemetry": lambda: False,
-        "strict_instance_invariant": lambda: False,
         "n": lambda: 2,
         "replace": lambda: True,
         "channels": lambda: (1,),

@@ -11,8 +11,10 @@ Available transforms:
 - PiecewiseAffine: Divides the image into a grid and applies random affine transformations to each cell
 - ThinPlateSpline: Applies smooth deformations based on the thin plate spline interpolation technique
 
-All transforms inherit from BaseDistortion, which provides a common interface and functionality
-for applying distortion maps to various target types (images, masks, bounding boxes, keypoints).
+Remap transforms share a common interface for applying distortion maps to various target types
+(images, masks, bounding boxes, keypoints). `BaseDistortion` retains the map-resolution and
+keypoint policy used by the other distortion families; `ElasticTransform` uses
+the bounded control-grid contract directly.
 These transforms are particularly useful for:
 
 - Data augmentation to increase training set diversity
@@ -34,7 +36,9 @@ from pydantic import (
     Field,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
+from typing_extensions import Self
 
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.utils import check_range
@@ -76,114 +80,13 @@ __all__ = [
 ]
 
 
-class BaseDistortion(DualTransform):
-    """Base class for distortion-based transforms (optical, grid, elastic). Handles remap,
-    interpolation, keypoint remapping. Subclass to implement get_map_x_y.
-
-    This class provides a foundation for implementing various types of image distortions,
-    such as optical distortions, grid distortions, and elastic transformations. It handles
-    the common operations of applying distortions to images, masks, bounding boxes, and keypoints.
-
-    Args:
-        interpolation (int): Interpolation method to be used for image transformation.
-            Should be one of the OpenCV interpolation types (e.g., cv2.INTER_LINEAR,
-            cv2.INTER_CUBIC).
-        mask_interpolation (int): Flag that is used to specify the interpolation algorithm for mask.
-            Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
-        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
-            - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
-              less accurate for large distortions. Recommended for large images or many keypoints.
-            - "direct": Uses inverse mapping. More accurate for large distortions but slower.
-            Default: "mask"
-        map_resolution_range (tuple[float, float]): Range for sampling the distortion map resolution
-            relative to the target size. Values must be in (0, 1], where 1.0 uses full-resolution
-            maps and lower values generate smaller maps that are upscaled before remapping.
-            Default: (1.0, 1.0).
-        p (float): Probability of applying the transform.
-
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
-
-    Image types:
-        uint8, float32
-
-    Note:
-        - This is an abstract base class and should not be used directly.
-        - Subclasses should implement the `sample_parameters` method to generate
-          the distortion maps (map_x and map_y).
-        - The distortion is applied consistently across all targets (image, mask, bboxes, keypoints)
-          to maintain coherence in the augmented data.
+class BaseRemapTransform(DualTransform):
+    """Dispatch a sampled coordinate-map pair across raster and annotation targets while subclasses own sampling and
+    target-specific keypoint policy.
 
     Examples:
-        >>> import numpy as np
-        >>> import albumentations as A
-        >>> import cv2
-        >>>
-        >>> class CustomDistortion(A.BaseDistortion):
-        ...     def __init__(self, distort_range=0.3, *args, **kwargs):
-        ...         super().__init__(*args, **kwargs)
-        ...         self.distort_range = distort_range
-        ...
-        ...     def sample_parameters(self, params, data, sampling):
-        ...         height, width = params["shape"][:2]
-        ...         # Create distortion maps - a simple radial distortion in this example
-        ...         map_x = np.zeros((height, width), dtype=np.float32)
-        ...         map_y = np.zeros((height, width), dtype=np.float32)
-        ...
-        ...         # Calculate distortion center
-        ...         center_x = width / 2
-        ...         center_y = height / 2
-        ...
-        ...         # Generate distortion maps
-        ...         for y in range(height):
-        ...             for x in range(width):
-        ...                 # Distance from center
-        ...                 dx = (x - center_x) / width
-        ...                 dy = (y - center_y) / height
-        ...                 r = np.sqrt(dx * dx + dy * dy)
-        ...
-        ...                 # Apply radial distortion
-        ...                 factor = 1 + self.distort_range * r
-        ...                 map_x[y, x] = x + dx * factor
-        ...                 map_y[y, x] = y + dy * factor
-        ...
-        ...         return {"map_x": map_x, "map_y": map_y}
-        >>>
-        >>> # Prepare sample data
-        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
-        >>> bboxes = np.array([[10, 10, 50, 50], [40, 40, 80, 80]], dtype=np.float32)
-        >>> bbox_labels = [1, 2]
-        >>> keypoints = np.array([[20, 30], [60, 70]], dtype=np.float32)
-        >>> keypoint_labels = [0, 1]
-        >>>
-        >>> # Define transform with the custom distortion
-        >>> transform = A.Compose([
-        ...     CustomDistortion(
-        ...         distort_range=0.2,
-        ...         interpolation=cv2.INTER_LINEAR,
-        ...         mask_interpolation=cv2.INTER_NEAREST,
-        ...         keypoint_remapping_method="mask",
-        ...         p=1.0
-        ...     )
-        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
-        >>>
-        >>> # Apply the transform
-        >>> transformed = transform(
-        ...     image=image,
-        ...     mask=mask,
-        ...     bboxes=bboxes,
-        ...     bbox_labels=bbox_labels,
-        ...     keypoints=keypoints,
-        ...     keypoint_labels=keypoint_labels
-        ... )
-        >>>
-        >>> # Get the transformed data
-        >>> transformed_image = transformed['image']
-        >>> transformed_mask = transformed['mask']
-        >>> transformed_bboxes = transformed['bboxes']
-        >>> transformed_keypoints = transformed['keypoints']
+        A subclass samples its coordinate map and inherits synchronized image, mask, bbox, keypoint, batch, and volume
+        dispatch from this base.
 
     """
 
@@ -193,65 +96,25 @@ class BaseDistortion(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         interpolation: InterpolationType
         mask_interpolation: InterpolationType
-        keypoint_remapping_method: Literal["direct", "mask"]
         border_mode: BorderModeType
         fill: tuple[float, ...] | float
         fill_mask: tuple[float, ...] | float
-        map_resolution_range: Annotated[
-            tuple[float, float],
-            AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
-            AfterValidator(nondecreasing),
-        ]
 
     def __init__(
         self,
         interpolation: InterpolationType,
         mask_interpolation: InterpolationType,
-        keypoint_remapping_method: Literal["direct", "mask"],
         p: float,
         border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
     ):
         super().__init__(p=p)
         self.interpolation = interpolation
         self.mask_interpolation = mask_interpolation
-        self.keypoint_remapping_method = keypoint_remapping_method
         self.border_mode = border_mode
         self.fill = fill
         self.fill_mask = fill_mask
-        self.map_resolution_range = map_resolution_range
-
-    def _get_map_resolution_and_shape(
-        self,
-        image_shape: tuple[int, int],
-        sampling: SamplingContext,
-    ) -> tuple[float, tuple[int, int]]:
-        min_resolution, max_resolution = self.map_resolution_range
-        map_resolution = (
-            min_resolution
-            if min_resolution == max_resolution
-            else sampling.py_random.uniform(min_resolution, max_resolution)
-        )
-        sampling.applied_overrides["map_resolution_range"] = map_resolution
-
-        height, width = image_shape
-        min_height = min(2, height)
-        min_width = min(2, width)
-        scaled_shape = (
-            max(min_height, int(height * map_resolution)),
-            max(min_width, int(width * map_resolution)),
-        )
-        return map_resolution, scaled_shape
-
-    def _maybe_upscale_maps(
-        self,
-        map_x: np.ndarray,
-        map_y: np.ndarray,
-        image_shape: tuple[int, int],
-    ) -> tuple[np.ndarray, np.ndarray]:
-        return fgeometric.upscale_distortion_maps(map_x, map_y, image_shape, self.interpolation)
 
     def apply(
         self,
@@ -311,6 +174,82 @@ class BaseDistortion(DualTransform):
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
+        *args: Any,
+        **params: Any,
+    ) -> np.ndarray:
+        raise NotImplementedError(f"{self.__class__.__name__} must implement apply_to_keypoints")
+
+
+class BaseDistortion(BaseRemapTransform):
+    """Provide map-resolution sampling and direct/mask keypoint policies for remap-based distortion subclasses that
+    do not define their own continuous inverse.
+
+    Examples:
+        `GridDistortion`, `OpticalDistortion`, and `PiecewiseAffine` inherit this map-resolution and keypoint policy.
+
+    """
+
+    class InitSchema(BaseRemapTransform.InitSchema):
+        keypoint_remapping_method: Literal["direct", "mask"]
+        map_resolution_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        interpolation: InterpolationType,
+        mask_interpolation: InterpolationType,
+        keypoint_remapping_method: Literal["direct", "mask"],
+        p: float,
+        border_mode: BorderModeType = CV2_BORDER_CONSTANT,
+        fill: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float = 0,
+        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+    ):
+        super().__init__(
+            interpolation=interpolation,
+            mask_interpolation=mask_interpolation,
+            p=p,
+            border_mode=border_mode,
+            fill=fill,
+            fill_mask=fill_mask,
+        )
+        self.keypoint_remapping_method = keypoint_remapping_method
+        self.map_resolution_range = map_resolution_range
+
+    def _get_map_resolution_and_shape(
+        self,
+        image_shape: tuple[int, int],
+        sampling: SamplingContext,
+    ) -> tuple[float, tuple[int, int]]:
+        min_resolution, max_resolution = self.map_resolution_range
+        map_resolution = (
+            min_resolution
+            if min_resolution == max_resolution
+            else sampling.py_random.uniform(min_resolution, max_resolution)
+        )
+        sampling.applied_overrides["map_resolution_range"] = map_resolution
+
+        height, width = image_shape
+        scaled_shape = (
+            max(2, int(height * map_resolution)),
+            max(2, int(width * map_resolution)),
+        )
+        return map_resolution, scaled_shape
+
+    def _maybe_upscale_maps(
+        self,
+        map_x: np.ndarray,
+        map_y: np.ndarray,
+        image_shape: tuple[int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        return fgeometric.upscale_distortion_maps(map_x, map_y, image_shape, self.interpolation)
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
         map_x: np.ndarray,
         map_y: np.ndarray,
         **params: Any,
@@ -320,17 +259,25 @@ class BaseDistortion(DualTransform):
         return fgeometric.remap_keypoints_via_mask(keypoints, map_x, map_y, params["shape"])
 
 
-class ElasticTransform(BaseDistortion):
-    """Apply elastic deformation to images, masks, bboxes, keypoints. Params: alpha, sigma,
-    interpolation. Uses Gaussian-smoothed random displacement fields.
+class ElasticTransform(BaseRemapTransform):
+    """Apply a bounded isotropic deformation from a compact control grid to synchronized raster and annotation targets
+    with one shared XY map per invocation.
 
-    This transformation introduces random elastic distortions to the input data. It's particularly
-    useful for data augmentation in training deep learning models, especially for tasks like
-    image segmentation or object detection where you want to maintain the relative positions of
-    features while introducing realistic deformations.
+    `displacement_range` is measured relative to the shorter span between the first and last
+    pixel centers. The sampled control vectors use pixel units after scaling, and the dense pull
+    map is endpoint-aligned bilinear interpolation of those vectors. One map is shared by every
+    raster and annotation target in an invocation; volumes receive the same XY deformation on
+    every depth slice.
 
-    The transform works by generating random displacement fields and applying them to the input.
-    These fields are smoothed using a Gaussian filter to create more natural-looking distortions.
+    Args:
+        displacement_range (tuple[float, float]): Range for the sampled relative displacement magnitude.
+        control_grid_shape (tuple[int, int]): Number of control rows and columns, each at least 2.
+        interpolation (int): Interpolation used for images.
+        mask_interpolation (int): Interpolation used for masks.
+        border_mode (int): OpenCV border mode for raster targets.
+        fill (tuple[float, ...] | float): Fill value for images.
+        fill_mask (tuple[float, ...] | float): Fill value for masks.
+        p (float): Probability of applying the transform.
 
     Targets:
         image, mask, bboxes, keypoints, volume, mask3d
@@ -341,102 +288,68 @@ class ElasticTransform(BaseDistortion):
     Supported bboxes:
         hbb, obb
 
-    Args:
-        alpha (float): Scaling factor for the random displacement fields. Higher values result in
-            more pronounced distortions. Default: 1.0
-        sigma (float): Standard deviation of the Gaussian filter used to smooth the displacement
-            fields. Higher values result in smoother, more global distortions. Default: 50.0
-        interpolation (int): Interpolation method to be used for image transformation. Should be one
-            of the OpenCV interpolation types. Default: cv2.INTER_LINEAR
-        approximate (bool): Whether to use an approximate version of the elastic transform. If True,
-            uses a fixed kernel size for Gaussian smoothing, which can be faster but potentially
-            less accurate for large sigma values. Default: False
-        same_dxdy (bool): Whether to use the same random displacement field for both x and y
-            directions. Can speed up the transform at the cost of less diverse distortions. Default: False
-        mask_interpolation (int): Flag that is used to specify the interpolation algorithm for mask.
-            Should be one of: cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4.
-            Default: cv2.INTER_NEAREST.
-        noise_distribution (Literal['gaussian', 'uniform']): Distribution used to generate the displacement fields.
-            "gaussian" generates fields using normal distribution (more natural deformations).
-            "uniform" generates fields using uniform distribution (more mechanical deformations).
-            Default: "gaussian".
-        keypoint_remapping_method (Literal['direct', 'mask']): Method to use for keypoint remapping.
-            - "mask": Uses mask-based remapping. Faster, especially for many keypoints, but may be
-              less accurate for large distortions. Recommended for large images or many keypoints.
-            - "direct": Uses inverse mapping. More accurate for large distortions but slower.
-            Default: "mask"
-        map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
-            relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
-            them, trading precision for speed. Default: (1.0, 1.0).
-        p (float): Probability of applying the transform. Default: 0.5
-
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
-
-    Image types:
-        uint8, float32
-
     Note:
-        - The transform will maintain consistency across all targets (image, mask, bboxes, keypoints)
-          by using the same displacement fields for all.
-        - The 'approximate' parameter determines whether to use a precise or approximate method for
-          generating displacement fields. The approximate method can be faster but may be less
-          accurate for large sigma values.
-        - Bounding boxes that end up outside the image after transformation will be removed.
-        - Keypoints that end up outside the image after transformation will be removed.
+        The constructor enforces `2 * high * sqrt((rows - 1)^2 + (columns - 1)^2) < 1`.
+        `ReplayCompose` stores the compact sampled grid and replays it for the same spatial
+        shape. Applied configuration fixes the realized magnitude but samples a new grid.
 
     Examples:
         >>> import albumentations as A
         >>> transform = A.Compose([
-        ...     A.ElasticTransform(alpha=1, sigma=50, p=0.5),
+        ...     A.ElasticTransform(p=1.0),
         ... ])
-        >>> transformed = transform(image=image, mask=mask, bboxes=bboxes, keypoints=keypoints)
-        >>> transformed_image = transformed['image']
-        >>> transformed_mask = transformed['mask']
-        >>> transformed_bboxes = transformed['bboxes']
-        >>> transformed_keypoints = transformed['keypoints']
+        >>> result = transform(image=image)
 
     """
 
-    class InitSchema(BaseDistortion.InitSchema):
-        alpha: Annotated[float, Field(ge=0)]
-        sigma: Annotated[float, Field(ge=1)]
-        approximate: bool
-        same_dxdy: bool
-        noise_distribution: Literal["gaussian", "uniform"]
-        keypoint_remapping_method: Literal["direct", "mask"]
+    class InitSchema(BaseRemapTransform.InitSchema):
+        displacement_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
+            AfterValidator(nondecreasing),
+        ]
+        control_grid_shape: tuple[int, int]
+
+        @field_validator("control_grid_shape")
+        @classmethod
+        def _validate_control_grid_shape(cls, value: tuple[int, int]) -> tuple[int, int]:
+            if len(value) != 2 or min(value) < 2:
+                raise ValueError("control_grid_shape must contain two dimensions, each at least 2")
+            return value
+
+        @model_validator(mode="after")
+        def _validate_topology_bound(self) -> Self:
+            rows, columns = self.control_grid_shape
+            high = self.displacement_range[1]
+            bound = 2 * high * float(np.sqrt((rows - 1) ** 2 + (columns - 1) ** 2))
+            if bound >= 1:
+                raise ValueError(
+                    "displacement_range and control_grid_shape violate the strict topology bound: "
+                    "2 * high * sqrt((rows - 1)^2 + (columns - 1)^2) must be less than 1",
+                )
+            return self
 
     def __init__(
         self,
-        alpha: float = 1,
-        sigma: float = 50,
+        displacement_range: tuple[float, float] = (0.02, 0.05),
+        control_grid_shape: tuple[int, int] = (5, 5),
         interpolation: InterpolationType = CV2_INTER_LINEAR,
-        approximate: bool = False,
-        same_dxdy: bool = False,
         mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
-        noise_distribution: Literal["gaussian", "uniform"] = "gaussian",
-        keypoint_remapping_method: Literal["direct", "mask"] = "mask",
         border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
         p: float = 0.5,
     ):
         super().__init__(
             interpolation=interpolation,
             mask_interpolation=mask_interpolation,
-            keypoint_remapping_method=keypoint_remapping_method,
             p=p,
             border_mode=border_mode,
             fill=fill,
             fill_mask=fill_mask,
-            map_resolution_range=map_resolution_range,
         )
-        self.alpha = alpha
-        self.sigma = sigma
-        self.approximate = approximate
-        self.same_dxdy = same_dxdy
-        self.noise_distribution = noise_distribution
+        self.displacement_range = displacement_range
+        self.control_grid_shape = control_grid_shape
 
     def sample_parameters(
         self,
@@ -444,31 +357,66 @@ class ElasticTransform(BaseDistortion):
         data: dict[str, Any],
         sampling: SamplingContext,
     ) -> dict[str, Any]:
+        del data
         image_shape = params["shape"][:2]
-        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
-        scaled_height, scaled_width = scaled_shape
-        kernel_size = (17, 17) if self.approximate else (0, 0)
+        low, high = self.displacement_range
+        magnitude = low if low == high else sampling.py_random.uniform(low, high)
+        sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
 
-        dx, dy = fgeometric.generate_displacement_fields(
-            scaled_shape,
-            self.alpha * map_resolution,
-            self.sigma * map_resolution,
-            same_dxdy=self.same_dxdy,
-            kernel_size=kernel_size,
-            random_generator=sampling.random_generator,
-            noise_distribution=self.noise_distribution,
-        )
+        height, width = image_shape
+        if magnitude == 0 or min(height - 1, width - 1) == 0:
+            return {
+                "displacement_magnitude": magnitude,
+                "control_vectors": [],
+            }
 
-        map_y = dy.copy() if self.same_dxdy else dy
-        map_x = dx
-        map_x += np.arange(scaled_width, dtype=np.float32)
-        map_y += np.arange(scaled_height, dtype=np.float32)[:, None]
-        map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
-
+        random_values = sampling.random_generator.random((*self.control_grid_shape, 2), dtype=np.float32)
+        radius = np.float32(magnitude * min(height - 1, width - 1))
+        vector_radius = radius * np.sqrt(random_values[..., 0])
+        angle = np.float32(2 * np.pi) * random_values[..., 1]
+        control_vectors = np.empty((*self.control_grid_shape, 2), dtype=np.float32)
+        control_vectors[..., 0] = vector_radius * np.cos(angle)
+        control_vectors[..., 1] = vector_radius * np.sin(angle)
         return {
-            "map_x": map_x,
-            "map_y": map_y,
+            "displacement_magnitude": magnitude,
+            "control_vectors": control_vectors.tolist(),
         }
+
+    def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Build one dense map for the invocation and reject replay on another spatial shape before dispatching all
+        synchronized targets with exact map sharing.
+        """
+        recorded_shape = tuple(params["shape"][:2])
+        if self.replay_mode:
+            current_shape = self._extract_shape_from_data(kwargs)
+            if current_shape is not None and tuple(current_shape[:2]) != recorded_shape:
+                raise ValueError(
+                    f"ElasticTransform replay requires the same spatial shape {recorded_shape}, "
+                    f"got {tuple(current_shape[:2])}",
+                )
+        if not params["control_vectors"]:
+            return dict(kwargs)
+
+        runtime_params = dict(params)
+        control_vectors = np.asarray(params["control_vectors"], dtype=np.float32)
+        runtime_params["control_vectors"] = control_vectors
+        runtime_params["map_x"], runtime_params["map_y"] = fgeometric.create_elastic_maps(
+            control_vectors,
+            recorded_shape,
+        )
+        return super().apply_with_params(runtime_params, *args, **kwargs)
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        control_vectors: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        return fgeometric.remap_elastic_keypoints(
+            keypoints,
+            control_vectors,
+            params["shape"][:2],
+        )
 
 
 class PiecewiseAffine(BaseDistortion):

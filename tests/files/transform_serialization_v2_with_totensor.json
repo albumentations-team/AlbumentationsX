@@ -58,10 +58,13 @@
             {
                 "__class_fullname__": "ElasticTransform",
                 "p": 0.5,
-                "alpha": 1,
-                "sigma": 50,
+                "displacement_range": [0.02, 0.05],
+                "control_grid_shape": [5, 5],
                 "interpolation": 1,
-                "approximate": false
+                "mask_interpolation": 0,
+                "border_mode": 0,
+                "fill": 0,
+                "fill_mask": 0
             },
             {
                 "__class_fullname__": "Equalize",

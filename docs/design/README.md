@@ -33,6 +33,11 @@ Implemented configuration-centric contract system that verifies strict JSON tran
 reconstruction, replay execution, exact output where declared, and non-default coverage for every public constructor
 parameter.
 
+### [Bounded 2D ElasticTransform](elastic-transform.md)
+
+Implemented contract for the greenfield 2D elastic transform: bounded endpoint-aligned control grids, synchronized
+targets, analytic keypoint inversion, and separate constructor, applied-config, and `ReplayCompose` persistence rules.
+
 ### [Generated Transform Target Contracts](transform-target-contracts.md)
 
 Coverage contract for the shared transform-case registry and reusable target profiles.

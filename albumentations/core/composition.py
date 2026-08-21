@@ -2891,16 +2891,11 @@ class Compose(BaseCompose, HubMixin):
                 # Defense in depth: orphan kp ids (no matching bbox) should already be filtered
                 # by `_bbox_filter_with_mirror`/`_prefilter_realign`. If we still see one here,
                 # the upstream chain is broken and silently passing it through corrupts the new
-                # positional namespace, so raise/warn the same as the masks-len breach.
+                # positional namespace, so fail fast.
                 bbox_id_set = set(old_ids.tolist())
                 orphans = [int(k) for k in kp_ids_col.tolist() if int(k) not in bbox_id_set]
                 if orphans:
                     self._raise_for_orphan_keypoints(orphans)
-                    keep_kp = np.isin(kp_ids_col, old_ids)
-                    if not keep_kp.all():
-                        kp_arr = kp_arr[keep_kp]
-                        data["keypoints"] = kp_arr
-                        kp_ids_col = kp_arr[:, -1].astype(np.int64, copy=False)
                 if not np.array_equal(old_ids, np.arange(n, dtype=np.int64)):
                     old_to_new = {int(old): new for new, old in enumerate(old_ids.tolist())}
                     kp_arr[:, -1] = np.array(

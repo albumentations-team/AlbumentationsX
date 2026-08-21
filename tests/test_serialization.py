@@ -587,7 +587,6 @@ def test_serialization_v2_to_dict() -> None:
         "save_applied_params": False,
         "telemetry": True,
         "instance_binding": None,
-        "strict_instance_invariant": True,
     }
 
 
@@ -607,7 +606,6 @@ def test_compose_roundtrip_preserves_all_behavioral_constructor_state() -> None:
         seed=137,
         save_applied_params=True,
         telemetry=False,
-        strict_instance_invariant=False,
         semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
     )
 
@@ -621,7 +619,6 @@ def test_compose_roundtrip_preserves_all_behavioral_constructor_state() -> None:
     assert restored.seed == 137
     assert restored.save_applied_params is True
     assert restored.telemetry is False
-    assert restored._strict_instance_invariant is False
     assert restored.additional_targets == {"image2": "image"}
     assert restored.semantic_mask_label_mappings == {"HorizontalFlip": {2: 3, 3: 2}}
     assert restored.processors["bboxes"].params.filter_invalid_bboxes is True
@@ -742,7 +739,6 @@ def test_composition_subclasses_preserve_class_policy_in_roundtrip_and_operators
         mask_interpolation=cv2.INTER_LINEAR,
         save_applied_params=True,
         telemetry=False,
-        strict_instance_invariant=False,
         seed=137,
     )
 
@@ -755,7 +751,6 @@ def test_composition_subclasses_preserve_class_policy_in_roundtrip_and_operators
     assert restored.mask_interpolation == cv2.INTER_LINEAR
     assert restored.save_applied_params is True
     assert restored.telemetry is False
-    assert restored._strict_instance_invariant is False
     assert restored.transforms[0].channels == [1]
     assert restored.transforms[1].n == 2
     assert restored.transforms[1].replace is True

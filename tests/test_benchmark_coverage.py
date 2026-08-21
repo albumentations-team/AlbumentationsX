@@ -14,6 +14,18 @@ def _coverage_for(transform_name: str) -> dict[str, Any]:
     return transforms[transform_name]
 
 
+def _transform_names_requiring_contract_layer(details: dict[str, Any], contract: str, layer: str) -> set[str]:
+    return {
+        transform["name"]
+        for transform in details["transforms"]
+        if layer in transform["performance_contract"][contract]["required_layers"]
+    }
+
+
+def _case_ids_for_layer(transform: dict[str, Any], layer: str) -> set[str]:
+    return {case["case_id"] for case in transform["asv_cases"] if case["layer"] == layer}
+
+
 def test_benchmark_coverage_details_account_for_every_public_transform() -> None:
     details = coverage_details()
 
@@ -25,8 +37,13 @@ def test_benchmark_coverage_details_account_for_every_public_transform() -> None
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
-    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 11
-    assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 8
+    status_counts = details["summary"]["performance_contract_status_counts"]
+    assert status_counts["batch"]["covered"] == len(
+        _transform_names_requiring_contract_layer(details, "batch", "batch_matrix"),
+    )
+    assert status_counts["parameter_sensitivity"]["covered"] == len(
+        _transform_names_requiring_contract_layer(details, "parameter_sensitivity", "parameter_sensitivity"),
+    )
 
 
 def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
@@ -118,6 +135,22 @@ def test_benchmark_coverage_details_map_spatter_modes_to_batch_matrix() -> None:
         "spatter_rain|images|small|3|uint8|4",
         "spatter_rain|images|large|3|float32|16",
     }.issubset({case["case_id"] for case in spatter["asv_cases"] if case["layer"] == "batch_matrix"})
+
+
+def test_benchmark_coverage_details_map_illumination_modes_to_batch_matrix() -> None:
+    illumination = _coverage_for("Illumination")
+    expected_case_ids = set(benchmark_coverage.ILLUMINATION_DIRECT_CASES)
+    expected_case_ids.update(
+        case_id for case_id in benchmark_coverage.IMAGE_BATCH_CASES if case_id.startswith("illumination_")
+    )
+
+    assert illumination["performance_contract"]["batch"]["status"] == "covered"
+    assert illumination["scenario_contract"]["channels"] == [1, 3, 5]
+    assert illumination["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert illumination["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
+    assert illumination["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert {"compose_batch", "direct_batch"}.issubset(illumination["scenario_contract"]["scopes"])
+    assert _case_ids_for_layer(illumination, "batch_matrix") == expected_case_ids
 
 
 def test_benchmark_coverage_details_map_median_blur_kernel_and_dtype_routes() -> None:

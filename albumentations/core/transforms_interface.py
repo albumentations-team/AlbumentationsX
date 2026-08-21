@@ -1194,8 +1194,7 @@ class DualTransform(BasicTransform):
         - The default per-row implementation below preserves alignment for transforms
           whose `apply_to_mask` is total (no row drops).
 
-        Violating this contract surfaces as a `RuntimeError` from `_resync_instance_ids`
-        in strict mode (the default since 2.2.2) or a `UserWarning` in legacy mode.
+        Violating this contract surfaces as a `RuntimeError` from `_resync_instance_ids`.
         """
         if masks.size == 0:
             return masks

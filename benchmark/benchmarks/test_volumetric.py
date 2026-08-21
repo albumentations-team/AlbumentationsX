@@ -52,6 +52,35 @@ class TimeGaussianBlur3D:
         self.gaussian_blur(volume=self.volume)
 
 
+class TimeAdditiveNoise3D:
+    """Benchmark true volumetric AdditiveNoise through its public Compose route."""
+
+    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES))
+    param_names = ("size", "channels", "dtype")
+
+    def setup(self, size: str, channels: int, dtype: str) -> None:
+        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.additive_noise = albumentations.Compose(
+            [
+                albumentations.AdditiveNoise(
+                    noise_type="gaussian",
+                    spatial_mode="per_pixel",
+                    volume_noise_mode="volumetric",
+                    noise_params={"mean_range": (0.0, 0.0), "std_range": (0.05, 0.05)},
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
+
+    def time_additive_noise3d(self, size: str, channels: int, dtype: str) -> None:
+        self.additive_noise(volume=self.volume)
+
+    def peakmem_additive_noise3d(self, size: str, channels: int, dtype: str) -> None:
+        self.additive_noise(volume=self.volume)
+
+
 class TimeAffine3D:
     """Benchmark true-3D affine resampling through its public Compose route."""
 

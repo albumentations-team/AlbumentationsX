@@ -30,7 +30,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import PAIR, ImageType
+from albumentations.core.type_definitions import PAIR, ImageType, VolumeType
 
 __all__ = [
     "AdditiveNoise",
@@ -558,9 +558,47 @@ NoiseParams: TypeAlias = Annotated[
 ]
 
 
+def _resolve_uniform_ranges(
+    noise_params: dict[str, Any],
+    noise_type: str,
+    num_channels: int,
+    uses_channel_ranges: bool,
+) -> dict[str, Any]:
+    """Resolve uniform ranges for the requested spatial and channel semantics, validating coverage
+    before any random draw and returning parameters for sampling.
+
+    A single range applies to every channel, while multiple ranges either require one range per channel (when the
+    mode samples channels independently) or fall back to the first range. Raises before any random draw when the
+    channel count cannot be satisfied.
+
+    Args:
+        noise_params (dict[str, Any]): The validated distribution parameters.
+        noise_type (str): The selected noise distribution.
+        num_channels (int): The number of channels to resolve ranges for.
+        uses_channel_ranges (bool): Whether the mode samples each channel from its own range.
+
+    Returns:
+        dict[str, Any]: The resolved distribution parameters.
+
+    """
+    if noise_type != "uniform":
+        return noise_params
+    ranges = noise_params["ranges"]
+    range_count = len(ranges)
+    if range_count <= 1:
+        return noise_params
+    if uses_channel_ranges and range_count < num_channels:
+        raise ValueError(f"Not enough ranges provided. Expected 1 or at least {num_channels}, got {range_count}")
+    if not uses_channel_ranges or range_count != num_channels:
+        resolved_count = num_channels if uses_channel_ranges else 1
+        return {**noise_params, "ranges": ranges[:resolved_count]}
+    return noise_params
+
+
 class _AdditiveNoiseInitSchema(BaseTransformInitSchema):
     noise_type: Literal["uniform", "gaussian", "laplace", "beta"]
     spatial_mode: Literal["constant", "per_pixel", "shared", "patch"]
+    volume_noise_mode: Literal["slice_consistent", "volumetric", "volumetric_channel_shared"]
     noise_params: dict[str, Any] | None
     patch_count_range: Annotated[
         tuple[int, int],
@@ -630,6 +668,15 @@ class _AdditiveNoiseInitSchema(BaseTransformInitSchema):
             raise ValueError("Patch options can only be used when spatial_mode='patch'")
         return self
 
+    @model_validator(mode="after")
+    def _validate_volume_noise_mode(self) -> Self:
+        if self.volume_noise_mode != "slice_consistent" and self.spatial_mode not in {"per_pixel", "shared"}:
+            raise ValueError(
+                "volume_noise_mode='volumetric' and 'volumetric_channel_shared' require "
+                "spatial_mode='per_pixel' or 'shared'",
+            )
+        return self
+
 
 class AdditiveNoise(ImageOnlyTransform):
     """Add uniform, Gaussian, Laplace, or beta-distributed noise in constant, per-pixel, channel-shared, or randomly
@@ -646,6 +693,15 @@ class AdditiveNoise(ImageOnlyTransform):
             - `"per_pixel"` samples each pixel and channel independently.
             - `"shared"` samples one spatial map and shares it across channels.
             - `"patch"` samples noise only inside random rectangular patches.
+        volume_noise_mode (Literal['slice_consistent', 'volumetric', 'volumetric_channel_shared']): How noise is
+            sampled for the `volume` target. Default: "slice_consistent".
+            - `"slice_consistent"` samples one 2D noise map and reuses it for every depth slice (the previous
+              behavior).
+            - `"volumetric"` samples an independent per-voxel map of shape `(D, H, W, C)` that varies along depth,
+              height, and width.
+            - `"volumetric_channel_shared"` samples a per-voxel map of shape `(D, H, W, 1)` shared across channels.
+            The volumetric modes require `spatial_mode="per_pixel"` or `"shared"` and do not affect the `image`
+            target, which always uses `spatial_mode`.
         noise_params (dict[str, Any] | None): Parameters for the chosen noise distribution.
             Must match the noise_type:
 
@@ -721,11 +777,30 @@ class AdditiveNoise(ImageOnlyTransform):
         ...     seed=137,
         ... )
         >>> noisy_image = transform(image=image)["image"]
+        >>> # True volumetric noise for medical volumes (independent per voxel)
+        >>> volume = np.random.default_rng(137).random((16, 128, 128, 1), dtype=np.float32)
+        >>> volumetric_transform = A.Compose(
+        ...     [
+        ...         A.AdditiveNoise(
+        ...             noise_type="gaussian",
+        ...             spatial_mode="per_pixel",
+        ...             volume_noise_mode="volumetric",
+        ...             noise_params={"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)},
+        ...             p=1.0,
+        ...         ),
+        ...     ],
+        ...     seed=137,
+        ... )
+        >>> noisy_volume = volumetric_transform(volume=volume)["volume"]
 
     Note:
         - Patch positions and sizes are shared across channels. `per_channel` controls only the sampled noise values.
         - Overlapping patches are processed in order, and later patch noise replaces earlier noise in the overlap.
         - Image batches and volume slices receive the same sampled patch program, matching the existing batch behavior.
+        - The default `volume_noise_mode="slice_consistent"` reuses one 2D noise map across depth, which is what
+          serialized pipelines produced before; `"volumetric"` and `"volumetric_channel_shared"` sample the complete
+          volume shape so pixel, voxel, and channel-shared noise are all distinct.
+        - Each `volume=` value receives its own independent sampled noise map; there is no batch-sharing option.
         - All noise is generated in normalized units and scaled by the image dtype maximum.
 
     References:
@@ -743,6 +818,7 @@ class AdditiveNoise(ImageOnlyTransform):
         noise_params: dict[str, Any] | None = None,
         p: float = 0.5,
         *,
+        volume_noise_mode: Literal["slice_consistent", "volumetric", "volumetric_channel_shared"] = "slice_consistent",
         patch_count_range: tuple[int, int] = (1, 1),
         patch_height_range: tuple[float, float] = (0.1, 1.0),
         patch_width_range: tuple[float, float] = (0.1, 1.0),
@@ -751,6 +827,7 @@ class AdditiveNoise(ImageOnlyTransform):
         super().__init__(p=p)
         self.noise_type = noise_type
         self.spatial_mode = spatial_mode
+        self.volume_noise_mode = volume_noise_mode
         self.noise_params = noise_params
         self.patch_count_range = patch_count_range
         self.patch_height_range = patch_height_range
@@ -780,30 +857,50 @@ class AdditiveNoise(ImageOnlyTransform):
         del params, sampling.applied_overrides
         return self._sample_noise_map(data, sampling)
 
+    def _sample_volume_noise_map(
+        self,
+        volume: VolumeType,
+        noise_params: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> np.ndarray:
+        """Sample a true volumetric map from the volume's depth, height, width, and channel shape while
+        preserving channel-sharing semantics.
+        """
+        volume_channels = volume.shape[3] if volume.ndim == 4 else 1
+        map_channels = volume_channels if self.volume_noise_mode == "volumetric" else 1
+        volume_noise_params = _resolve_uniform_ranges(
+            noise_params,
+            self.noise_type,
+            volume_channels,
+            uses_channel_ranges=self.volume_noise_mode == "volumetric",
+        )
+        return fpixel.generate_volumetric_noise(
+            noise_type=self.noise_type,
+            shape=(*volume.shape[:3], map_channels),
+            params=volume_noise_params,
+            max_value=MAX_VALUES_BY_DTYPE[volume.dtype],
+            random_generator=sampling.random_generator,
+        )
+
     def _sample_noise_map(self, data: dict[str, Any], sampling: SamplingContext) -> dict[str, Any]:
         """Generates the noise map for the current layout without replay-policy overrides, keeping pixel execution
         independent from constructor serialization concerns.
         """
+        base_noise_params = cast("dict[str, Any]", self.noise_params)
+        volume = data.get("volume")
+        has_image_target = data.get("image") is not None or data.get("images") is not None
+        if self.volume_noise_mode != "slice_consistent" and volume is not None and not has_image_target:
+            return {"volume_noise_map": self._sample_volume_noise_map(volume, base_noise_params, sampling)}
+
         metadata = self.get_image_data(data)
         max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
         num_channels = metadata["num_channels"]
         shape = (metadata["height"], metadata["width"], num_channels)
-        noise_params = cast("dict[str, Any]", self.noise_params)
 
-        if self.noise_type == "uniform":
-            ranges = noise_params["ranges"]
-            range_count = len(ranges)
-            if range_count > 1:
-                uses_channel_ranges = self.spatial_mode in {"constant", "per_pixel"} or (
-                    self.spatial_mode == "patch" and self.per_channel
-                )
-                if uses_channel_ranges and range_count < num_channels:
-                    raise ValueError(
-                        f"Not enough ranges provided. Expected 1 or at least {num_channels}, got {range_count}",
-                    )
-                if not uses_channel_ranges or range_count != num_channels:
-                    resolved_count = num_channels if uses_channel_ranges else 1
-                    noise_params = {**noise_params, "ranges": ranges[:resolved_count]}
+        uses_channel_ranges = self.spatial_mode in {"constant", "per_pixel"} or (
+            self.spatial_mode == "patch" and self.per_channel
+        )
+        noise_params = _resolve_uniform_ranges(base_noise_params, self.noise_type, num_channels, uses_channel_ranges)
 
         if self.spatial_mode == "constant":
             noise_map = fpixel.generate_constant_noise_with_py_random(
@@ -845,7 +942,18 @@ class AdditiveNoise(ImageOnlyTransform):
             max_value=max_value,
             random_generator=sampling.random_generator,
         )
+        if self.volume_noise_mode != "slice_consistent" and volume is not None:
+            volume_noise_map = self._sample_volume_noise_map(volume, base_noise_params, sampling)
+            return {"noise_map": noise_map, "volume_noise_map": volume_noise_map}
         return {"noise_map": noise_map}
+
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        """Apply the transform to a volume, using a true 3D noise map for volumetric modes while preserving legacy
+        slice-consistent behavior by default.
+        """
+        if self.volume_noise_mode == "slice_consistent":
+            return super().apply_to_volume(volume, **params)
+        return fpixel.add_noise(volume, params["volume_noise_map"])
 
 
 class SaltAndPepper(ImageOnlyTransform):

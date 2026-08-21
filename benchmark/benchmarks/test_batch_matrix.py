@@ -21,6 +21,9 @@ from benchmarks.common import (
 Factory = Callable[[], object]
 
 BATCH_SIZES = (4, 8)
+ILLUMINATION_BATCH_SIZES = (2, 4, 8, 16)
+ILLUMINATION_MODES = ("linear", "corner", "gaussian")
+ILLUMINATION_NAMES = tuple(f"illumination_{mode}" for mode in ILLUMINATION_MODES)
 SPATTER_BATCH_SIZES = (2, 4, 8, 16)
 SPATTER_SIZES = ("small", "medium", "large")
 RANDOM_TONE_CURVE_NAMES = ("random_tone_curve", "random_tone_curve_per_channel")
@@ -47,6 +50,14 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     ),
     "gauss_noise": BatchSpec(lambda: albumentations.GaussNoise(p=1.0)),
     "horizontal_flip": BatchSpec(lambda: albumentations.HorizontalFlip(p=1.0)),
+    **{
+        f"illumination_{mode}": BatchSpec(
+            partial(albumentations.Illumination, mode=mode, p=1.0),
+            sizes=("small", "medium", "large"),
+            batch_sizes=ILLUMINATION_BATCH_SIZES,
+        )
+        for mode in ILLUMINATION_MODES
+    },
     **{
         name: BatchSpec(
             partial(albumentations.MedianBlur, blur_range=(kernel_size, kernel_size), p=1.0),
@@ -93,6 +104,11 @@ def _cases(transforms: Mapping[str, BatchSpec], target_route: str) -> tuple[str,
 
 
 IMAGE_BATCH_CASES = _cases(IMAGE_BATCH_TRANSFORMS, "images")
+ILLUMINATION_DIRECT_CASES = tuple(
+    case_id.replace("|images|", "|direct_images|", 1)
+    for case_id in IMAGE_BATCH_CASES
+    if case_id.startswith(tuple(f"{name}|" for name in ILLUMINATION_NAMES))
+)
 RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES = tuple(
     case_id.replace("|images|", "|direct_images|", 1)
     for case_id in IMAGE_BATCH_CASES
@@ -133,6 +149,25 @@ class TimeImageBatchMatrix:
 
     def time_transform(self, case_id: str) -> None:
         self.transform(**self.data)
+
+
+class TimeIlluminationDirectBatchMatrix:
+    """Benchmark Illumination's direct batch route over the issue #53 matrix."""
+
+    params = (ILLUMINATION_DIRECT_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        mode = name.removeprefix("illumination_")
+        self.transform = albumentations.Illumination(mode=mode, p=1.0)
+        self.transform.set_random_seed(137)
+        self.images = _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)
+        self.transform(image=self.images[0])
+        self.params = self.transform.get_applied_params()
+
+    def time_apply_to_images(self, case_id: str) -> None:
+        self.transform.apply_to_images(self.images, **self.params)
 
 
 class TimeSpatterDirectBatchMatrix:

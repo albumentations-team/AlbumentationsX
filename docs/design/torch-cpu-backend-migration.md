@@ -2,8 +2,8 @@
 
 **Status:** In progress
 
-**Decision:** `torch` becomes a soft-required runtime dependency. Users install a CPU, CUDA, or MPS build before
-installing AlbumentationsX. The existing `Compose` accepts both NumPy arrays and CPU
+**Decision:** `torch` is an externally managed, soft-required runtime dependency. Users install a CPU, CUDA, or MPS
+build before installing AlbumentationsX. The existing `Compose` accepts both NumPy arrays and CPU
 `torch.Tensor` values. Every valid Tensor pipeline returns Tensor output. Before transform parameters are sampled,
 `Compose` chooses one representation for the entire pipeline: direct Tensor execution when every selectable child
 supports the supplied Tensor targets, otherwise one Tensor-to-NumPy bridge before the pipeline and one NumPy-to-Tensor

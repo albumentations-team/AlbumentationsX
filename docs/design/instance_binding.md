@@ -72,8 +72,6 @@ After every bbox-affecting transform has been finalized, the following hold simu
 4. Going into the next transform, `data["bboxes"][:, -1] == arange(N)`.
 
 Violating (1) or (3) raises `RuntimeError` immediately from `_resync_instance_ids`.
-`strict_instance_invariant=False` instead emits a `UserWarning` and continues; new pipelines
-should keep the default, `True`.
 
 #### How the invariant is enforced (one chokepoint, three layers)
 
@@ -201,16 +199,13 @@ A.Compose(
     bbox_params=...,
     keypoint_params=...,
     instance_binding=["masks", "bboxes", "keypoints"],
-    strict_instance_invariant=True,  # default since 2.2.2
 )
 ```
 
 Valid binding targets: `"mask"`, `"masks"`, `"bboxes"`, `"keypoints"`. Minimum 2. `"mask"` and
 `"masks"` are mutually exclusive.
 
-`strict_instance_invariant=True` (default) raises `RuntimeError` from `_resync_instance_ids`
-on contract violations. Setting it to `False` downgrades the error to a `UserWarning`; use it
-only when a caller deliberately defers enforcement while updating a custom transform.
+`_resync_instance_ids` raises `RuntimeError` on contract violations.
 
 ## Preprocessing (Unpack)
 

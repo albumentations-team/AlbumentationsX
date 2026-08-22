@@ -260,8 +260,8 @@ class BaseDistortion(BaseRemapTransform):
 
 
 class ElasticTransform(BaseRemapTransform):
-    """Apply a bounded isotropic deformation from a compact control grid to synchronized raster and annotation targets
-    with one shared XY map per invocation.
+    """Apply bounded XY deformations from a compact control grid to images and annotations. Use it for
+    shape variation in segmentation and medical imaging.
 
     `displacement_range` is measured relative to the shorter span between the first and last
     pixel centers. The sampled control vectors use pixel units after scaling, and the dense pull
@@ -294,11 +294,35 @@ class ElasticTransform(BaseRemapTransform):
         shape. Applied configuration fixes the realized magnitude but samples a new grid.
 
     Examples:
+        >>> import numpy as np
         >>> import albumentations as A
-        >>> transform = A.Compose([
-        ...     A.ElasticTransform(p=1.0),
-        ... ])
-        >>> result = transform(image=image)
+        >>> image = np.zeros((100, 100, 3), dtype=np.uint8)
+        >>> mask = np.zeros((100, 100), dtype=np.uint8)
+        >>> bboxes = np.array([[10, 10, 50, 50]], dtype=np.float32)
+        >>> bbox_labels = [1]
+        >>> keypoints = np.array([[20, 30]], dtype=np.float32)
+        >>> keypoint_labels = [0]
+        >>> transform = A.Compose(
+        ...     [A.ElasticTransform(displacement_range=(0.02, 0.05), control_grid_shape=(5, 5), p=1.0)],
+        ...     bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        ...     keypoint_params=A.KeypointParams(
+        ...         coord_format="xy", label_fields=["keypoint_labels"], label_mapping={}
+        ...     ),
+        ... )
+        >>> transformed = transform(
+        ...     image=image,
+        ...     mask=mask,
+        ...     bboxes=bboxes,
+        ...     bbox_labels=bbox_labels,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels,
+        ... )
+        >>> transformed_image = transformed["image"]
+        >>> transformed_mask = transformed["mask"]
+        >>> transformed_bboxes = transformed["bboxes"]
+        >>> transformed_bbox_labels = transformed["bbox_labels"]
+        >>> transformed_keypoints = transformed["keypoints"]
+        >>> transformed_keypoint_labels = transformed["keypoint_labels"]
 
     """
 

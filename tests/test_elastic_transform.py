@@ -1,6 +1,7 @@
 """Focused contracts for the greenfield bounded ElasticTransform."""
 
 import json
+from typing import Any
 
 import cv2
 import numpy as np
@@ -8,6 +9,11 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
+
+
+class _LabelMappingElasticTransform(A.ElasticTransform):
+    def _get_label_transform_name(self, **params: Any) -> str:
+        return "HorizontalFlip"
 
 
 def _image(height: int = 32, width: int = 40, channels: int = 3) -> np.ndarray:
@@ -232,3 +238,41 @@ def test_zero_range_is_exact_identity() -> None:
 
     np.testing.assert_array_equal(result["image"], image)
     np.testing.assert_array_equal(result["mask"], mask)
+
+
+def test_zero_range_applies_active_label_mappings() -> None:
+    image = _image()
+    mask = np.resize(np.array([[2, 0, 3], [3, 2, 0]], dtype=np.uint8), image.shape[:2])
+    expected_mask = mask.copy()
+    expected_mask[mask == 2] = 3
+    expected_mask[mask == 3] = 2
+    keypoints = np.array([[5.0, 15.0], [10.0, 20.0]], dtype=np.float32)
+    pipeline = A.Compose(
+        [_LabelMappingElasticTransform(displacement_range=(0.0, 0.0), p=1.0)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xy",
+            label_fields=["keypoint_labels"],
+            label_mapping={
+                "HorizontalFlip": {
+                    "keypoint_labels": {
+                        "left_eye": "right_eye",
+                        "right_eye": "left_eye",
+                    },
+                },
+            },
+        ),
+        semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
+        seed=137,
+    )
+
+    result = pipeline(
+        image=image,
+        mask=mask,
+        keypoints=keypoints,
+        keypoint_labels=["left_eye", "right_eye"],
+    )
+
+    np.testing.assert_array_equal(result["image"], image)
+    np.testing.assert_array_equal(result["mask"], expected_mask)
+    np.testing.assert_array_equal(result["keypoints"], keypoints[::-1])
+    assert result["keypoint_labels"] == ["right_eye", "left_eye"]

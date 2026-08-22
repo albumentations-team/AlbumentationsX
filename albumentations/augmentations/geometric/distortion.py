@@ -405,6 +405,21 @@ class ElasticTransform(BaseRemapTransform):
             "control_coefficients": control_coefficients.tolist(),
         }
 
+    def _apply_label_mappings_without_geometry(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Preserve every target while applying configured keypoint and semantic-mask
+        label mappings for an exact identity deformation.
+        """
+        result = dict(data)
+        if "keypoints" in result and result["keypoints"] is not None:
+            result["keypoints"] = self._apply_label_mapping_to_keypoints(result["keypoints"], **params)
+        if self._semantic_mask_label_mappings:
+            result = self._apply_label_mapping_to_semantic_masks(result, **params)
+        return result
+
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Build one dense map for the invocation and reject replay on another spatial shape before dispatching all
         synchronized targets with exact map sharing.
@@ -418,7 +433,7 @@ class ElasticTransform(BaseRemapTransform):
                     f"got {tuple(current_shape[:2])}",
                 )
         if not params["control_coefficients"]:
-            return dict(kwargs)
+            return self._apply_label_mappings_without_geometry(params, kwargs)
 
         runtime_params = dict(params)
         control_coefficients = np.asarray(params["control_coefficients"], dtype=np.float32)

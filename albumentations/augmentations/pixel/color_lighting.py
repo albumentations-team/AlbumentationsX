@@ -621,12 +621,7 @@ class Illumination(ImageOnlyTransform):
         )
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        if self.mode == "linear":
-            return fpixel.apply_linear_illumination_batch(images, **params)
-
-        height, width = images.shape[1], images.shape[2]
-        gradient = fpixel.create_illumination_gradient(height, width, self.mode, params)[..., np.newaxis]
-        return self._apply_to_batch_same_shape(images, lambda image: albucore.multiply_by_array(image, gradient))
+        return fpixel.apply_illumination_batch(images, self.mode, **params)
 
 
 class Vignetting(ImageOnlyTransform):

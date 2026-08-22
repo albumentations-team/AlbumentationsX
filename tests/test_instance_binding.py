@@ -3007,15 +3007,3 @@ class TestStructuralInvariantContract:
 
         with pytest.raises(RuntimeError, match=r"packed mask instance count=1 != len\(bboxes\)=2"):
             aug(image=image, instances=instances)
-
-    def test_legacy_mode_warns_instead_of_raising(self) -> None:
-        image, instances = self._instances()
-        aug = A.Compose(
-            [_MaskRowDroppingDualTransform(p=1.0)],
-            bbox_params=A.BboxParams(coord_format="pascal_voc"),
-            instance_binding=["masks", "bboxes"],
-            seed=0,
-            strict_instance_invariant=False,
-        )
-        with pytest.warns(UserWarning, match="Instance-binding invariant violated"), pytest.raises(IndexError):
-            aug(image=image, instances=instances)

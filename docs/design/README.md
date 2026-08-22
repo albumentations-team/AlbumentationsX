@@ -68,9 +68,9 @@ shared CPU-only runtime profile explicitly.
 
 ### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
 
-Plan for making Torch a soft-required runtime dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
-the existing `Compose`. The route planner may cross the representation boundary in either direction when the complete
-measured path does not regress.
+Plan for routing compatible NumPy/OpenCV/NumKong and Torch segments through the existing `Compose`. Torch is already
+an externally managed, soft-required runtime dependency. The route planner may cross the representation boundary in
+either direction when the complete measured path does not regress.
 
 **Status**: In progress. The CPU Tensor boundary is implemented; capability routing and per-family Tensor paths remain
 planned.

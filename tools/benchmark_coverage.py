@@ -35,6 +35,7 @@ from benchmarks.common import (  # noqa: E402
     VOLUME_SIZES,
 )
 from benchmarks.test_batch_matrix import (  # noqa: E402
+    ILLUMINATION_DIRECT_CASES,
     IMAGE_BATCH_CASES,
     IMAGE_BATCH_TRANSFORMS,
     MASK_BATCH_CASES,
@@ -246,6 +247,9 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "d4": "D4",
     "gauss_noise": "GaussNoise",
     "horizontal_flip": "HorizontalFlip",
+    "illumination_corner": "Illumination",
+    "illumination_gaussian": "Illumination",
+    "illumination_linear": "Illumination",
     **{name: "MedianBlur" for name, _ in MEDIAN_BLUR_CASES},
     "normalize": "Normalize",
     "random_brightness_contrast": "RandomBrightnessContrast",
@@ -400,6 +404,7 @@ MEMORY_CASES_BY_TRANSFORM = {
 ASV_BENCHMARKS = {
     "annotation_scaling": "benchmarks.test_family_matrix.TimeAnnotationTargets.time_transform",
     "batch_image": "benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform",
+    "batch_illumination_direct": "benchmarks.test_batch_matrix.TimeIlluminationDirectBatchMatrix.time_apply_to_images",
     "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
     "batch_random_tone_curve_direct_image": (
         "benchmarks.test_batch_matrix.TimeRandomToneCurveDirectImageBatchMatrix.time_apply_to_images"
@@ -1103,6 +1108,13 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         cases,
         benchmark=ASV_BENCHMARKS["batch_mask"],
         case_ids=MASK_BATCH_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_illumination_direct"],
+        case_ids=ILLUMINATION_DIRECT_CASES,
         layer="batch_matrix",
         name_map=BATCH_ALIAS_TO_TRANSFORM,
     )

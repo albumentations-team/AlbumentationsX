@@ -26,7 +26,7 @@ extends the method only with policy it owns.
 
 | Group | Fields |
 |---|---|
-| Target processing | `bbox_params`, `keypoint_params`, `additional_targets`, `semantic_mask_label_mappings`, `instance_binding`, `strict_instance_invariant` |
+| Target processing | `bbox_params`, `keypoint_params`, `additional_targets`, `semantic_mask_label_mappings`, `instance_binding` |
 | Validation and output | `is_check_shapes`, `strict`, `save_applied_params` |
 | Random and pixel policy | `p`, `seed`, `mask_interpolation` |
 | Operational policy | `telemetry` |

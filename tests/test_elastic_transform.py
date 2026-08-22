@@ -240,6 +240,16 @@ def test_keypoint_inverse_rejects_nonfinite_coordinates_without_index_errors() -
     np.testing.assert_array_equal(transformed[3], keypoints[3])
 
 
+def test_keypoint_inverse_marks_divergent_iterations_invalid() -> None:
+    control = np.full((4, 4, 2), np.finfo(np.float64).max)
+    keypoints = np.array([[1.0, 2.0]])
+
+    with np.errstate(all="raise"):
+        transformed = fgeometric.remap_elastic_keypoints(keypoints, control, (32, 40))
+
+    np.testing.assert_array_equal(transformed, -1.0)
+
+
 def test_zero_spatial_extent_does_not_sample_coefficients() -> None:
     transform = A.ElasticTransform(displacement_range=(0.01, 0.01), p=1.0)
 

@@ -264,12 +264,16 @@ def remap_elastic_keypoints(
     points = np.asarray(keypoints[:, :2], dtype=np.float64)
     transformed_xy = points.copy()
     finite_points = np.isfinite(points).all(axis=1)
+    active_points = finite_points.copy()
     for _ in range(96):
-        updated = points - _evaluate_spline_field(transformed_xy, control_coefficients, image_shape)
+        with np.errstate(invalid="ignore", over="ignore"):
+            updated = points - _evaluate_spline_field(transformed_xy, control_coefficients, image_shape)
+        finite_updated = np.isfinite(updated).all(axis=1)
+        active_points &= finite_updated
         if (
-            finite_points.any()
+            active_points.any()
             and np.max(
-                np.abs(updated[finite_points] - transformed_xy[finite_points]),
+                np.abs(updated[active_points] - transformed_xy[active_points]),
                 initial=0.0,
             )
             <= tolerance * 0.1
@@ -277,19 +281,23 @@ def remap_elastic_keypoints(
             transformed_xy = updated
             break
         transformed_xy = updated
+        transformed_xy[~active_points] = np.nan
+        if not active_points.any():
+            break
 
     residual = np.full(len(points), np.inf, dtype=np.float64)
-    if finite_points.any():
-        finite_transformed = transformed_xy[finite_points]
-        finite_points_values = points[finite_points]
-        residual[finite_points] = np.max(
-            np.abs(
-                finite_transformed
-                + _evaluate_spline_field(finite_transformed, control_coefficients, image_shape)
-                - finite_points_values,
-            ),
-            axis=1,
-        )
+    if active_points.any():
+        finite_transformed = transformed_xy[active_points]
+        finite_points_values = points[active_points]
+        with np.errstate(invalid="ignore", over="ignore"):
+            residual[active_points] = np.max(
+                np.abs(
+                    finite_transformed
+                    + _evaluate_spline_field(finite_transformed, control_coefficients, image_shape)
+                    - finite_points_values,
+                ),
+                axis=1,
+            )
     height, width = image_shape
     valid = np.isfinite(residual) & (residual <= tolerance)
     valid &= (

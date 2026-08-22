@@ -264,14 +264,13 @@ class ElasticTransform(BaseRemapTransform):
     shape variation in segmentation and medical imaging.
 
     `displacement_range` is measured relative to the shorter span between the first and last
-    pixel centers. The sampled control vectors use pixel units after scaling, and the dense pull
-    map is endpoint-aligned bilinear interpolation of those vectors. One map is shared by every
-    raster and annotation target in an invocation; volumes receive the same XY deformation on
-    every depth slice.
+    pixel centers. The sampled cubic B-spline coefficients use pixel units after scaling. One map
+    is shared by every raster and annotation target in an invocation; volumes receive the same XY
+    deformation on every depth slice.
 
     Args:
         displacement_range (tuple[float, float]): Range for the sampled relative displacement magnitude.
-        control_grid_shape (tuple[int, int]): Number of control rows and columns, each at least 2.
+        control_grid_shape (tuple[int, int]): Number of cubic B-spline coefficient rows and columns, each at least 4.
         interpolation (int): Interpolation used for images.
         mask_interpolation (int): Interpolation used for masks.
         border_mode (int): OpenCV border mode for raster targets.
@@ -289,9 +288,9 @@ class ElasticTransform(BaseRemapTransform):
         hbb, obb
 
     Note:
-        The constructor enforces `2 * high * sqrt((rows - 1)^2 + (columns - 1)^2) < 1`.
-        `ReplayCompose` stores the compact sampled grid and replays it for the same spatial
-        shape. Applied configuration fixes the realized magnitude but samples a new grid.
+        The constructor enforces `2 * high * sqrt((rows - 3)^2 + (columns - 3)^2) < 0.75`.
+        `ReplayCompose` stores the compact sampled coefficient lattice and replays it for the same
+        spatial shape. Applied configuration fixes the realized magnitude but samples a new lattice.
 
     Examples:
         >>> import numpy as np
@@ -303,7 +302,7 @@ class ElasticTransform(BaseRemapTransform):
         >>> keypoints = np.array([[20, 30]], dtype=np.float32)
         >>> keypoint_labels = [0]
         >>> transform = A.Compose(
-        ...     [A.ElasticTransform(displacement_range=(0.02, 0.05), control_grid_shape=(5, 5), p=1.0)],
+        ...     [A.ElasticTransform(displacement_range=(0.02, 0.05), control_grid_shape=(7, 7), p=1.0)],
         ...     bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
         ...     keypoint_params=A.KeypointParams(
         ...         coord_format="xy", label_fields=["keypoint_labels"], label_mapping={}
@@ -337,26 +336,26 @@ class ElasticTransform(BaseRemapTransform):
         @field_validator("control_grid_shape")
         @classmethod
         def _validate_control_grid_shape(cls, value: tuple[int, int]) -> tuple[int, int]:
-            if len(value) != 2 or min(value) < 2:
-                raise ValueError("control_grid_shape must contain two dimensions, each at least 2")
+            if len(value) != 2 or min(value) < 4:
+                raise ValueError("control_grid_shape must contain two dimensions, each at least 4")
             return value
 
         @model_validator(mode="after")
         def _validate_topology_bound(self) -> Self:
             rows, columns = self.control_grid_shape
             high = self.displacement_range[1]
-            bound = 2 * high * float(np.sqrt((rows - 1) ** 2 + (columns - 1) ** 2))
-            if bound >= 1:
+            bound = 2 * high * float(np.sqrt((rows - 3) ** 2 + (columns - 3) ** 2))
+            if bound >= 0.75:
                 raise ValueError(
                     "displacement_range and control_grid_shape violate the strict topology bound: "
-                    "2 * high * sqrt((rows - 1)^2 + (columns - 1)^2) must be less than 1",
+                    "2 * high * sqrt((rows - 3)^2 + (columns - 3)^2) must be less than 0.75",
                 )
             return self
 
     def __init__(
         self,
         displacement_range: tuple[float, float] = (0.02, 0.05),
-        control_grid_shape: tuple[int, int] = (5, 5),
+        control_grid_shape: tuple[int, int] = (7, 7),
         interpolation: InterpolationType = CV2_INTER_LINEAR,
         mask_interpolation: InterpolationType = CV2_INTER_NEAREST,
         border_mode: BorderModeType = CV2_BORDER_CONSTANT,
@@ -391,19 +390,19 @@ class ElasticTransform(BaseRemapTransform):
         if magnitude == 0 or min(height - 1, width - 1) == 0:
             return {
                 "displacement_magnitude": magnitude,
-                "control_vectors": [],
+                "control_coefficients": [],
             }
 
         random_values = sampling.random_generator.random((*self.control_grid_shape, 2), dtype=np.float32)
         radius = np.float32(magnitude * min(height - 1, width - 1))
         vector_radius = radius * np.sqrt(random_values[..., 0])
         angle = np.float32(2 * np.pi) * random_values[..., 1]
-        control_vectors = np.empty((*self.control_grid_shape, 2), dtype=np.float32)
-        control_vectors[..., 0] = vector_radius * np.cos(angle)
-        control_vectors[..., 1] = vector_radius * np.sin(angle)
+        control_coefficients = np.empty((*self.control_grid_shape, 2), dtype=np.float32)
+        control_coefficients[..., 0] = vector_radius * np.cos(angle)
+        control_coefficients[..., 1] = vector_radius * np.sin(angle)
         return {
             "displacement_magnitude": magnitude,
-            "control_vectors": control_vectors.tolist(),
+            "control_coefficients": control_coefficients.tolist(),
         }
 
     def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -418,14 +417,14 @@ class ElasticTransform(BaseRemapTransform):
                     f"ElasticTransform replay requires the same spatial shape {recorded_shape}, "
                     f"got {tuple(current_shape[:2])}",
                 )
-        if not params["control_vectors"]:
+        if not params["control_coefficients"]:
             return dict(kwargs)
 
         runtime_params = dict(params)
-        control_vectors = np.asarray(params["control_vectors"], dtype=np.float32)
-        runtime_params["control_vectors"] = control_vectors
+        control_coefficients = np.asarray(params["control_coefficients"], dtype=np.float32)
+        runtime_params["control_coefficients"] = control_coefficients
         runtime_params["map_x"], runtime_params["map_y"] = fgeometric.create_elastic_maps(
-            control_vectors,
+            control_coefficients,
             recorded_shape,
         )
         return super().apply_with_params(runtime_params, *args, **kwargs)
@@ -433,12 +432,12 @@ class ElasticTransform(BaseRemapTransform):
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
-        control_vectors: np.ndarray,
+        control_coefficients: np.ndarray,
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.remap_elastic_keypoints(
             keypoints,
-            control_vectors,
+            control_coefficients,
             params["shape"][:2],
         )
 

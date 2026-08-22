@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import NamedTuple, cast
+from typing import cast
 
 from albucore import pairwise_distances_squared
 
@@ -10,17 +10,6 @@ from ._functional_shared import (
     cv2,
     np,
 )
-
-
-class _ElasticCellCoefficients(NamedTuple):
-    origin: np.ndarray
-    horizontal_basis: np.ndarray
-    vertical_basis: np.ndarray
-    bilinear_twist: np.ndarray
-    x_origins: np.ndarray
-    y_origins: np.ndarray
-    widths: np.ndarray
-    heights: np.ndarray
 
 
 def generate_inverse_distortion_map(
@@ -128,51 +117,129 @@ def upscale_distortion_maps(
 
 
 def expand_control_grid(
-    control_vectors: np.ndarray,
+    control_coefficients: np.ndarray,
     output_shape: tuple[int, int],
 ) -> np.ndarray:
-    """Expand endpoint-aligned control vectors into a dense component-first bilinear field with exact anchors across
-    the output shape.
+    """Expand cubic B-spline vector coefficients into a dense component-first displacement field for one image shape
+    without a smoothing pass.
 
     Args:
-        control_vectors (np.ndarray): Control vectors with shape `(rows, columns, 2)`.
+        control_coefficients (np.ndarray): Coefficients with shape `(rows, columns, 2)`.
         output_shape (tuple[int, int]): Dense output shape as `(height, width)`.
 
     Returns:
         np.ndarray: Component-first float32 displacement field with shape `(2, height, width)`.
 
     """
-    control = np.asarray(control_vectors, dtype=np.float32)
-    if control.ndim != 3 or control.shape[-1] != 2 or min(control.shape[:2]) < 2:
-        raise ValueError("control_vectors must have shape (rows >= 2, columns >= 2, 2)")
-    rows, columns, _ = control.shape
+    control = np.asarray(control_coefficients, dtype=np.float32)
+    if control.ndim != 3 or control.shape[-1] != 2 or min(control.shape[:2]) < 4:
+        raise ValueError("control_coefficients must have shape (rows >= 4, columns >= 4, 2)")
 
     height, width = output_shape
-    x = np.linspace(0, columns - 1, width, dtype=np.float32)
-    x0 = np.floor(x).astype(np.intp)
-    x1 = np.minimum(x0 + 1, columns - 1)
-    x_weight = x - x0.astype(np.float32)
-    horizontal = control[:, x0, :] * (1.0 - x_weight)[None, :, None]
-    horizontal += control[:, x1, :] * x_weight[None, :, None]
+    row_indices, row_weights = _spline_axis_parameters(height, control.shape[0])
+    column_indices, column_weights = _spline_axis_parameters(width, control.shape[1])
+    row_basis = np.zeros((height, control.shape[0]), dtype=np.float32)
+    column_basis = np.zeros((width, control.shape[1]), dtype=np.float32)
+    row_basis[np.arange(height)[:, None], row_indices] = row_weights
+    column_basis[np.arange(width)[:, None], column_indices] = column_weights
+    return np.einsum(
+        "hr,rcd,wc->dhw",
+        row_basis,
+        control,
+        column_basis,
+        optimize=True,
+    )
 
-    y = np.linspace(0, rows - 1, height, dtype=np.float32)
-    y0 = np.floor(y).astype(np.intp)
-    y1 = np.minimum(y0 + 1, rows - 1)
-    y_weight = y - y0.astype(np.float32)
-    dense = horizontal[y0, :, :] * (1.0 - y_weight)[:, None, None]
-    dense += horizontal[y1, :, :] * y_weight[:, None, None]
-    return np.moveaxis(dense, -1, 0)
+
+def _spline_axis_parameters(
+    output_length: int,
+    coefficient_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    spans = coefficient_count - 3
+    if output_length <= 1:
+        coordinates = np.zeros(output_length, dtype=np.float32)
+    else:
+        coordinates = np.arange(output_length, dtype=np.float32)
+        np.multiply(coordinates, np.float32(spans / (output_length - 1)), out=coordinates)
+    base = np.floor(coordinates).astype(np.intp)
+    base = np.clip(base, 0, spans - 1)
+    t = coordinates - base.astype(np.float32)
+    weights = _cubic_spline_weights(t)
+    indices = base[:, None] + np.arange(4, dtype=np.intp)[None, :]
+    return indices, weights
+
+
+def _spline_parameters_for_coordinates(
+    coordinates: np.ndarray,
+    image_length: int,
+    coefficient_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    spans = coefficient_count - 3
+    if image_length <= 1:
+        normalized = np.zeros_like(coordinates, dtype=np.float64)
+    else:
+        normalized = coordinates * (spans / (image_length - 1))
+    base = np.floor(normalized).astype(np.intp)
+    t = normalized - base
+    weights = _cubic_spline_weights(t)
+    indices = base[..., None] + np.arange(4, dtype=np.intp)
+    valid = (indices >= 0) & (indices < coefficient_count)
+    return np.clip(indices, 0, coefficient_count - 1), weights * valid
+
+
+def _cubic_spline_weights(t: np.ndarray) -> np.ndarray:
+    one_minus_t = 1.0 - t
+    t_squared = t * t
+    t_cubed = t_squared * t
+    return np.stack(
+        (
+            one_minus_t * one_minus_t * one_minus_t / 6.0,
+            (3.0 * t_cubed - 6.0 * t_squared + 4.0) / 6.0,
+            (-3.0 * t_cubed + 3.0 * t_squared + 3.0 * t + 1.0) / 6.0,
+            t_cubed / 6.0,
+        ),
+        axis=-1,
+    )
+
+
+def _evaluate_spline_field(
+    points: np.ndarray,
+    control_coefficients: np.ndarray,
+    image_shape: tuple[int, int],
+) -> np.ndarray:
+    points64 = np.asarray(points, dtype=np.float64)
+    height, width = image_shape
+    control = np.asarray(control_coefficients, dtype=np.float64)
+    row_indices, row_weights = _spline_parameters_for_coordinates(
+        points64[:, 1],
+        height,
+        control.shape[0],
+    )
+    column_indices, column_weights = _spline_parameters_for_coordinates(
+        points64[:, 0],
+        width,
+        control.shape[1],
+    )
+    result = np.zeros((len(points64), 2), dtype=np.float64)
+    for row_tap in range(4):
+        for column_tap in range(4):
+            result += (
+                control[row_indices[:, row_tap], column_indices[:, column_tap]]
+                * row_weights[:, row_tap, None]
+                * column_weights[:, column_tap, None]
+            )
+    return result
 
 
 def create_elastic_maps(
-    control_vectors: np.ndarray,
+    control_coefficients: np.ndarray,
     image_shape: tuple[int, int],
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Create float32 target-to-source maps from an endpoint-aligned control grid for synchronized raster
-    remapping in one run.
+    """Create float32 target-to-source coordinate maps from cubic B-spline coefficients for synchronized raster and
+    annotation remapping.
     """
     height, width = image_shape
-    displacement = expand_control_grid(control_vectors, image_shape)
+    displacement = expand_control_grid(control_coefficients, image_shape)
     map_x = displacement[0]
     map_y = displacement[1]
     map_x += np.arange(width, dtype=np.float32)
@@ -180,140 +247,40 @@ def create_elastic_maps(
     return map_x, map_y
 
 
-def _cross2d(first: np.ndarray, second: np.ndarray) -> np.ndarray:
-    return first[..., 0] * second[..., 1] - first[..., 1] * second[..., 0]
-
-
-def _elastic_cell_coefficients(
-    control_vectors: np.ndarray,
-    image_shape: tuple[int, int],
-) -> _ElasticCellCoefficients:
-    control = np.asarray(control_vectors, dtype=np.float64)
-    rows, columns, _ = control.shape
-    height, width = image_shape
-    x_anchors = np.linspace(0.0, width - 1.0, columns, dtype=np.float64)
-    y_anchors = np.linspace(0.0, height - 1.0, rows, dtype=np.float64)
-    cell_widths = np.diff(x_anchors)
-    cell_heights = np.diff(y_anchors)
-
-    top_left = control[:-1, :-1]
-    top_right = control[:-1, 1:]
-    bottom_left = control[1:, :-1]
-    bottom_right = control[1:, 1:]
-    grid_shape = (rows - 1, columns - 1)
-    x_origins = np.broadcast_to(x_anchors[:-1], grid_shape)
-    y_origins = np.broadcast_to(y_anchors[:-1, None], grid_shape)
-    origin = np.stack([x_origins, y_origins], axis=-1) + top_left
-    horizontal_basis = top_right - top_left
-    horizontal_basis[..., 0] += cell_widths[None, :]
-    vertical_basis = bottom_left - top_left
-    vertical_basis[..., 1] += cell_heights[:, None]
-    bilinear_twist = bottom_right - top_right - bottom_left + top_left
-
-    return _ElasticCellCoefficients(
-        origin=origin.reshape(-1, 2),
-        horizontal_basis=horizontal_basis.reshape(-1, 2),
-        vertical_basis=vertical_basis.reshape(-1, 2),
-        bilinear_twist=bilinear_twist.reshape(-1, 2),
-        x_origins=x_origins.reshape(-1),
-        y_origins=y_origins.reshape(-1),
-        widths=np.broadcast_to(cell_widths, grid_shape).reshape(-1),
-        heights=np.broadcast_to(cell_heights[:, None], grid_shape).reshape(-1),
-    )
-
-
-def _solve_elastic_cells(
-    points: np.ndarray,
-    coefficients: _ElasticCellCoefficients,
-    tolerance: float,
-) -> np.ndarray:
-    origin = coefficients.origin
-    horizontal_basis = coefficients.horizontal_basis
-    vertical_basis = coefficients.vertical_basis
-    bilinear_twist = coefficients.bilinear_twist
-    points64 = np.asarray(points, dtype=np.float64)
-    residual_points = points64[:, None, :] - origin[None, :, :]
-    quadratic_a = -_cross2d(horizontal_basis, bilinear_twist)[None, :]
-    quadratic_b = (
-        _cross2d(residual_points, bilinear_twist[None, :, :])
-        - _cross2d(
-            horizontal_basis,
-            vertical_basis,
-        )[None, :]
-    )
-    quadratic_c = _cross2d(residual_points, vertical_basis[None, :, :])
-
-    with np.errstate(invalid="ignore", divide="ignore"):
-        discriminant = quadratic_b * quadratic_b - 4.0 * quadratic_a * quadratic_c
-        sqrt_discriminant = np.sqrt(np.maximum(discriminant, 0.0))
-        horizontal_fractions = np.stack(
-            [
-                (-quadratic_b + sqrt_discriminant) / (2.0 * quadratic_a),
-                (-quadratic_b - sqrt_discriminant) / (2.0 * quadratic_a),
-            ],
-            axis=-1,
-        )
-        linear_fraction = -quadratic_c / quadratic_b
-    linear = np.abs(quadratic_a) <= 1e-12
-    horizontal_fractions = np.where(linear[..., None], linear_fraction[..., None], horizontal_fractions)
-    horizontal_fractions[..., 1] = np.where(linear, np.nan, horizontal_fractions[..., 1])
-    horizontal_fractions = np.where(discriminant[..., None] >= -1e-10, horizontal_fractions, np.nan)
-
-    vertical_numerator = (
-        points64[:, None, None, :]
-        - origin[None, :, None, :]
-        - horizontal_basis[None, :, None, :] * horizontal_fractions[..., None]
-    )
-    vertical_denominator = vertical_basis[None, :, None, :] + (
-        bilinear_twist[None, :, None, :] * horizontal_fractions[..., None]
-    )
-    denominator_x = np.where(np.abs(vertical_denominator[..., 0]) > 1e-12, vertical_denominator[..., 0], 1.0)
-    denominator_y = np.where(np.abs(vertical_denominator[..., 1]) > 1e-12, vertical_denominator[..., 1], 1.0)
-    use_x = np.abs(vertical_denominator[..., 0]) >= np.abs(vertical_denominator[..., 1])
-    vertical_fractions = np.where(
-        use_x,
-        vertical_numerator[..., 0] / denominator_x,
-        vertical_numerator[..., 1] / denominator_y,
-    )
-
-    valid = np.isfinite(horizontal_fractions) & np.isfinite(vertical_fractions)
-    valid &= (horizontal_fractions >= -1e-7) & (horizontal_fractions <= 1.0 + 1e-7)
-    valid &= (vertical_fractions >= -1e-7) & (vertical_fractions <= 1.0 + 1e-7)
-    forward = (
-        origin[None, :, None, :]
-        + horizontal_basis[None, :, None, :] * horizontal_fractions[..., None]
-        + vertical_basis[None, :, None, :] * vertical_fractions[..., None]
-        + bilinear_twist[None, :, None, :] * horizontal_fractions[..., None] * vertical_fractions[..., None]
-    )
-    residual = np.max(np.abs(forward - points64[:, None, None, :]), axis=-1)
-    valid &= residual <= tolerance
-
-    output_x = coefficients.x_origins[None, :, None] + horizontal_fractions * coefficients.widths[None, :, None]
-    output_y = coefficients.y_origins[None, :, None] + vertical_fractions * coefficients.heights[None, :, None]
-    candidates = np.stack([output_x, output_y], axis=-1)
-    candidate_residuals = np.where(valid, residual, np.inf).reshape(len(points64), -1)
-    candidate_indices = np.argmin(candidate_residuals, axis=1)
-    best_residuals = candidate_residuals[np.arange(len(points64)), candidate_indices]
-    best_candidates = candidates.reshape(len(points64), -1, 2)[np.arange(len(points64)), candidate_indices]
-    best_candidates[~np.isfinite(best_residuals)] = -1.0
-    return best_candidates
-
-
 def remap_elastic_keypoints(
     keypoints: np.ndarray,
-    control_vectors: np.ndarray,
+    control_coefficients: np.ndarray,
     image_shape: tuple[int, int],
     tolerance: float = 1e-3,
 ) -> np.ndarray:
-    """Invert an injective bilinear control-grid map analytically for keypoints with strict residual
-    validation for each candidate.
+    """Invert an injective cubic B-spline pull map with a certificate-bounded contraction iteration and a strict forward
+    residual check.
     """
     if keypoints.size == 0:
         return keypoints.copy()
-    coefficients = _elastic_cell_coefficients(control_vectors, image_shape)
-    transformed_xy = _solve_elastic_cells(keypoints[:, :2], coefficients, tolerance)
+    points = np.asarray(keypoints[:, :2], dtype=np.float64)
+    transformed_xy = points.copy()
+    for _ in range(96):
+        updated = points - _evaluate_spline_field(transformed_xy, control_coefficients, image_shape)
+        if np.max(np.abs(updated - transformed_xy), initial=0.0) <= tolerance * 0.1:
+            transformed_xy = updated
+            break
+        transformed_xy = updated
+
+    residual = np.max(
+        np.abs(transformed_xy + _evaluate_spline_field(transformed_xy, control_coefficients, image_shape) - points),
+        axis=1,
+    )
+    height, width = image_shape
+    valid = np.isfinite(residual) & (residual <= tolerance)
+    valid &= (
+        (transformed_xy[:, 0] >= -tolerance)
+        & (transformed_xy[:, 0] <= width - 1 + tolerance)
+        & (transformed_xy[:, 1] >= -tolerance)
+        & (transformed_xy[:, 1] <= height - 1 + tolerance)
+    )
     result = keypoints.copy()
-    result[:, :2] = transformed_xy.astype(result.dtype, copy=False)
+    result[:, :2] = np.where(valid[:, None], transformed_xy, -1.0).astype(result.dtype, copy=False)
     return result
 
 

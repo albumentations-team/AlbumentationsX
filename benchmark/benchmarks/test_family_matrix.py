@@ -62,7 +62,7 @@ GEOMETRY_TRANSFORMS: Mapping[str, Factory] = {
     "perspective": lambda: albumentations.Perspective(scale=(0.05, 0.05), p=1.0),
     "elastic": lambda: albumentations.ElasticTransform(
         displacement_range=(0.02, 0.02),
-        control_grid_shape=(5, 5),
+        control_grid_shape=(7, 7),
         p=1.0,
     ),
     "grid_distortion": lambda: albumentations.GridDistortion(distort_range=(0.1, 0.1), p=1.0),

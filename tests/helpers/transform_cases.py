@@ -839,7 +839,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         A.ElasticTransform,
         {
             "displacement_range": (0.01, 0.04),
-            "control_grid_shape": (3, 6),
+            "control_grid_shape": (4, 6),
             "mask_interpolation": cv2.INTER_LINEAR,
             "border_mode": cv2.BORDER_REFLECT,
             "fill": 7,

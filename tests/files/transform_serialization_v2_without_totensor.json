@@ -59,7 +59,7 @@
                 "__class_fullname__": "ElasticTransform",
                 "p": 0.5,
                 "displacement_range": [0.02, 0.05],
-                "control_grid_shape": [5, 5],
+                "control_grid_shape": [7, 7],
                 "interpolation": 1,
                 "mask_interpolation": 0,
                 "border_mode": 0,

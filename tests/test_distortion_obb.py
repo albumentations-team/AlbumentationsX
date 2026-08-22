@@ -9,7 +9,7 @@ import albumentations as A
 @pytest.mark.parametrize(
     "transform_cls,params",
     [
-        pytest.param(A.ElasticTransform, {"alpha": 1, "sigma": 50}, id="ElasticTransform"),
+        pytest.param(A.ElasticTransform, {"displacement_range": (0.02, 0.05)}, id="ElasticTransform"),
         pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.3, 0.3)}, id="GridDistortion"),
         pytest.param(A.OpticalDistortion, {"distort_range": (-0.05, 0.05)}, id="OpticalDistortion"),
         pytest.param(A.PiecewiseAffine, {"scale_range": (0.03, 0.05)}, id="PiecewiseAffine"),
@@ -30,7 +30,7 @@ def test_distortion_transforms_declare_obb_support(transform_cls, params):
 @pytest.mark.parametrize(
     "transform_cls,params",
     [
-        pytest.param(A.ElasticTransform, {"alpha": 1, "sigma": 50}, id="ElasticTransform"),
+        pytest.param(A.ElasticTransform, {"displacement_range": (0.02, 0.05)}, id="ElasticTransform"),
         pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.3, 0.3)}, id="GridDistortion"),
         pytest.param(A.OpticalDistortion, {"distort_range": (-0.05, 0.05)}, id="OpticalDistortion"),
         pytest.param(A.PiecewiseAffine, {"scale_range": (0.03, 0.05)}, id="PiecewiseAffine"),
@@ -70,7 +70,7 @@ def test_distortion_transforms_preserve_obb_format(transform_cls, params):
 @pytest.mark.parametrize(
     "transform_cls,params",
     [
-        pytest.param(A.ElasticTransform, {"alpha": 1, "sigma": 50}, id="ElasticTransform"),
+        pytest.param(A.ElasticTransform, {"displacement_range": (0.02, 0.05)}, id="ElasticTransform"),
         pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.3, 0.3)}, id="GridDistortion"),
     ],
 )
@@ -107,7 +107,7 @@ def test_distortion_transforms_obb_with_labels(transform_cls, params):
     [
         pytest.param(
             A.ElasticTransform,
-            {"alpha": 1, "sigma": 50},
+            {"displacement_range": (0.02, 0.05)},
             "albumentations",
             [0.3, 0.3, 0.7, 0.7, 45],
             id="ElasticTransform-albumentations",

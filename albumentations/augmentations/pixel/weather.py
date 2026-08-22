@@ -1111,6 +1111,15 @@ class RandomShadow(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.add_shadow(img, vertices_list, intensities)
 
+    def apply_to_images(
+        self,
+        images: ImageType,
+        vertices_list: list[np.ndarray],
+        intensities: np.ndarray,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.add_shadow_batch(images, vertices_list, intensities)
+
     def sample_parameters(
         self,
         params: dict[str, Any],

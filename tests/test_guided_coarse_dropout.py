@@ -27,6 +27,7 @@ import albumentations as A
 # Fixtures
 # ===========================================================================
 
+
 @pytest.fixture
 def image_100():
     """100x100 RGB image."""
@@ -50,6 +51,7 @@ def partial_guidance_100():
 # ===========================================================================
 # 1.  Basic functionality
 # ===========================================================================
+
 
 class TestBasicDropout:
     """Verify that dropout modifies pixels only inside the guidance mask."""
@@ -93,6 +95,7 @@ class TestBasicDropout:
 # ===========================================================================
 # 2.  Strict protection guarantees
 # ===========================================================================
+
 
 class TestProtection:
     """dropout_mask ∩ protected_mask = ∅"""
@@ -169,6 +172,7 @@ class TestProtection:
 # ===========================================================================
 # 3.  No-op cases
 # ===========================================================================
+
 
 class TestNoOps:
     """All no-op scenarios must return the image unchanged."""
@@ -262,6 +266,7 @@ class TestNoOps:
 # 4.  Label filtering
 # ===========================================================================
 
+
 class TestLabelFiltering:
     """String and numeric label filtering via the label encoder."""
 
@@ -334,6 +339,7 @@ class TestLabelFiltering:
 # 5.  Fill modes
 # ===========================================================================
 
+
 class TestFillModes:
     """Verify different fill types don't crash and produce expected behavior."""
 
@@ -358,6 +364,7 @@ class TestFillModes:
 # ===========================================================================
 # 6.  Deterministic seeding
 # ===========================================================================
+
 
 class TestDeterminism:
     """Same seed → same result."""
@@ -387,6 +394,7 @@ class TestDeterminism:
 # ===========================================================================
 # 7.  Mask target handling
 # ===========================================================================
+
 
 class TestMaskTarget:
     """fill_mask behaviour."""
@@ -433,6 +441,7 @@ class TestMaskTarget:
 # 8.  Guidance mask left unchanged
 # ===========================================================================
 
+
 class TestGuidancePreservation:
     """The guidance mask in user_data should not be modified."""
 
@@ -455,6 +464,7 @@ class TestGuidancePreservation:
 # 9.  Guidance mask validation
 # ===========================================================================
 
+
 class TestGuidanceValidation:
     """Validate shape and dimensionality checks on the guidance mask."""
 
@@ -473,7 +483,10 @@ class TestGuidanceValidation:
     def test_3d_with_channel_1_is_squeezed(self, image_100):
         mask_3d = np.ones((100, 100, 1), dtype=np.uint8)
         transform = A.GuidedCoarseDropout(
-            region_key="sal", num_holes_range=(3, 5), fill=0, p=1.0,
+            region_key="sal",
+            num_holes_range=(3, 5),
+            fill=0,
+            p=1.0,
         )
         result = transform(image=image_100, user_data={"sal": mask_3d})
         assert result["image"].shape == image_100.shape

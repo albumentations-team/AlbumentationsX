@@ -2,9 +2,9 @@ from .blur.transforms import *
 from .crops.transforms import *
 from .dropout.channel_dropout import *
 from .dropout.coarse_dropout import *
-from .dropout.guided_coarse_dropout import *
 from .dropout.grid_dropout import *
 from .dropout.grid_mask import *
+from .dropout.guided_coarse_dropout import *
 from .dropout.mask_dropout import *
 from .dropout.transforms import *
 from .dropout.xy_masking import *

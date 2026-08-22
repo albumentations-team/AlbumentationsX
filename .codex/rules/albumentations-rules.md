@@ -104,3 +104,4 @@ See these documents for comprehensive guidelines:
 - `docs/design/mosaic.md` - Mosaic transform technical specification
 - `docs/design/applied-config-replay-contracts.md` - Applied configuration replay contract architecture
 - `docs/design/transform-target-contracts.md` - Generated transform/target contract architecture
+- `docs/design/elastic-transform.md` - Bounded 2D ElasticTransform geometry, targets, and replay contracts

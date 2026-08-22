@@ -24,6 +24,8 @@ BATCH_SIZES = (4, 8)
 ILLUMINATION_BATCH_SIZES = (2, 4, 8, 16)
 ILLUMINATION_MODES = ("linear", "corner", "gaussian")
 ILLUMINATION_NAMES = tuple(f"illumination_{mode}" for mode in ILLUMINATION_MODES)
+RANDOM_SHADOW_BATCH_SIZES = (2, 4, 8, 16)
+RANDOM_SHADOW_SIZES = ("small", "medium", "large")
 SPATTER_BATCH_SIZES = (2, 4, 8, 16)
 SPATTER_SIZES = ("small", "medium", "large")
 RANDOM_TONE_CURVE_NAMES = ("random_tone_curve", "random_tone_curve_per_channel")
@@ -66,6 +68,11 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     },
     "normalize": BatchSpec(lambda: albumentations.Normalize(p=1.0)),
     "random_brightness_contrast": BatchSpec(lambda: albumentations.RandomBrightnessContrast(p=1.0)),
+    "random_shadow": BatchSpec(
+        lambda: albumentations.RandomShadow(num_shadows_range=(2, 2), p=1.0),
+        sizes=RANDOM_SHADOW_SIZES,
+        batch_sizes=RANDOM_SHADOW_BATCH_SIZES,
+    ),
     "random_tone_curve": BatchSpec(lambda: albumentations.RandomToneCurve(p=1.0)),
     "random_tone_curve_per_channel": BatchSpec(
         lambda: albumentations.RandomToneCurve(per_channel=True, p=1.0),
@@ -108,6 +115,14 @@ ILLUMINATION_DIRECT_CASES = tuple(
     case_id.replace("|images|", "|direct_images|", 1)
     for case_id in IMAGE_BATCH_CASES
     if case_id.startswith(tuple(f"{name}|" for name in ILLUMINATION_NAMES))
+)
+RANDOM_SHADOW_DIRECT_CASES = tuple(
+    case_id.replace("|images|", "|direct_images|", 1)
+    for case_id in IMAGE_BATCH_CASES
+    if case_id.startswith("random_shadow|")
+)
+RANDOM_SHADOW_VOLUME_CASES = tuple(
+    case_id.replace("|images|", "|volume|", 1) for case_id in IMAGE_BATCH_CASES if case_id.startswith("random_shadow|")
 )
 RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES = tuple(
     case_id.replace("|images|", "|direct_images|", 1)
@@ -189,6 +204,39 @@ class TimeSpatterDirectBatchMatrix:
         self.transform.apply_to_images(self.images, **self.params)
 
 
+class TimeRandomShadowDirectBatchMatrix:
+    """Benchmark RandomShadow's direct `apply_to_images` route over the issue #46 matrix."""
+
+    params = (RANDOM_SHADOW_DIRECT_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        _, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = albumentations.RandomShadow(num_shadows_range=(2, 2), p=1.0)
+        self.transform.set_random_seed(137)
+        self.images = _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)
+        self.transform(image=self.images[0])
+        self.params = self.transform.get_applied_params()
+
+    def time_apply_to_images(self, case_id: str) -> None:
+        self.transform.apply_to_images(self.images, **self.params)
+
+
+class TimeRandomShadowVolumeBatchMatrix:
+    """Benchmark RandomShadow's public Compose `volume` route over the issue #46 matrix."""
+
+    params = (RANDOM_SHADOW_VOLUME_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = albumentations.Compose([IMAGE_BATCH_TRANSFORMS[name].factory()], seed=137, strict=True)
+        self.data = {"volume": _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)}
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
+
+
 class TimeRandomToneCurveDirectImageBatchMatrix:
     """Benchmark RandomToneCurve's direct `apply_to_images` route for shared and per-channel curves."""
 
@@ -236,6 +284,31 @@ class PeakMemorySpatterBatchMatrix:
             self.params = self.transform.get_applied_params()
 
     def peakmem_spatter_batch_large_rgb(self, case_id: str) -> None:
+        if self.route == "compose":
+            self.compose(images=self.images)
+        else:
+            self.transform.apply_to_images(self.images, **self.params)
+
+
+class PeakMemoryRandomShadowBatchMatrix:
+    """Measure the largest RandomShadow batch working set for direct and Compose routes."""
+
+    params = (tuple(f"{route}|{dtype_name}" for route in ("direct", "compose") for dtype_name in DTYPES),)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        route, dtype_name = case_id.split("|")
+        self.route = route
+        self.images = _make_image_batch("large", 5, dtype_from_name(dtype_name), 16)
+        self.transform = albumentations.RandomShadow(num_shadows_range=(2, 2), p=1.0)
+        if route == "compose":
+            self.compose = albumentations.Compose([self.transform], seed=137, strict=True)
+        else:
+            self.transform.set_random_seed(137)
+            self.transform(image=self.images[0])
+            self.params = self.transform.get_applied_params()
+
+    def peakmem_random_shadow_batch_large_multichannel(self, case_id: str) -> None:
         if self.route == "compose":
             self.compose(images=self.images)
         else:

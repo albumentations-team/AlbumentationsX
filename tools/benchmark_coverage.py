@@ -40,6 +40,8 @@ from benchmarks.test_batch_matrix import (  # noqa: E402
     IMAGE_BATCH_TRANSFORMS,
     MASK_BATCH_CASES,
     MASK_BATCH_TRANSFORMS,
+    RANDOM_SHADOW_DIRECT_CASES,
+    RANDOM_SHADOW_VOLUME_CASES,
     RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
     SPATTER_DIRECT_CASES,
 )
@@ -253,6 +255,7 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "normalize": "Normalize",
     "random_brightness_contrast": "RandomBrightnessContrast",
     "random_rotate90": "RandomRotate90",
+    "random_shadow": "RandomShadow",
     "random_tone_curve": "RandomToneCurve",
     "random_tone_curve_per_channel": "RandomToneCurve",
     "resize": "Resize",
@@ -312,6 +315,7 @@ MEMORY_BENCHMARKS = (
     "peakmem_mosaic_small_rgb",
     "peakmem_median_blur_large_float32",
     "peakmem_normalize_large_rgb",
+    "peakmem_random_shadow_batch_large_multichannel",
     "peakmem_resize_large_rgb",
     "peakmem_spatter_batch_large_rgb",
     "peakmem_volume_affine_medium",
@@ -332,6 +336,7 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
         "Normalize",
         "PadIfNeeded3D",
         "RandomBrightnessContrast",
+        "RandomShadow",
         "Resize",
         "Resize3D",
         "Spatter",
@@ -395,6 +400,7 @@ MEMORY_CASES_BY_TRANSFORM = {
     "Normalize": ("peakmem_normalize_large_rgb",),
     "PadIfNeeded3D": ("peakmem_volume_pad_medium",),
     "RandomBrightnessContrast": ("peakmem_batch_pipeline_medium_rgb",),
+    "RandomShadow": ("peakmem_random_shadow_batch_large_multichannel",),
     "Resize": ("peakmem_resize_large_rgb",),
     "Resize3D": ("peakmem_volume_resize_medium",),
     "Spatter": ("peakmem_spatter_batch_large_rgb",),
@@ -405,6 +411,8 @@ ASV_BENCHMARKS = {
     "batch_image": "benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform",
     "batch_illumination_direct": "benchmarks.test_batch_matrix.TimeIlluminationDirectBatchMatrix.time_apply_to_images",
     "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
+    "batch_random_shadow_direct": "benchmarks.test_batch_matrix.TimeRandomShadowDirectBatchMatrix.time_apply_to_images",
+    "batch_random_shadow_volume": "benchmarks.test_batch_matrix.TimeRandomShadowVolumeBatchMatrix.time_transform",
     "batch_random_tone_curve_direct_image": (
         "benchmarks.test_batch_matrix.TimeRandomToneCurveDirectImageBatchMatrix.time_apply_to_images"
     ),
@@ -420,6 +428,7 @@ ASV_BENCHMARKS = {
     "family_matrix_geometry": "benchmarks.test_family_matrix.TimeGeometryFullMatrix.time_transform",
     "family_matrix_pixel": "benchmarks.test_family_matrix.TimePixelFullMatrix.time_transform",
     "memory": "benchmarks.test_family_matrix.PeakMemoryHotPaths",
+    "memory_random_shadow": "benchmarks.test_batch_matrix.PeakMemoryRandomShadowBatchMatrix",
     "memory_spatter": "benchmarks.test_batch_matrix.PeakMemorySpatterBatchMatrix",
     "parameter_sensitivity": "benchmarks.test_parameter_sensitivity.TimeParameterSensitivity.time_transform",
     "pytorch_tensor_2d": "pytorch_benchmarks.test_tensor.TimeToTensorV2",
@@ -431,6 +440,11 @@ ASV_BENCHMARKS = {
     "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
     "target_matrix": "benchmarks.test_family_matrix.TimeSpecialTargetMatrix.time_transform",
     "volumetric_matrix": "benchmarks.test_family_matrix.TimeVolumetricFullMatrix.time_transform",
+}
+
+MEMORY_BENCHMARK_KEYS_BY_TRANSFORM = {
+    "RandomShadow": "memory_random_shadow",
+    "Spatter": "memory_spatter",
 }
 
 DEEP_COVERAGE_LAYERS = frozenset(
@@ -726,6 +740,7 @@ def _parse_batch_case(case_id: str) -> dict[str, Any]:
         "direct_images": ["images"],
         "images": ["images"],
         "images_and_masks": ["images", "masks"],
+        "volume": ["volume"],
     }[target_route]
     scenario = {
         "batch_size": int(batch_size),
@@ -778,7 +793,10 @@ def _target_matrix_scenario(case: Mapping[str, str], route: str, transform_name:
 def _batch_matrix_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a batch matrix case."""
     scenario = _parse_batch_case(case["case_id"])
-    scope = "direct_batch" if scenario["target_route"].startswith("direct_") else "compose_batch"
+    if scenario["target_route"] == "volume":
+        scope = "compose_volume"
+    else:
+        scope = "direct_batch" if scenario["target_route"].startswith("direct_") else "compose_batch"
     return {**scenario, "scope": scope}
 
 
@@ -1119,6 +1137,20 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
     )
     _add_matrix_cases(
         cases,
+        benchmark=ASV_BENCHMARKS["batch_random_shadow_direct"],
+        case_ids=RANDOM_SHADOW_DIRECT_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_random_shadow_volume"],
+        case_ids=RANDOM_SHADOW_VOLUME_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
         benchmark=ASV_BENCHMARKS["batch_random_tone_curve_direct_image"],
         case_ids=RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
         layer="batch_matrix",
@@ -1148,7 +1180,8 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         )
     _add_direct_kernel_cases(cases)
     for transform_name, case_ids in MEMORY_CASES_BY_TRANSFORM.items():
-        memory_benchmark = ASV_BENCHMARKS["memory_spatter"] if transform_name == "Spatter" else ASV_BENCHMARKS["memory"]
+        benchmark_key = MEMORY_BENCHMARK_KEYS_BY_TRANSFORM.get(transform_name, "memory")
+        memory_benchmark = ASV_BENCHMARKS[benchmark_key]
         for case_id in case_ids:
             _add_asv_case(
                 cases,

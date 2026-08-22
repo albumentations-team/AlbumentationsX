@@ -15,6 +15,7 @@
 > - `docs/design/mosaic.md` - Mosaic transform technical specification
 > - `docs/design/applied-config-replay-contracts.md` - Applied configuration and replay contracts
 > - `docs/design/transform-target-contracts.md` - Generated target profiles and capability-driven coverage
+> - `docs/design/elastic-transform.md` - Bounded 2D ElasticTransform geometry, targets, and replay contracts
 >
 > **Important**: Do NOT create summary documents like `.codex/rules/<topic>.md` for every fix.
 > These are only created for significant architectural changes or complex features that need design documentation.

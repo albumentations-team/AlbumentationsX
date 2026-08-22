@@ -133,12 +133,123 @@ It compared `3b31262` with the candidate head across 108 direct, `Compose`,
 batch, and volume cells. The candidate was faster in every cell: the minimum
 speedup was `1.07x`, the median was `1.79x`, and the maximum was `5.28x`.
 
-| Route | Target | Shape | Channels | Dtype | Baseline | Cubic B-spline | Speedup |
+<details>
+<summary>Full 108-cell matrix</summary>
+
+Each row reports the median wall time per transform call. The baseline is commit `3b31262`; the candidate is the PR head `fe471a9`.
+
+| Route | Target | Size | Channels | Dtype | Baseline (ms) | Cubic B-spline (ms) | Speedup |
 | --- | --- | ---: | ---: | --- | ---: | ---: | ---: |
-| direct | image | 512x512 | 3 | uint8 | 3.504 ms | 0.784 ms | 4.47x |
-| `Compose` | image | 512x512 | 3 | uint8 | 3.301 ms | 0.746 ms | 4.42x |
-| direct | volume, D=16 | 512x512 | 3 | uint8 | 14.591 ms | 8.116 ms | 1.80x |
-| `Compose` | volume, D=16 | 512x512 | 3 | uint8 | 14.125 ms | 8.234 ms | 1.72x |
+| compose | image | 256 | 1 | float32 | 0.677 | 0.211 | 3.215x |
+| compose | image | 256 | 1 | uint8 | 0.700 | 0.342 | 2.051x |
+| compose | image | 256 | 3 | float32 | 0.782 | 0.392 | 1.998x |
+| compose | image | 256 | 3 | uint8 | 0.750 | 0.409 | 1.833x |
+| compose | image | 256 | 5 | float32 | 0.944 | 0.437 | 2.163x |
+| compose | image | 256 | 5 | uint8 | 1.177 | 0.608 | 1.935x |
+| compose | image | 512 | 1 | float32 | 3.252 | 0.640 | 5.084x |
+| compose | image | 512 | 1 | uint8 | 3.434 | 0.790 | 4.348x |
+| compose | image | 512 | 3 | float32 | 3.904 | 1.447 | 2.697x |
+| compose | image | 512 | 3 | uint8 | 3.301 | 0.746 | 4.423x |
+| compose | image | 512 | 5 | float32 | 4.257 | 1.952 | 2.180x |
+| compose | image | 512 | 5 | uint8 | 4.423 | 2.076 | 2.130x |
+| compose | image | 1024 | 1 | float32 | 13.749 | 2.710 | 5.073x |
+| compose | image | 1024 | 1 | uint8 | 13.070 | 3.580 | 3.650x |
+| compose | image | 1024 | 3 | float32 | 14.508 | 5.095 | 2.848x |
+| compose | image | 1024 | 3 | uint8 | 14.174 | 3.411 | 4.156x |
+| compose | image | 1024 | 5 | float32 | 16.787 | 7.819 | 2.147x |
+| compose | image | 1024 | 5 | uint8 | 18.202 | 9.514 | 1.913x |
+| compose | images | 256 | 1 | float32 | 1.593 | 0.890 | 1.790x |
+| compose | images | 256 | 1 | uint8 | 1.935 | 1.341 | 1.442x |
+| compose | images | 256 | 3 | float32 | 3.092 | 2.294 | 1.348x |
+| compose | images | 256 | 3 | uint8 | 1.999 | 1.277 | 1.566x |
+| compose | images | 256 | 5 | float32 | 4.527 | 3.013 | 1.503x |
+| compose | images | 256 | 5 | uint8 | 4.805 | 4.345 | 1.106x |
+| compose | images | 512 | 1 | float32 | 7.073 | 3.311 | 2.136x |
+| compose | images | 512 | 1 | uint8 | 8.507 | 4.814 | 1.767x |
+| compose | images | 512 | 3 | float32 | 14.686 | 10.364 | 1.417x |
+| compose | images | 512 | 3 | uint8 | 8.576 | 4.557 | 1.882x |
+| compose | images | 512 | 5 | float32 | 22.339 | 16.981 | 1.316x |
+| compose | images | 512 | 5 | uint8 | 19.976 | 15.387 | 1.298x |
+| compose | images | 1024 | 1 | float32 | 37.633 | 15.566 | 2.418x |
+| compose | images | 1024 | 1 | uint8 | 38.125 | 17.570 | 2.170x |
+| compose | images | 1024 | 3 | float32 | 63.554 | 38.476 | 1.652x |
+| compose | images | 1024 | 3 | uint8 | 38.063 | 19.383 | 1.964x |
+| compose | images | 1024 | 5 | float32 | 83.360 | 60.409 | 1.380x |
+| compose | images | 1024 | 5 | uint8 | 83.034 | 70.844 | 1.172x |
+| compose | volume | 256 | 1 | float32 | 2.601 | 1.795 | 1.449x |
+| compose | volume | 256 | 1 | uint8 | 3.343 | 2.733 | 1.223x |
+| compose | volume | 256 | 3 | float32 | 5.237 | 3.826 | 1.369x |
+| compose | volume | 256 | 3 | uint8 | 3.294 | 2.364 | 1.393x |
+| compose | volume | 256 | 5 | float32 | 8.408 | 7.054 | 1.192x |
+| compose | volume | 256 | 5 | uint8 | 9.603 | 8.057 | 1.192x |
+| compose | volume | 512 | 1 | float32 | 11.553 | 5.516 | 2.095x |
+| compose | volume | 512 | 1 | uint8 | 15.180 | 8.975 | 1.691x |
+| compose | volume | 512 | 3 | float32 | 28.977 | 22.215 | 1.304x |
+| compose | volume | 512 | 3 | uint8 | 14.125 | 8.234 | 1.715x |
+| compose | volume | 512 | 5 | float32 | 37.478 | 34.966 | 1.072x |
+| compose | volume | 512 | 5 | uint8 | 36.724 | 30.872 | 1.190x |
+| compose | volume | 1024 | 1 | float32 | 59.723 | 31.400 | 1.902x |
+| compose | volume | 1024 | 1 | uint8 | 67.590 | 34.144 | 1.980x |
+| compose | volume | 1024 | 3 | float32 | 121.190 | 83.986 | 1.443x |
+| compose | volume | 1024 | 3 | uint8 | 63.355 | 40.462 | 1.566x |
+| compose | volume | 1024 | 5 | float32 | 160.429 | 119.308 | 1.345x |
+| compose | volume | 1024 | 5 | uint8 | 164.051 | 133.911 | 1.225x |
+| direct | image | 256 | 1 | float32 | 0.700 | 0.256 | 2.736x |
+| direct | image | 256 | 1 | uint8 | 0.849 | 0.313 | 2.717x |
+| direct | image | 256 | 3 | float32 | 0.846 | 0.396 | 2.137x |
+| direct | image | 256 | 3 | uint8 | 0.828 | 0.290 | 2.851x |
+| direct | image | 256 | 5 | float32 | 1.139 | 0.464 | 2.455x |
+| direct | image | 256 | 5 | uint8 | 1.186 | 0.642 | 1.848x |
+| direct | image | 512 | 1 | float32 | 3.436 | 0.651 | 5.280x |
+| direct | image | 512 | 1 | uint8 | 3.305 | 1.002 | 3.300x |
+| direct | image | 512 | 3 | float32 | 3.966 | 1.445 | 2.744x |
+| direct | image | 512 | 3 | uint8 | 3.504 | 0.784 | 4.470x |
+| direct | image | 512 | 5 | float32 | 4.554 | 2.246 | 2.027x |
+| direct | image | 512 | 5 | uint8 | 4.728 | 2.116 | 2.234x |
+| direct | image | 1024 | 1 | float32 | 11.830 | 2.901 | 4.078x |
+| direct | image | 1024 | 1 | uint8 | 12.939 | 3.903 | 3.315x |
+| direct | image | 1024 | 3 | float32 | 14.499 | 5.717 | 2.536x |
+| direct | image | 1024 | 3 | uint8 | 14.621 | 3.702 | 3.949x |
+| direct | image | 1024 | 5 | float32 | 18.411 | 7.820 | 2.354x |
+| direct | image | 1024 | 5 | uint8 | 19.540 | 10.445 | 1.871x |
+| direct | images | 256 | 1 | float32 | 1.560 | 0.965 | 1.616x |
+| direct | images | 256 | 1 | uint8 | 2.075 | 1.274 | 1.630x |
+| direct | images | 256 | 3 | float32 | 3.381 | 2.501 | 1.352x |
+| direct | images | 256 | 3 | uint8 | 1.960 | 1.133 | 1.731x |
+| direct | images | 256 | 5 | float32 | 4.291 | 3.395 | 1.264x |
+| direct | images | 256 | 5 | uint8 | 4.846 | 4.143 | 1.170x |
+| direct | images | 512 | 1 | float32 | 6.866 | 3.442 | 1.995x |
+| direct | images | 512 | 1 | uint8 | 9.031 | 5.026 | 1.797x |
+| direct | images | 512 | 3 | float32 | 14.488 | 10.941 | 1.324x |
+| direct | images | 512 | 3 | uint8 | 8.402 | 4.487 | 1.873x |
+| direct | images | 512 | 5 | float32 | 20.966 | 16.886 | 1.242x |
+| direct | images | 512 | 5 | uint8 | 19.947 | 15.853 | 1.258x |
+| direct | images | 1024 | 1 | float32 | 34.992 | 16.180 | 2.163x |
+| direct | images | 1024 | 1 | uint8 | 34.776 | 18.976 | 1.833x |
+| direct | images | 1024 | 3 | float32 | 58.221 | 41.078 | 1.417x |
+| direct | images | 1024 | 3 | uint8 | 40.933 | 21.690 | 1.887x |
+| direct | images | 1024 | 5 | float32 | 84.910 | 61.644 | 1.377x |
+| direct | images | 1024 | 5 | uint8 | 85.132 | 67.559 | 1.260x |
+| direct | volume | 256 | 1 | float32 | 2.583 | 1.687 | 1.531x |
+| direct | volume | 256 | 1 | uint8 | 3.264 | 2.488 | 1.312x |
+| direct | volume | 256 | 3 | float32 | 5.752 | 4.424 | 1.300x |
+| direct | volume | 256 | 3 | uint8 | 3.336 | 2.469 | 1.351x |
+| direct | volume | 256 | 5 | float32 | 7.989 | 6.986 | 1.143x |
+| direct | volume | 256 | 5 | uint8 | 9.660 | 8.041 | 1.201x |
+| direct | volume | 512 | 1 | float32 | 11.566 | 5.877 | 1.968x |
+| direct | volume | 512 | 1 | uint8 | 15.611 | 9.075 | 1.720x |
+| direct | volume | 512 | 3 | float32 | 29.129 | 24.429 | 1.192x |
+| direct | volume | 512 | 3 | uint8 | 14.591 | 8.116 | 1.798x |
+| direct | volume | 512 | 5 | float32 | 38.354 | 32.866 | 1.167x |
+| direct | volume | 512 | 5 | uint8 | 36.365 | 31.171 | 1.167x |
+| direct | volume | 1024 | 1 | float32 | 59.490 | 29.149 | 2.041x |
+| direct | volume | 1024 | 1 | uint8 | 72.858 | 34.003 | 2.143x |
+| direct | volume | 1024 | 3 | float32 | 102.932 | 84.712 | 1.215x |
+| direct | volume | 1024 | 3 | uint8 | 63.920 | 41.879 | 1.526x |
+| direct | volume | 1024 | 5 | float32 | 145.964 | 118.726 | 1.229x |
+| direct | volume | 1024 | 5 | uint8 | 160.523 | 132.524 | 1.211x |
+
+</details>
 
 ## Related work
 

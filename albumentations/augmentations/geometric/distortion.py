@@ -387,7 +387,7 @@ class ElasticTransform(BaseRemapTransform):
         sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
 
         height, width = image_shape
-        if magnitude == 0 or min(height - 1, width - 1) == 0:
+        if magnitude == 0 or min(height - 1, width - 1) <= 0:
             return {
                 "displacement_magnitude": magnitude,
                 "control_coefficients": [],

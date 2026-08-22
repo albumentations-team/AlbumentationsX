@@ -9,6 +9,7 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
+from albumentations.core.invocation import SamplingContext
 
 
 class _LabelMappingElasticTransform(A.ElasticTransform):
@@ -217,6 +218,38 @@ def test_keypoint_inverse_recovers_a_scalar_reference() -> None:
 
     np.testing.assert_allclose(transformed[:, :2], output_points, atol=1e-3)
     np.testing.assert_array_equal(transformed[:, 2], 7.0)
+
+
+def test_keypoint_inverse_preserves_continuous_boundary_points() -> None:
+    control = np.zeros((4, 4, 2), dtype=np.float32)
+    keypoints = np.array([[39.5, 31.5], [39.999, 31.999]], dtype=np.float32)
+
+    transformed = fgeometric.remap_elastic_keypoints(keypoints, control, (32, 40))
+
+    np.testing.assert_allclose(transformed, keypoints, atol=1e-6)
+
+
+def test_keypoint_inverse_rejects_nonfinite_coordinates_without_index_errors() -> None:
+    control = np.zeros((4, 4, 2), dtype=np.float32)
+    keypoints = np.array([[np.nan, 1.0], [np.inf, 2.0], [-np.inf, 3.0], [1.0, 2.0]])
+
+    with np.errstate(all="raise"):
+        transformed = fgeometric.remap_elastic_keypoints(keypoints, control, (32, 40))
+
+    np.testing.assert_array_equal(transformed[:3], -1.0)
+    np.testing.assert_array_equal(transformed[3], keypoints[3])
+
+
+def test_zero_spatial_extent_does_not_sample_coefficients() -> None:
+    transform = A.ElasticTransform(displacement_range=(0.01, 0.01), p=1.0)
+
+    params = transform.sample_parameters(
+        {"shape": (0, 10, 3)},
+        {},
+        SamplingContext.from_owner(transform, {}),
+    )
+
+    assert params["control_coefficients"] == []
 
 
 def test_volume_uses_one_xy_map_for_every_slice() -> None:

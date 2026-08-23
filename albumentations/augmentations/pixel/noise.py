@@ -1215,7 +1215,10 @@ class RicianNoise(ImageOnlyTransform):
     ) -> ImageType:
         # Apply per-image with the same seed so every image in the batch
         # receives identical noise (required by the images-as-target contract).
-        return np.stack([self._apply_rician(images[i], std, random_seed) for i in range(images.shape[0])])
+        return cast(
+            "ImageType",
+            np.stack([self._apply_rician(images[i], std, random_seed) for i in range(images.shape[0])]),
+        )
 
     def apply_to_volume(
         self,

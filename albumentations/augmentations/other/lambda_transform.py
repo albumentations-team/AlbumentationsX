@@ -28,7 +28,7 @@ from typing import Any
 import numpy as np
 
 from albumentations.augmentations.pixel import functional as fpixel
-from albumentations.core.transforms_interface import NoOp
+from albumentations.core.transforms_interface import BaseTransformInitSchema, NoOp
 from albumentations.core.type_definitions import ImageType
 from albumentations.core.utils import format_args
 
@@ -55,10 +55,20 @@ class Lambda(NoOp):
     Supported bboxes:
         hbb, obb
 
+    Examples:
+        >>> transform = Lambda(image=lambda image, **kwargs: image, name="identity")
+
     Number of channels:
         Any
 
     """
+
+    class InitSchema(BaseTransformInitSchema):
+        image: Callable[..., Any] | None
+        mask: Callable[..., Any] | None
+        keypoints: Callable[..., Any] | None
+        bboxes: Callable[..., Any] | None
+        name: str | None
 
     def __init__(
         self,

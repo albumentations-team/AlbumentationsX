@@ -153,6 +153,37 @@ def test_benchmark_coverage_details_map_illumination_modes_to_batch_matrix() -> 
     assert _case_ids_for_layer(illumination, "batch_matrix") == expected_case_ids
 
 
+def test_benchmark_coverage_details_map_random_shadow_issue_matrix() -> None:
+    random_shadow = _coverage_for("RandomShadow")
+    batch_cases = [case for case in random_shadow["asv_cases"] if case["layer"] == "batch_matrix"]
+    batch_case_ids = {case["case_id"] for case in batch_cases}
+
+    assert random_shadow["performance_contract"]["batch"]["status"] == "covered"
+    assert random_shadow["scenario_contract"]["channels"] == [1, 3, 5]
+    assert random_shadow["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert random_shadow["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
+    assert random_shadow["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert {"compose_batch", "compose_volume", "direct_batch"}.issubset(
+        random_shadow["scenario_contract"]["scopes"],
+    )
+    assert {"images", "volume"}.issubset(random_shadow["scenario_contract"]["targets"])
+    assert "peakmem_random_shadow_batch_large_multichannel" in random_shadow["scenario_contract"]["memory_cases"]
+    assert len(batch_cases) == len(batch_case_ids) == 216
+    assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
+        "direct_images": 72,
+        "images": 72,
+        "volume": 72,
+    }
+    assert {
+        "random_shadow|direct_images|large|5|float32|16",
+        "random_shadow|direct_images|small|1|uint8|2",
+        "random_shadow|images|large|5|float32|16",
+        "random_shadow|images|small|1|uint8|2",
+        "random_shadow|volume|large|5|float32|16",
+        "random_shadow|volume|small|1|uint8|2",
+    }.issubset(batch_case_ids)
+
+
 def test_benchmark_coverage_details_map_median_blur_kernel_and_dtype_routes() -> None:
     median_blur = _coverage_for("MedianBlur")
 

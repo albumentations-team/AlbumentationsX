@@ -70,7 +70,7 @@ class GridDropout(BaseDropout):
         - For 'random_uniform' fill, each grid cell gets a single random color, unlike 'random' where each pixel
             gets its own random value.
 
-    Example:
+    Examples:
         >>> import numpy as np
         >>> import albumentations as A
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)

@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from albumentations.core.transforms_interface import BasicTransform
+from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform
 from albumentations.core.type_definitions import (
     MONO_CHANNEL_DIMENSIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
@@ -55,9 +55,15 @@ class ToTensorV2(BaseTensorTransform):
     Targets:
         image, mask
 
+    Examples:
+        >>> transform = ToTensorV2(transpose_mask=True)
+
     """
 
     _targets = (Targets.IMAGE, Targets.MASK)
+
+    class InitSchema(BaseTransformInitSchema):
+        transpose_mask: bool
 
     def __init__(self, transpose_mask: bool = False, p: float = 1.0):
         super().__init__(p=p)
@@ -127,6 +133,9 @@ class ToTensor3D(BaseTensorTransform):
 
     Targets:
         volume, mask3d
+
+    Examples:
+        >>> transform = ToTensor3D(p=1.0)
 
     """
 

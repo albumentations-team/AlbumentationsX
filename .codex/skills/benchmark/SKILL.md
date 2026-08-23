@@ -5,7 +5,9 @@ description: Run performance benchmarks for transform changes. Use when the user
 
 # Benchmark
 
-Any change touching `apply_*`, `functional.py`, `sample_parameters`, `composition.py`, or `transforms_interface.py` **must** include benchmark results.
+Benchmark a change to `apply_*`, `functional.py`, `sample_parameters`, `composition.py`, or
+`transforms_interface.py` when it can change executed runtime work. Do not benchmark a documentation-only or
+mechanical refactor with no plausible runtime effect.
 
 Before designing the benchmark, read `../performance-optimization/SKILL.md` and its required reference completely.
 Use that workflow to define candidates and the dimension that controls each candidate, such as label density for
@@ -21,7 +23,7 @@ The full-size image matrix remains required when the change touches pixel arithm
 
 ## Standard Matrix
 
-Always benchmark all 9 combinations:
+For pixel arithmetic, dtype conversion, memory layout, or backend routing, benchmark all 9 combinations:
 
 | Size       | Channels | Use case                              |
 |------------|----------|---------------------------------------|
@@ -36,7 +38,8 @@ Always benchmark all 9 combinations:
 | 1024×1024  | 5        | Satellite imagery                     |
 
 Skip channel counts the transform explicitly doesn't support. Always include the channel axis: grayscale inputs are
-`(H, W, 1)`, not `(H, W)`.
+`(H, W, 1)`, not `(H, W)`. For another proposal, vary the dimension that controls the candidate—such as label density,
+random-output size, or the sides of a routing threshold—and explain the bounded matrix.
 
 If the optimization changes dtype conversion or a `@uint8_io` / `@float32_io` wrapped function, benchmark the hot dtype
 and add correctness tests for the other supported dtype. For example, a uint8-only speedup in a `@uint8_io` function
@@ -149,21 +152,17 @@ import numpy as np
 import albumentations as A
 
 BATCH_SIZES = [4, 8, 16]
-SIZES = {"small": (256, 256), "medium": (512, 512)}
+SIZES = {"small": (256, 256), "medium": (512, 512), "large": (1024, 1024)}
+CHANNELS = [1, 3, 5]
 
 transform = A.Compose([A.YourTransform(p=1.0)])
 
 for batch_size in BATCH_SIZES:
     for size_name, (h, w) in SIZES.items():
-        # Grayscale batch — benefits from reshape trick
-        images = [np.random.randint(0, 256, (h, w, 1), dtype=np.uint8) for _ in range(batch_size)]
-        t = timeit.timeit(lambda: transform(images=images), number=50)
-        print(f"batch={batch_size} {size_name} {h}x{w}x1: {t:.4f}s")
-
-        # RGB batch — baseline
-        images_rgb = [np.random.randint(0, 256, (h, w, 3), dtype=np.uint8) for _ in range(batch_size)]
-        t = timeit.timeit(lambda: transform(images=images_rgb), number=50)
-        print(f"batch={batch_size} {size_name} {h}x{w}x3: {t:.4f}s")
+        for channels in CHANNELS:
+            images = np.random.randint(0, 256, (batch_size, h, w, channels), dtype=np.uint8)
+            t = timeit.timeit(lambda images=images: transform(images=images), number=50)
+            print(f"batch={batch_size} {size_name} {h}x{w}x{channels}: {t:.4f}s")
 ```
 
 ## Rules
@@ -173,7 +172,6 @@ for batch_size in BATCH_SIZES:
 - Test **both uint8 and float32** if the change affects dtype handling. If benchmarking only the hot dtype, add
   correctness tests for the other dtype.
 - A **>5% regression** on any combination requires justification or rework
-- If adding a new transform, benchmark against the equivalent naive numpy implementation
 - For batch optimizations, compare 1-channel, 3-channel RGB, and 5-channel multichannel inputs to verify speedup
   holds across channel counts
 - Keep channel-last shapes throughout: images `(H,W,C)`, image batches `(N,H,W,C)`, and a volume `(D,H,W,C)`

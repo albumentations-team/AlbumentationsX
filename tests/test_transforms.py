@@ -1978,6 +1978,76 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
 
 
 @pytest.mark.parametrize(
+    ("choices_key", "choices", "realized_key"),
+    [
+        pytest.param("px_choices", (-8, -4), "px", id="pixels"),
+        pytest.param("percent_choices", (-0.16, -0.08), "percent", id="percent"),
+    ],
+)
+@pytest.mark.parametrize("sample_independently", [False, True])
+def test_crop_and_pad_choice_sources_emit_replayable_realizations(
+    choices_key: str,
+    choices: tuple[int, ...] | tuple[float, ...],
+    realized_key: str,
+    sample_independently: bool,
+) -> None:
+    image = np.arange(50 * 50 * 3, dtype=np.uint8).reshape(50, 50, 3)
+    transform = A.Compose(
+        [
+            A.CropAndPad(
+                **{choices_key: choices},
+                keep_size=False,
+                sample_independently=sample_independently,
+                p=1.0,
+            ),
+        ],
+        save_applied_params=True,
+        seed=137,
+    )
+
+    result = transform(image=image)
+    applied_config = transform.transforms[0].applied_config
+
+    assert applied_config[choices_key] is None
+    assert all(value in choices for value in applied_config[realized_key])
+    if not sample_independently:
+        assert len(set(applied_config[realized_key])) == 1
+
+    replay = A.Compose.from_applied_transforms(result["applied_transforms"])
+    np.testing.assert_array_equal(replay(image=image)["image"], result["image"])
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        pytest.param({"px_choices": (-5,)}, id="pixel"),
+        pytest.param({"percent_choices": (-0.1,)}, id="percent"),
+    ],
+)
+def test_crop_and_pad_choice_sources_match_fixed_crop(kwargs: dict[str, tuple[int, ...] | tuple[float, ...]]) -> None:
+    image = np.arange(50 * 50 * 3, dtype=np.uint8).reshape(50, 50, 3)
+    transformed = A.CropAndPad(**kwargs, keep_size=False, p=1.0)(image=image)["image"]
+
+    np.testing.assert_array_equal(transformed, image[5:-5, 5:-5])
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        pytest.param({}, "Exactly one", id="missing-source"),
+        pytest.param({"px": 4, "px_choices": (2, 4)}, "Exactly one", id="multiple-sources"),
+        pytest.param({"px_choices": ()}, "must not be empty", id="empty-pixel-choices"),
+        pytest.param({"percent_choices": ()}, "must not be empty", id="empty-percent-choices"),
+        pytest.param({"percent_choices": (-1.1,)}, "must be in", id="percent-below-range"),
+        pytest.param({"percent_choices": (1.1,)}, "must be in", id="percent-above-range"),
+    ],
+)
+def test_crop_and_pad_choice_sources_validate_configuration(kwargs: dict[str, Any], match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        A.CropAndPad(**kwargs)
+
+
+@pytest.mark.parametrize(
     "params",
     [
         ({"fog_coef_range": (1.2, 1.5)}),  # Invalid fog coefficient range -> upper bound

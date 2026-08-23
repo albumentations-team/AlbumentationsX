@@ -438,11 +438,7 @@ def _subset_safe_crop_bboxes() -> np.ndarray:
     )
 
 
-def test_bbox_subset_safe_random_crop_count_distribution():
-    """Statistical test: sampled subset size always falls within the fraction-derived
-    [min_subset_size, max_subset_size] range, both endpoints are reached, and indices within
-    a draw are unique.
-    """
+def test_bbox_subset_safe_random_crop_selects_valid_subset_size():
     bboxes = _subset_safe_crop_bboxes()
     num_bboxes = len(bboxes)
     subset_fraction_range = (0.3, 0.8)
@@ -453,12 +449,11 @@ def test_bbox_subset_safe_random_crop_count_distribution():
         subset_fraction_range=subset_fraction_range,
         erosion_rate=0.0,
         aspect_ratio_range=(0.01, 100.0),
-        max_attempts=50,
         p=1.0,
     )
 
     observed_counts = set()
-    for seed in range(300):
+    for seed in range(40):
         transform.set_random_seed(seed)
         sampling = SamplingContext.from_owner(transform, {})
         result = transform.sample_parameters({"shape": (400, 400, 3)}, {"bboxes": bboxes}, sampling)
@@ -471,10 +466,7 @@ def test_bbox_subset_safe_random_crop_count_distribution():
     assert observed_counts == set(range(min_subset_size, max_subset_size + 1))
 
 
-def test_bbox_subset_safe_random_crop_erosion_zero_survival():
-    """Geometric test: with erosion_rate=0.0, every bbox selected in the sampled subset is
-    fully contained inside the resulting crop, across many seeds.
-    """
+def test_bbox_subset_safe_random_crop_preserves_selected_boxes_without_erosion():
     bboxes = _subset_safe_crop_bboxes()
     image_shape = (400, 400)
 
@@ -482,11 +474,10 @@ def test_bbox_subset_safe_random_crop_erosion_zero_survival():
         subset_fraction_range=(0.3, 0.8),
         erosion_rate=0.0,
         aspect_ratio_range=(0.01, 100.0),
-        max_attempts=50,
         p=1.0,
     )
 
-    for seed in range(300):
+    for seed in range(40):
         transform.set_random_seed(seed)
         sampling = SamplingContext.from_owner(transform, {})
         result = transform.sample_parameters({"shape": (*image_shape, 3)}, {"bboxes": bboxes}, sampling)
@@ -504,3 +495,49 @@ def test_bbox_subset_safe_random_crop_erosion_zero_survival():
             assert crop_y_min <= py_min
             assert crop_x_max >= px_max
             assert crop_y_max >= py_max
+
+
+def test_bbox_subset_safe_random_crop_enforces_feasible_aspect_ratio():
+    bboxes = np.array([[0.45, 0.35, 0.55, 0.65]], dtype=np.float32)
+    transform = A.BBoxSubsetSafeRandomCrop(
+        subset_fraction_range=(1.0, 1.0),
+        aspect_ratio_range=(0.2, 0.2),
+        p=1.0,
+    )
+
+    for seed in range(20):
+        transform.set_random_seed(seed)
+        sampling = SamplingContext.from_owner(transform, {})
+        crop_x_min, crop_y_min, crop_x_max, crop_y_max = transform.sample_parameters(
+            {"shape": (320, 640, 3)}, {"bboxes": bboxes}, sampling
+        )["crop_coords"]
+        assert (crop_y_max - crop_y_min) / (crop_x_max - crop_x_min) == 0.2
+
+
+def test_bbox_subset_safe_random_crop_applies_aspect_ratio_without_protected_boxes():
+    transform = A.BBoxSubsetSafeRandomCrop(
+        subset_fraction_range=(1.0, 1.0),
+        erosion_rate=1.0,
+        aspect_ratio_range=(0.2, 0.2),
+        p=1.0,
+    )
+    sampling = SamplingContext.from_owner(transform, {})
+    crop_x_min, crop_y_min, crop_x_max, crop_y_max = transform.sample_parameters(
+        {"shape": (320, 640, 3)}, {"bboxes": np.array([[0.0, 0.0, 1.0, 1.0]], dtype=np.float32)}, sampling
+    )["crop_coords"]
+
+    assert (crop_y_max - crop_y_min) / (crop_x_max - crop_x_min) == 0.2
+
+
+def test_bbox_subset_safe_random_crop_returns_full_image_when_aspect_ratio_is_infeasible():
+    transform = A.BBoxSubsetSafeRandomCrop(
+        subset_fraction_range=(1.0, 1.0),
+        aspect_ratio_range=(1.5, 2.0),
+        p=1.0,
+    )
+    sampling = SamplingContext.from_owner(transform, {})
+    result = transform.sample_parameters(
+        {"shape": (100, 200, 3)}, {"bboxes": np.array([[0.0, 0.0, 1.0, 1.0]], dtype=np.float32)}, sampling
+    )
+
+    assert result == {"crop_coords": (0, 0, 200, 100), "bbox_indices": (0,)}

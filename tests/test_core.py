@@ -766,6 +766,8 @@ def test_single_transform_compose(
             A.Mosaic,
             A.MaskDropout,
             A.ConstrainedCoarseDropout,
+            A.GuidedCoarseDropout,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -787,6 +789,8 @@ def test_non_contiguous_input_dual(augmentation_cls, params):
         data["mask"] = mask
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        data["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
 
     # pipeline gracefully handles non-contiguous inputs
     data = transform(**data)
@@ -813,7 +817,9 @@ NON_CONTIGUOUS_VOLUMETRIC_CASES = get_primary_dual_transform_params(
         A.Mosaic,
         A.MaskDropout,
         A.ConstrainedCoarseDropout,
+        A.GuidedCoarseDropout,
         A.PixelDropout,
+        A.BBoxSubsetSafeRandomCrop,
     },
 )
 
@@ -1171,6 +1177,7 @@ def test_compose_additional_targets_in_available_keys() -> None:
             A.FDA,
             A.HistogramMatching,
             A.PixelDistributionAdaptation,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1204,6 +1211,8 @@ def test_images_as_target(augmentation_cls, params, shape):
 
     if augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        data["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
 
     aug = A.Compose(
         [augmentation_cls(p=1, **params)],
@@ -1264,7 +1273,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
 
         data["cropping_bbox"] = bboxes[0]
-    elif augmentation_cls in [A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop]:
+    elif augmentation_cls in [A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop, A.BBoxSubsetSafeRandomCrop]:
         # requires "bboxes" arg
         aug = A.Compose(
             [augmentation_cls(p=1, **params)],
@@ -1296,6 +1305,9 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
     elif augmentation_cls == A.CopyAndPaste:
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
         data["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        aug = A.Compose([augmentation_cls(p=1, **params)], p=1, strict=True, seed=137)
+        data["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
         aug = A.Compose([augmentation_cls(p=1, **params)], p=1, strict=True, seed=137)
@@ -1333,6 +1345,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
             A.RandomCropNearBBox,
             A.PadIfNeeded,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1352,6 +1365,8 @@ def test_masks_as_target(augmentation_cls, params, masks):
 
     if augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        data["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
 
     aug = A.Compose(
         [augmentation_cls(p=1, **params)],
@@ -1402,6 +1417,7 @@ def test_masks_as_target(augmentation_cls, params, masks):
             A.TimeReverse,
             A.TimeMasking,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1439,6 +1455,8 @@ def test_mask_interpolation_all_cv_interpolation_modes(augmentation_cls, params,
     call_kw: dict[str, Any] = {"image": image, "mask": mask}
     if augmentation_cls == A.CopyAndPaste:
         call_kw["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        call_kw["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
     transformed = aug(**call_kw)
 
     np.testing.assert_array_equal(transformed["mask"], transformed["image"])
@@ -1926,6 +1944,7 @@ def test_transform_strict_with_valid_params():
             A.Morphological,
             A.AtLeastOneBBoxRandomCrop,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1956,6 +1975,8 @@ def test_mask_interpolation(augmentation_cls, params, border_mode, image):
     call_kw: dict[str, Any] = {"image": image, "mask": mask}
     if augmentation_cls == A.CopyAndPaste:
         call_kw["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        call_kw["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
     transform(**call_kw)
 
 

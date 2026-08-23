@@ -22,7 +22,10 @@ def _range_data(case: TransformContractCase, dtype: np.dtype[Any]) -> dict[str, 
         if target in data:
             data[target] = _range_extrema(data[target], dtype)
     for metadata_key in case.metadata_keys:
-        data[metadata_key] = _range_reference_images(data[metadata_key], dtype)
+        if case.transform_cls is A.GuidedCoarseDropout:
+            data[metadata_key] = np.ones(data["image"].shape[:2], dtype=np.uint8)
+        else:
+            data[metadata_key] = _range_reference_images(data[metadata_key], dtype)
     return data
 
 

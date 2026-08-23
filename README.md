@@ -282,6 +282,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [RandomSnow](https://albumentations.ai/explore/transform/RandomSnow/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [RandomSunFlare](https://albumentations.ai/explore/transform/RandomSunFlare/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [RandomToneCurve](https://albumentations.ai/explore/transform/RandomToneCurve/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RicianNoise](https://albumentations.ai/explore/transform/RicianNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [RingingOvershoot](https://albumentations.ai/explore/transform/RingingOvershoot/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [SaltAndPepper](https://albumentations.ai/explore/transform/SaltAndPepper/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Sharpen](https://albumentations.ai/explore/transform/Sharpen/?utm_source=github&utm_medium=referral&utm_campaign=readme)
@@ -310,6 +311,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [Affine](https://albumentations.ai/explore/transform/Affine/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [AtLeastOneBBoxRandomCrop](https://albumentations.ai/explore/transform/AtLeastOneBBoxRandomCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [BBoxSafeRandomCrop](https://albumentations.ai/explore/transform/BBoxSafeRandomCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme)             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [BBoxSubsetSafeRandomCrop](https://albumentations.ai/explore/transform/BBoxSubsetSafeRandomCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [CenterCrop](https://albumentations.ai/explore/transform/CenterCrop/?utm_source=github&utm_medium=referral&utm_campaign=readme)                             | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [CoarseDropout](https://albumentations.ai/explore/transform/CoarseDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme)                       | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 | [ConstrainedCoarseDropout](https://albumentations.ai/explore/transform/ConstrainedCoarseDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
@@ -325,6 +327,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [GridDropout](https://albumentations.ai/explore/transform/GridDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme)                           | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 | [GridElasticDeform](https://albumentations.ai/explore/transform/GridElasticDeform/?utm_source=github&utm_medium=referral&utm_campaign=readme)               | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
 | [GridMask](https://albumentations.ai/explore/transform/GridMask/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                 | ✓     | ✓    | ✓            |              | ✓         | ✓      | ✓      |
+| [GuidedCoarseDropout](https://albumentations.ai/explore/transform/GuidedCoarseDropout/?utm_source=github&utm_medium=referral&utm_campaign=readme)           | ✓     | ✓    | ✓            |              | ✓         |        |        |
 | [HorizontalFlip](https://albumentations.ai/explore/transform/HorizontalFlip/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [Lambda](https://albumentations.ai/explore/transform/Lambda/?utm_source=github&utm_medium=referral&utm_campaign=readme)                                     | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [LetterBox](https://albumentations.ai/explore/transform/LetterBox/?utm_source=github&utm_medium=referral&utm_campaign=readme)                               | ✓     | ✓    | ✓            | ✓            | ✓         | ✓      | ✓      |

@@ -219,6 +219,15 @@ def make_empty_context(rng: np.random.Generator, data: dict[str, Any]) -> dict[s
     return {}
 
 
+def make_binary_region_context(metadata_key: str) -> ContractContextFactory:
+    """Build a binary dropout region aligned to the case's primary image."""
+
+    def factory(rng: np.random.Generator, data: dict[str, Any]) -> dict[str, Any]:
+        return {metadata_key: np.ones(_first_image(data).shape[:2], dtype=np.uint8)}
+
+    return factory
+
+
 def _first_image(data: dict[str, Any]) -> np.ndarray:
     if "image" in data:
         return data["image"]

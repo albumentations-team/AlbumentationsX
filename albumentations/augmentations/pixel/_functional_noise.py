@@ -771,6 +771,7 @@ __all__ = [
     "generate_shared_noise",
     "generate_spatial_noise",
     "get_safe_brightness_contrast_params",
+    "rician_noise",
     "sample_beta",
     "sample_gaussian",
     "sample_laplace",
@@ -779,3 +780,18 @@ __all__ = [
     "sharpen_gaussian",
     "shot_noise",
 ]
+
+
+@preserve_channel_dim
+@float32_io
+def rician_noise(
+    img: ImageType,
+    real_noise: np.ndarray,
+    imaginary_noise: np.ndarray,
+) -> ImageType:
+    """Apply sampled real and imaginary MRI noise fields through magnitude reconstruction."""
+    result = np.add(img, real_noise)
+    np.multiply(result, result, out=result)
+    np.add(result, np.square(imaginary_noise), out=result)
+    np.sqrt(result, out=result)
+    return np.clip(result, 0.0, 1.0, out=result)

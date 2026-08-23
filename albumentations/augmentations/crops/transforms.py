@@ -12,6 +12,7 @@ from .bbox_safe import *
 from .bbox_safe import (
     AtLeastOneBBoxRandomCrop,
     BBoxSafeRandomCrop,
+    BBoxSubsetSafeRandomCrop,
     RandomSizedBBoxSafeCrop,
 )
 from .sized import *
@@ -29,6 +30,7 @@ from .special import (
 __all__ = [
     "AtLeastOneBBoxRandomCrop",
     "BBoxSafeRandomCrop",
+    "BBoxSubsetSafeRandomCrop",
     "CenterCrop",
     "Crop",
     "CropAndPad",

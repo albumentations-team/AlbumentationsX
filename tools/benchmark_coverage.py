@@ -223,6 +223,7 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
     "bbox_subset_safe_random_crop": "BBoxSubsetSafeRandomCrop",
     "constrained_coarse_dropout": "ConstrainedCoarseDropout",
     "crop_non_empty_mask_if_exists": "CropNonEmptyMaskIfExists",
+    "guided_coarse_dropout": "GuidedCoarseDropout",
     "mask_dropout": "MaskDropout",
     "random_crop_near_bbox": "RandomCropNearBBox",
 }
@@ -286,6 +287,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "ExposureMatching",
         "GaussianBlur",
         "GlassBlur",
+        "GuidedCoarseDropout",
         "HorizontalFlip",
         "HueSaturationValue",
         "ImageCompression",
@@ -368,6 +370,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "ExposureMatching": ("exposure_match_batch",),
     "GaussianBlur": ("convolve",),
     "GlassBlur": ("glass_blur",),
+    "GuidedCoarseDropout": ("guided_coarse_dropout",),
     "HorizontalFlip": ("hflip",),
     "HueSaturationValue": ("shift_hsv",),
     "ImageCompression": ("image_compression",),
@@ -690,6 +693,8 @@ def _special_target_targets(name: str) -> list[str]:
         targets.extend(["bbox_labels", "bboxes"])
     if name == "random_crop_near_bbox":
         targets.append("cropping_bbox")
+    if name == "guided_coarse_dropout":
+        targets.append("dropout_region")
     return sorted(targets)
 
 

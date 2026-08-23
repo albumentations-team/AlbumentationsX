@@ -6,6 +6,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from functools import partial
 
+import numpy as np
+
 import albumentations
 from benchmarks.catalog import benchmark_specs
 from benchmarks.catalog import make_compose as make_catalog_compose
@@ -228,6 +230,11 @@ SPECIAL_TARGET_TRANSFORMS: Mapping[str, Factory] = {
     ),
     "constrained_coarse_dropout": lambda: albumentations.Compose(
         [albumentations.ConstrainedCoarseDropout(mask_indices=[1], p=1.0)],
+        seed=137,
+        strict=True,
+    ),
+    "guided_coarse_dropout": lambda: albumentations.Compose(
+        [albumentations.GuidedCoarseDropout(num_holes_range=(4, 4), p=1.0)],
         seed=137,
         strict=True,
     ),
@@ -473,6 +480,8 @@ class TimeSpecialTargetMatrix:
         if name == "random_crop_near_bbox":
             height, width = SIZES[size_name]
             data["cropping_bbox"] = [width // 5, height // 5, width * 4 // 5, height * 4 // 5]
+        if name == "guided_coarse_dropout":
+            data["dropout_region"] = np.ones(data["image"].shape[:2], dtype=np.uint8)
         return data
 
     def time_transform(self, case_id: str) -> None:

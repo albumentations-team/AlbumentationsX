@@ -18,6 +18,7 @@ from tests.helpers.applied_config import ReplayProfile
 from tests.helpers.contract_data import (
     ContractContextFactory,
     ContractDataFactory,
+    make_binary_region_context,
     make_copy_and_paste_context,
     make_crop_near_bbox_context,
     make_empty_context,
@@ -133,11 +134,9 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [
         A.GuidedCoarseDropout,
         {
-            "region_key": "sal",
             "num_holes_range": (3, 5),
             "hole_height_range": (0.05, 0.15),
             "hole_width_range": (0.05, 0.15),
-            "fill": 128,
             "fill_mask": 0,
             "protected_bbox_labels": [1],
             "protection_margin": 0.1,
@@ -1361,7 +1360,14 @@ def _case_data(
         case = (make_image_data, make_text_context(key))
         metadata_keys = frozenset({key})
     elif transform_cls is A.GuidedCoarseDropout:
-        case = (make_image_data, make_empty_context)
+        compose_kwargs = {
+            "bbox_params": A.BboxParams(
+                coord_format="albumentations",
+                label_fields=["bbox_labels"],
+            ),
+        }
+        case = (make_hbb_data, make_binary_region_context(init_kwargs.get("region_key", "dropout_region")))
+        metadata_keys = frozenset({init_kwargs.get("region_key", "dropout_region")})
     elif transform_cls in {A.Colorize, A.ToRGB}:
         case = (make_grayscale_image_data, make_empty_context)
     elif transform_cls is A.FromFloat:

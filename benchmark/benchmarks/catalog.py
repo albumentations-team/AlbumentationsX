@@ -65,6 +65,7 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "CropNonEmptyMaskIfExists": {"height": 96, "width": 96},
     "Flip3D": {"flip_axes": (0, 1, 2)},
     "GridElasticDeform": {"num_grid_xy": (4, 4), "magnitude": 4},
+    "GuidedCoarseDropout": {"num_holes_range": (4, 4)},
     "LetterBox": {"size": (128, 128)},
     "LongestMaxSize": {"max_size": 160},
     "Mosaic": {"target_size": (128, 128), "cell_shape": (128, 128)},
@@ -102,6 +103,7 @@ MASK_ROUTE_TRANSFORMS = frozenset(
     {
         "ConstrainedCoarseDropout",
         "CropNonEmptyMaskIfExists",
+        "GuidedCoarseDropout",
         "MaskDropout",
     },
 )
@@ -279,6 +281,8 @@ def _base_2d_data(spec: TransformBenchmarkSpec) -> dict[str, Any]:
 def _mask_data(spec: TransformBenchmarkSpec) -> dict[str, Any]:
     data = _base_2d_data(spec)
     data["mask"] = make_mask(spec.size_name)
+    if spec.name == "GuidedCoarseDropout":
+        data["dropout_region"] = np.ones(data["image"].shape[:2], dtype=np.uint8)
     return data
 
 

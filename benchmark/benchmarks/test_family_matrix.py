@@ -154,6 +154,7 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "multiplicative_noise": PixelSpec(lambda: albumentations.MultiplicativeNoise(p=1.0)),
     "noop": PixelSpec(lambda: albumentations.NoOp(p=1.0)),
     "shot_noise": PixelSpec(lambda: albumentations.ShotNoise(p=1.0), dtypes=("uint8",)),
+    "rician_noise": PixelSpec(lambda: albumentations.RicianNoise(p=1.0)),
     "normalize": PixelSpec(lambda: albumentations.Normalize(p=1.0)),
     "photometric_distort": PixelSpec(lambda: albumentations.PhotoMetricDistort(p=1.0), channels=(1, 3)),
     "pixel_dropout": PixelSpec(lambda: albumentations.PixelDropout(dropout_prob=0.05, p=1.0)),
@@ -297,6 +298,7 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "flip3d": lambda: albumentations.Flip3D(flip_axes=(0, 1, 2), p=1.0),
     "random_rotate90_3d": lambda: albumentations.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
     "resize3d": lambda: albumentations.Resize3D(size=(12, 96, 96), p=1.0),
+    "rician_noise": lambda: albumentations.RicianNoise(std_range=(0.1, 0.1), p=1.0),
 }
 
 REFERENCE_TRANSFORMS = (
@@ -568,6 +570,11 @@ class PeakMemoryHotPaths:
             ],
             strict=True,
         )
+        self.rician_volume = albumentations.Compose(
+            [albumentations.RicianNoise(std_range=(0.1, 0.1), p=1.0)],
+            seed=137,
+            strict=True,
+        )
         self.volume_data = {"mask3d": make_mask3d("medium"), "volume": make_volume("medium")}
 
     def peakmem_resize_large_rgb(self) -> None:
@@ -599,3 +606,6 @@ class PeakMemoryHotPaths:
 
     def peakmem_volume_affine_medium(self) -> None:
         self.volume_affine(**self.volume_data)
+
+    def peakmem_rician_volume_medium(self) -> None:
+        self.rician_volume(**self.volume_data)

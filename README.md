@@ -282,6 +282,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [RandomSnow](https://albumentations.ai/explore/transform/RandomSnow/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [RandomSunFlare](https://albumentations.ai/explore/transform/RandomSunFlare/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [RandomToneCurve](https://albumentations.ai/explore/transform/RandomToneCurve/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [RicianNoise](https://albumentations.ai/explore/transform/RicianNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [RingingOvershoot](https://albumentations.ai/explore/transform/RingingOvershoot/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [SaltAndPepper](https://albumentations.ai/explore/transform/SaltAndPepper/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Sharpen](https://albumentations.ai/explore/transform/Sharpen/?utm_source=github&utm_medium=referral&utm_campaign=readme)

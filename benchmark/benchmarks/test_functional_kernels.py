@@ -64,6 +64,7 @@ FUNCTIONAL_3D_KERNELS = (
     "rotate90_3d",
     "transform_cube",
     "swap_tiles_on_volume",
+    "rician_noise",
 )
 
 
@@ -475,6 +476,10 @@ def _call_swap_tiles_on_volume(benchmark: Any) -> np.ndarray:
     return f3d.swap_tiles_on_volume(benchmark.volume, benchmark.tiles, benchmark.mapping)
 
 
+def _call_rician_noise(benchmark: Any) -> np.ndarray:
+    return fpixel.rician_noise(benchmark.volume, benchmark.real_noise, benchmark.imaginary_noise)
+
+
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "affine_3d": _call_affine_3d,
     "anisotropy_3d": _call_anisotropy_3d,
@@ -485,6 +490,7 @@ FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "rotate90_3d": _call_rotate90_3d,
     "transform_cube": _call_transform_cube,
     "swap_tiles_on_volume": _call_swap_tiles_on_volume,
+    "rician_noise": _call_rician_noise,
 }
 
 
@@ -633,6 +639,9 @@ class TimeFunctional3DKernels:
         self.tiles = f3d.split_uniform_grid_3d((depth, height, width), (2, 2, 2), rng)
         shape_groups = f3d.create_shape_groups_3d(self.tiles)
         self.mapping = f3d.shuffle_tiles_within_shape_groups_3d(shape_groups, rng)
+        if name == "rician_noise":
+            self.real_noise = rng.standard_normal(self.volume.shape, dtype=np.float32) * 0.1
+            self.imaginary_noise = rng.standard_normal(self.volume.shape, dtype=np.float32) * 0.1
 
     def time_kernel(self, case_id: str) -> None:
         FUNCTIONAL_3D_CALLS[self.name](self)

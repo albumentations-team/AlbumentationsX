@@ -34,6 +34,7 @@ NOISE_TRANSFORM_FACTORIES = [
         lambda: A.FilmGrain(intensity_range=(0.2, 0.2), grain_size_range=(1, 1), p=1.0),
         id="film-grain",
     ),
+    pytest.param(lambda: A.RicianNoise(std_range=(0.1, 0.1), p=1.0), id="rician-noise"),
 ]
 
 

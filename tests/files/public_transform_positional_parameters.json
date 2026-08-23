@@ -113,6 +113,7 @@
   "RandomToneCurve": ["scale", "per_channel", "p"],
   "Resize": ["height", "width", "interpolation", "mask_interpolation", "area_for_downscale", "p"],
   "Resize3D": ["size", "interpolation", "mask_interpolation", "p"],
+  "RicianNoise": ["std_range", "per_channel", "p"],
   "RingingOvershoot": ["blur_range", "cutoff_range", "p"],
   "Rotate": ["angle_range", "interpolation", "border_mode", "rotate_method", "crop_border", "mask_interpolation", "fill", "fill_mask", "p"],
   "SafeRotate": ["angle_range", "interpolation", "border_mode", "rotate_method", "mask_interpolation", "fill", "fill_mask", "p"],

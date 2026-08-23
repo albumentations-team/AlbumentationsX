@@ -109,6 +109,14 @@ def shot_noise(
         ImageType: Image with shot noise
 
     """
+    if img.ndim == 4:
+        img_linear = power(img, 2.2)
+        scaled_img = (img_linear + scale * 1e-6) / scale
+        noisy_img = random_generator.poisson(scaled_img).astype(np.float32)
+        noisy_img *= scale
+        np.clip(noisy_img, 0, 1, out=noisy_img)
+        return power(noisy_img, 1 / 2.2)
+
     # Apply inverse gamma correction to work in linear space
     img_linear = cv2.pow(img, 2.2)
 
@@ -428,12 +436,18 @@ def sample_gaussian(
         if params["std_range"][0] == params["std_range"][1]
         else random_generator.uniform(*params["std_range"])
     )
-    num_channels = size[2] if len(size) > MONO_CHANNEL_DIMENSIONS else 1
+    num_channels = size[-1] if len(size) > MONO_CHANNEL_DIMENSIONS else 1
     mean_vector = mean * np.ones(shape=(num_channels,), dtype=np.float32)
     std_dev_vector = std * np.ones(shape=(num_channels,), dtype=np.float32)
-    gaussian_sampled_arr = np.zeros(shape=size)
-
-    cv2.randn(dst=gaussian_sampled_arr, mean=mean_vector, stddev=std_dev_vector)
+    gaussian_sampled_arr = np.empty(shape=size, dtype=np.float32)
+    if len(size) == 4:
+        cv2.randn(
+            dst=gaussian_sampled_arr.reshape(-1, size[-2], num_channels),
+            mean=mean_vector,
+            stddev=std_dev_vector,
+        )
+    else:
+        cv2.randn(dst=gaussian_sampled_arr, mean=mean_vector, stddev=std_dev_vector)
     return gaussian_sampled_arr.astype(np.float32)
 
 
@@ -510,15 +524,24 @@ def generate_shared_noise(
         np.ndarray: Generated noise
 
     """
-    # Generate noise for (H, W)
-    height, width = shape[:2]
-    noise_map = sample_noise(
-        noise_type,
-        (height, width),
-        params,
-        max_value,
-        random_generator,
-    )
+    spatial_shape = shape[:-1] if len(shape) > MONO_CHANNEL_DIMENSIONS else shape
+    if len(spatial_shape) > MONO_CHANNEL_DIMENSIONS:
+        packed_shape = (int(np.prod(spatial_shape[:-1])), spatial_shape[-1])
+        noise_map = sample_noise(
+            noise_type,
+            packed_shape,
+            params,
+            max_value,
+            random_generator,
+        ).reshape(spatial_shape)
+    else:
+        noise_map = sample_noise(
+            noise_type,
+            spatial_shape,
+            params,
+            max_value,
+            random_generator,
+        )
 
     # If input is multichannel, broadcast noise to all channels
     if len(shape) > MONO_CHANNEL_DIMENSIONS:

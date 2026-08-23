@@ -12,7 +12,9 @@ import numpy as np
 from albucore import (
     MAX_VALUES_BY_DTYPE,
     clip,
+    get_num_channels,
     multiply,
+    resize3d,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
@@ -43,7 +45,23 @@ __all__ = [
 ]
 
 
-class GaussNoise(ImageOnlyTransform):
+def _get_noise_map_shape(
+    data: dict[str, Any],
+    metadata: dict[str, Any],
+    *,
+    use_volume: bool,
+) -> tuple[int, ...]:
+    if use_volume:
+        volume = data["volume"]
+        return (*volume.shape[:-1], get_num_channels(volume))
+    return (metadata["height"], metadata["width"], metadata["num_channels"])
+
+
+class _FullVolumeNoiseTransform(ImageOnlyTransform):
+    _volume_sampling_is_slice_wise: ClassVar[bool] = False
+
+
+class GaussNoise(_FullVolumeNoiseTransform):
     """Add Gaussian (normal) noise to the image. i.i.d. per pixel (or per block if scaled).
     Use for robustness to sensor or transmission noise.
 
@@ -125,6 +143,15 @@ class GaussNoise(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, noise_map: np.ndarray, **params: Any) -> ImageType:
         return fpixel.add_noise(images, noise_map)
 
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        noise_map: np.ndarray,
+        volume_noise_map: np.ndarray,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.add_noise(volume, volume_noise_map)
+
     def sample_parameters(
         self,
         params: dict[str, Any],
@@ -132,26 +159,39 @@ class GaussNoise(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> dict[str, np.ndarray]:
         metadata = self.get_image_data(data)
-        max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
-        shape = (metadata["height"], metadata["width"], metadata["num_channels"])
-
         sigma = sampling.py_random.uniform(*self.std_range)
         mean = sampling.py_random.uniform(*self.mean_range)
-
         sampling.applied_overrides.update({"std_range": sigma, "mean_range": mean})
-
+        spatial_mode: Literal["per_pixel", "shared"] = "per_pixel" if self.per_channel else "shared"
+        noise_params = {"mean_range": (mean, mean), "std_range": (sigma, sigma)}
+        has_image_target = "image" in data or "images" in data
+        use_volume = "volume" in data and not has_image_target
         noise_map = fpixel.generate_spatial_noise(
             noise_type="gaussian",
-            spatial_mode="per_pixel" if self.per_channel else "shared",
-            shape=shape,
-            params={"mean_range": (mean, mean), "std_range": (sigma, sigma)},
-            max_value=max_value,
+            spatial_mode=spatial_mode,
+            shape=_get_noise_map_shape(data, metadata, use_volume=use_volume),
+            params=noise_params,
+            max_value=MAX_VALUES_BY_DTYPE[data["volume"].dtype]
+            if use_volume
+            else MAX_VALUES_BY_DTYPE[metadata["dtype"]],
             random_generator=sampling.random_generator,
         )
-        return {"noise_map": noise_map}
+        result = {"noise_map": noise_map}
+        if "volume" in data and has_image_target:
+            result["volume_noise_map"] = fpixel.generate_spatial_noise(
+                noise_type="gaussian",
+                spatial_mode=spatial_mode,
+                shape=_get_noise_map_shape(data, metadata, use_volume=True),
+                params=noise_params,
+                max_value=MAX_VALUES_BY_DTYPE[data["volume"].dtype],
+                random_generator=sampling.random_generator,
+            )
+        elif "volume" in data:
+            result["volume_noise_map"] = noise_map
+        return result
 
 
-class ISONoise(ImageOnlyTransform):
+class ISONoise(_FullVolumeNoiseTransform):
     """Add camera-sensor-like noise scaling with intensity (high ISO), useful for low-light or
     camera noise simulation. See `color_shift_range` and `intensity_range`.
 
@@ -254,6 +294,21 @@ class ISONoise(ImageOnlyTransform):
             np.random.default_rng(random_seed),
         )
 
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        color_shift: float,
+        intensity: float,
+        random_seed: int,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.iso_noise_volume(
+            volume,
+            color_shift,
+            intensity,
+            np.random.default_rng(random_seed),
+        )
+
     def sample_parameters(
         self,
         params: dict[str, Any],
@@ -348,6 +403,10 @@ class MultiplicativeNoise(ImageOnlyTransform):
         self.elementwise = elementwise
         self.per_channel = per_channel
 
+    @property
+    def _volume_sampling_is_slice_wise(self) -> bool:
+        return not self.elementwise
+
     def apply(
         self,
         img: ImageType,
@@ -360,6 +419,15 @@ class MultiplicativeNoise(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, multiplier: float | np.ndarray, **kwargs: Any) -> ImageType:
         return self.apply(images, multiplier, **kwargs)
 
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        multiplier: float | np.ndarray,
+        volume_multiplier: np.ndarray,
+        **kwargs: Any,
+    ) -> ImageType:
+        return self.apply(volume, volume_multiplier, **kwargs)
+
     def sample_parameters(
         self,
         params: dict[str, Any],
@@ -367,18 +435,40 @@ class MultiplicativeNoise(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> dict[str, Any]:
         del params, sampling.applied_overrides
-        return self._sample_multiplier(data, sampling)
+        metadata = self.get_image_data(data)
+        has_image_target = "image" in data or "images" in data
+        use_volume = "volume" in data and not has_image_target
+        result = {
+            "multiplier": self._sample_multiplier(
+                _get_noise_map_shape(data, metadata, use_volume=use_volume),
+                sampling,
+                is_volume=use_volume,
+            ),
+        }
+        if "volume" in data and has_image_target and self.elementwise:
+            result["volume_multiplier"] = self._sample_multiplier(
+                _get_noise_map_shape(data, metadata, use_volume=True),
+                sampling,
+                is_volume=True,
+            )
+        elif "volume" in data:
+            result["volume_multiplier"] = result["multiplier"]
+        return result
 
-    def _sample_multiplier(self, data: dict[str, Any], sampling: SamplingContext) -> dict[str, Any]:
+    def _sample_multiplier(
+        self,
+        image_shape: tuple[int, ...],
+        sampling: SamplingContext,
+        *,
+        is_volume: bool,
+    ) -> np.ndarray:
         """Generates the multiplier for the current layout without replay-policy overrides, keeping pixel execution
         independent from constructor serialization concerns.
         """
-        metadata = self.get_image_data(data)
-        image_shape = (metadata["height"], metadata["width"], metadata["num_channels"])
         num_channels = image_shape[-1]
 
         if self.elementwise:
-            multiplier_shape: tuple[int, ...] = image_shape if self.per_channel else (*image_shape[:2], 1)
+            multiplier_shape: tuple[int, ...] = image_shape if self.per_channel else (*image_shape[:-1], 1)
         else:
             multiplier_shape = (num_channels,) if self.per_channel else (1,)
 
@@ -388,21 +478,21 @@ class MultiplicativeNoise(ImageOnlyTransform):
             multiplier_shape,
         ).astype(np.float32)
 
-        if not self.per_channel and num_channels > 1:
+        if not self.per_channel and num_channels > 1 and not is_volume:
             # Replicate the multiplier for all channels if not per_channel
             multiplier = np.repeat(multiplier, num_channels, axis=-1)
 
         if not self.elementwise and self.per_channel:
             # Reshape to broadcast correctly when not elementwise but per_channel
-            multiplier = multiplier.reshape(1, 1, -1)
+            multiplier = multiplier.reshape((1,) * (len(image_shape) - 1) + (-1,))
 
-        if multiplier.shape != image_shape:
+        if not is_volume and multiplier.shape != image_shape:
             multiplier = multiplier.squeeze()
 
-        return {"multiplier": multiplier}
+        return multiplier
 
 
-class ShotNoise(ImageOnlyTransform):
+class ShotNoise(_FullVolumeNoiseTransform):
     """Shot noise (Poisson) in linear light space. Sensor-realistic; use for low-light
     or photon-limited imaging and camera simulation.
 
@@ -471,6 +561,15 @@ class ShotNoise(ImageOnlyTransform):
         **params: Any,
     ) -> ImageType:
         return fpixel.shot_noise(img, scale, np.random.default_rng(random_seed))
+
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        scale: float,
+        random_seed: int,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.shot_noise(volume, scale, np.random.default_rng(random_seed))
 
     def sample_parameters(
         self,
@@ -757,6 +856,10 @@ class AdditiveNoise(ImageOnlyTransform):
         self.patch_width_range = patch_width_range
         self.per_channel = per_channel
 
+    @property
+    def _volume_sampling_is_slice_wise(self) -> bool:
+        return self.spatial_mode in {"constant", "patch"}
+
     def apply(
         self,
         img: ImageType,
@@ -771,6 +874,15 @@ class AdditiveNoise(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        noise_map: np.ndarray,
+        volume_noise_map: np.ndarray,
+        **params: Any,
+    ) -> ImageType:
+        return self.apply(volume, volume_noise_map, **params)
+
     def sample_parameters(
         self,
         params: dict[str, Any],
@@ -778,16 +890,32 @@ class AdditiveNoise(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> dict[str, Any]:
         del params, sampling.applied_overrides
-        return self._sample_noise_map(data, sampling)
+        metadata = self.get_image_data(data)
+        has_image_target = "image" in data or "images" in data
+        use_volume = "volume" in data and not has_image_target and self.spatial_mode != "patch"
+        shape = _get_noise_map_shape(data, metadata, use_volume=use_volume)
+        max_value = MAX_VALUES_BY_DTYPE[data["volume"].dtype] if use_volume else MAX_VALUES_BY_DTYPE[metadata["dtype"]]
+        result = self._sample_noise_map(shape, max_value, sampling)
+        if "volume" in data and has_image_target and self.spatial_mode in {"per_pixel", "shared"}:
+            result["volume_noise_map"] = self._sample_noise_map(
+                _get_noise_map_shape(data, metadata, use_volume=True),
+                MAX_VALUES_BY_DTYPE[data["volume"].dtype],
+                sampling,
+            )["noise_map"]
+        elif "volume" in data:
+            result["volume_noise_map"] = result["noise_map"]
+        return result
 
-    def _sample_noise_map(self, data: dict[str, Any], sampling: SamplingContext) -> dict[str, Any]:
+    def _sample_noise_map(
+        self,
+        shape: tuple[int, ...],
+        max_value: float,
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         """Generates the noise map for the current layout without replay-policy overrides, keeping pixel execution
         independent from constructor serialization concerns.
         """
-        metadata = self.get_image_data(data)
-        max_value = MAX_VALUES_BY_DTYPE[metadata["dtype"]]
-        num_channels = metadata["num_channels"]
-        shape = (metadata["height"], metadata["width"], num_channels)
+        num_channels = shape[-1]
         noise_params = cast("dict[str, Any]", self.noise_params)
 
         if self.noise_type == "uniform":
@@ -816,19 +944,20 @@ class AdditiveNoise(ImageOnlyTransform):
             return {"noise_map": noise_map}
 
         if self.spatial_mode == "patch":
+            patch_shape = cast("tuple[int, int, int]", shape)
             patch_count = sampling.py_random.randint(*self.patch_count_range)
             patch_heights = np.ceil(
-                metadata["height"] * sampling.random_generator.uniform(*self.patch_height_range, size=patch_count),
+                shape[0] * sampling.random_generator.uniform(*self.patch_height_range, size=patch_count),
             ).astype(np.int32)
             patch_widths = np.ceil(
-                metadata["width"] * sampling.random_generator.uniform(*self.patch_width_range, size=patch_count),
+                shape[1] * sampling.random_generator.uniform(*self.patch_width_range, size=patch_count),
             ).astype(np.int32)
-            y_min = sampling.random_generator.integers(0, metadata["height"] - patch_heights + 1)
-            x_min = sampling.random_generator.integers(0, metadata["width"] - patch_widths + 1)
+            y_min = sampling.random_generator.integers(0, shape[0] - patch_heights + 1)
+            x_min = sampling.random_generator.integers(0, shape[1] - patch_widths + 1)
             patches = np.stack([x_min, y_min, x_min + patch_widths, y_min + patch_heights], axis=-1)
             noise_map = fpixel.generate_patch_noise(
                 noise_type=self.noise_type,
-                shape=shape,
+                shape=patch_shape,
                 params=noise_params,
                 max_value=max_value,
                 random_generator=sampling.random_generator,
@@ -848,7 +977,7 @@ class AdditiveNoise(ImageOnlyTransform):
         return {"noise_map": noise_map}
 
 
-class SaltAndPepper(ImageOnlyTransform):
+class SaltAndPepper(_FullVolumeNoiseTransform):
     """Apply salt-and-pepper (impulse) noise: randomly set pixels to min or max with
     density and ratio controlled by `amount_range` and `salt_vs_pepper_range`.
 
@@ -951,37 +1080,52 @@ class SaltAndPepper(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> dict[str, Any]:
         metadata = self.get_image_data(data)
-        height, width = (metadata["height"], metadata["width"])
-
         total_amount = sampling.py_random.uniform(*self.amount_range)
         salt_ratio = sampling.py_random.uniform(*self.salt_vs_pepper_range)
-
         sampling.applied_overrides.update({"amount_range": total_amount, "salt_vs_pepper_range": salt_ratio})
+        has_image_target = "image" in data or "images" in data
+        use_volume = "volume" in data and not has_image_target
+        spatial_shape = tuple(data["volume"].shape[:-1]) if use_volume else (metadata["height"], metadata["width"])
+        salt_mask, pepper_mask = self._sample_masks(spatial_shape, total_amount, salt_ratio, sampling)
+        result = {"salt_mask": salt_mask, "pepper_mask": pepper_mask}
+        if "volume" in data and has_image_target:
+            volume_salt_mask, volume_pepper_mask = self._sample_masks(
+                tuple(data["volume"].shape[:-1]),
+                total_amount,
+                salt_ratio,
+                sampling,
+            )
+            result.update(
+                {
+                    "volume_salt_mask": volume_salt_mask,
+                    "volume_pepper_mask": volume_pepper_mask,
+                },
+            )
+        elif "volume" in data:
+            result.update(
+                {
+                    "volume_salt_mask": salt_mask,
+                    "volume_pepper_mask": pepper_mask,
+                },
+            )
+        return result
 
-        area = height * width
-
+    @staticmethod
+    def _sample_masks(
+        spatial_shape: tuple[int, ...],
+        total_amount: float,
+        salt_ratio: float,
+        sampling: SamplingContext,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        area = int(np.prod(spatial_shape))
         num_pixels = int(area * total_amount)
         num_salt = int(num_pixels * salt_ratio)
-
-        # Generate all positions at once
         noise_positions = sampling.random_generator.choice(area, size=num_pixels, replace=False)
-
-        # Create masks
         salt_mask = np.zeros(area, dtype=bool)
         pepper_mask = np.zeros(area, dtype=bool)
-
-        # Set salt and pepper positions
         salt_mask[noise_positions[:num_salt]] = True
         pepper_mask[noise_positions[num_salt:]] = True
-
-        # Reshape to 2D
-        salt_mask = salt_mask.reshape(height, width)
-        pepper_mask = pepper_mask.reshape(height, width)
-
-        return {
-            "salt_mask": salt_mask,
-            "pepper_mask": pepper_mask,
-        }
+        return salt_mask.reshape(spatial_shape), pepper_mask.reshape(spatial_shape)
 
     def apply(
         self,
@@ -995,8 +1139,24 @@ class SaltAndPepper(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        salt_mask: np.ndarray,
+        pepper_mask: np.ndarray,
+        volume_salt_mask: np.ndarray,
+        volume_pepper_mask: np.ndarray,
+        **params: Any,
+    ) -> ImageType:
+        return self.apply(
+            volume,
+            volume_salt_mask,
+            volume_pepper_mask,
+            **params,
+        )
 
-class FilmGrain(ImageOnlyTransform):
+
+class FilmGrain(_FullVolumeNoiseTransform):
     """Analog film grain: luminance-dependent, spatially correlated noise. Distinct from
     i.i.d. GaussNoise or ShotNoise. Use for vintage or film-like augmentation.
 
@@ -1075,34 +1235,57 @@ class FilmGrain(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        grain: np.ndarray,
+        intensity: float,
+        volume_grain: np.ndarray,
+        **params: Any,
+    ) -> ImageType:
+        return self.apply(volume, volume_grain, intensity, **params)
+
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
         sampling: SamplingContext,
     ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
-        height, width = image_shape
-
         intensity = sampling.py_random.uniform(*self.intensity_range)
         grain_size = (
             sampling.py_random.randint(*self.grain_size_range)
             if self.grain_size_range[0] != self.grain_size_range[1]
             else self.grain_size_range[0]
         )
-
-        grain_h = max(1, height // grain_size)
-        grain_w = max(1, width // grain_size)
-
-        grain = sampling.random_generator.standard_normal((grain_h, grain_w, 1), dtype=np.float32)
-
-        if grain_h != height or grain_w != width:
-            grain = fgeometric.resize(grain, (height, width), interpolation=cv2.INTER_LINEAR)
-
-        grain = grain[:, :, 0]
-
         sampling.applied_overrides.update({"intensity_range": intensity, "grain_size_range": grain_size})
-        return {
-            "grain": grain,
-            "intensity": intensity,
-        }
+        metadata = self.get_image_data(data)
+        has_image_target = "image" in data or "images" in data
+        spatial_shape = (
+            tuple(data["volume"].shape[:3])
+            if "volume" in data and not has_image_target
+            else (
+                metadata["height"],
+                metadata["width"],
+            )
+        )
+        result = {"grain": self._sample_grain(spatial_shape, grain_size, sampling), "intensity": intensity}
+        if "volume" in data and has_image_target:
+            result["volume_grain"] = self._sample_grain(tuple(data["volume"].shape[:3]), grain_size, sampling)
+        elif "volume" in data:
+            result["volume_grain"] = result["grain"]
+        return result
+
+    @staticmethod
+    def _sample_grain(
+        spatial_shape: tuple[int, ...],
+        grain_size: int,
+        sampling: SamplingContext,
+    ) -> np.ndarray:
+        grain_shape = tuple(max(1, size // grain_size) for size in spatial_shape)
+        grain = sampling.random_generator.standard_normal((*grain_shape, 1), dtype=np.float32)
+        if grain_shape == spatial_shape:
+            return grain[..., 0]
+        if len(spatial_shape) == 3:
+            return resize3d(grain, spatial_shape, cv2.INTER_LINEAR)[..., 0]
+        spatial_shape_2d = (spatial_shape[0], spatial_shape[1])
+        return fgeometric.resize(grain, spatial_shape_2d, interpolation=cv2.INTER_LINEAR)[:, :, 0]

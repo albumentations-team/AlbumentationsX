@@ -1,6 +1,8 @@
 # Codex Instructions for AlbumentationsX
 
 Read and follow `docs/contributing/codex_guidelines.md`.
+Deterministic AX source contracts are documented in `docs/contributing/coding_guidelines.md` and enforced by the single
+`check-ax-coding-guidance` pre-commit hook. Do not duplicate those mechanical rules in this file.
 
 Read the always-on Codex rule file `.codex/rules/albumentations-rules.md`. For scoped work, also read:
 
@@ -26,8 +28,6 @@ LUT and random-generator selection, backend comparison, Albucore extraction, and
 
 ## PR Review Guardrails
 
-- Keep `apply`, `apply_to_images`, and `apply_to_volumes` limited to validation, policy, and dispatch. Put reusable
-  pixel arithmetic in the functional layer or Albucore.
 - Reuse Albucore dtype, conversion, and arithmetic helpers when they provide the required semantics. Do not recreate
   conversions such as uint8 normalization locally without a documented reason.
 - Record the exact validation commands and results in the PR or task report. Do not claim a broader quality gate than

@@ -50,6 +50,14 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 
 - Pyrefly runs through the official pre-commit hook in system mode, using the same `uv` environment as CI.
 
+The repository-specific deterministic rules run through one package-wide hook:
+`pre-commit run check-ax-coding-guidance --all-files`. It emits `AXG001`–`AXG020` diagnostics for transform API,
+sampling, schema, naming, performance-shape, documentation, and bbox propagation contracts. The public
+`BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional; all internal transform, processor, and
+functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
+review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.codex/skills/` point to
+this document and the hook instead of restating the AXG catalog.
+
 - Before handing off Python changes, run the fast local quality gate:
 
   ```bash
@@ -418,8 +426,8 @@ Each concrete transform `apply*` body is limited to 20 code-bearing physical lin
 lines, and standalone comments do not count; a line that contains code and an inline comment does. Only base
 infrastructure classes whose names begin with `Base` (for example, `BaseCrop` and `BaseMaxSizeTransform`) are excluded.
 Name a non-public base class `BaseX`, not `X`. This rule
-does not apply to `Compose` orchestration such as `apply_in_invocation`; it is enforced by the
-`check-apply-method-length` pre-commit hook.
+does not apply to `Compose` orchestration such as `apply_in_invocation`; it is enforced by the unified
+`check-ax-coding-guidance` pre-commit hook (`AXG003`).
 
 ### Parameter Generation
 
@@ -465,7 +473,9 @@ Use this method when you need to:
 
 ### Parameter Validation with `InitSchema`
 
-Each transform must include an `InitSchema` class that inherits from `BaseTransformInitSchema`. This class is responsible for:
+Each transform that introduces constructor inputs or changes their annotations must include a non-empty `InitSchema`
+that inherits from `BaseTransformInitSchema`. A transform that only repeats an inherited constructor contract and
+explicitly forwards those inputs does not need a new schema. The schema is responsible for:
 
 - Validating input parameters before `__init__` execution
 - Converting parameter types if needed
@@ -524,18 +534,12 @@ class MyTransform(ImageOnlyTransform):
         contrast_range: tuple[float, float] = (0.8, 1.2)  # ❌ No defaults in InitSchema
 ```
 
-##### Exception: Discriminator Fields
-
-The only exception to this rule is discriminator fields used for Pydantic discriminated unions, where the default value must match the literal type:
-
-```python
-# Correct - discriminator field with matching default
-class UniformParams(NoiseParamsBase):
-    noise_type: Literal["uniform"] = "uniform"  # ✅ Required for discriminated unions
-    ranges: list[Sequence[float]]
-```
-
-This rule is enforced by a pre-commit hook that will flag any violations during development.
+The rule is enforced by the unified `check-ax-coding-guidance` pre-commit hook (`AXG001`). It checks nested and
+module-level `*InitSchema` classes, follows imported schema inheritance, and does not exempt discriminator fields.
+If a transform only repeats inherited constructor inputs and explicitly forwards them, it does not need an empty schema.
+When it adds an input or changes an annotation, its non-empty schema must declare that input (`AXG020`).
+Compatibility aliases that deliberately preserve a parent validator's permissive boundary may retain an empty schema;
+they must not introduce new constructor fields.
 
 #### No `get_transform_init_args_names` Override
 

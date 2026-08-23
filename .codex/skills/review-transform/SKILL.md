@@ -24,24 +24,17 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 - **Never auto-detect bbox type from column count** — type comes from `BboxParams.bbox_type`
 - For OBB: never use raw `cv2.minAreaRect` output; use `cv2.boxPoints` then `polygons_to_obb`
 
-## 3. API Consistency (🔴 Critical)
+## 3. Mechanical AX contracts (🔴 Critical)
 
-- [ ] **No "Random" prefix** in class name
-- [ ] **Range params use `_range` suffix**: `brightness_range`, not `brightness_limit`
-- [ ] **`fill` not `fill_value`**, **`fill_mask` not `fill_mask_value`**
-- [ ] **`border_mode`** not `mode` or `pad_mode`
-- [ ] **No default values in `InitSchema`** (except Pydantic discriminator fields)
-- [ ] **No default values in `apply_*` method args** (other than `self`, `**params`)
-- [ ] All `InitSchema` fields use `Annotated[...]` validators where applicable
-- [ ] **No `get_transform_init_args_names()` override** — the base class uses the concrete public `__init__` signature
-- [ ] Parent-only implementation fields do not leak into serialization or `applied_config`
+Run `pre-commit run check-ax-coding-guidance --all-files` first and report its exact `AXG` diagnostic. Keep the
+deterministic contract and its exceptions in `docs/contributing/coding_guidelines.md`.
 
-## 4. Random Number Generation (🔴 Critical)
+Use human review for what the hook cannot decide: whether constructor fields express a coherent public API, whether
+validators preserve intended semantics, and whether a proposed functional operation belongs in Albucore.
 
-- [ ] All randomness lives in `sample_parameters`, NOT in `apply_*`
-- [ ] Receives `sampling: SamplingContext` and uses `sampling.py_random` for simple ops
-- [ ] Uses `sampling.random_generator` only when NumPy arrays are needed
-- [ ] **No `np.random.*` or `random.*` module-level calls** anywhere in the class
+## 4. Sampling design (🔴 Critical)
+
+Review the sampling design and replay contract here. Use the AX guidance hook for deterministic violations.
 
 ## 5. Type Safety (🔴 Critical)
 
@@ -68,10 +61,6 @@ Priority order to check:
 ### Batch Optimization Checks
 
 - [ ] **Custom `apply_to_images`** if expensive setup (kernels, LUTs, gradient maps) can be computed once per batch
-- [ ] **Thin concrete-transform `apply*` methods**: at most 20 code-bearing body lines. Keep transform-specific runtime
-  input checks here; move image arithmetic, clipping, routing, and temporary-array construction into a functional
-  helper. Docstrings and standalone comments do not count. Only base infrastructure classes whose names begin with
-  `Base` are excluded; non-public base classes must use that prefix.
 - [ ] **No redundant `ndim == 4` checks** on images — they're always 4D in batch context
 - [ ] **No 2D grayscale branches** in Compose functional paths — grayscale images are `(H,W,1)`
 - [ ] **No reshape trick**: Do NOT reshape `(N,H,W,1)` to `(H,W,N)` for cv2 — 2–4× slower due to non-contiguous copy + sequential channel processing
@@ -81,10 +70,8 @@ Flag any violations with a concrete speedup suggestion.
 ## 7. Documentation (🟡 Important)
 
 - [ ] Docstring has `Args`, `Targets`, `Image types` sections
-- [ ] `Examples` section present (plural, not "Example")
 - [ ] Examples follow the standard pattern with image, mask, bboxes, keypoints
 - [ ] Examples use `A.Compose` with `BboxParams` and `KeypointParams`
-- [ ] No `---` sequences in docstring (pre-commit will catch this but check anyway)
 
 ## 8. Test Coverage (🟡 Important)
 
@@ -119,11 +106,11 @@ Flag any violations with a concrete speedup suggestion.
 
 ### 🔴 Critical
 - **Dead code**: `_unused_method` is never called (line 42)
-- **API**: Parameter `fill_value` should be `fill`
+- **AXG diagnostic**: report the exact hook rule and location (for example, `AXG008`)
 
 ### 🟡 Important
 - **Performance**: Use `cv2.LUT` instead of numpy indexing for pixel mapping (5-10x faster)
-- **Docs**: Missing `Examples` section in docstring
+- **Docs**: Example does not explain the transform's target semantics
 
 ### 🟢 Suggestions
 - Consider using relative `noise_range` instead of absolute pixel values

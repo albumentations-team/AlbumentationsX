@@ -44,7 +44,9 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - Reason: Users can attach additional label fields (e.g., `[x_min, y_min, x_max, y_max, class_id, track_id]` for HBB)
 - Bbox type information comes from `BboxParams.bbox_type` in the transform's processors
 - Functional layer functions should be bbox-type agnostic when possible (simple coordinate shifts work for both)
-- **NEVER** use default values for `bbox_type` (e.g. `bbox_type: Literal["hbb", "obb"] = "hbb"`); require explicit passing so fallbacks to hbb are easy to debug
+- The public `BboxParams.__init__(bbox_type="hbb")` boundary keeps its compatibility default. Below that boundary,
+  every transform, processor, and functional helper must receive `bbox_type` explicitly; the AX guidance hook enforces
+  this split so internal fallbacks to hbb remain visible.
 - **OBB corner-based invariance**: Never use `cv2.minAreaRect`'s raw `(w, h, angle)` output. Always use `cv2.boxPoints(rect)` to get corners, then `polygons_to_obb` (or `_corners_to_obb_params` for single-box) to derive our canonical OBB. This ensures OpenCV-version-invariant behavior.
 - **For complete details**, see `docs/design/bounding_boxes.md`
 
@@ -54,7 +56,9 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - Parameter ranges use `_range` suffix (e.g., `brightness_range` not `brightness_limit`)
 - Use `fill` not `fill_value`, `fill_mask` not `fill_mask_value`
 - Use `border_mode` not `mode` or `pad_mode`
-- InitSchema classes must NOT have default values (except discriminator fields for Pydantic unions)
+- `InitSchema` fields must not have defaults, including discriminator fields. Defaults belong in the public transform
+constructor. A schema is required only when a transform adds constructor inputs or changes their annotations.
+Compatibility aliases may retain an empty schema solely to preserve an existing parent validation boundary.
 - Default test values should be 137, not 42
 - Prefer relative parameters (fractions of image size) over fixed pixel values
 
@@ -72,6 +76,19 @@ AlbumentationsX is a high-performance computer vision augmentation library. We p
 - **Transform-level checks**: All validation of transform constructor parameters happens at transform `__init__()` time (via InitSchema)
 - **Exception**: Reference data validation may happen at runtime
 - **NO runtime checks** for compatibility in `apply_*` methods or functional layer - fail fast at pipeline creation
+
+### Unified AX coding-guidance hook
+
+Run `pre-commit run check-ax-coding-guidance --all-files` after changing transform code. The hook parses the complete
+`albumentations/` package once and reports stable `AXG001`–`AXG020` diagnostics. It owns deterministic source contracts:
+schema defaults and constructor/schema coverage, explicit internal `bbox_type`, thin/default-free concrete `apply*`
+methods, `SamplingContext` signatures and RNG placement, transform naming, parameter names and range annotations,
+removed sampling APIs, serialization overrides, the exact OpenCV allowlist, scalar NumPy math, docstring syntax,
+Examples sections, public method documentation, and allowlist/integrity checks.
+
+The public `BboxParams` default is the only `bbox_type` default boundary. Framework roots and Compose orchestration are
+excluded from concrete-transform rules. Review skills retain the non-mechanical decisions—API design, target semantics,
+benchmark interpretation, and whether a functional operation belongs in Albucore—rather than duplicating these checks.
 
 ### Dead Code Detection
 

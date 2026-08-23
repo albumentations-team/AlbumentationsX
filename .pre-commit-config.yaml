@@ -99,95 +99,12 @@ repos:
       entry: python -m tools.check_naming_conflicts
       language: python
       pass_filenames: false
-    - id: check-example-docstrings
-      name: Check for 'Examples' sections in transform classes (must be plural form)
-      entry: python tools/check_example_docstrings.py
+    - id: check-ax-coding-guidance
+      name: Check AlbumentationsX coding guidance
+      entry: python -m tools.ax_coding_guidance
       language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-      additional_dependencies: ["google-docstring-parser>=0.0.7"]
-    - id: check-no-defaults-in-schemas
-      name: Check no defaults in BaseModel schemas
-      entry: python tools/check_no_defaults_in_schemas.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-    - id: check-method-docstrings
-      name: Check method docstrings (except apply methods, getters, and setters)
-      entry: python tools/check_method_docstrings.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-    - id: check-random-usage
-      name: Check for direct np.random/random module usage in transforms
-      entry: python tools/check_random_usage.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-    - id: check-removed-sampling-hooks
-      name: Forbid obsolete get_params sampling hooks
-      entry: python tools/check_removed_sampling_hooks.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-    - id: check-scalar-numpy-math
-      name: Check NumPy math is not used for proven Python scalars
-      entry: python tools/check_scalar_numpy_math.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-    - id: check-transform-names
-      name: Check new transform names do not use the Random prefix
-      entry: python tools/check_transform_names.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-    - id: check-apply-no-defaults
-      name: Check apply_* methods have no default argument values
-      entry: python tools/check_apply_no_defaults.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-    - id: check-apply-method-length
-      name: Keep apply methods thin
-      entry: python tools/check_apply_method_length.py
-      language: python
-      types: [python]
-      files: ^albumentations/(augmentations/|pytorch/)
-      pass_filenames: true
-    - id: check-fill-naming
-      name: Check fill/fill_mask naming convention (not fill_value/fill_mask_value)
-      entry: python tools/check_fill_naming.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-      pass_filenames: true
-    - id: check-cv2-geometric-forbidden
-      name: Forbid cv2.warpAffine/warpPerspective/copyMakeBorder/remap (use albucore)
-      entry: python tools/check_cv2_geometric_forbidden.py
-      language: system
-      files: ^albumentations/
       pass_filenames: false
-    - id: check-transform-init-args-override
-      name: Keep transform init arguments derived from public constructors
-      entry: python tools/check_transform_init_args_override.py
-      language: python
-      types: [python]
-      files: ^albumentations/
-    - id: check-range-parameter-annotations
-      name: Require transform range parameters to be tuple pairs
-      entry: python tools/check_range_parameter_annotations.py
-      language: python
-      types: [python]
-      files: ^albumentations/augmentations/
+      files: ^(albumentations/|tools/ax_coding_guidance/|tests/test_ax_coding_guidance\.py$|\.pre-commit-config\.yaml$)
     - id: check-local-markdown-links
       name: Check local Markdown links
       entry: python tools/check_local_markdown_links.py

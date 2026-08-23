@@ -16,8 +16,7 @@ always_apply: true
 ## Code Style
 - Avoid unclear variable names (e.g., single-letter `k`); use descriptive names like `rot90_count`
 - `sample_parameters` should be minimal and clear - just call other functions from it
-- Use `fill`, not `fill_value`. Use `fill_mask`, not `fill_mask_value`
-- NO default values in InitSchema classes (except discriminator fields for Pydantic unions)
+- Use `check-ax-coding-guidance` for deterministic AX coding guidance and report its `AXG` diagnostic.
 - Prefer reusable `Annotated` validators for standard single-field checks. Use `field_validator` only when validation
   genuinely requires field context or cannot be expressed as reusable type metadata; use `model_validator` for
   cross-field constraints.
@@ -26,11 +25,8 @@ always_apply: true
   different units or behavior.
 - Keep public docstrings focused on user-facing behavior. Omit post-initialization, serialization, replay, and other
   implementation details unless they are part of the supported public contract.
-- Keep concrete transform `apply*` methods as thin policy and dispatch methods (20 code-bearing body lines at most).
-  Keep a transform-specific runtime input check here, then move image arithmetic, array construction, clipping, and
-  kernel-routing branches into a functional helper; the pre-commit hook excludes
-  docstrings, blank lines, standalone comments, and base infrastructure classes whose names begin with `Base`. A
-  non-public base class must use that prefix. It does not apply to `Compose` orchestration.
+- Run `pre-commit run check-ax-coding-guidance --all-files` for the deterministic AX rules. Keep their full contract
+  and exceptions in `docs/contributing/coding_guidelines.md`; do not recreate them in skills or ad hoc scripts.
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite

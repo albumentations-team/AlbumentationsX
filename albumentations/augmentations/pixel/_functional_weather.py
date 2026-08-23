@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from albucore import exp as albucore_exp
+from albucore import sqrt as albucore_sqrt
+
 from ._functional_color import (
     equalize,
 )
@@ -32,6 +35,8 @@ from ._functional_sharpness import (
 )
 
 _maybe_process_in_chunks = cast("Any", maybe_process_in_chunks)
+# Keep sustained-batch chunks on Albucore's large-array route while bounding temporary conversion memory.
+_FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS = 512 * 1024
 
 
 def add_snow_bleach(
@@ -126,7 +131,7 @@ def generate_snow_textures(
 
     """
     # Generate base snow texture
-    snow_texture = random_generator.normal(size=img_shape[:2], loc=0.5, scale=0.3)
+    snow_texture = random_generator.normal(size=img_shape[:2], loc=0.5, scale=0.3).astype(np.float32)
     snow_texture = cv2.GaussianBlur(snow_texture, (0, 0), sigmaX=1, sigmaY=1)
 
     # Generate sparkle mask
@@ -211,7 +216,7 @@ def add_snow_texture(
     # This simulates natural snow distribution on surfaces
     # The effect is achieved using a linear gradient from 1 (full snow) to 0.2 (less snow)
     rows = img.shape[0]
-    depth_effect = np.linspace(1, 0.2, rows)[:, np.newaxis]
+    depth_effect = np.linspace(1, 0.2, rows, dtype=np.float32)[:, np.newaxis]
     snow_texture *= depth_effect
 
     # Apply snow texture
@@ -589,13 +594,16 @@ def add_sun_flare_physics_based(
     flare_layer = cv2.GaussianBlur(flare_layer, (0, 0), sigmaX=15, sigmaY=15)
 
     # Create a radial gradient mask
-    y, x = np.ogrid[:height, :width]
-    mask = np.sqrt((x - flare_center[0]) ** 2 + (y - flare_center[1]) ** 2)
-    mask = 1 - np.clip(mask / (max(width, height) * 0.7), 0, 1)
-    mask = np.dstack([mask] * 3)
+    y = np.arange(height, dtype=np.float32)[:, np.newaxis] - flare_center[1]
+    x = np.arange(width, dtype=np.float32)[np.newaxis, :] - flare_center[0]
+    mask = x * x + y * y
+    mask = albucore_sqrt(mask, inplace=True)
+    mask *= np.float32(1 / (max(width, height) * 0.7))
+    np.clip(mask, 0, 1, out=mask)
+    np.subtract(1, mask, out=mask)
 
     # Apply the mask to the flare layer
-    flare_layer *= mask
+    flare_layer *= mask[..., np.newaxis]
 
     # Add chromatic aberration
     channels = list(cv2.split(flare_layer))
@@ -614,7 +622,7 @@ def add_sun_flare_physics_based(
     flare_layer = cv2.merge(channels)
 
     # Blend the flare with the original image using screen blending
-    return 255 - ((255 - output) * (255 - flare_layer) / 255)
+    return cast("ImageType", 255 - ((255 - output) * (255 - flare_layer) / 255))
 
 
 @uint8_io
@@ -657,6 +665,75 @@ def add_shadow(
         )
 
     return img_shadowed
+
+
+def add_shadow_batch(
+    images: ImageType,
+    vertices_list: list[np.ndarray],
+    intensities: np.ndarray,
+) -> ImageType:
+    """Apply shared shadow polygons across an image batch after rasterizing each mask once, retaining sequential
+    overlap behavior and uint8 rounding.
+
+    Args:
+        images (ImageType): Input image batch in `(N, H, W, C)` or raw grayscale `(N, H, W)` format.
+        vertices_list (list[np.ndarray]): List of vertices for shadow polygons.
+        intensities (np.ndarray): Array of shadow intensities. Range is [0, 1].
+
+    Returns:
+        ImageType: Image batch with shadows added, preserving the input shape and supported dtype (`uint8` or
+            `float32`).
+
+    """
+    if len(images) == 0:
+        return images
+
+    input_dtype = images.dtype
+    image_elements = images[0].size
+    conversion_chunk_elements = max(_FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS, image_elements)
+    if image_elements < _FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS and images.size < 2 * _FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS:
+        # Avoid switching a small batch to Albucore's large-array backend when every inherited per-item call stays
+        # below that threshold.
+        conversion_chunk_elements = image_elements
+    if input_dtype == np.uint8:
+        result = images.copy()
+    elif images.flags.c_contiguous and images.size >= 2 * conversion_chunk_elements:
+        flat_images = images.reshape(-1)
+        flat_result = np.empty(flat_images.shape, dtype=np.uint8)
+        for start in range(0, flat_images.size, conversion_chunk_elements):
+            stop = start + conversion_chunk_elements
+            flat_result[start:stop] = from_float(
+                cast("ImageFloat32", flat_images[start:stop]),
+                target_dtype=np.dtype(np.uint8),
+            )
+        result = flat_result.reshape(images.shape)
+    else:
+        result = from_float(cast("ImageFloat32", images), target_dtype=np.dtype(np.uint8))
+    max_value = MAX_VALUES_BY_DTYPE[np.uint8]
+    poly_mask = np.zeros((*images.shape[1:3], 1), dtype=np.uint8)
+    shadowed_indices = np.empty(images.shape[1:3], dtype=bool)
+
+    for vertices, shadow_intensity in zip(vertices_list, intensities, strict=True):
+        poly_mask.fill(0)
+        cv2.fillPoly(poly_mask, [vertices], (max_value,))
+        x, y, width, height = cv2.boundingRect(vertices)
+        x_min, x_max = max(x, 0), min(x + width, images.shape[2])
+        y_min, y_max = max(y, 0), min(y + height, images.shape[1])
+        if x_min >= x_max or y_min >= y_max:
+            continue
+        result_region = result[:, y_min:y_max, x_min:x_max, ...]
+        mask_region = shadowed_indices[y_min:y_max, x_min:x_max]
+        np.equal(poly_mask[y_min:y_max, x_min:x_max, 0], max_value, out=mask_region)
+        batch_mask = mask_region.reshape((1, *mask_region.shape) + (1,) * (images.ndim - 3))
+        np.multiply(
+            result_region,
+            1 - shadow_intensity,
+            out=result_region,
+            where=batch_mask,
+            casting="unsafe",
+        )
+
+    return to_float(cast("ImageUInt8", result)) if input_dtype != np.uint8 else cast("ImageUInt8", result)
 
 
 @uint8_io
@@ -848,7 +925,7 @@ def get_rain_params(
         m = np.zeros_like(m)
 
     # Apply color with adjusted intensity for more natural look
-    drops = m[:, :, None] * color * (intensity * 0.9)  # Slightly reduced intensity
+    drops = m[:, :, None] * color.astype(np.float32, copy=False) * np.float32(intensity * 0.9)
 
     return {
         "drops": drops,
@@ -956,14 +1033,20 @@ def apply_atmospheric_fog(
 
     """
     num_channels = img.shape[-1]
-    transmission = np.exp(-density * depth_map).astype(np.float32)[:, :, np.newaxis]
+    transmission = np.multiply(depth_map, np.float32(-density), dtype=np.float32)
+    transmission = albucore_exp(transmission, inplace=True)[:, :, np.newaxis]
 
     fog_array = np.array(fog_color, dtype=np.float32)
     if len(fog_array) < num_channels:
         fog_array = np.pad(fog_array, (0, num_channels - len(fog_array)), mode="edge")
     fog_array = fog_array[:num_channels].reshape(1, 1, -1)
 
-    result = img.astype(np.float32) * transmission + fog_array * (1.0 - transmission)
+    if img.dtype == np.float32:
+        result = np.multiply(img, transmission, dtype=np.float32)
+        np.subtract(np.float32(1.0), transmission, out=transmission)
+        np.add(result, fog_array * transmission, out=result)
+    else:
+        result = img.astype(np.float32) * transmission + fog_array * (1.0 - transmission)
 
     return clip(result, img.dtype)
 
@@ -973,6 +1056,7 @@ __all__ = [
     "add_gravel",
     "add_rain",
     "add_shadow",
+    "add_shadow_batch",
     "add_snow_bleach",
     "add_snow_texture",
     "add_sun_flare_overlay",

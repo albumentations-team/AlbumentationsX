@@ -6,7 +6,7 @@ import math
 import random
 from collections.abc import Sequence
 from functools import lru_cache
-from typing import Any, Literal, cast
+from typing import Any, Literal
 from warnings import warn
 
 import cv2
@@ -18,6 +18,7 @@ from albucore import (
     add_constant,
     add_vector,
     add_weighted,
+    apply_uint8_lut,
     clip,
     clipped,
     float32_io,
@@ -36,9 +37,7 @@ from albucore import (
     preserve_channel_dim,
     reduce_sum,
     remap,
-    reshape_ndhwc_channel,
     reshape_xhwc_channel,
-    restore_ndhwc_channel,
     restore_xhwc_channel,
     std,
     sz_lut,
@@ -64,17 +63,6 @@ MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS = 512 * 512
 MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS = 1024 * 1024
 
 
-def apply_multichannel_lut(img: ImageType, luts: np.ndarray, num_channels: int) -> ImageType:
-    """Apply channel-specific uint8 LUTs in one OpenCV pass for images, batches, and volumes while
-    preserving original shape and channel order.
-    """
-    lut = np.ascontiguousarray(luts.T.reshape(256, 1, num_channels))
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        return cast("ImageType", cv2.LUT(img, lut))
-
-    return cast("ImageType", cv2.LUT(img.reshape(-1, 1, num_channels), lut).reshape(img.shape))
-
-
 __all__ = [
     "MAX_VALUES_BY_DTYPE",
     "MONO_CHANNEL_DIMENSIONS",
@@ -94,7 +82,7 @@ __all__ = [
     "add_constant",
     "add_vector",
     "add_weighted",
-    "apply_multichannel_lut",
+    "apply_uint8_lut",
     "clip",
     "clipped",
     "cv2",
@@ -120,9 +108,7 @@ __all__ = [
     "random",
     "reduce_sum",
     "remap",
-    "reshape_ndhwc_channel",
     "reshape_xhwc_channel",
-    "restore_ndhwc_channel",
     "restore_xhwc_channel",
     "std",
     "sz_lut",

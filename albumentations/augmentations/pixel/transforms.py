@@ -24,6 +24,7 @@ from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.blur.transforms import BlurInitSchema
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.utils import non_rgb_error
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -139,6 +140,8 @@ class Normalize(ImageOnlyTransform):
 
     """
 
+    _preserves_input_image_range = False
+
     class InitSchema(BaseTransformInitSchema):
         mean: tuple[float, ...] | float | None
         std: tuple[float, ...] | float | None
@@ -224,9 +227,6 @@ class Normalize(ImageOnlyTransform):
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return self.apply(volume, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
 
 class InvertImg(ImageOnlyTransform):
     """Invert the input image by subtracting pixel values from max values of the image types,
@@ -272,9 +272,6 @@ class InvertImg(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self.apply(images, *args, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self.apply(volumes, *args, **params)
 
 
 class Sharpen(ImageOnlyTransform):
@@ -433,12 +430,17 @@ class Sharpen(ImageOnlyTransform):
 
         return (1 - alpha) * matrix_nochange + alpha * matrix_effect
 
-    def get_params(self) -> dict[str, Any]:
-        alpha = self.py_random.uniform(*self.alpha_range)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        alpha = sampling.py_random.uniform(*self.alpha_range)
 
         if self.method == "kernel":
-            lightness = self.py_random.uniform(*self.lightness_range)
-            self.applied_config = {"alpha_range": alpha, "lightness_range": lightness}
+            lightness = sampling.py_random.uniform(*self.lightness_range)
+            sampling.applied_overrides.update({"alpha_range": alpha, "lightness_range": lightness})
             return {
                 "alpha": alpha,
                 "sharpening_matrix": self.__generate_sharpening_matrix(
@@ -447,7 +449,7 @@ class Sharpen(ImageOnlyTransform):
                 ),
             }
 
-        self.applied_config = {"alpha_range": alpha}
+        sampling.applied_overrides["alpha_range"] = alpha
         return {"alpha": alpha, "sharpening_matrix": None}
 
     def apply(
@@ -551,14 +553,19 @@ class Emboss(ImageOnlyTransform):
         )
         return (1 - alpha_sample) * matrix_nochange + alpha_sample * matrix_effect
 
-    def get_params(self) -> dict[str, np.ndarray]:
-        alpha = self.py_random.uniform(*self.alpha_range)
-        strength = self.py_random.uniform(*self.strength_range)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, np.ndarray]:
+        alpha = sampling.py_random.uniform(*self.alpha_range)
+        strength = sampling.py_random.uniform(*self.strength_range)
         emboss_matrix = self.__generate_emboss_matrix(
             alpha_sample=alpha,
             strength_sample=strength,
         )
-        self.applied_config = {"alpha_range": alpha, "strength_range": strength}
+        sampling.applied_overrides.update({"alpha_range": alpha, "strength_range": strength})
         return {"emboss_matrix": emboss_matrix}
 
     def apply(
@@ -663,11 +670,16 @@ class Enhance(ImageOnlyTransform):
         self.mode = mode
         self.alpha_range = alpha_range
 
-    def get_params(self) -> dict[str, Any]:
-        alpha = self.py_random.uniform(*self.alpha_range)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        alpha = sampling.py_random.uniform(*self.alpha_range)
         # Record the resolved scalar (not the range) for replay/debug, per the
-        # applied_config contract documented on get_applied_config.
-        self.applied_config = {"alpha_range": alpha}
+        # applied record contract documented on get_applied_config.
+        sampling.applied_overrides["alpha_range"] = alpha
         return {"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)}
 
     def apply(
@@ -800,12 +812,17 @@ class Superpixels(ImageOnlyTransform):
         self.max_size = max_size
         self.interpolation = interpolation
 
-    def get_params(self) -> dict[str, Any]:
-        n_segments = self.py_random.randint(*self.n_segments_range)
-        p = self.py_random.uniform(*self.p_replace_range)
-        self.applied_config = {"n_segments_range": n_segments, "p_replace_range": p}
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        n_segments = sampling.py_random.randint(*self.n_segments_range)
+        p = sampling.py_random.uniform(*self.p_replace_range)
+        sampling.applied_overrides.update({"n_segments_range": n_segments, "p_replace_range": p})
         return {
-            "replace_samples": self.random_generator.random(n_segments) < p,
+            "replace_samples": sampling.random_generator.random(n_segments) < p,
             "n_segments": n_segments,
         }
 
@@ -924,12 +941,17 @@ class RingingOvershoot(ImageOnlyTransform):
         self.blur_range = blur_range
         self.cutoff_range = cutoff_range
 
-    def get_params(self) -> dict[str, np.ndarray]:
-        ksize = self.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, np.ndarray]:
+        ksize = sampling.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
         if ksize % 2 == 0:
             ksize += 1
 
-        cutoff = self.py_random.uniform(*self.cutoff_range)
+        cutoff = sampling.py_random.uniform(*self.cutoff_range)
 
         # From dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -948,7 +970,7 @@ class RingingOvershoot(ImageOnlyTransform):
         # Normalize kernel
         kernel = kernel.astype(np.float32) / reduce_sum(kernel)
 
-        self.applied_config = {"blur_range": ksize, "cutoff_range": cutoff}
+        sampling.applied_overrides.update({"blur_range": ksize, "cutoff_range": cutoff})
         return {"kernel": kernel}
 
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
@@ -1056,15 +1078,16 @@ class UnsharpMask(ImageOnlyTransform):
         self.alpha_range = alpha_range
         self.threshold = threshold
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
-        ksize = self.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
-        sigma = self.py_random.uniform(*self.sigma_range)
-        alpha = self.py_random.uniform(*self.alpha_range)
-        self.applied_config = {"blur_range": ksize, "sigma_range": sigma, "alpha_range": alpha}
+        ksize = sampling.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
+        sigma = sampling.py_random.uniform(*self.sigma_range)
+        alpha = sampling.py_random.uniform(*self.alpha_range)
+        sampling.applied_overrides.update({"blur_range": ksize, "sigma_range": sigma, "alpha_range": alpha})
         return {"ksize": ksize, "sigma": sigma, "alpha": alpha}
 
     def apply(
@@ -1283,7 +1306,7 @@ class Dithering(ImageOnlyTransform):
         self.serpentine = serpentine
         self.noise_range = noise_range
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(self, img: ImageType, random_noise: np.ndarray | None, **params: Any) -> ImageType:
         from albumentations.augmentations.pixel import dithering_functional as fdither
 
         return fdither.apply_dithering(
@@ -1295,16 +1318,46 @@ class Dithering(ImageOnlyTransform):
             matrix_size=self.bayer_matrix_size,
             serpentine=self.serpentine,
             noise_range=self.noise_range,
-            random_generator=self.random_generator,
+            random_noise=random_noise,
         )
 
-    def get_params(self) -> dict[str, Any]:
-        # noise_range is used as per-pixel uniform bounds inside apply_dithering — record the
-        # bounds in applied_config so consumers can see the parameter that was used.
-        self.applied_config["noise_range"] = self.noise_range
-        return {}
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        sampling.applied_overrides["noise_range"] = self.noise_range
+        if self.method != "random":
+            return {"random_noise": None}
+
+        height, width = params["shape"][:2]
+        channels = params["shape"][2] if len(params["shape"]) > 2 else 1
+        per_item_noise_shape = (height, width, 1) if self.color_mode == "grayscale" else (height, width, channels)
+        item_count = len(data["images"]) if "images" in data else len(data["volume"]) if "volume" in data else 1
+        noise_shape = per_item_noise_shape if item_count == 1 else (item_count, *per_item_noise_shape)
+        dtype = self.get_image_data(data)["dtype"]
+        if dtype == np.uint8:
+            random_noise = sampling.random_generator.uniform(
+                self.noise_range[0] * 255,
+                self.noise_range[1] * 255,
+                size=noise_shape,
+            ).astype(np.int16)
+        else:
+            random_noise = sampling.random_generator.uniform(*self.noise_range, size=noise_shape)
+        return {"random_noise": random_noise}
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+        random_noise = params.pop("random_noise", None)
+        if isinstance(random_noise, np.ndarray) and random_noise.ndim == images.ndim:
+            result = np.empty_like(images)
+            for index, image in enumerate(images):
+                result[index] = self.apply(image, random_noise=random_noise[index], **params)
+            return result
+        if random_noise is not None:
+            params["random_noise"] = random_noise
+        else:
+            params["random_noise"] = None
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
@@ -1384,10 +1437,15 @@ class Halftone(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params(self) -> dict[str, Any]:
-        dot_size = self.py_random.randint(*self.dot_size_range)
-        blend = self.py_random.uniform(*self.blend_range)
-        self.applied_config = {"dot_size_range": dot_size, "blend_range": blend}
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        dot_size = sampling.py_random.randint(*self.dot_size_range)
+        blend = sampling.py_random.uniform(*self.blend_range)
+        sampling.applied_overrides.update({"dot_size_range": dot_size, "blend_range": blend})
         return {
             "dot_size": dot_size,
             "blend": blend,
@@ -1524,26 +1582,27 @@ class LensFlare(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         height, width = params["shape"][:2]
         x_min, y_min, x_max, y_max = self.flare_roi
 
         fx_lo = min(int(x_min * width), width - 1)
         fx_hi = min(int(x_max * width), width - 1)
-        fx = self.py_random.randint(fx_lo, max(fx_lo, fx_hi))
+        fx = sampling.py_random.randint(fx_lo, max(fx_lo, fx_hi))
         fy_lo = min(int(y_min * height), height - 1)
         fy_hi = min(int(y_max * height), height - 1)
-        fy = self.py_random.randint(fy_lo, max(fy_lo, fy_hi))
+        fy = sampling.py_random.randint(fy_lo, max(fy_lo, fy_hi))
 
-        intensity = self.py_random.uniform(*self.intensity_range)
-        num_rays = self.py_random.randint(*self.num_rays_range)
-        num_ghosts = self.py_random.randint(*self.num_ghosts_range)
+        intensity = sampling.py_random.uniform(*self.intensity_range)
+        num_rays = sampling.py_random.randint(*self.num_rays_range)
+        num_ghosts = sampling.py_random.randint(*self.num_ghosts_range)
 
-        base_angle = self.py_random.uniform(0, math.pi / num_rays) if num_rays > 0 else 0
+        base_angle = sampling.py_random.uniform(0, math.pi / num_rays) if num_rays > 0 else 0
         starburst_angles = np.array(
             [base_angle + i * math.pi / num_rays for i in range(num_rays * 2)],
             dtype=np.float32,
@@ -1560,15 +1619,17 @@ class LensFlare(ImageOnlyTransform):
             ghosts.append((gx, gy, gradius, galpha))
 
         diag = math.sqrt(height**2 + width**2)
-        bloom_frac = self.py_random.uniform(*self.bloom_range)
+        bloom_frac = sampling.py_random.uniform(*self.bloom_range)
         bloom_radius = max(1, int(diag * bloom_frac)) | 1
 
-        self.applied_config = {
-            "intensity_range": intensity,
-            "num_rays_range": num_rays,
-            "num_ghosts_range": num_ghosts,
-            "bloom_range": bloom_frac,
-        }
+        sampling.applied_overrides.update(
+            {
+                "intensity_range": intensity,
+                "num_rays_range": num_rays,
+                "num_ghosts_range": num_ghosts,
+                "bloom_range": bloom_frac,
+            },
+        )
         return {
             "flare_center": (fx, fy),
             "ghosts": ghosts,

@@ -5,7 +5,8 @@ description: Full checklist for adding a new transform to AlbumentationsX. Use w
 
 # Add Transform
 
-Follow this checklist in order. Do not skip steps.
+Use this workflow for architectural choices and coverage. Pre-commit owns fixed API and style conventions; read its
+diagnostic instead of maintaining a parallel checklist here.
 
 ## 1. Choose the right module
 
@@ -31,8 +32,7 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
     ...
 ```
 
-- Accept `np.ndarray`, return `np.ndarray`
-- No randomness — all random values come from `get_params` / `get_params_dependent_on_data`
+- Keep the functional layer deterministic; define stochastic behavior at the transform sampling boundary.
 - Delete redundant work and full-array passes before selecting a backend
 - Compare applicable NumPy, OpenCV, NumKong, StringZilla, and LUT implementations
 - Consider `np.bincount` for repeated reductions over dense non-negative integer labels
@@ -42,88 +42,13 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
 
 ## 3. Write the transform class
 
-- Do not add docstrings to `apply` or `apply_to_*` methods; the transform class docstring and `transforms_interface` are sufficient.
-
-```python
-class MyTransform(DualTransform):  # or ImageOnlyTransform / NoOp
-    """First paragraph (120–160 chars): elevator pitch — what the transform does, how it works in one sentence, when to use it. No "Parameters: x, y", "Targets:", return type, or "Supports uint8/float32"; no "Used by X". Two lines, wrap at 120.
-
-    More detail about what the transform does.
-
-    Args:
-        param_range: (min, max) tuple controlling X. Default: (0.1, 0.3).
-        fill: Padding value for image. Default: 0.
-        fill_mask: Padding value for masks. Default: 0.
-        p: Probability. Default: 0.5.
-
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
-
-    Image types:
-        uint8, float32
-
-    Examples:
-        >>> import numpy as np
-        >>> import albumentations as A
-        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
-        >>> bboxes = np.array([[10, 10, 50, 50]], dtype=np.float32)
-        >>> bbox_labels = [1]
-        >>> keypoints = np.array([[20, 30]], dtype=np.float32)
-        >>> keypoint_labels = [0]
-        >>>
-        >>> transform = A.Compose([
-        ...     A.MyTransform(param_range=(0.1, 0.3), p=1.0)
-        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
-        >>>
-        >>> result = transform(
-        ...     image=image, mask=mask,
-        ...     bboxes=bboxes, bbox_labels=bbox_labels,
-        ...     keypoints=keypoints, keypoint_labels=keypoint_labels,
-        ... )
-    """
-
-    class InitSchema(BaseTransformInitSchema):
-        param_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
-        # NO default values here (except discriminator fields)
-
-    def __init__(self, param_range: tuple[float, float], p: float = 0.5):
-        super().__init__(p=p)
-        self.param_range = param_range
-
-    def apply(self, img: ImageType, param1: float, **params: Any) -> ImageType:
-        # NO default values for param1 here
-        return fpixel.my_transform(img, param1)
-
-    def get_params(self) -> dict[str, Any]:
-        return {
-            "param1": self.py_random.uniform(*self.param_range),
-        }
-```
-
-### Critical rules:
-- **NO `get_transform_init_args_names()` override** — the base class reads the concrete transform's public `__init__`
-  signature. Do not expose parent-only implementation fields.
-- **NO "Random" prefix** in the class name
-- **Parameter ranges** use `_range` suffix: `brightness_range`, not `brightness_limit`
-- **`fill` not `fill_value`**, **`fill_mask` not `fill_mask_value`**
-- **`border_mode`** not `mode` or `pad_mode`
-- **NO default values in `InitSchema`** (except Pydantic discriminator fields)
-- **Range parameters are always `tuple[T, T]`**, never `T | tuple[T, T]` — no union with a scalar. Users always pass a tuple.
-- **NO default argument values in `apply_*` methods** (other than `self`, `**params`)
-- **All randomness in `get_params` or `get_params_dependent_on_data`**, never in `apply_*`
-- Use **`self.py_random`** for simple random ops, **`self.random_generator`** only when numpy arrays needed
-- **Never** use `np.random.*` or `random.*` module directly
-- Prefer **relative parameters** (fractions of image size) over fixed pixel values
-- Use **`ImageType`** for image/mask/volume type hints, `np.ndarray` only for bboxes/keypoints
-- **Use descriptive variable names** — avoid single-letter or generic names like `x`, `y`, `dx`, `dy`, `cx`, `cy`. Prefer `pixel_cols`, `norm_x`, `center_col`, `run_starts`, `col_x`, etc. Names should read like documentation.
-- **Images and volumes under Compose always have channels** — images are `(H, W, C)`, image batches are
-  `(N, H, W, C)`, volumes are `(D, H, W, C)`, and volume batches are `(N, D, H, W, C)`.
-- **Grayscale under Compose is `(H, W, 1)`**, not `(H, W)`. Do not add functional-layer compatibility branches for
-  2D grayscale images in code reached through `Compose`.
-- Branch on `ndim` to distinguish image vs batch vs volume paths when needed, not to infer whether channels exist.
-- **Helper functions belong in `functional.py`**, never in the transform class file.
+- Define sampling and replay behavior at the `sample_parameters` boundary; the coding guidance document describes the
+  required `SamplingContext` contract and the hook reports mechanical violations.
+- Use relative parameters where users should transfer a policy across image sizes.
+- Use `ImageType` for image, mask, and volume signatures; reserve `np.ndarray` for bboxes and keypoints.
+- Compose inputs always have a channel dimension: `(H, W, C)`, `(N, H, W, C)`, and `(D, H, W, C)`; grayscale is
+  `(H, W, 1)`. Do not add Compose-path compatibility branches for two-dimensional grayscale data.
+- Keep reusable pixel arithmetic in `functional.py`, not in a transform class.
 
 ## 4. Add batch optimization (`apply_to_images`)
 
@@ -157,32 +82,9 @@ def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> Image
 
 ## 5. Export the transform
 
-Add to `albumentations/__init__.py`:
-```python
-from albumentations.augmentations.<module>.transforms import MyTransform
-```
-
-Add to `albumentations/augmentations/<module>/__init__.py` if one exists.
+Export it through `albumentations/__init__.py` and the relevant augmentation package initializer.
 
 ## 6. Write tests
-
-Add to `tests/test_transforms.py` or `tests/test_<category>.py`:
-
-```python
-@pytest.mark.parametrize(
-    ("param_range", "expected_..."),
-    [
-        ((0.1, 0.3), ...),
-        ((0.5, 0.8), ...),
-    ],
-)
-def test_my_transform(param_range, expected_...):
-    image = TestDataFactory.create_image((100, 100, 3), dtype=np.uint8, seed=137)
-    aug = A.MyTransform(param_range=param_range, p=1.0)
-    result = aug(image=image)
-    # use np.testing assertions, not plain assert
-    np.testing.assert_...
-```
 
 Register the transform in `tests/helpers/transform_cases.py`:
 
@@ -203,34 +105,16 @@ new profile only when the same workload should apply to a cluster of transforms;
 class inventories or constructor kwargs. Keep exact geometry, sampling, validation, and metamorphic semantics in
 focused tests.
 
-If the transform samples constructor fields, write the realized values to `self.applied_config`. Clear any original
-policy field that becomes mutually exclusive with the realized value. If a convenience alias emits the canonical
-constructor's state, declare `_applied_replay_class`.
+If the transform samples constructor fields, write the realized values to `sampling.applied_overrides`.
+Clear any original policy field that becomes mutually exclusive with the realized value. If a convenience alias emits
+the canonical constructor's state, declare `_applied_replay_class`.
 
 Check edge cases: uint8, float32, single channel, multichannel.
 
-## 7. Verify checklist
+## 7. Verify
 
-- [ ] No `get_transform_init_args_names()` override (derived from the concrete public `__init__`)
-- [ ] No "Random" prefix in class name
-- [ ] `_range` suffix on range params
-- [ ] `fill` / `fill_mask` (not `fill_value` / `fill_mask_value`)
-- [ ] No defaults in `InitSchema`
-- [ ] No defaults in `apply_*` method args
-- [ ] All random ops in `get_params` / `get_params_dependent_on_data`
-- [ ] Using `self.py_random` or `self.random_generator` (not `np.random` / `random`)
-- [ ] `ImageType` for image type hints
-- [ ] Custom `apply_to_images` if expensive setup can be shared across batch
-- [ ] Docstring has `Args`, `Targets`, `Image types`, `Examples` sections
-- [ ] Examples section uses plural "Examples" (not "Example")
-- [ ] Exported in `albumentations/__init__.py`
-- [ ] Tests added (parametrized, seed=137, `np.testing` assertions)
-- [ ] Named cases added to `tests/helpers/transform_cases.py`
-- [ ] Every configurable public constructor parameter has a non-default case
-- [ ] Every `DualTransform` mode collects against all applicable core target profiles
-- [ ] Transform context and target prerequisites are declared on the case without runner branches
-- [ ] Applied configuration passes `uv run pytest -q tests/contracts`
-- [ ] Generated targets pass `uv run pytest -n auto -q tests/contracts/test_target_cluster_contract.py`
-- [ ] Constructor dict/JSON/YAML round trips pass in `tests/test_serialization.py`
-- [ ] Pre-commit passes: `pre-commit run --all-files`
-- [ ] Tests pass: `uv run pytest -m "not slow"`
+- Every configurable public constructor parameter has a non-default contract case and every `DualTransform` mode reaches
+  the applicable core target profiles.
+- Transform context and target prerequisites are declared on the case without runner branches.
+- Applied configuration survives strict JSON, reconstruction, and fresh-data execution.
+- Run the focused tests, `tests/contracts`, the required benchmark matrix, and the relevant pre-commit hooks.

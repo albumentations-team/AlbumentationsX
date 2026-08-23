@@ -2,10 +2,11 @@
 defocus, zoom). Each transform documents its parameters and behavior in Args and Examples.
 """
 
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
 from albucore import median_blur, reduce_sum
+from albucore.filter3d import gaussian_blur3d
 from pydantic import (
     Field,
     ValidationInfo,
@@ -16,6 +17,7 @@ from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
 
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -24,7 +26,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType
+from albumentations.core.type_definitions import ImageType, VolumeType
 
 from . import functional as fblur
 
@@ -152,13 +154,18 @@ class Blur(ImageOnlyTransform):
     def apply(self, img: ImageType, kernel: int, **params: Any) -> ImageType:
         return fblur.box_blur(img, kernel)
 
-    def get_params(self) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         kernel = fblur.sample_odd_from_range(
-            self.py_random,
+            sampling.py_random,
             self.blur_range[0],
             self.blur_range[1],
         )
-        self.applied_config = {"blur_range": kernel}
+        sampling.applied_overrides["blur_range"] = kernel
         return {"kernel": kernel}
 
 
@@ -200,6 +207,9 @@ class MotionBlur(Blur):
             Default: True
 
         p (float): Probability of applying the transform. Default: 0.5
+
+    Targets:
+        image, volume
 
     Examples of angle vs direction:
         1. Horizontal motion (angle=0°):
@@ -405,36 +415,43 @@ class MotionBlur(Blur):
             return fblur.box_blur(img, kernel)
         return fpixel.convolve(img, kernel=kernel)
 
-    def get_params(self) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         ksize = fblur.sample_odd_from_range(
-            self.py_random,
+            sampling.py_random,
             self.blur_range[0],
             self.blur_range[1],
         )
 
-        angle = self.py_random.uniform(*self.angle_range)
-        direction = self.py_random.uniform(*self.direction_range)
+        angle = sampling.py_random.uniform(*self.angle_range)
+        direction = sampling.py_random.uniform(*self.direction_range)
 
-        self.applied_config = {
-            "blur_range": ksize,
-            "angle_range": angle,
-            "direction_range": direction,
-        }
+        sampling.applied_overrides.update(
+            {
+                "blur_range": ksize,
+                "angle_range": angle,
+                "direction_range": direction,
+            },
+        )
 
         kernel = fblur.create_motion_kernel(
             ksize,
             angle,
             direction,
             allow_shifted=self.allow_shifted,
-            random_state=self.py_random,
+            random_state=sampling.py_random,
         )
 
         return {"kernel": kernel.astype(np.float32) / float(reduce_sum(kernel))}
 
 
 class MedianBlur(Blur):
-    """Replace each pixel with median in a square window. Removes salt-and-pepper noise; edges
-    sharper than box or Gaussian. Kernel size from blur_range.
+    """Remove impulse noise by replacing each pixel with the median of a square neighborhood,
+    smoothing isolated outliers while keeping edges crisp.
 
     This transform uses a median filter to blur the input image. Median filtering is particularly
     effective at removing salt-and-pepper noise while preserving edges, making it a popular choice
@@ -442,7 +459,8 @@ class MedianBlur(Blur):
 
     Args:
         blur_range (tuple[int, int]): Inclusive range of the median filter aperture linear size.
-            Both ends must be odd and >= 3.
+            Input bounds below 3, even bounds, and descending ranges are adjusted to valid odd
+            values with a UserWarning.
             Default: (3, 7)
 
         p (float): Probability of applying the transform. Default: 0.5
@@ -457,7 +475,7 @@ class MedianBlur(Blur):
         Any
 
     Note:
-        - The kernel size (aperture linear size) must always be odd and greater than 1.
+        - The applied kernel is a square odd size of at least 3.
         - Unlike mean blur or Gaussian blur, median blur uses the median of all pixels under
           the kernel area, making it more robust to outliers.
         - This transform is particularly useful for:
@@ -467,6 +485,10 @@ class MedianBlur(Blur):
         - For color images, the median is calculated independently for each channel.
         - Larger kernel sizes result in stronger blurring effects but may also remove
           fine details from the image.
+        - Float32 images with kernel sizes 3 and 5 are filtered directly in CV_32F without uint8 quantization.
+        - For kernel sizes 7 and larger, OpenCV accepts only CV_8U input, so values are quantized to uint8 for
+          filtering and converted back to float32. The output dtype is preserved, but differences smaller than
+          1/255 may be lost.
 
     Examples:
         >>> import numpy as np
@@ -551,7 +573,7 @@ class MedianBlur(Blur):
 
     References:
         - Median filter: https://en.wikipedia.org/wiki/Median_filter
-        - OpenCV medianBlur: https://docs.opencv.org/master/d4/d86/group__imgproc__filter.html#ga564869aa33e58769b4469101aac458f9
+        - OpenCV medianBlur: https://docs.opencv.org/4.x/d4/d86/group__imgproc__filter.html#ga564869aa33e58769b4469101aac458f9
 
     """
 
@@ -645,23 +667,29 @@ class ModeFilter(ImageOnlyTransform):
     def apply(self, img: ImageType, kernel_size: int, **params: Any) -> ImageType:
         return fblur.mode_filter(img, kernel_size)
 
-    def get_params(self) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         kernel_size = fblur.sample_odd_from_range(
-            self.py_random,
+            sampling.py_random,
             self.kernel_range[0],
             self.kernel_range[1],
         )
-        self.applied_config = {"kernel_range": kernel_size}
+        sampling.applied_overrides["kernel_range"] = kernel_size
         return {"kernel_size": kernel_size}
 
 
 class GaussianBlur(ImageOnlyTransform):
-    """Smooth an image with Gaussian blur to reduce noise and fine detail. Blur strength and
-    size are sampled independently on every call.
+    """Smooth images or a volume with a Gaussian kernel, including optional true 3D spatial filtering
+    for volumetric data with anisotropic depth resolution.
 
     This transform blurs the input image using a Gaussian filter with a random kernel size
     and sigma value. Gaussian blur is a widely used image processing technique that reduces
-    image noise and detail, creating a smoothing effect.
+    image noise and detail, creating a smoothing effect. Use 3D volume mode when medical
+    resolution changes affect depth as well as height and width.
 
     Args:
         sigma_range (tuple[float, float]): Inclusive range for the Gaussian kernel standard
@@ -673,6 +701,22 @@ class GaussianBlur(ImageOnlyTransform):
             three-pass extended-box approximation. Positive values use a discrete Gaussian
             kernel with the sampled size.
             Default: (0, 0)
+
+        volume_mode (Literal["slice", "3d"]): How to blur the `volume` target. `"slice"`
+            applies the 2D image kernel independently to each depth slice and preserves the
+            previous behavior. `"3d"` applies a separable kernel along depth, height, and width.
+            Default: "slice".
+
+        sigma_z_range (tuple[float, float] | None): Inclusive range for the depth-axis sigma
+            in `volume_mode="3d"`. `None` reuses the sampled `sigma_range` value, producing an
+            isotropic 3D blur. Set `(0, 0)` to leave the depth axis unblurred.
+            Default: None.
+
+        blur_z_range (tuple[int, int] | None): Inclusive range for the depth-axis kernel size
+            in `volume_mode="3d"`. `None` reuses the sampled `blur_range` value. `(0, 0)`
+            chooses Albucore's automatic kernel size from the depth sigma; other values are
+            sampled as positive odd sizes.
+            Default: None.
 
         p (float): Probability of applying the transform. Default: 0.5
 
@@ -691,6 +735,10 @@ class GaussianBlur(ImageOnlyTransform):
         - Float32 images use the same extended-box approximation without uint8 quantization.
         - Positive `blur_range` values select a discrete Gaussian kernel independently of
           sigma, so some size and sigma combinations can truncate the blur substantially.
+        - `volume_mode="3d"` uses `BORDER_REFLECT_101` along all spatial axes. It does not blur
+          channels, and a zero sigma skips its corresponding axis.
+        - In 3D mode, `sigma_range` and `blur_range` control the height and width axes;
+          `sigma_z_range` and `blur_z_range` independently control depth.
         - The default sigma range (0.5, 3.0) provides a good balance between subtle
           and strong blur effects:
           * sigma=0.5 results in a subtle blur
@@ -779,6 +827,18 @@ class GaussianBlur(ImageOnlyTransform):
         >>> pipeline_result = pipeline(image=image)
         >>> transformed_image = pipeline_result["image"]
         >>> # The image may have Gaussian blur applied with 30% probability along with other effects
+        >>>
+        >>> # Example 7: Anisotropic volumetric blur for medical data
+        >>> volume = np.random.default_rng(137).random((16, 128, 128, 1), dtype=np.float32)
+        >>> volumetric_blur = A.Compose([
+        ...     A.GaussianBlur(
+        ...         sigma_range=(1.0, 1.0),
+        ...         sigma_z_range=(0.5, 0.5),
+        ...         volume_mode="3d",
+        ...         p=1.0,
+        ...     )
+        ... ])
+        >>> blurred_volume = volumetric_blur(volume=volume)["volume"]
 
     References:
         - OpenCV Gaussian Blur: https://docs.opencv.org/master/d4/d86/group__imgproc__filter.html#gaabe8c836e97159a9193fb0b11ac52cf1
@@ -797,16 +857,51 @@ class GaussianBlur(ImageOnlyTransform):
             AfterValidator(check_range_bounds(0)),
             AfterValidator(nondecreasing),
         ]
+        volume_mode: Literal["slice", "3d"]
+        sigma_z_range: (
+            Annotated[
+                tuple[float, float],
+                AfterValidator(check_range_bounds(0)),
+                AfterValidator(nondecreasing),
+            ]
+            | None
+        )
+        blur_z_range: (
+            Annotated[
+                tuple[int, int],
+                AfterValidator(check_range_bounds(0)),
+                AfterValidator(nondecreasing),
+            ]
+            | None
+        )
+
+        @field_validator("blur_z_range")
+        @classmethod
+        def _validate_blur_z_range(
+            cls,
+            value: tuple[int, int] | None,
+            info: ValidationInfo,
+        ) -> tuple[int, int] | None:
+            if value is None or value == (0, 0):
+                return value
+            return fblur.process_blur_range(value, info, min_value=3)
 
     def __init__(
         self,
         blur_range: tuple[int, int] = (0, 0),
         sigma_range: tuple[float, float] = (0.5, 3.0),
         p: float = 0.5,
-    ):
+        *,
+        volume_mode: Literal["slice", "3d"] = "slice",
+        sigma_z_range: tuple[float, float] | None = None,
+        blur_z_range: tuple[int, int] | None = None,
+    ) -> None:
         super().__init__(p=p)
         self.blur_range = blur_range
         self.sigma_range = sigma_range
+        self.volume_mode = volume_mode
+        self.sigma_z_range = sigma_z_range
+        self.blur_z_range = blur_z_range
 
     def apply(
         self,
@@ -818,13 +913,63 @@ class GaussianBlur(ImageOnlyTransform):
             return fblur.pillow_gaussian_blur(img, kernel)
         return fpixel.separable_convolve(img, kernel=kernel)
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        sigma = self.py_random.uniform(*self.sigma_range)
-        ksize = self.py_random.randint(*self.blur_range)
-        self.applied_config = {"sigma_range": sigma, "blur_range": ksize}
-        if ksize == 0:
-            return {"kernel": fblur.create_pillow_gaussian_kernel(sigma), "pillow_mode": True}
-        return {"kernel": fblur.create_gaussian_kernel_1d(sigma, ksize), "pillow_mode": False}
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        if self.volume_mode == "slice":
+            return super().apply_to_volume(volume, **params)
+        return cast(
+            "VolumeType",
+            gaussian_blur3d(
+                volume,
+                sigma=params["volume_sigma"],
+                kernel_size=params["volume_kernel_size"],
+            ),
+        )
+
+    def _sample_3d_kernel_size(self, blur_range: tuple[int, int], sampling: SamplingContext) -> int:
+        lower_bound, upper_bound = blur_range
+        kernel_size = (
+            lower_bound if lower_bound == upper_bound else sampling.py_random.randint(lower_bound, upper_bound)
+        )
+        return kernel_size + 1 if kernel_size > 1 and kernel_size % 2 == 0 else kernel_size
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        sigma = sampling.py_random.uniform(*self.sigma_range)
+        ksize = (
+            self._sample_3d_kernel_size(self.blur_range, sampling)
+            if self.volume_mode == "3d"
+            else sampling.py_random.randint(*self.blur_range)
+        )
+        sampling.applied_overrides.update({"sigma_range": sigma, "blur_range": ksize})
+        result: dict[str, Any] = {
+            "kernel": fblur.create_pillow_gaussian_kernel(sigma)
+            if ksize == 0
+            else fblur.create_gaussian_kernel_1d(sigma, ksize),
+            "pillow_mode": ksize == 0,
+        }
+        if self.volume_mode == "slice":
+            return result
+
+        sigma_z = sigma if self.sigma_z_range is None else sampling.py_random.uniform(*self.sigma_z_range)
+        kernel_size_z = ksize if self.blur_z_range is None else self._sample_3d_kernel_size(self.blur_z_range, sampling)
+        sampling.applied_overrides.update(
+            {
+                "volume_mode": self.volume_mode,
+                "sigma_z_range": sigma_z,
+                "blur_z_range": kernel_size_z,
+            },
+        )
+        result.update(
+            {
+                "volume_sigma": (sigma_z, sigma, sigma),
+                "volume_kernel_size": (kernel_size_z, ksize, ksize),
+            },
+        )
+        return result
 
 
 class GlassBlur(ImageOnlyTransform):
@@ -1006,17 +1151,18 @@ class GlassBlur(ImageOnlyTransform):
             self.mode,
         )
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, np.ndarray]:
         height, width = params["shape"][:2]
         # generate array containing all necessary values for transformations
         width_pixels = height - self.max_delta * 2
         height_pixels = width - self.max_delta * 2
         total_pixels = int(width_pixels * height_pixels)
-        dxy = self.random_generator.integers(
+        dxy = sampling.random_generator.integers(
             -self.max_delta,
             self.max_delta,
             size=(total_pixels, self.iterations, 2),
@@ -1290,38 +1436,45 @@ class AdvancedBlur(ImageOnlyTransform):
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel=kernel)
 
-    def get_params(self) -> dict[str, np.ndarray]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, np.ndarray]:
         ksize = fblur.sample_odd_from_range(
-            self.py_random,
+            sampling.py_random,
             self.blur_range[0],
             self.blur_range[1],
         )
-        sigma_x = self.py_random.uniform(*self.sigma_x_range)
-        sigma_y = self.py_random.uniform(*self.sigma_y_range)
-        angle = np.deg2rad(self.py_random.uniform(*self.rotate_range))
+        sigma_x = sampling.py_random.uniform(*self.sigma_x_range)
+        sigma_y = sampling.py_random.uniform(*self.sigma_y_range)
+        angle = np.deg2rad(sampling.py_random.uniform(*self.rotate_range))
 
         # Split into 2 cases to avoid selection of narrow kernels (beta > 1) too often.
         beta = (
-            self.py_random.uniform(self.beta_range[0], 1)
-            if self.py_random.random() < HALF
-            else self.py_random.uniform(1, self.beta_range[1])
+            sampling.py_random.uniform(self.beta_range[0], 1)
+            if sampling.py_random.random() < HALF
+            else sampling.py_random.uniform(1, self.beta_range[1])
         )
 
-        noise_matrix = self.random_generator.uniform(
+        noise_matrix = sampling.random_generator.uniform(
             *self.noise_range,
             size=(ksize, ksize),
         )
 
-        self.applied_config = {
-            "blur_range": ksize,
-            "sigma_x_range": sigma_x,
-            "sigma_y_range": sigma_y,
-            "rotate_range": float(np.rad2deg(angle)),
-            "beta_range": (min(beta, 1.0), max(beta, 1.0)),
-            # noise_range is the per-pixel kernel-noise distribution bounds; record the realized
-            # (min, max) of the sampled matrix so applied_config reflects what was actually used.
-            "noise_range": (float(noise_matrix.min()), float(noise_matrix.max())),
-        }
+        sampling.applied_overrides.update(
+            {
+                "blur_range": ksize,
+                "sigma_x_range": sigma_x,
+                "sigma_y_range": sigma_y,
+                "rotate_range": float(np.rad2deg(angle)),
+                "beta_range": (min(beta, 1.0), max(beta, 1.0)),
+                # noise_range is the per-pixel kernel-noise distribution bounds; record the realized
+                # (min, max) of the sampled matrix so applied_config reflects what was actually used.
+                "noise_range": (float(noise_matrix.min()), float(noise_matrix.max())),
+            },
+        )
 
         # Generate mesh grid centered at zero.
         ax = np.arange(-ksize // 2 + 1.0, ksize // 2 + 1.0)
@@ -1484,10 +1637,15 @@ class Defocus(ImageOnlyTransform):
         kernel = fblur.create_defocus_kernel(params["radius"], params["alias_blur"])
         return self._apply_to_batch(images, lambda img: fpixel.convolve(img, kernel))
 
-    def get_params(self) -> dict[str, Any]:
-        radius = self.py_random.randint(*self.radius_range)
-        alias_blur = self.py_random.uniform(*self.alias_blur_range)
-        self.applied_config = {"radius_range": radius, "alias_blur_range": alias_blur}
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        radius = sampling.py_random.randint(*self.radius_range)
+        alias_blur = sampling.py_random.uniform(*self.alias_blur_range)
+        sampling.applied_overrides.update({"radius_range": radius, "alias_blur_range": alias_blur})
         return {"radius": radius, "alias_blur": alias_blur}
 
 
@@ -1611,8 +1769,13 @@ class ZoomBlur(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params(self) -> dict[str, Any]:
-        step_factor = self.py_random.uniform(*self.step_factor_range)
-        max_factor = max(1 + step_factor, self.py_random.uniform(*self.max_factor_range))
-        self.applied_config = {"step_factor_range": step_factor, "max_factor_range": max_factor}
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        step_factor = sampling.py_random.uniform(*self.step_factor_range)
+        max_factor = max(1 + step_factor, sampling.py_random.uniform(*self.max_factor_range))
+        sampling.applied_overrides.update({"step_factor_range": step_factor, "max_factor_range": max_factor})
         return {"zoom_factors": np.arange(1.0, max_factor, step_factor)}

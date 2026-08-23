@@ -3,56 +3,499 @@
 This module provides a collection of transformation classes designed specifically for
 3D volumetric data (such as medical CT/MRI scans). These transforms can manipulate properties
 such as spatial dimensions, apply dropout effects, and perform symmetry operations on
-3D volumes, masks, and keypoints. Each transformation inherits from a base transform
+3D volume data, masks, and keypoints. Each transformation inherits from a base transform
 interface and implements specific 3D augmentation logic.
 """
 
 from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
+import torch
+from albucore import resize3d
 from pydantic import AfterValidator, field_validator, model_validator
 from typing_extensions import Self
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.transforms3d import functional as f3d
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
-from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D
-from albumentations.core.type_definitions import Targets, VolumeType
+from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D, VolumeOnlyTransform
+from albumentations.core.type_definitions import (
+    C4_INVERSE,
+    CV2_BORDER_CONSTANT,
+    CV2_INTER_LINEAR,
+    CV2_INTER_NEAREST,
+    C4GroupElement,
+    Targets,
+    VolumeType,
+    c4_group_elements,
+)
 
 __all__ = [
+    "Affine3D",
+    "Anisotropy3D",
     "CenterCrop3D",
     "CoarseDropout3D",
     "CubicSymmetry",
+    "Flip3D",
     "GridShuffle3D",
     "Pad3D",
     "PadIfNeeded3D",
     "RandomCrop3D",
+    "RandomRotate90_3D",
+    "Resize3D",
 ]
 
 NUM_DIMENSIONS = 3
+AxisIndex3D = Literal[0, 1, 2]
+AxisPair3D = tuple[AxisIndex3D, AxisIndex3D]
+RotationCount3D = Literal[0, 1, 2, 3]
+AxisName3D = Literal["x", "y", "z"]
+AxisRange3D = Annotated[tuple[float, float], AfterValidator(nondecreasing)]
+PositiveAxisRange3D = Annotated[
+    tuple[float, float],
+    AfterValidator(check_range_bounds(0, None, min_inclusive=False)),
+    AfterValidator(nondecreasing),
+]
+AxisRanges3D = dict[AxisName3D, AxisRange3D]
+PositiveAxisRanges3D = dict[AxisName3D, PositiveAxisRange3D]
+DEFAULT_ROTATION_AXIS_PAIRS: tuple[AxisPair3D, ...] = ((0, 1), (0, 2), (1, 2))
+DEFAULT_FLIP_AXES: tuple[AxisIndex3D, ...] = (0, 1, 2)
+AXIS_NAMES_3D: tuple[AxisName3D, ...] = ("x", "y", "z")
 
 
 def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
-    """Return one volume's complete shape from singular or batched image and mask targets without indexing into
-    possibly empty arrays.
+    """Return a volume shape from available image and mask targets without indexing into potentially empty input arrays.
+    Avoids indexing empty leading axes.
     """
     if "volume" in data:
-        return data["volume"].shape
-    if "volumes" in data:
-        return data["volumes"].shape[1:]
+        volume = data["volume"]
+        if isinstance(volume, np.ndarray):
+            if volume.ndim not in (NUM_DIMENSIONS, NUM_DIMENSIONS + 1):
+                raise ValueError("volume must be a 3D or 4D array")
+            return volume.shape
+        if isinstance(volume, torch.Tensor):
+            if volume.ndim != NUM_DIMENSIONS + 1:
+                raise ValueError("volume must be a 4D torch.Tensor")
+            return tuple(volume.shape[1:])
     if "mask3d" in data:
+        if isinstance(data["mask3d"], np.ndarray) and data["mask3d"].ndim != NUM_DIMENSIONS:
+            raise ValueError("mask3d must be a 3D array")
+        if isinstance(data["mask3d"], torch.Tensor) and data["mask3d"].ndim != NUM_DIMENSIONS:
+            raise ValueError("mask3d must be a 3D Tensor")
         return data["mask3d"].shape
-    if "masks3d" in data:
-        return data["masks3d"].shape[1:]
-    raise ValueError("No volume, volumes, mask3d, or masks3d found in data")
+    raise ValueError("No volume or mask3d found in data")
 
 
 def _get_volume_spatial_shape(data: dict[str, Any]) -> tuple[int, int, int]:
-    """Return the depth, height, and width of one singular or batched volume target while retaining support for empty
-    leading dimensions.
+    """Return depth, height, and width for one input volume target while retaining support for empty leading dimensions.
+    Avoids indexing empty leading axes.
     """
     return cast("tuple[int, int, int]", _get_volume_shape(data)[:3])
+
+
+class Affine3D(Transform3D):
+    """Apply a sampled 3D affine mapping to volume and mask3d by rotating, scaling, and shifting
+    voxel coordinates for robust medical-imaging augmentation.
+
+    `Affine3D` resamples depth, height, and width jointly through Albucore `warp_affine3d`; it never treats depth as a
+    batch axis. The output grid keeps the input `(D, H, W)` shape. It samples positive per-axis scales, rotations, and
+    relative translations independently, then applies the same forward matrix to `volume`, `mask3d`, and `xyz`
+    keypoints.
+
+    Args:
+        rotate_range (dict[str, tuple[float, float]]): Inclusive degree ranges around the `x`, `y`, and `z` axes.
+            Axis names use the `(x, y, z)` voxel coordinate order. Default: all `(0.0, 0.0)`.
+        scale_range (dict[str, tuple[float, float]]): Positive multiplicative scale ranges for `x`, `y`, and `z`.
+            `1.0` leaves an axis unchanged. Default: all `(1.0, 1.0)`.
+        translate_percent_range (dict[str, tuple[float, float]]): Relative translation ranges for `x`, `y`, and `z`.
+            A value of `1.0` moves by the corresponding input-axis length. Default: all `(0.0, 0.0)`.
+        interpolation (Literal[0, 1]): Volume interpolation: `cv2.INTER_NEAREST` or `cv2.INTER_LINEAR`.
+            Default: `cv2.INTER_LINEAR`.
+        mask_interpolation (Literal[0, 1]): `mask3d` interpolation: `cv2.INTER_NEAREST` or `cv2.INTER_LINEAR`.
+            Default: `cv2.INTER_NEAREST`.
+        border_mode (Literal[0, 1]): Border policy: `cv2.BORDER_CONSTANT` or `cv2.BORDER_REPLICATE`.
+            Default: `cv2.BORDER_CONSTANT`.
+        fill (tuple[float, ...] | float): Constant fill for volume channels when `border_mode` is constant.
+            Default: `0`.
+        fill_mask (tuple[float, ...] | float): Constant fill for `mask3d` when `border_mode` is constant.
+            Default: `0`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Notes:
+        - Volume arrays are `(D, H, W, C)` and keypoints are `(x, y, z)`.
+          The centred forward matrix applies scale, then x-, y-, and z-axis rotations, then translation. One sampled
+          matrix is shared across all elements of a sampled transform.
+        - Scale factors must be positive, so this transform does not sample reflections. Use `Flip3D` for reflections.
+        - Transform parameters use voxel coordinates only; physical spacing, orientation, and affine metadata remain
+          unchanged.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import cv2
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).random((16, 64, 96, 1), dtype=np.float32)
+        >>> mask3d = np.zeros((16, 64, 96), dtype=np.uint8)
+        >>> keypoints = np.array([[48.0, 32.0, 8.0]], dtype=np.float32)
+        >>> transform = A.Compose([
+        ...     A.Affine3D(
+        ...         rotate_range={"x": (-10.0, 10.0), "y": (-5.0, 5.0), "z": (-15.0, 15.0)},
+        ...         scale_range={"x": (0.9, 1.1), "y": (0.9, 1.1), "z": (0.95, 1.05)},
+        ...         translate_percent_range={"x": (-0.1, 0.1), "y": (-0.1, 0.1), "z": (-0.05, 0.05)},
+        ...         interpolation=cv2.INTER_LINEAR,
+        ...         mask_interpolation=cv2.INTER_NEAREST,
+        ...         p=1.0,
+        ...     ),
+        ... ], keypoint_params=A.KeypointParams(coord_format="xyz"), strict=True)
+        >>> result = transform(volume=volume, mask3d=mask3d, keypoints=keypoints)
+        >>> result["volume"].shape, result["mask3d"].shape
+        ((16, 64, 96, 1), (16, 64, 96))
+
+    See Also:
+        - `Resize3D`: Resize every spatial axis without sampling an affine matrix.
+        - `RandomRotate90_3D`: Use exact right-angle rotations without interpolation.
+        - `Flip3D`: Apply discrete axis reflections without resampling.
+
+    Returns:
+        dict[str, Any]: Augmented targets when the transform is executed through `Compose`.
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"volume", "mask3d"})
+
+    class InitSchema(BaseTransformInitSchema):
+        rotate_range: AxisRanges3D
+        scale_range: PositiveAxisRanges3D
+        translate_percent_range: AxisRanges3D
+        interpolation: Literal[0, 1]
+        mask_interpolation: Literal[0, 1]
+        border_mode: Literal[0, 1]
+        fill: tuple[float, ...] | float
+        fill_mask: tuple[float, ...] | float
+
+        @model_validator(mode="after")
+        def _validate_axis_ranges(self) -> Self:
+            expected_axes = set(AXIS_NAMES_3D)
+            for field_name, axis_ranges in (
+                ("rotate_range", self.rotate_range),
+                ("scale_range", self.scale_range),
+                ("translate_percent_range", self.translate_percent_range),
+            ):
+                if set(axis_ranges) != expected_axes:
+                    raise ValueError(f"{field_name} must define exactly the x, y, and z axes")
+            return self
+
+    def __init__(
+        self,
+        rotate_range: AxisRanges3D = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)},
+        scale_range: PositiveAxisRanges3D = {"x": (1.0, 1.0), "y": (1.0, 1.0), "z": (1.0, 1.0)},
+        translate_percent_range: AxisRanges3D = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)},
+        interpolation: Literal[0, 1] = CV2_INTER_LINEAR,
+        mask_interpolation: Literal[0, 1] = CV2_INTER_NEAREST,
+        border_mode: Literal[0, 1] = CV2_BORDER_CONSTANT,
+        fill: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float = 0,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.rotate_range = rotate_range
+        self.scale_range = scale_range
+        self.translate_percent_range = translate_percent_range
+        self.interpolation = interpolation
+        self.mask_interpolation = mask_interpolation
+        self.border_mode = border_mode
+        self.fill = fill
+        self.fill_mask = fill_mask
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        source_shape = _get_volume_spatial_shape(data)
+        rotate = {axis: sampling.py_random.uniform(*self.rotate_range[axis]) for axis in AXIS_NAMES_3D}
+        scale = {axis: sampling.py_random.uniform(*self.scale_range[axis]) for axis in AXIS_NAMES_3D}
+        translate_percent = {
+            axis: sampling.py_random.uniform(*self.translate_percent_range[axis]) for axis in AXIS_NAMES_3D
+        }
+        depth, height, width = source_shape
+        translate = {
+            "x": translate_percent["x"] * width,
+            "y": translate_percent["y"] * height,
+            "z": translate_percent["z"] * depth,
+        }
+        matrix = f3d.create_affine_transformation_matrix_3d(translate, scale, rotate, source_shape)
+
+        sampling.applied_overrides.update(
+            {
+                "rotate_range": {axis: (rotate[axis], rotate[axis]) for axis in AXIS_NAMES_3D},
+                "scale_range": {axis: (scale[axis], scale[axis]) for axis in AXIS_NAMES_3D},
+                "translate_percent_range": {
+                    axis: (translate_percent[axis], translate_percent[axis]) for axis in AXIS_NAMES_3D
+                },
+            },
+        )
+        return {"matrix": matrix, "output_shape": source_shape}
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return cast(
+            "VolumeType",
+            f3d.affine_3d(volume, matrix, output_shape, self.interpolation, self.border_mode, self.fill),
+        )
+
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType,
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return cast(
+            "VolumeType",
+            f3d.affine_3d(
+                mask3d,
+                matrix,
+                output_shape,
+                self.mask_interpolation,
+                self.border_mode,
+                self.fill_mask,
+                is_mask=True,
+            ),
+        )
+
+    def apply_to_keypoints(self, keypoints: np.ndarray, matrix: np.ndarray, **params: Any) -> np.ndarray:
+        return f3d.keypoints_affine_3d(keypoints, matrix)
+
+
+class Anisotropy3D(VolumeOnlyTransform):
+    """Simulate thicker or lower-resolution volume acquisition by degrading selected spatial axes and restoring the
+    original grid for 3D model robustness training.
+
+    The transform samples a subset from `axes` and one downsampling factor for every selected axis. Both NumPy and CPU
+    Tensor routes delegate spatial resizing to Albucore `resize3d`. PyTorch does not currently provide antialiasing for
+    5D trilinear interpolation, so Tensor input remains non-antialiased when `antialias=True`. `mask3d` remains
+    unchanged because this is an image-acquisition artifact, not a geometry transform.
+
+    Args:
+        axes (tuple[int, ...]): Eligible spatial axes in `(depth, height, width)` order. Default: `(0, 1, 2)`.
+        num_axes_range (tuple[int, int]): Inclusive range for the number of eligible axes to degrade.
+            Default: `(1, 1)`.
+        downscale_factor_range (tuple[float, float]): Inclusive range of downsampling factors, each greater than one.
+            Default: `(1.5, 4.0)`.
+        antialias (bool): Apply a low-pass filter while reducing spatial resolution. Default: `True`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        volume
+
+    Image types:
+        uint8, float32
+
+    Examples:
+        >>> import albumentations as A
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).integers(0, 256, (32, 128, 128, 1), dtype=np.uint8)
+        >>> transform = A.Compose([
+        ...     A.Anisotropy3D(
+        ...         axes=(0,),
+        ...         num_axes_range=(1, 1),
+        ...         downscale_factor_range=(2.0, 2.0),
+        ...         p=1.0,
+        ...     ),
+        ... ])
+        >>> result = transform(volume=volume)
+        >>> result["volume"].shape
+        (32, 128, 128, 1)
+
+    """
+
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"volume", "mask3d"})
+
+    class InitSchema(BaseTransformInitSchema):
+        axes: tuple[AxisIndex3D, ...]
+        num_axes_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(1, None)),
+            AfterValidator(nondecreasing),
+        ]
+        downscale_factor_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(1, None, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+        antialias: bool
+
+        @model_validator(mode="after")
+        def _validate_axes(self) -> Self:
+            if not self.axes:
+                raise ValueError("axes must contain at least one spatial axis")
+            if len(self.axes) != len(set(self.axes)):
+                raise ValueError("axes must not contain duplicates")
+            if self.num_axes_range[1] > len(self.axes):
+                raise ValueError("num_axes_range cannot select more axes than are available in axes")
+            return self
+
+    def __init__(
+        self,
+        axes: tuple[AxisIndex3D, ...] = (0, 1, 2),
+        num_axes_range: tuple[int, int] = (1, 1),
+        downscale_factor_range: tuple[float, float] = (1.5, 4.0),
+        antialias: bool = True,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.axes = axes
+        self.num_axes_range = num_axes_range
+        self.downscale_factor_range = downscale_factor_range
+        self.antialias = antialias
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        selected_axis_count = sampling.py_random.randint(*self.num_axes_range)
+        selected_axes = tuple(sorted(sampling.py_random.sample(self.axes, selected_axis_count)))
+        downscale_factor = sampling.py_random.uniform(*self.downscale_factor_range)
+        downsample_shape = f3d.get_anisotropy_downsample_shape(
+            _get_volume_spatial_shape(data),
+            selected_axes,
+            downscale_factor,
+        )
+
+        sampling.applied_overrides.update(
+            {
+                "axes": selected_axes,
+                "num_axes_range": (selected_axis_count, selected_axis_count),
+                "downscale_factor_range": (downscale_factor, downscale_factor),
+            },
+        )
+        return {"downsample_shape": downsample_shape}
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        downsample_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return cast("VolumeType", f3d.anisotropy_3d(volume, downsample_shape, self.antialias))
+
+
+class Resize3D(Transform3D):
+    """Resize a volume to a fixed `(depth, height, width)` shape, preserving all\
+    channels, dtype, and its public layout intact.
+
+    `Resize3D` resamples all three spatial axes together; depth is never treated as a
+    batch axis. Single-volume intensity data and categorical masks use independently configurable
+    interpolation. The routed Albucore backend supports only linear and nearest-neighbor
+    interpolation, ensuring the same public contract for NumPy and CPU Tensor inputs.
+
+    Args:
+        size (tuple[int, int, int]): Target spatial shape in `(depth, height, width)` order.
+        interpolation (Literal[0, 1]): Interpolation for a volume: `cv2.INTER_LINEAR` or
+            `cv2.INTER_NEAREST`. Default: `cv2.INTER_LINEAR`.
+        mask_interpolation (Literal[0, 1]): Interpolation for `mask3d`:
+            `cv2.INTER_LINEAR` or `cv2.INTER_NEAREST`. Default: `cv2.INTER_NEAREST`.
+        p (float): Probability of applying the transform. Default: `1.0`.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Notes:
+        - NumPy volume data use channel-last `(D, H, W, C)` layout. CPU Tensor volume data
+          use channel-first `(C, D, H, W)` layout.
+        - `uint8` output preserves dtype; linear resampling rounds and saturates to
+          `[0, 255]`. Float32 output remains float32.
+        - Keypoints use `(x, y, z)` order and scale from the voxel-grid origin by
+          `(W2 / W1, H2 / H1, D2 / D1)`, matching the 2D resize convention.
+        - This transform changes voxel-grid coordinates only. It does not update physical
+          voxel spacing or orientation metadata.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import cv2
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).random((16, 64, 96, 1), dtype=np.float32)
+        >>> mask3d = np.zeros((16, 64, 96), dtype=np.uint8)
+        >>> transform = A.Compose([
+        ...     A.Resize3D(
+        ...         size=(32, 128, 128),
+        ...         interpolation=cv2.INTER_LINEAR,
+        ...         mask_interpolation=cv2.INTER_NEAREST,
+        ...     ),
+        ... ])
+        >>> result = transform(volume=volume, mask3d=mask3d)
+        >>> result["volume"].shape, result["mask3d"].shape
+        ((32, 128, 128, 1), (32, 128, 128))
+
+    See Also:
+        - `Affine3D`: Sample continuous rotations, scales, and translations while keeping the input output grid.
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"volume"})
+
+    class InitSchema(BaseTransformInitSchema):
+        size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
+        interpolation: Literal[0, 1]
+        mask_interpolation: Literal[0, 1]
+
+    def __init__(
+        self,
+        size: tuple[int, int, int],
+        interpolation: Literal[0, 1] = CV2_INTER_LINEAR,
+        mask_interpolation: Literal[0, 1] = CV2_INTER_NEAREST,
+        p: float = 1.0,
+    ):
+        super().__init__(p=p)
+        self.size = size
+        self.interpolation = interpolation
+        self.mask_interpolation = mask_interpolation
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, tuple[int, int, int]]:
+        return {"source_shape": _get_volume_spatial_shape(data)}
+
+    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+        return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
+
+    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
+        return cast("VolumeType", resize3d(mask3d, self.size, self.mask_interpolation))
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        source_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        return f3d.keypoints_scale_3d(keypoints, source_shape, self.size)
 
 
 class _BaseCropAndPad3DInitSchema(BaseTransformInitSchema):
@@ -63,18 +506,18 @@ class _BaseCropAndPad3DInitSchema(BaseTransformInitSchema):
 
 
 class BasePad3D(Transform3D):
-    """Base class for 3D padding transforms. Common logic for volumes, masks, keypoints; fill, fill_mask.
-    Subclasses implement get_params_dependent_on_data.
+    """Base class for 3D padding transforms. Common logic for volume data, masks, keypoints; fill, fill_mask.
+    Subclasses implement sample_parameters.
 
     This class serves as a foundation for all 3D transforms that perform padding operations
-    on volumetric data. It provides common functionality for padding 3D volumes, masks,
+    on volumetric data. It provides common functionality for padding 3D volume data, masks,
     and processing 3D keypoints during padding operations.
 
     The class handles different types of padding values (scalar or per-channel) and
-    provides separate fill values for volumes and masks.
+    provides separate fill values for volume data and masks.
 
     Args:
-        fill (tuple[float, ...] | float): Value to fill the padded voxels for volumes.
+        fill (tuple[float, ...] | float): Value to fill the padded voxels for volume data.
             Can be a single value for all channels or a tuple of values per channel.
         fill_mask (tuple[float, ...] | float): Value to fill the padded voxels for 3D masks.
             Can be a single value for all channels or a tuple of values per channel.
@@ -98,7 +541,7 @@ class BasePad3D(Transform3D):
         ...         super().__init__(*args, **kwargs)
         ...         self.padding_size = padding_size
         ...
-        ...     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        ...     def sample_parameters(self, params, data, sampling):
         ...         # Create symmetric padding: same amount on all sides of each dimension
         ...         pad_d, pad_h, pad_w = self.padding_size
         ...         padding = (pad_d, pad_d, pad_h, pad_h, pad_w, pad_w)
@@ -293,13 +736,19 @@ class Pad3D(BasePad3D):
         self.fill = fill
         self.fill_mask = fill_mask
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         """Get padding parameters from input data (volume shape). Returns dict with padding tuple
         (d_front, d_back, h_top, h_bottom, w_left, w_right). For Pad3D.
 
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
             data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
             dict[str, Any]: Dictionary containing the padding parameter tuple in format:
@@ -419,10 +868,11 @@ class PadIfNeeded3D(BasePad3D):
         self.pad_divisor_zyx = pad_divisor_zyx
         self.position = position
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         """Calculate padding parameters from volume shape to meet min_zyx or pad_divisor_zyx.
         Returns dict with padding tuple. For PadIfNeeded3D.
@@ -430,6 +880,7 @@ class PadIfNeeded3D(BasePad3D):
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
             data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
             dict[str, Any]: Dictionary containing calculated padding parameters
@@ -450,7 +901,7 @@ class PadIfNeeded3D(BasePad3D):
         padding = f3d.adjust_padding_by_position3d(
             paddings=paddings,
             position=self.position,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         return {"padding": padding}
@@ -458,11 +909,11 @@ class PadIfNeeded3D(BasePad3D):
 
 class BaseCropAndPad3D(Transform3D):
     """Base class for 3D transforms that crop and optionally pad. pad_if_needed, fill, fill_mask,
-    pad_position. Subclasses implement get_params_dependent_on_data.
+    pad_position. Subclasses implement sample_parameters.
 
     This class serves as a foundation for transforms that combine cropping and padding operations
     on 3D volumetric data. It provides functionality for calculating padding parameters,
-    applying crop and pad operations to volumes, masks, and handling keypoint coordinate shifts.
+    applying crop and pad operations to volume data, masks, and handling keypoint coordinate shifts.
 
     Args:
         pad_if_needed (bool): Whether to pad if the volume is smaller than target dimensions
@@ -497,7 +948,7 @@ class BaseCropAndPad3D(Transform3D):
         ...         )
         ...         self.crop_size = crop_size
         ...
-        ...     def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        ...     def sample_parameters(self, params, data, sampling):
         ...         # Get the volume shape
         ...         volume = data["volume"]
         ...         z, h, w = volume.shape[:3]
@@ -507,6 +958,7 @@ class BaseCropAndPad3D(Transform3D):
         ...         pad_params = self._get_pad_params(
         ...             image_shape=(z, h, w),
         ...             target_shape=self.crop_size,
+        ...             sampling=sampling,
         ...         )
         ...
         ...         # Update dimensions if padding is applied
@@ -571,19 +1023,20 @@ class BaseCropAndPad3D(Transform3D):
         self.fill_mask = fill_mask
         self.pad_position = pad_position
 
-    def _random_pad(self, pad: int) -> tuple[int, int]:
+    def _random_pad(self, pad: int, sampling: SamplingContext) -> tuple[int, int]:
         """Generate random (front, back) padding that sum to pad. Used when pad_position is random.
         Returns tuple (front, back) for one dimension.
 
         Args:
             pad (int): Total padding value to distribute
+            sampling (SamplingContext): Call-local random streams for selecting the split.
 
         Returns:
             tuple[int, int]: Random padding values (front, back)
 
         """
         if pad > 0:
-            pad_start = self.py_random.randint(0, pad)
+            pad_start = sampling.py_random.randint(0, pad)
             pad_end = pad - pad_start
         else:
             pad_start = pad_end = 0
@@ -608,6 +1061,7 @@ class BaseCropAndPad3D(Transform3D):
         self,
         image_shape: tuple[int, int, int],
         target_shape: tuple[int, int, int],
+        sampling: SamplingContext,
     ) -> dict[str, int] | None:
         """Calculate padding to reach target shape from image_shape. Returns dict or None. For
         BaseCropAndPad3D when pad_if_needed True.
@@ -615,6 +1069,7 @@ class BaseCropAndPad3D(Transform3D):
         Args:
             image_shape (tuple[int, int, int]): Current shape (depth, height, width)
             target_shape (tuple[int, int, int]): Target shape (depth, height, width)
+            sampling (SamplingContext): Call-local random streams for random padding.
 
         Returns:
             dict[str, int] | None: Padding parameters or None if no padding needed
@@ -641,9 +1096,9 @@ class BaseCropAndPad3D(Transform3D):
             w_left, w_right = self._center_pad(w_pad)
         # For random padding, randomly distribute the padding
         else:  # random
-            z_front, z_back = self._random_pad(z_pad)
-            h_top, h_bottom = self._random_pad(h_pad)
-            w_left, w_right = self._random_pad(w_pad)
+            z_front, z_back = self._random_pad(z_pad, sampling)
+            h_top, h_bottom = self._random_pad(h_pad, sampling)
+            w_left, w_right = self._random_pad(w_pad, sampling)
 
         return {
             "pad_front": z_front,
@@ -840,10 +1295,11 @@ class CenterCrop3D(BaseCropAndPad3D):
         )
         self.size = size
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         """Calculate center crop coordinates from volume shape and self.size. Returns dict with
         crop_coords (z_min, z_max, y_min, y_max, x_min, x_max). For CenterCrop3D.
@@ -851,6 +1307,7 @@ class CenterCrop3D(BaseCropAndPad3D):
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
             data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
             dict[str, Any]: Dictionary containing crop coordinates and optional padding parameters
@@ -863,6 +1320,7 @@ class CenterCrop3D(BaseCropAndPad3D):
         pad_params = self._get_pad_params(
             image_shape=(z, h, w),
             target_shape=self.size,
+            sampling=sampling,
         )
 
         # Update dimensions if padding is applied
@@ -983,10 +1441,11 @@ class RandomCrop3D(BaseCropAndPad3D):
         )
         self.size = size
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         """Calculate random crop coordinates from volume shape and self.size. Returns dict with
         crop_coords (z_min, z_max, y_min, y_max, x_min, x_max). For RandomCrop3D.
@@ -994,6 +1453,7 @@ class RandomCrop3D(BaseCropAndPad3D):
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
             data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
             dict[str, Any]: Dictionary containing randomly generated crop coordinates and optional padding parameters
@@ -1006,6 +1466,7 @@ class RandomCrop3D(BaseCropAndPad3D):
         pad_params = self._get_pad_params(
             image_shape=(z, h, w),
             target_shape=self.size,
+            sampling=sampling,
         )
 
         # Update dimensions if padding is applied
@@ -1015,9 +1476,9 @@ class RandomCrop3D(BaseCropAndPad3D):
             w = w + pad_params["pad_left"] + pad_params["pad_right"]
 
         # Calculate random crop coordinates
-        z_start = self.py_random.randint(0, max(0, z - target_z))
-        h_start = self.py_random.randint(0, max(0, h - target_h))
-        w_start = self.py_random.randint(0, max(0, w - target_w))
+        z_start = sampling.py_random.randint(0, max(0, z - target_z))
+        h_start = sampling.py_random.randint(0, max(0, h - target_h))
+        w_start = sampling.py_random.randint(0, max(0, w - target_w))
 
         crop_coords = (
             z_start,
@@ -1164,6 +1625,7 @@ class CoarseDropout3D(Transform3D):
         height_range: tuple[float, float],
         width_range: tuple[float, float],
         size: int,
+        sampling: SamplingContext,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Calculate 3D dropout hole dimensions from volume shape and fraction ranges. Returns
         (depths, heights, widths) arrays. For CoarseDropout3D.
@@ -1174,6 +1636,7 @@ class CoarseDropout3D(Transform3D):
             height_range (tuple[float, float]): Range for hole height as fraction of volume height
             width_range (tuple[float, float]): Range for hole width as fraction of volume width
             size (int): Number of holes to generate
+            sampling (SamplingContext): Call-local random streams for hole dimensions.
 
         Returns:
             tuple[np.ndarray, np.ndarray, np.ndarray]: Arrays of hole dimensions (depths, heights, widths)
@@ -1181,21 +1644,33 @@ class CoarseDropout3D(Transform3D):
         """
         depth, height, width = volume_shape[:3]
 
-        hole_depths = np.maximum(1, np.ceil(depth * self.random_generator.uniform(*depth_range, size=size))).astype(int)
-        hole_heights = np.maximum(1, np.ceil(height * self.random_generator.uniform(*height_range, size=size))).astype(
+        hole_depths = np.maximum(1, np.ceil(depth * sampling.random_generator.uniform(*depth_range, size=size))).astype(
             int,
         )
-        hole_widths = np.maximum(1, np.ceil(width * self.random_generator.uniform(*width_range, size=size))).astype(int)
+        hole_heights = np.maximum(
+            1, np.ceil(height * sampling.random_generator.uniform(*height_range, size=size))
+        ).astype(
+            int,
+        )
+        hole_widths = np.maximum(1, np.ceil(width * sampling.random_generator.uniform(*width_range, size=size))).astype(
+            int,
+        )
 
         return hole_depths, hole_heights, hole_widths
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         """Generate hole parameters for CoarseDropout3D from volume shape. Returns dict with holes
         (n, 6) and params. Uses depth/height/width ranges, num_holes.
 
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
             data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
             dict[str, Any]: Dictionary containing generated hole parameters for dropout
@@ -1203,7 +1678,7 @@ class CoarseDropout3D(Transform3D):
         """
         volume_shape = _get_volume_spatial_shape(data)
 
-        num_holes = self.py_random.randint(*self.num_holes_range)
+        num_holes = sampling.py_random.randint(*self.num_holes_range)
 
         hole_depths, hole_heights, hole_widths = self.calculate_hole_dimensions(
             volume_shape,
@@ -1211,25 +1686,28 @@ class CoarseDropout3D(Transform3D):
             self.hole_height_range,
             self.hole_width_range,
             size=num_holes,
+            sampling=sampling,
         )
 
         depth, height, width = volume_shape[:3]
 
-        z_min = self.random_generator.integers(0, depth - hole_depths + 1, size=num_holes)
-        y_min = self.random_generator.integers(0, height - hole_heights + 1, size=num_holes)
-        x_min = self.random_generator.integers(0, width - hole_widths + 1, size=num_holes)
+        z_min = sampling.random_generator.integers(0, depth - hole_depths + 1, size=num_holes)
+        y_min = sampling.random_generator.integers(0, height - hole_heights + 1, size=num_holes)
+        x_min = sampling.random_generator.integers(0, width - hole_widths + 1, size=num_holes)
         z_max = z_min + hole_depths
         y_max = y_min + hole_heights
         x_max = x_min + hole_widths
 
         holes = np.stack([z_min, y_min, x_min, z_max, y_max, x_max], axis=-1)
 
-        self.applied_config = {
-            "num_holes_range": num_holes,
-            "hole_depth_range": (float(hole_depths.min() / depth), float(hole_depths.max() / depth)),
-            "hole_height_range": (float(hole_heights.min() / height), float(hole_heights.max() / height)),
-            "hole_width_range": (float(hole_widths.min() / width), float(hole_widths.max() / width)),
-        }
+        sampling.applied_overrides.update(
+            {
+                "num_holes_range": num_holes,
+                "hole_depth_range": (float(hole_depths.min() / depth), float(hole_depths.max() / depth)),
+                "hole_height_range": (float(hole_heights.min() / height), float(hole_heights.max() / height)),
+                "hole_width_range": (float(hole_widths.min() / width), float(hole_widths.max() / width)),
+            },
+        )
 
         return {"holes": holes}
 
@@ -1260,9 +1738,162 @@ class CoarseDropout3D(Transform3D):
         return f3d.filter_keypoints_in_holes3d(keypoints, holes)
 
 
+class Flip3D(Transform3D):
+    """Reflect a volume independently across depth, height, and width voxel-index axes while retaining its shape and
+    channel layout.
+
+    In random mode, each allowed axis is independently reflected, including the empty subset (identity). This samples
+    the full reflection group uniformly. Set `flip_axes` to a fixed subset, including `()`, for reversible test-time
+    augmentation; reflections are self-inverse. This is a voxel-index reflection only: it does not update affine
+    metadata or perform a physical-space reorientation.
+
+    Args:
+        axes (tuple[int, ...]): Non-empty spatial axes that random mode may flip, in `(depth, height, width)` order.
+            Default: `(0, 1, 2)`.
+        flip_axes (tuple[int, ...] | None): Fixed subset of `axes` to reflect for deterministic test-time augmentation.
+            Use `()` for identity. Default: None.
+        p (float): Probability of applying the transform. Default: 1.0.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Note:
+        - A realized reflection across an odd number of axes emits the `Flip3D` label-mapping event. Its semantic-mask
+          mapping applies only to `mask3d`; keypoint label mappings rename label values without changing coordinate-row
+          order.
+        - A reflection across an even number of axes, including identity, preserves orientation and does not emit this
+          event. Without an explicit mapping, labels stay unchanged.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> volume = np.arange(2 * 3 * 5, dtype=np.uint8).reshape(2, 3, 5, 1)
+        >>> transform = A.Flip3D(flip_axes=(0, 2), p=1.0)
+        >>> result = transform(volume=volume)
+        >>> result["volume"].shape
+        (2, 3, 5, 1)
+
+    See Also:
+        - `Affine3D`: Use positive scales and continuous rotations or translations without sampling reflections.
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+
+    class InitSchema(BaseTransformInitSchema):
+        axes: tuple[AxisIndex3D, ...]
+        flip_axes: tuple[AxisIndex3D, ...] | None
+
+        @model_validator(mode="after")
+        def _validate_flip_config(self) -> Self:
+            if not self.axes:
+                raise ValueError("axes must contain at least one spatial axis")
+            if len(self.axes) != len(set(self.axes)):
+                raise ValueError("axes must not contain duplicate spatial axes")
+            if self.flip_axes is not None:
+                if len(self.flip_axes) != len(set(self.flip_axes)):
+                    raise ValueError("flip_axes must not contain duplicate spatial axes")
+                if not set(self.flip_axes).issubset(self.axes):
+                    raise ValueError("flip_axes must be a subset of axes")
+            return self
+
+    def __init__(
+        self,
+        axes: tuple[AxisIndex3D, ...] = DEFAULT_FLIP_AXES,
+        flip_axes: tuple[AxisIndex3D, ...] | None = None,
+        p: float = 1.0,
+    ):
+        super().__init__(p=p)
+        self.axes = axes
+        self.flip_axes = flip_axes
+
+    def get_transform_init_args(self) -> dict[str, Any]:
+        """Return constructor arguments while preserving the empty axis tuple that selects deterministic identity
+        instead of random sampling.
+        """
+        args = super().get_transform_init_args()
+        if self.flip_axes == ():
+            args["flip_axes"] = self.flip_axes
+        return args
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        flip_axes = self.flip_axes
+        if flip_axes is None:
+            flip_axes = tuple(axis for axis in self.axes if sampling.py_random.random() < 0.5)
+
+        sampling.applied_overrides["flip_axes"] = flip_axes
+        return {"flip_axes": flip_axes, "volume_shape": _get_volume_spatial_shape(data)}
+
+    def _get_label_transform_name(self, **params: Any) -> str | None:
+        """Return the Flip3D semantic-mapping event for a realized orientation-reversing reflection, allowing mask3d
+        and keypoint labels to follow it.
+
+        Each voxel-index reflection changes orientation parity. An odd number of reflected axes has determinant
+        negative and therefore applies the configured semantic mapping; an even number, including identity, preserves
+        orientation.
+        """
+        flip_axes = params.get("flip_axes", ())
+        return "Flip3D" if len(flip_axes) % 2 else None
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        flip_axes: tuple[AxisIndex3D, ...],
+        **params: Any,
+    ) -> VolumeType:
+        if not flip_axes:
+            return volume
+        flipped: np.ndarray = np.flip(volume, axis=flip_axes)
+        return cast("VolumeType", flipped)
+
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType,
+        flip_axes: tuple[AxisIndex3D, ...],
+        **params: Any,
+    ) -> VolumeType:
+        if not flip_axes:
+            return mask3d
+        flipped: np.ndarray = np.flip(mask3d, axis=flip_axes)
+        return cast("VolumeType", flipped)
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        flip_axes: tuple[AxisIndex3D, ...],
+        volume_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        if not flip_axes:
+            return keypoints
+        return f3d.keypoints_flip_3d(keypoints, flip_axes, volume_shape)
+
+    def inverse(self) -> Self:
+        """Return a fixed self-inverse reflection for test-time augmentation when this transform has a deterministic
+        axis subset configured.
+
+        Raises:
+            ValueError: If this transform is configured in random mode.
+
+        """
+        if self.flip_axes is None:
+            raise ValueError("Cannot invert Flip3D in random mode. Set flip_axes for TTA.")
+        return type(self)(axes=self.axes, flip_axes=self.flip_axes, p=1.0)
+
+
 class CubicSymmetry(Transform3D):
-    """Apply random cubic symmetry (one of 48) to a 3D volume. No interpolation; remaps voxels.
-    3D extension of D4. For TTA or augmentation; inverse() supported.
+    """Randomly reorient a 3D volume with one of 48 exact cubic symmetries, using only axis permutations and
+    reflections for interpolation-free augmentation.
+
+    This transform is intended for augmentation. Use a transform with explicit deterministic parameters for TTA.
 
     This transform is a 3D extension of D4. While D4 handles the 8 symmetries
     of a square (4 rotations x 2 reflections), CubicSymmetry handles all 48 symmetries of a cube.
@@ -1280,7 +1911,7 @@ class CubicSymmetry(Transform3D):
     - All vertex positions (8)
     - All edge centers (12)
 
-    works with 3D volumes and masks of the shape (D, H, W) or (D, H, W, C)
+    works with 3D volume data and masks of the shape (D, H, W) or (D, H, W, C)
 
     Args:
         p (float): Probability of applying the transform. Default: 1.0
@@ -1298,6 +1929,9 @@ class CubicSymmetry(Transform3D):
         - All transformations preserve the object's chirality (handedness) when using
           pure rotations (indices 0-23) and invert it when using rotoreflections
           (indices 24-47).
+        - A realized rotoreflection emits the `CubicSymmetry` label-mapping event. Configured semantic-mask mappings
+          remap `mask3d` labels and aliases; configured keypoint mappings remap label fields without moving their
+          transformed coordinate rows. Rotations do not emit this event.
 
     Examples:
         >>> import numpy as np
@@ -1322,10 +1956,11 @@ class CubicSymmetry(Transform3D):
     ):
         super().__init__(p=p)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         """Generate cubic symmetry params: random index 0-47. Returns dict with index for
         transform_cube and transform_cube_keypoints. For CubicSymmetry.
@@ -1333,6 +1968,7 @@ class CubicSymmetry(Transform3D):
         Args:
             params (dict[str, Any]): Dictionary of existing parameters
             data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
             dict[str, Any]: Dictionary containing the randomly selected transformation index
@@ -1340,13 +1976,166 @@ class CubicSymmetry(Transform3D):
         """
         # Randomly select one of 48 possible transformations
         volume_shape = _get_volume_shape(data)
-        return {"index": self.py_random.randint(0, 47), "volume_shape": volume_shape}
+        return {"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape}
+
+    def _get_label_transform_name(self, **params: Any) -> str | None:
+        """Return the CubicSymmetry mapping event for a rotoreflection, while pure cube rotations preserve class
+        meanings and must not alter semantic labels.
+        """
+        index = params.get("index")
+        return "CubicSymmetry" if isinstance(index, int) and index >= 24 else None
 
     def apply_to_volume(self, volume: VolumeType, index: int, **params: Any) -> VolumeType:
         return f3d.transform_cube(volume, index)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, index: int, **params: Any) -> np.ndarray:
         return f3d.transform_cube_keypoints(keypoints, index, volume_shape=params["volume_shape"])
+
+
+class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified by issue #388.
+    """Rotate a volume by a random 90-degree multiple across one spatial axis pair, rotating mask3d and XYZ keypoints
+    without reflections.
+
+    Quarter turns swap the selected depth, height, or width lengths while preserving the channel axis.
+
+    Axis indices always use `(depth, height, width)` order: `(0, 1)` rotates depth with height,
+    `(0, 2)` rotates depth with width, and `(1, 2)` rotates height with width. A 90-degree or
+    270-degree turn swaps the two selected lengths, so non-cubic input can change shape.
+    A 180-degree turn and the identity preserve the original shape. The transform does not reflect data.
+
+    Set both `axis_pair` and `group_element` for deterministic test-time augmentation. `inverse()`
+    then returns the rotation that restores the original voxel and keypoint coordinates.
+
+    Args:
+        axis_pairs (tuple[tuple[int, int], ...]): Non-empty set of axis pairs sampled in random mode.
+            Each pair must list two distinct axes in ascending `(depth, height, width)` order.
+            Default: `((0, 1), (0, 2), (1, 2))`.
+        axis_pair (tuple[int, int] | None): Fixed spatial axis pair. Set with `group_element` for
+            deterministic TTA. Default: None.
+        group_element (C4GroupElement | None): If set, always apply this C4 group element:
+            `"e"`=identity, `"r90"`=90°, `"r180"`=180°, `"r270"`=270° counterclockwise.
+            Use for TTA. Default: None (random choice).
+        p (float): Probability of applying the transform. Default: 1.0.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> volume = np.arange(2 * 3 * 5, dtype=np.uint8).reshape(2, 3, 5, 1)
+        >>> transform = A.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0)
+        >>> result = transform(volume=volume)
+        >>> result["volume"].shape
+        (5, 3, 2, 1)
+
+    See Also:
+        - `Affine3D`: Sample continuous rotations with interpolation and optional scale or translation.
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+
+    class InitSchema(BaseTransformInitSchema):
+        axis_pairs: tuple[AxisPair3D, ...]
+        axis_pair: AxisPair3D | None
+        group_element: C4GroupElement | None
+
+        @model_validator(mode="after")
+        def _validate_rotation_config(self) -> Self:
+            if not self.axis_pairs:
+                raise ValueError("axis_pairs must contain at least one spatial axis pair")
+            if len(self.axis_pairs) != len(set(self.axis_pairs)):
+                raise ValueError("axis_pairs must not contain duplicate axis pairs")
+            pairs_to_validate = (*self.axis_pairs, *((self.axis_pair,) if self.axis_pair is not None else ()))
+            for axis_pair in pairs_to_validate:
+                if axis_pair[0] >= axis_pair[1]:
+                    raise ValueError(
+                        "Each axis pair must contain distinct axes in ascending (depth, height, width) order",
+                    )
+            return self
+
+    def __init__(
+        self,
+        axis_pairs: tuple[AxisPair3D, ...] = DEFAULT_ROTATION_AXIS_PAIRS,
+        axis_pair: AxisPair3D | None = None,
+        group_element: C4GroupElement | None = None,
+        p: float = 1.0,
+    ):
+        super().__init__(p=p)
+        self.axis_pairs = axis_pairs
+        self.axis_pair = axis_pair
+        self.group_element = group_element
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        axis_pair = self.axis_pair if self.axis_pair is not None else sampling.py_random.choice(self.axis_pairs)
+        if self.group_element is not None:
+            group_element = self.group_element
+        else:
+            group_element = cast("C4GroupElement", sampling.py_random.choice(c4_group_elements))
+
+        rotation_count = cast("RotationCount3D", fgeometric.C4_GROUP_ELEMENT_TO_K[group_element])
+
+        sampling.applied_overrides.update({"axis_pair": axis_pair, "group_element": group_element})
+        return {
+            "axis_pair": axis_pair,
+            "rotation_count": rotation_count,
+            "volume_shape": _get_volume_spatial_shape(data),
+        }
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        axis_pair: AxisPair3D,
+        rotation_count: RotationCount3D,
+        **params: Any,
+    ) -> VolumeType:
+        return f3d.rotate90_3d(volume, rotation_count, axis_pair)
+
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType,
+        axis_pair: AxisPair3D,
+        rotation_count: RotationCount3D,
+        **params: Any,
+    ) -> VolumeType:
+        return f3d.rotate90_3d(mask3d, rotation_count, axis_pair)
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        axis_pair: AxisPair3D,
+        rotation_count: RotationCount3D,
+        volume_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        return f3d.keypoints_rotate90_3d(keypoints, rotation_count, axis_pair, volume_shape)
+
+    def inverse(self) -> Self:
+        """Return a deterministic transform whose quarter turns undo this rotation. Use after inference in TTA
+        to restore predictions to the original orientation.
+
+        Raises:
+            ValueError: If this transform is configured in random mode.
+
+        """
+        if self.axis_pair is None or self.group_element is None:
+            raise ValueError(
+                "Cannot invert RandomRotate90_3D in random mode. Set axis_pair and group_element for TTA.",
+            )
+        return type(self)(
+            axis_pair=self.axis_pair,
+            group_element=C4_INVERSE[self.group_element],
+            p=1.0,
+        )
 
 
 class GridShuffle3D(Transform3D):
@@ -1443,22 +2232,23 @@ class GridShuffle3D(Transform3D):
     ) -> np.ndarray:
         return f3d.swap_tiles_on_keypoints_3d(keypoints, tiles, mapping)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, np.ndarray | list[int]]:
         volume_shape = _get_volume_spatial_shape(data)
 
         original_tiles = f3d.split_uniform_grid_3d(
             volume_shape,
             self.grid_zyx,
-            self.random_generator,
+            sampling.random_generator,
         )
         shape_groups = f3d.create_shape_groups_3d(original_tiles)
         mapping = f3d.shuffle_tiles_within_shape_groups_3d(
             shape_groups,
-            self.random_generator,
+            sampling.random_generator,
         )
 
         return {"tiles": original_tiles, "mapping": mapping}

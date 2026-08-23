@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, ClassVar, Literal, cast
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     ALL_TARGETS,
     CV2_INTER_LINEAR,
@@ -34,13 +36,13 @@ class CropSizeError(Exception):
 
 class BaseCrop(DualTransform):
     """Abstract base for crop-only transforms. Subclasses return crop_coords from
-    get_params_dependent_on_data. All targets cropped consistently.
+    sample_parameters. All targets cropped consistently.
 
     This abstract class provides the foundation for all cropping transformations.
     It handles cropping of different data types including images, masks, bounding boxes,
-    keypoints, and volumes while keeping their spatial relationships intact.
+    keypoints, and volume data while keeping their spatial relationships intact.
 
-    Child classes must implement the `get_params_dependent_on_data` method to determine
+    Child classes must implement the `sample_parameters` method to determine
     crop coordinates based on transform-specific logic. This method should return a dictionary
     containing at least a 'crop_coords' key with a tuple value (x_min, y_min, x_max, y_max).
 
@@ -70,7 +72,7 @@ class BaseCrop(DualTransform):
         ...         self.crop_height = crop_height
         ...         self.crop_width = crop_width
         ...
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         '''Calculate crop coordinates based on center of image'''
         ...         image_height, image_width = params["shape"][:2]
         ...
@@ -186,14 +188,6 @@ class BaseCrop(DualTransform):
     ) -> VolumeType:
         return fcrops.volume_crop_yx(volume, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> VolumeType:
-        return fcrops.volumes_crop_yx(volumes, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
-
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
@@ -210,23 +204,6 @@ class BaseCrop(DualTransform):
                 np.empty((mask3d.shape[0], crop_height, crop_width, mask3d.shape[3]), dtype=mask3d.dtype),
             )
         return self.apply_to_images(mask3d, crop_coords, **params)
-
-    def apply_to_masks3d(
-        self,
-        masks3d: VolumeType,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> VolumeType:
-        if masks3d.size == 0:
-            # Return empty array with cropped dimensions
-            # Assume masks3d shape is (N, D, H, W, C)
-            crop_height = crop_coords[3] - crop_coords[1]
-            crop_width = crop_coords[2] - crop_coords[0]
-            return cast(
-                "VolumeType",
-                np.empty((0, masks3d.shape[1], crop_height, crop_width, masks3d.shape[4]), dtype=masks3d.dtype),
-            )
-        return self.apply_to_volumes(masks3d, crop_coords, **params)
 
     @staticmethod
     def _clip_bbox(bbox: tuple[int, int, int, int], image_shape: tuple[int, int]) -> tuple[int, int, int, int]:
@@ -250,7 +227,7 @@ class BaseCropAndPad(BaseCrop):
     these operations to different data types (images, masks, bounding boxes, keypoints) while
     maintaining their spatial relationships.
 
-    Child classes must implement the `get_params_dependent_on_data` method to determine
+    Child classes must implement the `sample_parameters` method to determine
     crop coordinates and padding parameters based on transform-specific logic.
 
     Args:
@@ -309,7 +286,7 @@ class BaseCropAndPad(BaseCrop):
         ...         self.offset_x = offset_x
         ...         self.offset_y = offset_y
         ...
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         '''Calculate crop coordinates and padding if needed'''
         ...         image_shape = params["shape"][:2]
         ...         image_height, image_width = image_shape
@@ -323,7 +300,8 @@ class BaseCropAndPad(BaseCrop):
         ...         # Get padding params if needed
         ...         pad_params = self._get_pad_params(
         ...             image_shape,
-        ...             (self.height, self.width)
+        ...             (self.height, self.width),
+        ...             sampling,
         ...         ) if self.pad_if_needed else None
         ...
         ...         return {
@@ -396,7 +374,12 @@ class BaseCropAndPad(BaseCrop):
         self.fill_mask = fill_mask
         self.pad_position = pad_position
 
-    def _get_pad_params(self, image_shape: tuple[int, int], target_shape: tuple[int, int]) -> dict[str, Any] | None:
+    def _get_pad_params(
+        self,
+        image_shape: tuple[int, int],
+        target_shape: tuple[int, int],
+        sampling: SamplingContext,
+    ) -> dict[str, Any] | None:
         """Compute pad amounts (top, right, bottom, left) and position so image reaches
         target_shape. Returns None if no padding needed or pad_if_needed is False.
         """
@@ -420,7 +403,7 @@ class BaseCropAndPad(BaseCrop):
             w_left=w_pad_left,
             w_right=w_pad_right,
             position=self.pad_position,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         return {
@@ -490,42 +473,26 @@ class BaseCropAndPad(BaseCrop):
             )
         return BaseCrop.apply_to_images(self, images, crop_coords, **params)
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> VolumeType:
-        pad_params = params.get("pad_params")
-        if pad_params is not None:
-            volumes = fcrops.pad_along_axes(
-                volumes,
-                pad_params["pad_top"],
-                pad_params["pad_bottom"],
-                pad_params["pad_left"],
-                pad_params["pad_right"],
-                h_axis=2,
-                w_axis=3,
-                border_mode=self.border_mode,
-                pad_value=self.fill,
-            )
-        return BaseCrop.apply_to_volumes(self, volumes, crop_coords, **params)
-
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
         crop_coords: tuple[int, int, int, int],
         **params: Any,
     ) -> VolumeType:
-        return self.apply_to_images(mask3d, crop_coords, **params)
-
-    def apply_to_masks3d(
-        self,
-        masks3d: VolumeType,
-        crop_coords: tuple[int, int, int, int],
-        **params: Any,
-    ) -> VolumeType:
-        return self.apply_to_volumes(masks3d, crop_coords, **params)
+        pad_params = params.get("pad_params")
+        if pad_params is not None:
+            mask3d = fcrops.pad_along_axes(
+                mask3d,
+                pad_params["pad_top"],
+                pad_params["pad_bottom"],
+                pad_params["pad_left"],
+                pad_params["pad_right"],
+                h_axis=1,
+                w_axis=2,
+                border_mode=self.border_mode,
+                pad_value=cast("tuple[float, ...] | float", self.fill_mask),
+            )
+        return BaseCrop.apply_to_images(self, mask3d, crop_coords, **params)
 
     def apply_to_bboxes(
         self,
@@ -620,7 +587,7 @@ class _BaseRandomSizedCrop(DualTransform):
     It handles cropping and resizing for different data types (image, mask, bboxes, keypoints) while
     maintaining their spatial relationships.
 
-    Child classes must implement the `get_params_dependent_on_data` method to determine how the
+    Child classes must implement the `sample_parameters` method to determine how the
     crop coordinates are selected according to transform-specific parameters and logic.
 
     Args:
@@ -675,7 +642,7 @@ class _BaseRandomSizedCrop(DualTransform):
         ...         )
         ...         self.custom_parameter = custom_parameter
         ...
-        ...     def get_params_dependent_on_data(self, params, data):
+        ...     def sample_parameters(self, params, data, sampling):
         ...         # Custom logic to select crop coordinates
         ...         image_height, image_width = params["shape"][:2]
         ...
@@ -684,8 +651,8 @@ class _BaseRandomSizedCrop(DualTransform):
         ...         crop_width = int(image_width * self.custom_parameter)
         ...
         ...         # Random position
-        ...         y1 = self.py_random.randint(0, image_height - crop_height + 1)
-        ...         x1 = self.py_random.randint(0, image_width - crop_width + 1)
+        ...         y1 = sampling.py_random.randint(0, image_height - crop_height + 1)
+        ...         x1 = sampling.py_random.randint(0, image_width - crop_width + 1)
         ...         y2 = y1 + crop_height
         ...         x2 = x1 + crop_width
         ...
@@ -776,7 +743,8 @@ class _BaseRandomSizedCrop(DualTransform):
     ) -> ImageType:
         crop = fcrops.crop(img, *crop_coords)
         interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[:2]), "image")
-        return fgeometric.resize(crop, self.size, interpolation)
+        result = fgeometric.resize(crop, self.size, interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
     def apply_to_mask(
         self,
@@ -832,7 +800,7 @@ class _BaseRandomSizedCrop(DualTransform):
         result = np.empty((images.shape[0], self.size[0], self.size[1], crop.shape[-1]), dtype=crop.dtype)
         for i in range(images.shape[0]):
             result[i] = fgeometric.resize(crop[i], self.size, interpolation)
-        return cast("ImageType", result)
+        return fgeometric.clip_if_interpolation_can_overshoot(cast("ImageType", result), interpolation)
 
     def apply_to_mask3d(
         self,

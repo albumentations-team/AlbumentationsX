@@ -14,6 +14,7 @@ from pydantic.functional_validators import AfterValidator
 
 import albumentations.augmentations.dropout.functional as fdropout
 from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, normalize_bboxes
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
@@ -140,7 +141,12 @@ class MaskDropout(DualTransform):
         self.fill = fill  # type: ignore[assignment]
         self.fill_mask = fill_mask
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         mask = np.squeeze(data["mask"], axis=2)
 
         label_image, num_labels = fdropout.label(mask, return_num=True)
@@ -149,20 +155,18 @@ class MaskDropout(DualTransform):
             dropout_mask = None
             objects_to_drop = 0
         else:
-            objects_to_drop = self.py_random.randint(*self.max_objects_range)
+            objects_to_drop = sampling.py_random.randint(*self.max_objects_range)
             objects_to_drop = min(num_labels, objects_to_drop)
 
             if objects_to_drop == num_labels:
                 dropout_mask = mask > 0
             else:
-                labels_index = self.py_random.sample(range(1, num_labels + 1), objects_to_drop)
+                labels_index = sampling.py_random.sample(range(1, num_labels + 1), objects_to_drop)
                 dropout_mask = np.zeros(mask.shape[:2], dtype=bool)
                 for label_index in labels_index:
                     dropout_mask |= label_image == label_index
 
-        self.applied_config = {
-            "max_objects_range": objects_to_drop,
-        }
+        sampling.applied_overrides["max_objects_range"] = objects_to_drop
 
         return {"dropout_mask": dropout_mask}
 

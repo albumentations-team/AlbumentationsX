@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import cast
+
+from albucore import pairwise_distances_squared
 
 from ._functional_shared import (
     cv2,
-    math,
     np,
-    reduce_sum,
 )
 
 
@@ -116,78 +116,199 @@ def upscale_distortion_maps(
     return dx, dy
 
 
-def generate_displacement_fields(
-    image_shape: tuple[int, int],
-    alpha: float,
-    sigma: float,
-    same_dxdy: bool,
-    kernel_size: tuple[int, int],
-    random_generator: np.random.Generator,
-    noise_distribution: Literal["gaussian", "uniform"],
-) -> tuple[np.ndarray, np.ndarray]:
-    """Generate displacement fields for elastic transform. Params: alpha, sigma,
-    shape; random_generator for reproducibility. Returns map_x, map_y.
-
-    This function generates displacement fields for elastic transform based on the provided parameters.
-    It generates noise either from a Gaussian or uniform distribution and normalizes it to the range [-1, 1].
+def expand_control_grid(
+    control_coefficients: np.ndarray,
+    output_shape: tuple[int, int],
+) -> np.ndarray:
+    """Expand cubic B-spline vector coefficients into a dense component-first displacement field for one image shape
+    without a smoothing pass.
 
     Args:
-        image_shape (tuple[int, int]): The shape of the image as (height, width).
-        alpha (float): The alpha parameter for the elastic transform.
-        sigma (float): The sigma parameter for the elastic transform.
-        same_dxdy (bool): Whether to use the same displacement field for both x and y directions.
-        kernel_size (tuple[int, int]): The size of the kernel for the elastic transform.
-        random_generator (np.random.Generator): The random number generator to use.
-        noise_distribution (Literal['gaussian', 'uniform']): The distribution of the noise.
+        control_coefficients (np.ndarray): Coefficients with shape `(rows, columns, 2)`.
+        output_shape (tuple[int, int]): Dense output shape as `(height, width)`.
 
     Returns:
-        tuple[np.ndarray, np.ndarray]: A tuple containing:
-            - fields: The displacement fields for the elastic transform.
-            - output_shape: The output shape of the elastic warp.
+        np.ndarray: Component-first float32 displacement field with shape `(2, height, width)`.
 
     """
-    # Pre-allocate memory and generate noise in one step
-    if noise_distribution == "gaussian":
-        # Generate and normalize in one step, directly as float32
-        fields = random_generator.standard_normal(
-            (1 if same_dxdy else 2, *image_shape[:2]),
-            dtype=np.float32,
-        )
-        # Normalize inplace
-        max_abs = cv2.norm(fields.reshape(-1, fields.shape[-1]), cv2.NORM_INF)
-        if max_abs > 1e-6:
-            fields /= max_abs
-    else:  # uniform is already normalized to [-1, 1]
-        fields = random_generator.random(
-            (1 if same_dxdy else 2, *image_shape[:2]),
-            dtype=np.float32,
-        )
-        fields *= 2
-        fields -= 1
+    control = np.asarray(control_coefficients, dtype=np.float32)
+    if control.ndim != 3 or control.shape[-1] != 2 or min(control.shape[:2]) < 4:
+        raise ValueError("control_coefficients must have shape (rows >= 4, columns >= 4, 2)")
 
-    # # Apply Gaussian blur if needed using fast OpenCV operations
-    # When kernel_size is (0,0) cv2.GaussianBlur uses automatic kernel size. Kernel == (0,0) is NOT a noop.
-    # Reshape to 2D array (combining first dimension with height)
-    shape = fields.shape
-    fields = fields.reshape(-1, shape[-1])
-
-    # Apply blur to all fields at once
-    cv2.GaussianBlur(
-        fields,
-        kernel_size,
-        sigma,
-        dst=fields,
-        borderType=cv2.BORDER_REPLICATE,
+    height, width = output_shape
+    row_indices, row_weights = _spline_axis_parameters(height, control.shape[0])
+    column_indices, column_weights = _spline_axis_parameters(width, control.shape[1])
+    row_basis = np.zeros((height, control.shape[0]), dtype=np.float32)
+    column_basis = np.zeros((width, control.shape[1]), dtype=np.float32)
+    row_basis[np.arange(height)[:, None], row_indices] = row_weights
+    column_basis[np.arange(width)[:, None], column_indices] = column_weights
+    return np.einsum(
+        "hr,rcd,wc->dhw",
+        row_basis,
+        control,
+        column_basis,
+        optimize=True,
     )
 
-    # Restore original shape
-    fields = fields.reshape(shape)
 
-    # Scale by alpha inplace
-    fields *= alpha
+def _spline_axis_parameters(
+    output_length: int,
+    coefficient_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    spans = coefficient_count - 3
+    if output_length <= 1:
+        coordinates = np.zeros(output_length, dtype=np.float32)
+    else:
+        coordinates = np.arange(output_length, dtype=np.float32)
+        np.multiply(coordinates, np.float32(spans / (output_length - 1)), out=coordinates)
+    base = np.floor(coordinates).astype(np.intp)
+    base = np.clip(base, 0, spans - 1)
+    t = coordinates - base.astype(np.float32)
+    weights = _cubic_spline_weights(t)
+    indices = base[:, None] + np.arange(4, dtype=np.intp)[None, :]
+    return indices, weights
 
-    # Return views of the array to avoid copies
-    return (fields[0], fields[0]) if same_dxdy else (fields[0], fields[1])
+
+def _spline_parameters_for_coordinates(
+    coordinates: np.ndarray,
+    image_length: int,
+    coefficient_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    spans = coefficient_count - 3
+    if image_length <= 1:
+        normalized = np.zeros_like(coordinates, dtype=np.float64)
+    else:
+        normalized = coordinates * (spans / (image_length - 1))
+    finite = np.isfinite(coordinates) & np.isfinite(normalized)
+    normalized = np.nan_to_num(normalized, nan=0.0, posinf=coefficient_count, neginf=-4.0)
+    normalized = np.clip(normalized, -4.0, coefficient_count + 4.0)
+    base = np.floor(normalized).astype(np.intp)
+    t = normalized - base
+    weights = _cubic_spline_weights(t)
+    indices = base[..., None] + np.arange(4, dtype=np.intp)
+    valid = ((indices >= 0) & (indices < coefficient_count)) & finite[..., None]
+    return np.clip(indices, 0, coefficient_count - 1), weights * valid
+
+
+def _cubic_spline_weights(t: np.ndarray) -> np.ndarray:
+    one_minus_t = 1.0 - t
+    t_squared = t * t
+    t_cubed = t_squared * t
+    return np.stack(
+        (
+            one_minus_t * one_minus_t * one_minus_t / 6.0,
+            (3.0 * t_cubed - 6.0 * t_squared + 4.0) / 6.0,
+            (-3.0 * t_cubed + 3.0 * t_squared + 3.0 * t + 1.0) / 6.0,
+            t_cubed / 6.0,
+        ),
+        axis=-1,
+    )
+
+
+def _evaluate_spline_field(
+    points: np.ndarray,
+    control_coefficients: np.ndarray,
+    image_shape: tuple[int, int],
+) -> np.ndarray:
+    points64 = np.asarray(points, dtype=np.float64)
+    height, width = image_shape
+    control = np.asarray(control_coefficients, dtype=np.float64)
+    row_indices, row_weights = _spline_parameters_for_coordinates(
+        points64[:, 1],
+        height,
+        control.shape[0],
+    )
+    column_indices, column_weights = _spline_parameters_for_coordinates(
+        points64[:, 0],
+        width,
+        control.shape[1],
+    )
+    result = np.zeros((len(points64), 2), dtype=np.float64)
+    for row_tap in range(4):
+        for column_tap in range(4):
+            result += (
+                control[row_indices[:, row_tap], column_indices[:, column_tap]]
+                * row_weights[:, row_tap, None]
+                * column_weights[:, column_tap, None]
+            )
+    return result
+
+
+def create_elastic_maps(
+    control_coefficients: np.ndarray,
+    image_shape: tuple[int, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Create float32 target-to-source coordinate maps from cubic B-spline coefficients for synchronized raster and
+    annotation remapping.
+    """
+    height, width = image_shape
+    displacement = expand_control_grid(control_coefficients, image_shape)
+    map_x = displacement[0]
+    map_y = displacement[1]
+    map_x += np.arange(width, dtype=np.float32)
+    map_y += np.arange(height, dtype=np.float32)[:, None]
+    return map_x, map_y
+
+
+def remap_elastic_keypoints(
+    keypoints: np.ndarray,
+    control_coefficients: np.ndarray,
+    image_shape: tuple[int, int],
+    tolerance: float = 1e-3,
+) -> np.ndarray:
+    """Invert an injective cubic B-spline pull map with a certificate-bounded contraction iteration and a strict forward
+    residual check.
+    """
+    if keypoints.size == 0:
+        return keypoints.copy()
+    points = np.asarray(keypoints[:, :2], dtype=np.float64)
+    transformed_xy = points.copy()
+    finite_points = np.isfinite(points).all(axis=1)
+    active_points = finite_points.copy()
+    for _ in range(96):
+        with np.errstate(invalid="ignore", over="ignore"):
+            updated = points - _evaluate_spline_field(transformed_xy, control_coefficients, image_shape)
+        finite_updated = np.isfinite(updated).all(axis=1)
+        active_points &= finite_updated
+        if (
+            active_points.any()
+            and np.max(
+                np.abs(updated[active_points] - transformed_xy[active_points]),
+                initial=0.0,
+            )
+            <= tolerance * 0.1
+        ):
+            transformed_xy = updated
+            break
+        transformed_xy = updated
+        transformed_xy[~active_points] = np.nan
+        if not active_points.any():
+            break
+
+    residual = np.full(len(points), np.inf, dtype=np.float64)
+    if active_points.any():
+        finite_transformed = transformed_xy[active_points]
+        finite_points_values = points[active_points]
+        with np.errstate(invalid="ignore", over="ignore"):
+            residual[active_points] = np.max(
+                np.abs(
+                    finite_transformed
+                    + _evaluate_spline_field(finite_transformed, control_coefficients, image_shape)
+                    - finite_points_values,
+                ),
+                axis=1,
+            )
+    height, width = image_shape
+    valid = np.isfinite(residual) & (residual <= tolerance)
+    valid &= (
+        (transformed_xy[:, 0] >= -tolerance)
+        & (transformed_xy[:, 0] <= width + tolerance)
+        & (transformed_xy[:, 1] >= -tolerance)
+        & (transformed_xy[:, 1] <= height + tolerance)
+    )
+    result = keypoints.copy()
+    result[:, :2] = np.where(valid[:, None], transformed_xy, -1.0).astype(result.dtype, copy=False)
+    return result
 
 
 def generate_distorted_grid_polygons(
@@ -369,33 +490,9 @@ def create_piecewise_affine_maps(
     return map_x, map_y
 
 
-def compute_pairwise_distances(
-    points1: np.ndarray,
-    points2: np.ndarray,
-) -> np.ndarray:
-    """Compute pairwise Euclidean squared distances between points1 (N, 2) and points2 (M, 2).
-    Returns (N, M) matrix. For TPS and nearest-neighbor. Uses cv2.gemm.
-
-    Args:
-        points1 (np.ndarray): First set of points with shape (N, 2)
-        points2 (np.ndarray): Second set of points with shape (M, 2)
-
-    Returns:
-        np.ndarray: Matrix of pairwise distances with shape (N, M)
-
-    """
-    points1 = np.ascontiguousarray(points1, dtype=np.float32)
-    points2 = np.ascontiguousarray(points2, dtype=np.float32)
-
-    # Compute squared terms
-    p1_squared = reduce_sum(cv2.multiply(points1, points1), axis=1, keepdims=True)
-    p2_squared = np.asarray(reduce_sum(cv2.multiply(points2, points2), axis=1))[None, :]
-
-    # Compute dot product
-    empty_matrix = np.empty((0,), dtype=np.float32)
-    dot_product = cast("np.ndarray", cv2.gemm(points1, points2.T, 1.0, empty_matrix, 0.0))
-
-    return p1_squared + p2_squared - 2 * dot_product
+def _compute_tps_kernel(distances: np.ndarray) -> np.ndarray:
+    log_distances = cv2.log(distances + np.float32(1e-6))
+    return np.multiply(distances, log_distances, out=log_distances)
 
 
 def compute_tps_weights(
@@ -424,13 +521,8 @@ def compute_tps_weights(
     num_points = src_points.shape[0]
 
     # Compute pairwise distances
-    distances = compute_pairwise_distances(src_points, src_points)
-
-    kernel_matrix = np.where(
-        distances > 0,
-        distances * distances * cv2.log(distances + 1e-6),
-        0,
-    ).astype(np.float32)
+    distances = pairwise_distances_squared(src_points, src_points)
+    kernel_matrix = _compute_tps_kernel(distances)
 
     # Build system matrix efficiently
     affine_terms = np.empty((num_points, 3), dtype=np.float32)
@@ -467,14 +559,8 @@ def tps_transform(
     nonlinear_weights = np.ascontiguousarray(nonlinear_weights, dtype=np.float32)
     affine_weights = np.ascontiguousarray(affine_weights, dtype=np.float32)
 
-    distances = compute_pairwise_distances(target_points, control_points)
-
-    # Ensure kernel matrix is float32
-    kernel_matrix = np.where(
-        distances > 0,
-        distances * cv2.log(distances + 1e-6),
-        0,
-    ).astype(np.float32)
+    distances = pairwise_distances_squared(target_points, control_points)
+    kernel_matrix = _compute_tps_kernel(distances)
 
     # Prepare affine terms
     num_points = len(target_points)
@@ -544,26 +630,16 @@ def get_fisheye_distortion_maps(
     height, width = image_shape[:2]
 
     center_x, center_y = width / 2, height / 2
-    # Create coordinate grid
-    y, x = np.mgrid[:height, :width].astype(np.float32)
+    x = np.arange(width, dtype=np.float32)[np.newaxis, :] - center_x
+    y = np.arange(height, dtype=np.float32)[:, np.newaxis] - center_y
 
-    x = x - center_x
-    y = y - center_y
+    max_radius_squared = max(center_x, width - center_x) ** 2 + max(center_y, height - center_y) ** 2
+    distortion_scale = x * x + y * y
+    distortion_scale *= np.float32(k / max_radius_squared)
+    distortion_scale += 1
 
-    # Calculate polar coordinates
-    r = np.sqrt(x * x + y * y)
-    theta = np.arctan2(y, x)
-
-    # Normalize radius by the maximum possible radius to keep distortion in check
-    max_radius = math.sqrt(max(center_x, width - center_x) ** 2 + max(center_y, height - center_y) ** 2)
-    r_norm = r / max_radius
-
-    # Apply fisheye distortion to normalized radius
-    r_dist = r * (1 + k * r_norm * r_norm)
-
-    # Convert back to cartesian coordinates
-    map_x = r_dist * np.cos(theta) + center_x
-    map_y = r_dist * np.sin(theta) + center_y
+    map_x = x * distortion_scale + center_x
+    map_y = y * distortion_scale + center_y
 
     return map_x, map_y
 
@@ -599,15 +675,16 @@ def generate_control_points(num_control_points: int) -> np.ndarray:
 
 
 __all__ = [
-    "compute_pairwise_distances",
     "compute_tps_weights",
+    "create_elastic_maps",
     "create_piecewise_affine_maps",
+    "expand_control_grid",
     "generate_control_points",
-    "generate_displacement_fields",
     "generate_distorted_grid_polygons",
     "generate_inverse_distortion_map",
     "get_camera_matrix_distortion_maps",
     "get_fisheye_distortion_maps",
+    "remap_elastic_keypoints",
     "tps_transform",
     "upscale_distortion_maps",
 ]

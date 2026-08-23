@@ -173,6 +173,16 @@ def test_filter_keypoints_with_int_image_shape():
     np.testing.assert_array_equal(result, expected)
 
 
+def test_filter_keypoints_returns_a_detached_array_when_every_point_is_visible() -> None:
+    """The public filter result must not alias the caller's keypoint array."""
+    keypoints = np.array([[10.0, 20.0, 0.0, 0.5, 1.0], [30.0, 40.0, 0.0, 1.5, 1.0]], dtype=np.float32)
+
+    result = filter_keypoints(keypoints, (100, 100), remove_invisible=True)
+
+    assert result is not keypoints
+    assert not np.shares_memory(result, keypoints)
+
+
 @pytest.mark.parametrize(
     "keypoints, source_format, image_shape, check_validity, angle_in_degrees, expected",
     [
@@ -723,6 +733,15 @@ def test_keypoint_vh_flip_equivalence(keypoint, rows, cols):
     assert vhflipped_keypoints == pytest.approx(
         fgeometric.keypoints_rot90(keypoints, "r180", (rows, cols)),
     ), "rot180 not equivalent to vflip + hflip"
+
+
+@pytest.mark.parametrize("angle", [0, np.pi / 2, np.pi, 3 * np.pi / 2, 7 * np.pi / 4])
+def test_keypoints_transpose_is_involution(angle: float) -> None:
+    keypoints = np.array([[10, 20, 0, angle, 1]], dtype=np.float32)
+
+    transposed = fgeometric.keypoints_transpose(keypoints)
+    np.testing.assert_allclose(transposed[0, 3], (np.pi / 2 - angle) % (2 * np.pi), atol=1e-6)
+    np.testing.assert_allclose(fgeometric.keypoints_transpose(transposed), keypoints, atol=1e-6)
 
 
 def test_swap_tiles_on_keypoints_basic():

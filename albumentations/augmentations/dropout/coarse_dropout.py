@@ -16,6 +16,7 @@ from pydantic import AfterValidator
 import albumentations.augmentations.dropout.functional as fdropout
 from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema, DropoutFillValue
 from albumentations.core.bbox_utils import denormalize_bboxes
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 
 __all__ = ["CoarseDropout", "ConstrainedCoarseDropout", "Erasing"]
@@ -140,9 +141,10 @@ class CoarseDropout(BaseDropout):
         height_range: tuple[float, float] | tuple[int, int],
         width_range: tuple[float, float] | tuple[int, int],
         size: int,
+        sampling: SamplingContext,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Calculate random hole dimensions from hole_size_range and image shape. Returns (h, w)
-        for each hole. Used by CoarseDropout get_params_dependent_on_data.
+        for each hole. Used by CoarseDropout sample_parameters.
         """
         height, width = image_shape[:2]
 
@@ -153,43 +155,51 @@ class CoarseDropout(BaseDropout):
             min_width = width_range[0]
             max_width = min(width_range[1], width)
 
-            hole_heights = self.random_generator.integers(int(min_height), int(max_height + 1), size=size)
-            hole_widths = self.random_generator.integers(int(min_width), int(max_width + 1), size=size)
+            hole_heights = sampling.random_generator.integers(int(min_height), int(max_height + 1), size=size)
+            hole_widths = sampling.random_generator.integers(int(min_width), int(max_width + 1), size=size)
 
         else:  # Assume float
-            hole_heights = (height * self.random_generator.uniform(*height_range, size=size)).astype(int)
-            hole_widths = (width * self.random_generator.uniform(*width_range, size=size)).astype(int)
+            hole_heights = (height * sampling.random_generator.uniform(*height_range, size=size)).astype(int)
+            hole_widths = (width * sampling.random_generator.uniform(*width_range, size=size)).astype(int)
 
         return hole_heights, hole_widths
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
 
-        num_holes = self.py_random.randint(*self.num_holes_range)
+        num_holes = sampling.py_random.randint(*self.num_holes_range)
 
         hole_heights, hole_widths = self.calculate_hole_dimensions(
             image_shape,
             self.hole_height_range,
             self.hole_width_range,
             size=num_holes,
+            sampling=sampling,
         )
 
         height, width = image_shape[:2]
 
-        y_min = self.random_generator.integers(0, height - hole_heights + 1, size=num_holes)
-        x_min = self.random_generator.integers(0, width - hole_widths + 1, size=num_holes)
+        y_min = sampling.random_generator.integers(0, height - hole_heights + 1, size=num_holes)
+        x_min = sampling.random_generator.integers(0, width - hole_widths + 1, size=num_holes)
         y_max = y_min + hole_heights
         x_max = x_min + hole_widths
 
         holes = np.stack([x_min, y_min, x_max, y_max], axis=-1)
 
-        self.applied_config = {
-            "num_holes_range": num_holes,
-            "hole_height_range": (int(hole_heights.min()), int(hole_heights.max())),
-            "hole_width_range": (int(hole_widths.min()), int(hole_widths.max())),
-        }
+        sampling.applied_overrides.update(
+            {
+                "num_holes_range": num_holes,
+                "hole_height_range": (int(hole_heights.min()), int(hole_heights.max())),
+                "hole_width_range": (int(hole_widths.min()), int(hole_widths.max())),
+            },
+        )
 
-        return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}
+        return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
 
 
 class Erasing(BaseDropout):
@@ -285,9 +295,14 @@ class Erasing(BaseDropout):
         self.scale = scale
         self.ratio = ratio
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         """Calculate erasing parameters (box position and size) from image shape and ratio ranges.
-        Direct derivation; used by Erasing get_params_dependent_on_data.
+        Direct derivation; used by Erasing sample_parameters.
 
         Given:
         - Image dimensions (H, W)
@@ -330,10 +345,10 @@ class Erasing(BaseDropout):
         if max_valid_area < min_area:
             return {
                 "holes": np.empty((0, 4), dtype=np.int32),
-                "seed": self.random_generator.integers(0, 2**32 - 1),
+                "seed": sampling.random_generator.integers(0, 2**32 - 1),
             }
 
-        erase_area = self.py_random.uniform(min_area, max_valid_area)
+        erase_area = sampling.py_random.uniform(min_area, max_valid_area)
 
         max_r = min(r_max, width * width / erase_area)
         min_r = max(r_min, erase_area / (height * height))
@@ -341,24 +356,26 @@ class Erasing(BaseDropout):
         if min_r > max_r:
             return {
                 "holes": np.empty((0, 4), dtype=np.int32),
-                "seed": self.random_generator.integers(0, 2**32 - 1),
+                "seed": sampling.random_generator.integers(0, 2**32 - 1),
             }
 
-        aspect_ratio = self.py_random.uniform(min_r, max_r)
+        aspect_ratio = sampling.py_random.uniform(min_r, max_r)
 
         h = round(np.sqrt(erase_area / aspect_ratio))
         w = round(np.sqrt(erase_area * aspect_ratio))
 
-        top = self.py_random.randint(0, height - h)
-        left = self.py_random.randint(0, width - w)
+        top = sampling.py_random.randint(0, height - h)
+        left = sampling.py_random.randint(0, width - w)
 
         holes = np.array([[left, top, left + w, top + h]], dtype=np.int32)
 
-        self.applied_config = {
-            "scale": erase_area / total_area,
-            "ratio": aspect_ratio,
-        }
-        return {"holes": holes, "seed": self.random_generator.integers(0, 2**32 - 1)}
+        sampling.applied_overrides.update(
+            {
+                "scale": erase_area / total_area,
+                "ratio": aspect_ratio,
+            },
+        )
+        return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
 
 
 class ConstrainedCoarseDropout(BaseDropout):
@@ -496,7 +513,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             AfterValidator(check_range_bounds(1, None)),
         ]
 
-        bbox_labels: list[str | int | float] | None = None
+        bbox_labels: list[str | int | float] | None
 
     def __init__(
         self,
@@ -551,11 +568,16 @@ class ConstrainedCoarseDropout(BaseDropout):
 
         return filtered_boxes if len(filtered_boxes) > 0 else None
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         """Get hole parameters from mask indices or bbox labels. Dispatches to get_holes_from_mask or
         get_holes_from_boxes. Returns holes (n, 4) and num_holes.
         """
-        num_holes_per_obj = self.py_random.randint(*self.num_holes_range)
+        num_holes_per_obj = sampling.py_random.randint(*self.num_holes_range)
 
         if self.mask_indices is not None and "mask" in data:
             holes = fdropout.get_holes_from_mask(
@@ -564,7 +586,7 @@ class ConstrainedCoarseDropout(BaseDropout):
                 self.mask_indices,
                 self.hole_height_range,
                 self.hole_width_range,
-                self.random_generator,
+                sampling.random_generator,
             )
         elif self.bbox_labels is not None and "bboxes" in data:
             target_boxes = self.get_boxes_from_bboxes(data["bboxes"])
@@ -577,19 +599,21 @@ class ConstrainedCoarseDropout(BaseDropout):
                     num_holes_per_obj,
                     self.hole_height_range,
                     self.hole_width_range,
-                    self.random_generator,
+                    sampling.random_generator,
                 )
         else:
             warn("Neither valid mask nor bboxes provided, do not apply Constrained Coarse Dropout", stacklevel=2)
             holes = np.array([], dtype=np.int32).reshape((0, 4))
 
-        self.applied_config = {
-            "num_holes_range": num_holes_per_obj,
-            "hole_height_range": self.hole_height_range,
-            "hole_width_range": self.hole_width_range,
-        }
+        sampling.applied_overrides.update(
+            {
+                "num_holes_range": num_holes_per_obj,
+                "hole_height_range": self.hole_height_range,
+                "hole_width_range": self.hole_width_range,
+            },
+        )
 
         return {
             "holes": holes,
-            "seed": self.random_generator.integers(0, 2**32 - 1),
+            "seed": sampling.random_generator.integers(0, 2**32 - 1),
         }

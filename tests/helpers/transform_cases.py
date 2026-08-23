@@ -240,8 +240,8 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [
         A.ElasticTransform,
         {
-            "alpha": 2,
-            "sigma": 25,
+            "displacement_range": (0.03, 0.05),
+            "control_grid_shape": (4, 4),
             "interpolation": cv2.INTER_CUBIC,
         },
     ],
@@ -580,6 +580,29 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.Pad3D, {"padding": 10}],
+    [
+        A.Anisotropy3D,
+        {
+            "axes": (0, 2),
+            "num_axes_range": (2, 2),
+            "downscale_factor_range": (2.0, 2.0),
+            "antialias": False,
+        },
+    ],
+    [A.Resize3D, {"size": (2, 30, 30), "interpolation": cv2.INTER_NEAREST, "mask_interpolation": cv2.INTER_LINEAR}],
+    [
+        A.Affine3D,
+        {
+            "rotate_range": {"x": (-10.0, 10.0), "y": (-5.0, 5.0), "z": (-15.0, 15.0)},
+            "scale_range": {"x": (0.9, 1.1), "y": (0.95, 1.05), "z": (0.85, 1.15)},
+            "translate_percent_range": {"x": (-0.1, 0.1), "y": (-0.05, 0.05), "z": (-0.2, 0.2)},
+            "interpolation": cv2.INTER_NEAREST,
+            "mask_interpolation": cv2.INTER_LINEAR,
+            "border_mode": cv2.BORDER_REPLICATE,
+            "fill": 17,
+            "fill_mask": 31,
+        },
+    ],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
     [
@@ -594,6 +617,8 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.CubicSymmetry, {}],
+    [A.Flip3D, {"axes": (0, 2)}],
+    [A.RandomRotate90_3D, {"axis_pairs": ((0, 2),)}],
     [A.AtLeastOneBBoxRandomCrop, {"height": 80, "width": 80, "erosion_factor": 0.2}],
     [
         A.ConstrainedCoarseDropout,
@@ -664,6 +689,19 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
             "noise_type": "gaussian",
             "spatial_mode": "shared",
             "noise_params": {"mean_range": (-0.1, 0.1), "std_range": (0.05, 0.15)},
+        },
+    ),
+    (
+        "patch-per-channel",
+        A.AdditiveNoise,
+        {
+            "noise_type": "gaussian",
+            "spatial_mode": "patch",
+            "noise_params": {"mean_range": (0.0, 0.0), "std_range": (0.05, 0.15)},
+            "patch_count_range": (2, 3),
+            "patch_height_range": (0.2, 0.4),
+            "patch_width_range": (0.3, 0.5),
+            "per_channel": True,
         },
     ),
     (
@@ -805,18 +843,15 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     (
-        "uniform-direct-low-resolution",
+        "bounded-custom-grid",
         A.ElasticTransform,
         {
-            "approximate": True,
-            "same_dxdy": True,
+            "displacement_range": (0.01, 0.04),
+            "control_grid_shape": (4, 6),
             "mask_interpolation": cv2.INTER_LINEAR,
-            "noise_distribution": "uniform",
-            "keypoint_remapping_method": "direct",
             "border_mode": cv2.BORDER_REFLECT,
             "fill": 7,
             "fill_mask": 3,
-            "map_resolution_range": (0.5, 0.8),
         },
     ),
     ("wide-alpha", A.Enhance, {"alpha_range": (0.2, 0.8)}),
@@ -831,6 +866,15 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         {"std_range": (0.1, 0.3), "mean_range": (-0.05, 0.05), "per_channel": True},
     ),
     ("wide-sigma", A.GaussianBlur, {"sigma_range": (0.2, 1.5)}),
+    (
+        "true-3d-anisotropic",
+        A.GaussianBlur,
+        {
+            "volume_mode": "3d",
+            "sigma_z_range": (0.2, 1.5),
+            "blur_z_range": (3, 5),
+        },
+    ),
     (
         "unnormalized-direct",
         A.GridDistortion,
@@ -863,6 +907,26 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         {
             "method": "custom",
             "stain_matrix": np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32),
+        },
+    ),
+    (
+        "preserve-residual",
+        A.HEStain,
+        {
+            "method": "custom",
+            "stain_matrix": np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32),
+            "residual_mode": "preserve",
+            "augment_background": True,
+        },
+    ),
+    (
+        "augment-residual",
+        A.HEStain,
+        {
+            "method": "custom",
+            "stain_matrix": np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32),
+            "residual_mode": "augment",
+            "augment_background": True,
         },
     ),
     ("custom-reference", A.HistogramMatching, {"blend_ratio": (0.2, 0.4), "metadata_key": "references"}),
@@ -1018,6 +1082,10 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("fixed-element", A.RandomRotate90, {"group_element": "r90"}),
     ("subset-elements", A.RandomRotate90, {"group_elements": ("r90", "r270")}),
+    ("fixed-axis-rotation", A.RandomRotate90_3D, {"axis_pair": (0, 2), "group_element": "r90"}),
+    ("fixed-axes", A.Flip3D, {"flip_axes": (0, 2)}),
+    ("fixed-identity", A.Flip3D, {"flip_axes": ()}),
+    ("constant-fill", A.Affine3D, {"border_mode": cv2.BORDER_CONSTANT}),
     ("anisotropic-range", A.RandomScale, {"scale_range": {"x": (-0.2, 0.3), "y": (-0.1, 0.15)}}),
     ("downscale-aware", A.RandomScale, {"mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"}),
     ("variable-intensity", A.RandomShadow, {"shadow_intensity_range": (0.2, 0.7)}),
@@ -1143,6 +1211,21 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     ("fixed-fill", A.XYMasking, {"fill": 7}),
+    (
+        "float-float-ranges",
+        A.XYMasking,
+        {"mask_x_length_range": (0.1, 0.2), "mask_y_length_range": (0.2, 0.3)},
+    ),
+    (
+        "float-int-ranges",
+        A.XYMasking,
+        {"mask_x_length_range": (0.1, 0.2), "mask_y_length_range": (10, 20)},
+    ),
+    (
+        "int-float-ranges",
+        A.XYMasking,
+        {"mask_x_length_range": (10, 20), "mask_y_length_range": (0.2, 0.3)},
+    ),
 ]
 
 
@@ -1180,14 +1263,19 @@ _REFERENCE_METADATA_KEYS = {
     A.PixelDistributionAdaptation: "pda_metadata",
 }
 _EXACT_TRANSFORMS = {
+    A.Affine3D,
+    A.Anisotropy3D,
     A.Blur,
     A.CropAndPad,
     A.ExposureMatching,
+    A.Flip3D,
     A.HorizontalFlip,
     A.NoOp,
     A.Pad,
     A.RandomRotate90,
+    A.RandomRotate90_3D,
     A.Resize,
+    A.Resize3D,
     A.Transpose,
     A.VerticalFlip,
 }
@@ -1197,20 +1285,24 @@ def _case_data(
     transform_cls: type[A.BasicTransform],
     init_kwargs: Mapping[str, Any],
 ) -> tuple[ContractDataFactory, ContractContextFactory, dict[str, Any], frozenset[str]]:
-    if issubclass(transform_cls, A.Transform3D):
-        return make_volume_data, make_empty_context, {}, frozenset()
-    if transform_cls in _BBOX_TRANSFORMS:
+    compose_kwargs: dict[str, Any] = {}
+    metadata_keys = frozenset[str]()
+    if issubclass(transform_cls, (A.Transform3D, A.VolumeOnlyTransform)):
+        case = (make_volume_data, make_empty_context)
+    elif transform_cls in _BBOX_TRANSFORMS:
         compose_kwargs = {
             "bbox_params": A.BboxParams(
                 coord_format="albumentations",
                 label_fields=["bbox_labels"],
             ),
         }
+        context_factory = make_empty_context
         if transform_cls is A.RandomCropNearBBox:
             key = init_kwargs.get("cropping_bbox_key", "cropping_bbox")
-            return make_hbb_data, make_crop_near_bbox_context(key), compose_kwargs, frozenset({key})
-        return make_hbb_data, make_empty_context, compose_kwargs, frozenset()
-    if transform_cls in _MASK_TRANSFORMS:
+            context_factory = make_crop_near_bbox_context(key)
+            metadata_keys = frozenset({key})
+        case = (make_hbb_data, context_factory)
+    elif transform_cls in _MASK_TRANSFORMS:
         if transform_cls is A.ConstrainedCoarseDropout and init_kwargs.get("bbox_labels") is not None:
             compose_kwargs = {
                 "bbox_params": A.BboxParams(
@@ -1218,30 +1310,38 @@ def _case_data(
                     label_fields=["bbox_labels"],
                 ),
             }
-            return make_hbb_data, make_empty_context, compose_kwargs, frozenset()
-        return make_mask_data, make_empty_context, {}, frozenset()
-    if transform_cls in _REFERENCE_METADATA_KEYS:
+            case = (make_hbb_data, make_empty_context)
+        else:
+            case = (make_mask_data, make_empty_context)
+    elif transform_cls in _REFERENCE_METADATA_KEYS:
         key = init_kwargs.get("metadata_key", _REFERENCE_METADATA_KEYS[transform_cls])
-        return make_image_data, make_reference_context(key), {}, frozenset({key})
-    if transform_cls is A.Mosaic:
+        case = (make_image_data, make_reference_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls is A.Mosaic:
         key = init_kwargs.get("metadata_key", "mosaic_metadata")
-        return make_mask_data, make_mosaic_context(key), {}, frozenset({key})
-    if transform_cls is A.CopyAndPaste:
+        case = (make_mask_data, make_mosaic_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls is A.CopyAndPaste:
         key = init_kwargs.get("metadata_key", "copy_paste_metadata")
-        return make_mask_data, make_copy_and_paste_context(key), {}, frozenset({key})
-    if transform_cls is A.OverlayElements:
+        case = (make_mask_data, make_copy_and_paste_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls is A.OverlayElements:
         key = init_kwargs.get("metadata_key", "overlay_metadata")
-        return make_image_data, make_overlay_context(key), {}, frozenset({key})
-    if transform_cls is A.TextImage:
+        case = (make_image_data, make_overlay_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls is A.TextImage:
         key = init_kwargs.get("metadata_key", "textimage_metadata")
-        return make_image_data, make_text_context(key), {}, frozenset({key})
-    if transform_cls in {A.Colorize, A.ToRGB}:
-        return make_grayscale_image_data, make_empty_context, {}, frozenset()
-    if transform_cls is A.FromFloat:
-        return make_float_image_data, make_empty_context, {}, frozenset()
-    if transform_cls is A.Equalize and init_kwargs.get("mask_params"):
-        return make_mask_data, make_empty_context, {}, frozenset()
-    return make_image_data, make_empty_context, {}, frozenset()
+        case = (make_image_data, make_text_context(key))
+        metadata_keys = frozenset({key})
+    elif transform_cls in {A.Colorize, A.ToRGB}:
+        case = (make_grayscale_image_data, make_empty_context)
+    elif transform_cls is A.FromFloat:
+        case = (make_float_image_data, make_empty_context)
+    elif transform_cls is A.Equalize and init_kwargs.get("mask_params"):
+        case = (make_mask_data, make_empty_context)
+    else:
+        case = (make_image_data, make_empty_context)
+    return (*case, compose_kwargs, metadata_keys)
 
 
 def _slugify(name: str) -> str:

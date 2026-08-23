@@ -1,5 +1,9 @@
 # Performance Optimization Workflow
 
+## Prevalidated caller boundary
+
+Albucore routers run after the caller has validated the input contract. Upstream code owns container, rank, channel-last layout, dtype, device, contiguity, autograd state, and operation-control validation. Albucore keeps only dispatch branches and kernel-required normalization needed to select and execute the benchmarked implementation; hot paths must not repeat those checks.
+
 Use this workflow whenever implementing, reviewing, or profiling runtime code in Albucore or AlbumentationsX. Its
 order matters: remove work before making the remaining work faster. Treat every proposed optimization as a hypothesis
 until correctness tests and representative benchmarks support it.
@@ -7,6 +11,8 @@ until correctness tests and representative benchmarks support it.
 This file is canonical at `albucore/docs/performance-optimization.md`. AlbumentationsX keeps a synchronized fallback
 copy under `.codex/skills/performance-optimization/references/` so its performance skill can load the guide without a
 sibling Albucore checkout.
+
+For eager CPU PyTorch candidates, also follow Albucore's `docs/torch-performance-optimization.md` workflow.
 
 ## Run the optimization pass in this order
 
@@ -128,6 +134,7 @@ For each atomic operation, benchmark viable implementations end to end:
 - OpenCV;
 - NumKong;
 - StringZilla;
+- CPU PyTorch for documented Tensor or volume contracts;
 - a LUT route;
 - a small Python or `math` implementation when the data is scalar or tiny.
 
@@ -142,6 +149,17 @@ globally fastest:
 - NumPy wins other float32 and high-channel paths;
 - OpenCV wins many dense image operations but has channel and layout constraints;
 - StringZilla is competitive for selected uint8 translation paths.
+- CPU PyTorch is competitive for selected eager 3D volume operations when the complete interop route wins.
+
+### 6a. Escalate missing backend capabilities
+
+When a viable optimization requires an operation that PyTorch, NumKong, OpenCV, or NumPy does not provide, first open
+a Feature Request in the relevant upstream project. Link the request from the Albucore issue, benchmark note, or pull
+request so the dependency is explicit.
+
+When we can implement the operation and the upstream contribution rules allow it, open a linked upstream pull request.
+Until the operation is available, benchmark the portable alternatives and document the capability gap. Do not add a
+private substitute solely to avoid upstream coordination.
 
 ### 7. Compare random-generation paths
 
@@ -196,7 +214,7 @@ After removing work and comparing straight implementations, consider routing by:
 - uint8 versus float32;
 - scalar versus per-channel parameters;
 - 1, 3, 4, and high-channel inputs;
-- image, batch, volume, and batch-of-volumes rank;
+- image, image-batch, and single-volume rank;
 - contiguous versus strided input;
 - small versus large arrays;
 - dense versus sparse labels;
@@ -221,7 +239,7 @@ For Albucore, benchmark the public router, not only its private backend. Include
 Check these shared entry points before writing a local kernel:
 
 - `albucore.apply_uint8_lut` and `albucore.sz_lut` for benchmark-routed uint8 tables;
-- `albucore.stats` for `sum`, `mean`, `std`, and `mean_std` across images, batches, and volumes;
+- `albucore.stats` for `sum`, `mean`, `std`, and `mean_std` across supported array ranks;
 - Albucore arithmetic and weighted routers for add, multiply, normalize, power, blend, and fused multiply-add;
 - Albucore geometric and resize functions for channel-safe OpenCV routing;
 - `pairwise_distances_squared` for the routed small-set NumKong and larger NumPy paths.
@@ -230,11 +248,11 @@ The stats API already routes selected uint8 and low-channel reductions through N
 OpenCV where they win. Reimplementing these reductions inside AlbumentationsX loses both the routing and its benchmark
 coverage.
 
-In the Albucore checkout, use `docs/numkong-performance.md` for current NumKong route evidence and
-`docs/performance-regressions-plan.md` for known router regressions. When using the bundled fallback from an
-AlbumentationsX checkout, read the same files under `../albucore/docs/` if a sibling Albucore checkout is available.
-If it is absent, these supporting documents are unavailable: use repository-local benchmarks for candidate discovery
-and defer Albucore route or threshold changes until the canonical evidence can be checked.
+In the Albucore checkout, use `docs/numkong-performance.md` for current NumKong route evidence and the reports under
+`benchmarks/results/` for measured router comparisons. When using the bundled fallback from an AlbumentationsX
+checkout, read the same resources under `../albucore/` if a sibling Albucore checkout is available. If it is absent,
+these supporting documents are unavailable: use repository-local benchmarks for candidate discovery and defer
+Albucore route or threshold changes until the canonical evidence can be checked.
 
 Regenerate or extend the relevant benchmark when a route changes; do not update a threshold from an isolated
 microbenchmark alone.
@@ -280,7 +298,8 @@ Every performance task should report:
 - grouped integer-label reductions reviewed, including `bincount`;
 - LUT applicability and candidates;
 - random-generation candidates;
-- NumPy, OpenCV, NumKong, StringZilla, and Python candidates that apply;
+- NumPy, OpenCV, NumKong, StringZilla, CPU PyTorch, and Python candidates that apply;
+- any missing upstream primitive, its Feature Request, and a linked implementation pull request when we can provide one;
 - reusable atoms moved or proposed for Albucore;
 - safe in-place opportunities;
 - correctness evidence;

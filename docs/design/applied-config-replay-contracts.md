@@ -42,6 +42,9 @@ flowchart LR
 
 Passing one contract does not imply either of the others. Their tests remain separate.
 
+Composition-level constructor policy and per-step execution observation are specified in
+[Compose Serialization and Execution Tracing](compose-serialization-and-tracing.md).
+
 ## Architecture
 
 ```text
@@ -124,8 +127,8 @@ factories cover:
 - masks;
 - horizontal and oriented bounding boxes with labels;
 - keypoints with labels;
-- volumes and `mask3d`;
-- image, mask, volume, and `masks3d` batches;
+- volume data and `mask3d`;
+- image, mask, and volume batches;
 - reference-image metadata;
 - mosaic, copy-and-paste, overlay, and text metadata;
 - configurable metadata keys.
@@ -261,7 +264,7 @@ When adding or changing a transform:
 2. give every public parameter a non-default registered value;
 3. separate standard target data from transform-required context instead of adding class-name branches in runners;
 4. set `ReplayProfile.EXACT` only when applied configuration resolves all relevant randomness;
-5. write `self.applied_config` overrides for every realized constructor field;
+5. write every realized constructor field to `sampling.applied_overrides` in `sample_parameters`;
 6. clear source policy fields that conflict with those realized values;
 7. declare `_applied_replay_class` only when the emitted state belongs to a different canonical constructor;
 8. confirm every declared target collects through the generated target-cluster matrix;
@@ -302,8 +305,7 @@ The implementation remains complete only while all of these statements are true:
 - every configurable public constructor parameter has a non-default case, with no exemptions;
 - all cases pass emission, strict JSON transport, reconstruction, and execution;
 - exact cases compare all supplied targets;
-- image, mask, HBB, OBB, keypoint, volume, `mask3d`, image-, mask-, volume-, and `masks3d`-batch replay paths are
-  represented;
+- image, mask, HBB, OBB, keypoint, volume, `mask3d`, image-, mask-, and volume-batch replay paths are represented;
 - negative controls cover all five contract levels and fail at their intended levels;
 - dict, JSON, and YAML constructor serialization consume the same registry;
 - deterministic contracts run in the required PR gate;

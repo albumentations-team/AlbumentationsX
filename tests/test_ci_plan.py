@@ -37,7 +37,6 @@ def test_markdown_only_plan_never_selects_python_tests() -> None:
     assert plan.gates["correctness"] == ()
     assert plan.gates["policy"] == ()
     assert not plan.advisory_asv
-    assert not plan.antigravity
 
 
 def test_readme_runs_package_policy_without_product_tests() -> None:
@@ -66,7 +65,6 @@ def test_runtime_plan_keeps_full_compatibility_and_performance_evidence() -> Non
     assert plan.checks["contracts"]
     assert not plan.checks["primary"]
     assert plan.advisory_asv
-    assert plan.antigravity
 
 
 def test_core_runtime_change_also_selects_dedicated_pytorch_coverage() -> None:
@@ -113,7 +111,6 @@ def test_workflow_change_runs_security_contracts_without_product_matrix() -> Non
     assert plan.checks["workflow_audit"]
     assert plan.checks["contracts"]
     assert not plan.checks["compatibility"]
-    assert plan.antigravity
 
 
 def test_quality_configuration_runs_tools_without_product_tests() -> None:
@@ -150,7 +147,6 @@ def test_draft_disables_heavy_checks_but_preserves_fast_feedback() -> None:
     assert plan.gates["correctness"] == ()
     assert plan.gates["policy"] == ()
     assert not plan.advisory_asv
-    assert not plan.antigravity
 
 
 def test_force_full_overrides_draft_and_selects_conservative_profile() -> None:
@@ -192,6 +188,65 @@ def test_version_increase_selects_complete_release_preflight() -> None:
     assert plan.checks["compatibility"]
     assert plan.checks["pytorch"]
     assert "release-preflight" in plan.gates["policy"]
+
+
+@pytest.mark.parametrize(
+    ("head_dependency", "lock_source", "version_only"),
+    [
+        ("numpy>=2", '{ editable = "." }', True),
+        ("numpy>=3", '{ editable = "." }', False),
+        ("numpy>=2", '{ registry = "https://example.invalid" }', False),
+    ],
+)
+def test_version_bump_selects_minimal_release_only_when_metadata_is_unchanged(
+    tmp_path: Path,
+    head_dependency: str,
+    lock_source: str,
+    *,
+    version_only: bool,
+) -> None:
+    base_pyproject = tmp_path / "base-pyproject.toml"
+    base_pyproject.write_text(
+        '[project]\nname = "albumentationsx"\nversion = "2.3.2"\ndependencies = ["numpy>=2"]\n',
+        encoding="utf-8",
+    )
+    head_pyproject = tmp_path / "head-pyproject.toml"
+    head_pyproject.write_text(
+        f'[project]\nname = "albumentationsx"\nversion = "2.3.3"\ndependencies = ["{head_dependency}"]\n',
+        encoding="utf-8",
+    )
+    base_lock = tmp_path / "base-uv.lock"
+    base_lock.write_text(
+        f'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.2"\nsource = {lock_source}\n',
+        encoding="utf-8",
+    )
+    head_lock = tmp_path / "head-uv.lock"
+    head_lock.write_text(
+        f'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.3"\nsource = {lock_source}\n',
+        encoding="utf-8",
+    )
+
+    plan = build_plan(
+        ["pyproject.toml", "uv.lock"],
+        base_version="2.3.2",
+        head_version="2.3.3",
+        base_pyproject=base_pyproject,
+        head_pyproject=head_pyproject,
+        base_lock=base_lock,
+        head_lock=head_lock,
+    )
+
+    if version_only:
+        assert {name for name, selected in plan.checks.items() if selected} == {"release_preflight"}
+        assert plan.gates["fast"] == ()
+        assert plan.gates["correctness"] == ()
+        assert plan.gates["policy"] == ("release-preflight",)
+    else:
+        assert plan.checks["compatibility"]
+        assert plan.checks["mypy"]
+        assert plan.checks["pytorch"]
+        assert plan.checks["dependency_audit"]
+        assert plan.checks["release_preflight"]
 
 
 def test_prerelease_version_increase_selects_release_preflight() -> None:

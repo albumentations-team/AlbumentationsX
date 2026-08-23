@@ -33,10 +33,10 @@ class SafeParamsWrapper:
         self._copied = False
 
     def get(self) -> dict[str, Any]:
-        """Get params dict (will be copied if needed).
+        """Get parameter values (copied when needed).
 
         Returns:
-            Params dict
+            Parameter values
 
         """
         if not self._copied:

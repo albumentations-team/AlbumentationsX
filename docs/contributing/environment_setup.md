@@ -26,20 +26,29 @@ cd AlbumentationsX
 Create a local virtual environment and install the project plus development tools:
 
 ```bash
-uv sync --group dev
+uv sync --locked --group dev --inexact
 ```
 
 This is the canonical setup path for contributors and coding agents. It installs the same toolchain used by CI,
-including Ruff, mypy, Pyrefly, pytest, pre-commit, and security tooling.
+including Ruff, mypy, Pyrefly, pytest, pre-commit, and security tooling. It does not choose a Torch build. Install
+the CPU, CUDA, or MPS Torch build required by your development environment before running code that imports
+AlbumentationsX.
 
-CI itself uses smaller locked groups so unrelated jobs do not install the full
-toolchain: `ci-test`, `ci-quality`, `ci-types`, `ci-pytorch`, `ci-security`,
-`ci-package`, `ci-benchmark`, and `ci-release`. Contributors normally should
-keep using `dev`; the purpose-specific groups are useful when reproducing one
-CI leaf, for example:
+To reproduce the CPU-only runtime used by CI, add its explicit profile:
 
 ```bash
-uv sync --locked --no-default-groups --group ci-test
+uv sync --locked --group dev --group ci-torch-cpu --inexact
+```
+
+CI itself uses smaller locked groups so unrelated jobs do not install the full
+toolchain: `ci-test`, `ci-quality`, `ci-types`, `ci-security`, `ci-package`,
+`ci-benchmark`, `ci-release`, and `ci-torch-cpu`. Tool groups never select a
+runtime. Jobs that import AlbumentationsX add `ci-torch-cpu`; static jobs do
+not. Contributors normally should keep using `dev`; the purpose-specific
+groups are useful when reproducing one CI leaf, for example:
+
+```bash
+uv sync --locked --no-default-groups --group ci-test --group ci-torch-cpu --inexact
 ```
 
 #### pip fallback
@@ -53,6 +62,9 @@ source env/bin/activate
 pip install -e .
 pip install -r requirements-dev.txt
 ```
+
+The fallback requirements also leave Torch to you. Install the CPU, CUDA, or
+MPS Torch build before running the test suite.
 
 On Windows, activate the environment with `env\Scripts\activate.bat` for cmd.exe or `env\Scripts\activate.ps1` for
 PowerShell.

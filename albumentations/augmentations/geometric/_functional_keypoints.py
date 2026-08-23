@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Literal, cast
 
+from albucore import sqrt as albucore_sqrt
+
 from ._functional_distortion import (
     generate_inverse_distortion_map,
 )
@@ -294,16 +296,19 @@ def to_distance_maps(
         return np.zeros((height, width, 0), dtype=np.float32)
 
     # Convert keypoints to numpy array
-    keypoints_array = np.array(keypoints)
+    keypoints_array = np.asarray(keypoints, dtype=np.float32)
     if len(keypoints_array) > CV2_DISTANCE_MAP_MAX_KEYPOINTS:
-        yy, xx = np.mgrid[:height, :width]
-        distances = np.sqrt(
-            (xx[..., np.newaxis] - keypoints_array[:, 0]) ** 2 + (yy[..., np.newaxis] - keypoints_array[:, 1]) ** 2,
-        )
+        x_distances = np.arange(width, dtype=np.float32)[np.newaxis, :, np.newaxis] - keypoints_array[:, 0]
+        y_distances = np.arange(height, dtype=np.float32)[:, np.newaxis, np.newaxis] - keypoints_array[:, 1]
+        np.square(x_distances, out=x_distances)
+        np.square(y_distances, out=y_distances)
+        distances = x_distances + y_distances
+        distances = albucore_sqrt(distances, inplace=True)
 
         if inverted:
-            return (1 / (distances + 1)).astype(np.float32)
-        return distances.astype(np.float32)
+            np.add(distances, 1, out=distances)
+            np.reciprocal(distances, out=distances)
+        return distances
 
     # Create coordinate grids
     yy, xx = np.mgrid[:height, :width]
@@ -323,7 +328,8 @@ def to_distance_maps(
         distances[..., keypoint_idx] = magnitude
 
     if inverted:
-        return (1 / (distances + 1)).astype(np.float32)
+        np.add(distances, 1, out=distances)
+        np.reciprocal(distances, out=distances)
     return distances
 
 
@@ -514,11 +520,7 @@ def keypoints_transpose(keypoints: np.ndarray) -> np.ndarray:
 
     # Adjust angles to reflect the coordinate swap
     angles = keypoints[:, 3]
-    transposed_keypoints[:, 3] = np.where(
-        angles <= np.pi,
-        np.pi / 2 - angles,
-        3 * np.pi / 2 - angles,
-    )
+    transposed_keypoints[:, 3] = np.pi / 2 - angles
 
     return transposed_keypoints
 
@@ -548,11 +550,11 @@ def remap_keypoints_via_mask(
 
     # Remap the mask
     transformed_kp_mask = remap(
-        kp_mask,
+        kp_mask[..., np.newaxis],
         map_x.astype(np.float32),
         map_y.astype(np.float32),
         interpolation=cv2.INTER_NEAREST,
-    )
+    )[..., 0]
 
     # Extract transformed keypoints
     new_points = []

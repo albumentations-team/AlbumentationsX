@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import copy
+from collections import Counter
 from typing import Any
-
-import pytest
 
 from tools import benchmark_coverage
 from tools.benchmark_coverage import coverage_details, coverage_diff
@@ -15,18 +14,36 @@ def _coverage_for(transform_name: str) -> dict[str, Any]:
     return transforms[transform_name]
 
 
+def _transform_names_requiring_contract_layer(details: dict[str, Any], contract: str, layer: str) -> set[str]:
+    return {
+        transform["name"]
+        for transform in details["transforms"]
+        if layer in transform["performance_contract"][contract]["required_layers"]
+    }
+
+
+def _case_ids_for_layer(transform: dict[str, Any], layer: str) -> set[str]:
+    return {case["case_id"] for case in transform["asv_cases"] if case["layer"] == layer}
+
+
 def test_benchmark_coverage_details_account_for_every_public_transform() -> None:
     details = coverage_details()
 
-    assert details["schema_version"] == 5
+    assert details["schema_version"] == 6
     assert details["public_transforms"] == len(details["transforms"])
     assert (
-        details["layer_counts"]["catalog_smoke"] + details["layer_counts"]["optional"] == details["public_transforms"]
+        details["layer_counts"]["catalog_smoke"] + details["summary"]["dedicated_tensor_transforms"]
+        == details["public_transforms"]
     )
     assert details["summary"]["contract_failures"] == 0
     assert details["contract_failures"] == []
-    assert details["summary"]["performance_contract_status_counts"]["batch"]["covered"] == 13
-    assert details["summary"]["performance_contract_status_counts"]["parameter_sensitivity"]["covered"] == 8
+    status_counts = details["summary"]["performance_contract_status_counts"]
+    assert status_counts["batch"]["covered"] == len(
+        _transform_names_requiring_contract_layer(details, "batch", "batch_matrix"),
+    )
+    assert status_counts["parameter_sensitivity"]["covered"] == len(
+        _transform_names_requiring_contract_layer(details, "parameter_sensitivity", "parameter_sensitivity"),
+    )
 
 
 def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
@@ -88,14 +105,11 @@ def test_benchmark_coverage_details_map_batch_matrix_to_public_transforms() -> N
     assert set(horizontal_flip["performance_contract"]["batch"]["implementation_methods"]) == {
         "apply_to_images",
         "apply_to_masks",
-        "apply_to_masks3d",
-        "apply_to_volumes",
     }
-    assert {"images", "masks", "masks3d", "volumes"}.issubset(horizontal_flip["scenario_contract"]["targets"])
+    assert {"images", "masks"}.issubset(horizontal_flip["scenario_contract"]["targets"])
     assert {
         ("batch_matrix", "horizontal_flip|images|small|1|uint8|4"),
         ("batch_matrix", "horizontal_flip|images_and_masks|small|1|uint8|4"),
-        ("batch_matrix", "horizontal_flip|volumes_and_masks3d|small|1|uint8|2"),
     }.issubset({(case["layer"], case["case_id"]) for case in horizontal_flip["asv_cases"]})
 
 
@@ -121,6 +135,68 @@ def test_benchmark_coverage_details_map_spatter_modes_to_batch_matrix() -> None:
         "spatter_rain|images|small|3|uint8|4",
         "spatter_rain|images|large|3|float32|16",
     }.issubset({case["case_id"] for case in spatter["asv_cases"] if case["layer"] == "batch_matrix"})
+
+
+def test_benchmark_coverage_details_map_illumination_modes_to_batch_matrix() -> None:
+    illumination = _coverage_for("Illumination")
+    expected_case_ids = set(benchmark_coverage.ILLUMINATION_DIRECT_CASES)
+    expected_case_ids.update(
+        case_id for case_id in benchmark_coverage.IMAGE_BATCH_CASES if case_id.startswith("illumination_")
+    )
+
+    assert illumination["performance_contract"]["batch"]["status"] == "covered"
+    assert illumination["scenario_contract"]["channels"] == [1, 3, 5]
+    assert illumination["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert illumination["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
+    assert illumination["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert {"compose_batch", "direct_batch"}.issubset(illumination["scenario_contract"]["scopes"])
+    assert _case_ids_for_layer(illumination, "batch_matrix") == expected_case_ids
+
+
+def test_benchmark_coverage_details_map_random_shadow_issue_matrix() -> None:
+    random_shadow = _coverage_for("RandomShadow")
+    batch_cases = [case for case in random_shadow["asv_cases"] if case["layer"] == "batch_matrix"]
+    batch_case_ids = {case["case_id"] for case in batch_cases}
+
+    assert random_shadow["performance_contract"]["batch"]["status"] == "covered"
+    assert random_shadow["scenario_contract"]["channels"] == [1, 3, 5]
+    assert random_shadow["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert random_shadow["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
+    assert random_shadow["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert {"compose_batch", "compose_volume", "direct_batch"}.issubset(
+        random_shadow["scenario_contract"]["scopes"],
+    )
+    assert {"images", "volume"}.issubset(random_shadow["scenario_contract"]["targets"])
+    assert "peakmem_random_shadow_batch_large_multichannel" in random_shadow["scenario_contract"]["memory_cases"]
+    assert len(batch_cases) == len(batch_case_ids) == 216
+    assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
+        "direct_images": 72,
+        "images": 72,
+        "volume": 72,
+    }
+    assert {
+        "random_shadow|direct_images|large|5|float32|16",
+        "random_shadow|direct_images|small|1|uint8|2",
+        "random_shadow|images|large|5|float32|16",
+        "random_shadow|images|small|1|uint8|2",
+        "random_shadow|volume|large|5|float32|16",
+        "random_shadow|volume|small|1|uint8|2",
+    }.issubset(batch_case_ids)
+
+
+def test_benchmark_coverage_details_map_median_blur_kernel_and_dtype_routes() -> None:
+    median_blur = _coverage_for("MedianBlur")
+
+    cases_by_layer = {
+        layer: {case["case_id"] for case in median_blur["asv_cases"] if case["layer"] == layer}
+        for layer in ("batch_matrix", "direct_kernel", "family_matrix", "memory")
+    }
+    assert "median_blur_k5|images|small|5|float32|4" in cases_by_layer["batch_matrix"]
+    assert "median_blur_k3|large|1|float32" in cases_by_layer["direct_kernel"]
+    assert "median_blur_k7|medium|3|uint8" in cases_by_layer["family_matrix"]
+    assert "peakmem_median_blur_large_float32" in cases_by_layer["memory"]
+    assert {"uint8", "float32"}.issubset(median_blur["scenario_contract"]["dtypes"])
+    assert {"image", "images"}.issubset(median_blur["scenario_contract"]["targets"])
 
 
 def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transforms() -> None:
@@ -160,6 +236,50 @@ def test_benchmark_coverage_details_map_expanded_pixel_matrix_to_public_transfor
 
     assert random_rain["smoke_only"] is False
     assert "family_matrix" in random_rain["layers"]
+
+
+def test_benchmark_coverage_details_map_both_random_tone_curve_modes() -> None:
+    random_tone_curve = _coverage_for("RandomToneCurve")
+    family_case_ids = {case["case_id"] for case in random_tone_curve["asv_cases"] if case["layer"] == "family_matrix"}
+    direct_case_ids = {case["case_id"] for case in random_tone_curve["asv_cases"] if case["layer"] == "direct_kernel"}
+    batch_cases = [case for case in random_tone_curve["asv_cases"] if case["layer"] == "batch_matrix"]
+    batch_case_ids = {case["case_id"] for case in batch_cases}
+
+    assert {case_id.split("|", maxsplit=1)[0] for case_id in family_case_ids} == {
+        "random_tone_curve",
+        "random_tone_curve_per_channel",
+    }
+    assert {case_id.split("|", maxsplit=1)[0] for case_id in direct_case_ids} == {
+        "move_tone_curve_shared",
+        "move_tone_curve_per_channel",
+    }
+    assert len(family_case_ids) == 36
+    assert len(direct_case_ids) == 36
+    assert {case_id.split("|", maxsplit=1)[0] for case_id in batch_case_ids} == {
+        "random_tone_curve",
+        "random_tone_curve_per_channel",
+    }
+    assert len(batch_cases) == len(batch_case_ids) == 96
+    assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
+        "direct_images": 48,
+        "images": 48,
+    }
+    assert {
+        "random_tone_curve|images|small|1|uint8|4",
+        "random_tone_curve|direct_images|medium|5|float32|8",
+    }.issubset(batch_case_ids)
+    assert random_tone_curve["performance_contract"]["batch"]["status"] == "covered"
+    assert {"compose_batch", "direct_batch"}.issubset(random_tone_curve["scenario_contract"]["scopes"])
+    assert {"images"}.issubset(random_tone_curve["scenario_contract"]["targets"])
+    assert random_tone_curve["scenario_axis_contracts"]["batch_matrix"] == {
+        "covered": {
+            "channels": [1, 3, 5],
+            "dtypes": ["uint8", "float32"],
+            "sizes": ["small", "medium"],
+        },
+        "skip_reason": "batch matrix omits large image batches to keep CI evidence stable and affordable",
+        "skipped": {"sizes": ["large"]},
+    }
 
 
 def test_benchmark_coverage_details_require_family_matrix_for_image_transforms() -> None:
@@ -219,8 +339,7 @@ def test_benchmark_coverage_details_explain_warning_aliases() -> None:
     assert shift_scale_rotate["performance_contract"]["direct_kernel"]["status"] == "not_required"
 
 
-@pytest.mark.pytorch
-def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
+def test_benchmark_coverage_details_keep_dedicated_tensor_transforms_explicit() -> None:
     to_tensor = _coverage_for("ToTensorV2")
 
     assert to_tensor["benchmark"] is False
@@ -229,12 +348,13 @@ def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
         "public_api": "albumentations.ToTensorV2",
         "qualname": "ToTensorV2",
     }
-    assert to_tensor["layers"] == ["optional", "pytorch_tensor"]
+    assert to_tensor["benchmark_spec"]["route"] == "dedicated_tensor"
+    assert to_tensor["layers"] == ["pytorch_tensor"]
     assert to_tensor["families"] == ["pytorch_tensor"]
     assert to_tensor["coverage_contract"]["status"] == "ok"
-    assert to_tensor["coverage_contract"]["required_layers"] == ["optional", "pytorch_tensor"]
-    assert to_tensor["performance_contract"]["batch"]["status"] == "covered_optional"
-    assert "PyTorch" in str(to_tensor["optional_reason"])
+    assert to_tensor["coverage_contract"]["required_layers"] == ["pytorch_tensor"]
+    assert to_tensor["performance_contract"]["batch"]["status"] == "covered_dedicated_tensor"
+    assert "PyTorch" in str(to_tensor["benchmark_reason"])
     assert {
         ("pytorch", "pytorch_tensor", "small|1|uint8"),
         ("pytorch", "pytorch_tensor", "large|5|float32"),
@@ -244,22 +364,40 @@ def test_benchmark_coverage_details_keep_optional_transforms_explicit() -> None:
     assert to_tensor["scenario_contract"]["targets"] == ["image", "images", "mask", "masks"]
 
 
-def test_registry_allows_optional_transforms_only_when_their_dependency_is_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    optional = set(benchmark_coverage.OPTIONAL_BENCHMARK_TRANSFORMS)
-    spec_names = set(benchmark_coverage.benchmark_specs()) - optional
-    public_names = set(benchmark_coverage.public_transform_names()) - optional
+def test_benchmark_coverage_details_keep_native_tensor_capabilities_beside_numpy_coverage() -> None:
+    transpose = _coverage_for("Transpose")
 
-    monkeypatch.setattr(benchmark_coverage, "unavailable_optional_transform_names", lambda: optional)
-    assert benchmark_coverage._validate_public_registry(public_names, spec_names) == []
-    assert benchmark_coverage._validate_coverage_layers(spec_names) == []
+    assert transpose["benchmark"] is True
+    assert {"catalog_smoke", "family_matrix", "pytorch_tensor"}.issubset(transpose["layers"])
+    assert transpose["coverage_contract"]["required_layers"] == ["catalog_smoke", "family_matrix", "pytorch_tensor"]
+    tensor_cases = [case for case in transpose["asv_cases"] if case["layer"] == "pytorch_tensor"]
+    assert {case["case_id"] for case in tensor_cases} == {
+        "small|1|uint8",
+        "small|1|float32",
+        "small|3|uint8",
+        "small|3|float32",
+        "medium|1|uint8",
+        "medium|1|float32",
+        "medium|3|uint8",
+        "medium|3|float32",
+        "large|1|uint8",
+        "large|1|float32",
+        "large|3|uint8",
+        "large|3|float32",
+    }
+    assert all(case["scenario"]["scope"] == "tensor_native_compose" for case in tensor_cases)
+    assert all(case["scenario"]["targets"] == ["image"] for case in tensor_cases)
 
-    monkeypatch.setattr(benchmark_coverage, "unavailable_optional_transform_names", set)
+
+def test_registry_requires_dedicated_tensor_transforms_as_runtime_public_apis() -> None:
+    dedicated = set(benchmark_coverage.DEDICATED_TENSOR_BENCHMARK_TRANSFORMS)
+    spec_names = set(benchmark_coverage.benchmark_specs()) - dedicated
+    public_names = set(benchmark_coverage.public_transform_names())
+
     registry_errors = benchmark_coverage._validate_public_registry(public_names, spec_names)
     layer_errors = benchmark_coverage._validate_coverage_layers(spec_names)
 
-    assert registry_errors == ["Optional benchmark transform is not public: ToTensor3D, ToTensorV2"]
+    assert registry_errors == ["Missing benchmark specs: ToTensor3D, ToTensorV2"]
     assert layer_errors == ["Benchmark coverage layers reference unknown transforms: ToTensor3D, ToTensorV2"]
 
 
@@ -270,7 +408,7 @@ def test_benchmark_coverage_details_include_reviewable_case_metadata_for_all_lay
         assert transform["class"]["module"].startswith("albumentations.")
         assert transform["class"]["public_api"] == f"albumentations.{transform['name']}"
         assert transform["benchmark_spec"]["route"] == transform["route"]
-        assert transform["asv_cases"] or transform["layers"] == ["optional"]
+        assert transform["asv_cases"]
         assert transform["scenario_contract"]["case_count"] == len(transform["asv_cases"])
         assert set(transform["scenario_contract"]["layers"]).issubset(transform["layers"])
         assert set(transform["scenario_axis_contracts"]).issubset(transform["layers"])
@@ -303,7 +441,7 @@ def test_benchmark_coverage_details_track_batch_and_annotation_audit_paths() -> 
     crop_and_pad = _coverage_for("CropAndPad")
 
     assert auto_contrast["performance_contract"]["batch"] == {
-        "implementation_methods": ["apply_to_images", "apply_to_volumes"],
+        "implementation_methods": ["apply_to_images"],
         "reason": (
             "custom batch methods are inventoried for review; current release-critical evidence comes from "
             "catalog smoke, family matrices, direct kernels, and core batch dispatch until this route is promoted"

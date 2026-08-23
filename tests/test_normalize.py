@@ -55,7 +55,6 @@ def test_normalize_standard_clips_output(
         ("image", (2, 3, 2)),
         ("images", (2, 2, 3, 2)),
         ("volume", (2, 2, 3, 2)),
-        ("volumes", (2, 2, 2, 3, 2)),
     ],
 )
 def test_normalize_clip_range_applies_to_all_image_targets(target_name: str, shape: tuple[int, ...]) -> None:

@@ -5,6 +5,8 @@ from typing import Annotated, Any, Literal, cast
 
 from typing_extensions import Self
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     ALL_TARGETS,
     CV2_BORDER_CONSTANT,
@@ -160,10 +162,11 @@ class RandomCrop(BaseCropAndPad):
         self.height = height
         self.width = width
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
         image_height, image_width = image_shape
@@ -175,7 +178,7 @@ class RandomCrop(BaseCropAndPad):
             )
 
         # Get padding params first if needed
-        pad_params = self._get_pad_params(image_shape, (self.height, self.width))
+        pad_params = self._get_pad_params(image_shape, (self.height, self.width), sampling)
 
         # If padding is needed, adjust the image shape for crop calculation
         if pad_params is not None:
@@ -189,13 +192,13 @@ class RandomCrop(BaseCropAndPad):
             padded_shape = (padded_height, padded_width)
 
             # Get random crop coordinates based on padded dimensions
-            h_start = self.py_random.random()
-            w_start = self.py_random.random()
+            h_start = sampling.py_random.random()
+            w_start = sampling.py_random.random()
             crop_coords = fcrops.get_crop_coords(padded_shape, (self.height, self.width), h_start, w_start)
         else:
             # Get random crop coordinates based on original dimensions
-            h_start = self.py_random.random()
-            w_start = self.py_random.random()
+            h_start = sampling.py_random.random()
+            w_start = sampling.py_random.random()
             crop_coords = fcrops.get_crop_coords(image_shape, (self.height, self.width), h_start, w_start)
 
         return {
@@ -336,10 +339,11 @@ class CenterCrop(BaseCropAndPad):
         self.height = height
         self.width = width
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
         image_height, image_width = image_shape
@@ -351,7 +355,7 @@ class CenterCrop(BaseCropAndPad):
             )
 
         # Get padding params first if needed
-        pad_params = self._get_pad_params(image_shape, (self.height, self.width))
+        pad_params = self._get_pad_params(image_shape, (self.height, self.width), sampling)
 
         # If padding is needed, adjust the image shape for crop calculation
         if pad_params is not None:
@@ -549,7 +553,14 @@ class Crop(BaseCropAndPad):
         return pad_top, pad_bottom, pad_left, pad_right
 
     # New helper function for distributing and adjusting padding
-    def _compute_adjusted_padding(self, pad_top: int, pad_bottom: int, pad_left: int, pad_right: int) -> dict[str, int]:
+    def _compute_adjusted_padding(
+        self,
+        pad_top: int,
+        pad_bottom: int,
+        pad_left: int,
+        pad_right: int,
+        sampling: SamplingContext,
+    ) -> dict[str, int]:
         delta_h = pad_top + pad_bottom
         delta_w = pad_left + pad_right
         pad_top_dist = delta_h // 2
@@ -563,7 +574,7 @@ class Crop(BaseCropAndPad):
             w_left=pad_left_dist,
             w_right=pad_right_dist,
             position=self.pad_position,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         final_top = max(pad_top_adj, pad_top)
@@ -578,7 +589,12 @@ class Crop(BaseCropAndPad):
             "pad_right": final_right,
         }
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         image_shape = params["shape"][:2]
         image_height, image_width = image_shape
 
@@ -589,7 +605,7 @@ class Crop(BaseCropAndPad):
         pad_params = None
 
         if any([pad_top, pad_bottom, pad_left, pad_right]):
-            pad_params = self._compute_adjusted_padding(pad_top, pad_bottom, pad_left, pad_right)
+            pad_params = self._compute_adjusted_padding(pad_top, pad_bottom, pad_left, pad_right, sampling)
 
         return {"crop_coords": (self.x_min, self.y_min, self.x_max, self.y_max), "pad_params": pad_params}
 
@@ -605,8 +621,7 @@ class CropAndPad(DualTransform):
     Args:
         px (int, tuple of int, tuple of tuples of int, or None):
             The number of pixels to crop (negative values) or pad (positive values) on each side of the image.
-            Either this or the parameter `percent`, `px_choices`, or `percent_choices` may be set,
-            not more than one at the same time.
+            Set exactly one of `px`, `percent`, `px_choices`, or `percent_choices`.
             - If int: crop/pad all sides by this value.
             - If tuple of 2 ints: crop/pad by (top/bottom, left/right).
             - If tuple of 4 ints: crop/pad by (top, right, bottom, left).
@@ -615,8 +630,7 @@ class CropAndPad(DualTransform):
 
         percent (float, tuple of float, tuple of tuples of float, or None):
             The fraction of the image size to crop (negative values) or pad (positive values) on each side.
-            Either this or the parameter `px`, `px_choices`, or `percent_choices` may be set,
-            not more than one at the same time.
+            Set exactly one of `px`, `percent`, `px_choices`, or `percent_choices`.
             - If float: crop/pad all sides by this fraction.
             - If tuple of 2 floats: crop/pad by (top/bottom, left/right) fractions.
             - If tuple of 4 floats: crop/pad by (top, right, bottom, left) fractions.
@@ -624,21 +638,12 @@ class CropAndPad(DualTransform):
             Default: None.
 
         px_choices (tuple of int, or None):
-            Discrete pixel values to choose from uniformly when applying the transform.
-            Either this or the parameter `px`, `percent`, or `percent_choices` may be set,
-            not more than one at the same time.
-            Negative values crop; positive values pad; zero leaves a side unchanged.
-            - With `sample_independently=False`, one value is chosen and applied to all four sides.
-            - With `sample_independently=True`, a value is chosen independently for
-              top, right, bottom, and left.
-            Default: None.
+            Discrete pixel amounts to sample uniformly. A sampled amount is applied to every side when
+            `sample_independently=False`; otherwise each side samples separately. Default: None.
 
         percent_choices (tuple of float, or None):
-            Discrete fractional values to choose from uniformly when applying the transform.
-            Either this or the parameter `px`, `percent`, or `px_choices` may be set,
-            not more than one at the same time.
-            Same sampling semantics as `px_choices`, but values are fractions of the image dimensions.
-            Default: None.
+            Discrete fractions in [-1, 1] to sample uniformly. Sampling follows `px_choices`; fractions scale with
+            image height for top/bottom and width for left/right. Default: None.
 
         border_mode (int):
             OpenCV border mode used for padding. Default: cv2.BORDER_CONSTANT.
@@ -676,9 +681,9 @@ class CropAndPad(DualTransform):
     Image types:
         uint8, float32
 
+
     Supported bboxes:
         hbb, obb
-
     Note:
         - This transform will never crop images below a height or width of 1.
         - When using pixel values (px), the image will be cropped/padded by exactly that many pixels.
@@ -777,50 +782,6 @@ class CropAndPad(DualTransform):
         ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
         >>>
         >>> # Result dimensions will vary based on the random padding values chosen
-        >>>
-        >>> # Example 4: Using discrete pixel choices with px_choices
-        >>> # Crop each side symmetrically by one of 5, 10, 15, or 20 pixels
-        >>> transform_px_choices = A.Compose([
-        ...     A.CropAndPad(
-        ...         px_choices=(-5, -10, -15, -20),  # Negative values crop inward
-        ...         sample_independently=False,          # Same value for all sides
-        ...         keep_size=False,
-        ...         p=1.0
-        ...     ),
-        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
-        >>>
-        >>> # Apply the transform
-        >>> result_px_choices = transform_px_choices(
-        ...     image=image,
-        ...     mask=mask,
-        ...     bboxes=bboxes,
-        ...     bbox_labels=bbox_labels,
-        ...     keypoints=keypoints,
-        ...     keypoint_labels=keypoint_labels
-        ... )
-        >>>
-        >>> # Example 5: Using discrete fractional choices with percent_choices
-        >>> # Pad each side independently by 5%, 10%, or 15% of the image dimensions
-        >>> transform_percent_choices = A.Compose([
-        ...     A.CropAndPad(
-        ...         percent_choices=(0.05, 0.10, 0.15),  # Positive values pad outward
-        ...         sample_independently=True,            # Independent value per side
-        ...         keep_size=True,                        # Resize back to original size
-        ...         p=1.0
-        ...     ),
-        ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
-        ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
-        >>>
-        >>> # Apply the transform
-        >>> result_percent_choices = transform_percent_choices(
-        ...     image=image,
-        ...     mask=mask,
-        ...     bboxes=bboxes,
-        ...     bbox_labels=bbox_labels,
-        ...     keypoints=keypoints,
-        ...     keypoint_labels=keypoint_labels
-        ... )
 
     """
 
@@ -841,26 +802,23 @@ class CropAndPad(DualTransform):
         border_mode: BorderModeType
 
         @model_validator(mode="after")
-        def _check_px_percent(self) -> Self:
-            provided = [
-                name for name in ("px", "percent", "px_choices", "percent_choices") if getattr(self, name) is not None
-            ]
-            if len(provided) != 1:
-                msg = (
-                    f"Exactly one of px, percent, px_choices, or percent_choices must be provided, "
-                    f"got {len(provided)}: {', '.join(provided) if provided else 'none'}"
-                )
+        def _check_crop_source(self) -> Self:
+            provided = sum(
+                source is not None for source in (self.px, self.percent, self.px_choices, self.percent_choices)
+            )
+            if provided != 1:
+                msg = "Exactly one of px, percent, px_choices, or percent_choices must be set."
                 raise ValueError(msg)
-
-            if self.px_choices is not None and len(self.px_choices) == 0:
-                msg = "px_choices must be a non-empty tuple"
+            if self.px_choices is not None and not self.px_choices:
+                msg = "px_choices must not be empty."
                 raise ValueError(msg)
-            if self.percent_choices is not None and len(self.percent_choices) == 0:
-                msg = "percent_choices must be a non-empty tuple"
-                raise ValueError(msg)
-            if self.percent_choices is not None and any(not -1.0 <= v <= 1.0 for v in self.percent_choices):
-                msg = f"All percent_choices values must be in range [-1.0, 1.0], got {self.percent_choices}"
-                raise ValueError(msg)
+            if self.percent_choices is not None:
+                if not self.percent_choices:
+                    msg = "percent_choices must not be empty."
+                    raise ValueError(msg)
+                if any(not -1 <= value <= 1 for value in self.percent_choices):
+                    msg = "percent_choices values must be in [-1, 1]."
+                    raise ValueError(msg)
 
             return self
 
@@ -905,7 +863,7 @@ class CropAndPad(DualTransform):
         fill: tuple[float, ...] | float,
         **params: Any,
     ) -> ImageType:
-        return fcrops.crop_and_pad(
+        result = fcrops.crop_and_pad(
             img,
             crop_params,
             pad_params,
@@ -915,6 +873,9 @@ class CropAndPad(DualTransform):
             self.border_mode,
             self.keep_size,
         )
+        if self.keep_size:
+            return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return result
 
     def apply_to_mask(
         self,
@@ -996,7 +957,7 @@ class CropAndPad(DualTransform):
         return [max(top, 0), max(right, 0), max(bottom, 0), max(left, 0)]
 
     @staticmethod
-    def _percent_to_new_params(percent_params: list[float], height: int, width: int) -> list[int]:
+    def _percent_to_px(percent_params: list[float], height: int, width: int) -> list[int]:
         return [
             int(percent_params[0] * height),
             int(percent_params[1] * width),
@@ -1004,44 +965,51 @@ class CropAndPad(DualTransform):
             int(percent_params[3] * width),
         ]
 
-    def _compute_applied_config(
+    def _sample_crop_values(
+        self,
+        height: int,
+        width: int,
+        sampling: SamplingContext,
+    ) -> tuple[list[int], list[float] | None]:
+        if self.px is not None:
+            return self._get_px_params(sampling), None
+        if self.px_choices is not None:
+            return self._get_px_choices_params(sampling), None
+
+        percent_params = (
+            self._get_percent_choices_params(sampling)
+            if self.percent_choices is not None
+            else self._get_percent_params(sampling)
+        )
+        return self._percent_to_px(percent_params, height, width), percent_params
+
+    def _get_applied_config(
         self,
         new_params: list[int],
         percent_params: list[float] | None,
     ) -> dict[str, Any]:
-        applied_config: dict[str, Any] = {}
-        if self.px is not None:
-            applied_config["px"] = tuple(new_params)
-        elif self.px_choices is not None:
-            applied_config["px"] = tuple(new_params)
-            applied_config["px_choices"] = None
-        elif self.percent_choices is not None:
+        if self.px_choices is not None:
+            return {"px": tuple(new_params), "px_choices": None}
+        if self.percent_choices is not None:
             if percent_params is None:
                 msg = "percent_params must be initialized when percent_choices is set"
                 raise RuntimeError(msg)
-            applied_config["percent"] = tuple(percent_params)
-            applied_config["percent_choices"] = None
-        else:
-            if percent_params is None:
-                msg = "percent_params must be initialized when px is not set"
-                raise RuntimeError(msg)
-            applied_config["percent"] = tuple(percent_params)
-        return applied_config
-
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        height, width = params["shape"][:2]
-        percent_params: list[float] | None = None
-
+            return {"percent": tuple(percent_params), "percent_choices": None}
         if self.px is not None:
-            new_params = self._get_px_params()
-        elif self.px_choices is not None:
-            new_params = self._get_px_choices_params()
-        elif self.percent_choices is not None:
-            percent_params = self._get_percent_choices_params()
-            new_params = self._percent_to_new_params(percent_params, height, width)
-        else:
-            percent_params = self._get_percent_params()
-            new_params = self._percent_to_new_params(percent_params, height, width)
+            return {"px": tuple(new_params)}
+        if percent_params is None:
+            msg = "percent_params must be initialized when px is not set"
+            raise RuntimeError(msg)
+        return {"percent": tuple(percent_params)}
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        height, width = params["shape"][:2]
+        new_params, percent_params = self._sample_crop_values(height, width, sampling)
 
         pad_params = [max(i, 0) for i in new_params]
 
@@ -1062,17 +1030,19 @@ class CropAndPad(DualTransform):
         else:
             pad_params = []
 
-        sampled_fill = None if pad_params is None else self._get_pad_value(self.fill)
+        sampled_fill = None if pad_params is None else self._get_pad_value(self.fill, sampling)
         sampled_fill_mask = (
-            None if pad_params is None else self._get_pad_value(cast("tuple[float, ...] | float", self.fill_mask))
+            None
+            if pad_params is None
+            else self._get_pad_value(cast("tuple[float, ...] | float", self.fill_mask), sampling)
         )
 
-        applied_config = self._compute_applied_config(new_params, percent_params)
+        applied_config = self._get_applied_config(new_params, percent_params)
         if sampled_fill is not None:
             applied_config["fill"] = sampled_fill
         if sampled_fill_mask is not None:
             applied_config["fill_mask"] = sampled_fill_mask
-        self.applied_config = applied_config
+        sampling.applied_overrides.update(applied_config)
 
         return {
             "crop_params": tuple(crop_params) if crop_params else None,
@@ -1082,7 +1052,7 @@ class CropAndPad(DualTransform):
             "result_shape": (result_rows, result_cols),
         }
 
-    def _get_px_params(self) -> list[int]:
+    def _get_px_params(self, sampling: SamplingContext) -> list[int]:
         if self.px is None:
             msg = "px is not set"
             raise ValueError(msg)
@@ -1091,15 +1061,15 @@ class CropAndPad(DualTransform):
             return [self.px] * 4
         if len(self.px) == PAIR:
             if self.sample_independently:
-                return [self.py_random.randrange(*self.px) for _ in range(4)]
-            px = self.py_random.randrange(*self.px)
+                return [sampling.py_random.randrange(*self.px) for _ in range(4)]
+            px = sampling.py_random.randrange(*self.px)
             return [px] * 4
         if isinstance(self.px[0], int):
             return list(cast("tuple[int, int, int, int]", self.px))
         # len(self.px[0]) == PAIR case - each element is a range tuple
-        return [self.py_random.randrange(*cast("tuple[int, int]", i)) for i in self.px]
+        return [sampling.py_random.randrange(*cast("tuple[int, int]", i)) for i in self.px]
 
-    def _get_percent_params(self) -> list[float]:
+    def _get_percent_params(self, sampling: SamplingContext) -> list[float]:
         if self.percent is None:
             msg = "percent is not set"
             raise ValueError(msg)
@@ -1108,50 +1078,46 @@ class CropAndPad(DualTransform):
             params = [self.percent] * 4
         elif len(self.percent) == PAIR:
             if self.sample_independently:
-                params = [self.py_random.uniform(*self.percent) for _ in range(4)]
+                params = [sampling.py_random.uniform(*self.percent) for _ in range(4)]
             else:
-                px = self.py_random.uniform(*self.percent)
+                px = sampling.py_random.uniform(*self.percent)
                 params = [px] * 4
         elif isinstance(self.percent[0], (int, float)):
             params = list(cast("tuple[float, float, float, float]", self.percent))
         else:
             # len(self.percent[0]) == PAIR case - each element is a range tuple
-            params = [self.py_random.uniform(*cast("tuple[float, float]", i)) for i in self.percent]
+            params = [sampling.py_random.uniform(*cast("tuple[float, float]", i)) for i in self.percent]
 
         return params  # params = [top, right, bottom, left]
 
-    def _get_px_choices_params(self) -> list[int]:
+    def _get_px_choices_params(self, sampling: SamplingContext) -> list[int]:
         if self.px_choices is None:
             msg = "px_choices is not set"
             raise ValueError(msg)
+        if self.sample_independently:
+            return [sampling.py_random.choice(self.px_choices) for _ in range(4)]
+        return [sampling.py_random.choice(self.px_choices)] * 4
 
-        return cast("list[int]", self._sample_choices(self.px_choices))
-
-    def _get_percent_choices_params(self) -> list[float]:
+    def _get_percent_choices_params(self, sampling: SamplingContext) -> list[float]:
         if self.percent_choices is None:
             msg = "percent_choices is not set"
             raise ValueError(msg)
-
-        return cast("list[float]", self._sample_choices(self.percent_choices))
-
-    def _sample_choices(self, choices: tuple[int, ...] | tuple[float, ...]) -> list[int] | list[float]:
         if self.sample_independently:
-            return [self.py_random.choice(choices) for _ in range(4)]
-
-        val = self.py_random.choice(choices)
-        return [val] * 4
+            return [sampling.py_random.choice(self.percent_choices) for _ in range(4)]
+        return [sampling.py_random.choice(self.percent_choices)] * 4
 
     def _get_pad_value(
         self,
         fill: Sequence[float] | float,
+        sampling: SamplingContext,
     ) -> int | float:
         if isinstance(fill, (list, tuple)):
             if len(fill) == PAIR:
                 a, b = fill
                 if isinstance(a, int) and isinstance(b, int):
-                    return self.py_random.randint(a, b)
-                return self.py_random.uniform(a, b)
-            return self.py_random.choice(fill)
+                    return sampling.py_random.randint(a, b)
+                return sampling.py_random.uniform(a, b)
+            return sampling.py_random.choice(fill)
 
         if isinstance(fill, (int, float)):
             return fill

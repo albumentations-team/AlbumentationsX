@@ -7,7 +7,6 @@ staying small enough for scheduled CI.
 
 from __future__ import annotations
 
-import importlib.util
 import inspect
 import warnings
 from collections.abc import Callable, Mapping
@@ -18,7 +17,7 @@ from typing import Any
 import numpy as np
 
 import albumentations
-from albumentations.core.transforms_interface import BasicTransform, Transform3D
+from albumentations.core.transforms_interface import BasicTransform, Transform3D, VolumeOnlyTransform
 from benchmarks.common import SIZES, make_image, make_volume
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -30,16 +29,13 @@ ABSTRACT_TRANSFORM_NAMES = frozenset(
         "DualTransform",
         "ImageOnlyTransform",
         "Transform3D",
+        "VolumeOnlyTransform",
     },
 )
 
-OPTIONAL_BENCHMARK_TRANSFORMS = {
-    "ToTensor3D": "requires optional PyTorch dependency; covered by the dedicated PyTorch ASV lane",
-    "ToTensorV2": "requires optional PyTorch dependency; covered by the dedicated PyTorch ASV lane",
-}
-OPTIONAL_BENCHMARK_DEPENDENCIES = {
-    "ToTensor3D": "torch",
-    "ToTensorV2": "torch",
+DEDICATED_TENSOR_BENCHMARK_TRANSFORMS = {
+    "ToTensor3D": "covered by the dedicated PyTorch Tensor ASV lane",
+    "ToTensorV2": "covered by the dedicated PyTorch Tensor ASV lane",
 }
 
 EXPECTED_INIT_WARNINGS = (
@@ -51,12 +47,23 @@ EXPECTED_INIT_WARNINGS = (
 
 PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "AtLeastOneBBoxRandomCrop": {"height": 96, "width": 96},
+    "Anisotropy3D": {
+        "axes": (0, 2),
+        "num_axes_range": (2, 2),
+        "downscale_factor_range": (2.0, 2.0),
+    },
+    "Affine3D": {
+        "rotate_range": {"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
+        "scale_range": {"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
+        "translate_percent_range": {"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
+    },
     "CenterCrop": {"height": 96, "width": 96},
     "CenterCrop3D": {"size": (4, 48, 48)},
     "ConstrainedCoarseDropout": {"mask_indices": [1]},
     "Crop": {"x_max": 128, "y_max": 128},
     "CropAndPad": {"px": 8},
     "CropNonEmptyMaskIfExists": {"height": 96, "width": 96},
+    "Flip3D": {"flip_axes": (0, 1, 2)},
     "GridElasticDeform": {"num_grid_xy": (4, 4), "magnitude": 4},
     "LetterBox": {"size": (128, 128)},
     "LongestMaxSize": {"max_size": 160},
@@ -66,10 +73,12 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "PixelDistributionAdaptation": {"transform_type": "standard"},
     "RandomCrop": {"height": 96, "width": 96},
     "RandomCrop3D": {"size": (4, 48, 48)},
+    "RandomRotate90_3D": {"axis_pair": (0, 2), "group_element": "r90"},
     "RandomResizedCrop": {"size": (96, 96), "scale": (0.8, 1.0)},
     "RandomSizedBBoxSafeCrop": {"height": 96, "width": 96},
     "RandomSizedCrop": {"min_max_height": (96, 128), "size": (96, 96)},
     "Resize": {"height": 128, "width": 128},
+    "Resize3D": {"size": (12, 96, 96)},
     "SmallestMaxSize": {"max_size": 160},
     "TextImage": {
         "augmentations": (None,),
@@ -156,33 +165,20 @@ def public_transform_names() -> tuple[str, ...]:
     return tuple(_public_transform_classes())
 
 
-def unavailable_optional_transform_names() -> set[str]:
-    """Return optional transforms whose runtime dependency is not installed."""
-    return {
-        name
-        for name, dependency in OPTIONAL_BENCHMARK_DEPENDENCIES.items()
-        if importlib.util.find_spec(dependency) is None
-    }
-
-
 def _route_for_transform(name: str, transform_cls: type[BasicTransform]) -> str:
-    if name in OPTIONAL_BENCHMARK_TRANSFORMS:
-        return "optional"
-    if issubclass(transform_cls, Transform3D):
+    if name in DEDICATED_TENSOR_BENCHMARK_TRANSFORMS:
+        return "dedicated_tensor"
+    if issubclass(transform_cls, (Transform3D, VolumeOnlyTransform)):
         return "volume"
-    if name in BBOX_ROUTE_TRANSFORMS:
-        return "bboxes"
-    if name in MASK_ROUTE_TRANSFORMS:
-        return "mask"
-    if name in METADATA_ROUTE_TRANSFORMS:
-        return "metadata"
-    if name in MIXING_ROUTE_TRANSFORMS:
-        return "mixing"
-    if name == "RandomCropNearBBox":
-        return "crop_bbox"
-    if name == "TextImage":
-        return "text"
-    return "image"
+    for route, transform_names in (
+        ("bboxes", BBOX_ROUTE_TRANSFORMS),
+        ("mask", MASK_ROUTE_TRANSFORMS),
+        ("metadata", METADATA_ROUTE_TRANSFORMS),
+        ("mixing", MIXING_ROUTE_TRANSFORMS),
+    ):
+        if name in transform_names:
+            return route
+    return {"RandomCropNearBBox": "crop_bbox", "TextImage": "text"}.get(name, "image")
 
 
 def benchmark_specs() -> dict[str, TransformBenchmarkSpec]:
@@ -190,14 +186,14 @@ def benchmark_specs() -> dict[str, TransformBenchmarkSpec]:
     specs: dict[str, TransformBenchmarkSpec] = {}
     for name, transform_cls in _public_transform_classes().items():
         route = _route_for_transform(name, transform_cls)
-        benchmark = route != "optional"
+        benchmark = route != "dedicated_tensor"
         specs[name] = TransformBenchmarkSpec(
             name=name,
             route=route,
             params=PARAM_OVERRIDES.get(name, {}),
             channels=CHANNEL_OVERRIDES.get(name, 3),
             benchmark=benchmark,
-            reason=OPTIONAL_BENCHMARK_TRANSFORMS.get(name, ""),
+            reason=DEDICATED_TENSOR_BENCHMARK_TRANSFORMS.get(name, ""),
         )
     return specs
 

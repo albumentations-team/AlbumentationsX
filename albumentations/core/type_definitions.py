@@ -27,7 +27,7 @@ ImageFloat32: TypeAlias = NDArray[float32]
 ImageType: TypeAlias = ImageUInt8 | ImageFloat32
 
 # Image and Volume types - restrict to uint8 and float32 only
-# VolumeType is same as ImageType (volumes are also uint8/float32)
+# VolumeType is same as ImageType (volume data is uint8/float32)
 VolumeType: TypeAlias = ImageType
 
 # OpenCV exposes these constants as module-level ints. Literal aliases and typed constants use the

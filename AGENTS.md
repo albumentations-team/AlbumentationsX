@@ -1,25 +1,12 @@
 # Codex Instructions for AlbumentationsX
 
-Read and follow `docs/contributing/codex_guidelines.md`.
+`check-ax-coding-guidance` owns deterministic AX source contracts; its canonical explanation is in
+`docs/contributing/coding_guidelines.md`. Do not duplicate those mechanics in this file.
 
-Read the always-on Codex rule file `.codex/rules/albumentations-rules.md`. For scoped work, also read:
+Read `docs/contributing/codex_guidelines.md` to choose the owning skill or design document. Load only the workflow that
+matches the task; runtime-code work always uses `performance-optimization`.
+
+Read `.codex/rules/albumentations-rules.md`. For scoped work, read:
 
 - `.codex/rules/benchmarking.md` for performance-sensitive changes
 - `.codex/rules/testing-conventions.md` for test changes
-
-Project-specific skills live in `.codex/skills`. Use the matching skill whenever the user asks for that workflow:
-
-- `add-transform`
-- `benchmark`
-- `docstring-deep-dive`
-- `internal-workspace`
-- `license-integrity`
-- `mixing-transforms`
-- `performance-optimization`
-- `release-notes`
-- `review-transform`
-- `validate-and-fix`
-
-Use `performance-optimization` whenever implementing, reviewing, profiling, or optimizing runtime code. The skill
-loads Albucore's canonical performance workflow, including delete-first review, vectorization, grouped reductions,
-LUT and random-generator selection, backend comparison, Albucore extraction, and safe in-place operations.

@@ -28,9 +28,47 @@ A mismatch blocks completion.
    seeded-replay contracts unless the change explicitly documents a compatibility break.
 7. Run the project validation workflow after the final implementation.
 
+## Torch Runtime Contract
+
+Torch is already an externally managed, soft-required AlbumentationsX runtime dependency: package metadata does not
+select a CPU, CUDA, or MPS build, but importing `albumentations` requires an installed Torch runtime. Do not reject a
+Torch-backed implementation on the grounds that it would introduce a new runtime dependency. Benchmark the complete
+route, including NumPy/Tensor bridges, layout conversions, allocations, and return conversion.
+
+## Compose Execution Changes
+
+For `composition.py`, `transforms_interface.py`, or invocation-state work, keep configured graph policy separate from
+per-call state. Sampled parameters, applied records, processor sessions, Tensor bridge metadata, grayscale repair, and
+instance-binding bookkeeping belong to `InvocationContext`; a configured transform or `Compose` must not become a
+mailbox for any of them.
+
+- Reserve a default DataLoader seed only at the root. The reservation lock may cover the counter and configured RNG
+  source; array conversion, preprocessing, transform execution, tracing, and finalization must remain outside it.
+- Preserve one root prepare/finalize boundary. Nested `Compose` nodes run focused additional-target and shape checks
+  without opening a second processor, grayscale, Tensor, or restoration boundary.
+- Keep `BaseCompose._apply_child()` as the sole configured-graph dispatcher. `run_with_trace()` may attach an
+  invocation-local observer, but it must not introduce a second node-selection or execution traversal.
+- Schedule bbox/keypoint filtering from declared target effects. Image-only nodes must not pay for shape discovery,
+  clipping, filtering, or instance re-alignment; a final conversion must not repeat a filter already current for the
+  invocation.
+- Optimize repeated application before construction. `Compose.__init__()` may compile the graph and eagerly prepare
+  root-owned execution state when that removes work from the per-sample path. Report construction cost only as
+  context; do not reject a call-time speedup because pipeline construction becomes slower.
+- Keep `invocation_seed` sample-keyed and side-effect free with respect to the worker stream.
+- Measure root skip, no-op, probabilistic no-op, always-applied cheap transform, applied-configuration capture, trace,
+  Tensor, processor, and concurrent-call routes. Include the complete before/after cells in the handoff.
+- Exercise `tests/test_compose_reentrancy.py`, `tests/test_per_worker_seed.py`,
+  `tests/test_composition_tracing.py`, and the affected Tensor, processor, replay, and instance-binding suites.
+
 ## AlbumentationsX Boundary
 
 Keep transform policy, parameter sampling, target dispatch, and annotation semantics in AlbumentationsX.
+
+Keep transform `apply*` methods as thin policy and dispatch methods. A method may validate its transform-specific
+runtime input contract, select a functional operation, and forward sampled parameters, but pixel arithmetic,
+temporary-array construction, clipping, dtype routing, and kernel-selection branches belong in the functional helper
+that owns the operation. The deterministic source contract is checked by the repository's unified AX guidance hook;
+keep its exact limits and exceptions in `docs/contributing/coding_guidelines.md`.
 
 Propose an Albucore primitive when an operation:
 
@@ -41,6 +79,14 @@ Propose an Albucore primitive when an operation:
 
 Do not create a local helper merely to avoid coordinating an Albucore change when the operation satisfies these
 conditions.
+
+If investigation identifies an Albucore defect, pause AlbumentationsX changes and open an Albucore Issue and PR
+before resuming.
+
+Do not add a forwarding wrapper around a one-line call merely to attach a decorator. Use `@clipped` when every route
+of an image operation can leave the public range; branch and call `albucore.clip(..., inplace=True)` when only a known
+float32 mode (such as cubic interpolation) can. A separate function is justified only when it owns a real image
+operation and keeps that image policy distinct from masks or annotations.
 
 ## Required Handoff
 

@@ -1,30 +1,59 @@
 name: Set up purpose-specific CI environment
-description: Install uv, select Python, restore the uv cache, and sync one locked dependency group.
+description: Select the local locked dependency group and optional CPU Torch profile after the shared bootstrap.
 
 inputs:
   python-version:
     description: Python version understood by setup-uv.
     required: true
   dependency-group:
-    description: Locked PEP 735 dependency group to install.
+    description: Locked PEP 735 tool group to install.
     required: true
+  runtime-profile:
+    description: Runtime selected by the job. Use none for static work and torch-cpu for package imports.
+    required: false
+    default: none
 
 runs:
   using: composite
   steps:
-    - name: Install uv and Python ${{ inputs.python-version }}
-      uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+    - name: Install shared Python and uv bootstrap
+      uses: albumentations-team/ci-foundation/actions/setup-python-uv@6b9045dbea58026a1e8f96b0392c411934a27199
       with:
-        activate-environment: true
+        activate-environment: "true"
         cache-dependency-glob: uv.lock
-        cache-suffix: ${{ inputs.dependency-group }}
-        enable-cache: true
+        cache-suffix: ${{ inputs.dependency-group }}-${{ inputs.runtime-profile }}
         python-version: ${{ inputs.python-version }}
+        uv-version: "0.12.0"
 
-    - name: Sync ${{ inputs.dependency-group }} dependencies
+    - name: Sync ${{ inputs.dependency-group }} with ${{ inputs.runtime-profile }}
       shell: bash
       env:
         CI_DEPENDENCY_GROUP: ${{ inputs.dependency-group }}
-      run: >-
-        uv sync --locked --no-default-groups
-        --group "${CI_DEPENDENCY_GROUP}" --inexact
+        CI_RUNTIME_PROFILE: ${{ inputs.runtime-profile }}
+      run: |
+        case "${CI_DEPENDENCY_GROUP}" in
+          ci-benchmark|ci-package|ci-quality|ci-release|ci-security|ci-test|ci-types) ;;
+          *) echo "Unknown CI dependency group: ${CI_DEPENDENCY_GROUP}" >&2; exit 2 ;;
+        esac
+        case "${CI_RUNTIME_PROFILE}" in
+          none) runtime_group=() ;;
+          torch-cpu) runtime_group=(--group ci-torch-cpu) ;;
+          *) echo "Unknown CI runtime profile: ${CI_RUNTIME_PROFILE}" >&2; exit 2 ;;
+        esac
+        uv sync --locked --no-default-groups --group "${CI_DEPENDENCY_GROUP}" "${runtime_group[@]}" --inexact
+
+    - name: Verify CPU-only Torch runtime
+      if: inputs.runtime-profile == 'torch-cpu'
+      uses: albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199
+      with:
+        mode: verify
+        python: python
+
+    - name: Record CI environment contract
+      shell: bash
+      env:
+        CI_DEPENDENCY_GROUP: ${{ inputs.dependency-group }}
+        CI_RUNTIME_PROFILE: ${{ inputs.runtime-profile }}
+      run: |
+        echo "ALBU_CI_DEPENDENCY_GROUP=${CI_DEPENDENCY_GROUP}" >> "$GITHUB_ENV"
+        echo "ALBU_CI_RUNTIME_PROFILE=${CI_RUNTIME_PROFILE}" >> "$GITHUB_ENV"

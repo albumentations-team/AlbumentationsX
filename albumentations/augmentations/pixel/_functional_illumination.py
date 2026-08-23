@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from typing import Any, Literal, cast
 
 import numkong as nk
+from albucore import exp as albucore_exp
+from albucore import sqrt as albucore_sqrt
 
 from ._functional_noise import (
     DIAMOND_KERNEL,
@@ -21,7 +23,7 @@ from ._functional_shared import (
     add,
     add_array,
     add_weighted,
-    apply_multichannel_lut,
+    apply_uint8_lut,
     clip,
     clipped,
     cv2,
@@ -214,41 +216,41 @@ def create_directional_gradient(height: int, width: int, angle: float) -> np.nda
         np.ndarray: The directional gradient.
 
     """
-    # Fast path for horizontal gradients
-    if angle == 0:
-        gradient = np.empty((height, width), dtype=np.float32)
-        gradient[:] = np.linspace(0, 1, width, dtype=np.float32)
-        return gradient
-    if angle == 180:
-        gradient = np.empty((height, width), dtype=np.float32)
-        gradient[:] = np.linspace(1, 0, width, dtype=np.float32)
-        return gradient
-
-    # Fast path for vertical gradients
-    if angle == 90:
-        gradient = np.empty((height, width), dtype=np.float32)
-        gradient[:] = np.linspace(0, 1, height, dtype=np.float32)[:, np.newaxis]
-        return gradient
-    if angle == 270:
-        gradient = np.empty((height, width), dtype=np.float32)
-        gradient[:] = np.linspace(1, 0, height, dtype=np.float32)[:, np.newaxis]
-        return gradient
-
-    # Fast path for diagonal gradients using broadcasting
+    if angle in (0, 90, 180, 270):
+        return _create_cardinal_gradient(height, width, angle)
     if angle in (45, 135, 225, 315):
-        x = np.linspace(0, 1, width, dtype=np.float32)[None, :]  # Horizontal
-        y = np.linspace(0, 1, height, dtype=np.float32)[:, None]  # Vertical
+        return _create_diagonal_gradient(height, width, angle)
+    return _create_arbitrary_gradient(height, width, angle)
 
-        if angle == 45:  # Bottom-left to top-right
-            return _normalize_minmax_float32(x + y)
-        if angle == 135:  # Bottom-right to top-left
-            return _normalize_minmax_float32((1 - x) + y)
-        if angle == 225:  # Top-right to bottom-left
-            return _normalize_minmax_float32((1 - x) + (1 - y))
-        # angle == 315:  # Top-left to bottom-right
-        return _normalize_minmax_float32(x + (1 - y))
 
-    # General case for arbitrary angles using broadcasting
+def _create_cardinal_gradient(height: int, width: int, angle: float) -> np.ndarray:
+    horizontal = angle in (0, 180)
+    reversed_direction = angle in (180, 270)
+    size = width if horizontal else height
+    start, stop = (1, 0) if reversed_direction else (0, 1)
+    values = np.linspace(start, stop, size, dtype=np.float32)
+    gradient = np.empty((height, width), dtype=np.float32)
+    gradient[:] = values if horizontal else values[:, np.newaxis]
+    return gradient
+
+
+def _create_diagonal_gradient(height: int, width: int, angle: float) -> np.ndarray:
+    x = np.linspace(0, 1, width, dtype=np.float32)[None, :]  # Horizontal
+    y = np.linspace(0, 1, height, dtype=np.float32)[:, None]  # Vertical
+    if angle == 45:  # Bottom-left to top-right
+        return _normalize_minmax_float32(x + y)
+    if angle == 135:  # Bottom-right to top-left
+        return _normalize_minmax_float32((1 - x) + y)
+    if angle == 225:  # Top-right to bottom-left
+        return _normalize_minmax_float32((1 - x) + (1 - y))
+    # angle == 315: Top-left to bottom-right
+    return _normalize_minmax_float32(x + (1 - y))
+
+
+def _create_arbitrary_gradient(height: int, width: int, angle: float) -> np.ndarray:
+    """Create a directional gradient for arbitrary angles without a specialized cardinal or diagonal fast path,
+    preserving the normalized float32 output range.
+    """
     y = np.linspace(0, 1, height, dtype=np.float32)[:, None]  # Column vector
     x = np.linspace(0, 1, width, dtype=np.float32)[None, :]  # Row vector
 
@@ -300,7 +302,7 @@ def create_corner_illumination_gradient(
     x = np.arange(width, dtype=np.float32)[np.newaxis, :] - corner_x
 
     pattern = x * x + y * y
-    cv2.sqrt(pattern, dst=pattern)
+    pattern = albucore_sqrt(pattern, inplace=True)
     _multiply_scalar_inplace(pattern, -intensity / math.sqrt(height * height + width * width))
     _add_scalar_inplace(pattern, 1.0)
     return pattern
@@ -345,7 +347,7 @@ def create_illumination_gradient(
     cv2.multiply(y, y, dst=y)
     x = x + y
     _multiply_scalar_inplace(x, -1 / sigma2)
-    cv2.exp(x, dst=x)
+    x = albucore_exp(x, inplace=True)
     _multiply_scalar_inplace(x, intensity)
     _add_scalar_inplace(x, 1.0)
     return x
@@ -381,6 +383,101 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
 
     result = img + gradient
     np.clip(result, 0, 1, out=result)
+    return result
+
+
+@float32_io
+def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: float, **params: Any) -> ImageType:
+    """Applies one sampled linear gradient to every `(N, H, W, C)` image, matching the single-image kernel's
+    normalization, clipping, and dtype-conversion semantics.
+    """
+    height, width = images.shape[1:3]
+    gradient = create_directional_gradient(height, width, angle)
+    _multiply_scalar_inplace(gradient, intensity)
+    batch_gradient = gradient if images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else gradient[..., np.newaxis]
+    result = images + batch_gradient
+    np.clip(result, 0, 1, out=result)
+    return result
+
+
+def _apply_clipped_illumination_batch(
+    images: ImageType,
+    gradient: np.ndarray,
+    implicit_grayscale: bool,
+    num_channels: int,
+) -> ImageType:
+    """Multiply float32 illumination batches into preallocated output and upper-clip factors of at least one without
+    a second full-batch pass.
+
+    Args:
+        images (ImageType): Input float32 image batch.
+        gradient (np.ndarray): Shared multiplicative illumination gradient.
+        implicit_grayscale (bool): Whether the batch omits an explicit channel dimension.
+        num_channels (int): Number of image channels.
+
+    Returns:
+        ImageType: Multiplied and upper-clipped image batch.
+
+    """
+    result = np.empty_like(images)
+    # Whole-batch iteration wins for tiny single-channel batches; the per-image path has better cache locality beyond 4.
+    if num_channels == 1 and images.shape[0] <= 4:
+        image_view = images if implicit_grayscale else images[..., 0]
+        result_view = result if implicit_grayscale else result[..., 0]
+        gradient_view = gradient if implicit_grayscale else gradient[..., 0]
+        np.multiply(image_view, gradient_view, out=result_view)
+        np.minimum(result_view, 1.0, out=result_view)
+        return result
+
+    # These clipped modes only use multipliers >= 1, so the lower image bound cannot be crossed.
+    for index, image in enumerate(images):
+        np.multiply(image, gradient, out=result[index])
+        np.minimum(result[index], 1.0, out=result[index])
+    return result
+
+
+def apply_illumination_batch(
+    images: ImageType,
+    mode: Literal["linear", "corner", "gaussian"],
+    **params: Any,
+) -> ImageType:
+    """Apply one sampled illumination pattern to an image batch, with empty-input handling, gradient reuse, kernel
+    routing, and clipping in one functional operation.
+
+    Args:
+        images (ImageType): Input batch in `(N, H, W, C)` format, or `(N, H, W)` for direct implicit-grayscale calls.
+        mode (Literal['linear', 'corner', 'gaussian']): Illumination pattern.
+        **params (Any): Sampled parameters for the selected mode.
+
+    Returns:
+        ImageType: Illuminated batch with the input shape and dtype.
+
+    """
+    if images.shape[0] == 0:
+        return images.copy()
+
+    if mode == "linear":
+        return apply_linear_illumination_batch(images, **params)
+
+    height, width = images.shape[1:3]
+    implicit_grayscale = images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS
+    gradient = create_illumination_gradient(height, width, mode, params)
+    if not implicit_grayscale:
+        gradient = gradient[..., np.newaxis]
+    clip_required = (mode == "corner" and params["intensity"] < 0) or (mode == "gaussian" and params["intensity"] > 0)
+    num_channels = 1 if implicit_grayscale else images.shape[-1]
+
+    # The uint8 path regresses against the per-image kernels.
+    if images.dtype == np.uint8:
+        result = np.empty_like(images)
+        for index, image in enumerate(images):
+            result[index] = multiply_by_array(image, gradient)
+    elif num_channels <= 4 and clip_required:
+        result = _apply_clipped_illumination_batch(images, gradient, implicit_grayscale, num_channels)
+    else:
+        result = multiply_by_array(images, gradient)
+        if images.dtype == np.float32 and clip_required:
+            result = clip(result, images.dtype, inplace=True)
     return result
 
 
@@ -458,7 +555,7 @@ def apply_gaussian_illumination(
 
     # Calculate gaussian directly into x array
     _multiply_scalar_inplace(x, -1 / sigma2)
-    cv2.exp(x, dst=x)
+    x = albucore_exp(x, inplace=True)
 
     # Scale by intensity
     _multiply_scalar_inplace(x, intensity)
@@ -510,14 +607,16 @@ def _auto_contrast_multichannel_lut(
     """Apply per-channel autocontrast LUTs with one OpenCV pass for large RGB
     images and multispectral inputs where split channel assignment is slower.
     """
-    luts = []
-    for channel_idx in range(get_num_channels(img)):
+    num_channels = get_num_channels(img)
+    lut = np.empty((256, 1, num_channels), dtype=np.uint8)
+    identity_lut = np.arange(256, dtype=np.uint8)
+    for channel_idx in range(num_channels):
         channel = img[..., channel_idx]
         hist = cv2.calcHist([channel], [0], None, [256], [0, max_value]).ravel()
-        lut = _create_auto_contrast_lut(hist, cutoff, None, method, max_value)
-        luts.append(np.arange(256, dtype=np.uint8) if lut is None else lut)
+        channel_lut = _create_auto_contrast_lut(hist, cutoff, None, method, max_value)
+        lut[:, 0, channel_idx] = identity_lut if channel_lut is None else channel_lut
 
-    return cast("ImageUInt8", apply_multichannel_lut(img, np.stack(luts), get_num_channels(img)))
+    return apply_uint8_lut(img, lut)
 
 
 def _auto_contrast_multichannel_hist(
@@ -850,8 +949,6 @@ def get_mask_array(data: dict[str, Any]) -> np.ndarray | None:
         return data["masks"][0]
     if "mask3d" in data and data["mask3d"].shape[0] > 0:
         return data["mask3d"][0]
-    if "masks3d" in data and all(size > 0 for size in data["masks3d"].shape[:2]):
-        return data["masks3d"][0, 0]
     return None
 
 
@@ -994,7 +1091,8 @@ def apply_film_grain(
 
     modulated = (grain * inv_lum * intensity * max_val).astype(np.float32)
 
-    return add_array(img, modulated[..., np.newaxis])
+    result = add_array(img, modulated[..., np.newaxis])
+    return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
 
 @uint8_io
@@ -1197,8 +1295,10 @@ __all__ = [
     "apply_film_grain",
     "apply_gaussian_illumination",
     "apply_halftone",
+    "apply_illumination_batch",
     "apply_lens_flare",
     "apply_linear_illumination",
+    "apply_linear_illumination_batch",
     "apply_plasma_brightness_contrast",
     "apply_plasma_shadow",
     "apply_vignette",

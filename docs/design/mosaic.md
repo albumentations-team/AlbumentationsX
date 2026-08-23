@@ -6,7 +6,7 @@ Design the `Mosaic` transform to correctly handle bounding box and keypoint prep
 
 ## 2. Design
 
-This workflow outlines the data processing logic within the `Mosaic` transform, primarily executed within its `get_params_dependent_on_data` method or delegated helper functions/methods.
+This workflow outlines the data processing logic within the `Mosaic` transform, primarily executed within its `sample_parameters` method or delegated helper functions/methods.
 
 1. **Calculate Geometry & Visible Cell Placements:**
    * Calculate the mosaic center point (`center_x`, `center_y`).
@@ -18,11 +18,12 @@ This workflow outlines the data processing logic within the `Mosaic` transform, 
    * Access the raw list of dictionaries from `data[self.metadata_key]`.
    * Filter this list, keeping only valid dictionaries (must be dict, must contain 'image' key). Result: `valid_additional_raw_items`.
 3. **Select Subset of Raw Additional Metadata:**
+   * The caller supplies the complete candidate pool. Mosaic never reaches into a dataset or another global source.
    * Determine the number of *additional* items needed for the *visible* cells (`num_additional_needed = len(cell_placements) - 1`. Ensure >= 0).
    * If `len(valid_additional_raw_items) > num_additional_needed`:
      * Randomly sample `num_additional_needed` items from `valid_additional_raw_items`. Result: `selected_raw_additional_items`.
    * Else (`len <= num_additional_needed`):
-     * Use all `valid_additional_raw_items`. Result: `selected_raw_additional_items`.
+     * Use every valid supplied item. Result: `selected_raw_additional_items`.
 
 4. **Preprocess Selected Raw Additional Items (Iteratively):**
    * Access `bbox_processor` and `keypoint_processor` from `params`.
@@ -42,7 +43,7 @@ This workflow outlines the data processing logic within the `Mosaic` transform, 
    * Calculate `num_additional_needed = len(cell_placements) - 1`.
    * Calculate `num_replications = num_additional_needed - len(preprocessed_selected_additional_items)`.
 7. **Replicate Primary Data:**
-   * Create `replicated_primary_items = [deepcopy(primary)] * num_replications`.
+   * Create independent copies: `replicated_primary_items = [deepcopy(primary) for _ in range(num_replications)]`.
 8. **Combine Final Preprocessed Items:**
    * Create `final_items_for_grid = [primary] + preprocessed_selected_additional_items + replicated_primary_items`.
 9. **Assign Items to VISIBLE Grid Cells:**

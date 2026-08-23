@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from functools import partial
 
 import albumentations
 from benchmarks.catalog import benchmark_specs
@@ -13,6 +14,7 @@ from benchmarks.common import (
     ANNOTATION_COUNTS,
     CHANNELS,
     DTYPES,
+    MEDIAN_BLUR_CASES,
     SIZES,
     VOLUME_SIZES,
     dtype_from_name,
@@ -58,7 +60,11 @@ GEOMETRY_TRANSFORMS: Mapping[str, Factory] = {
     "rotate": lambda: albumentations.Rotate(angle_range=(7, 7), p=1.0),
     "safe_rotate": lambda: albumentations.SafeRotate(angle_range=(7, 7), p=1.0),
     "perspective": lambda: albumentations.Perspective(scale=(0.05, 0.05), p=1.0),
-    "elastic": lambda: albumentations.ElasticTransform(alpha=1, sigma=30, p=1.0),
+    "elastic": lambda: albumentations.ElasticTransform(
+        displacement_range=(0.02, 0.02),
+        control_grid_shape=(7, 7),
+        p=1.0,
+    ),
     "grid_distortion": lambda: albumentations.GridDistortion(distort_range=(0.1, 0.1), p=1.0),
     "optical_distortion": lambda: albumentations.OpticalDistortion(distort_range=(0.03, 0.03), p=1.0),
     "grid_elastic": lambda: albumentations.GridElasticDeform(num_grid_xy=(4, 4), magnitude=4, p=1.0),
@@ -125,7 +131,12 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     ),
     "gaussian_blur": PixelSpec(lambda: albumentations.GaussianBlur(blur_range=(3, 3), p=1.0)),
     "glass_blur": PixelSpec(lambda: albumentations.GlassBlur(sigma=0.7, max_delta=2, iterations=1, p=1.0)),
-    "median_blur": PixelSpec(lambda: albumentations.MedianBlur(blur_range=(3, 3), p=1.0), dtypes=("uint8",)),
+    **{
+        name: PixelSpec(
+            partial(albumentations.MedianBlur, blur_range=(kernel_size, kernel_size), p=1.0),
+        )
+        for name, kernel_size in MEDIAN_BLUR_CASES
+    },
     "mode_filter": PixelSpec(lambda: albumentations.ModeFilter(kernel_range=(3, 3), p=1.0)),
     "motion_blur": PixelSpec(lambda: albumentations.MotionBlur(blur_range=(5, 5), p=1.0), dtypes=("uint8",)),
     "zoom_blur": PixelSpec(
@@ -154,6 +165,9 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "random_snow": PixelSpec(lambda: albumentations.RandomSnow(p=1.0), channels=(3,)),
     "random_sun_flare": PixelSpec(lambda: albumentations.RandomSunFlare(p=1.0), channels=(3,)),
     "random_tone_curve": PixelSpec(lambda: albumentations.RandomToneCurve(p=1.0)),
+    "random_tone_curve_per_channel": PixelSpec(
+        lambda: albumentations.RandomToneCurve(per_channel=True, p=1.0),
+    ),
     "ringing_overshoot": PixelSpec(lambda: albumentations.RingingOvershoot(p=1.0)),
     "salt_and_pepper": PixelSpec(lambda: albumentations.SaltAndPepper(p=1.0)),
     "sharpen": PixelSpec(lambda: albumentations.Sharpen(p=1.0)),
@@ -248,6 +262,18 @@ HBB_KEYPOINT_TRANSFORMS = frozenset(
 )
 
 VOLUME_TRANSFORMS: Mapping[str, Factory] = {
+    "affine3d": lambda: albumentations.Affine3D(
+        rotate_range={"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
+        scale_range={"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
+        translate_percent_range={"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
+        p=1.0,
+    ),
+    "anisotropy3d": lambda: albumentations.Anisotropy3D(
+        axes=(0, 2),
+        num_axes_range=(2, 2),
+        downscale_factor_range=(2.0, 2.0),
+        p=1.0,
+    ),
     "center_crop3d": lambda: albumentations.CenterCrop3D(size=(4, 48, 48), p=1.0),
     "random_crop3d": lambda: albumentations.RandomCrop3D(size=(4, 48, 48), p=1.0),
     "pad3d": lambda: albumentations.Pad3D(padding=(1, 2, 2), p=1.0),
@@ -255,6 +281,9 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "coarse_dropout3d": lambda: albumentations.CoarseDropout3D(p=1.0),
     "grid_shuffle3d": lambda: albumentations.GridShuffle3D(grid_zyx=(2, 2, 2), p=1.0),
     "cubic_symmetry": lambda: albumentations.CubicSymmetry(p=1.0),
+    "flip3d": lambda: albumentations.Flip3D(flip_axes=(0, 1, 2), p=1.0),
+    "random_rotate90_3d": lambda: albumentations.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
+    "resize3d": lambda: albumentations.Resize3D(size=(12, 96, 96), p=1.0),
 }
 
 REFERENCE_TRANSFORMS = (
@@ -488,6 +517,11 @@ class PeakMemoryHotPaths:
         self.resize = albumentations.Compose([albumentations.Resize(height=512, width=512, p=1.0)], strict=True)
         self.affine = albumentations.Compose([albumentations.Affine(scale=(1.05, 1.05), p=1.0)], strict=True)
         self.normalize = albumentations.Compose([albumentations.Normalize(p=1.0)], strict=True)
+        self.median_blur_float32 = albumentations.Compose(
+            [albumentations.MedianBlur(blur_range=(5, 5), p=1.0)],
+            strict=True,
+        )
+        self.large_float32_multichannel = make_image("large", 5, dtype_from_name("float32"))
         self.batch_pipeline = albumentations.Compose(
             [
                 albumentations.HorizontalFlip(p=1.0),
@@ -507,6 +541,18 @@ class PeakMemoryHotPaths:
             [albumentations.PadIfNeeded3D(min_zyx=(18, 144, 144), p=1.0)],
             strict=True,
         )
+        self.volume_resize = albumentations.Compose([albumentations.Resize3D(size=(12, 96, 96), p=1.0)], strict=True)
+        self.volume_affine = albumentations.Compose(
+            [
+                albumentations.Affine3D(
+                    rotate_range={"x": (3.0, 3.0), "y": (-2.0, -2.0), "z": (5.0, 5.0)},
+                    scale_range={"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
+                    translate_percent_range={"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
+                    p=1.0,
+                ),
+            ],
+            strict=True,
+        )
         self.volume_data = {"mask3d": make_mask3d("medium"), "volume": make_volume("medium")}
 
     def peakmem_resize_large_rgb(self) -> None:
@@ -517,6 +563,9 @@ class PeakMemoryHotPaths:
 
     def peakmem_normalize_large_rgb(self) -> None:
         self.normalize(image=self.large_rgb)
+
+    def peakmem_median_blur_large_float32(self) -> None:
+        self.median_blur_float32(image=self.large_float32_multichannel)
 
     def peakmem_batch_pipeline_medium_rgb(self) -> None:
         self.batch_pipeline(images=self.medium_batch)
@@ -529,3 +578,9 @@ class PeakMemoryHotPaths:
 
     def peakmem_volume_pad_medium(self) -> None:
         self.volume_pad(**self.volume_data)
+
+    def peakmem_volume_resize_medium(self) -> None:
+        self.volume_resize(**self.volume_data)
+
+    def peakmem_volume_affine_medium(self) -> None:
+        self.volume_affine(**self.volume_data)

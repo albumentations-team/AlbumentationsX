@@ -13,28 +13,19 @@ Design documents are created for:
 
 **Note**: Regular bug fixes and small improvements should be documented in commit messages and PR descriptions, not as separate design documents.
 
-## Available Design Documents
+## Current Architectural References
 
-### [Dithering Transform](dithering.md)
+### [Bounding Box Processing](bounding_boxes.md)
 
-Design specification for the Dithering transform, which applies various dithering algorithms (Floyd-Steinberg, Bayer matrix, etc.) to reduce color depth in images.
+Reference for HBB and OBB coordinate formats, clipping, filtering, and processor behavior.
 
-**Status**: Design complete, pending implementation
-**Phase**: Planning
+### [Instance Binding](instance_binding.md)
 
-### [Keypoint Label Swapping](keypoint_label_swapping.md)
-
-Design for semantic keypoint label swapping during geometric transforms (e.g., swapping left/right eye labels during horizontal flip).
-
-**Status**: Implemented
-**Phase**: Complete
+Structural contract for keeping masks, bounding boxes, keypoints, and labels aligned as instances are filtered.
 
 ### [Mosaic Transform](mosaic.md)
 
 Technical specification for the Mosaic transform's data handling, including label encoding and preprocessing for multiple input images.
-
-**Status**: Implemented
-**Phase**: Complete
 
 ### [Applied Configuration Replay Contracts](applied-config-replay-contracts.md)
 
@@ -42,8 +33,52 @@ Implemented configuration-centric contract system that verifies strict JSON tran
 reconstruction, replay execution, exact output where declared, and non-default coverage for every public constructor
 parameter.
 
-**Status**: Implemented
-**Phase**: Complete
+### [Bounded 2D ElasticTransform](elastic-transform.md)
+
+Implemented contract for the greenfield 2D elastic transform: bounded cubic B-spline coefficient grids, synchronized
+targets, certificate-bounded keypoint inversion, and separate constructor, applied-config, and `ReplayCompose` persistence rules.
+
+### [Generated Transform Target Contracts](transform-target-contracts.md)
+
+Coverage contract for the shared transform-case registry and reusable target profiles.
+
+### [Compose Serialization and Execution Tracing](compose-serialization-and-tracing.md)
+
+Canonical composition policy, JSON/YAML transport, and opt-in per-step trace paths, snapshots, and timing.
+
+## Compose Architecture
+
+### [Greenfield Compose Architecture](compose-greenfield-architecture.md)
+
+Execution architecture for compiling an immutable `Compose` graph at construction time so repeated training calls perform only
+sample-dependent work, with separate branch-free executors for ordinary, observed, trace, and replay routes.
+
+## Active Design Work
+
+### [Shared CI Foundation](https://github.com/albumentations-team/ci-foundation/blob/main/docs/architecture.md)
+
+The public, SHA-pinned foundation owns Python and uv bootstrap, CPU-only Torch mechanics, and trusted Antigravity
+orchestration. AlbumentationsX keeps its dependency groups, test selection, release policy, legal checks, deployment,
+and project-specific review policy here.
+
+**Status**: Implemented. The local CI profile action and Antigravity caller pin ci-foundation commit
+6b9045dbea58026a1e8f96b0392c411934a27199.
+
+### [Greenfield Torch Dependency and CI Architecture](torch-dependency-and-ci-greenfield.md)
+
+Plan for keeping Torch out of package metadata while making every import-capable CI and documentation job request the
+shared CPU-only runtime profile explicitly.
+
+**Status**: Implemented. The repository uses explicit `none` and `torch-cpu` runtime profiles.
+
+### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
+
+Plan for routing compatible NumPy/OpenCV/NumKong and Torch segments through the existing `Compose`. Torch is already
+an externally managed, soft-required runtime dependency. The route planner may cross the representation boundary in
+either direction when the complete measured path does not regress.
+
+**Status**: In progress. The CPU Tensor boundary is implemented; capability routing and per-family Tensor paths remain
+planned.
 
 ## Creating New Design Documents
 

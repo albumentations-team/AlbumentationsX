@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, Literal, cast
 
+from albumentations.core.invocation import SamplingContext
+
 from ._color_shared import (
     NUM_RGB_CHANNELS,
     AfterValidator,
@@ -9,7 +11,6 @@ from ._color_shared import (
     Field,
     ImageOnlyTransform,
     ImageType,
-    VolumeType,
     check_range_bounds,
     fpixel,
     get_num_channels,
@@ -63,6 +64,9 @@ class ToGray(ImageOnlyTransform):
         - "max" method can be useful in scenarios where preserving bright features is important,
           such as in some medical imaging applications.
         - "pca" might be used in advanced image analysis tasks or when dealing with hyperspectral images.
+
+    Targets:
+        image, volume
 
     Image types:
         uint8, float32
@@ -211,14 +215,6 @@ class ToGray(ImageOnlyTransform):
 
         return fpixel.to_gray(images, self.num_output_channels, self.method)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        # Check if volumes are already grayscale by checking number of channels
-        if volumes.shape[-1] == 1:
-            warnings.warn("The volumes are already gray.", stacklevel=2)
-            return volumes
-
-        return fpixel.to_gray(volumes, self.num_output_channels, self.method)
-
 
 class ToRGB(ImageOnlyTransform):
     """Convert grayscale image to RGB by replicating the single channel to three. No color
@@ -284,9 +280,6 @@ class ToRGB(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 def _validate_color_range(rng: ColorRange) -> ColorRange:
@@ -400,32 +393,36 @@ class Colorize(ImageOnlyTransform):
         self.mid_range = mid_range
         self.mid_value_range = mid_value_range
 
-    def _sample_color(self, color_range: ColorRange) -> tuple[int, int, int]:
+    def _sample_color(self, color_range: ColorRange, sampling: SamplingContext) -> tuple[int, int, int]:
         lo, hi = color_range
         return (
-            self.py_random.randint(lo[0], hi[0]),
-            self.py_random.randint(lo[1], hi[1]),
-            self.py_random.randint(lo[2], hi[2]),
+            sampling.py_random.randint(lo[0], hi[0]),
+            sampling.py_random.randint(lo[1], hi[1]),
+            sampling.py_random.randint(lo[2], hi[2]),
         )
 
-    def get_params(self) -> dict[str, Any]:
-        black_color = self._sample_color(self.black_range)
-        white_color = self._sample_color(self.white_range)
-        mid_color = self._sample_color(self.mid_range) if self.mid_range is not None else None
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        black_color = self._sample_color(self.black_range, sampling)
+        white_color = self._sample_color(self.white_range, sampling)
+        mid_color = self._sample_color(self.mid_range, sampling) if self.mid_range is not None else None
         # `fpixel.colorize(..., mid=None, mid_value=...)` ignores `mid_value`, so don't waste
         # an RNG draw or report a phantom sampled value when no midpoint anchor is configured.
         if mid_color is not None:
-            mid_value = self.py_random.randint(*self.mid_value_range)
+            mid_value = sampling.py_random.randint(*self.mid_value_range)
             applied_mid_value: int | tuple[int, int] = mid_value
         else:
             mid_value = self.mid_value_range[0]
             applied_mid_value = self.mid_value_range
 
-        # Resolve ranges to sampled scalars in applied_config (per BasicTransform contract).
-        self.applied_config["black_range"] = black_color
-        self.applied_config["white_range"] = white_color
-        self.applied_config["mid_range"] = mid_color
-        self.applied_config["mid_value_range"] = applied_mid_value
+        sampling.applied_overrides["black_range"] = black_color
+        sampling.applied_overrides["white_range"] = white_color
+        sampling.applied_overrides["mid_range"] = mid_color
+        sampling.applied_overrides["mid_value_range"] = applied_mid_value
 
         return {
             "black_color": black_color,
@@ -453,9 +450,6 @@ class Colorize(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
-
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
 
 
 class ToSepia(ImageOnlyTransform):
@@ -549,9 +543,6 @@ class ToSepia(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
 
 class FancyPCA(ImageOnlyTransform):
     """Add color variation via PCA on RGB: perturb components by alpha_std. Simulates natural
@@ -616,15 +607,16 @@ class FancyPCA(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.fancy_pca(img, alpha_vector)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         shape = params["shape"]
         # All images now have channel dimension
         num_channels = shape[-1]
-        alpha_vector = self.random_generator.normal(0, self.alpha, num_channels).astype(
+        alpha_vector = sampling.random_generator.normal(0, self.alpha, num_channels).astype(
             np.float32,
         )
         return {"alpha_vector": alpha_vector}

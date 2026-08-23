@@ -81,12 +81,15 @@ def test_from_distance_maps(
                 np.testing.assert_allclose(original, recovered, atol=1)
             elif if_not_found_coords is not None:
                 if isinstance(if_not_found_coords, dict):
-                    assert np.allclose(
+                    np.testing.assert_allclose(
                         recovered,
                         [if_not_found_coords["x"], if_not_found_coords["y"]],
+                        rtol=1e-5,
+                        atol=1e-8,
+                        equal_nan=False,
                     )
                 else:
-                    assert np.allclose(recovered, if_not_found_coords)
+                    np.testing.assert_allclose(recovered, if_not_found_coords, rtol=1e-5, atol=1e-8, equal_nan=False)
             else:
                 np.testing.assert_allclose(original, recovered, atol=1)
 
@@ -100,7 +103,7 @@ def test_from_distance_maps(
 )
 def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
     keypoints_with_extra = [(x, y, 0, 1) for x, y in keypoints]
-    distance_maps = to_distance_maps(keypoints, image_shape, inverted)
+    distance_maps = to_distance_maps(keypoints_with_extra, image_shape, inverted)
 
     assert distance_maps.shape == (*image_shape, len(keypoints))
     assert distance_maps.dtype == np.float32
@@ -110,6 +113,104 @@ def test_to_distance_maps_extra_columns(image_shape, keypoints, inverted):
             assert np.isclose(distance_maps[int(y), int(x), i], 1.0)
         else:
             assert np.isclose(distance_maps[int(y), int(x), i], 0.0)
+
+
+@pytest.mark.parametrize("inverted", [False, True])
+def test_to_distance_maps_many_keypoints_matches_float32_reference(inverted: bool) -> None:
+    height, width = 24, 32
+    keypoints = (
+        np.random.default_rng(137)
+        .uniform(
+            [0, 0, 0, 0],
+            [width - 1, height - 1, 2 * np.pi, 1],
+            size=(33, 4),
+        )
+        .astype(np.float32)
+    )
+
+    distance_maps = to_distance_maps(keypoints, (height, width), inverted)
+
+    y_coordinates, x_coordinates = np.mgrid[:height, :width]
+    expected = np.sqrt(
+        (x_coordinates[..., np.newaxis] - keypoints[:, 0]) ** 2
+        + (y_coordinates[..., np.newaxis] - keypoints[:, 1]) ** 2,
+    ).astype(np.float32)
+    if inverted:
+        expected = (1 / (expected + 1)).astype(np.float32)
+
+    assert distance_maps.shape == (height, width, len(keypoints))
+    assert distance_maps.dtype == np.float32
+    np.testing.assert_allclose(distance_maps, expected, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize(("image_shape", "k"), [((24, 32), -0.2), ((33, 25), 0.3)])
+def test_fisheye_distortion_maps_match_radial_model(image_shape: tuple[int, int], k: float) -> None:
+    height, width = image_shape
+    center_x, center_y = width / 2, height / 2
+    y_coordinates, x_coordinates = np.mgrid[:height, :width].astype(np.float32)
+    x_coordinates -= center_x
+    y_coordinates -= center_y
+    radius = np.sqrt(x_coordinates * x_coordinates + y_coordinates * y_coordinates)
+    max_radius = np.hypot(
+        max(center_x, width - center_x),
+        max(center_y, height - center_y),
+    )
+    distorted_radius = radius * (1 + k * (radius / max_radius) ** 2)
+    angle = np.arctan2(y_coordinates, x_coordinates)
+    expected_x = distorted_radius * np.cos(angle) + center_x
+    expected_y = distorted_radius * np.sin(angle) + center_y
+
+    map_x, map_y = fgeometric.get_fisheye_distortion_maps(image_shape, k)
+
+    assert map_x.dtype == np.float32
+    assert map_y.dtype == np.float32
+    np.testing.assert_allclose(map_x, expected_x, rtol=1e-6, atol=1e-5)
+    np.testing.assert_allclose(map_y, expected_y, rtol=1e-6, atol=1e-5)
+
+
+@pytest.mark.parametrize("num_control_points", [2, 3, 4, 5])
+def test_tps_interpolates_control_points(num_control_points: int) -> None:
+    src_points = fgeometric.generate_control_points(num_control_points)
+    dst_points = src_points + np.random.default_rng(137).uniform(
+        -0.08,
+        0.08,
+        size=src_points.shape,
+    ).astype(np.float32)
+
+    nonlinear_weights, affine_weights = fgeometric.compute_tps_weights(src_points, dst_points)
+    transformed_points = fgeometric.tps_transform(
+        src_points,
+        src_points,
+        nonlinear_weights,
+        affine_weights,
+    )
+
+    assert transformed_points.dtype == np.float32
+    np.testing.assert_allclose(transformed_points, dst_points, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_tps_transform_dense_map_emits_no_runtime_warnings() -> None:
+    src_points = fgeometric.generate_control_points(4)
+    dst_points = src_points + np.random.default_rng(137).uniform(
+        -0.08,
+        0.08,
+        size=src_points.shape,
+    ).astype(np.float32)
+    nonlinear_weights, affine_weights = fgeometric.compute_tps_weights(src_points, dst_points)
+    axis = np.linspace(0, 1, 64, dtype=np.float32)
+    target_points = np.stack(np.meshgrid(axis, axis), axis=-1).reshape(-1, 2)
+
+    transformed_points = fgeometric.tps_transform(
+        target_points,
+        src_points,
+        nonlinear_weights,
+        affine_weights,
+    )
+
+    assert transformed_points.shape == target_points.shape
+    assert transformed_points.dtype == np.float32
+    assert np.isfinite(transformed_points).all()
 
 
 @pytest.mark.parametrize(
@@ -642,238 +743,6 @@ def test_pad_with_params_zero_channels():
 @pytest.fixture
 def random_generator():
     return np.random.default_rng(42)  # Fixed seed for reproducibility
-
-
-@pytest.mark.parametrize(
-    "image_shape",
-    [
-        (100, 100),
-        (224, 224),
-        (32, 64),
-        (1, 1),
-    ],
-)
-@pytest.mark.parametrize(
-    "alpha",
-    [
-        0.0,
-        1.0,
-        10.0,
-    ],
-)
-@pytest.mark.parametrize(
-    "sigma",
-    [
-        1.0,
-        50.0,
-        100.0,
-    ],
-)
-@pytest.mark.parametrize(
-    "same_dxdy",
-    [
-        True,
-        False,
-    ],
-)
-@pytest.mark.parametrize(
-    "kernel_size",
-    [
-        (0, 0),  # No blur
-        (3, 3),  # Small kernel
-        (17, 17),  # Large kernel
-    ],
-)
-@pytest.mark.parametrize(
-    "noise_distribution",
-    [
-        "gaussian",
-        "uniform",
-    ],
-)
-def test_generate_displacement_fields(
-    random_generator,
-    image_shape,
-    alpha,
-    sigma,
-    same_dxdy,
-    kernel_size,
-    noise_distribution,
-):
-    # Generate displacement fields
-    dx, dy = fgeometric.generate_displacement_fields(
-        image_shape=image_shape,
-        alpha=alpha,
-        sigma=sigma,
-        same_dxdy=same_dxdy,
-        kernel_size=kernel_size,
-        random_generator=random_generator,
-        noise_distribution=noise_distribution,
-    )
-
-    # Test output shapes
-    assert dx.shape == image_shape
-    assert dy.shape == image_shape
-
-    # Test output dtypes
-    assert dx.dtype == np.float32
-    assert dy.dtype == np.float32
-
-    # Test same_dxdy behavior
-    if same_dxdy:
-        np.testing.assert_array_equal(dx, dy)
-
-    # Test alpha scaling
-    if alpha == 0:
-        np.testing.assert_array_equal(dx, np.zeros_like(dx))
-        np.testing.assert_array_equal(dy, np.zeros_like(dy))
-    else:
-        assert np.abs(dx).max() <= abs(alpha) * 3  # 3 sigma rule for gaussian
-        assert np.abs(dy).max() <= abs(alpha) * 3
-
-    # Test value ranges for uniform distribution
-    if noise_distribution == "uniform":
-        assert np.all(np.abs(dx) <= abs(alpha))
-        assert np.all(np.abs(dy) <= abs(alpha))
-
-
-def test_reproducibility(random_generator):
-    """Test that the function produces the same output with the same random seed"""
-    params = {
-        "image_shape": (100, 100),
-        "alpha": 1.0,
-        "sigma": 50.0,
-        "same_dxdy": False,
-        "kernel_size": (17, 17),
-        "random_generator": np.random.default_rng(42),  # Create new generator each time
-        "noise_distribution": "gaussian",
-    }
-
-    dx1, dy1 = fgeometric.generate_displacement_fields(**params)
-
-    # Create new generator with same seed for second call
-    params["random_generator"] = np.random.default_rng(42)
-    dx2, dy2 = fgeometric.generate_displacement_fields(**params)
-
-    np.testing.assert_array_equal(dx1, dx2)
-    np.testing.assert_array_equal(dy1, dy2)
-
-
-def test_gaussian_blur_effect(random_generator):
-    """Test that Gaussian blur is actually smoothing the displacement field"""
-    params = {
-        "image_shape": (100, 100),
-        "alpha": 1.0,
-        "sigma": 50.0,
-        "same_dxdy": False,
-        "noise_distribution": "gaussian",
-    }
-
-    # Generate fields with small kernel (less smoothing)
-    dx1, _ = fgeometric.generate_displacement_fields(
-        **params,
-        kernel_size=(3, 3),  # Small kernel
-        random_generator=np.random.default_rng(42),
-    )
-
-    # Generate fields with large kernel (more smoothing)
-    dx2, _ = fgeometric.generate_displacement_fields(
-        **params,
-        kernel_size=(17, 17),  # Large kernel
-        random_generator=np.random.default_rng(42),
-    )
-
-    # Calculate local variation using standard deviation of local neighborhoods
-    def calculate_local_variation(arr, window_size=3):
-        from scipy.ndimage import uniform_filter
-
-        # Ensure we're working with float64 for better numerical stability
-        arr = arr.astype(np.float64)
-        local_mean = uniform_filter(arr, size=window_size)
-        local_sqr_mean = uniform_filter(arr**2, size=window_size)
-        # Add small epsilon to avoid numerical instability
-        variance = np.maximum(local_sqr_mean - local_mean**2, 0)
-        return np.mean(np.sqrt(variance + 1e-10))
-
-    var1 = calculate_local_variation(dx1)
-    var2 = calculate_local_variation(dx2)
-
-    assert var2 < var1, (
-        f"Gaussian blur should reduce local variation. Before blur (3x3): {var1:.6f}, After blur (17x17): {var2:.6f}"
-    )
-
-
-def test_memory_efficiency(random_generator):
-    """Test that the function doesn't create unnecessary copies"""
-    import tracemalloc
-
-    tracemalloc.start()
-
-    params = {
-        "image_shape": (1000, 1000),  # Large image
-        "alpha": 1.0,
-        "sigma": 50.0,
-        "same_dxdy": True,  # Should reuse memory
-        "kernel_size": (17, 17),
-        "random_generator": random_generator,
-        "noise_distribution": "gaussian",
-    }
-
-    # Get memory snapshot before
-    snapshot1 = tracemalloc.take_snapshot()
-
-    # Run function
-    dx, _dy = fgeometric.generate_displacement_fields(**params)
-
-    # Get memory snapshot after
-    snapshot2 = tracemalloc.take_snapshot()
-
-    # Compare memory usage
-    stats = snapshot2.compare_to(snapshot1, "lineno")
-
-    # Check that memory usage is reasonable (less than 4 times the size of output)
-    # Factor of 4 accounts for temporary arrays during computation
-    expected_size = dx.nbytes * 4
-    total_memory = sum(stat.size_diff for stat in stats)
-
-    assert total_memory <= expected_size, "Memory usage is higher than expected"
-
-    tracemalloc.stop()
-
-
-@pytest.mark.parametrize(
-    "input_shape,target_shape",
-    [
-        ((100, 100), (200, 200)),
-        ((200, 200), (100, 100)),
-        ((150, 100), (150, 200)),
-    ],
-)
-def test_albucore_resize(input_shape, target_shape):
-    img = np.random.randint(0, 255, (*input_shape, 3), dtype=np.uint8)
-
-    resized = albucore_resize(img, (target_shape[1], target_shape[0]), interpolation=0)
-
-    assert resized.shape == (*target_shape, 3)
-
-
-@pytest.mark.parametrize(
-    "input_shape,target_shape",
-    [
-        ((100, 100), (200, 200)),
-        ((256, 256), (512, 512)),
-        ((200, 200), (100, 100)),
-        ((150, 100), (150, 200)),
-    ],
-)
-def test_albucore_resize_2d_mask(input_shape, target_shape):
-    """Test that albucore.resize handles 2D arrays (masks) correctly."""
-    mask = np.random.randint(0, 2, input_shape, dtype=np.uint8)
-
-    resized = albucore_resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
-
-    assert resized.shape == target_shape
-    assert resized.ndim == 2
 
 
 @pytest.mark.skipif(not _PYVIPS_AVAILABLE, reason="pyvips is not installed")

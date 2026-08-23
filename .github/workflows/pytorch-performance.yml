@@ -24,11 +24,12 @@ jobs:
       with:
         python-version: "3.12"
         dependency-group: ci-benchmark
+        runtime-profile: torch-cpu
     - name: Collect PyTorch benchmark environment evidence
       run: >
         python tools/collect_test_environment.py
         --output pytorch-benchmark-evidence/environment-pytorch-benchmark.json
-        --command "asv run optional PyTorch tensor benchmark evidence"
+        --command "asv run dedicated PyTorch Tensor benchmark evidence"
     - name: Register PyTorch ASV machine profile
       working-directory: benchmark
       run: asv --config asv-pytorch.conf.json machine --yes

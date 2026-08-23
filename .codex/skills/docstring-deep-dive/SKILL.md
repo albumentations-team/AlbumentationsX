@@ -5,9 +5,9 @@ description: Quality bar for docstrings in albumentations. Use when writing or u
 
 # Docstring deep-dive quality
 
-Apply these criteria to **every docstring you write or update** in albumentations (transforms, public functions, and any API that appears on the docs site).
-
-**Transform apply methods:** Do **not** add docstrings to `apply`, `apply_to_image`, `apply_to_mask`, `apply_to_images`, or other `apply_to_*` methods in transform classes. The transform class docstring and the base interface in `transforms_interface` are sufficient; apply methods are implementation detail.
+Apply these criteria to **every docstring you write or update** in albumentations: transforms, public functions, and
+APIs that appear on the docs site. The AX guidance hook checks mechanically detectable boundaries, including the plural
+`Examples` heading; this skill owns the reader-facing information that tooling cannot judge.
 
 ## 1. First paragraph: 120–160 chars, useful short description (elevator pitch, two lines)
 
@@ -40,32 +40,23 @@ The **first paragraph** is the useful short description: an elevator pitch that 
 - Do **not** use "Params: ...", "Supports ..." (including "Supports uint8 and float32"), or "See Args and Examples" in the first paragraph — that is already in the docstring (Args, Targets, Image types, Examples sections). It wastes the short description and tells the reader nothing about what Gaussian blur *is* or when to use it.
 - **Good first paragraph:** Describe the transform's effect and when it's useful in 120–160 chars, e.g. "Smooth the image with a Gaussian kernel (weighted average; reduces noise and fine detail). Kernel size and sigma are sampled randomly per call."
 
-## 2. Well written
+## 2. Examples
 
-- Use **Google-style** sections: Args, Returns, Raises, Examples, References (where relevant).
-- Every argument in Args must have a **type** in the docstring (e.g. `param (float): Description`).
-- Returns section must have a **type** (e.g. `dict[str, Any]: ...` or `None`).
-- Be consistent and clear; avoid jargon without a brief explanation.
-
-## 3. Examples
-
-- **Every transform** and important public function must have an **Examples** section.
-- Follow the pattern from `docs/contributing/codex_guidelines.md` and the add-transform skill: sample
-  image, mask, bboxes, keypoints, Compose with params, and a call showing the result. Use `>>>` for doctest-style
-  blocks.
+- For transforms, show the public configuration and the targets the example claims to support. Use `>>>` for
+  doctest-style blocks.
 - For non-transform APIs, include a minimal runnable example that shows typical usage.
 
-## 4. Math where possible
+## 3. Math where possible
 
 - Transforms with a clear mathematical formulation (affine, color, geometric, normalization) should include a short **Note** or inline math with the key equations (e.g. rotation matrix, normalization formula, transfer function).
 - Use standard notation; keep it concise (one or two lines of math is enough when it adds clarity).
 
-## 5. Use-cases / problems
+## 4. Use-cases / problems
 
 - Include at least one sentence (or a “Use when” / “Typical use cases” line) describing **which problems or tasks** the API is for (e.g. segmentation, object detection, robustness to lighting, data augmentation for medical imaging).
 - Help the reader decide “is this the right transform/function for my use case?”
 
-## 6. Similar transforms / See also
+## 5. Similar transforms / See also
 
 - **Where possible**, mention related or alternative transforms so users who know basic ones discover others.
 - **See also** (and **Related transforms**): Use a **bullet list** (`-` per item) with 2–4 alternatives and brief when-to-use hints (e.g. `- RandomFog: Patch-based fog; use when…`). **One transform per bullet** — do not combine multiple transforms in a single bullet.
@@ -73,7 +64,7 @@ The **first paragraph** is the useful short description: an elevator pitch that 
 - **Reciprocal cross-links:** When you add transform X to transform Y's See also, update X's docstring to mention Y in its own See also so discoverability works both ways.
 - Many users rely on a limited set (e.g. RandomResizedCrop, ColorJitter); See also helps them discover alternatives.
 
-## 7. Deep dive (combined bar)
+## 6. Deep dive (combined bar)
 
 Together, the docstring should give a new user:
 
@@ -86,5 +77,4 @@ Together, the docstring should give a new user:
 ## When to use this skill
 
 - When writing or updating docstrings in **albumentations/** (especially transform classes and public APIs).
-- When the google-docstring-parser pre-commit hook reports errors: fix the errors and at the same time bring the docstring up to this bar.
 - When reviewing or adding new transforms: ensure the docstring meets all sections above (short description length, Args/Returns types, Examples, use-cases, See also where applicable).

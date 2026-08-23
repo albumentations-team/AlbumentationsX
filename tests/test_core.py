@@ -21,6 +21,7 @@ from albumentations.core.composition import (
     Sequential,
     SomeOf,
 )
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import DualTransform, ImageOnlyTransform, NoOp
 from tests.conftest import (
     IMAGES,
@@ -119,7 +120,11 @@ def test_image_only_transform(image):
     mask = image.copy()
     _height, _width = image.shape[:2]
     with mock.patch.object(ImageOnlyTransform, "apply") as mocked_apply:
-        with mock.patch.object(ImageOnlyTransform, "get_params", return_value={"interpolation": cv2.INTER_LINEAR}):
+        with mock.patch.object(
+            ImageOnlyTransform,
+            "sample_parameters",
+            return_value={"interpolation": cv2.INTER_LINEAR},
+        ):
             aug = ImageOnlyTransform(p=1)
             data = aug(image=image, mask=mask)
             mocked_apply.assert_called_once_with(
@@ -135,7 +140,7 @@ def test_dual_transform(image):
     mask = image.copy()
 
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "get_params", return_value={}):  # Empty params
+        with mock.patch.object(DualTransform, "sample_parameters", return_value={}):
             aug = DualTransform(p=1)
             aug(image=image, mask=mask)
 
@@ -170,7 +175,11 @@ def test_additional_targets(image):
         shape=mask.shape,
     )
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "get_params", return_value={"interpolation": cv2.INTER_LINEAR}):
+        with mock.patch.object(
+            DualTransform,
+            "sample_parameters",
+            return_value={"interpolation": cv2.INTER_LINEAR},
+        ):
             aug = DualTransform(p=1)
             aug.add_targets({"image2": "image"})
             aug(image=image, image2=mask)
@@ -219,7 +228,7 @@ def test_deterministic_oneof() -> None:
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
-        assert np.array_equal(data["image"], data2["image"])
+        np.testing.assert_array_equal(data["image"], data2["image"])
 
     property_test()
 
@@ -238,7 +247,7 @@ def test_deterministic_one_or_other() -> None:
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
-        assert np.array_equal(data["image"], data2["image"])
+        np.testing.assert_array_equal(data["image"], data2["image"])
 
     property_test()
 
@@ -257,22 +266,22 @@ def test_deterministic_sequential() -> None:
         data = aug(image=image)
         assert "replay" in data
         data2 = ReplayCompose.replay(data["replay"], image=image2)
-        assert np.array_equal(data["image"], data2["image"])
+        np.testing.assert_array_equal(data["image"], data2["image"])
 
     property_test()
 
 
 def test_replay_compose_reproducibility():
     image = (np.random.random((8, 8)) * 255).astype(np.uint8)
-    aug1 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3)), A.HorizontalFlip(p=0.5)], seed=137)
+    aug1 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3), p=1.0), A.HorizontalFlip(p=0.5)], seed=137)
     actual1 = aug1(image=image)["image"]
 
-    aug2 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3)), A.HorizontalFlip(p=0.5)], seed=137)
+    aug2 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3), p=1.0), A.HorizontalFlip(p=0.5)], seed=137)
     actual2 = aug2(image=image)["image"]
 
     np.testing.assert_allclose(actual1, actual2)
 
-    aug3 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3)), A.HorizontalFlip(p=0.5)], seed=17)
+    aug3 = A.ReplayCompose([A.MultiplicativeNoise((0.7, 1.3), p=1.0), A.HorizontalFlip(p=0.5)], seed=17)
     actual3 = aug3(image=image)["image"]
 
     assert not np.array_equal(actual1, actual3)
@@ -292,27 +301,31 @@ def test_named_args():
 @pytest.mark.parametrize(
     ["targets", "additional_targets", "err_message"],
     [
-        [{"image": None}, None, "image must be numpy array type"],
-        [{"image": np.empty([100, 100, 3], np.uint8), "mask": None}, None, "mask must be numpy array type"],
+        [{"image": None}, None, "image must be a NumPy array or torch.Tensor"],
+        [
+            {"image": np.empty([100, 100, 3], np.uint8), "mask": None},
+            None,
+            "mask must be a NumPy array or torch.Tensor",
+        ],
         [
             {"images": [np.empty([100, 100, 3], np.uint8)]},
             None,
-            "images must be numpy array type",
+            "images must be a NumPy array or torch.Tensor",
         ],
         [
             {"masks": [np.empty([100, 100], np.uint8)]},
             None,
-            "masks must be numpy array type",
+            "masks must be a NumPy array or torch.Tensor",
         ],
         [
             {"image": np.empty([100, 100, 3], np.uint8), "image1": None},
             {"image1": "image"},
-            "image1 must be numpy array type",
+            "image1 must be a NumPy array or torch.Tensor",
         ],
         [
             {"image": np.empty([100, 100, 3], np.uint8), "mask1": None},
             {"mask1": "mask"},
-            "mask1 must be numpy array type",
+            "mask1 must be a NumPy array or torch.Tensor",
         ],
     ],
 )
@@ -506,6 +519,20 @@ def test_check_each_transform_compose(targets, bbox_params, keypoint_params, exp
 
     for key, item in expected.items():
         np.testing.assert_allclose(np.array(item), np.array(res[key]), rtol=1e-6, atol=1e-6)
+
+
+def test_nested_compose_reuses_the_root_preprocess_and_postprocess_boundary() -> None:
+    nested = Compose([A.NoOp(p=1.0)], seed=137)
+    pipeline = Compose([nested], seed=137)
+    image = np.zeros((5, 7, 3), dtype=np.uint8)
+
+    with mock.patch.object(nested, "preprocess", wraps=nested.preprocess) as preprocess:
+        with mock.patch.object(nested, "postprocess", wraps=nested.postprocess) as postprocess:
+            result = pipeline(image=image)
+
+    np.testing.assert_array_equal(result["image"], image)
+    preprocess.assert_not_called()
+    postprocess.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -719,7 +746,7 @@ def test_single_transform_compose(
 
     with pytest.warns(UserWarning):
         res_transform = compose_cls(transforms=transform, **compose_kwargs)  # type: ignore
-    assert isinstance(res_transform.transforms, list)
+    assert isinstance(res_transform.transforms, tuple)
 
 
 @pytest.mark.parametrize(
@@ -939,8 +966,8 @@ def test_sequential_with_horizontal_flip_prob_1(image):
         result = transform(image=image, mask=mask)
         expected = expected_transform(image=image, mask=mask)
 
-    assert np.array_equal(result["image"], expected["image"])
-    assert np.array_equal(result["mask"], expected["mask"])
+    np.testing.assert_array_equal(result["image"], expected["image"])
+    np.testing.assert_array_equal(result["mask"], expected["mask"])
 
 
 # Test 2: Probability 0 with HorizontalFlip
@@ -952,8 +979,8 @@ def test_sequential_with_horizontal_flip_prob_0(image):
     with patch("random.random", return_value=0.99):  # Mocking probability greater than 0
         result = transform(image=image, mask=mask)
 
-    assert np.array_equal(result["image"], image)
-    assert np.array_equal(result["mask"], mask)
+    np.testing.assert_array_equal(result["image"], image)
+    np.testing.assert_array_equal(result["mask"], mask)
 
 
 # Test 3: Multiple flips and Transpose with probability 1
@@ -974,8 +1001,8 @@ def test_sequential_multiple_transformations(image, aug):
         result = transform(image=image, mask=mask)
 
     # Since HorizontalFlip, VerticalFlip, and Transpose are all applied twice, the image should be the same
-    assert np.array_equal(result["image"], image)
-    assert np.array_equal(result["mask"], mask)
+    np.testing.assert_array_equal(result["image"], image)
+    np.testing.assert_array_equal(result["mask"], mask)
 
 
 @pytest.mark.parametrize(
@@ -2029,7 +2056,7 @@ def test_bbox_hflip_hflip_no_labels(bbox_format: str, bboxes: list[list[float]])
     )
     transformed = aug(image=image, bboxes=original_bboxes)
 
-    assert np.allclose(transformed["bboxes"], original_bboxes, atol=1e-6)
+    np.testing.assert_allclose(transformed["bboxes"], original_bboxes, atol=1e-6, rtol=1e-5, equal_nan=False)
 
 
 def test_bbox_hflip_idempotence_property():
@@ -2088,7 +2115,7 @@ def test_bbox_hflip_idempotence_property():
         )
         transformed = aug(image=image, bboxes=original_bboxes)
 
-        assert np.allclose(transformed["bboxes"], original_bboxes, atol=1e-6)
+        np.testing.assert_allclose(transformed["bboxes"], original_bboxes, atol=1e-6, rtol=1e-5, equal_nan=False)
 
     property_test()
 
@@ -2115,7 +2142,7 @@ def test_keypoint_hflip_hflip_no_labels(kp_format: str, keypoints: list[list[flo
     )
     transformed = aug(image=image, keypoints=original_keypoints)
 
-    assert np.allclose(transformed["keypoints"], original_keypoints, atol=1e-6)
+    np.testing.assert_allclose(transformed["keypoints"], original_keypoints, atol=1e-6, rtol=1e-5, equal_nan=False)
 
 
 def test_keypoint_hflip_idempotence_property():
@@ -2168,7 +2195,7 @@ def test_keypoint_hflip_idempotence_property():
         # Result keypoints should match original (idempotence)
         # Some might be filtered if invalid, but shape and values should match
         assert transformed["keypoints"].shape == original_keypoints.shape
-        assert np.allclose(transformed["keypoints"], original_keypoints, atol=1e-5)
+        np.testing.assert_allclose(transformed["keypoints"], original_keypoints, atol=1e-5, rtol=1e-5, equal_nan=False)
 
     property_test()
 
@@ -2233,14 +2260,14 @@ def test_grayscale_images_batch_handling():
 
 
 def test_grayscale_volume_handling():
-    """Test that grayscale volumes are handled correctly."""
+    """Test that grayscale volume data is handled correctly."""
     # Create grayscale volume (D, H, W)
     grayscale_volume = np.random.rand(50, 100, 200).astype(np.float32)
 
-    # Create a simple transform pipeline that works with volumes
+    # Create a simple transform pipeline that works with volume data
     transform = A.Compose(
         [
-            A.NoOp(p=1.0),  # NoOp supports all targets including volumes
+            A.NoOp(p=1.0),  # NoOp supports all canonical targets
         ],
     )
 
@@ -2250,27 +2277,6 @@ def test_grayscale_volume_handling():
     # Check that output has same shape as input
     assert result["volume"].shape == grayscale_volume.shape
     assert result["volume"].ndim == 3
-
-
-def test_grayscale_volumes_batch_handling():
-    """Test that batches of grayscale volumes are handled correctly."""
-    # Create batch of grayscale volumes (N, D, H, W)
-    batch_size = 4
-    grayscale_volumes = np.random.rand(batch_size, 50, 100, 200).astype(np.float32)
-
-    # Create a simple transform pipeline that works with volumes
-    transform = A.Compose(
-        [
-            A.NoOp(p=1.0),  # NoOp supports all targets including volumes
-        ],
-    )
-
-    # Apply transform
-    result = transform(volumes=grayscale_volumes)
-
-    # Check that output has same shape as input
-    assert result["volumes"].shape == grayscale_volumes.shape
-    assert result["volumes"].ndim == 4
 
 
 def test_mixed_grayscale_rgb_handling():
@@ -2507,27 +2513,6 @@ def test_grayscale_mask3d_handling():
     # Check that output has same shape as input
     assert result["mask3d"].shape == grayscale_mask3d.shape
     assert result["mask3d"].ndim == 3
-
-
-def test_grayscale_masks3d_batch_handling():
-    """Test that batches of grayscale 3D masks are handled correctly."""
-    # Create batch of grayscale 3D masks (N, D, H, W)
-    batch_size = 4
-    grayscale_masks3d = np.random.randint(0, 2, (batch_size, 50, 100, 200)).astype(np.uint8)
-
-    # Create a simple transform pipeline that works with 3D masks
-    transform = A.Compose(
-        [
-            A.NoOp(p=1.0),  # NoOp supports all targets including masks3d
-        ],
-    )
-
-    # Apply transform
-    result = transform(masks3d=grayscale_masks3d)
-
-    # Check that output has same shape as input
-    assert result["masks3d"].shape == grayscale_masks3d.shape
-    assert result["masks3d"].ndim == 4
 
 
 # --- user_data target tests ---
@@ -2845,13 +2830,13 @@ def test_user_data_custom_override_returns_new_object() -> None:
 
 
 def test_user_data_targets_as_params() -> None:
-    """get_params_dependent_on_data receives user_data when in targets_as_params."""
+    """sample_parameters receives user_data when it is in targets_as_params."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class UserDataAwareTransform(A.NoOp):
         targets_as_params = ("user_data",)
 
-        def get_params_dependent_on_data(self, params: dict, data: dict) -> dict:
+        def sample_parameters(self, params: dict, data: dict, sampling: SamplingContext) -> dict:
             ud = data.get("user_data")
             return {"seen_user_data": ud is not None, "ud_value": ud}
 
@@ -2918,8 +2903,8 @@ def test_applied_config_invalid_key_raises():
     """Transforms that set invalid applied_config keys must raise ValueError."""
 
     class BadTransform(A.NoOp):
-        def get_params(self):
-            self.applied_config = {"not_a_real_constructor_param_xyz": 42}
+        def sample_parameters(self, params, data, sampling: SamplingContext):
+            sampling.applied_overrides["not_a_real_constructor_param_xyz"] = 42
             return {}
 
     aug = BadTransform(p=1.0)
@@ -3032,7 +3017,7 @@ SINGLE_SAMPLE_RANGE_RESOLUTIONS: list[tuple[type, str, dict[str, Any]]] = [
 def test_applied_config_resolves_range_param_to_scalar(aug_cls, range_param, init_kwargs):
     """Single-sample `_range` params must be recorded as the sampled scalar in applied_config.
 
-    Catches the bug pattern where get_params samples from a range but forgets to record the
+    Catches the bug pattern where parameter generation samples from a range but forgets to record the
     scalar — leaving `applied_config[range]` as the original input tuple, which silently
     breaks replay/debug consumers of get_applied_config().
     """
@@ -3049,8 +3034,8 @@ def test_applied_config_resolves_range_param_to_scalar(aug_cls, range_param, ini
     assert sampled is not None, f"{aug_cls.__name__}.applied_config missing key {range_param!r}"
     assert not isinstance(sampled, (tuple, list)), (
         f"{aug_cls.__name__}.applied_config[{range_param!r}] is still a tuple {sampled!r}; "
-        f"get_params likely sampled but forgot to record the scalar via "
-        f"`self.applied_config = {{{range_param!r}: sampled_value, ...}}`"
+        f"parameter generation likely sampled but forgot to record the scalar via "
+        f"`applied_overrides[{range_param!r}] = sampled_value`"
     )
     assert isinstance(sampled, (int, float, np.integer, np.floating)), (
         f"{aug_cls.__name__}.applied_config[{range_param!r}] should be a scalar, got {type(sampled).__name__}"

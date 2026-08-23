@@ -1,1 +1,1 @@
-"""Optional PyTorch ASV benchmarks."""
+"""Dedicated PyTorch Tensor ASV benchmarks."""

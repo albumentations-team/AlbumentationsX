@@ -4,9 +4,10 @@ from typing import Annotated, Any, Literal, cast
 
 from typing_extensions import Self
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     _BBOX_INSTANCE_ID,
-    _KP_INSTANCE_ID,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     AfterValidator,
@@ -77,7 +78,7 @@ class Mosaic(DualTransform):
             Default: 0.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Workflow (`get_params_dependent_on_data`):
+    Workflow (`sample_parameters`):
         1. Calculate Geometry & Visible Cells: Determine which grid cells are visible in the final
            `target_size` crop and their placement coordinates on the output canvas.
         2. Validate Raw Additional Metadata: Filter the list provided via `metadata_key`,
@@ -275,7 +276,7 @@ class Mosaic(DualTransform):
 
     @property
     def targets_as_params(self) -> list[str]:
-        """Return list of target keys passed as params (e.g. to get_params_dependent_on_data).
+        """Return list of target keys passed as params (e.g. to sample_parameters).
         For Mosaic/FMix: metadata key for preprocessed mosaic/mix.
 
         Returns:
@@ -284,14 +285,18 @@ class Mosaic(DualTransform):
         """
         return [self.metadata_key]
 
-    def _calculate_geometry(self, data: dict[str, Any]) -> list[tuple[int, int, int, int]]:
+    def _calculate_geometry(
+        self,
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> list[tuple[int, int, int, int]]:
         # Step 1: Calculate Geometry & Cell Placements
         center_xy = fmixing.calculate_mosaic_center_point(
             grid_yx=self.grid_yx,
             cell_shape=self.cell_shape,
             target_size=self.target_size,
             center_range=self.center_range,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         rows, cols = self.grid_yx
@@ -304,12 +309,10 @@ class Mosaic(DualTransform):
         relative_center_x = (center_xy[0] - min_center_x) / max(valid_width, 1)
         relative_center_y = (center_xy[1] - min_center_y) / max(valid_height, 1)
 
-        self.applied_config = {
-            "center_range": (
-                min(relative_center_x, relative_center_y),
-                max(relative_center_x, relative_center_y),
-            ),
-        }
+        sampling.applied_overrides["center_range"] = (
+            min(relative_center_x, relative_center_y),
+            max(relative_center_x, relative_center_y),
+        )
 
         return fmixing.calculate_cell_placements(
             grid_yx=self.grid_yx,
@@ -318,10 +321,15 @@ class Mosaic(DualTransform):
             center_xy=center_xy,
         )
 
-    def _select_additional_items(self, data: dict[str, Any], num_additional_needed: int) -> list[dict[str, Any]]:
+    def _select_additional_items(
+        self,
+        data: dict[str, Any],
+        num_additional_needed: int,
+        sampling: SamplingContext,
+    ) -> list[dict[str, Any]]:
         valid_items = fmixing.filter_valid_metadata(data.get(self.metadata_key), self.metadata_key, data)
         if len(valid_items) > num_additional_needed:
-            return self.py_random.sample(valid_items, num_additional_needed)
+            return sampling.py_random.sample(valid_items, num_additional_needed)
         return valid_items
 
     def _preprocess_additional_items(
@@ -358,13 +366,18 @@ class Mosaic(DualTransform):
         replicated = [deepcopy(primary) for _ in range(num_replications)]
         return [primary, *additional_items, *replicated]
 
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        cell_placements = self._calculate_geometry(data)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        cell_placements = self._calculate_geometry(data, sampling)
 
         num_cells = len(cell_placements)
         num_additional_needed = max(0, num_cells - 1)
 
-        additional_items = self._select_additional_items(data, num_additional_needed)
+        additional_items = self._select_additional_items(data, num_additional_needed, sampling)
 
         preprocessed_additional = self._preprocess_additional_items(additional_items, data)
 
@@ -374,7 +387,7 @@ class Mosaic(DualTransform):
         placement_to_item_index = fmixing.assign_items_to_grid_cells(
             num_items=len(final_items),
             cell_placements=cell_placements,
-            py_random=self.py_random,
+            py_random=sampling.py_random,
         )
 
         processed_cells = fmixing.process_all_mosaic_geometries(
@@ -649,46 +662,13 @@ class Mosaic(DualTransform):
         mosaic_survival: dict[str, Any] | None,
         **params: Any,
     ) -> np.ndarray:
-        all_shifted_keypoints = []
-
-        for cell_data in processed_cells.values():
-            shifted_keypoints = cell_data.get("keypoints")
-            if shifted_keypoints is not None and np.asarray(shifted_keypoints).size > 0:
-                all_shifted_keypoints.append(shifted_keypoints)
-
-        if not all_shifted_keypoints:
-            return np.empty((0, keypoints.shape[1]), dtype=keypoints.dtype)
-
-        combined_keypoints = np.concatenate(all_shifted_keypoints, axis=0)
-
-        keypoint_processor = self.get_processor("keypoints")
-        kp_fields = (
-            keypoint_processor.params.label_fields
-            if isinstance(keypoint_processor, KeypointsProcessor) and keypoint_processor.params.label_fields
-            else []
+        return fmixing.assemble_mosaic_keypoints(
+            keypoints,
+            processed_cells,
+            mosaic_survival,
+            self.get_processor("keypoints"),
+            self.target_size,
         )
-
-        if _KP_INSTANCE_ID in kp_fields:
-            # Under binding: drop keypoints whose instance was filtered from bboxes so the
-            # post-transform `_resync_instance_ids` invariant (no orphan keypoints) holds.
-            if mosaic_survival is not None and mosaic_survival.get("surviving_instance_ids") is not None:
-                surviving_ids = mosaic_survival["surviving_instance_ids"]
-                n_kf = len(kp_fields)
-                id_col = combined_keypoints.shape[1] - n_kf + kp_fields.index(_KP_INSTANCE_ID)
-                kp_inst = combined_keypoints[:, id_col].astype(np.int64, copy=False)
-                in_surviving = np.fromiter((int(k) in surviving_ids for k in kp_inst), dtype=bool, count=kp_inst.size)
-                return combined_keypoints[in_surviving]
-            return combined_keypoints
-
-        target_h, target_w = self.target_size
-        valid_indices = (
-            (combined_keypoints[:, 0] >= 0)
-            & (combined_keypoints[:, 0] < target_w)
-            & (combined_keypoints[:, 1] >= 0)
-            & (combined_keypoints[:, 1] < target_h)
-        )
-
-        return combined_keypoints[valid_indices]
 
 
 __all__ = [

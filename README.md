@@ -13,9 +13,22 @@
 
 **AlbumentationsX** is a Python library for image augmentation. It provides high-performance, robust implementations and cutting-edge features for computer vision tasks. Image augmentation is used in deep learning and computer vision to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
 
-## GitAds Sponsored
+## Citing
 
-[![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=albumentations-team/albumentationsx@github)](https://gitads.dev/v1/ad-track?source=albumentations-team/albumentationsx@github)
+If AlbumentationsX supports your research, please cite
+[AlbumentationsX: One Augmentation Pipeline for Images and Related Annotations](https://arxiv.org/abs/2608.11123).
+Your citation makes the project's research impact visible to funders and helps sustain maintenance.
+
+```bibtex
+@article{iglovikov2026albumentationsx,
+    title = {AlbumentationsX: One Augmentation Pipeline for Images and Related Annotations},
+    author = {Iglovikov, Vladimir},
+    journal = {arXiv preprint arXiv:2608.11123},
+    year = {2026},
+    doi = {10.48550/arXiv.2608.11123},
+    url = {https://arxiv.org/abs/2608.11123}
+}
+```
 
 ## 📢 Licensing: commercial use is allowed
 
@@ -39,11 +52,11 @@ agreement or order form expressly says so. See the [AGPL text](LICENSE),
 ### Quick Start
 
 ```bash
-# Install AlbumentationsX with OpenCV
-pip install albumentationsx[headless]
+# Install the PyTorch build for your platform first. For Linux CPU-only:
+pip install "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
 
-# Or if you already have OpenCV installed
-pip install albumentationsx
+# Then install AlbumentationsX with OpenCV.
+pip install "albumentationsx[headless]"
 ```
 
 ```python
@@ -124,7 +137,17 @@ AlbumentationsX requires Python 3.10 or higher. To install the latest version fr
 
 ### Basic Installation
 
-If you already have OpenCV installed (any variant), simply install AlbumentationsX:
+Install the PyTorch build for your CPU, CUDA, or MPS environment before installing AlbumentationsX. For a Linux
+CPU-only environment:
+
+```bash
+pip install "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
+```
+
+For CUDA or macOS (MPS), use the matching command from the [PyTorch installation selector](https://pytorch.org/get-started/locally/).
+AlbumentationsX does not choose or install a PyTorch accelerator build.
+
+If you already have OpenCV installed (any variant), install AlbumentationsX:
 
 ```bash
 pip install -U albumentationsx
@@ -136,7 +159,7 @@ If you don't have OpenCV installed yet, choose the appropriate variant:
 
 ```bash
 # For servers/Docker (no GUI support, lighter package)
-pip install -U albumentationsx[headless]
+pip install -U "albumentationsx[headless]"
 
 # For local development with GUI support (cv2.imshow, etc.)
 pip install opencv-python && pip install -U albumentationsx
@@ -145,7 +168,7 @@ pip install opencv-python && pip install -U albumentationsx
 pip install opencv-contrib-python && pip install -U albumentationsx
 
 # For contrib + headless
-pip install -U albumentationsx[contrib-headless]
+pip install -U "albumentationsx[contrib-headless]"
 ```
 
 **Note:** AlbumentationsX works with any OpenCV variant:
@@ -156,6 +179,9 @@ pip install -U albumentationsx[contrib-headless]
 - `opencv-contrib-python-headless` (contrib + headless)
 
 Choose the one that fits your needs. The library will detect whichever is installed.
+
+`pip install albumentationsx` installs the base dependency set without PyTorch. It is useful for dependency-only
+consumers such as documentation builds. Importing `albumentations` requires the PyTorch build you selected above.
 
 Other installation options are described in the [documentation](https://albumentations.ai/docs/1-introduction/installation/?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
@@ -197,7 +223,7 @@ AlbumentationsX collects anonymous usage statistics to improve the library. This
 
 ### Pixel-level transforms
 
-Pixel-level transforms will change just an input image and will leave any additional targets such as masks, bounding boxes, and keypoints unchanged. For volumetric data (volumes and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The list of pixel-level transforms:
+Pixel-level transforms will change just an input image and will leave any additional targets such as masks, bounding boxes, and keypoints unchanged. For volumetric data (a volume and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The list of pixel-level transforms:
 
 - [AdditiveNoise](https://albumentations.ai/explore/transform/AdditiveNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [AdvancedBlur](https://albumentations.ai/explore/transform/AdvancedBlur/?utm_source=github&utm_medium=referral&utm_campaign=readme)
@@ -274,7 +300,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 
 ### Spatial-level transforms
 
-Spatial-level transforms will simultaneously change both an input image as well as additional targets such as masks, bounding boxes, and keypoints. For volumetric data (volumes and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The following table shows which additional targets are supported by each transform:
+Spatial-level transforms will simultaneously change both an input image as well as additional targets such as masks, bounding boxes, and keypoints. For volumetric data (a volume and 3D masks), these transforms are applied independently to each slice along the Z-axis (depth dimension), maintaining consistency across the volume. The following table shows which additional targets are supported by each transform:
 
 - Volume: 3D array of shape (D, H, W) or (D, H, W, C) where D is depth, H is height, W is width, and C is number of channels (optional)
 - Mask3D: Binary or multi-class 3D mask of shape (D, H, W) where each slice represents segmentation for the corresponding volume slice
@@ -340,22 +366,28 @@ Spatial-level transforms will simultaneously change both an input image as well 
 
 ### 3D transforms
 
-3D transforms operate on volumetric data and can modify both the input volume and associated 3D mask.
+3D transforms operate on volumetric data. Spatial transforms can also modify associated 3D masks and keypoints, while
+volume-intensity transforms leave those targets unchanged.
 
 Where:
 
 - Volume: 3D array of shape (D, H, W) or (D, H, W, C) where D is depth, H is height, W is width, and C is number of channels (optional)
 - Mask3D: Binary or multi-class 3D mask of shape (D, H, W) where each slice represents segmentation for the corresponding volume slice
 
-| Transform                                                                       | Volume | Mask3D | Keypoints |
-| ------------------------------------------------------------------------------- | :----: | :----: | :-------: |
-| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓      | ✓      | ✓         |
-| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/?utm_source=github&utm_medium=referral&utm_campaign=readme) | ✓      | ✓      | ✓         |
-| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)                     | ✓      | ✓      | ✓         |
-| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)     | ✓      | ✓      | ✓         |
-| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/?utm_source=github&utm_medium=referral&utm_campaign=readme)       | ✓      | ✓      | ✓         |
+| Transform                                                                           | Volume | Mask3D | Keypoints |
+| ----------------------------------------------------------------------------------- | :----: | :----: | :-------: |
+| [Affine3D](https://albumentations.ai/explore/transform/Affine3D/)                   | ✓      | ✓      | ✓         |
+| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)           | ✓      |        |           |
+| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)           | ✓      | ✓      | ✓         |
+| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)     | ✓      | ✓      | ✓         |
+| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)         | ✓      | ✓      | ✓         |
+| [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                       | ✓      | ✓      | ✓         |
+| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)         | ✓      | ✓      | ✓         |
+| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                         | ✓      | ✓      | ✓         |
+| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)         | ✓      | ✓      | ✓         |
+| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)           | ✓      | ✓      | ✓         |
+| [RandomRotate90_3D](https://albumentations.ai/explore/transform/RandomRotate90_3D/) | ✓      | ✓      | ✓         |
+| [Resize3D](https://albumentations.ai/explore/transform/Resize3D/)                   | ✓      | ✓      | ✓         |
 
 ## A few more examples of **augmentations**
 
@@ -485,29 +517,8 @@ repository-level details.
 
 For bug reports and feature requests related to AlbumentationsX, please visit [GitHub Issues](https://github.com/albumentations-team/AlbumentationsX/issues). For questions, discussions, and community support, join our active communities on [Discord](https://discord.gg/AKPrrDYNAt), [Twitter](https://twitter.com/albumentations), [LinkedIn](https://www.linkedin.com/company/albumentations/), and [Reddit](https://www.reddit.com/r/Albumentations/). We're here to help with all things AlbumentationsX!
 
-## Citing
-
-If you find this library useful for your research, please consider citing [Albumentations: Fast and Flexible Image Augmentations](https://www.mdpi.com/2078-2489/11/2/125):
-
-```bibtex
-@Article{info11020125,
-    AUTHOR = {Buslaev, Alexander and Iglovikov, Vladimir I. and Khvedchenya, Eugene and Parinov, Alex and Druzhinin, Mikhail and Kalinin, Alexandr A.},
-    TITLE = {Albumentations: Fast and Flexible Image Augmentations},
-    JOURNAL = {Information},
-    VOLUME = {11},
-    YEAR = {2020},
-    NUMBER = {2},
-    ARTICLE-NUMBER = {125},
-    URL = {https://www.mdpi.com/2078-2489/11/2/125},
-    ISSN = {2078-2489},
-    DOI = {10.3390/info11020125}
-}
-```
-
 ---
 
 ## 📫 Stay Connected
 
 Never miss updates, tutorials, and tips from the AlbumentationsX team! [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme).
-
-<!-- GitAds-Verify: 99ZXCN5GQ9CQN3QEMO5H4RAOI8C5YTKV -->

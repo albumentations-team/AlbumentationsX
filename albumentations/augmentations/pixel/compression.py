@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from pydantic.functional_validators import AfterValidator
 
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -109,12 +110,17 @@ class ImageCompression(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.image_compression(img, quality, image_type)
 
-    def get_params(self) -> dict[str, int | str]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, int | str]:
         image_type = ".jpg" if self.compression_type == "jpeg" else ".webp"
 
-        quality = self.py_random.randint(*self.quality_range)
+        quality = sampling.py_random.randint(*self.quality_range)
 
-        self.applied_config = {"quality_range": quality}
+        sampling.applied_overrides["quality_range"] = quality
 
         return {
             "quality": quality,
@@ -215,9 +221,14 @@ class Downscale(ImageOnlyTransform):
             up_interpolation=self.interpolation_pair["upscale"],
         )
 
-    def get_params(self) -> dict[str, Any]:
-        scale = self.py_random.uniform(*self.scale_range)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        scale = sampling.py_random.uniform(*self.scale_range)
 
-        self.applied_config = {"scale_range": scale}
+        sampling.applied_overrides["scale_range"] = scale
 
         return {"scale": scale}

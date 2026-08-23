@@ -3,6 +3,8 @@
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     _BBOX_INSTANCE_ID,
     _KP_INSTANCE_ID,
@@ -56,6 +58,8 @@ class CopyAndPaste(DualTransform):
         min_visibility_after_paste (float): Minimum mask area ratio (area_after / area_before) for
             an existing instance to survive after occlusion by pasted objects. Instances whose
             remaining visible area falls below this threshold are removed from masks and bboxes.
+            With `instance_binding`, a primary instance is dropped if its mask becomes fully occluded
+            (empty) after pasting, regardless of `min_visibility_after_paste=0.0`.
             Default: 0.05.
         blend_mode (Literal["hard", "gaussian"]): How to blend pasted pixels. "hard" does direct
             pixel copy (paper default). "gaussian" applies gaussian blur to the alpha mask for
@@ -634,7 +638,13 @@ class CopyAndPaste(DualTransform):
             "shape": (new_h, new_w),
         }
 
-    def _sample_placement(self, scaled_h: int, scaled_w: int, target_shape: tuple[int, int]) -> tuple[int, int]:
+    def _sample_placement(
+        self,
+        scaled_h: int,
+        scaled_w: int,
+        target_shape: tuple[int, int],
+        sampling: SamplingContext,
+    ) -> tuple[int, int]:
         """Sample a top-left (y0, x0) for the scaled donor uniformly inside the target image,
         relying on the shrink-to-fit cap to guarantee non-negative placement bounds.
 
@@ -642,8 +652,8 @@ class CopyAndPaste(DualTransform):
         `_fit_and_jitter_scale`.
         """
         height, width = target_shape
-        y0 = self.py_random.randint(0, max(0, height - scaled_h))
-        x0 = self.py_random.randint(0, max(0, width - scaled_w))
+        y0 = sampling.py_random.randint(0, max(0, height - scaled_h))
+        x0 = sampling.py_random.randint(0, max(0, width - scaled_w))
         return y0, x0
 
     @staticmethod
@@ -920,6 +930,7 @@ class CopyAndPaste(DualTransform):
         bbox_processor: BboxProcessor | None,
         kp_processor: KeypointsProcessor | None,
         scale_jitter: float,
+        sampling: SamplingContext,
     ) -> tuple[dict[str, Any], np.ndarray] | object | None:
         """Run the per-donor pipeline (convert, crop, scale, place, stamp, back-convert) returning
         the stamped item + mask, `_NO_FOOTPRINT` sentinel, or None on drop.
@@ -955,7 +966,7 @@ class CopyAndPaste(DualTransform):
         if h_s * w_s < self.min_paste_area:
             return None
 
-        y0, x0 = self._sample_placement(h_s, w_s, target_shape)
+        y0, x0 = self._sample_placement(h_s, w_s, target_shape, sampling)
 
         if scaled["semantic_mask"] is not None and semantic_canvas_holder[0] is None:
             semantic_canvas_holder[0] = np.zeros(target_shape, dtype=scaled["semantic_mask"].dtype)
@@ -1009,6 +1020,7 @@ class CopyAndPaste(DualTransform):
         data: dict[str, Any],
         target_shape: tuple[int, int],
         scale_jitter: float,
+        sampling: SamplingContext,
     ) -> tuple[list[dict[str, Any]], list[np.ndarray], np.ndarray, np.ndarray | None] | None:
         """Iterate donors through `_process_one_donor` to collect stamped items and masks, and
         emit the no-footprint UserWarning if any donors lacked both mask and bbox.
@@ -1041,6 +1053,7 @@ class CopyAndPaste(DualTransform):
                 bbox_processor,
                 kp_processor,
                 scale_jitter,
+                sampling,
             )
             if outcome is None:
                 continue
@@ -1064,21 +1077,22 @@ class CopyAndPaste(DualTransform):
             return None
         return stamped_items, pasted_masks_list, composite_image, semantic_canvas_holder[0]
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
-        # Sample blend_sigma + scale_jitter upfront so applied_config records them even when the
+        # Sample blend_sigma + scale_jitter upfront so the applied record captures them even when the
         # no-op path is taken (e.g. no valid paste items provided). scale_jitter is shared across
         # all donors in a single call so the recorded value matches what was actually applied.
-        blend_sigma = self.py_random.uniform(*self.blend_sigma_range)
-        self.applied_config["blend_sigma_range"] = blend_sigma
-        scale_jitter = self.py_random.uniform(*self.scale_range)
-        self.applied_config["scale_range"] = scale_jitter
+        blend_sigma = sampling.py_random.uniform(*self.blend_sigma_range)
+        sampling.applied_overrides["blend_sigma_range"] = blend_sigma
+        scale_jitter = sampling.py_random.uniform(*self.scale_range)
+        sampling.applied_overrides["scale_range"] = scale_jitter
 
         target_shape = params["shape"][:2]
-        gathered = self._gather_valid_copy_paste_items(data, target_shape, scale_jitter)
+        gathered = self._gather_valid_copy_paste_items(data, target_shape, scale_jitter, sampling)
         if gathered is None:
             return self._no_op_params()
 
@@ -1264,48 +1278,15 @@ class CopyAndPaste(DualTransform):
     ) -> np.ndarray:
         if paste_alpha is None:
             return bboxes
-
         bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
-        bbox_label_fields = bbox_processor.params.label_fields or []
-
-        if paste_surviving_indices is not None and bboxes.size > 0:
-            if _BBOX_INSTANCE_ID in bbox_label_fields:
-                # Filter by _bbox_instance_id values against the resolved surviving ID set.
-                # Mixing IDs with positions (the old `paste_surviving_indices` path) silently
-                # mis-attached bboxes whenever upstream filtering broke position == ID.
-                surviving_ids = paste_surviving_ids_ordered if paste_surviving_ids_ordered is not None else []
-                n_lf = len(bbox_label_fields)
-                id_col = bboxes.shape[1] - n_lf + bbox_label_fields.index(_BBOX_INSTANCE_ID)
-                inst_col = bboxes[:, id_col].astype(np.int64, copy=False)
-                keep = np.isin(inst_col, np.asarray(surviving_ids, dtype=np.int64))
-                surviving_bboxes = bboxes[keep]
-            else:
-                surviving_bboxes = bboxes[paste_surviving_indices]
-        else:
-            surviving_bboxes = bboxes
-
-        if paste_bboxes is not None and paste_bboxes.size > 0:
-            combined = (
-                paste_bboxes
-                if surviving_bboxes.size == 0
-                else np.concatenate(
-                    [surviving_bboxes, paste_bboxes],
-                    axis=0,
-                )
-            )
-        else:
-            combined = surviving_bboxes
-
-        # Re-stamp `_bbox_instance_id` to dense `arange(N_out)` so the output is positionally
-        # equal to its id index. Without this, the output had sparse ids (`[0,1,2,3,donor_id]`)
-        # and any subsequent bbox processor drop broke the implicit `masks[id]` assumption that
-        # the resync used. Phase 2b of the rewrite moves this re-stamp into the transform
-        # itself so `_resync_instance_ids` becomes a pure assertion + keypoint-rebase.
-        if _BBOX_INSTANCE_ID in bbox_label_fields and combined.size > 0:
-            n_lf = len(bbox_label_fields)
-            id_col = combined.shape[1] - n_lf + bbox_label_fields.index(_BBOX_INSTANCE_ID)
-            combined[:, id_col] = np.arange(combined.shape[0], dtype=combined.dtype)
-        return combined
+        return fmixing.combine_copy_paste_bboxes(
+            bboxes,
+            paste_alpha,
+            paste_surviving_indices,
+            paste_surviving_ids_ordered,
+            paste_bboxes,
+            bbox_processor.params.label_fields or [],
+        )
 
     def apply_to_keypoints(
         self,
@@ -1316,86 +1297,16 @@ class CopyAndPaste(DualTransform):
     ) -> np.ndarray:
         if paste_alpha is None:
             return keypoints
-
-        paste_surviving_indices = params.get("paste_surviving_indices")
-        paste_surviving_ids_ordered = params.get("paste_surviving_ids_ordered")
-        paste_primary_instance_count = params.get("paste_primary_instance_count")
         keypoint_processor = cast("KeypointsProcessor", self.get_processor("keypoints"))
-        kp_label_fields = keypoint_processor.params.label_fields or []
-
-        surviving_keypoints = keypoints
-        if paste_surviving_indices is not None and keypoints.size > 0:
-            if _KP_INSTANCE_ID in kp_label_fields:
-                # Filter keypoints by _kp_instance_id against the resolved surviving ID set
-                # (same set that drives bbox/mask survival), not raw mask positions.
-                surviving_ids = paste_surviving_ids_ordered if paste_surviving_ids_ordered is not None else []
-                n_kf = len(kp_label_fields)
-                id_col = keypoints.shape[1] - n_kf + kp_label_fields.index(_KP_INSTANCE_ID)
-                inst_col = keypoints[:, id_col].astype(np.int64, copy=False)
-                keep = np.isin(inst_col, np.asarray(surviving_ids, dtype=np.int64))
-                surviving_keypoints = keypoints[keep]
-            else:
-                aligned = (
-                    paste_primary_instance_count is not None and keypoints.shape[0] == paste_primary_instance_count
-                )
-                if aligned:
-                    survivor_idx = np.asarray(paste_surviving_indices)
-                    if survivor_idx.size == 0:
-                        surviving_keypoints = keypoints[:0]
-                    elif int(survivor_idx.max()) < keypoints.shape[0] and int(survivor_idx.min()) >= 0:
-                        surviving_keypoints = keypoints[survivor_idx]
-
-        if paste_keypoints is not None and paste_keypoints.size > 0:
-            combined = (
-                paste_keypoints
-                if surviving_keypoints.size == 0
-                else np.concatenate(
-                    [surviving_keypoints, paste_keypoints],
-                    axis=0,
-                )
-            )
-        else:
-            combined = surviving_keypoints
-
-        # Re-stamp `_kp_instance_id` to refer to the new dense bbox positions emitted by
-        # `apply_to_bboxes` (Phase 2b). The mapping mirrors the bbox concatenation order:
-        # surviving first (indexed by `paste_surviving_ids_ordered`) then pasted (indexed by
-        # `paste_instance_ids`). After this, no `_resync_instance_ids` keypoint rebase is
-        # needed for the CopyAndPaste boundary.
-        if _KP_INSTANCE_ID in kp_label_fields and combined.size > 0:
-            self._restamp_keypoint_ids(
-                combined,
-                kp_label_fields,
-                paste_surviving_ids_ordered,
-                params.get("paste_instance_ids"),
-            )
-        return combined
-
-    @staticmethod
-    def _restamp_keypoint_ids(
-        keypoints: np.ndarray,
-        kp_label_fields: Sequence[str],
-        paste_surviving_ids_ordered: list[int] | None,
-        paste_instance_ids: list[int] | None,
-    ) -> None:
-        n_kf = len(kp_label_fields)
-        id_col = keypoints.shape[1] - n_kf + kp_label_fields.index(_KP_INSTANCE_ID)
-
-        old_to_new: dict[int, int] = {}
-        new_idx = 0
-        if paste_surviving_ids_ordered:
-            for old in paste_surviving_ids_ordered:
-                old_to_new[old] = new_idx
-                new_idx += 1
-        if paste_instance_ids:
-            for old in paste_instance_ids:
-                old_to_new[old] = new_idx
-                new_idx += 1
-
-        kp_old = keypoints[:, id_col].astype(np.int64, copy=False)
-        keypoints[:, id_col] = np.array(
-            [old_to_new.get(int(k), int(k)) for k in kp_old],
-            dtype=keypoints.dtype,
+        return fmixing.combine_copy_paste_keypoints(
+            keypoints,
+            paste_alpha,
+            paste_keypoints,
+            params.get("paste_surviving_indices"),
+            params.get("paste_surviving_ids_ordered"),
+            params.get("paste_primary_instance_count"),
+            params.get("paste_instance_ids"),
+            keypoint_processor.params.label_fields or [],
         )
 
 

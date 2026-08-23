@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, ClassVar
 
+from albumentations.core.invocation import SamplingContext
+
 from ._transforms_shared import (
     ALL_TARGETS,
     CV2_INTER_LINEAR,
@@ -141,36 +143,37 @@ class BBoxSafeRandomCrop(BaseCrop):
         super().__init__(p=p)
         self.erosion_rate = erosion_rate
 
-    def _get_coords_no_bbox(self, image_shape: tuple[int, int]) -> tuple[int, int, int, int]:
+    def _get_coords_no_bbox(self, image_shape: tuple[int, int], sampling: SamplingContext) -> tuple[int, int, int, int]:
         image_height, image_width = image_shape
 
         erosive_h = int(image_height * (1.0 - self.erosion_rate))
-        crop_height = image_height if erosive_h >= image_height else self.py_random.randint(erosive_h, image_height)
+        crop_height = image_height if erosive_h >= image_height else sampling.py_random.randint(erosive_h, image_height)
 
         crop_width = int(crop_height * image_width / image_height)
 
-        h_start = self.py_random.random()
-        w_start = self.py_random.random()
+        h_start = sampling.py_random.random()
+        w_start = sampling.py_random.random()
 
         crop_shape = (crop_height, crop_width)
 
         return fcrops.get_crop_coords(image_shape, crop_shape, h_start, w_start)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, tuple[int, int, int, int]]:
         image_shape = params["shape"][:2]
 
         if len(data["bboxes"]) == 0:  # less likely, this class is for use with bboxes.
-            crop_coords = self._get_coords_no_bbox(image_shape)
+            crop_coords = self._get_coords_no_bbox(image_shape, sampling)
             return {"crop_coords": crop_coords}
 
         bbox_union = union_of_bboxes(bboxes=data["bboxes"], erosion_rate=self.erosion_rate)
 
         if bbox_union is None:
-            crop_coords = self._get_coords_no_bbox(image_shape)
+            crop_coords = self._get_coords_no_bbox(image_shape, sampling)
             return {"crop_coords": crop_coords}
 
         x_min, y_min, x_max, y_max = bbox_union
@@ -182,11 +185,11 @@ class BBoxSafeRandomCrop(BaseCrop):
 
         image_height, image_width = image_shape
 
-        crop_x_min = int(x_min * self.py_random.random() * image_width)
-        crop_y_min = int(y_min * self.py_random.random() * image_height)
+        crop_x_min = int(x_min * sampling.py_random.random() * image_width)
+        crop_y_min = int(y_min * sampling.py_random.random() * image_height)
 
-        bbox_xmax = x_max + (1 - x_max) * self.py_random.random()
-        bbox_ymax = y_max + (1 - y_max) * self.py_random.random()
+        bbox_xmax = x_max + (1 - x_max) * sampling.py_random.random()
+        bbox_ymax = y_max + (1 - y_max) * sampling.py_random.random()
         crop_x_max = int(bbox_xmax * image_width)
         crop_y_max = int(bbox_ymax * image_height)
 
@@ -365,7 +368,8 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
         **params: Any,
     ) -> ImageType:
         crop = fcrops.crop(img, *crop_coords)
-        return fgeometric.resize(crop, (self.height, self.width), self.interpolation)
+        result = fgeometric.resize(crop, (self.height, self.width), self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,
@@ -538,10 +542,11 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
         self.width = width
         self.erosion_factor = erosion_factor
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, tuple[int, int, int, int]]:
         image_height, image_width = params["shape"][:2]
         bboxes = data.get("bboxes", [])
@@ -556,7 +561,7 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
             bboxes = denormalize_bboxes(bboxes, shape=(image_height, image_width))
 
             # Pick a bbox amongst all possible as our reference bbox.
-            idx = self.random_generator.integers(0, len(bboxes))
+            idx = sampling.random_generator.integers(0, len(bboxes))
             reference_bbox = bboxes[idx]
 
             bbox_x1, bbox_y1, bbox_x2, bbox_y2 = reference_bbox[:4]
@@ -624,8 +629,8 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
             max_crop_y = image_height - self.height
 
         # Randomly draw the upper-left corner of the crop.
-        crop_x1 = int(self.py_random.uniform(a=min_crop_x, b=max_crop_x))
-        crop_y1 = int(self.py_random.uniform(a=min_crop_y, b=max_crop_y))
+        crop_x1 = int(sampling.py_random.uniform(a=min_crop_x, b=max_crop_x))
+        crop_y1 = int(sampling.py_random.uniform(a=min_crop_y, b=max_crop_y))
 
         crop_x2 = crop_x1 + self.width
         crop_y2 = crop_y1 + self.height

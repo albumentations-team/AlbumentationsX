@@ -303,6 +303,17 @@ class TestDitheringTransform:
         result = transform(image=img)["image"]
         np.testing.assert_equal(result.shape, img.shape)
 
+    def test_random_dithering_samples_one_noise_map_per_batch_item(self):
+        """Batch execution remains seed-reproducible after noise moves out of apply."""
+        images = np.arange(2 * 24 * 20 * 3, dtype=np.uint8).reshape(2, 24, 20, 3)
+        first = A.Compose([A.Dithering(method="random", n_colors=4, p=1.0)], seed=137)
+        second = A.Compose([A.Dithering(method="random", n_colors=4, p=1.0)], seed=137)
+
+        first_result = first(images=images)["images"]
+        second_result = second(images=images)["images"]
+
+        np.testing.assert_array_equal(first_result, second_result)
+
     def test_bayer_matrix_sizes(self):
         """Test different Bayer matrix sizes."""
         img = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)

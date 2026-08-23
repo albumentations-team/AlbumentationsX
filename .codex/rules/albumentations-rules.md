@@ -6,31 +6,30 @@ always_apply: true
 
 # AlbumentationsX Quick Rules
 
+## Automation Boundary
+- Before creating or expanding a skill, classify the rule first: deterministic source-local invariants belong in a focused
+  pre-commit hook or quality-gate check, with tests.
+- Keep skills for architecture, trade-offs, performance decisions, workflow, and reviewer judgment that tooling cannot
+  prove reliably.
+- Do not create a skill merely to repeat an automated check; make the hook diagnostic the source of the mechanical rule.
+
 ## Code Style
 - Avoid unclear variable names (e.g., single-letter `k`); use descriptive names like `rot90_count`
-- `get_params_dependent_on_data` should be minimal and clear - just call other functions from it
-- Use `fill`, not `fill_value`. Use `fill_mask`, not `fill_mask_value`
-- NO default values in InitSchema classes (except discriminator fields for Pydantic unions)
+- Prefer reusable `Annotated` validators for standard single-field checks. Use `field_validator` only when validation
+  genuinely requires field context or cannot be expressed as reusable type metadata; use `model_validator` for
+  cross-field constraints.
+- Avoid redundant numeric container unions such as `tuple[int, int] | tuple[float, float]`. Prefer
+  `tuple[int | float, int | float]` plus explicit runtime homogeneity validation when integers and floats encode
+  different units or behavior.
+- Keep public docstrings focused on user-facing behavior. Omit post-initialization, serialization, replay, and other
+  implementation details unless they are part of the supported public contract.
+- Run `pre-commit run check-ax-coding-guidance --all-files` for deterministic AX source contracts. Its diagnostic and
+  `docs/contributing/coding_guidelines.md` are the mechanical source of truth.
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite
-- `tests/helpers/transform_cases.py` is the single shared transform-configuration registry. Add a named non-default
-  `TransformContractCase` for every new configurable public constructor parameter or behaviorally distinct mode; do not
-  add parallel inventories, adapters, broad skips, or coverage exemptions.
-- Applied configurations must survive strict JSON transport, public reconstruction through
-  `Compose.from_applied_transforms()`, and execution on fresh data. Clear constructor policy fields that conflict with
-  realized sampled fields. See `docs/design/applied-config-replay-contracts.md`.
-- Every registered `DualTransform` mode must collect against all applicable core profiles. Put reusable workloads in
-  `tests/helpers/target_profiles.py`, transform-required metadata in the case `context_factory`, and target prerequisites
-  in `required_targets`. Profiles and runners must not contain transform-class lists or class-name skip branches. See
-  `docs/design/transform-target-contracts.md`.
-- Within `Compose`, images and volumes always have an explicit channel dimension:
-  `(H, W, C)`, `(N, H, W, C)`, `(D, H, W, C)`, or `(N, D, H, W, C)`
-- Grayscale in Compose is `(H, W, 1)`, not `(H, W)`; do not add 2D grayscale compatibility branches to
-  transform `apply_*` methods or functional kernels used by Compose
-- For performance work, benchmark before choosing `cv2`, `sz_lut`, or NumPy. Direct bitwise operations can beat
-  LUTs for true bit masks, scalar NumPy bitwise can beat OpenCV, and tiny transforms may be dominated by dispatch
-  overhead rather than pixel kernels.
+- For transform configuration, replay, target coverage, runtime performance, Torch, CI, or licensing work, use the
+  matching project skill and its linked design document. These rules do not restate their contracts.
 - After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
   complete when the environment can support it.
 
@@ -47,21 +46,3 @@ always_apply: true
 - Read `docs/maintaining/license-provenance.md` and use the
   `license-integrity` skill for any license, CLA, notice, packaging-license, or
   commercial-license wording change.
-
-## Complete Documentation
-
-See these documents for comprehensive guidelines:
-
-### Contributing & Coding
-- `docs/contributing/coding_guidelines.md` - Complete coding standards and best practices
-- `docs/contributing/environment_setup.md` - Development environment setup
-- `CONTRIBUTING.md` - Contribution process overview
-- `docs/contributing/codex_guidelines.md` - Code review guidelines for Codex
-- `AGENTS.md` - Codex entrypoint that points to the shared guidelines
-
-### Design Documents
-- `docs/design/dithering.md` - Dithering transform design
-- `docs/design/keypoint_label_swapping.md` - Keypoint label handling design
-- `docs/design/mosaic.md` - Mosaic transform technical specification
-- `docs/design/applied-config-replay-contracts.md` - Applied configuration replay contract architecture
-- `docs/design/transform-target-contracts.md` - Generated transform/target contract architecture

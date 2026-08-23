@@ -18,6 +18,7 @@ from typing_extensions import Self
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.utils import non_rgb_error
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
@@ -167,13 +168,14 @@ class RandomSnow(ImageOnlyTransform):
 
         raise ValueError(f"Unknown snow method: {self.method}")
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, float | np.ndarray | None]:
         image_shape = params["shape"][:2]
-        snow_point = self.py_random.uniform(*self.snow_point_range)
+        snow_point = sampling.py_random.uniform(*self.snow_point_range)
 
         result: dict[str, float | np.ndarray | None] = {
             "snow_point": snow_point,
@@ -184,12 +186,12 @@ class RandomSnow(ImageOnlyTransform):
         if self.method == "texture":
             snow_texture, sparkle_mask = fpixel.generate_snow_textures(
                 img_shape=image_shape,
-                random_generator=self.random_generator,
+                random_generator=sampling.random_generator,
             )
             result["snow_texture"] = snow_texture
             result["sparkle_mask"] = sparkle_mask
 
-        self.applied_config = {"snow_point_range": snow_point}
+        sampling.applied_overrides["snow_point_range"] = snow_point
 
         return result
 
@@ -289,30 +291,6 @@ class RandomGravel(ImageOnlyTransform):
         self.gravel_roi = gravel_roi
         self.number_of_patches = number_of_patches
 
-    def generate_gravel_patch(
-        self,
-        rectangular_roi: tuple[int, int, int, int],
-    ) -> np.ndarray:
-        """Generate gravel (x,y) coordinates inside rectangular_roi (x_min,y_min,x_max,y_max).
-        Returns (N, 2) array for RandomGravel overlay.
-
-        Args:
-            rectangular_roi (tuple[int, int, int, int]): The rectangular region where gravel
-                particles will be generated, specified as (x_min, y_min, x_max, y_max) in pixel coordinates.
-
-        Returns:
-            np.ndarray: An array of gravel particles with shape (count, 2), where count is the number of particles.
-            Each row contains the (x, y) coordinates of a gravel particle.
-
-        """
-        x_min, y_min, x_max, y_max = rectangular_roi
-        area = abs((x_max - x_min) * (y_max - y_min))
-        count = area // 10
-        gravels = np.empty([count, 2], dtype=np.int64)
-        gravels[:, 0] = self.random_generator.integers(x_min, x_max, count)
-        gravels[:, 1] = self.random_generator.integers(y_min, y_max, count)
-        return gravels
-
     def apply(
         self,
         img: ImageType,
@@ -321,10 +299,11 @@ class RandomGravel(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.add_gravel(img, gravels_infos)
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, np.ndarray]:
         metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
@@ -341,20 +320,20 @@ class RandomGravel(ImageOnlyTransform):
 
         for _ in range(self.number_of_patches):
             # Generate a random rectangular region within the ROI
-            patch_width = self.py_random.randint(roi_width // 10, roi_width // 5)
-            patch_height = self.py_random.randint(roi_height // 10, roi_height // 5)
+            patch_width = sampling.py_random.randint(roi_width // 10, roi_width // 5)
+            patch_height = sampling.py_random.randint(roi_height // 10, roi_height // 5)
 
-            patch_x = self.py_random.randint(x_min, x_max - patch_width)
-            patch_y = self.py_random.randint(y_min, y_max - patch_height)
+            patch_x = sampling.py_random.randint(x_min, x_max - patch_width)
+            patch_y = sampling.py_random.randint(y_min, y_max - patch_height)
 
             # Generate gravel particles within this patch
             num_particles = (patch_width * patch_height) // 100  # Adjust this divisor to control density
 
             for _ in range(num_particles):
-                x = self.py_random.randint(patch_x, patch_x + patch_width)
-                y = self.py_random.randint(patch_y, patch_y + patch_height)
-                r = self.py_random.randint(1, 3)
-                sat = self.py_random.randint(0, 255)
+                x = sampling.py_random.randint(patch_x, patch_x + patch_width)
+                y = sampling.py_random.randint(patch_y, patch_y + patch_height)
+                r = sampling.py_random.randint(1, 3)
+                sat = sampling.py_random.randint(0, 255)
 
                 gravels_info.append(
                     [
@@ -366,7 +345,7 @@ class RandomGravel(ImageOnlyTransform):
                     ],
                 )
 
-        self.applied_config = {"number_of_patches": self.number_of_patches, "gravel_roi": self.gravel_roi}
+        sampling.applied_overrides.update({"number_of_patches": self.number_of_patches, "gravel_roi": self.gravel_roi})
 
         return {"gravels_infos": np.array(gravels_info, dtype=np.int64)}
 
@@ -507,10 +486,11 @@ class RandomRain(ImageOnlyTransform):
             rain_drops,
         )
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
@@ -528,12 +508,12 @@ class RandomRain(ImageOnlyTransform):
         drop_length = max(1, height // 8) if self.drop_length is None else self.drop_length
 
         # Simplified slant calculation
-        slant = self.py_random.uniform(*self.slant_range)
+        slant = sampling.py_random.uniform(*self.slant_range)
 
         # Single random call for all coordinates
         if num_drops > 0:
             # Generate all coordinates in one call
-            coords = self.random_generator.integers(
+            coords = sampling.random_generator.integers(
                 low=[0, 0],
                 high=[width, height - drop_length],
                 size=(num_drops, 2),
@@ -543,14 +523,16 @@ class RandomRain(ImageOnlyTransform):
         else:
             rain_drops = np.empty((0, 2), dtype=np.int32)
 
-        self.applied_config = {
-            "slant_range": slant,
-            "drop_length": drop_length,
-            "drop_width": self.drop_width,
-            "blur_value": self.blur_value,
-            "brightness_coefficient": self.brightness_coefficient,
-            "drop_color": self.drop_color,
-        }
+        sampling.applied_overrides.update(
+            {
+                "slant_range": slant,
+                "drop_length": drop_length,
+                "drop_width": self.drop_width,
+                "blur_value": self.blur_value,
+                "brightness_coefficient": self.brightness_coefficient,
+                "drop_color": self.drop_color,
+            },
+        )
 
         return {"drop_length": drop_length, "slant": slant, "rain_drops": rain_drops}
 
@@ -664,13 +646,14 @@ class RandomFog(ImageOnlyTransform):
             radiuses,
         )
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         # Select a random fog intensity within the specified range
-        intensity = self.py_random.uniform(*self.fog_coef_range)
+        intensity = sampling.py_random.uniform(*self.fog_coef_range)
 
         image_shape = params["shape"][:2]
 
@@ -703,11 +686,11 @@ class RandomFog(ImageOnlyTransform):
 
             for _ in range(particles_in_region):
                 # Generate random positions within the current region
-                x = self.py_random.randint(
+                x = sampling.py_random.randint(
                     center_x - current_width // 2,
                     center_x + current_width // 2,
                 )
-                y = self.py_random.randint(
+                y = sampling.py_random.randint(
                     center_y - current_height // 2,
                     center_y + current_height // 2,
                 )
@@ -723,10 +706,10 @@ class RandomFog(ImageOnlyTransform):
             image_shape,
             len(particle_positions),
             intensity,
-            self.random_generator,
+            sampling.random_generator,
         )
 
-        self.applied_config = {"fog_coef_range": intensity, "alpha_coef": self.alpha_coef}
+        sampling.applied_overrides.update({"fog_coef_range": intensity, "alpha_coef": self.alpha_coef})
 
         return {
             "particle_positions": particle_positions,
@@ -937,23 +920,24 @@ class RandomSunFlare(ImageOnlyTransform):
 
         raise ValueError(f"Invalid method: {self.method}")
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
         diagonal = math.sqrt(height**2 + width**2)
 
-        angle = 2 * math.pi * self.py_random.uniform(*self.angle_range)
+        angle = 2 * math.pi * sampling.py_random.uniform(*self.angle_range)
 
         # Calculate flare center in pixel coordinates
         x_min, y_min, x_max, y_max = self.flare_roi
-        flare_center_x = int(width * self.py_random.uniform(x_min, x_max))
-        flare_center_y = int(height * self.py_random.uniform(y_min, y_max))
+        flare_center_x = int(width * sampling.py_random.uniform(x_min, x_max))
+        flare_center_y = int(height * sampling.py_random.uniform(y_min, y_max))
 
-        num_circles = self.py_random.randint(*self.num_flare_circles_range)
+        num_circles = sampling.py_random.randint(*self.num_flare_circles_range)
 
         # Calculate parameters relative to image size
         step_size = max(1, int(diagonal * 0.01))  # 1% of diagonal, minimum 1 pixel
@@ -972,12 +956,12 @@ class RandomSunFlare(ImageOnlyTransform):
 
         circles = []
         for _ in range(num_circles):
-            alpha = self.py_random.uniform(0.05, 0.2)
-            point = self.py_random.choice(points)
-            rad = self.py_random.randint(1, max_radius)
+            alpha = sampling.py_random.uniform(0.05, 0.2)
+            point = sampling.py_random.choice(points)
+            rad = sampling.py_random.randint(1, max_radius)
 
             # Generate colors relative to src_color
-            colors = [self.py_random.randint(max(c - color_range, 0), c) for c in self.src_color]
+            colors = [sampling.py_random.randint(max(c - color_range, 0), c) for c in self.src_color]
 
             circles.append(
                 (
@@ -988,12 +972,14 @@ class RandomSunFlare(ImageOnlyTransform):
                 ),
             )
 
-        self.applied_config = {
-            "angle_range": angle / (2 * math.pi),
-            "num_flare_circles_range": num_circles,
-            "src_radius": self.src_radius,
-            "src_color": self.src_color,
-        }
+        sampling.applied_overrides.update(
+            {
+                "angle_range": angle / (2 * math.pi),
+                "num_flare_circles_range": num_circles,
+                "src_radius": self.src_radius,
+                "src_color": self.src_color,
+            },
+        )
 
         return {
             "circles": circles,
@@ -1125,15 +1111,25 @@ class RandomShadow(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.add_shadow(img, vertices_list, intensities)
 
-    def get_params_dependent_on_data(
+    def apply_to_images(
+        self,
+        images: ImageType,
+        vertices_list: list[np.ndarray],
+        intensities: np.ndarray,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.add_shadow_batch(images, vertices_list, intensities)
+
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, list[np.ndarray] | np.ndarray]:
         metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
-        num_shadows = self.py_random.randint(*self.num_shadows_range)
+        num_shadows = sampling.py_random.randint(*self.num_shadows_range)
 
         x_min, y_min, x_max, y_max = self.shadow_roi
 
@@ -1145,12 +1141,12 @@ class RandomShadow(ImageOnlyTransform):
         vertices_list = [
             np.stack(
                 [
-                    self.random_generator.integers(
+                    sampling.random_generator.integers(
                         x_min,
                         x_max,
                         size=self.shadow_dimension,
                     ),
-                    self.random_generator.integers(
+                    sampling.random_generator.integers(
                         y_min,
                         y_max,
                         size=self.shadow_dimension,
@@ -1162,17 +1158,19 @@ class RandomShadow(ImageOnlyTransform):
         ]
 
         # Sample shadow intensity for each shadow
-        intensities = self.random_generator.uniform(
+        intensities = sampling.random_generator.uniform(
             *self.shadow_intensity_range,
             size=num_shadows,
         )
 
-        self.applied_config = {
-            "num_shadows_range": num_shadows,
-            "shadow_dimension": self.shadow_dimension,
-            "shadow_roi": self.shadow_roi,
-            "shadow_intensity_range": (float(intensities.min()), float(intensities.max())),
-        }
+        sampling.applied_overrides.update(
+            {
+                "num_shadows_range": num_shadows,
+                "shadow_dimension": self.shadow_dimension,
+                "shadow_roi": self.shadow_roi,
+                "shadow_intensity_range": (float(intensities.min()), float(intensities.max())),
+            },
+        )
 
         return {"vertices_list": vertices_list, "intensities": intensities}
 
@@ -1376,27 +1374,30 @@ class Spatter(ImageOnlyTransform):
 
         return fpixel.spatter_mud_batch(images, params["non_mud"], params["mud"])
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         metadata = self.get_image_data(data)
         height, width = (metadata["height"], metadata["width"])
 
-        mean = self.py_random.uniform(*self.mean_range)
-        std = self.py_random.uniform(*self.std_range)
-        cutout_threshold = self.py_random.uniform(*self.cutout_threshold_range)
-        sigma = self.py_random.uniform(*self.gauss_sigma_range)
+        mean = sampling.py_random.uniform(*self.mean_range)
+        std = sampling.py_random.uniform(*self.std_range)
+        cutout_threshold = sampling.py_random.uniform(*self.cutout_threshold_range)
+        sigma = sampling.py_random.uniform(*self.gauss_sigma_range)
         mode = self.mode
-        intensity = self.py_random.uniform(*self.intensity_range)
-        color = np.array(self.color) / 255.0
+        intensity = sampling.py_random.uniform(*self.intensity_range)
+        color = np.asarray(self.color, dtype=np.float32) / np.float32(255)
 
-        liquid_layer = self.random_generator.normal(
+        liquid_layer = sampling.random_generator.normal(
             size=(height, width),
             loc=mean,
             scale=std,
         )
+        if mode == "rain":
+            liquid_layer = liquid_layer.astype(np.float32)
         # Convert sigma to kernel size (must be odd)
         ksize = 2 * round(3 * sigma) + 1  # 3 sigma rule, rounded to nearest odd
         cv2.GaussianBlur(
@@ -1411,13 +1412,15 @@ class Spatter(ImageOnlyTransform):
         # Important line, without it the rain effect looses drops
         liquid_layer[liquid_layer < cutout_threshold] = 0
 
-        self.applied_config = {
-            "mean_range": mean,
-            "std_range": std,
-            "cutout_threshold_range": cutout_threshold,
-            "gauss_sigma_range": sigma,
-            "intensity_range": intensity,
-        }
+        sampling.applied_overrides.update(
+            {
+                "mean_range": mean,
+                "std_range": std,
+                "cutout_threshold_range": cutout_threshold,
+                "gauss_sigma_range": sigma,
+                "intensity_range": intensity,
+            },
+        )
 
         if mode == "rain":
             return {
@@ -1433,7 +1436,7 @@ class Spatter(ImageOnlyTransform):
                 cutout_threshold=cutout_threshold,
                 sigma=sigma,
                 intensity=intensity,
-                random_generator=self.random_generator,
+                random_generator=sampling.random_generator,
             ),
         }
 
@@ -1528,13 +1531,14 @@ class AtmosphericFog(ImageOnlyTransform):
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         height, width = params["shape"][:2]
-        density = self.py_random.uniform(*self.density_range)
+        density = sampling.py_random.uniform(*self.density_range)
 
         if self.depth_mode == "linear":
             depth_map = np.linspace(1.0, 0.0, height, dtype=np.float32)[:, np.newaxis]
@@ -1545,11 +1549,11 @@ class AtmosphericFog(ImageOnlyTransform):
             depth_map = (y[:, np.newaxis] + x[np.newaxis, :]) / 2.0
         else:
             cy, cx = height / 2.0, width / 2.0
-            y = np.arange(height, dtype=np.float32)
-            x = np.arange(width, dtype=np.float32)
-            dist = np.sqrt((y[:, np.newaxis] - cy) ** 2 + (x[np.newaxis, :] - cx) ** 2)
-            max_dist = np.sqrt(cy**2 + cx**2)
-            depth_map = (dist / max_dist).astype(np.float32)
+            y = np.arange(height, dtype=np.float32)[:, np.newaxis] - cy
+            x = np.arange(width, dtype=np.float32)[np.newaxis, :] - cx
+            depth_map = x * x + y * y
+            depth_map = albucore.sqrt(depth_map, inplace=True)
+            depth_map *= np.float32(1 / math.hypot(cy, cx))
 
         max_val = albucore.MAX_VALUES_BY_DTYPE[np.uint8]
         image_data = self.get_image_data(data)
@@ -1557,7 +1561,7 @@ class AtmosphericFog(ImageOnlyTransform):
         actual_max = albucore.MAX_VALUES_BY_DTYPE[img_dtype]
         fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)
 
-        self.applied_config = {"density_range": density}
+        sampling.applied_overrides["density_range"] = density
         return {
             "density": density,
             "depth_map": depth_map,

@@ -4,8 +4,11 @@ from typing import Annotated, Any, Literal, TypedDict, cast
 
 from typing_extensions import Self
 
+from albumentations.core.invocation import SamplingContext
+
 from ._color_shared import (
     CV2_INTER_LINEAR,
+    MAX_VALUES_BY_DTYPE,
     AdditiveNoise,
     AfterValidator,
     BaseTransformInitSchema,
@@ -13,7 +16,6 @@ from ._color_shared import (
     FullInterpolationType,
     ImageOnlyTransform,
     ImageType,
-    VolumeType,
     batch_transform,
     check_range_bounds,
     field_validator,
@@ -136,21 +138,28 @@ class ColorJitter(ImageOnlyTransform):
         self.saturation_range = saturation_range
         self.hue_range = hue_range
 
-    def get_params(self) -> dict[str, Any]:
-        brightness = self.py_random.uniform(*self.brightness_range)
-        contrast = self.py_random.uniform(*self.contrast_range)
-        saturation = self.py_random.uniform(*self.saturation_range)
-        hue = self.py_random.uniform(*self.hue_range)
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        brightness = sampling.py_random.uniform(*self.brightness_range)
+        contrast = sampling.py_random.uniform(*self.contrast_range)
+        saturation = sampling.py_random.uniform(*self.saturation_range)
+        hue = sampling.py_random.uniform(*self.hue_range)
 
-        self.applied_config = {
-            "brightness_range": brightness,
-            "contrast_range": contrast,
-            "saturation_range": saturation,
-            "hue_range": hue,
-        }
+        sampling.applied_overrides.update(
+            {
+                "brightness_range": brightness,
+                "contrast_range": contrast,
+                "saturation_range": saturation,
+                "hue_range": hue,
+            },
+        )
 
         order = ["brightness", "contrast", "saturation", "hue"]
-        self.random_generator.shuffle(order)
+        sampling.random_generator.shuffle(order)
 
         # Merge adjacent brightness+contrast into one slot for fused LUT.
         idx_b, idx_c = order.index("brightness"), order.index("contrast")
@@ -180,31 +189,7 @@ class ColorJitter(ImageOnlyTransform):
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "ColorJitter transformation expects 1-channel or 3-channel images."
             raise TypeError(msg)
-
-        for op in order:
-            if op == "brightness_contrast":
-                img = fpixel.apply_brightness_contrast_torchvision(
-                    img,
-                    brightness,
-                    contrast,
-                    brightness_first=True,
-                )
-            elif op == "contrast_brightness":
-                img = fpixel.apply_brightness_contrast_torchvision(
-                    img,
-                    brightness,
-                    contrast,
-                    brightness_first=False,
-                )
-            elif op == "brightness":
-                img = fpixel.adjust_brightness_torchvision(img, brightness)
-            elif op == "contrast":
-                img = fpixel.adjust_contrast_torchvision(img, contrast)
-            elif op == "saturation":
-                img = fpixel.adjust_saturation_torchvision(img, saturation)
-            elif op == "hue":
-                img = fpixel.adjust_hue_torchvision(img, hue)
-        return img
+        return fpixel.apply_color_jitter(img, brightness, contrast, saturation, hue, order)
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
@@ -316,13 +301,18 @@ class ChromaticAberration(ImageOnlyTransform):
             self.interpolation,
         )
 
-    def get_params(self) -> dict[str, float]:
-        primary_distortion_red = self.py_random.uniform(*self.primary_distortion_range)
-        secondary_distortion_red = self.py_random.uniform(
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, float]:
+        primary_distortion_red = sampling.py_random.uniform(*self.primary_distortion_range)
+        secondary_distortion_red = sampling.py_random.uniform(
             *self.secondary_distortion_range,
         )
-        primary_distortion_blue = self.py_random.uniform(*self.primary_distortion_range)
-        secondary_distortion_blue = self.py_random.uniform(
+        primary_distortion_blue = sampling.py_random.uniform(*self.primary_distortion_range)
+        secondary_distortion_blue = sampling.py_random.uniform(
             *self.secondary_distortion_range,
         )
 
@@ -356,10 +346,12 @@ class ChromaticAberration(ImageOnlyTransform):
                 secondary_distortion_blue,
             )
 
-        self.applied_config = {
-            "primary_distortion_range": (primary_distortion_red, primary_distortion_blue),
-            "secondary_distortion_range": (secondary_distortion_red, secondary_distortion_blue),
-        }
+        sampling.applied_overrides.update(
+            {
+                "primary_distortion_range": (primary_distortion_red, primary_distortion_blue),
+                "secondary_distortion_range": (secondary_distortion_red, secondary_distortion_blue),
+            },
+        )
         return {
             "primary_distortion_red": primary_distortion_red,
             "secondary_distortion_red": secondary_distortion_red,
@@ -546,32 +538,33 @@ class PlanckianJitter(ImageOnlyTransform):
         non_rgb_error(images)
         return self.apply(images, temperature, **params)
 
-    def apply_to_volumes(self, volumes: VolumeType, temperature: int, **params: Any) -> VolumeType:
-        non_rgb_error(volumes)
-        return self.apply(volumes, temperature, **params)
-
-    def get_params(self) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         sampling_prob_boundary = PLANKIAN_JITTER_CONST["SAMPLING_TEMP_PROB"]
         sampling_temp_boundary = PLANKIAN_JITTER_CONST["WHITE_TEMP"]
 
         if self.sampling_method == "uniform":
             # Split into 2 cases to avoid selecting cold temperatures (>6000) too often
-            if self.py_random.random() < sampling_prob_boundary:
-                temperature = self.py_random.uniform(
+            if sampling.py_random.random() < sampling_prob_boundary:
+                temperature = sampling.py_random.uniform(
                     self.temperature_range[0],
                     sampling_temp_boundary,
                 )
             else:
-                temperature = self.py_random.uniform(
+                temperature = sampling.py_random.uniform(
                     sampling_temp_boundary,
                     self.temperature_range[1],
                 )
         elif self.sampling_method == "gaussian":
             # Sample values from asymmetric gaussian distribution
-            if self.py_random.random() < sampling_prob_boundary:
+            if sampling.py_random.random() < sampling_prob_boundary:
                 # Left side
                 shift = np.abs(
-                    self.py_random.gauss(
+                    sampling.py_random.gauss(
                         0,
                         np.abs(sampling_temp_boundary - self.temperature_range[0]) / 3,
                     ),
@@ -580,7 +573,7 @@ class PlanckianJitter(ImageOnlyTransform):
             else:
                 # Right side
                 shift = np.abs(
-                    self.py_random.gauss(
+                    sampling.py_random.gauss(
                         0,
                         np.abs(self.temperature_range[1] - sampling_temp_boundary) / 3,
                     ),
@@ -597,12 +590,14 @@ class PlanckianJitter(ImageOnlyTransform):
         )
 
         white_temperature = PLANKIAN_JITTER_CONST["WHITE_TEMP"]
-        self.applied_config = {
-            "temperature_range": (
-                min(int(temperature), white_temperature),
-                max(int(temperature), white_temperature),
-            ),
-        }
+        sampling.applied_overrides.update(
+            {
+                "temperature_range": (
+                    min(int(temperature), white_temperature),
+                    max(int(temperature), white_temperature),
+                ),
+            },
+        )
         return {"temperature": int(temperature)}
 
 
@@ -714,21 +709,29 @@ class RGBShift(AdditiveNoise):
         self.g_shift_range = g_shift_range
         self.b_shift_range = b_shift_range
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
-        result = super().get_params_dependent_on_data(params=params, data=data)
+        metadata = self.get_image_data(data)
+        result = self._sample_noise_map(
+            (metadata["height"], metadata["width"], metadata["num_channels"]),
+            MAX_VALUES_BY_DTYPE[metadata["dtype"]],
+            sampling,
+        )
+        if "volume" in data:
+            result["volume_noise_map"] = result["noise_map"]
 
         # spatial_mode="constant" produces a (C,) noise_map of per-channel shifts already
         # scaled to image dtype (uint8: [-255, 255], float: [-1, 1]). Record them as sampled scalars.
         noise_map = result.get("noise_map")
         if noise_map is not None and noise_map.size >= 3:
             shifts = noise_map.reshape(-1)[:3].tolist()
-            self.applied_config["r_shift_range"] = float(shifts[0])
-            self.applied_config["g_shift_range"] = float(shifts[1])
-            self.applied_config["b_shift_range"] = float(shifts[2])
+            sampling.applied_overrides["r_shift_range"] = float(shifts[0])
+            sampling.applied_overrides["g_shift_range"] = float(shifts[1])
+            sampling.applied_overrides["b_shift_range"] = float(shifts[2])
 
         return result
 
@@ -769,6 +772,12 @@ class HEStain(ImageOnlyTransform):
             sampled independently for hematoxylin and eosin. Default: (-0.2, 0.2).
 
         augment_background (bool): Whether to perturb background pixels along with tissue pixels. Default: False.
+        residual_mode (Literal["project", "preserve", "augment"]): Controls the optical-density component orthogonal
+            to the H&E plane:
+            - `"project"`: Reconstruct from H&E only, retaining the two-stain model from earlier releases.
+            - `"preserve"`: Derive the residual basis vector and keep its concentration unchanged.
+            - `"augment"`: Independently perturb the derived residual along with H&E.
+            Default: `"project"`.
         p (float): Probability of applying the transform. Default: 0.5.
         stain_matrix (np.ndarray | None): Fixed H&E stain basis used when `method="custom"`. The matrix must have
             shape `(2, 3)`: row 0 is the hematoxylin RGB optical-density vector and row 1 is the eosin vector. Both
@@ -785,9 +794,10 @@ class HEStain(ImageOnlyTransform):
         uint8, float32
 
     Note:
-        - Let `M` be the `(2, 3)` stain matrix and `C` the per-pixel stain concentrations. The transform solves
-          `OD ~= C @ M`, samples `scale` and `shift` for each stain, then reconstructs
-          `RGB = exp(-(C * scale + shift) @ M)`.
+        - Let `M` be the `(2, 3)` H&E matrix and `C` the per-pixel concentrations. `"project"` solves
+          `OD ~= C @ M`, perturbs H&E, and reconstructs `RGB = exp(-(C * scale + shift) @ M)`.
+        - `"preserve"` and `"augment"` derive `R = normalize(cross(H, E))`, solve the full H&E+R basis, and either
+          retain or perturb the residual concentration.
         - A custom matrix is fixed for the lifetime of the transform. Per-image callable extraction is not supported.
 
     References:
@@ -795,6 +805,8 @@ class HEStain(ImageOnlyTransform):
             cytology and histology, 2001.
         - M. Macenko et al., "A method for normalizing histology slides for: 2009 IEEE International Symposium on
             quantitative analysis," 2009 IEEE International Symposium on Biomedical Imaging, 2009.
+        - D. Tellez et al., "H&E stain augmentation improves generalization of convolutional networks for
+            histopathological mitosis detection": Medical Imaging, 2018.
 
     Examples:
         >>> import numpy as np
@@ -818,6 +830,7 @@ class HEStain(ImageOnlyTransform):
         >>> transform = A.HEStain(
         ...     method="custom",
         ...     stain_matrix=stain_matrix,
+        ...     residual_mode="augment",
         ...     intensity_scale_range=(0.8, 1.2),
         ...     intensity_shift_range=(-0.1, 0.1),
         ...     p=1.0,
@@ -897,6 +910,7 @@ class HEStain(ImageOnlyTransform):
             AfterValidator(check_range_bounds(-1, 1)),
         ]
         augment_background: bool
+        residual_mode: Literal["project", "preserve", "augment"]
 
         @field_validator("stain_matrix", mode="before")
         @classmethod
@@ -948,6 +962,7 @@ class HEStain(ImageOnlyTransform):
         augment_background: bool = False,
         p: float = 0.5,
         *,
+        residual_mode: Literal["project", "preserve", "augment"] = "project",
         stain_matrix: np.ndarray | None = None,
     ):
         super().__init__(p=p)
@@ -956,6 +971,7 @@ class HEStain(ImageOnlyTransform):
         self.intensity_scale_range = intensity_scale_range
         self.intensity_shift_range = intensity_shift_range
         self.augment_background = augment_background
+        self.residual_mode = residual_mode
         self.stain_matrix = stain_matrix
 
         # Initialize stain extractor here if needed
@@ -982,11 +998,11 @@ class HEStain(ImageOnlyTransform):
             args["stain_matrix"] = args["stain_matrix"].tolist()
         return args
 
-    def _get_stain_matrix(self, img: ImageType) -> np.ndarray:
+    def _get_stain_matrix(self, img: ImageType, sampling: SamplingContext) -> np.ndarray:
         if self.method == "preset" and self.preset is not None:
             return fpixel.STAIN_MATRICES[self.preset]
         if self.method == "random_preset":
-            random_preset = self.py_random.choice(self.preset_names)
+            random_preset = sampling.py_random.choice(self.preset_names)
             return fpixel.STAIN_MATRICES[random_preset]
         if self.method == "custom":
             return cast("np.ndarray", self.stain_matrix)
@@ -1012,17 +1028,19 @@ class HEStain(ImageOnlyTransform):
             scale_factors=scale_factors,
             shift_values=shift_values,
             augment_background=self.augment_background,
+            residual_mode=self.residual_mode,
         )
 
     @batch_transform("channel")
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
         return self.apply(images, **params)
 
-    @batch_transform("channel")
-    def apply_to_volumes(self, volumes: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(volumes, **params)
-
-    def get_params_dependent_on_data(self, params: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
         # Get stain matrix
         if "image" in data:
             image = data["image"]
@@ -1030,26 +1048,43 @@ class HEStain(ImageOnlyTransform):
             image = data["images"][0]
         elif "volume" in data:
             image = data["volume"][0]
-        elif "volumes" in data:
-            image = data["volumes"][0][0]
         else:
-            raise RuntimeError("Expected image, images, volume, or volumes data for stain augmentation")
+            raise RuntimeError("Expected image, images, or volume data for stain augmentation")
 
-        stain_matrix = self._get_stain_matrix(image)
+        stain_matrix = self._get_stain_matrix(image, sampling)
 
         # Generate random scaling and shift parameters for both H&E channels
-        scale_h = self.py_random.uniform(*self.intensity_scale_range)
-        scale_e = self.py_random.uniform(*self.intensity_scale_range)
-        shift_h = self.py_random.uniform(*self.intensity_shift_range)
-        shift_e = self.py_random.uniform(*self.intensity_shift_range)
+        scale_h = sampling.py_random.uniform(*self.intensity_scale_range)
+        scale_e = sampling.py_random.uniform(*self.intensity_scale_range)
+        shift_h = sampling.py_random.uniform(*self.intensity_shift_range)
+        shift_e = sampling.py_random.uniform(*self.intensity_shift_range)
 
-        scale_factors = np.array([scale_h, scale_e])
-        shift_values = np.array([shift_h, shift_e])
+        sampled_scales: tuple[float, ...]
+        sampled_shifts: tuple[float, ...]
+        if self.residual_mode == "preserve":
+            scale_factors = np.array([scale_h, scale_e, 1.0], dtype=np.float32)
+            shift_values = np.array([shift_h, shift_e, 0.0], dtype=np.float32)
+            sampled_scales = (scale_h, scale_e)
+            sampled_shifts = (shift_h, shift_e)
+        elif self.residual_mode == "augment":
+            scale_residual = sampling.py_random.uniform(*self.intensity_scale_range)
+            shift_residual = sampling.py_random.uniform(*self.intensity_shift_range)
+            scale_factors = np.array([scale_h, scale_e, scale_residual], dtype=np.float32)
+            shift_values = np.array([shift_h, shift_e, shift_residual], dtype=np.float32)
+            sampled_scales = (scale_h, scale_e, scale_residual)
+            sampled_shifts = (shift_h, shift_e, shift_residual)
+        else:
+            scale_factors = np.array([scale_h, scale_e])
+            shift_values = np.array([shift_h, shift_e])
+            sampled_scales = (scale_h, scale_e)
+            sampled_shifts = (shift_h, shift_e)
 
-        self.applied_config = {
-            "intensity_scale_range": (min(scale_h, scale_e), max(scale_h, scale_e)),
-            "intensity_shift_range": (min(shift_h, shift_e), max(shift_h, shift_e)),
-        }
+        sampling.applied_overrides.update(
+            {
+                "intensity_scale_range": (min(sampled_scales), max(sampled_scales)),
+                "intensity_shift_range": (min(sampled_shifts), max(sampled_shifts)),
+            },
+        )
 
         return {
             "stain_matrix": stain_matrix,
@@ -1179,30 +1214,33 @@ class PhotoMetricDistort(ImageOnlyTransform):
         self.hue_range = hue_range
         self.distort_p = distort_p
 
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         shape = params["shape"]
         num_channels = 1 if len(shape) == 2 else shape[-1]
 
         brightness_factor = (
-            self.py_random.uniform(*self.brightness_range) if self.py_random.random() < self.distort_p else None
+            sampling.py_random.uniform(*self.brightness_range) if sampling.py_random.random() < self.distort_p else None
         )
         contrast_factor = (
-            self.py_random.uniform(*self.contrast_range) if self.py_random.random() < self.distort_p else None
+            sampling.py_random.uniform(*self.contrast_range) if sampling.py_random.random() < self.distort_p else None
         )
         saturation_factor = (
-            self.py_random.uniform(*self.saturation_range) if self.py_random.random() < self.distort_p else None
+            sampling.py_random.uniform(*self.saturation_range) if sampling.py_random.random() < self.distort_p else None
         )
-        hue_factor = self.py_random.uniform(*self.hue_range) if self.py_random.random() < self.distort_p else None
+        hue_factor = (
+            sampling.py_random.uniform(*self.hue_range) if sampling.py_random.random() < self.distort_p else None
+        )
         # contrast_before controls where contrast sits relative to sat/hue; brightness always precedes contrast
-        contrast_before = self.py_random.random() < 0.5
+        contrast_before = sampling.py_random.random() < 0.5
 
-        if self.py_random.random() < self.distort_p and num_channels > 1:
+        if sampling.py_random.random() < self.distort_p and num_channels > 1:
             ch_arr = list(range(num_channels))
-            self.py_random.shuffle(ch_arr)
+            sampling.py_random.shuffle(ch_arr)
             channel_permutation: list[int] | None = ch_arr
         else:
             channel_permutation = None
@@ -1216,7 +1254,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
             applied["saturation_range"] = saturation_factor
         if hue_factor is not None:
             applied["hue_range"] = hue_factor
-        self.applied_config = applied
+        sampling.applied_overrides.update(applied)
 
         return {
             "brightness_factor": brightness_factor,
@@ -1226,25 +1264,6 @@ class PhotoMetricDistort(ImageOnlyTransform):
             "contrast_before": contrast_before,
             "channel_permutation": channel_permutation,
         }
-
-    def _apply_brightness_contrast_before(
-        self,
-        img: ImageType,
-        brightness_factor: float | None,
-        contrast_factor: float | None,
-    ) -> ImageType:
-        if brightness_factor is not None and contrast_factor is not None:
-            return fpixel.apply_brightness_contrast_torchvision(
-                img,
-                brightness_factor,
-                contrast_factor,
-                brightness_first=True,
-            )
-        if brightness_factor is not None:
-            return fpixel.adjust_brightness_torchvision(img, brightness_factor)
-        if contrast_factor is not None:
-            return fpixel.adjust_contrast_torchvision(img, contrast_factor)
-        return img
 
     def apply(
         self,
@@ -1260,27 +1279,15 @@ class PhotoMetricDistort(ImageOnlyTransform):
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "PhotoMetricDistort expects 1-channel or 3-channel images."
             raise TypeError(msg)
-
-        if contrast_before:
-            img = self._apply_brightness_contrast_before(
-                img,
-                brightness_factor,
-                contrast_factor,
-            )
-        elif brightness_factor is not None:
-            img = fpixel.adjust_brightness_torchvision(img, brightness_factor)
-
-        if saturation_factor is not None:
-            img = fpixel.adjust_saturation_torchvision(img, saturation_factor)
-        if hue_factor is not None:
-            img = fpixel.adjust_hue_torchvision(img, hue_factor)
-
-        if not contrast_before and contrast_factor is not None:
-            img = fpixel.adjust_contrast_torchvision(img, contrast_factor)
-
-        if channel_permutation is not None:
-            img = fpixel.channel_shuffle(img, channel_permutation)
-        return img
+        return fpixel.apply_photometric_distort(
+            img,
+            brightness_factor,
+            contrast_factor,
+            saturation_factor,
+            hue_factor,
+            contrast_before,
+            channel_permutation,
+        )
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))

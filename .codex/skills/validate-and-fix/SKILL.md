@@ -5,17 +5,38 @@ description: After completing code changes, runs tests and pre-commit, then iter
 
 # Validate and Fix
 
+## Necessity Rule
+
+Every code path, test, and CI job must justify itself with a specific decision it protects and a failure it can expose.
+Do not add or run work because an adjacent file changed, because a broad command is convenient, or because a check ran in a
+previous pull request. Remove duplicate coverage instead of accumulating it.
+
+For validation, state the changed contract and select the smallest command set that can falsify it. Add a broader suite only
+when the changed contract can affect its route. A version-only release uses the release preflight; a dependency or packaging
+change beyond the version uses the corresponding dependency, artifact, and install checks.
+
 ## Workflow
 
-1. **Run tests**: `uv run pytest -m "not slow"`
-2. **Run the canonical quality gate**: `uv run python -m tools.quality_gate fast`
-3. **Run pre-commit**: `pre-commit run --all-files`
-4. **If any command fails**: Fix the issues, then repeat from step 1. Do not stop until all pass.
+1. **Name the decision and failure mode**: identify the changed contract and the smallest test, check, or artifact that can
+   reject it.
+2. **Run that focused validation**: use the matching test or quality-gate subcommand.
+3. **Add only required adjacent checks**: code that can affect multiple routes, a workflow/router change, or a release protocol
+   may require a broader command. Record why.
+4. **If a selected command fails**: fix the issue, then repeat that command. Do not expand the validation scope unless the
+   failure proves that the initial scope was incomplete.
+
+For transform or guidance changes, the focused mechanical check is
+`pre-commit run check-ax-coding-guidance --all-files`. Keep deterministic contract details in
+`docs/contributing/coding_guidelines.md`; keep design and benchmark review in the applicable skill.
+
+Before handoff, check `git status --short`. `pre-commit run --all-files` omits untracked files, so run `pre-commit`
+with `--files` for each new file until it is staged or tracked. When a change relies on type narrowing, run and report
+both mypy and Pyrefly.
 
 ## Rules
 
 - Iterate until clean. Do not report errors and stop—fix them.
-- Exclude slow tests during iteration; run full suite once at the end if desired: `uv run pytest`
+- Do not run the full suite merely by habit. Run it when the changed contract, release protocol, or a focused failure requires it.
 - For CI, workflow, support-policy, or dependency-profile changes, also run:
   - `uv run python -m tools.ci_matrix check`
   - `uv run python -m tools.ci_shard check`

@@ -54,7 +54,6 @@ CONTRACT_CHECKS = (
         ("pre-commit", "run", "--all-files"),
         environment=(("SKIP", "mypy,pyrefly-check,ruff,ruff-format"),),
     ),
-    CommandSpec(("python", "-m", "tools.check_defaults")),
 )
 SMOKE_CHECKS = (CommandSpec(("pytest", "-q", "tests/test_core.py::test_compose")),)
 

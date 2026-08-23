@@ -9,11 +9,12 @@ from typing import Any, ClassVar
 from pydantic import field_validator
 
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType, VolumeType
+from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "ChannelShuffle",
@@ -120,20 +121,11 @@ class ChannelShuffle(ImageOnlyTransform):
             return images
         return fpixel.volume_channel_shuffle(images, channels_shuffled)
 
-    def apply_to_volumes(
-        self,
-        volumes: VolumeType,
-        channels_shuffled: list[int] | None,
-        **params: Any,
-    ) -> VolumeType:
-        if channels_shuffled is None:
-            return volumes
-        return fpixel.volumes_channel_shuffle(volumes, channels_shuffled)
-
-    def get_params_dependent_on_data(
+    def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        sampling: SamplingContext,
     ) -> dict[str, Any]:
         shape = params["shape"]
         num_channels = 1 if len(shape) == 2 else shape[-1]
@@ -154,7 +146,7 @@ class ChannelShuffle(ImageOnlyTransform):
             return {"channels_shuffled": None}
 
         ch_arr = list(range(num_channels))
-        self.py_random.shuffle(ch_arr)
+        sampling.py_random.shuffle(ch_arr)
         return {"channels_shuffled": ch_arr}
 
 

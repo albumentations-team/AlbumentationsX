@@ -723,7 +723,8 @@ def test_obb_rot90_updates_corners():
     exp_cy = 1 - cx
     exp_w = h
     exp_h = w
-    exp_angle = angle + 90.0
+    # The local axes exchange under a quarter turn, so the canonical width-edge angle is unchanged.
+    exp_angle = angle
 
     expected = np.column_stack(
         [
@@ -1142,7 +1143,7 @@ def test_bbox_processor_roundtrip(bbox_format, bboxes, labels):
     processed_data = processor.postprocess(data)
 
     # Check that the original bboxes and labels are recovered
-    assert np.allclose(processed_data["bboxes"], bboxes, atol=1e-6)
+    np.testing.assert_allclose(processed_data["bboxes"], bboxes, atol=1e-6, rtol=1e-5, equal_nan=False)
     assert processed_data["labels"] == labels
 
 
@@ -1174,7 +1175,7 @@ def test_bbox_processor_roundtrip_multiple_labels(bbox_format, bboxes, labels1, 
     processed_data = processor.postprocess(data)
 
     # Check that the original bboxes and labels are recovered
-    assert np.allclose(processed_data["bboxes"], bboxes, atol=1e-6)
+    np.testing.assert_allclose(processed_data["bboxes"], bboxes, atol=1e-6, rtol=1e-5, equal_nan=False)
     assert processed_data["labels1"] == labels1
     assert processed_data["labels2"] == labels2
 
@@ -1208,8 +1209,8 @@ def test_compose_with_bbox_noop(
     else:
         aug = Compose([NoOp(p=1.0)], bbox_params={"coord_format": bbox_format}, strict=True)
         transformed = aug(image=image, bboxes=bboxes)
-    assert np.array_equal(transformed["image"], image)
-    assert np.all(np.isclose(transformed["bboxes"], bboxes))
+    np.testing.assert_array_equal(transformed["image"], image)
+    np.testing.assert_allclose(transformed["bboxes"], bboxes, rtol=1e-5, atol=1e-8, equal_nan=False)
 
 
 @pytest.mark.parametrize(
@@ -1245,12 +1246,12 @@ def test_compose_with_bbox_noop_label_outside(
         strict=True,
     )
     transformed = aug(image=image, bboxes=bboxes, **labels)
-    assert np.array_equal(transformed["image"], image)
+    np.testing.assert_array_equal(transformed["image"], image)
     # Handle comparison when input is empty list vs output is empty array with shape
     if len(bboxes) == 0:
         assert len(transformed["bboxes"]) == 0
     else:
-        assert np.allclose(transformed["bboxes"], bboxes)
+        np.testing.assert_allclose(transformed["bboxes"], bboxes, rtol=1e-5, atol=1e-8, equal_nan=False)
     for k, v in labels.items():
         assert transformed[k] == v
 
@@ -1621,7 +1622,7 @@ def test_bboxes_vflip_inplace():
     original_bboxes = bboxes.copy()
     flipped_bboxes = fgeometric.bboxes_vflip(bboxes, bbox_type="hbb")
     assert not np.array_equal(flipped_bboxes, original_bboxes)
-    assert np.array_equal(bboxes, original_bboxes)
+    np.testing.assert_array_equal(bboxes, original_bboxes)
 
 
 @pytest.mark.parametrize(
@@ -1665,7 +1666,7 @@ def test_bboxes_hflip_inplace():
     original_bboxes = bboxes.copy()
     flipped_bboxes = fgeometric.bboxes_hflip(bboxes, bbox_type="hbb")
     assert not np.array_equal(flipped_bboxes, original_bboxes)
-    assert np.array_equal(bboxes, original_bboxes)  # Original array should not be modified
+    np.testing.assert_array_equal(bboxes, original_bboxes)  # Original array should not be modified
 
 
 def test_bboxes_hflip_symmetry():
@@ -1746,10 +1747,16 @@ def test_bboxes_rot90():
 
 def test_bboxes_transpose():
     bboxes = np.array([[0.7, 0.1, 0.8, 0.4]])
-    assert np.allclose(fgeometric.bboxes_transpose(bboxes, bbox_type="hbb"), (0.1, 0.7, 0.4, 0.8))
+    np.testing.assert_allclose(
+        fgeometric.bboxes_transpose(bboxes, bbox_type="hbb"),
+        [(0.1, 0.7, 0.4, 0.8)],
+        rtol=1e-5,
+        atol=1e-8,
+        equal_nan=False,
+    )
     rot90 = fgeometric.bboxes_rot90(bboxes, "r180", bbox_type="hbb")
     reflected_anti_diagonal = fgeometric.bboxes_transpose(rot90, bbox_type="hbb")
-    assert np.allclose(reflected_anti_diagonal, (0.6, 0.2, 0.9, 0.3))
+    np.testing.assert_allclose(reflected_anti_diagonal, [(0.6, 0.2, 0.9, 0.3)], rtol=1e-5, atol=1e-8, equal_nan=False)
 
 
 @pytest.mark.parametrize(
@@ -2145,7 +2152,7 @@ def test_bboxes_grid_shuffle_with_extra_fields():
     result = fgeometric.bboxes_grid_shuffle(bboxes, tiles, mapping, image_shape, None, None, bbox_type="hbb")
 
     assert result.shape[1] == 6  # Should preserve extra fields
-    assert np.all(result[:, 4:] == [1, 0.9])  # Extra fields should remain unchanged
+    np.testing.assert_array_equal(result[:, 4:], np.broadcast_to([1, 0.9], result[:, 4:].shape))
 
 
 def test_bboxes_grid_shuffle_empty_input():
@@ -2325,7 +2332,7 @@ def test_mask_to_bboxes(test_case):
 
     # Check extra fields preservation
     if original_bboxes.shape[1] > 4:
-        assert np.all(result[:, 4:] == original_bboxes[:, 4:])
+        np.testing.assert_array_equal(result[:, 4:], original_bboxes[:, 4:])
 
 
 @pytest.mark.parametrize(
@@ -3153,6 +3160,65 @@ def test_clip_bboxes_geometry_hbb():
     )
 
     np.testing.assert_array_almost_equal(result, expected, decimal=5)
+
+
+def test_clip_bboxes_geometry_hbb_preserves_float32_dtype_and_input() -> None:
+    """The internal HBB clipping path must not promote or mutate caller-owned boxes."""
+    from albumentations.core.bbox_utils import clip_bboxes_geometry
+
+    bboxes = np.array([[-0.2, 0.1, 1.2, 0.9, 137.0]], dtype=np.float32)
+    original = bboxes.copy()
+
+    result = clip_bboxes_geometry(bboxes, (100, 100), "hbb")
+
+    assert result.dtype == np.float32
+    np.testing.assert_array_equal(bboxes, original)
+    np.testing.assert_array_equal(result, np.array([[0.0, 0.1, 1.0, 0.9, 137.0]], dtype=np.float32))
+
+
+def test_compose_input_clipping_does_not_mutate_albumentations_boxes() -> None:
+    """Input clipping owns its working copy even when the source format is already canonical."""
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    bboxes = np.array([[-0.2, 0.1, 1.2, 0.9]], dtype=np.float32)
+    original = bboxes.copy()
+    transform = A.Compose(
+        [A.NoOp(p=1.0)],
+        bbox_params=A.BboxParams("albumentations", clip_bboxes_on_input=True),
+    )
+
+    result = transform(image=image, bboxes=bboxes)
+
+    np.testing.assert_array_equal(bboxes, original)
+    np.testing.assert_array_equal(result["bboxes"], np.array([[0.0, 0.1, 1.0, 0.9]], dtype=np.float32))
+
+
+def test_check_each_transform_does_not_repeat_the_final_bbox_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The last per-node filter is also the final filter for an unchanged root boundary."""
+    calls = 0
+    original_filter = BboxProcessor.filter_with_keep_mask
+
+    def count_filter(
+        processor: BboxProcessor,
+        data: np.ndarray,
+        shape: tuple[int, int] | tuple[int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        nonlocal calls
+        calls += 1
+        return original_filter(processor, data, shape)
+
+    monkeypatch.setattr(BboxProcessor, "filter_with_keep_mask", count_filter)
+    transform = A.Compose(
+        [A.NoOp(p=1.0)],
+        bbox_params=A.BboxParams("pascal_voc", check_each_transform=True),
+    )
+
+    result = transform(
+        image=np.zeros((100, 100, 3), dtype=np.uint8),
+        bboxes=np.array([[10, 10, 30, 30]], dtype=np.float32),
+    )
+
+    assert calls == 1
+    np.testing.assert_allclose(result["bboxes"], np.array([[10, 10, 30, 30]], dtype=np.float32))
 
 
 def test_clip_bboxes_geometry_obb_no_clipping():

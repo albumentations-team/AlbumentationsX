@@ -27,8 +27,8 @@ composition/tensor route, or a deliberate golden compatibility contract.
 - Transform class and family: image-only, dual 2D, 3D, mixing/reference-data,
   or composition helper.
 - Target support: image, images, mask, masks, bboxes, keypoints, volume,
-  volumes, mask3d, masks3d, and additional targets.
-- Shape contract: Compose-routed images and volumes are channel-last with an
+  mask3d, and additional targets.
+- Shape contract: Compose-routed images and volume data are channel-last with an
   explicit channel dimension.
 - Dtype contract: outputs preserve documented dtype semantics for the tested
   target.
@@ -41,6 +41,21 @@ composition/tensor route, or a deliberate golden compatibility contract.
   bounds after Compose filtering.
 - Serialization contract: supported transforms round-trip through
   serialization and replay checks.
+
+## 3D Orientation Label Mappings
+
+An orientation-reversing `Transform3D` may emit a transform-name event that activates configured semantic mappings.
+The augmented output must match a manual annotation of the transformed volume:
+
+- `mask3d` and every target aliased to `mask3d` receive the spatial transform, then a simultaneous semantic-label
+  mapping. A swap such as `2: 3, 3: 2` uses the source mask for both assignments.
+- `KeypointParams.label_mapping` remaps configured keypoint label fields in the row that already holds the coordinate
+  transformed by `Transform3D`. It never moves coordinate rows to express a label mapping.
+- Semantic-label remapping does not add, remove, or reorder instance rows. When `instance_binding` is active, masks,
+  bounding boxes, and keypoint groups retain their positional alignment.
+
+`semantic_mask_label_mappings` and `KeypointParams.label_mapping` are independent configuration surfaces. A transform
+event activates each mapping only when the caller configured it for that target type.
 
 ## Stability Modes
 

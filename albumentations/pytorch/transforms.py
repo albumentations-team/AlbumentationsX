@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from albumentations.core.transforms_interface import BasicTransform
+from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform
 from albumentations.core.type_definitions import (
     MONO_CHANNEL_DIMENSIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
@@ -25,10 +25,12 @@ from albumentations.core.type_definitions import (
 __all__ = ["ToTensor3D", "ToTensorV2"]
 
 
-class _TensorTransform(BasicTransform):
+class BaseTensorTransform(BasicTransform):
     """Bridge for tensor-producing terminal transforms that keep public methods typed as torch.Tensor while isolating
     the core array-return contract.
     """
+
+    _is_tensor_terminal = True
 
     def apply(self, img: ImageType, *args: Any, **params: Any) -> Any:
         raise NotImplementedError
@@ -40,7 +42,7 @@ class _TensorTransform(BasicTransform):
         raise NotImplementedError
 
 
-class ToTensorV2(_TensorTransform):
+class ToTensorV2(BaseTensorTransform):
     """Converts images/masks to PyTorch Tensors, inheriting from BasicTransform.
     For images:
         Converts `HWC` format to PyTorch `CHW` format
@@ -53,9 +55,15 @@ class ToTensorV2(_TensorTransform):
     Targets:
         image, mask
 
+    Examples:
+        >>> transform = ToTensorV2(transpose_mask=True)
+
     """
 
     _targets = (Targets.IMAGE, Targets.MASK)
+
+    class InitSchema(BaseTransformInitSchema):
+        transpose_mask: bool
 
     def __init__(self, transpose_mask: bool = False, p: float = 1.0):
         super().__init__(p=p)
@@ -103,14 +111,14 @@ class ToTensorV2(_TensorTransform):
         return torch.from_numpy(np.ascontiguousarray(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
 
 
-class ToTensor3D(_TensorTransform):
-    """Convert 3D volumes and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
+class ToTensor3D(BaseTensorTransform):
+    """Convert 3D volume data and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
     For 3D medical imaging pipelines; p=1.0 by default.
 
     This transform is designed for 3D medical imaging data. It converts numpy arrays
     to PyTorch tensors and ensures consistent channel positioning.
 
-    For all inputs (volumes and masks):
+    For all inputs (volume data and masks):
         - Input:  (D, H, W, C) or (D, H, W) - depth, height, width, [channels]
         - Output: (C, D, H, W) - channels first format for PyTorch
                  For single-channel input, adds C=1 dimension
@@ -125,6 +133,9 @@ class ToTensor3D(_TensorTransform):
 
     Targets:
         volume, mask3d
+
+    Examples:
+        >>> transform = ToTensor3D(p=1.0)
 
     """
 
@@ -152,7 +163,7 @@ class ToTensor3D(_TensorTransform):
             return torch.from_numpy(np.ascontiguousarray(volume.transpose(3, 0, 1, 2)))
         if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:  # D,H,W
             return torch.from_numpy(np.ascontiguousarray(volume[np.newaxis, ...]))
-        raise ValueError(f"Expected 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
+        raise TypeError(f"volume must be 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
         return self.apply_to_volume(mask3d, **params)

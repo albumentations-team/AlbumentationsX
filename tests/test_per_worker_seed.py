@@ -379,6 +379,8 @@ def test_derive_effective_seed():
 def test_unpickled_compose_resets_runtime_context():
     """Pickled Compose objects should re-sync against the worker context after unpickling."""
     transform = A.Compose([A.HorizontalFlip(p=0.5)], seed=137)
+    trace_result = transform.run_with_trace(image=np.zeros((10, 10, 3), dtype=np.uint8))
+    assert trace_result.records
     transform._rng_context = _RuntimeRngContext(worker_seed=138, effective_seed=275)
 
     restored = pickle.loads(pickle.dumps(transform))  # noqa: S301 - controlled round-trip in a test
@@ -405,7 +407,7 @@ def test_manual_compose_random_state_disables_worker_sync(monkeypatch):
     transform.set_random_state(np.random.default_rng(138), random.Random(139))
     original_random_generator = transform.random_generator
     monkeypatch.setattr(
-        "albumentations.core.composition._get_runtime_rng_context",
+        "albumentations.core.invocation._get_runtime_rng_context",
         lambda _base_seed: _RuntimeRngContext(worker_seed=140, effective_seed=277),
     )
 
@@ -414,8 +416,8 @@ def test_manual_compose_random_state_disables_worker_sync(monkeypatch):
     assert transform.random_generator is original_random_generator
 
 
-def test_child_transform_preserves_parent_seeded_runtime_context(monkeypatch):
-    """Child transforms should keep the parent Compose effective seed in the same worker."""
+def test_worker_seed_reservation_lives_only_at_compose_root(monkeypatch):
+    """A Compose worker stream is created at the root without materializing a child owner."""
 
     def runtime_context(base_seed: int | None) -> _RuntimeRngContext:
         effective_seed = _derive_effective_seed(base_seed, 140)
@@ -425,19 +427,29 @@ def test_child_transform_preserves_parent_seeded_runtime_context(monkeypatch):
             effective_seed=effective_seed,
         )
 
-    monkeypatch.setattr("albumentations.core.composition._get_runtime_rng_context", runtime_context)
-    monkeypatch.setattr("albumentations.core.transforms_interface._get_runtime_rng_context", runtime_context)
-    transform = A.Compose([A.HorizontalFlip(p=1.0)], seed=137)
-    expected_context = _RuntimeRngContext(worker_seed=140, effective_seed=277)
+    monkeypatch.setattr("albumentations.core.invocation._get_runtime_rng_context", runtime_context)
+    transform = A.Compose([A.HorizontalFlip(p=0.5)], seed=137)
+    expected_root_context = _RuntimeRngContext(worker_seed=140, effective_seed=277)
 
-    transform._sync_runtime_random_state()
+    transform(image=np.zeros((8, 8, 3), dtype=np.uint8))
     child_transform = transform.transforms[0]
 
-    assert child_transform._rng_context == expected_context
+    assert transform._rng_context == expected_root_context
+    assert not child_transform._rng_initialized
 
-    child_transform._sync_runtime_random_state()
 
-    assert child_transform._rng_context == expected_context
+def test_compose_eagerly_prepares_only_its_root_rng_owner():
+    """Pipeline construction pays root setup once while leaves stay dormant until direct use."""
+    transform = A.Compose([A.HorizontalFlip(p=0.5)], seed=137)
+    child_transform = transform.transforms[0]
+
+    assert transform._rng_initialized
+    assert not child_transform._rng_initialized
+
+    transform(image=np.zeros((8, 8, 3), dtype=np.uint8))
+
+    assert transform._rng_initialized
+    assert not child_transform._rng_initialized
 
 
 def test_manual_basic_transform_random_state_disables_worker_sync(monkeypatch):
@@ -446,7 +458,7 @@ def test_manual_basic_transform_random_state_disables_worker_sync(monkeypatch):
     transform.set_random_state(np.random.default_rng(138), random.Random(139))
     original_random_generator = transform.random_generator
     monkeypatch.setattr(
-        "albumentations.core.transforms_interface._get_runtime_rng_context",
+        "albumentations.core.invocation._get_runtime_rng_context",
         lambda _base_seed: _RuntimeRngContext(worker_seed=140, effective_seed=140),
     )
 
@@ -566,6 +578,29 @@ def test_multiple_compose_instances():
     result2 = transform2(image=img.copy())
 
     np.testing.assert_array_equal(result1["image"], result2["image"])
+
+
+def test_explicit_invocation_seed_is_sample_keyed_and_does_not_advance_the_worker_stream():
+    image = np.full((32, 32, 3), 137, dtype=np.uint8)
+
+    def make_compose() -> A.Compose:
+        return A.Compose(
+            [A.RandomBrightnessContrast(brightness_range=(-0.3, 0.3), contrast_range=(-0.3, 0.3), p=1.0)],
+            seed=137,
+        )
+
+    expected_stream = make_compose()
+    expected_first = expected_stream(image=image)["image"]
+
+    compose = make_compose()
+    first_explicit = compose(image=image, invocation_seed=1_000_001)["image"]
+    second_explicit = compose(image=image, invocation_seed=1_000_001)["image"]
+    different_explicit = compose(image=image, invocation_seed=1_000_002)["image"]
+    first_worker_stream = compose(image=image)["image"]
+
+    np.testing.assert_array_equal(first_explicit, second_explicit)
+    assert not np.array_equal(first_explicit, different_explicit)
+    np.testing.assert_array_equal(first_worker_stream, expected_first)
 
 
 def worker_process_simulation(worker_id: int, base_seed: int, num_iterations: int) -> list[bool]:

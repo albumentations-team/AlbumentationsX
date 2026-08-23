@@ -40,7 +40,7 @@ requires an update to this document and the matrix validator.
 | --- | --- | --- |
 | `locked-latest` | Tests the repository lockfile and normal contributor environment. | Selected PR gates and full nightly/release |
 | `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | Nightly and release gate |
-| `optional-extras` | Smoke-tests extras such as `pillow`, `pytorch`, `text`, `hub`, and OpenCV variants. | Advisory until stable |
+| `optional-extras` | Smoke-tests extras such as `pillow`, `text`, `hub`, and OpenCV variants. | Advisory until stable |
 | `pre-release-probe` | Probes future Python or dependency releases when wheels are available. | Scheduled advisory |
 
 Lower-bound failures block a release unless the support policy, dependency
@@ -57,8 +57,12 @@ are outside normal Linux CI unless a workflow has a real GUI reason.
 ## Optional Extras
 
 The `headless` extra is the default runtime path. The `contrib-headless`,
-`pillow`, `pytorch`, `text`, and `hub` extras get targeted import or small
-functional smoke tests. The `pyvips` extra is scheduled-only when binary
+`pillow`, `text`, and `hub` extras get targeted import or small functional
+smoke tests. Torch is a soft-required runtime dependency: the base install does
+not select a CPU, CUDA, or MPS build, while importing `albumentations` requires
+an installed Torch runtime. CI jobs that import AlbumentationsX explicitly
+select the CPU-only profile; link-only static, packaging, audit, and
+static-documentation jobs do not select Torch. The `pyvips` extra is scheduled-only when binary
 availability is stable.
 
 ## Retiring Support

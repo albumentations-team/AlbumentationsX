@@ -62,6 +62,7 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
         ),
         frozenset(
             {
+                "PeakMemory",
                 "TimeFunctionalBlurKernels",
                 "TimeFunctionalPixelKernels",
                 "TimeBatch",

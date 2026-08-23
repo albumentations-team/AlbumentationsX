@@ -110,6 +110,7 @@ def test_image_only_augmentations(augmentation_cls, params):
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -138,6 +139,7 @@ def test_dual_augmentations(augmentation_cls, params):
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -165,6 +167,7 @@ def test_dual_augmentations_with_float_values(augmentation_cls, params):
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -211,6 +214,7 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
             A.CropNonEmptyMaskIfExists,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -276,6 +280,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
             A.Pad,
             A.Mosaic,
             A.MaskDropout,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -408,6 +413,7 @@ def test_mask_fill_value(augmentation_cls, params):
             A.Equalize,
             A.GridElasticDeform,
             A.HEStain,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -486,6 +492,7 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
             A.RandomFog,
             A.GridElasticDeform,
             A.HEStain,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -563,6 +570,7 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
             A.Equalize,
             A.GridElasticDeform,
             A.HEStain,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -647,6 +655,7 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
             A.RandomFog,
             A.GridElasticDeform,
             A.HEStain,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -932,6 +941,7 @@ def test_pad_if_needed_position(params, image_shape):
             A.Mosaic,
             A.Dithering,  # Error diffusion is sensitive to floating-point precision
             A.RandomSnow,  # OpenCV HLS/HSV quantization differences
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )

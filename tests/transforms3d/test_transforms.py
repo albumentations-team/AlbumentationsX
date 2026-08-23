@@ -655,6 +655,7 @@ def _get_slice_wise_2d_transform_params():
                 A.HistogramMatching,
                 A.RandomCropNearBBox,
                 A.Mosaic,
+                A.BBoxSubsetSafeRandomCrop,
             },
         )
         if getattr(augmentation_cls(**params, p=1), "_volume_sampling_is_slice_wise", True)
@@ -732,6 +733,7 @@ def test_image_transforms_matching(image, augmentation_cls, params):
             A.RandomSizedBBoxSafeCrop,
             A.ConstrainedCoarseDropout,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )

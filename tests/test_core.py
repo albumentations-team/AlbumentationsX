@@ -766,6 +766,7 @@ def test_single_transform_compose(
             A.Mosaic,
             A.MaskDropout,
             A.ConstrainedCoarseDropout,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -814,6 +815,7 @@ NON_CONTIGUOUS_VOLUMETRIC_CASES = get_primary_dual_transform_params(
         A.MaskDropout,
         A.ConstrainedCoarseDropout,
         A.PixelDropout,
+        A.BBoxSubsetSafeRandomCrop,
     },
 )
 
@@ -1171,6 +1173,7 @@ def test_compose_additional_targets_in_available_keys() -> None:
             A.FDA,
             A.HistogramMatching,
             A.PixelDistributionAdaptation,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1264,7 +1267,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
 
         data["cropping_bbox"] = bboxes[0]
-    elif augmentation_cls in [A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop]:
+    elif augmentation_cls in [A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop, A.BBoxSubsetSafeRandomCrop]:
         # requires "bboxes" arg
         aug = A.Compose(
             [augmentation_cls(p=1, **params)],
@@ -1333,6 +1336,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
             A.RandomCropNearBBox,
             A.PadIfNeeded,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1402,6 +1406,7 @@ def test_masks_as_target(augmentation_cls, params, masks):
             A.TimeReverse,
             A.TimeMasking,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1926,6 +1931,7 @@ def test_transform_strict_with_valid_params():
             A.Morphological,
             A.AtLeastOneBBoxRandomCrop,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )

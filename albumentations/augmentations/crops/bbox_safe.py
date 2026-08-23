@@ -8,13 +8,17 @@ from ._transforms_shared import (
     ALL_TARGETS,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
+    AfterValidator,
     BaseTransformInitSchema,
     Field,
     FullInterpolationType,
     ImageType,
+    check_range_bounds,
     denormalize_bboxes,
     fcrops,
     fgeometric,
+    math,
+    nondecreasing,
     np,
     union_of_bboxes,
 )
@@ -396,6 +400,196 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
         return fgeometric.keypoints_scale(keypoints, scale_x=scale_x, scale_y=scale_y)
 
 
+class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
+    """Random crop around the union of a randomly sampled subset of bboxes, for use when
+    preserving every box is unnecessary and a variable-size crop is preferable.
+
+    Unlike BBoxSafeRandomCrop, which guarantees every bbox survives the crop, this transform
+    samples a random subset of the available bboxes (sized between subset_fraction_range[0] and
+    subset_fraction_range[1] of the total count), computes the union of only that subset, and
+    crops around it. Bboxes outside the sampled subset may remain complete, be clipped, or be
+    removed entirely depending on where they fall relative to the crop.
+
+    This makes BBoxSubsetSafeRandomCrop useful for:
+    - Dense-detection datasets with many overlapping/nearby objects,
+      where forcing every box into one crop would be too restrictive
+    - Training pipelines that benefit from varied, object-focused crops without a fixed output size
+
+    The algorithm:
+    1. If no bboxes exist, follows BBoxSafeRandomCrop's erosion-based random crop behavior.
+    2. Otherwise, samples one count and one unique subset of bboxes.
+    3. Computes their eroded union, then directly samples integer crop dimensions and position
+       that contain it and satisfy the requested aspect-ratio range.
+    4. If no such crop exists, returns the full image to preserve the selected subset.
+
+    Args:
+        subset_fraction_range (tuple[float, float]): Fraction of bboxes to select for the union,
+            as (min_fraction, max_fraction). Must satisfy 0 < min_fraction <= max_fraction <= 1.
+            A value of (1.0, 1.0) always selects every bbox. Defaults to (0.5, 1.0).
+        erosion_rate (float): Controls how much the valid crop region can deviate from the
+            selected bboxes' union. Must be in range [0.0, 1.0].
+            - 0.0: crop must contain the exact union of the selected bboxes (guarantees every
+              selected bbox is preserved)
+            - 1.0: no selected bbox is protected
+            Defaults to 0.0.
+        aspect_ratio_range (tuple[float, float]): Inclusive (height / width) range for the
+            sampled crop when a feasible crop exists.
+            Defaults to (0.5, 2.0).
+        p (float, optional): Probability of applying the transform. Defaults to 1.0.
+
+    Targets:
+        image, mask, bboxes, keypoints, volume, mask3d
+
+    Image types:
+        uint8, float32
+
+    Supported bboxes:
+        hbb, obb
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>>
+        >>> image = np.random.randint(0, 256, (200, 200, 3), dtype=np.uint8)
+        >>> mask = np.random.randint(0, 2, (200, 200), dtype=np.uint8)
+        >>> bboxes = np.array(
+        ...     [[10, 10, 40, 40], [60, 60, 90, 90], [120, 20, 150, 50], [30, 120, 70, 160]],
+        ...     dtype=np.float32,
+        ... )
+        >>> bbox_labels = [1, 2, 3, 4]
+        >>>
+        >>> transform = A.Compose(
+        ...     [
+        ...         A.BBoxSubsetSafeRandomCrop(
+        ...             subset_fraction_range=(0.5, 1.0),
+        ...             erosion_rate=0.2,
+        ...             aspect_ratio_range=(0.5, 2.0),
+        ...         ),
+        ...     ],
+        ...     bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        ... )
+        >>>
+        >>> result = transform(image=image, mask=mask, bboxes=bboxes, bbox_labels=bbox_labels)
+        >>> transformed_image = result["image"]
+        >>> transformed_bboxes = result["bboxes"]
+
+    Note:
+        - IMPORTANT: only bboxes selected in the sampled subset are guaranteed to survive when
+          erosion_rate=0.0. Non-selected bboxes may be clipped or removed like any ordinary crop.
+        - If no crop can contain the selected union and satisfy aspect_ratio_range, the full
+          image is returned. Its aspect ratio can fall outside the requested range.
+        - The crop size is not fixed; add A.Resize afterward for a fixed output shape.
+
+    """
+
+    _targets = ALL_TARGETS
+
+    class InitSchema(BaseTransformInitSchema):
+        subset_fraction_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+        erosion_rate: float = Field(ge=0.0, le=1.0)
+        aspect_ratio_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, None, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        subset_fraction_range: tuple[float, float] = (0.5, 1.0),
+        erosion_rate: float = 0.0,
+        aspect_ratio_range: tuple[float, float] = (0.5, 2.0),
+        p: float = 1.0,
+    ):
+        super().__init__(erosion_rate=erosion_rate, p=p)
+        self.subset_fraction_range = subset_fraction_range
+        self.aspect_ratio_range = aspect_ratio_range
+
+    def _get_crop_coords(
+        self,
+        bbox_union: np.ndarray | None,
+        image_shape: tuple[int, int],
+        sampling: SamplingContext,
+    ) -> tuple[int, int, int, int]:
+        image_height, image_width = image_shape
+        full_image = (0, 0, image_width, image_height)
+        if bbox_union is None:
+            union_x_min = union_y_min = union_x_max = union_y_max = 0
+        else:
+            x_min, y_min, x_max, y_max = bbox_union
+            x_min, y_min = np.clip((x_min, y_min), 0, 1)
+            x_max, y_max = np.clip((x_max, y_max), (x_min, y_min), 1)
+            union_x_min = math.floor(x_min * image_width)
+            union_y_min = math.floor(y_min * image_height)
+            union_x_max = math.ceil(x_max * image_width)
+            union_y_max = math.ceil(y_max * image_height)
+        union_width = union_x_max - union_x_min
+        union_height = union_y_max - union_y_min
+
+        min_ratio, max_ratio = self.aspect_ratio_range
+        min_width = max(1, math.ceil(max(union_width, union_height / max_ratio)))
+        max_width = math.floor(min(image_width, image_height / min_ratio))
+        if min_width > max_width:
+            return full_image
+
+        crop_width = sampling.py_random.randint(min_width, max_width)
+        min_height = math.ceil(max(union_height, min_ratio * crop_width))
+        max_height = math.floor(min(image_height, max_ratio * crop_width))
+        if min_height > max_height:
+            # A very narrow ratio range can leave gaps between feasible integer dimensions.
+            valid_widths = []
+            for width in range(min_width, max_width + 1):
+                height_lower = math.ceil(max(union_height, min_ratio * width))
+                height_upper = math.floor(min(image_height, max_ratio * width))
+                if height_lower <= height_upper:
+                    valid_widths.append(width)
+            if not valid_widths:
+                return full_image
+            crop_width = sampling.py_random.choice(valid_widths)
+            min_height = math.ceil(max(union_height, min_ratio * crop_width))
+            max_height = math.floor(min(image_height, max_ratio * crop_width))
+
+        crop_height = sampling.py_random.randint(min_height, max_height)
+        if bbox_union is None:
+            min_x, max_x = 0, image_width - crop_width
+            min_y, max_y = 0, image_height - crop_height
+        else:
+            min_x = max(0, union_x_max - crop_width)
+            max_x = min(union_x_min, image_width - crop_width)
+            min_y = max(0, union_y_max - crop_height)
+            max_y = min(union_y_min, image_height - crop_height)
+        crop_x_min = sampling.py_random.randint(min_x, max_x)
+        crop_y_min = sampling.py_random.randint(min_y, max_y)
+        return (crop_x_min, crop_y_min, crop_x_min + crop_width, crop_y_min + crop_height)
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        sampling: SamplingContext,
+    ) -> dict[str, Any]:
+        image_shape = params["shape"][:2]
+
+        if len(data["bboxes"]) == 0:
+            crop_coords = self._get_coords_no_bbox(image_shape, sampling)
+            return {"crop_coords": crop_coords}
+
+        num_bboxes = len(data["bboxes"])
+        min_subset_size = math.ceil(num_bboxes * self.subset_fraction_range[0])
+        max_subset_size = min(math.ceil(num_bboxes * self.subset_fraction_range[1]), num_bboxes)
+
+        subset_size = sampling.random_generator.integers(min_subset_size, max_subset_size + 1)
+        bbox_indices = sampling.random_generator.choice(num_bboxes, size=subset_size, replace=False)
+        bbox_union = union_of_bboxes(data["bboxes"][bbox_indices], erosion_rate=self.erosion_rate)
+        return {
+            "crop_coords": self._get_crop_coords(bbox_union, image_shape, sampling),
+            "bbox_indices": tuple(sorted(int(index) for index in bbox_indices)),
+        }
+
+
 class AtLeastOneBBoxRandomCrop(BaseCrop):
     """Random crop of fixed size that contains at least one bbox. erosion_factor controls
     overlap with reference box. Use when some object loss is acceptable.
@@ -641,5 +835,6 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
 __all__ = [
     "AtLeastOneBBoxRandomCrop",
     "BBoxSafeRandomCrop",
+    "BBoxSubsetSafeRandomCrop",
     "RandomSizedBBoxSafeCrop",
 ]

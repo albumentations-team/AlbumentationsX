@@ -58,6 +58,9 @@ class TimeReverse(HorizontalFlip):
         - AudioCLIP paper: https://arxiv.org/abs/2106.13043
         - Audiomentations: https://iver56.github.io/audiomentations/waveform_transforms/reverse/
 
+    Examples:
+        >>> transform = TimeReverse(p=1.0)
+
     """
 
     _targets = ALL_TARGETS
@@ -126,6 +129,9 @@ class TimeMasking(XYMasking):
     References:
         - SpecAugment paper: https://arxiv.org/abs/1904.08779
         - Original implementation: https://pytorch.org/audio/stable/transforms.html#timemask
+
+    Examples:
+        >>> transform = TimeMasking(time_mask_param=8, p=1.0)
 
     """
 
@@ -204,6 +210,9 @@ class FrequencyMasking(XYMasking):
     References:
         - SpecAugment paper: https://arxiv.org/abs/1904.08779
         - Original implementation: https://pytorch.org/audio/stable/transforms.html#freqmask
+
+    Examples:
+        >>> transform = FrequencyMasking(freq_mask_param=8, p=1.0)
 
     """
 

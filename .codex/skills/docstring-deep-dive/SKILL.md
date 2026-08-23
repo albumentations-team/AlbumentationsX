@@ -5,7 +5,9 @@ description: Quality bar for docstrings in albumentations. Use when writing or u
 
 # Docstring deep-dive quality
 
-Apply these criteria to **every docstring you write or update** in albumentations (transforms, public functions, and any API that appears on the docs site). Pre-commit validates Google-style syntax and the required plural `Examples` section; this skill is for the information those checks cannot judge.
+Apply these criteria to **every docstring you write or update** in albumentations: transforms, public functions, and
+APIs that appear on the docs site. The AX guidance hook checks mechanically detectable boundaries, including the plural
+`Examples` heading; this skill owns the reader-facing information that tooling cannot judge.
 
 ## 1. First paragraph: 120–160 chars, useful short description (elevator pitch, two lines)
 
@@ -40,9 +42,8 @@ The **first paragraph** is the useful short description: an elevator pitch that 
 
 ## 2. Examples
 
-- Follow the pattern from `docs/contributing/codex_guidelines.md` and the add-transform skill: sample
-  image, mask, bboxes, keypoints, Compose with params, and a call showing the result. Use `>>>` for doctest-style
-  blocks.
+- For transforms, show the public configuration and the targets the example claims to support. Use `>>>` for
+  doctest-style blocks.
 - For non-transform APIs, include a minimal runnable example that shows typical usage.
 
 ## 3. Math where possible

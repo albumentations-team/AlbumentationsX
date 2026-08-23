@@ -67,10 +67,8 @@ Keep transform policy, parameter sampling, target dispatch, and annotation seman
 Keep transform `apply*` methods as thin policy and dispatch methods. A method may validate its transform-specific
 runtime input contract, select a functional operation, and forward sampled parameters, but pixel arithmetic,
 temporary-array construction, clipping, dtype routing, and kernel-selection branches belong in the functional helper
-that owns the operation. The repository's pre-commit hook limits transform `apply*`
-bodies to 20 code-bearing lines (excluding signatures, docstrings, blank lines, and standalone comments). Base
-infrastructure classes whose names begin with `Base` and `Compose` orchestration are excluded; a non-public base class
-must use that prefix.
+that owns the operation. The deterministic source contract is checked by the repository's unified AX guidance hook;
+keep its exact limits and exceptions in `docs/contributing/coding_guidelines.md`.
 
 Propose an Albucore primitive when an operation:
 

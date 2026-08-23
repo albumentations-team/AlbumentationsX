@@ -78,3 +78,81 @@ def test_additive_noise_patch_mode_extrudes_its_2d_patch_program_through_depth()
     result = transform(volume=volume)["volume"]
 
     np.testing.assert_array_equal(result[0], result[1])
+
+
+@pytest.mark.parametrize(
+    "transform_factory",
+    [
+        pytest.param(
+            lambda: A.MultiplicativeNoise(
+                multiplier=(0.8, 1.2),
+                elementwise=False,
+                per_channel=True,
+                p=1.0,
+            ),
+            id="multiplicative-noise",
+        ),
+        pytest.param(
+            lambda: A.AdditiveNoise(
+                noise_type="uniform",
+                spatial_mode="constant",
+                noise_params={"ranges": [(-0.1, 0.1)]},
+                p=1.0,
+            ),
+            id="additive-noise-constant",
+        ),
+        pytest.param(
+            lambda: A.AdditiveNoise(
+                noise_type="uniform",
+                spatial_mode="patch",
+                noise_params={"ranges": [(-0.1, 0.1)]},
+                patch_count_range=(1, 1),
+                patch_height_range=(0.5, 0.5),
+                patch_width_range=(0.5, 0.5),
+                p=1.0,
+            ),
+            id="additive-noise-patch",
+        ),
+    ],
+)
+def test_noise_mixed_targets_support_different_channel_counts(transform_factory):
+    rng = np.random.default_rng(137)
+    image = rng.random((11, 13, 3), dtype=np.float32)
+    volume = rng.random((2, 11, 13, 5), dtype=np.float32)
+
+    result = A.ReplayCompose([transform_factory()], seed=137)(image=image, volume=volume)
+    replayed = A.ReplayCompose.replay(result["replay"], image=image, volume=volume)
+
+    assert result["image"].shape == image.shape
+    assert result["volume"].shape == volume.shape
+    np.testing.assert_array_equal(result["image"], replayed["image"])
+    np.testing.assert_array_equal(result["volume"], replayed["volume"])
+
+
+@pytest.mark.parametrize("spatial_mode", ["constant", "patch"])
+def test_additive_noise_mixed_targets_use_volume_dtype_scale(spatial_mode):
+    transform_kwargs = {}
+    if spatial_mode == "patch":
+        transform_kwargs = {
+            "patch_count_range": (1, 1),
+            "patch_height_range": (1.0, 1.0),
+            "patch_width_range": (1.0, 1.0),
+        }
+    transform = A.Compose(
+        [
+            A.AdditiveNoise(
+                noise_type="uniform",
+                spatial_mode=spatial_mode,
+                noise_params={"ranges": [(0.1, 0.1)]},
+                p=1.0,
+                **transform_kwargs,
+            ),
+        ],
+        seed=137,
+    )
+    image = np.zeros((11, 13, 1), dtype=np.uint8)
+    volume = np.zeros((2, 11, 13, 1), dtype=np.float32)
+
+    result = transform(image=image, volume=volume)
+
+    np.testing.assert_allclose(result["volume"], 0.1, rtol=1e-6, atol=1e-6)

@@ -445,14 +445,19 @@ class MultiplicativeNoise(ImageOnlyTransform):
                 is_volume=use_volume,
             ),
         }
-        if "volume" in data and has_image_target and self.elementwise:
-            result["volume_multiplier"] = self._sample_multiplier(
-                _get_noise_map_shape(data, metadata, use_volume=True),
-                sampling,
-                is_volume=True,
+        if "volume" in data:
+            needs_volume_multiplier = self.elementwise or (
+                self.per_channel and data["volume"].shape[-1] != metadata["num_channels"]
             )
-        elif "volume" in data:
-            result["volume_multiplier"] = result["multiplier"]
+            result["volume_multiplier"] = (
+                self._sample_multiplier(
+                    _get_noise_map_shape(data, metadata, use_volume=True),
+                    sampling,
+                    is_volume=True,
+                )
+                if has_image_target and needs_volume_multiplier
+                else result["multiplier"]
+            )
         return result
 
     def _sample_multiplier(
@@ -896,14 +901,22 @@ class AdditiveNoise(ImageOnlyTransform):
         shape = _get_noise_map_shape(data, metadata, use_volume=use_volume)
         max_value = MAX_VALUES_BY_DTYPE[data["volume"].dtype] if use_volume else MAX_VALUES_BY_DTYPE[metadata["dtype"]]
         result = self._sample_noise_map(shape, max_value, sampling)
-        if "volume" in data and has_image_target and self.spatial_mode in {"per_pixel", "shared"}:
-            result["volume_noise_map"] = self._sample_noise_map(
-                _get_noise_map_shape(data, metadata, use_volume=True),
-                MAX_VALUES_BY_DTYPE[data["volume"].dtype],
-                sampling,
-            )["noise_map"]
-        elif "volume" in data:
-            result["volume_noise_map"] = result["noise_map"]
+        if "volume" in data:
+            needs_volume_noise_map = self.spatial_mode in {"per_pixel", "shared"} or (
+                data["volume"].shape[-1] != metadata["num_channels"] or data["volume"].dtype != metadata["dtype"]
+            )
+            if has_image_target and needs_volume_noise_map:
+                volume_shape = _get_noise_map_shape(data, metadata, use_volume=True)
+                volume_sampling_shape = volume_shape[1:] if self.spatial_mode == "patch" else volume_shape
+                volume_result = self._sample_noise_map(
+                    volume_sampling_shape,
+                    MAX_VALUES_BY_DTYPE[data["volume"].dtype],
+                    sampling,
+                    patches=result.get("patches"),
+                )
+                result["volume_noise_map"] = volume_result["noise_map"]
+            else:
+                result["volume_noise_map"] = result["noise_map"]
         return result
 
     def _sample_noise_map(
@@ -911,6 +924,7 @@ class AdditiveNoise(ImageOnlyTransform):
         shape: tuple[int, ...],
         max_value: float,
         sampling: SamplingContext,
+        patches: np.ndarray | None = None,
     ) -> dict[str, Any]:
         """Generates the noise map for the current layout without replay-policy overrides, keeping pixel execution
         independent from constructor serialization concerns.
@@ -945,16 +959,17 @@ class AdditiveNoise(ImageOnlyTransform):
 
         if self.spatial_mode == "patch":
             patch_shape = cast("tuple[int, int, int]", shape)
-            patch_count = sampling.py_random.randint(*self.patch_count_range)
-            patch_heights = np.ceil(
-                shape[0] * sampling.random_generator.uniform(*self.patch_height_range, size=patch_count),
-            ).astype(np.int32)
-            patch_widths = np.ceil(
-                shape[1] * sampling.random_generator.uniform(*self.patch_width_range, size=patch_count),
-            ).astype(np.int32)
-            y_min = sampling.random_generator.integers(0, shape[0] - patch_heights + 1)
-            x_min = sampling.random_generator.integers(0, shape[1] - patch_widths + 1)
-            patches = np.stack([x_min, y_min, x_min + patch_widths, y_min + patch_heights], axis=-1)
+            if patches is None:
+                patch_count = sampling.py_random.randint(*self.patch_count_range)
+                patch_heights = np.ceil(
+                    shape[0] * sampling.random_generator.uniform(*self.patch_height_range, size=patch_count),
+                ).astype(np.int32)
+                patch_widths = np.ceil(
+                    shape[1] * sampling.random_generator.uniform(*self.patch_width_range, size=patch_count),
+                ).astype(np.int32)
+                y_min = sampling.random_generator.integers(0, shape[0] - patch_heights + 1)
+                x_min = sampling.random_generator.integers(0, shape[1] - patch_widths + 1)
+                patches = np.stack([x_min, y_min, x_min + patch_widths, y_min + patch_heights], axis=-1)
             noise_map = fpixel.generate_patch_noise(
                 noise_type=self.noise_type,
                 shape=patch_shape,

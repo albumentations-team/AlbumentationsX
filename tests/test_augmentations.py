@@ -4,6 +4,7 @@ import pytest
 from albucore import from_float, to_float
 
 import albumentations as A
+from albumentations.augmentations.pixel import _functional_weather as fweather
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import ImageOnlyTransform
@@ -1961,6 +1962,190 @@ def test_enhance_apply_to_images_matches_per_image(mode, dtype):
     assert batched.shape == images.shape
     assert batched.dtype == images.dtype
     np.testing.assert_array_equal(batched, per_image)
+
+
+def _overlapping_shadow_params() -> tuple[list[np.ndarray], np.ndarray]:
+    vertices_list = [
+        np.array([[1, 1], [5, 1], [5, 5], [1, 5]], dtype=np.int32),
+        np.array([[3, 3], [7, 3], [7, 7], [3, 7]], dtype=np.int32),
+    ]
+    return vertices_list, np.array([0.5, 0.25], dtype=np.float64)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_random_shadow_apply_to_images_matches_overlapping_per_image_results(dtype, num_channels):
+    values = np.array([137, 200], dtype=np.uint8)
+    if dtype == np.float32:
+        values = values.astype(np.float32) / np.float32(255)
+
+    source = np.broadcast_to(values[:, np.newaxis, np.newaxis, np.newaxis], (2, 18, 9, num_channels)).copy()
+    images = source[:, ::2]
+    images.setflags(write=False)
+    images_before = images.copy()
+    vertices_list, intensities = _overlapping_shadow_params()
+    transform = A.RandomShadow(p=1.0)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+
+    assert actual.shape == images.shape
+    assert actual.dtype == images.dtype
+    assert actual.flags.c_contiguous
+    assert actual.flags.writeable
+    assert not np.shares_memory(actual, images)
+    np.testing.assert_array_equal(images, images_before)
+    np.testing.assert_array_equal(actual, expected)
+
+    expected_pixels = np.array([[68, 51, 102], [100, 75, 150]], dtype=np.uint8)
+    if dtype == np.float32:
+        expected_pixels = expected_pixels.astype(np.float32) / np.float32(255)
+    np.testing.assert_array_equal(actual[:, 1, 1, 0], expected_pixels[:, 0])
+    np.testing.assert_array_equal(actual[:, 3, 3, 0], expected_pixels[:, 1])
+    np.testing.assert_array_equal(actual[:, 7, 7, 0], expected_pixels[:, 2])
+
+
+def test_random_shadow_apply_to_images_rasterizes_each_polygon_once(monkeypatch):
+    vertices_list, intensities = _overlapping_shadow_params()
+    images = np.full((4, 9, 9, 3), 137, dtype=np.uint8)
+    transform = A.RandomShadow(p=1.0)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+    fill_poly_calls = 0
+    original_fill_poly = cv2.fillPoly
+
+    def counting_fill_poly(*args, **kwargs):
+        nonlocal fill_poly_calls
+        fill_poly_calls += 1
+        return original_fill_poly(*args, **kwargs)
+
+    monkeypatch.setattr(cv2, "fillPoly", counting_fill_poly)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+
+    assert fill_poly_calls == len(vertices_list)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_random_shadow_apply_to_images_matches_out_of_bounds_polygons(dtype):
+    images = np.full((2, 9, 9, 3), 137, dtype=np.uint8)
+    if dtype == np.float32:
+        images = images.astype(np.float32) / np.float32(255)
+    vertices_list = [
+        np.array([[-4, -4], [4, -4], [4, 4], [-4, 4]], dtype=np.int32),
+        np.array([[20, 20], [24, 20], [24, 24], [20, 24]], dtype=np.int32),
+    ]
+    intensities = np.array([0.5, 0.25], dtype=np.float64)
+    transform = A.RandomShadow(p=1.0)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("writeable", [False, True])
+def test_random_shadow_apply_to_images_large_float32_conversion_matches_per_image(writeable):
+    images = np.random.default_rng(137).random((2, 257, 341, 3), dtype=np.float32)
+    images.setflags(write=writeable)
+    vertices_list, intensities = _overlapping_shadow_params()
+    transform = A.RandomShadow(p=1.0)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("shape", [(2, 256, 256, 5), (2, 512, 512, 3)])
+def test_random_shadow_apply_to_images_preserves_per_image_float32_conversion_working_set(monkeypatch, shape):
+    images = np.random.default_rng(137).random(shape, dtype=np.float32)
+    vertices_list, intensities = _overlapping_shadow_params()
+    transform = A.RandomShadow(p=1.0)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+    conversion_sizes: list[int] = []
+    original_from_float = fweather.from_float
+
+    def tracked_from_float(
+        image: np.ndarray,
+        target_dtype: np.dtype[np.generic],
+        max_value: float | None = None,
+    ) -> np.ndarray:
+        conversion_sizes.append(image.size)
+        return original_from_float(image, target_dtype=target_dtype, max_value=max_value)
+
+    monkeypatch.setattr(fweather, "from_float", tracked_from_float)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+
+    assert conversion_sizes == [images[0].size] * len(images)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("seed", [137, 138])
+@pytest.mark.parametrize("batch_size", [1, 3])
+def test_random_shadow_batch_compose_routes_match_per_image_results(target_name, dtype, seed, batch_size):
+    rng = np.random.default_rng(seed)
+    shape = (batch_size, 17, 19, 5)
+    if dtype == np.uint8:
+        data = rng.integers(0, 256, shape, dtype=np.uint8)
+    else:
+        data = rng.random(shape, dtype=np.float32)
+    data_before = data.copy()
+    transform = A.RandomShadow(
+        num_shadows_range=(2, 2),
+        shadow_intensity_range=(0.2, 0.7),
+        p=1.0,
+    )
+    compose = A.Compose([transform], seed=seed, strict=True, save_applied_params=True)
+
+    actual = compose(**{target_name: data})[target_name]
+    params = transform.get_applied_params()
+    expected = np.stack([transform.apply(image, **params) for image in data])
+
+    np.testing.assert_array_equal(data, data_before)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_random_shadow_apply_to_images_preserves_empty_batch_identity(dtype):
+    images = np.empty((0, 17, 19, 3), dtype=dtype)
+    transform = A.RandomShadow(p=1.0)
+    vertices_list, intensities = _overlapping_shadow_params()
+
+    assert transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities) is images
+    assert A.Compose([transform], seed=137, strict=True)(images=images)["images"] is images
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("width", [1, 3])
+def test_random_shadow_apply_to_images_preserves_raw_grayscale_batch(dtype, width):
+    images = np.arange(3 * 9 * width, dtype=np.uint8).reshape(3, 9, width)
+    if dtype == np.float32:
+        images = images.astype(np.float32) / np.float32(255)
+    vertices_list = [np.array([[0, 0], [width - 1, 0], [width - 1, 8], [0, 8]], dtype=np.int32)]
+    intensities = np.array([0.5], dtype=np.float64)
+    transform = A.RandomShadow(p=1.0)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+
+    assert actual.shape == images.shape
+    np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("mode", ["rain", "mud"])

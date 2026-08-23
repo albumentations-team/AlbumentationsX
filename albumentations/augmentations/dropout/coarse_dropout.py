@@ -513,7 +513,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             AfterValidator(check_range_bounds(1, None)),
         ]
 
-        bbox_labels: list[str | int | float] | None = None
+        bbox_labels: list[str | int | float] | None
 
     def __init__(
         self,

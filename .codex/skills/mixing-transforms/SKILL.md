@@ -10,21 +10,26 @@ images: `Mosaic`, `CopyAndPaste`, `OverlayElements`, `HistogramMatching`, `Pixel
 
 ---
 
-## 1. Donor sampling happens OUTSIDE the transform
+## 1. The caller owns the donor pool
 
-Mixing transforms **never** sample which donor image or which instances to use. That is the user's
-responsibility. The transform receives the final list and processes it verbatim.
+The caller supplies donor records under `metadata_key`; a transform never accesses a dataset, loader, or global donor
+source. A normal Mosaic call supplies the needed donors, and every valid supplied donor is used.
 
-**Why**: Deterministic control, class-balanced pasting, curriculum strategies, hard-example mining —
-all require the user to decide what goes in. One extra line of code outside the transform is a better
-trade-off than a black-box internal sampler.
+Mosaic handles caller mistakes deterministically within that pool:
+
+- if there are more valid donors than visible cells need, it samples only the surplus away with the invocation's
+  `SamplingContext` RNG;
+- if there are fewer, it fills remaining cells by replicating the primary item.
+
+This preserves user control over the candidate set while keeping the public transform usable with an oversized or
+undersized list.
 
 ```python
-# CORRECT — user picks donors before the transform
+# CORRECT — caller provides candidate donor records
 donors = [dataset[random.choice(indices)] for _ in range(n)]
 result = transform(image=image, mosaic_metadata=donors)
 
-# INCORRECT — transform decides internally
+# INCORRECT — transform reaches into a dataset on its own
 result = MosaicWithSampling(dataset=dataset)(image=image)
 ```
 
@@ -128,13 +133,17 @@ def targets_as_params(self) -> list[str]:
 
 ---
 
-## 6. No-op on empty or missing metadata
+## 6. Empty metadata is transform-specific
 
-If the metadata list is empty or missing, the transform must return the input unchanged without
-raising an error.
+Do not impose a universal no-op rule on mixing transforms. `CopyAndPaste` returns no-op parameters when it has no
+usable donor. `Mosaic` instead creates its remaining visible cells from replicated primary data, so empty or missing
+metadata can still produce a mosaic. State this behavior in the transform's public docstring and test it explicitly.
 
 ```python
-metadata = data.get(self.metadata_key)
-if not isinstance(metadata, list) or not metadata:
+# CopyAndPaste: no donor means no change.
+if not usable_donors:
     return self._no_op_params()
+
+# Mosaic: remaining cells use copies of the primary item.
+final_items = [primary, *usable_donors, *replicated_primary_items]
 ```

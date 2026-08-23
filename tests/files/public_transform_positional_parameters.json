@@ -32,7 +32,7 @@
   "Defocus": ["radius_range", "alias_blur_range", "p"],
   "Dithering": ["method", "n_colors", "color_mode", "error_diffusion_algorithm", "bayer_matrix_size", "serpentine", "noise_range", "p"],
   "Downscale": ["scale_range", "interpolation_pair", "p"],
-  "ElasticTransform": ["alpha", "sigma", "interpolation", "approximate", "same_dxdy", "mask_interpolation", "noise_distribution", "keypoint_remapping_method", "border_mode", "fill", "fill_mask", "map_resolution_range", "p"],
+  "ElasticTransform": ["displacement_range", "control_grid_shape", "interpolation", "mask_interpolation", "border_mode", "fill", "fill_mask", "p"],
   "Emboss": ["alpha_range", "strength_range", "p"],
   "Enhance": ["mode", "alpha_range", "p"],
   "Equalize": ["mode", "by_channels", "mask", "mask_params", "p"],

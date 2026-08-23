@@ -33,6 +33,11 @@ Implemented configuration-centric contract system that verifies strict JSON tran
 reconstruction, replay execution, exact output where declared, and non-default coverage for every public constructor
 parameter.
 
+### [Bounded 2D ElasticTransform](elastic-transform.md)
+
+Implemented contract for the greenfield 2D elastic transform: bounded cubic B-spline coefficient grids, synchronized
+targets, certificate-bounded keypoint inversion, and separate constructor, applied-config, and `ReplayCompose` persistence rules.
+
 ### [Generated Transform Target Contracts](transform-target-contracts.md)
 
 Coverage contract for the shared transform-case registry and reusable target profiles.
@@ -68,9 +73,9 @@ shared CPU-only runtime profile explicitly.
 
 ### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
 
-Plan for making Torch a soft-required runtime dependency and routing compatible NumPy/OpenCV/NumKong and Torch segments through
-the existing `Compose`. The route planner may cross the representation boundary in either direction when the complete
-measured path does not regress.
+Plan for routing compatible NumPy/OpenCV/NumKong and Torch segments through the existing `Compose`. Torch is already
+an externally managed, soft-required runtime dependency. The route planner may cross the representation boundary in
+either direction when the complete measured path does not regress.
 
 **Status**: In progress. The CPU Tensor boundary is implemented; capability routing and per-family Tensor paths remain
 planned.

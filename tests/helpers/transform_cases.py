@@ -240,8 +240,8 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [
         A.ElasticTransform,
         {
-            "alpha": 2,
-            "sigma": 25,
+            "displacement_range": (0.03, 0.05),
+            "control_grid_shape": (4, 4),
             "interpolation": cv2.INTER_CUBIC,
         },
     ],
@@ -844,18 +844,15 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     (
-        "uniform-direct-low-resolution",
+        "bounded-custom-grid",
         A.ElasticTransform,
         {
-            "approximate": True,
-            "same_dxdy": True,
+            "displacement_range": (0.01, 0.04),
+            "control_grid_shape": (4, 6),
             "mask_interpolation": cv2.INTER_LINEAR,
-            "noise_distribution": "uniform",
-            "keypoint_remapping_method": "direct",
             "border_mode": cv2.BORDER_REFLECT,
             "fill": 7,
             "fill_mask": 3,
-            "map_resolution_range": (0.5, 0.8),
         },
     ),
     ("wide-alpha", A.Enhance, {"alpha_range": (0.2, 0.8)}),

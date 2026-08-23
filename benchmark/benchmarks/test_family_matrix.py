@@ -60,7 +60,11 @@ GEOMETRY_TRANSFORMS: Mapping[str, Factory] = {
     "rotate": lambda: albumentations.Rotate(angle_range=(7, 7), p=1.0),
     "safe_rotate": lambda: albumentations.SafeRotate(angle_range=(7, 7), p=1.0),
     "perspective": lambda: albumentations.Perspective(scale=(0.05, 0.05), p=1.0),
-    "elastic": lambda: albumentations.ElasticTransform(alpha=1, sigma=30, p=1.0),
+    "elastic": lambda: albumentations.ElasticTransform(
+        displacement_range=(0.02, 0.02),
+        control_grid_shape=(7, 7),
+        p=1.0,
+    ),
     "grid_distortion": lambda: albumentations.GridDistortion(distort_range=(0.1, 0.1), p=1.0),
     "optical_distortion": lambda: albumentations.OpticalDistortion(distort_range=(0.03, 0.03), p=1.0),
     "grid_elastic": lambda: albumentations.GridElasticDeform(num_grid_xy=(4, 4), magnitude=4, p=1.0),

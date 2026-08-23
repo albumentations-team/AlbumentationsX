@@ -35,6 +35,8 @@ from ._functional_sharpness import (
 )
 
 _maybe_process_in_chunks = cast("Any", maybe_process_in_chunks)
+# Keep sustained-batch chunks on Albucore's large-array route while bounding temporary conversion memory.
+_FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS = 512 * 1024
 
 
 def add_snow_bleach(
@@ -665,6 +667,75 @@ def add_shadow(
     return img_shadowed
 
 
+def add_shadow_batch(
+    images: ImageType,
+    vertices_list: list[np.ndarray],
+    intensities: np.ndarray,
+) -> ImageType:
+    """Apply shared shadow polygons across an image batch after rasterizing each mask once, retaining sequential
+    overlap behavior and uint8 rounding.
+
+    Args:
+        images (ImageType): Input image batch in `(N, H, W, C)` or raw grayscale `(N, H, W)` format.
+        vertices_list (list[np.ndarray]): List of vertices for shadow polygons.
+        intensities (np.ndarray): Array of shadow intensities. Range is [0, 1].
+
+    Returns:
+        ImageType: Image batch with shadows added, preserving the input shape and supported dtype (`uint8` or
+            `float32`).
+
+    """
+    if len(images) == 0:
+        return images
+
+    input_dtype = images.dtype
+    image_elements = images[0].size
+    conversion_chunk_elements = max(_FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS, image_elements)
+    if image_elements < _FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS and images.size < 2 * _FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS:
+        # Avoid switching a small batch to Albucore's large-array backend when every inherited per-item call stays
+        # below that threshold.
+        conversion_chunk_elements = image_elements
+    if input_dtype == np.uint8:
+        result = images.copy()
+    elif images.flags.c_contiguous and images.size >= 2 * conversion_chunk_elements:
+        flat_images = images.reshape(-1)
+        flat_result = np.empty(flat_images.shape, dtype=np.uint8)
+        for start in range(0, flat_images.size, conversion_chunk_elements):
+            stop = start + conversion_chunk_elements
+            flat_result[start:stop] = from_float(
+                cast("ImageFloat32", flat_images[start:stop]),
+                target_dtype=np.dtype(np.uint8),
+            )
+        result = flat_result.reshape(images.shape)
+    else:
+        result = from_float(cast("ImageFloat32", images), target_dtype=np.dtype(np.uint8))
+    max_value = MAX_VALUES_BY_DTYPE[np.uint8]
+    poly_mask = np.zeros((*images.shape[1:3], 1), dtype=np.uint8)
+    shadowed_indices = np.empty(images.shape[1:3], dtype=bool)
+
+    for vertices, shadow_intensity in zip(vertices_list, intensities, strict=True):
+        poly_mask.fill(0)
+        cv2.fillPoly(poly_mask, [vertices], (max_value,))
+        x, y, width, height = cv2.boundingRect(vertices)
+        x_min, x_max = max(x, 0), min(x + width, images.shape[2])
+        y_min, y_max = max(y, 0), min(y + height, images.shape[1])
+        if x_min >= x_max or y_min >= y_max:
+            continue
+        result_region = result[:, y_min:y_max, x_min:x_max, ...]
+        mask_region = shadowed_indices[y_min:y_max, x_min:x_max]
+        np.equal(poly_mask[y_min:y_max, x_min:x_max, 0], max_value, out=mask_region)
+        batch_mask = mask_region.reshape((1, *mask_region.shape) + (1,) * (images.ndim - 3))
+        np.multiply(
+            result_region,
+            1 - shadow_intensity,
+            out=result_region,
+            where=batch_mask,
+            casting="unsafe",
+        )
+
+    return to_float(cast("ImageUInt8", result)) if input_dtype != np.uint8 else cast("ImageUInt8", result)
+
+
 @uint8_io
 @clipped
 @preserve_channel_dim
@@ -985,6 +1056,7 @@ __all__ = [
     "add_gravel",
     "add_rain",
     "add_shadow",
+    "add_shadow_batch",
     "add_snow_bleach",
     "add_snow_texture",
     "add_sun_flare_overlay",

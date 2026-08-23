@@ -898,6 +898,38 @@ def iso_noise_images(
     return hls_batch
 
 
+@float32_io
+@clipped
+def iso_noise_volume(
+    volume: np.ndarray,
+    color_shift: float,
+    intensity: float,
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Apply camera-like ISO noise to an RGB volume with a single seeded voxel-wise field, so hue and
+    luminance vary through depth. Use for 3D RGB data.
+    """
+    non_rgb_error(volume[0])
+    hls_volume = np.empty_like(volume)
+    for depth_index, image in enumerate(volume):
+        cv2.cvtColor(image, cv2.COLOR_RGB2HLS, dst=hls_volume[depth_index])
+
+    luminance_std = float(np.std(hls_volume[..., 1]))
+    volume_shape = volume.shape[:3]
+    luminance_noise = random_generator.poisson(luminance_std * intensity, size=volume_shape).astype(np.float32)
+    color_noise = random_generator.normal(0, color_shift * intensity, size=volume_shape).astype(np.float32)
+
+    hls_volume[..., 0] += color_noise
+    luminance_noise *= intensity
+    hls_volume[..., 1] *= 1.0 - luminance_noise
+    hls_volume[..., 1] += luminance_noise
+
+    for image in hls_volume:
+        cv2.cvtColor(image, cv2.COLOR_HLS2RGB, dst=image)
+
+    return hls_volume
+
+
 def to_gray_weighted_average(img: ImageType) -> ImageType:
     """Convert RGB to grayscale with weighted average (0.299*R+0.587*G+0.114*B). Single or batch.
     BT.601. Matches OpenCV perceptual luminance.
@@ -1420,6 +1452,7 @@ __all__ = [
     "invert",
     "iso_noise",
     "iso_noise_images",
+    "iso_noise_volume",
     "linear_transformation_rgb",
     "move_tone_curve",
     "noop",

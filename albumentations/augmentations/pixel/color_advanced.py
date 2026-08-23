@@ -8,6 +8,7 @@ from albumentations.core.invocation import SamplingContext
 
 from ._color_shared import (
     CV2_INTER_LINEAR,
+    MAX_VALUES_BY_DTYPE,
     AdditiveNoise,
     AfterValidator,
     BaseTransformInitSchema,
@@ -714,7 +715,14 @@ class RGBShift(AdditiveNoise):
         data: dict[str, Any],
         sampling: SamplingContext,
     ) -> dict[str, Any]:
-        result = self._sample_noise_map(data, sampling)
+        metadata = self.get_image_data(data)
+        result = self._sample_noise_map(
+            (metadata["height"], metadata["width"], metadata["num_channels"]),
+            MAX_VALUES_BY_DTYPE[metadata["dtype"]],
+            sampling,
+        )
+        if "volume" in data:
+            result["volume_noise_map"] = result["noise_map"]
 
         # spatial_mode="constant" produces a (C,) noise_map of per-channel shifts already
         # scaled to image dtype (uint8: [-255, 255], float: [-1, 1]). Record them as sampled scalars.

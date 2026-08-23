@@ -220,6 +220,12 @@ SPECIAL_TARGET_TRANSFORMS: Mapping[str, Factory] = {
         seed=137,
         strict=True,
     ),
+    "bbox_subset_safe_random_crop": lambda: albumentations.Compose(
+        [albumentations.BBoxSubsetSafeRandomCrop(p=1.0)],
+        bbox_params=albumentations.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        seed=137,
+        strict=True,
+    ),
     "constrained_coarse_dropout": lambda: albumentations.Compose(
         [albumentations.ConstrainedCoarseDropout(mask_indices=[1], p=1.0)],
         seed=137,

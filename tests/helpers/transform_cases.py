@@ -344,6 +344,14 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [
+        A.CropAndPad,
+        {"px_choices": (-5, -10, -15), "keep_size": False},
+    ],
+    [
+        A.CropAndPad,
+        {"percent_choices": (-0.05, -0.10), "keep_size": False},
+    ],
+    [
         A.Superpixels,
         {
             "p_replace_range": (0.5, 0.7),
@@ -638,6 +646,14 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     ],
     [A.RandomSizedBBoxSafeCrop, {"height": 80, "width": 80, "erosion_rate": 0.2}],
     [A.BBoxSafeRandomCrop, {"erosion_rate": 0.2}],
+    [
+        A.BBoxSubsetSafeRandomCrop,
+        {
+            "subset_fraction_range": (0.3, 0.8),
+            "erosion_rate": 0.2,
+            "aspect_ratio_range": (0.4, 1.5),
+        },
+    ],
     [
         A.HEStain,
         [
@@ -1249,6 +1265,7 @@ _VARIANT_NAMES: dict[type[A.BasicTransform], tuple[str, ...]] = {
     A.LetterBox: ("square-center", "wide-top-left", "tall-bottom-right"),
     A.LongestMaxSize: ("max-size", "max-size-hw"),
     A.PadIfNeeded: ("center", "top-left"),
+    A.CropAndPad: ("px", "px-choices", "percent-choices"),
     A.PixelDropout: ("random-fill", "fixed-fill"),
     A.RandomToneCurve: ("shared", "per-channel"),
     A.ShiftScaleRotate: ("shared-shift", "axis-shift"),
@@ -1258,6 +1275,7 @@ _VARIANT_NAMES: dict[type[A.BasicTransform], tuple[str, ...]] = {
 _BBOX_TRANSFORMS = {
     A.AtLeastOneBBoxRandomCrop,
     A.BBoxSafeRandomCrop,
+    A.BBoxSubsetSafeRandomCrop,
     A.RandomCropNearBBox,
     A.RandomSizedBBoxSafeCrop,
 }
@@ -1366,7 +1384,12 @@ def _required_targets(
 ) -> frozenset[str]:
     if transform_cls in {A.Mosaic, A.CopyAndPaste}:
         return frozenset({"image"})
-    if transform_cls in {A.AtLeastOneBBoxRandomCrop, A.BBoxSafeRandomCrop, A.RandomSizedBBoxSafeCrop}:
+    if transform_cls in {
+        A.AtLeastOneBBoxRandomCrop,
+        A.BBoxSafeRandomCrop,
+        A.BBoxSubsetSafeRandomCrop,
+        A.RandomSizedBBoxSafeCrop,
+    }:
         return frozenset({"bboxes"})
     if transform_cls is A.ConstrainedCoarseDropout:
         return frozenset({"bboxes" if init_kwargs.get("bbox_labels") is not None else "mask"})

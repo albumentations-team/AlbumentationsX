@@ -1,5 +1,7 @@
 """Tests to validate that transform docstrings match their actual properties."""
 
+import re
+
 import pytest
 from google_docstring_parser import parse_google_docstring
 
@@ -21,6 +23,24 @@ PUBLIC_TRANSFORM_CLASSES = tuple(
     for transform_cls in get_all_valid_transforms()
     if issubclass(transform_cls, A.BasicTransform) and transform_cls not in _TRANSFORM_BASE_CLASSES
 )
+_MIN_SHORT_DESCRIPTION_LENGTH = 120
+_MAX_SHORT_DESCRIPTION_LENGTH = 160
+
+
+def get_short_description(docstring: str) -> str:
+    """Return the normalized first paragraph used for transform preview metadata."""
+    return " ".join(re.split(r"\n\s*\n", docstring.strip(), maxsplit=1)[0].split())
+
+
+@pytest.mark.parametrize("transform_cls", PUBLIC_TRANSFORM_CLASSES)
+def test_public_transform_short_description_length(transform_cls):
+    """Require public transform preview metadata to fit the supported description range."""
+    short_description = get_short_description(transform_cls.__doc__ or "")
+    assert _MIN_SHORT_DESCRIPTION_LENGTH <= len(short_description) <= _MAX_SHORT_DESCRIPTION_LENGTH, (
+        f"{transform_cls.__name__}: first docstring paragraph must be "
+        f"{_MIN_SHORT_DESCRIPTION_LENGTH}-{_MAX_SHORT_DESCRIPTION_LENGTH} characters, "
+        f"got {len(short_description)}"
+    )
 
 
 def parse_targets_from_docstring(docstring_targets: str) -> set[str]:

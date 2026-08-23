@@ -220,6 +220,7 @@ ANNOTATION_ALIAS_TO_TRANSFORM = {
 SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
     "at_least_one_bbox_random_crop": "AtLeastOneBBoxRandomCrop",
     "bbox_safe_random_crop": "BBoxSafeRandomCrop",
+    "bbox_subset_safe_random_crop": "BBoxSubsetSafeRandomCrop",
     "constrained_coarse_dropout": "ConstrainedCoarseDropout",
     "crop_non_empty_mask_if_exists": "CropNonEmptyMaskIfExists",
     "mask_dropout": "MaskDropout",

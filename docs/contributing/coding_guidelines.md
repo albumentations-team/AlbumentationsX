@@ -264,64 +264,64 @@ Instead, follow this preferred pattern:
 1. **Pass the auxiliary data** within the main `data` dictionary provided to the transform's `__call__` method, using a descriptive key (e.g., `mosaic_metadata`, `copy_paste_metadata`).
 2. **Declare this key** in the transform's `targets_as_params` property. This signals to `Compose` that the key should be extracted and forwarded to `sample_parameters`.
 3. **Access the data** inside `sample_parameters` using `data.get("your_metadata_key")`.
-4. **No-op gracefully** if the metadata is missing or empty — return unchanged inputs, never raise.
+4. **Define empty metadata deliberately**. A transform may no-op or use a documented fallback; it must not reach into a
+   dataset or another global donor source to fill the gap.
 
 Passing data via `__init__` couples the transform instance to specific data, making it less reusable and potentially breaking serialization or pipeline composition.
 
 ### Mixing Transforms: Additional Rules
 
-Mixing transforms (`Mosaic`, `CopyAndPaste`, etc.) combine data from multiple images and require
-additional conventions beyond the general metadata pattern.
+Mixing transforms (`Mosaic`, `CopyAndPaste`, etc.) combine data from multiple images and require additional
+conventions beyond the general metadata pattern.
 
-#### Donor sampling is the user's responsibility
+#### Donor sampling and ownership
 
-Mixing transforms **never** decide internally which donor image or which instances to use. The user
-builds the metadata list externally and passes it in. The transform processes every item in the list.
+The caller supplies the candidate donor pool; a mixing transform never reaches into a dataset or another global donor
+source. A normal Mosaic call uses every valid supplied donor. When the supplied pool exceeds the number of additional
+cells, Mosaic chooses the required subset with the call-local `SamplingContext`; when it is smaller, Mosaic replicates
+the primary item to fill the remaining cells.
 
 ```python
-# CORRECT — user selects donors before calling the transform
-donors = [dataset[i] for i in sampled_indices]
-result = transform(image=image, copy_paste_metadata=donors)
+# Correct — caller owns the candidate pool.
+result = transform(image=image, mosaic_metadata=donors)
 
-# INCORRECT — transform samples internally
+# Incorrect — the transform owns a dataset and discovers donors itself.
 result = TransformThatSamplesInternally(dataset=dataset)(image=image)
 ```
 
-**Why**: one extra line outside the transform enables deterministic control, class-balanced pasting,
-hard-example mining, and curriculum strategies — none of which are possible inside the transform.
+Keeping the pool with the caller preserves deterministic control, class-balanced selection, hard-example mining, and
+curriculum strategies. The transform may only select from that supplied pool when it has more candidates than cells.
 
 #### Metadata format: `list[dict]`
 
-All mixing transforms use `list[dict]` as the metadata type — one dict per item (one full image for
-`Mosaic`, one object instance for `CopyAndPaste`). This is consistent across the library.
+All mixing transforms use `list[dict]` as metadata: one dictionary per full image for `Mosaic` or per object instance
+for `CopyAndPaste`.
 
 #### Label fields in metadata
 
-All mixing transforms use `bbox_labels` and `keypoint_labels` wrapper dicts for label fields:
+All mixing transforms use `bbox_labels` and `keypoint_labels` wrapper dictionaries for label fields:
 
-- `bbox_labels` — `dict[str, Any]` mapping each label field name (as declared in
-  `BboxParams.label_fields`) to its value(s). Supports multiple label fields.
-- `keypoint_labels` — `dict[str, Any]` mapping each label field name (as declared in
-  `KeypointParams.label_fields`) to its value(s).
+- `bbox_labels` maps every field declared in `BboxParams.label_fields` to its value or values.
+- `keypoint_labels` maps every field declared in `KeypointParams.label_fields` to its value or values.
 
-For **CopyAndPaste** (one object per dict), values are scalars:
+For **CopyAndPaste** (one object per dictionary), values are scalars:
 
 ```python
 {
     "image": src_image,
-    "mask": obj_mask,
-    "bbox": [10, 20, 50, 80],  # same coord_format as BboxParams
+    "mask": object_mask,
+    "bbox": [10, 20, 50, 80],
     "bbox_labels": {"class_id": 3, "is_crowd": 0},
-    "keypoints": [[25, 40]],  # same coord_format as KeypointParams
+    "keypoints": [[25, 40]],
     "keypoint_labels": {"joint_name": "left_eye"},
 }
 ```
 
-For **Mosaic** (one full image per dict), values are lists — one entry per bbox/keypoint:
+For **Mosaic** (one full image per dictionary), values are lists — one entry per bounding box or keypoint:
 
 ```python
 {
-    "image": img,
+    "image": image,
     "bboxes": [[10, 20, 50, 80], [5, 5, 30, 30]],
     "bbox_labels": {"class_id": [3, 7], "is_crowd": [0, 1]},
     "keypoints": [[25, 40]],
@@ -329,50 +329,34 @@ For **Mosaic** (one full image per dict), values are lists — one entry per bbo
 }
 ```
 
-The dict keys inside `bbox_labels` / `keypoint_labels` must exactly match the field names
-declared in `BboxParams(label_fields=[...])` and `KeypointParams(label_fields=[...])`.
+The keys inside `bbox_labels` and `keypoint_labels` must exactly match the corresponding `label_fields` declaration.
 
-#### Coordinates use the same format as `BboxParams` / `KeypointParams`
+#### Coordinates use the enclosing processor format
 
-Bboxes and keypoints in metadata dicts must use the **same `coord_format`** as declared in `Compose`.
-The processor converts them to internal format automatically — no manual conversion needed.
+Bounding boxes and keypoints in metadata use the same `coord_format` declared by the enclosing `Compose`. The
+processor converts them to its internal format; do not convert them manually before passing metadata.
 
-**Example (`Mosaic` transform):**
+**Mosaic selection example:**
 
 ```python
-from albumentations.core.invocation import SamplingContext
+def select_mosaic_items(
+    candidates: list[dict[str, Any]],
+    *,
+    primary: dict[str, Any],
+    num_additional_cells: int,
+    sampling: SamplingContext,
+) -> list[dict[str, Any]]:
+    if len(candidates) > num_additional_cells:
+        return sampling.py_random.sample(candidates, num_additional_cells)
 
-
-class Mosaic(DualTransform):
-    def __init__(self, target_size: tuple[int, int] = (512, 512), p=0.5, metadata_key="mosaic_metadata"):
-        super().__init__(p=p)
-        self.target_size = target_size
-        self.metadata_key = metadata_key
-
-    @property
-    def targets_as_params(self) -> list[str]:
-        return [self.metadata_key]
-
-    def sample_parameters(self, params: dict, data: dict, sampling: SamplingContext) -> dict:
-        metadata = data.get(self.metadata_key)
-        if not isinstance(metadata, list) or not metadata:
-            return self._no_op_params()
-        # ... process metadata ...
-        return {...}
-
-
-# Usage — user selects which images to include
-transform = A.Mosaic(target_size=(640, 640))
-result = transform(
-    image=img1,
-    bboxes=bboxes1,
-    class_id=[1, 2],
-    mosaic_metadata=[
-        {"image": img2, "bboxes": bboxes2, "class_id": [3, 4]},
-        {"image": img3, "bboxes": bboxes3, "class_id": [5]},
-    ],
-)
+    replicas = [copy.deepcopy(primary) for _ in range(num_additional_cells - len(candidates))]
+    return [*candidates, *replicas]
 ```
+
+`CopyAndPaste` and Mosaic intentionally differ for empty metadata: `CopyAndPaste` is a no-op, while Mosaic may fill
+its cells with independent primary-item replicas.
+
+See `docs/design/mosaic.md` for Mosaic's full processor, sampling, and label-encoding contract.
 
 ## Random Number Generation
 
@@ -783,23 +767,23 @@ Examples:
 
 ## Performance Optimization Checklist
 
-When writing or reviewing performance-sensitive code (functional layer, apply methods, core pipeline), apply these techniques in priority order:
-
-Use the repo-local `performance-optimization` skill for the complete workflow. It loads Albucore's canonical
-performance guide and requires a delete-first pass, backend comparison, correctness baseline, and representative
-benchmarks.
+Runtime performance is an evidence problem, not a list of automatic rewrites. For functional-layer code, `apply`
+methods, and core pipeline paths, use the techniques below to form candidates, then measure them on the affected public
+route. The repo-local `performance-optimization` skill provides the full workflow: delete-first review, backend
+comparison, correctness baseline, and representative benchmarks. Use the `benchmark` skill to record the baseline,
+candidate, public route, and every relevant measured cell.
 
 ### 1. Eliminate Python Loops Over Pixels
 
-Python `for y in range(h): for x in range(w):` loops are ~100x slower than vectorized numpy. Replace with:
+Python `for y in range(h): for x in range(w):` loops are much slower than vectorized NumPy. Prefer:
 
-- `np.mgrid` / `np.meshgrid` + broadcasting for grid computations
-- `np.einsum` for weighted sums over control points
-- Scatter-update via fancy indexing (`arr[ys, xs] = vals`) instead of per-pixel assignment
+- `np.mgrid` / `np.meshgrid` plus broadcasting for grid computations;
+- `np.einsum` for weighted sums over control points; and
+- scatter updates via fancy indexing (`arr[ys, xs] = values`) instead of per-pixel assignment.
 
 ### 2. Eliminate Per-Label Full-Array Scans
 
-When integer labels are dense and non-negative, use `np.bincount` as a grouped reduction instead of constructing one
+When integer labels are dense and non-negative, `np.bincount` can be a grouped reduction instead of constructing one
 full-image mask per label:
 
 ```python
@@ -808,98 +792,99 @@ weighted_sums = np.bincount(labels, weights=values, minlength=num_labels)
 means = weighted_sums / counts
 ```
 
-This can replace `for label: mask = labels == label` for component sizes, sums, means, histograms, and cluster-center
-updates. Benchmark small label counts too: sparse IDs require remapping, `weights=` changes accumulation precision,
-and `np.unique(..., return_inverse=True)` may cost more than the scans it replaces.
+This can replace `for label: mask = labels == label` for component sizes, sums, means, histograms, and cluster-centre
+updates. Benchmark small label counts too: sparse IDs require remapping, `weights=` changes accumulation precision, and
+`np.unique(..., return_inverse=True)` can cost more than the scans it replaces.
 
-### 3. Use `cv2.LUT` / `sz_lut` for uint8 Pixel-Wise Transforms
+### 3. Consider `cv2.LUT` / `sz_lut` for uint8 Pixel-Wise Transforms
 
-Any function `f(pixel) -> pixel` on uint8 data should build a 256-entry LUT and apply it via `sz_lut(img, lut, inplace=...)`. This is orders of magnitude faster than per-pixel numpy.
+For a uint8 operation of the form `f(pixel) -> pixel`, compare a 256-entry LUT applied with
+`sz_lut(image, lut, inplace=...)` to direct array arithmetic. LUTs often win, but the complete operation and the input
+layout decide the result.
 
-Exception: if the operation is literally a bit mask, direct bitwise operations can be faster than LUTs.
+An operation that is literally a bit mask is a common exception:
 
 ```python
-# Fast for posterization-style bit masks
+# Often fast for posterization-style bit masks.
 mask = ~np.uint8(2 ** (8 - num_bits) - 1)
-result = img & mask
+result = image & mask
 ```
 
-For multichannel bit masks, benchmark broadcasted `img & masks` against a preallocated per-channel loop. Broadcasting
-small per-channel masks can create slow strided operations.
+For multichannel bit masks, benchmark broadcasted `image & masks` against a preallocated per-channel implementation.
+Broadcasting small per-channel masks can create slow strided operations.
 
 ### 4. Vectorize LUT and Array Construction
 
-Replace Python list comprehensions with numpy vectorized equivalents:
+Replace Python list comprehensions with NumPy vectorized equivalents when constructing arrays in a hot path:
 
 ```python
 # Slow
-lut = np.array([max_val - i if i >= thresh else i for i in range(256)])
+lut = np.array([max_value - i if i >= threshold else i for i in range(256)])
 
 # Fast
 indices = np.arange(256, dtype=np.uint8)
-lut = np.where(indices >= thresh, max_val - indices, indices)
+lut = np.where(indices >= threshold, max_value - indices, indices)
 ```
 
 ### 5. Use `out=` for In-Place Operations
 
-Avoid allocating temporaries on image-sized arrays:
+Avoid unnecessary temporaries on image-sized arrays:
 
 ```python
-# Allocates temporary
-result = np.clip(img + noise, 0, 1)
+# Allocates a temporary.
+result = np.clip(image + noise, 0, 1)
 
-# In-place — zero allocation
-result = img + noise
+# Reuses the result buffer.
+result = image + noise
 np.clip(result, 0, 1, out=result)
 ```
 
-Key functions with `out=` support: `np.clip`, `np.multiply`, `np.add`, `np.divide`.
+Useful functions with `out=` include `np.clip`, `np.multiply`, `np.add`, and `np.divide`. Only use in-place mutation when
+the public contract permits it.
 
 ### 6. Avoid Float64 Waste
 
-Numpy defaults to float64. Always specify `dtype=np.float32` for:
-
-- `np.arange`, `np.linspace`, `np.zeros`, `np.ones`, `np.full`
-- `np.meshgrid` inputs (pass float32 arrays)
+NumPy defaults to float64. Specify `dtype=np.float32` for float arrays when float32 is sufficient, including
+`np.arange`, `np.linspace`, `np.zeros`, `np.ones`, `np.full`, and mesh-grid inputs.
 
 ### 7. Fuse Multi-Step Operations
 
-Replace chains of temporary allocations with single calls:
+Replace chains of temporary allocations with a fused helper where its semantics match:
 
 ```python
-# 2 temporaries
-result = img + alpha * (img - blurred)
+# Two temporaries.
+result = image + alpha * (image - blurred)
 
-# Zero temporaries — single fused call
-result = add_weighted(img, 1.0 + alpha, blurred, -alpha)
+# A fused weighted sum.
+result = add_weighted(image, 1.0 + alpha, blurred, -alpha)
 ```
 
 ### 8. Choose Backends by Benchmark
 
-Compare NumPy, OpenCV, NumKong, StringZilla, and LUT implementations that can express the complete operation. Include
-dispatch, conversion, contiguity, clipping, and allocation costs. Benchmark the exact dtype, shape, and channel matrix
-before switching.
+Compare NumPy, OpenCV, NumKong, StringZilla, and LUT implementations that express the complete operation. Include
+dispatch, conversion, contiguity, clipping, and allocation costs, and benchmark the exact dtype, shape, and channel
+matrix before switching.
 
-- Use scalar NumPy bitwise, for example `img & np.uint8(mask)`, when the operation has a scalar mask.
-- Use `cv2.bitwise_*` only when both operands are dense contiguous arrays and `dst=` can reuse output.
-- Do not allocate a full image-sized mask only to call OpenCV; that allocation often loses.
-- Avoid `cv2.distanceTransform` for a single-source Euclidean distance field. Direct coordinate math with
-  `np.arange(..., dtype=np.float32)` and `cv2.sqrt(..., dst=...)` is simpler and can be faster.
-- For sparse multi-channel replacement, copy plus masked assignment can beat nested `np.where`; benchmark the
-  density threshold.
+- Use scalar NumPy bitwise operations, such as `image & np.uint8(mask)`, for a scalar mask.
+- Use `cv2.bitwise_*` when both operands are dense contiguous arrays and `dst=` can reuse output.
+- Do not allocate a full image-sized mask merely to call OpenCV; that allocation often loses.
+- For a single-source Euclidean distance field, direct coordinate math with `np.arange(..., dtype=np.float32)` and
+  `cv2.sqrt(..., dst=...)` may be simpler and faster than `cv2.distanceTransform`.
+- For sparse multi-channel replacement, copy plus masked assignment can beat nested `np.where`; measure the density
+  threshold.
 
 ### 9. Preallocate Outside Loops
 
-Move `np.zeros` / `np.empty` calls outside loops and reset with `arr[:] = 0`:
+Move repeated allocations outside loops and reset reusable buffers:
 
 ```python
-# Slow — allocates every iteration
+# Slow — allocates every iteration.
 for item in items:
-    mask = np.zeros((h, w), dtype=np.uint8)
+    mask = np.zeros((height, width), dtype=np.uint8)
     cv2.fillPoly(mask, ...)
 
-# Fast — allocate once, reset
-mask = np.zeros((h, w), dtype=np.uint8)
+# Reuse one allocation.
+mask = np.zeros((height, width), dtype=np.uint8)
 for item in items:
     mask[:] = 0
     cv2.fillPoly(mask, ...)
@@ -907,18 +892,18 @@ for item in items:
 
 ### 10. Skip Redundant Work in Hot Paths
 
-- Guard `np.ascontiguousarray` with `if not arr.flags["C_CONTIGUOUS"]`
-- Use `first_result[np.newaxis]` instead of `np.array([first_result])` for batch-of-one
-- Precompute loop-invariant expressions (e.g., `inv_sq = 1.0 / (step * step)`)
-- Use `np.where(mask)` instead of `np.argwhere(mask)` — returns tuple of 1D arrays instead of 2D index array
+- Guard `np.ascontiguousarray` with `if not array.flags["C_CONTIGUOUS"]`.
+- Use `first_result[np.newaxis]` instead of `np.array([first_result])` for a batch of one.
+- Precompute loop-invariant expressions, for example `inverse_squared_step = 1.0 / (step * step)`.
+- Prefer `np.where(mask)` to `np.argwhere(mask)` when a tuple of one-dimensional index arrays is enough.
 
 ### 11. Compare and Vectorize Random Number Generation
 
-Use Python `random.Random` for a few scalar choices and NumPy `Generator` for arrays as starting candidates. Benchmark
-Python, NumPy, and OpenCV random generation when more than one can express the workload. Preserve per-transform seeded
-isolation and replay behavior; OpenCV's global RNG may make it ineligible even when its kernel is fast.
+Use Python `random.Random` for a few scalar choices and a NumPy `Generator` for arrays as starting candidates. When
+multiple generators can express the workload, benchmark them while preserving transform-local seeded isolation and
+replay behaviour; a global OpenCV RNG can be ineligible even if its kernel is fast.
 
-Replace per-element Python RNG loops with single NumPy calls:
+Replace per-element Python RNG loops with one NumPy call when an array draw is appropriate:
 
 ```python
 # Slow
@@ -930,21 +915,14 @@ steps = (1 + sampling.random_generator.uniform(*limit, size=n)).tolist()
 
 ### Updating Transform Documentation
 
-When adding a new transform or modifying the targets of an existing one, you must update the transforms documentation in the README:
+When adding a new transform or changing its target contract, update the generated transform table:
 
-1. Generate the updated documentation by running:
+```bash
+python -m tools.make_transforms_docs make
+```
 
-   ```bash
-   python -m tools.make_transforms_docs make
-   ```
-
-2. This will output a formatted list of all transforms and their supported targets
-
-3. Update the relevant section in README.md with the new information
-
-4. Ensure the documentation accurately reflects which targets (image, mask, bboxes, keypoints, etc.) are supported by each transform
-
-This helps maintain accurate and up-to-date documentation about transform capabilities.
+Then update the relevant README section with the generated result and confirm that the documented targets (image, mask,
+bounding boxes, keypoints, and so on) match the public contract.
 
 ## Testing
 
@@ -964,11 +942,12 @@ This helps maintain accurate and up-to-date documentation about transform capabi
 
 Before submitting your PR:
 
-1. Run all tests
-2. Run pre-commit hooks
-3. Check type hints
-4. Update documentation if needed
-5. Ensure code follows these guidelines
+1. Name the changed contract and run the smallest validation that can disprove it.
+2. Run the relevant pre-commit hooks and report their actual results.
+3. Add broader tests, benchmarks, or type checks only when the changed route requires them.
+4. Update public documentation when the public contract changed.
+
+Use `.codex/skills/validate-and-fix/SKILL.md` for the decision-based validation workflow.
 
 ## Getting Help
 

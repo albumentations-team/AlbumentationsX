@@ -26,15 +26,26 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 
 ## 3. Mechanical AX contracts (🔴 Critical)
 
-Run `pre-commit run check-ax-coding-guidance --all-files` first and report its exact `AXG` diagnostic. Keep the
-deterministic contract and its exceptions in `docs/contributing/coding_guidelines.md`.
+Run `pre-commit run check-ax-coding-guidance --all-files` first. Report a failing `AXG` diagnostic exactly; otherwise
+record that the hook passed. Keep the deterministic contract and its exceptions in
+`docs/contributing/coding_guidelines.md`.
 
 Use human review for what the hook cannot decide: whether constructor fields express a coherent public API, whether
 validators preserve intended semantics, and whether a proposed functional operation belongs in Albucore.
 
 ## 4. Sampling design (🔴 Critical)
 
-Review the sampling design and replay contract here. Use the AX guidance hook for deterministic violations.
+Review the policy and replay boundary, not the hook's syntax checks:
+
+- What is sampled per invocation, and which constructor fields remain policy rather than realized state?
+- Does target-dependent sampling declare its required data and produce the same result for the same invocation seed?
+- Does `applied_config` record every realized constructor value needed for reconstruction and clear a conflicting source
+  policy field?
+- Is `ReplayProfile.EXACT` claimed only when the emitted configuration captures every output-changing random value?
+- Does the reconstructed transform execute on fresh equivalent data without mutating caller-owned inputs?
+
+Read `docs/design/applied-config-replay-contracts.md` when a finding concerns constructor serialization, applied
+configuration, or `ReplayCompose` rather than local sampling logic.
 
 ## 5. Type Safety (🔴 Critical)
 
@@ -47,50 +58,26 @@ Review the sampling design and replay contract here. Use the AX guidance hook fo
 
 Read `../performance-optimization/SKILL.md` and its required reference completely before reviewing this section.
 
-Priority order to check:
-1. Delete redundant work, full-array passes, conversions, and copies.
-2. Vectorize loops when the benchmark supports the resulting memory layout.
-3. Use grouped reductions such as `np.bincount` instead of repeated per-label full-array masks when labels are dense.
-4. Compare LUT, NumPy, OpenCV, NumKong, and StringZilla implementations where applicable.
-5. Compare Python, NumPy, and OpenCV random generation without breaking seeded isolation or replay.
-6. Use `albucore.resize`, not `cv2.resize`, for image resizing.
-7. Move reusable atomic image operations into Albucore.
-8. Use in-place operations where ownership and aliasing make them safe.
-9. Cache expensive setup in `sample_parameters` or once per batch.
-
-### Batch Optimization Checks
-
-- [ ] **Custom `apply_to_images`** if expensive setup (kernels, LUTs, gradient maps) can be computed once per batch
-- [ ] **No redundant `ndim == 4` checks** on images — they're always 4D in batch context
-- [ ] **No 2D grayscale branches** in Compose functional paths — grayscale images are `(H,W,1)`
-- [ ] **No reshape trick**: Do NOT reshape `(N,H,W,1)` to `(H,W,N)` for cv2 — 2–4× slower due to non-contiguous copy + sequential channel processing
-
-Flag any violations with a concrete speedup suggestion.
+Report only an applicable missed candidate: work that can be deleted, an existing Albucore primitive, an unsafe
+allocation or conversion, an unexamined backend, or setup that can be shared across a batch. Tie the finding to the
+affected public route and benchmark evidence; do not request an optimization merely because its pattern is generally
+faster.
 
 ## 7. Documentation (🟡 Important)
 
-- [ ] Docstring has `Args`, `Targets`, `Image types` sections
-- [ ] Examples follow the standard pattern with image, mask, bboxes, keypoints
-- [ ] Examples use `A.Compose` with `BboxParams` and `KeypointParams`
+Use `docstring-deep-dive` for public-docstring quality. Review whether the description lets a user choose the transform,
+and whether each example demonstrates the targets and configuration that the transform actually supports.
 
 ## 8. Test Coverage (🟡 Important)
 
-- [ ] Transform has named cases in `tests/helpers/transform_cases.py`
-- [ ] Every configurable public constructor parameter except `p` and `strict` has a non-default case
-- [ ] Behaviorally distinct and mutually exclusive modes have separate cases
-- [ ] Special targets or metadata use a deterministic factory, not a generic-test class-name branch
-- [ ] Every registered mode collects against all applicable core profiles in the generated target cluster
-- [ ] Target applicability comes from declared targets, bbox types, prerequisites, and channel capabilities
-- [ ] Target profiles and runners contain no transform-class lists, class-name skips, or duplicated constructor kwargs
-- [ ] Transform-required metadata lives in the case `context_factory`; target-dependent sampling uses `required_targets`
-- [ ] Realized `applied_config` survives strict JSON, public reconstruction, and fresh-data execution
-- [ ] Conflicting stochastic-policy fields are cleared when sampled fields are emitted
-- [ ] Exact replay is asserted only when the applied configuration captures all relevant randomness
-- [ ] Tested with uint8 and float32
-- [ ] Tested with 1, 3, and N channels (if applicable)
-- [ ] Edge cases covered (empty bboxes, zero-area regions, etc.)
-- [ ] Tests use `seed=137` (not 42)
-- [ ] Tests use `np.testing` assertions (not plain `assert`)
+- Does every public constructor mode have a named registry case, including mutually exclusive behavior?
+- Do declared targets, bbox types, metadata prerequisites, and genuine channel restrictions produce the expected
+  generated target-profile pairs without class-name branches or skips?
+- Does a focused test state a stronger semantic property than the generated cluster already covers?
+- Does replay cross strict JSON, reconstruct publicly, and execute on fresh data at the declared strength?
+
+Use `docs/design/transform-target-contracts.md` and `docs/design/applied-config-replay-contracts.md` for the exact
+registry and profile contracts.
 
 ## 9. Code Quality (🟢 Suggestion)
 
@@ -109,7 +96,7 @@ Flag any violations with a concrete speedup suggestion.
 - **AXG diagnostic**: report the exact hook rule and location (for example, `AXG008`)
 
 ### 🟡 Important
-- **Performance**: Use `cv2.LUT` instead of numpy indexing for pixel mapping (5-10x faster)
+- **Performance**: The public Compose route has no baseline comparison for the proposed LUT candidate
 - **Docs**: Example does not explain the transform's target semantics
 
 ### 🟢 Suggestions

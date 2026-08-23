@@ -29,6 +29,10 @@ For transform or guidance changes, the focused mechanical check is
 `pre-commit run check-ax-coding-guidance --all-files`. Keep deterministic contract details in
 `docs/contributing/coding_guidelines.md`; keep design and benchmark review in the applicable skill.
 
+Before handoff, check `git status --short`. `pre-commit run --all-files` omits untracked files, so run `pre-commit`
+with `--files` for each new file until it is staged or tracked. When a change relies on type narrowing, run and report
+both mypy and Pyrefly.
+
 ## Rules
 
 - Iterate until clean. Do not report errors and stop—fix them.

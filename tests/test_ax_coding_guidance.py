@@ -140,6 +140,45 @@ class Example(DualTransform):
     assert {"AXG013", "AXG014"} <= set(ids)
 
 
+def test_guidance_resolves_direct_imports_and_positional_only_sampling() -> None:
+    ids = rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+from cv2 import resize
+from numpy.random import uniform
+from random import randint
+
+class DualTransform: pass
+class Example(DualTransform):
+    def sample_parameters(self, params, data, sampling: SamplingContext, /):
+        return {"x": uniform(), "y": randint(0, 1), "image": resize(data["image"], (4, 4))}
+""",
+        },
+    )
+    assert {"AXG005", "AXG012"} <= set(ids)
+    assert "AXG004" not in ids
+
+
+def test_scalar_math_tracks_local_dataflow_without_leaking_names_between_functions() -> None:
+    ids = rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+import numpy as np
+
+class DualTransform: pass
+class Example(DualTransform):
+    def value(self, angle: float):
+        radians = np.deg2rad(angle)
+        return np.sin(radians) + np.sqrt(angle * 2)
+
+def array_value(angle):
+    return np.sqrt(angle)
+""",
+        },
+    )
+    assert ids.count("AXG014") == 3
+
+
 def test_docstring_rules_require_plural_examples_and_apply_docs_are_forbidden() -> None:
     ids = rule_ids(
         {

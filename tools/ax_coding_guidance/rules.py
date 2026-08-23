@@ -106,7 +106,7 @@ def _method_targets(info: ClassInfo) -> Iterable[tuple[str, ast.FunctionDef | as
 
 def _is_field_classvar(annotation: ast.expr) -> bool:
     text = ast.unparse(annotation)
-    return text.startswith("ClassVar[") or ".ClassVar[" in text
+    return text in {"ClassVar", "typing.ClassVar"} or text.startswith("ClassVar[") or ".ClassVar[" in text
 
 
 def _is_field_call_without_default(value: ast.expr) -> bool:
@@ -263,13 +263,14 @@ def rule_sampling_signature(index: SourceIndex) -> list[Diagnostic]:
                 )
             )
             continue
-        annotation = args.args[-1].annotation
+        sampling_arg = [*args.posonlyargs, *args.args][-1]
+        annotation = sampling_arg.annotation
         if annotation is None or ast.unparse(annotation).split(".")[-1] != "SamplingContext":
             result.append(
                 _d(
                     "AXG004",
                     info,
-                    args.args[-1],
+                    sampling_arg,
                     "sampling must be annotated as SamplingContext",
                     f"{info.name}.sample_parameters",
                 )
@@ -325,12 +326,10 @@ def rule_random_usage(index: SourceIndex) -> list[Diagnostic]:
                 continue
             root = aliases.get(chain[0], chain[0])
             rest = chain[1:]
-            method = None
-            if root == "numpy" and rest[:1] == ["random"] and len(rest) > 1:
-                method = rest[1]
-            elif root == "numpy.random" and rest:
-                method = rest[0]
-            if method in banned_numpy:
+            canonical = ".".join((root, *rest)) if rest else root
+            numpy_method = canonical.rsplit(".", 1)[-1] if canonical.startswith("numpy.random.") else None
+            random_method = canonical.rsplit(".", 1)[-1] if canonical.startswith("random.") else None
+            if numpy_method in banned_numpy:
                 result.append(
                     _unit_d(
                         "AXG005",
@@ -340,7 +339,7 @@ def rule_random_usage(index: SourceIndex) -> list[Diagnostic]:
                         ".".join(chain),
                     )
                 )
-            elif root == "random" and rest and rest[0] in banned_random:
+            elif random_method in banned_random:
                 result.append(
                     _unit_d(
                         "AXG005",
@@ -532,8 +531,8 @@ def _cv2_calls(unit) -> list[tuple[ast.Call, tuple[str, str, str]]]:
             chain = _chain(node.func)
             if not chain:
                 continue
-            canonical = unit.aliases.get(chain[0], chain[0])
-            is_cv2 = chain[0] == "cv2" or canonical.endswith(".cv2") or canonical == "cv2"
+            canonical_root = unit.aliases.get(chain[0], chain[0])
+            is_cv2 = canonical_root == "cv2" or canonical_root.startswith("cv2.") or canonical_root.endswith(".cv2")
             if is_cv2 and chain[-1] in CV2_FORBIDDEN:
                 calls.append((node, (unit.key, function.name, chain[-1])))
     return calls
@@ -579,6 +578,17 @@ def rule_cv2(index: SourceIndex) -> list[Diagnostic]:
                         node,
                         f"cv2.{operation} allowlist expects {expected} call(s) in {function}, found {actual}",
                         function,
+                    )
+                )
+            elif index.complete:
+                result.append(
+                    Diagnostic(
+                        "AXG019",
+                        path,
+                        1,
+                        1,
+                        function,
+                        f"cv2.{operation} allowlist expects {expected} call(s) in {function}, found {actual}",
                     )
                 )
     return result
@@ -657,69 +667,195 @@ def rule_integrity(index: SourceIndex) -> list[Diagnostic]:
 
 
 NUMPY_MATH_NAMES = frozenset(NUMPY_MATH_TO_MATH)
+SCALAR_BUILTINS = frozenset({"abs", "float", "int", "max", "min", "round"})
+SCALAR_TYPE_NAMES = frozenset({"float", "int"})
+SCALAR = "scalar"
+SCALAR_MAPPING = "scalar_mapping"
 
 
-def _scalar_names(tree: ast.AST) -> set[str]:
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.arg) and node.annotation is not None:
-            if ast.unparse(node.annotation) in {"float", "int"}:
-                names.add(node.arg)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            if ast.unparse(node.annotation) in {"float", "int"}:
-                names.add(node.target.id)
-        elif (
-            isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Constant)
-            and isinstance(node.value.value, (int, float))
-            and not isinstance(node.value.value, bool)
-        ):
-            names.update(target.id for target in node.targets if isinstance(target, ast.Name))
-    return names
+def _scalar_annotation(node: ast.expr, type_aliases: dict[str, str]) -> str | None:
+    if isinstance(node, ast.Name):
+        if node.id in SCALAR_TYPE_NAMES:
+            return SCALAR
+        return type_aliases.get(node.id)
+    if isinstance(node, ast.Attribute):
+        return SCALAR if node.attr in SCALAR_TYPE_NAMES else None
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        left = _scalar_annotation(node.left, type_aliases)
+        right = _scalar_annotation(node.right, type_aliases)
+        return left if left == right else None
+    if isinstance(node, ast.Subscript):
+        base = dotted(node.value)
+        base_name = base.rsplit(".", 1)[-1] if base else ""
+        items = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
+        if base_name in {"Mapping", "dict"} and len(items) == 2:
+            return SCALAR_MAPPING if _scalar_annotation(items[1], type_aliases) == SCALAR else None
+    return None
 
 
-def _numpy_math_operation(unit, node: ast.Call) -> tuple[str, str] | None:
-    chain = dotted(node.func)
-    if not chain:
-        return None
-    parts = chain.split(".")
-    canonical = unit.aliases.get(parts[0], parts[0])
-    if canonical.startswith("numpy."):
+class _ScalarMathChecker(ast.NodeVisitor):
+    """Track conservative scalar dataflow independently inside each function."""
+
+    def __init__(self, unit) -> None:
+        self.unit = unit
+        self.aliases = unit.aliases
+        self.type_aliases: dict[str, str] = {}
+        self.values: dict[str, str] = {}
+        self.diagnostics: list[tuple[ast.Call, str, str]] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        previous_values = self.values
+        self.values = {}
+        for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
+            if argument.annotation is not None:
+                kind = _scalar_annotation(argument.annotation, self.type_aliases)
+                if kind is not None:
+                    self.values[argument.arg] = kind
+        for statement in node.body:
+            self.visit(statement)
+        self.values = previous_values
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.visit_FunctionDef(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            kind = _scalar_annotation(node.value, self.type_aliases)
+            if kind is not None:
+                self.type_aliases[node.targets[0].id] = kind
+                return
+        self.visit(node.value)
+        kind = self._expression_kind(node.value)
+        for target in node.targets:
+            self._assign_kind(target, kind)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name):
+            annotation_kind = _scalar_annotation(node.annotation, self.type_aliases)
+            if annotation_kind is not None:
+                self.values[node.target.id] = annotation_kind
+        if node.value is not None:
+            self.visit(node.value)
+            self._assign_kind(node.target, self._expression_kind(node.value))
+
+    def visit_For(self, node: ast.For) -> None:
+        self.visit(node.iter)
+        self._assign_kind(node.target, self._iterated_value_kind(node.iter))
+        for statement in (*node.body, *node.orelse):
+            self.visit(statement)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        operation = self._numpy_operation(node.func)
+        if operation is not None and self._has_scalar_arguments(node.args, operation):
+            chain = dotted(node.func) or self._canonical_name(node.func)
+            self.diagnostics.append((node, operation, chain))
+        self.generic_visit(node)
+
+    def _canonical_name(self, node: ast.expr) -> str | None:
+        chain = dotted(node)
+        if not chain:
+            return None
+        parts = chain.split(".")
+        root = self.aliases.get(parts[0], parts[0])
+        return ".".join((root, *parts[1:]))
+
+    def _numpy_operation(self, node: ast.expr) -> str | None:
+        canonical = self._canonical_name(node)
+        if canonical is None or not canonical.startswith("numpy."):
+            return None
         operation = canonical.rsplit(".", 1)[-1]
-    elif canonical == "numpy" and len(parts) >= 2:
-        operation = parts[1]
-    else:
+        return operation if operation in NUMPY_MATH_NAMES else None
+
+    def _assign_kind(self, target: ast.expr, value_kind: str | None) -> None:
+        if value_kind is None:
+            return
+        if isinstance(target, ast.Name):
+            self.values[target.id] = value_kind
+        elif isinstance(target, (ast.Tuple, ast.List)) and value_kind == SCALAR:
+            for item in target.elts:
+                self._assign_kind(item, SCALAR)
+
+    def _expression_kind(self, node: ast.expr) -> str | None:
+        for infer_kind in (
+            self._literal_or_name_kind,
+            self._attribute_or_subscript_kind,
+            self._operation_kind,
+            self._call_kind,
+        ):
+            value_kind = infer_kind(node)
+            if value_kind is not None:
+                return value_kind
         return None
-    return (operation, chain) if operation in NUMPY_MATH_NAMES else None
 
+    def _literal_or_name_kind(self, node: ast.expr) -> str | None:
+        if isinstance(node, ast.Constant) and isinstance(node.value, (float, int)) and not isinstance(node.value, bool):
+            return SCALAR
+        return self.values.get(node.id) if isinstance(node, ast.Name) else None
 
-def _scalar_expression(node: ast.expr, names: set[str]) -> bool:
-    return (
-        isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool)
-    ) or (isinstance(node, ast.Name) and node.id in names)
+    def _attribute_or_subscript_kind(self, node: ast.expr) -> str | None:
+        if isinstance(node, ast.Attribute):
+            canonical = self._canonical_name(node)
+            return SCALAR if canonical in {"math.pi", "math.e", "numpy.pi", "numpy.e"} else None
+        if isinstance(node, ast.Subscript):
+            return SCALAR if self._expression_kind(node.value) == SCALAR_MAPPING else None
+        return None
+
+    def _operation_kind(self, node: ast.expr) -> str | None:
+        if isinstance(node, ast.UnaryOp):
+            return self._expression_kind(node.operand)
+        if isinstance(node, ast.BinOp):
+            left = self._expression_kind(node.left)
+            right = self._expression_kind(node.right)
+            return SCALAR if left == SCALAR and right == SCALAR else None
+        if isinstance(node, (ast.Tuple, ast.List)) and node.elts:
+            return SCALAR if all(self._expression_kind(element) == SCALAR for element in node.elts) else None
+        return None
+
+    def _call_kind(self, node: ast.expr) -> str | None:
+        if not isinstance(node, ast.Call):
+            return None
+        canonical = self._canonical_name(node.func)
+        if canonical in SCALAR_BUILTINS and all(self._expression_kind(arg) == SCALAR for arg in node.args):
+            return SCALAR
+        if canonical is not None and canonical.startswith("math."):
+            return SCALAR if all(self._expression_kind(arg) == SCALAR for arg in node.args) else None
+        operation = self._numpy_operation(node.func)
+        if operation is not None and self._has_scalar_arguments(node.args, operation):
+            return SCALAR
+        return None
+
+    def _iterated_value_kind(self, node: ast.expr) -> str | None:
+        if (
+            isinstance(node, (ast.Tuple, ast.List))
+            and node.elts
+            and all(self._expression_kind(element) == SCALAR for element in node.elts)
+        ):
+            return SCALAR
+        return None
+
+    def _has_scalar_arguments(self, arguments: list[ast.expr], operation: str) -> bool:
+        required = 2 if operation == "arctan2" else 1
+        return len(arguments) >= required and all(self._expression_kind(arg) == SCALAR for arg in arguments[:required])
 
 
 def rule_scalar_numpy_math(index: SourceIndex) -> list[Diagnostic]:
     result: list[Diagnostic] = []
     for unit in index.units:
-        names = _scalar_names(unit.tree)
-        for node in (candidate for candidate in ast.walk(unit.tree) if isinstance(candidate, ast.Call)):
-            operation_info = _numpy_math_operation(unit, node)
-            if operation_info is None or not node.args or not all(_scalar_expression(arg, names) for arg in node.args):
-                continue
-            operation, chain = operation_info
-            result.append(
-                _unit_d(
-                    "AXG014",
-                    unit,
-                    node,
-                    (
-                        f"'numpy.{operation}' receives Python scalar values; use "
-                        f"'math.{NUMPY_MATH_TO_MATH[operation]}' instead"
-                    ),
-                    chain,
-                )
+        checker = _ScalarMathChecker(unit)
+        checker.visit(unit.tree)
+        result.extend(
+            _unit_d(
+                "AXG014",
+                unit,
+                node,
+                (
+                    f"'numpy.{operation}' receives Python scalar values; "
+                    f"use 'math.{NUMPY_MATH_TO_MATH[operation]}' instead"
+                ),
+                chain,
             )
+            for node, operation, chain in checker.diagnostics
+        )
     return result
 
 

@@ -63,8 +63,9 @@ class ClassInfo:
 class SourceIndex:
     """One parse and a conservative package-wide symbol index for all rules."""
 
-    def __init__(self, units: Iterable[FileUnit]) -> None:
+    def __init__(self, units: Iterable[FileUnit], *, complete: bool = False) -> None:
         self.units = tuple(units)
+        self.complete = complete
         self.classes: dict[str, ClassInfo] = {}
         self.simple_classes: dict[str, list[str]] = {}
         for unit in self.units:
@@ -87,7 +88,7 @@ class SourceIndex:
             except ValueError:
                 key = path.as_posix()
             units.append(FileUnit(key, text, tree))
-        return cls(units)
+        return cls(units, complete=True)
 
     @classmethod
     def from_sources(cls, sources: dict[str, str]) -> SourceIndex:

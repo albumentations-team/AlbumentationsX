@@ -1,3 +1,4 @@
+import math
 from typing import Literal
 
 import cv2
@@ -6,6 +7,7 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.crops.functional import crop_bboxes_by_coords
+from albumentations.core.invocation import SamplingContext
 
 from .conftest import IMAGES, RECTANGULAR_UINT8_IMAGE
 
@@ -419,3 +421,123 @@ def test_at_least_one_bbox_random_crop_efficiency(num_bboxes):
     assert len(transformed["bboxes"]) > 0
     assert len(transformed["bbox_labels"]) > 0
     assert transformed["image"].shape == (200, 200, 3)
+
+
+def _subset_safe_crop_bboxes() -> np.ndarray:
+    # Six spatially separated normalized boxes so any subset yields a distinct union.
+    return np.array(
+        [
+            [0.02, 0.02, 0.12, 0.12],
+            [0.20, 0.02, 0.30, 0.12],
+            [0.02, 0.20, 0.12, 0.30],
+            [0.20, 0.20, 0.30, 0.30],
+            [0.40, 0.40, 0.50, 0.50],
+            [0.60, 0.60, 0.98, 0.98],
+        ],
+        dtype=np.float32,
+    )
+
+
+def test_bbox_subset_safe_random_crop_selects_valid_subset_size():
+    bboxes = _subset_safe_crop_bboxes()
+    num_bboxes = len(bboxes)
+    subset_fraction_range = (0.3, 0.8)
+    min_subset_size = math.ceil(num_bboxes * subset_fraction_range[0])
+    max_subset_size = min(math.ceil(num_bboxes * subset_fraction_range[1]), num_bboxes)
+
+    transform = A.BBoxSubsetSafeRandomCrop(
+        subset_fraction_range=subset_fraction_range,
+        erosion_rate=0.0,
+        aspect_ratio_range=(0.01, 100.0),
+        p=1.0,
+    )
+
+    observed_counts = set()
+    for seed in range(40):
+        transform.set_random_seed(seed)
+        sampling = SamplingContext.from_owner(transform, {})
+        result = transform.sample_parameters({"shape": (400, 400, 3)}, {"bboxes": bboxes}, sampling)
+        selected = result["bbox_indices"]
+
+        assert min_subset_size <= len(selected) <= max_subset_size
+        assert len(set(selected)) == len(selected)
+        observed_counts.add(len(selected))
+
+    assert observed_counts == set(range(min_subset_size, max_subset_size + 1))
+
+
+def test_bbox_subset_safe_random_crop_preserves_selected_boxes_without_erosion():
+    bboxes = _subset_safe_crop_bboxes()
+    image_shape = (400, 400)
+
+    transform = A.BBoxSubsetSafeRandomCrop(
+        subset_fraction_range=(0.3, 0.8),
+        erosion_rate=0.0,
+        aspect_ratio_range=(0.01, 100.0),
+        p=1.0,
+    )
+
+    for seed in range(40):
+        transform.set_random_seed(seed)
+        sampling = SamplingContext.from_owner(transform, {})
+        result = transform.sample_parameters({"shape": (*image_shape, 3)}, {"bboxes": bboxes}, sampling)
+        selected = result["bbox_indices"]
+        crop_x_min, crop_y_min, crop_x_max, crop_y_max = result["crop_coords"]
+
+        for idx in selected:
+            box_x_min, box_y_min, box_x_max, box_y_max = bboxes[idx]
+            px_min = box_x_min * image_shape[1]
+            py_min = box_y_min * image_shape[0]
+            px_max = box_x_max * image_shape[1]
+            py_max = box_y_max * image_shape[0]
+
+            assert crop_x_min <= px_min
+            assert crop_y_min <= py_min
+            assert crop_x_max >= px_max
+            assert crop_y_max >= py_max
+
+
+def test_bbox_subset_safe_random_crop_enforces_feasible_aspect_ratio():
+    bboxes = np.array([[0.45, 0.35, 0.55, 0.65]], dtype=np.float32)
+    transform = A.BBoxSubsetSafeRandomCrop(
+        subset_fraction_range=(1.0, 1.0),
+        aspect_ratio_range=(0.2, 0.2),
+        p=1.0,
+    )
+
+    for seed in range(20):
+        transform.set_random_seed(seed)
+        sampling = SamplingContext.from_owner(transform, {})
+        crop_x_min, crop_y_min, crop_x_max, crop_y_max = transform.sample_parameters(
+            {"shape": (320, 640, 3)}, {"bboxes": bboxes}, sampling
+        )["crop_coords"]
+        assert (crop_y_max - crop_y_min) / (crop_x_max - crop_x_min) == 0.2
+
+
+def test_bbox_subset_safe_random_crop_applies_aspect_ratio_without_protected_boxes():
+    transform = A.BBoxSubsetSafeRandomCrop(
+        subset_fraction_range=(1.0, 1.0),
+        erosion_rate=1.0,
+        aspect_ratio_range=(0.2, 0.2),
+        p=1.0,
+    )
+    sampling = SamplingContext.from_owner(transform, {})
+    crop_x_min, crop_y_min, crop_x_max, crop_y_max = transform.sample_parameters(
+        {"shape": (320, 640, 3)}, {"bboxes": np.array([[0.0, 0.0, 1.0, 1.0]], dtype=np.float32)}, sampling
+    )["crop_coords"]
+
+    assert (crop_y_max - crop_y_min) / (crop_x_max - crop_x_min) == 0.2
+
+
+def test_bbox_subset_safe_random_crop_returns_full_image_when_aspect_ratio_is_infeasible():
+    transform = A.BBoxSubsetSafeRandomCrop(
+        subset_fraction_range=(1.0, 1.0),
+        aspect_ratio_range=(1.5, 2.0),
+        p=1.0,
+    )
+    sampling = SamplingContext.from_owner(transform, {})
+    result = transform.sample_parameters(
+        {"shape": (100, 200, 3)}, {"bboxes": np.array([[0.0, 0.0, 1.0, 1.0]], dtype=np.float32)}, sampling
+    )
+
+    assert result == {"crop_coords": (0, 0, 200, 100), "bbox_indices": (0,)}

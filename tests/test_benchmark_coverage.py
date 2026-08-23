@@ -306,11 +306,14 @@ def test_benchmark_coverage_details_map_crop_and_dropout_matrix_to_public_transf
 
 def test_benchmark_coverage_details_map_special_target_matrix_to_public_transforms() -> None:
     bbox_safe_crop = _coverage_for("BBoxSafeRandomCrop")
+    guided_coarse_dropout = _coverage_for("GuidedCoarseDropout")
     mask_dropout = _coverage_for("MaskDropout")
 
     assert bbox_safe_crop["smoke_only"] is False
+    assert guided_coarse_dropout["smoke_only"] is False
     assert mask_dropout["smoke_only"] is False
     assert "target_matrix" in bbox_safe_crop["layers"]
+    assert {"direct_kernel", "target_matrix"}.issubset(guided_coarse_dropout["layers"])
     assert "target_matrix" in mask_dropout["layers"]
 
 

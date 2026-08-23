@@ -221,8 +221,10 @@ ANNOTATION_ALIAS_TO_TRANSFORM = {
 SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
     "at_least_one_bbox_random_crop": "AtLeastOneBBoxRandomCrop",
     "bbox_safe_random_crop": "BBoxSafeRandomCrop",
+    "bbox_subset_safe_random_crop": "BBoxSubsetSafeRandomCrop",
     "constrained_coarse_dropout": "ConstrainedCoarseDropout",
     "crop_non_empty_mask_if_exists": "CropNonEmptyMaskIfExists",
+    "guided_coarse_dropout": "GuidedCoarseDropout",
     "mask_dropout": "MaskDropout",
     "random_crop_near_bbox": "RandomCropNearBBox",
 }
@@ -240,6 +242,7 @@ VOLUME_ALIAS_TO_TRANSFORM = {
     "random_crop3d": "RandomCrop3D",
     "random_rotate90_3d": "RandomRotate90_3D",
     "resize3d": "Resize3D",
+    "rician_noise": "RicianNoise",
 }
 
 BATCH_ALIAS_TO_TRANSFORM = {
@@ -286,6 +289,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "ExposureMatching",
         "GaussianBlur",
         "GlassBlur",
+        "GuidedCoarseDropout",
         "HorizontalFlip",
         "HueSaturationValue",
         "ImageCompression",
@@ -297,6 +301,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "Perspective",
         "PixelDropout",
         "Posterize",
+        "RicianNoise",
         "RandomGamma",
         "RandomToneCurve",
         "Resize",
@@ -317,6 +322,7 @@ MEMORY_BENCHMARKS = (
     "peakmem_median_blur_large_float32",
     "peakmem_normalize_large_rgb",
     "peakmem_random_shadow_batch_large_multichannel",
+    "peakmem_rician_volume_medium",
     "peakmem_resize_large_rgb",
     "peakmem_spatter_batch_large_rgb",
     "peakmem_volume_affine_medium",
@@ -338,6 +344,7 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
         "PadIfNeeded3D",
         "RandomBrightnessContrast",
         "RandomShadow",
+        "RicianNoise",
         "Resize",
         "Resize3D",
         "Spatter",
@@ -368,6 +375,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "ExposureMatching": ("exposure_match_batch",),
     "GaussianBlur": ("convolve",),
     "GlassBlur": ("glass_blur",),
+    "GuidedCoarseDropout": ("guided_coarse_dropout",),
     "HorizontalFlip": ("hflip",),
     "HueSaturationValue": ("shift_hsv",),
     "ImageCompression": ("image_compression",),
@@ -379,6 +387,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "Perspective": ("warp_perspective",),
     "PixelDropout": ("pixel_dropout",),
     "Posterize": ("posterize",),
+    "RicianNoise": ("rician_noise",),
     "RandomGamma": ("gamma_transform",),
     "RandomToneCurve": ("move_tone_curve_shared", "move_tone_curve_per_channel"),
     "Resize": ("resize", "resize_bboxes"),
@@ -402,6 +411,7 @@ MEMORY_CASES_BY_TRANSFORM = {
     "PadIfNeeded3D": ("peakmem_volume_pad_medium",),
     "RandomBrightnessContrast": ("peakmem_batch_pipeline_medium_rgb",),
     "RandomShadow": ("peakmem_random_shadow_batch_large_multichannel",),
+    "RicianNoise": ("peakmem_rician_volume_medium",),
     "Resize": ("peakmem_resize_large_rgb",),
     "Resize3D": ("peakmem_volume_resize_medium",),
     "Spatter": ("peakmem_spatter_batch_large_rgb",),
@@ -690,6 +700,8 @@ def _special_target_targets(name: str) -> list[str]:
         targets.extend(["bbox_labels", "bboxes"])
     if name == "random_crop_near_bbox":
         targets.append("cropping_bbox")
+    if name == "guided_coarse_dropout":
+        targets.append("dropout_region")
     return sorted(targets)
 
 

@@ -24,6 +24,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|\.github/workflows/|docs/maintaining/|tools/ci_matrix\.py)
+      - id: check-public-transform-docstrings
+        name: Check public transform docstring metadata
+        entry: uv run pytest -q tests/test_docstrings.py -k short_description_length
+        language: system
+        pass_filenames: false
+        files: ^(albumentations/|tests/test_docstrings\.py$|\.pre-commit-config\.yaml$|pyproject\.toml$)
       - id: verify-regression-vectors
         name: Verify regression vector contracts
         entry: uv run python -m tools.verify_regression_vectors --all

@@ -6,6 +6,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from functools import partial
 
+import numpy as np
+
 import albumentations
 from benchmarks.catalog import benchmark_specs
 from benchmarks.catalog import make_compose as make_catalog_compose
@@ -221,8 +223,19 @@ SPECIAL_TARGET_TRANSFORMS: Mapping[str, Factory] = {
         seed=137,
         strict=True,
     ),
+    "bbox_subset_safe_random_crop": lambda: albumentations.Compose(
+        [albumentations.BBoxSubsetSafeRandomCrop(p=1.0)],
+        bbox_params=albumentations.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        seed=137,
+        strict=True,
+    ),
     "constrained_coarse_dropout": lambda: albumentations.Compose(
         [albumentations.ConstrainedCoarseDropout(mask_indices=[1], p=1.0)],
+        seed=137,
+        strict=True,
+    ),
+    "guided_coarse_dropout": lambda: albumentations.Compose(
+        [albumentations.GuidedCoarseDropout(num_holes_range=(4, 4), p=1.0)],
         seed=137,
         strict=True,
     ),
@@ -285,6 +298,7 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "flip3d": lambda: albumentations.Flip3D(flip_axes=(0, 1, 2), p=1.0),
     "random_rotate90_3d": lambda: albumentations.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
     "resize3d": lambda: albumentations.Resize3D(size=(12, 96, 96), p=1.0),
+    "rician_noise": lambda: albumentations.RicianNoise(std_range=(0.1, 0.1), p=1.0),
 }
 
 REFERENCE_TRANSFORMS = (
@@ -468,6 +482,8 @@ class TimeSpecialTargetMatrix:
         if name == "random_crop_near_bbox":
             height, width = SIZES[size_name]
             data["cropping_bbox"] = [width // 5, height // 5, width * 4 // 5, height * 4 // 5]
+        if name == "guided_coarse_dropout":
+            data["dropout_region"] = np.ones(data["image"].shape[:2], dtype=np.uint8)
         return data
 
     def time_transform(self, case_id: str) -> None:
@@ -554,6 +570,11 @@ class PeakMemoryHotPaths:
             ],
             strict=True,
         )
+        self.rician_volume = albumentations.Compose(
+            [albumentations.RicianNoise(std_range=(0.1, 0.1), p=1.0)],
+            seed=137,
+            strict=True,
+        )
         self.volume_data = {"mask3d": make_mask3d("medium"), "volume": make_volume("medium")}
 
     def peakmem_resize_large_rgb(self) -> None:
@@ -585,3 +606,6 @@ class PeakMemoryHotPaths:
 
     def peakmem_volume_affine_medium(self) -> None:
         self.volume_affine(**self.volume_data)
+
+    def peakmem_rician_volume_medium(self) -> None:
+        self.rician_volume(**self.volume_data)

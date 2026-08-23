@@ -34,6 +34,8 @@ __all__ = [
     "cutout",
     "fill_holes_with_grayscale",
     "fill_mask_with_grayscale",
+    "fill_masked_holes",
+    "fill_masked_pixels",
     "fill_volume_holes_with_grayscale",
     "filter_bboxes_by_holes",
     "filter_keypoints_in_holes",
@@ -148,6 +150,65 @@ def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint
         return cast("ImageType", cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None])
 
     return cast("ImageType", cv2.inpaint(img, mask, 3, inpaint_method))
+
+
+@uint8_io
+def apply_inpainting_to_mask(
+    img: ImageType,
+    dropout_mask: np.ndarray,
+    method: Literal["inpaint_telea", "inpaint_ns"],
+) -> ImageType:
+    """Inpaint an arbitrary two-dimensional dropout mask."""
+    mask = dropout_mask.astype(np.uint8) * 255
+    inpaint_method = cv2.INPAINT_TELEA if method == "inpaint_telea" else cv2.INPAINT_NS
+    if get_num_channels(img) == 1:
+        result = cv2.inpaint(cv2.cvtColor(img.squeeze(), cv2.COLOR_GRAY2BGR), mask, 3, inpaint_method)
+        return cast("ImageType", cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None])
+    return cast("ImageType", cv2.inpaint(img, mask, 3, inpaint_method))
+
+
+def fill_masked_pixels(
+    img: ImageType,
+    dropout_mask: np.ndarray,
+    fill: tuple[float, ...] | float,
+) -> ImageType:
+    """Fill an arbitrary two-dimensional dropout mask with a numeric value."""
+    result = img.copy()
+    fill_array = np.asarray(fill, dtype=img.dtype)
+    num_channels = get_num_channels(img)
+    if fill_array.size not in {1, num_channels}:
+        raise ValueError(f"Fill value must have 1 or {num_channels} values, got {fill_array.size}")
+    result[dropout_mask] = fill_array
+    return result
+
+
+def fill_masked_holes(
+    img: ImageType,
+    holes: np.ndarray,
+    dropout_mask: np.ndarray,
+    fill: float | tuple[float, ...] | FillValueLiteral,
+    random_generator: np.random.Generator,
+) -> ImageType:
+    """Fill the eligible portions of sampled holes without changing pixels outside the mask."""
+    if not isinstance(fill, str):
+        return fill_masked_pixels(img, dropout_mask, fill)
+    if fill in {"inpaint_telea", "inpaint_ns"}:
+        return apply_inpainting_to_mask(img.copy(), dropout_mask, fill)
+    if fill == "grayscale":
+        return fill_mask_with_grayscale(img, dropout_mask)
+
+    result = img.copy()
+    if fill == "random":
+        result[dropout_mask] = generate_random_fill(result.dtype, result[dropout_mask].shape, random_generator)
+        return result
+    if fill != "random_uniform":
+        raise ValueError(f"Unsupported string fill: {fill}")
+    for left, top, right, bottom in holes:
+        hole_mask = dropout_mask[top:bottom, left:right]
+        if hole_mask.any():
+            random_fill = generate_random_fill(result.dtype, (1, result.shape[-1]), random_generator)
+            result[top:bottom, left:right][hole_mask] = random_fill
+    return result
 
 
 def fill_holes_with_value(img: ImageType, holes: np.ndarray, fill: np.ndarray) -> ImageType:

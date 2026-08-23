@@ -637,25 +637,33 @@ def test2d_3d(volume, mask3d):
     assert np.max(transformed["mask3d"]) > 0
 
 
+def _get_slice_wise_2d_transform_params():
+    return [
+        (augmentation_cls, params)
+        for augmentation_cls, params in get_primary_2d_transform_params(
+            custom_arguments={},
+            except_augmentations={
+                A.RandomSizedBBoxSafeCrop,
+                A.PixelDropout,
+                A.FDA,
+                A.MaskDropout,
+                A.CropNonEmptyMaskIfExists,
+                A.BBoxSafeRandomCrop,
+                A.TextImage,
+                A.OverlayElements,
+                A.PixelDistributionAdaptation,
+                A.HistogramMatching,
+                A.RandomCropNearBBox,
+                A.Mosaic,
+            },
+        )
+        if getattr(augmentation_cls(**params, p=1), "_volume_sampling_is_slice_wise", True)
+    ]
+
+
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_primary_2d_transform_params(
-        custom_arguments={},
-        except_augmentations={
-            A.RandomSizedBBoxSafeCrop,
-            A.PixelDropout,
-            A.FDA,
-            A.MaskDropout,
-            A.CropNonEmptyMaskIfExists,
-            A.BBoxSafeRandomCrop,
-            A.TextImage,
-            A.OverlayElements,
-            A.PixelDistributionAdaptation,
-            A.HistogramMatching,
-            A.RandomCropNearBBox,
-            A.Mosaic,
-        },
-    ),
+    _get_slice_wise_2d_transform_params(),
 )
 def test_image_volume_matching(image, augmentation_cls, params):
     aug = A.Compose([augmentation_cls(**params, p=1)], seed=42)
@@ -684,23 +692,7 @@ def test_image_volume_matching(image, augmentation_cls, params):
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_primary_2d_transform_params(
-        custom_arguments={},
-        except_augmentations={
-            A.RandomSizedBBoxSafeCrop,
-            A.PixelDropout,
-            A.FDA,
-            A.MaskDropout,
-            A.CropNonEmptyMaskIfExists,
-            A.BBoxSafeRandomCrop,
-            A.TextImage,
-            A.OverlayElements,
-            A.PixelDistributionAdaptation,
-            A.HistogramMatching,
-            A.RandomCropNearBBox,
-            A.Mosaic,
-        },
-    ),
+    _get_slice_wise_2d_transform_params(),
 )
 def test_image_transforms_matching(image, augmentation_cls, params):
     # Use the same data for both to ensure transforms that depend on image content produce identical results

@@ -655,6 +655,7 @@ def _get_slice_wise_2d_transform_params():
                 A.HistogramMatching,
                 A.RandomCropNearBBox,
                 A.Mosaic,
+                A.GuidedCoarseDropout,
                 A.BBoxSubsetSafeRandomCrop,
             },
         )
@@ -768,6 +769,9 @@ def test_keypoints_xy_xyz(augmentation_cls, params):
     if augmentation_cls == A.CopyAndPaste:
         call_xy["copy_paste_metadata"] = []
         call_xyz["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        call_xy["dropout_region"] = np.ones(base_img.shape[:2], dtype=np.uint8)
+        call_xyz["dropout_region"] = np.ones(base_img.shape[:2], dtype=np.uint8)
 
     transformed_xy = aug1(**call_xy)["keypoints"]
 

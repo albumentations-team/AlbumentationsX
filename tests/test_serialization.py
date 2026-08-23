@@ -115,6 +115,8 @@ def test_augmentations_for_bboxes_serialization(
     data = case.make_data(np.random.default_rng(seed))
     data.update(image=image, bboxes=albumentations_bboxes)
     data.pop("bbox_labels", None)
+    if augmentation_cls is A.GuidedCoarseDropout:
+        data[transform.region_key] = np.ones(image.shape[:2], dtype=np.uint8)
     if "mask" in data:
         data["mask"] = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
         data["mask"][:20, :20] = 1
@@ -155,6 +157,8 @@ def test_augmentations_for_keypoints_serialization(
     aug.set_random_seed(seed)
     data = case.make_data(np.random.default_rng(seed))
     data.update(image=image, keypoints=keypoints)
+    if augmentation_cls is A.GuidedCoarseDropout:
+        data[aug.region_key] = np.ones(image.shape[:2], dtype=np.uint8)
     if "mask" in data:
         data["mask"] = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
         data["mask"][:20, :20] = 1

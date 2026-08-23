@@ -26,6 +26,11 @@ from .utils import (
 )
 
 
+def _add_guided_dropout_region(data, augmentation_cls) -> None:
+    if augmentation_cls is A.GuidedCoarseDropout:
+        data["dropout_region"] = np.ones(data["image"].shape[:2], dtype=np.uint8)
+
+
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_primary_image_only_transform_params(
@@ -201,6 +206,7 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     aug(**data)
 
     np.testing.assert_array_equal(image, image_copy)
@@ -249,6 +255,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image_float32]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     aug(**data)
 
     np.testing.assert_array_equal(image_float32, float_image_copy)
@@ -338,6 +345,7 @@ def test_augmentations_wont_change_shape_rgb(augmentation_cls, params):
             "image": image_3ch,
             "mask": mask_3ch,
         }
+    _add_guided_dropout_region(data, augmentation_cls)
     result = aug(**data)
 
     np.testing.assert_array_equal(image_3ch.shape, result["image"].shape)
@@ -447,6 +455,7 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     data = aug(**data)
     assert data["image"].dtype == np.uint8
     assert data["image"].shape[2] == image.shape[-1]
@@ -525,6 +534,7 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     data = aug(**data)
 
     assert data["image"].dtype == np.float32
@@ -605,6 +615,7 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     data = aug(**data)
 
     assert data["image"].dtype == np.uint8
@@ -689,6 +700,7 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     data = aug(**data)
 
     assert data["image"].dtype == np.float32
@@ -961,6 +973,7 @@ def test_augmentations_match_uint8_float32(augmentation_cls, params):
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
 
+    _add_guided_dropout_region(data, augmentation_cls)
     transformed_uint8 = transform(**data)["image"]
 
     data["image"] = image_float32

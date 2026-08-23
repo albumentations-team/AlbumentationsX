@@ -11,6 +11,7 @@ import numpy as np
 from albucore import median_blur, resize3d
 
 from albumentations.augmentations.blur import functional as fblur
+from albumentations.augmentations.dropout import functional as fdropout
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.transforms3d import functional as f3d
@@ -87,6 +88,7 @@ FUNCTIONAL_PIXEL_KERNELS: Mapping[str, KernelSupport] = {
     "shift_hsv": KernelSupport(channels=(3,)),
     "linear_transformation_rgb": KernelSupport(channels=(3,)),
     "pixel_dropout": KernelSupport(),
+    "guided_coarse_dropout": KernelSupport(),
     "channel_shuffle": KernelSupport(channels=(3, 5)),
     "image_compression": KernelSupport(dtypes=("uint8",)),
     "move_tone_curve_shared": KernelSupport(),
@@ -327,6 +329,16 @@ def _call_pixel_dropout(benchmark: Any) -> np.ndarray:
     return fpixel.pixel_dropout(benchmark.image, benchmark.drop_mask, benchmark.drop_values)
 
 
+def _call_guided_coarse_dropout(benchmark: Any) -> np.ndarray:
+    return fdropout.fill_masked_holes(
+        benchmark.image,
+        benchmark.guided_holes,
+        benchmark.guided_dropout_mask,
+        "random_uniform",
+        benchmark.random_generator,
+    )
+
+
 def _call_channel_shuffle(benchmark: Any) -> np.ndarray:
     return fpixel.channel_shuffle(benchmark.image, benchmark.channels_shuffled)
 
@@ -368,6 +380,7 @@ PIXEL_CALLS: Mapping[str, ImageKernelCall] = {
     "shift_hsv": _call_shift_hsv,
     "linear_transformation_rgb": _call_linear_transformation_rgb,
     "pixel_dropout": _call_pixel_dropout,
+    "guided_coarse_dropout": _call_guided_coarse_dropout,
     "channel_shuffle": _call_channel_shuffle,
     "image_compression": _call_image_compression,
     "move_tone_curve_shared": _call_move_tone_curve_shared,
@@ -545,6 +558,21 @@ class TimeFunctionalPixelKernels:
         self.drop_mask = np.zeros(self.image.shape[:2], dtype=bool)
         self.drop_mask[::8, ::8] = True
         self.drop_values = np.zeros((channels,), dtype=self.image.dtype)
+        height, width = self.image.shape[:2]
+        hole_height, hole_width = max(1, height // 8), max(1, width // 8)
+        self.guided_holes = np.array(
+            [
+                [0, 0, hole_width, hole_height],
+                [width - hole_width, 0, width, hole_height],
+                [0, height - hole_height, hole_width, height],
+                [width - hole_width, height - hole_height, width, height],
+            ],
+            dtype=np.int32,
+        )
+        self.guided_dropout_mask = np.zeros((height, width), dtype=bool)
+        for left, top, right, bottom in self.guided_holes:
+            self.guided_dropout_mask[top:bottom, left:right] = True
+        self.random_generator = np.random.default_rng(137)
         self.channels_shuffled = list(reversed(range(channels)))
         self.solarize_threshold = 128 if self.image.dtype == np.uint8 else 0.5
         self.tone_curve_low_y = np.linspace(0.11, 0.31, channels, dtype=np.float64)

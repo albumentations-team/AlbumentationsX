@@ -287,6 +287,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [SaltAndPepper](https://albumentations.ai/explore/transform/SaltAndPepper/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Sharpen](https://albumentations.ai/explore/transform/Sharpen/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ShotNoise](https://albumentations.ai/explore/transform/ShotNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [StochasticConvolution](https://albumentations.ai/explore/transform/StochasticConvolution/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Solarize](https://albumentations.ai/explore/transform/Solarize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Spatter](https://albumentations.ai/explore/transform/Spatter/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Superpixels](https://albumentations.ai/explore/transform/Superpixels/?utm_source=github&utm_medium=referral&utm_campaign=readme)

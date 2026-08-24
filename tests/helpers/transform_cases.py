@@ -564,6 +564,15 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.GridElasticDeform, {"num_grid_xy": (10, 10), "magnitude": 10}],
     [A.ShotNoise, {"scale_range": (0.1, 0.3)}],
     [A.RicianNoise, {"std_range": (0.05, 0.15)}],
+    [
+        A.StochasticConvolution,
+        {
+            "kernel_range": (3, 7),
+            "strength_range": (0.1, 0.3),
+            "per_channel": True,
+            "border_mode": cv2.BORDER_REFLECT,
+        },
+    ],
     [A.TimeReverse, {}],
     [A.TimeMasking, {"time_mask_param": 10}],
     [A.FrequencyMasking, {"freq_mask_param": 30}],
@@ -1173,6 +1182,16 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("stronger", A.ShotNoise, {"scale_range": (0.2, 0.4)}),
     ("stronger", A.RicianNoise, {"std_range": (0.1, 0.3)}),
     ("per-channel", A.RicianNoise, {"std_range": (0.05, 0.15), "per_channel": True}),
+    (
+        "constant-border",
+        A.StochasticConvolution,
+        {
+            "kernel_range": (5, 5),
+            "strength_range": (0.2, 0.2),
+            "per_channel": False,
+            "border_mode": cv2.BORDER_CONSTANT,
+        },
+    ),
     (
         "max-size-hw-downscale",
         A.SmallestMaxSize,

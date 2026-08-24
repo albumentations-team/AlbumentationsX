@@ -121,6 +121,7 @@
   "Sharpen": ["alpha_range", "lightness_range", "method", "kernel_size", "sigma", "p"],
   "ShiftScaleRotate": ["shift_range", "scale_range", "rotate_range", "interpolation", "border_mode", "shift_range_x", "shift_range_y", "rotate_method", "mask_interpolation", "fill", "fill_mask", "p"],
   "ShotNoise": ["scale_range", "p"],
+  "StochasticConvolution": [],
   "SmallestMaxSize": ["max_size", "max_size_hw", "interpolation", "mask_interpolation", "area_for_downscale", "p"],
   "Solarize": ["threshold_range", "p"],
   "Spatter": ["mean_range", "std_range", "gauss_sigma_range", "cutout_threshold_range", "intensity_range", "mode", "color", "p"],

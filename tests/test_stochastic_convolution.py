@@ -257,6 +257,18 @@ def test_stochastic_convolution_rejects_even_kernel_sizes(invalid_range: tuple[i
         A.StochasticConvolution(kernel_range=invalid_range)
 
 
-def test_stochastic_convolution_rejects_wrap_border() -> None:
-    with pytest.raises(ValueError, match="BORDER_WRAP"):
-        A.StochasticConvolution(border_mode=cv2.BORDER_WRAP)
+@pytest.mark.parametrize(
+    "border_mode",
+    [cv2.BORDER_WRAP, cv2.BORDER_TRANSPARENT, cv2.BORDER_ISOLATED],
+)
+def test_stochastic_convolution_rejects_unsupported_border_modes(border_mode: int) -> None:
+    with pytest.raises(ValueError, match="border_mode"):
+        A.StochasticConvolution(border_mode=border_mode)
+
+
+@pytest.mark.parametrize("strength", [-0.1, float("inf"), float("nan")])
+def test_stochastic_convolution_kernel_rejects_invalid_strength(strength: float) -> None:
+    random_field = np.zeros((3, 3), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="strength"):
+        fpixel.create_stochastic_convolution_kernel(random_field, strength)

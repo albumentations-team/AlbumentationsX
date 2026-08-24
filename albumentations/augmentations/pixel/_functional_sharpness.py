@@ -428,6 +428,8 @@ def create_stochastic_convolution_kernel(
     """
     if random_field.ndim not in {2, 3}:
         raise ValueError(f"random_field must have 2 or 3 dimensions, got {random_field.ndim}")
+    if not np.isfinite(strength) or strength < 0:
+        raise ValueError("strength must be finite and non-negative")
     kernel_size = random_field.shape[-1]
     if random_field.shape[-2] != kernel_size or kernel_size % 2 == 0:
         raise ValueError("random_field must contain odd square kernels")

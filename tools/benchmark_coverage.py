@@ -310,6 +310,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "Resize",
         "Resize3D",
         "Solarize",
+        "StochasticConvolution",
         "ToGray",
         "Transpose",
         "VerticalFlip",

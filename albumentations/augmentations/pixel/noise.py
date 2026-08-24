@@ -68,6 +68,16 @@ class _FullVolumeNoiseTransform(ImageOnlyTransform):
     _volume_sampling_is_slice_wise: ClassVar[bool] = False
 
 
+_STOCHASTIC_CONVOLUTION_BORDER_MODES = frozenset(
+    {
+        cv2.BORDER_CONSTANT,
+        cv2.BORDER_REPLICATE,
+        cv2.BORDER_REFLECT,
+        cv2.BORDER_REFLECT_101,
+    },
+)
+
+
 class StochasticConvolution(_FullVolumeNoiseTransform):
     """Apply a stochastic identity-centered convolution kernel with configurable spectral strength and channel sharing
     for images and volumes.
@@ -159,8 +169,11 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
         @field_validator("border_mode")
         @classmethod
         def _check_border_mode(cls, value: BorderModeType) -> BorderModeType:
-            if value == cv2.BORDER_WRAP:
-                raise ValueError("border_mode=cv2.BORDER_WRAP is not supported for StochasticConvolution")
+            if value not in _STOCHASTIC_CONVOLUTION_BORDER_MODES:
+                raise ValueError(
+                    "border_mode must be one of cv2.BORDER_CONSTANT, cv2.BORDER_REPLICATE, "
+                    "cv2.BORDER_REFLECT, or cv2.BORDER_REFLECT_101",
+                )
             return value
 
     def __init__(
@@ -194,7 +207,6 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
         sampling: SamplingContext,
     ) -> dict[str, Any]:
         del params
-        metadata = self.get_image_data(data)
         kernel_size = sampling.py_random.randrange(self.kernel_range[0], self.kernel_range[1] + 1, 2)
         strength = sampling.py_random.uniform(*self.strength_range)
         sampling.applied_overrides.update({"kernel_range": kernel_size, "strength_range": strength})
@@ -210,7 +222,8 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
                     "per_channel=True requires image, images, and volume targets to have the same channel count; "
                     f"got {channel_counts}",
                 )
-            field_shape: tuple[int, ...] = (metadata["num_channels"], kernel_size, kernel_size)
+            channel_count = next(iter(channel_counts.values()))
+            field_shape: tuple[int, ...] = (channel_count, kernel_size, kernel_size)
         else:
             field_shape = (kernel_size, kernel_size)
 

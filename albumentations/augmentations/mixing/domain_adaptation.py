@@ -11,6 +11,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 import cv2
 import numpy as np
+from albucore import from_float, to_float
 from pydantic import field_validator
 from pydantic.functional_validators import AfterValidator
 
@@ -193,6 +194,50 @@ class BaseDomainAdaptation(ImageOnlyTransform):
 
         return sampling.py_random.choice(metadata_images)
 
+    @staticmethod
+    def _reference_for_target(reference_image: np.ndarray, target_dtype: Any) -> np.ndarray:
+        target_numpy_dtype = np.dtype(str(target_dtype).removeprefix("torch."))
+        if reference_image.dtype == target_numpy_dtype:
+            return reference_image
+
+        reference_float = to_float(reference_image)
+        return reference_float if target_numpy_dtype == np.float32 else from_float(reference_float, target_numpy_dtype)
+
+    def _target_reference_params(
+        self,
+        reference_image: np.ndarray,
+        targets: TargetSet,
+        parameter_name: str,
+    ) -> tuple[TargetParams, ...]:
+        reference_channels = reference_image.shape[-1] if reference_image.ndim > 2 else 1
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                tuple((view.descriptor.spatial_shape or ())[-2:]),
+                view.descriptor.channels,
+                str(view.descriptor.dtype),
+            ),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError(f"{self.__class__.__name__} requires image-like targets with known spatial shapes")
+            channels = views[0].descriptor.channels or 1
+            if channels != reference_channels:
+                raise ValueError(
+                    f"{self.__class__.__name__} reference image has {reference_channels} channels; "
+                    f"target {views[0].name!r} has {channels}",
+                )
+            height, width = spatial_shape[-2:]
+            resized_reference = fgeometric.resize(reference_image, (height, width), cv2.INTER_LINEAR)
+            groups.append(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params={parameter_name: self._reference_for_target(resized_reference, views[0].descriptor.dtype)},
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True, channels=True, dtype=True),
+                ),
+            )
+        return tuple(groups)
+
 
 class HistogramMatching(BaseDomainAdaptation):
     """Match input histogram to a reference image (metadata_key). Aligns intensity and
@@ -319,10 +364,8 @@ class HistogramMatching(BaseDomainAdaptation):
         sampling.applied_overrides["blend_ratio"] = blend_ratio
 
         return SampledParams(
-            params={
-                "reference_image": reference_image,
-                "blend_ratio": blend_ratio,
-            }
+            params={"blend_ratio": blend_ratio},
+            target_params=self._target_reference_params(reference_image, targets, "reference_image"),
         )
 
     def apply(
@@ -507,36 +550,10 @@ class FDA(BaseDomainAdaptation):
         target_image = self._get_reference_image(data, sampling)
         beta = sampling.py_random.uniform(*self.beta_range)
         sampling.applied_overrides["beta_range"] = beta
-        reference_channels = target_image.shape[-1] if target_image.ndim > 2 else 1
-        groups: list[TargetParams] = []
-        for views in targets.group_image_like_by(
-            lambda view: (
-                tuple((view.descriptor.spatial_shape or ())[-2:]),
-                view.descriptor.channels,
-            ),
-        ):
-            spatial_shape = views[0].descriptor.spatial_shape
-            if spatial_shape is None:
-                raise ValueError("FDA requires image-like targets with known spatial shapes")
-            channels = views[0].descriptor.channels or 1
-            if channels != reference_channels:
-                raise ValueError(
-                    f"FDA reference image has {reference_channels} channels; target {views[0].name!r} has {channels}",
-                )
-            height, width = spatial_shape[-2:]
-            target_image_resized = fgeometric.resize(
-                target_image,
-                (height, width),
-                cv2.INTER_LINEAR,
-            )
-            groups.append(
-                TargetParams(
-                    targets=tuple(view.name for view in views),
-                    params={"target_image": target_image_resized},
-                    requirements=requirements_for_views(views, spatial_shape_suffix=True, channels=True),
-                ),
-            )
-        return SampledParams(params={"beta": beta}, target_params=tuple(groups))
+        return SampledParams(
+            params={"beta": beta},
+            target_params=self._target_reference_params(target_image, targets, "target_image"),
+        )
 
     def apply(
         self,
@@ -717,10 +734,12 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
         sampling.applied_overrides["blend_ratio"] = blend_ratio
 
         return SampledParams(
-            params={
-                "reference_image": self._get_reference_image(data, sampling),
-                "blend_ratio": blend_ratio,
-            }
+            params={"blend_ratio": blend_ratio},
+            target_params=self._target_reference_params(
+                self._get_reference_image(data, sampling),
+                targets,
+                "reference_image",
+            ),
         )
 
     def apply(self, img: ImageType, reference_image: ImageType, blend_ratio: float, **params: Any) -> ImageType:

@@ -1363,9 +1363,14 @@ class Dithering(ImageOnlyTransform):
             height, width = spatial_shape[-2:]
             channels = view.descriptor.channels or 1
             per_item_noise_shape = (height, width, 1) if self.color_mode == "grayscale" else (height, width, channels)
-            item_count = shape[0] if view.canonical_type in {"images", "volume"} else 1
+            if view.canonical_type not in {"images", "volume"}:
+                item_count = 1
+            elif view.descriptor.layout in {"images_clhw", "volume_cdhw"}:
+                item_count = shape[1]
+            else:
+                item_count = shape[0]
             noise_shape = per_item_noise_shape if item_count == 1 else (item_count, *per_item_noise_shape)
-            if view.descriptor.dtype == np.uint8:
+            if view.descriptor.value_scale == 255:
                 random_noise = sampling.random_generator.uniform(
                     self.noise_range[0] * 255,
                     self.noise_range[1] * 255,

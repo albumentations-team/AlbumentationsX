@@ -336,6 +336,33 @@ def _is_first_target_shape_access(node: ast.AST) -> bool:
     )
 
 
+def _direct_canonical_target_name(node: ast.AST) -> str | None:
+    target_names = {"image", "images", "volume"}
+    if (
+        isinstance(node, ast.Subscript)
+        and ast.unparse(node.value) == "data"
+        and ast.unparse(node.slice).strip("\"'") in target_names
+    ):
+        return ast.unparse(node.slice).strip("\"'")
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and ast.unparse(node.func.value) == "data"
+        and node.func.attr == "get"
+        and node.args
+        and ast.unparse(node.args[0]).strip("\"'") in target_names
+    ):
+        return ast.unparse(node.args[0]).strip("\"'")
+    if (
+        isinstance(node, ast.Compare)
+        and any(isinstance(operator, ast.In) for operator in node.ops)
+        and any(ast.unparse(comparator) == "data" for comparator in node.comparators)
+        and ast.unparse(node.left).strip("\"'") in target_names
+    ):
+        return ast.unparse(node.left).strip("\"'")
+    return None
+
+
 def _is_legacy_shape_helper_call(node: ast.AST) -> bool:
     return isinstance(node, ast.Call) and dotted(node.func) in {
         "get_image_data",
@@ -371,6 +398,11 @@ def rule_sampling_plan_contract(index: SourceIndex) -> list[Diagnostic]:
                         f"{info.name}.sample_parameters",
                     )
                 )
+        direct_target_accesses = [
+            (child, target_name)
+            for child in ast.walk(node)
+            if (target_name := _direct_canonical_target_name(child)) is not None
+        ]
         for child in ast.walk(node):
             if _is_first_target_shape_access(child) or _is_legacy_shape_helper_call(child):
                 detail = (
@@ -387,6 +419,16 @@ def rule_sampling_plan_contract(index: SourceIndex) -> list[Diagnostic]:
                         f"{info.name}.sample_parameters",
                     )
                 )
+        if len({target_name for _, target_name in direct_target_accesses}) > 1:
+            result.append(
+                _d(
+                    "AXG024",
+                    info,
+                    direct_target_accesses[0][0],
+                    "sample_parameters must use TargetSet instead of selecting among image, images, and volume",
+                    f"{info.name}.sample_parameters",
+                )
+            )
     return result
 
 

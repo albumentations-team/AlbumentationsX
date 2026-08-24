@@ -241,6 +241,23 @@ class Example(DualTransform):
     assert {"AXG021", "AXG022"} <= set(ids)
 
 
+def test_sampling_plan_rules_reject_direct_canonical_target_selection() -> None:
+    ids = rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+class DualTransform: pass
+class Example(DualTransform):
+    def sample_parameters(self, params, data, targets, sampling: SamplingContext):
+        image = data["image"]
+        images = data.get("images")
+        has_volume = "volume" in data
+        return SampledParams(params={"image": image, "images": images, "has_volume": has_volume})
+""",
+        },
+    )
+    assert ids.count("AXG024") == 1
+
+
 def test_target_plan_rule_rejects_target_routing_parameter_names() -> None:
     ids = rule_ids(
         {

@@ -1029,7 +1029,7 @@ class HEStain(ImageOnlyTransform):
             args["stain_matrix"] = args["stain_matrix"].tolist()
         return args
 
-    def _get_stain_matrix(self, img: ImageType, sampling: SamplingContext) -> np.ndarray:
+    def _get_stain_matrix(self, img: ImageType | None, sampling: SamplingContext) -> np.ndarray:
         if self.method == "preset" and self.preset is not None:
             return fpixel.STAIN_MATRICES[self.preset]
         if self.method == "random_preset":
@@ -1038,6 +1038,8 @@ class HEStain(ImageOnlyTransform):
         if self.method == "custom":
             return cast("np.ndarray", self.stain_matrix)
         # vahadane or macenko
+        if img is None:
+            raise RuntimeError("Stain extraction requires an image-like target")
         self.stain_extractor.fit(img)
         stain_matrix = self.stain_extractor.stain_matrix_target
         if stain_matrix is None:
@@ -1073,19 +1075,9 @@ class HEStain(ImageOnlyTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        # Get stain matrix
-        if "image" in data:
-            image = data["image"]
-        elif "images" in data:
-            image = data["images"][0]
-        elif "volume" in data:
-            image = data["volume"][0]
-        else:
-            raise RuntimeError("Expected image, images, or volume data for stain augmentation")
-
-        stain_matrix = self._get_stain_matrix(image, sampling)
-
-        # Generate random scaling and shift parameters for both H&E channels
+        shared_stain_matrix = (
+            self._get_stain_matrix(None, sampling) if self.method not in {"vahadane", "macenko"} else None
+        )
         scale_h = sampling.py_random.uniform(*self.intensity_scale_range)
         scale_e = sampling.py_random.uniform(*self.intensity_scale_range)
         shift_h = sampling.py_random.uniform(*self.intensity_shift_range)
@@ -1118,13 +1110,26 @@ class HEStain(ImageOnlyTransform):
             },
         )
 
-        return SampledParams(
-            params={
-                "stain_matrix": stain_matrix,
-                "scale_factors": scale_factors,
-                "shift_values": shift_values,
-            }
-        )
+        shared_params = {
+            "scale_factors": scale_factors,
+            "shift_values": shift_values,
+        }
+        if self.method not in {"vahadane", "macenko"}:
+            return SampledParams(params={**shared_params, "stain_matrix": shared_stain_matrix})
+
+        groups = []
+        for view in targets.image_like():
+            image = view.value if view.canonical_type == "image" else view.value[0]
+            groups.append(
+                TargetParams(
+                    targets=(view.name,),
+                    params={"stain_matrix": self._get_stain_matrix(image, sampling)},
+                    requirements=requirements_for_views((view,), channels=True),
+                ),
+            )
+        if not groups:
+            raise RuntimeError("Expected an image-like target for stain augmentation")
+        return SampledParams(params=shared_params, target_params=tuple(groups))
 
 
 class PhotoMetricDistort(ImageOnlyTransform):

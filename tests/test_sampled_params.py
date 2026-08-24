@@ -294,6 +294,107 @@ def test_tensor_samplers_use_descriptor_value_scale(transform, parameter_name: s
     assert parameter_name in sampled_params.params_for("image")
 
 
+@pytest.mark.parametrize(
+    ("transform", "reference_parameter"),
+    [
+        (A.FDA(beta_range=(0.1, 0.1), metadata_key="reference", p=1.0), "target_image"),
+        (A.HistogramMatching(blend_ratio=(1.0, 1.0), metadata_key="reference", p=1.0), "reference_image"),
+        (
+            A.PixelDistributionAdaptation(
+                blend_ratio=(1.0, 1.0),
+                transform_type="standard",
+                metadata_key="reference",
+                p=1.0,
+            ),
+            "reference_image",
+        ),
+    ],
+)
+def test_domain_adaptation_materializes_references_for_each_target_representation(
+    transform, reference_parameter: str
+) -> None:
+    image = np.full((8, 9, 3), 137, dtype=np.uint8)
+    image2 = np.full((5, 6, 3), 0.5, dtype=np.float32)
+    reference = np.full((7, 11, 3), 200, dtype=np.uint8)
+    transform.add_targets({"image2": "image"})
+    data = {"image": image, "image2": image2, "reference": [reference]}
+
+    sampled_params = transform.sample_parameters(
+        *make_sampling_args(transform, data),
+        SamplingContext.from_owner(transform, {}),
+    )
+    result = transform(**data)
+
+    assert sampled_params.params_for("image")[reference_parameter].shape == (8, 9, 3)
+    image2_reference = sampled_params.params_for("image2")[reference_parameter]
+    assert image2_reference.shape == (5, 6, 3)
+    assert image2_reference.dtype == np.float32
+    assert result["image"].shape == image.shape
+    assert result["image2"].shape == image2.shape
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+def test_dithering_tensor_sampler_counts_channel_first_items(target_name: str) -> None:
+    transform = A.Dithering(method="random", color_mode="per_channel", p=1.0)
+    data = {target_name: torch.zeros((3, 5, 7, 9), dtype=torch.uint8)}
+
+    sampled_params = transform.sample_parameters(
+        *make_sampling_args(transform, data),
+        SamplingContext.from_owner(transform, {}),
+    )
+
+    random_noise = sampled_params.params_for(target_name)["random_noise"]
+    assert random_noise.shape == (5, 7, 9, 3)
+    assert random_noise.dtype == np.int16
+
+
+def test_he_stain_extracts_a_matrix_for_each_image_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    transform = A.HEStain(method="macenko", p=1.0)
+    transform.add_targets({"image2": "image"})
+    image = np.full((8, 9, 3), 25, dtype=np.uint8)
+    image2 = np.full((8, 9, 3), 200, dtype=np.uint8)
+    images_used_for_extraction: list[np.ndarray] = []
+
+    def extract_stain_matrix(image: np.ndarray | None, sampling: SamplingContext) -> np.ndarray:
+        assert image is not None
+        images_used_for_extraction.append(image)
+        return np.full((2, 3), image.mean(), dtype=np.float32)
+
+    monkeypatch.setattr(transform, "_get_stain_matrix", extract_stain_matrix)
+    sampled_params = transform.sample_parameters(
+        *make_sampling_args(transform, {"image": image, "image2": image2}),
+        SamplingContext.from_owner(transform, {}),
+    )
+
+    assert images_used_for_extraction[0] is image
+    assert images_used_for_extraction[1] is image2
+    assert {params.targets for params in sampled_params.target_params} == {("image",), ("image2",)}
+    assert sampled_params.params_for("image")["stain_matrix"][0, 0] == 25
+    assert sampled_params.params_for("image2")["stain_matrix"][0, 0] == 200
+
+
+def test_text_image_materializes_normalized_bboxes_for_each_target_shape() -> None:
+    transform = A.TextImage(
+        font_path="./tests/files/LiberationSerif-Bold.ttf",
+        font_size_fraction_range=(0.5, 0.5),
+        p=1.0,
+    )
+    transform.add_targets({"image2": "image"})
+    data = {
+        "image": np.zeros((20, 30, 3), dtype=np.uint8),
+        "image2": np.zeros((10, 12, 3), dtype=np.uint8),
+        "textimage_metadata": {"bbox": (0.1, 0.2, 0.5, 0.7), "text": "target-aware"},
+    }
+
+    sampled_params = transform.sample_parameters(
+        *make_sampling_args(transform, data),
+        SamplingContext.from_owner(transform, {}),
+    )
+
+    assert sampled_params.params_for("image")["overlay_data"][0]["bbox_coords"] == (3, 4, 15, 14)
+    assert sampled_params.params_for("image2")["overlay_data"][0]["bbox_coords"] == (1, 2, 6, 7)
+
+
 def test_rgb_shift_replay_rejects_changed_channel_count() -> None:
     recorded = A.ReplayCompose([A.RGBShift(p=1.0)], seed=137)(
         image=np.zeros((8, 9, 3), dtype=np.uint8),

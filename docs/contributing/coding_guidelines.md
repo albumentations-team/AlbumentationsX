@@ -51,7 +51,7 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 - Pyrefly runs through the official pre-commit hook in system mode, using the same `uv` environment as CI.
 
 The repository-specific deterministic rules run through one package-wide hook:
-`pre-commit run check-ax-coding-guidance --all-files`. It emits `AXG001`–`AXG023` diagnostics for transform API,
+`pre-commit run check-ax-coding-guidance --all-files`. It emits `AXG001`–`AXG024` diagnostics for transform API,
 sampling, schema, naming, performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
 `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional; all internal transform, processor, and
 functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
@@ -539,7 +539,8 @@ they must not introduce new constructor fields.
 Sampling overrides must return `SampledParams` rather than a flat dictionary (`AXG021`), and must not derive
 target-sensitive values from first-target `params["shape"]` or legacy shape helpers (`AXG022`). Application methods
 use semantic parameter names; target routing belongs in `TargetParams` entries rather than names such as `volume_noise_map`
-(`AXG023`).
+(`AXG023`). When choosing among canonical image targets, samplers use `TargetSet` rather than selecting `image`,
+`images`, or `volume` from `data` (`AXG024`).
 
 #### No `get_transform_init_args_names` Override
 

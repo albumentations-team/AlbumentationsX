@@ -333,6 +333,22 @@ def test_domain_adaptation_materializes_references_for_each_target_representatio
     assert result["image2"].shape == image2.shape
 
 
+def test_domain_adaptation_rejects_reference_with_incompatible_channels() -> None:
+    transform = A.HistogramMatching(blend_ratio=(1.0, 1.0), metadata_key="reference", p=1.0)
+    transform.add_targets({"image2": "image"})
+    data = {
+        "image": np.zeros((8, 9, 3), dtype=np.uint8),
+        "image2": np.zeros((5, 6), dtype=np.uint8),
+        "reference": [np.zeros((7, 11, 3), dtype=np.uint8)],
+    }
+
+    with pytest.raises(ValueError, match="reference image has 3 channels; target 'image2' has 1"):
+        transform.sample_parameters(
+            *make_sampling_args(transform, data),
+            SamplingContext.from_owner(transform, {}),
+        )
+
+
 @pytest.mark.parametrize("target_name", ["images", "volume"])
 def test_dithering_tensor_sampler_counts_channel_first_items(target_name: str) -> None:
     transform = A.Dithering(method="random", color_mode="per_channel", p=1.0)

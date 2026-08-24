@@ -17,6 +17,7 @@ from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, no
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import ALL_TARGETS, ImageType
 
@@ -145,8 +146,9 @@ class MaskDropout(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         mask = np.squeeze(data["mask"], axis=2)
 
         label_image, num_labels = fdropout.label(mask, return_num=True)
@@ -168,7 +170,7 @@ class MaskDropout(DualTransform):
 
         sampling.applied_overrides["max_objects_range"] = objects_to_drop
 
-        return {"dropout_mask": dropout_mask}
+        return SampledParams(params={"dropout_mask": dropout_mask})
 
     def apply(self, img: ImageType, dropout_mask: np.ndarray | None, **params: Any) -> ImageType:
         if dropout_mask is None:

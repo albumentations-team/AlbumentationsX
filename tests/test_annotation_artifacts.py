@@ -4,7 +4,9 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.other import annotation_artifacts_functional as fannotation
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams
 from tests.helpers import TestDataFactory
+from tests.utils import get_resolved_applied_params, make_sampling_args
 
 
 @pytest.mark.parametrize("element_type", ["text", "rectangle", "arrow", "line", "callout"])
@@ -41,6 +43,28 @@ def test_annotation_artifacts_deterministic_with_compose_seed() -> None:
     np.testing.assert_array_equal(result, same_seed_result)
 
 
+def test_annotation_artifacts_materializes_artifacts_per_target_representation() -> None:
+    image = np.full((32, 40, 3), 137, dtype=np.uint8)
+    image2 = np.full((24, 28, 5), 137, dtype=np.uint8)
+    transform = A.AnnotationArtifacts(
+        element_types=("line",),
+        element_probabilities=(1.0,),
+        count_range=(1, 1),
+        random_color_prob=1.0,
+        p=1.0,
+    )
+    transform.add_targets({"image2": "image"})
+
+    result = transform(image=image, image2=image2)
+    sampled_params = SampledParams.from_dict(transform.get_applied_params())
+
+    assert {target_params.targets for target_params in sampled_params.target_params} == {("image",), ("image2",)}
+    assert len(sampled_params.params_for("image")["artifacts"][0]["color"]) == 3
+    assert len(sampled_params.params_for("image2")["artifacts"][0]["color"]) == 5
+    assert result["image"].shape == image.shape
+    assert result["image2"].shape == image2.shape
+
+
 def test_annotation_artifacts_default_sampling_sequence_is_unchanged() -> None:
     transform = A.AnnotationArtifacts(
         element_types=("line", "arrow", "callout"),
@@ -50,11 +74,11 @@ def test_annotation_artifacts_default_sampling_sequence_is_unchanged() -> None:
     )
     transform.set_random_seed(137)
 
+    data = {"image": np.empty((160, 160, 3), dtype=np.uint8)}
     artifacts = transform.sample_parameters(
-        {"shape": (160, 160, 3)},
-        {"image": np.empty((160, 160, 3), dtype=np.uint8)},
+        *make_sampling_args(transform, data),
         SamplingContext.from_owner(transform, {}),
-    )["artifacts"]
+    ).params["artifacts"]
 
     assert artifacts == [
         {
@@ -147,7 +171,7 @@ def test_annotation_artifacts_direct_grayscale_inputs(target: str, shape: tuple[
 
     assert result.shape == data.shape
     assert result.dtype == data.dtype
-    assert all(len(artifact["color"]) == 1 for artifact in transform.params["artifacts"])
+    assert all(len(artifact["color"]) == 1 for artifact in get_resolved_applied_params(transform)["artifacts"])
     assert not np.array_equal(result, data)
 
 
@@ -213,10 +237,9 @@ def test_annotation_artifacts_line_length_range_controls_lines() -> None:
     transform.set_random_seed(137)
 
     artifacts = transform.sample_parameters(
-        {"shape": image.shape},
-        {"image": image},
+        *make_sampling_args(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
-    )["artifacts"]
+    ).params["artifacts"]
     lengths = np.array(
         [
             int(np.hypot(artifact["end"][0] - artifact["start"][0], artifact["end"][1] - artifact["start"][1]))
@@ -239,7 +262,7 @@ def test_annotation_artifacts_random_endpoints_are_replayable() -> None:
     pipeline = A.ReplayCompose([transform], seed=137)
 
     result = pipeline(image=image)
-    artifacts = transform.params["artifacts"]
+    artifacts = get_resolved_applied_params(transform)["artifacts"]
     replayed = A.ReplayCompose.replay(result["replay"], image=image)
 
     assert any(
@@ -268,7 +291,7 @@ def test_annotation_artifacts_line_style_policy_applies_to_all_styled_elements(e
 
     A.Compose([transform], save_applied_params=True, seed=137, strict=True)(image=image)
 
-    assert {artifact["style"] for artifact in transform.params["artifacts"]} == {"dotted"}
+    assert {artifact["style"] for artifact in get_resolved_applied_params(transform)["artifacts"]} == {"dotted"}
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -288,7 +311,7 @@ def test_annotation_artifacts_random_colors_match_image_channels(
     )
 
     result = A.Compose([transform], save_applied_params=True, seed=137, strict=True)(image=image)["image"]
-    colors = [artifact["color"] for artifact in transform.params["artifacts"]]
+    colors = [artifact["color"] for artifact in get_resolved_applied_params(transform)["artifacts"]]
 
     assert all(len(color) == num_channels for color in colors)
     assert all(0 <= value <= 255 for color in colors for value in color)
@@ -310,7 +333,9 @@ def test_annotation_artifacts_weighted_color_palette() -> None:
 
     A.Compose([transform], save_applied_params=True, seed=137, strict=True)(image=image)
 
-    assert {artifact["color"] for artifact in transform.params["artifacts"]} == {(10, 20, 30, 40, 50)}
+    assert {artifact["color"] for artifact in get_resolved_applied_params(transform)["artifacts"]} == {
+        (10, 20, 30, 40, 50),
+    }
 
 
 def test_annotation_artifacts_fixed_palette_extends_to_extra_channels() -> None:
@@ -348,7 +373,7 @@ def test_annotation_artifacts_random_angle_supports_pixel_lengths() -> None:
             artifact["end"][0] - artifact["start"][0],
             artifact["end"][1] - artifact["start"][1],
         )
-        for artifact in transform.params["artifacts"]
+        for artifact in get_resolved_applied_params(transform)["artifacts"]
     ]
 
     assert all(18.5 <= length <= 21.5 for length in lengths)
@@ -367,7 +392,7 @@ def test_annotation_artifacts_random_angle_has_nonzero_relative_length() -> None
 
     A.Compose([transform], save_applied_params=True, seed=137, strict=True)(image=image)
 
-    assert all(artifact["start"] != artifact["end"] for artifact in transform.params["artifacts"])
+    assert all(artifact["start"] != artifact["end"] for artifact in get_resolved_applied_params(transform)["artifacts"])
 
 
 @pytest.mark.parametrize(

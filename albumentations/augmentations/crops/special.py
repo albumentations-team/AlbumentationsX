@@ -5,6 +5,7 @@ from typing import Annotated, Any
 from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -183,8 +184,9 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         if "mask" in data:
             mask = self._preprocess_mask(data["mask"])
         elif "masks" in data and len(data["masks"]):
@@ -219,7 +221,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         x_max = x_min + self.width
         y_max = y_min + self.height
 
-        return {"crop_coords": (x_min, y_min, x_max, y_max)}
+        return SampledParams(params={"crop_coords": (x_min, y_min, x_max, y_max)})
 
 
 class RandomCropNearBBox(BaseCrop):
@@ -272,11 +274,12 @@ class RandomCropNearBBox(BaseCrop):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, tuple[float, ...]]:
+    ) -> SampledParams:
         bbox = data[self.cropping_bbox_key]
 
-        image_shape = params["shape"][:2]
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         bbox = self._clip_bbox(bbox, image_shape)
 
@@ -295,7 +298,7 @@ class RandomCropNearBBox(BaseCrop):
             crop_shape = (bbox[3] - bbox[1], bbox[2] - bbox[0])
             crop_coords = fcrops.get_center_crop_coords(image_shape, crop_shape)
 
-        return {"crop_coords": crop_coords}
+        return SampledParams(params={"crop_coords": crop_coords})
 
     @property
     def targets_as_params(self) -> list[str]:
@@ -437,9 +440,10 @@ class RandomCropFromBorders(BaseCrop):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, tuple[int, int, int, int]]:
-        height, width = params["shape"][:2]
+    ) -> SampledParams:
+        height, width = targets.require_aligned_spatial_shape(2)
 
         x_min = sampling.py_random.randint(0, int(self.crop_left * width))
         x_max = sampling.py_random.randint(max(x_min + 1, int((1 - self.crop_right) * width)), width)
@@ -458,7 +462,7 @@ class RandomCropFromBorders(BaseCrop):
             },
         )
 
-        return {"crop_coords": crop_coords}
+        return SampledParams(params={"crop_coords": crop_coords})
 
 
 __all__ = [

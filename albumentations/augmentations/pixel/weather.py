@@ -23,6 +23,12 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
+from albumentations.core.transform_params import (
+    SampledParams,
+    TargetParams,
+    TargetSet,
+    requirements_for_views,
+)
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
@@ -49,6 +55,24 @@ _SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES = {
     ("mud", "uint8"): 6 * 1024 * 1024,
     ("mud", "float32"): 24 * 1024 * 1024,
 }
+
+
+def _weather_group(
+    views: tuple[Any, ...],
+    params: dict[str, Any],
+    *,
+    dtype: bool = False,
+) -> TargetParams:
+    return TargetParams(
+        targets=tuple(view.name for view in views),
+        params=params,
+        requirements=requirements_for_views(views, spatial_shape_suffix=True, dtype=dtype),
+    )
+
+
+def _weather_shape_key(view: Any) -> tuple[Any, ...]:
+    spatial_shape = view.descriptor.spatial_shape
+    return () if spatial_shape is None else tuple(spatial_shape[-2:])
 
 
 class RandomSnow(ImageOnlyTransform):
@@ -172,28 +196,33 @@ class RandomSnow(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, float | np.ndarray | None]:
-        image_shape = params["shape"][:2]
+    ) -> SampledParams:
         snow_point = sampling.py_random.uniform(*self.snow_point_range)
+        sampling.applied_overrides["snow_point_range"] = snow_point
+        if self.method != "texture":
+            return SampledParams(
+                params={"snow_point": snow_point, "snow_texture": None, "sparkle_mask": None},
+            )
 
-        result: dict[str, float | np.ndarray | None] = {
-            "snow_point": snow_point,
-            "snow_texture": None,
-            "sparkle_mask": None,
-        }
-
-        if self.method == "texture":
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("RandomSnow requires image-like targets with known spatial shapes")
+            image_shape = (spatial_shape[-2], spatial_shape[-1])
             snow_texture, sparkle_mask = fpixel.generate_snow_textures(
                 img_shape=image_shape,
                 random_generator=sampling.random_generator,
             )
-            result["snow_texture"] = snow_texture
-            result["sparkle_mask"] = sparkle_mask
-
-        sampling.applied_overrides["snow_point_range"] = snow_point
-
-        return result
+            groups.append(
+                _weather_group(
+                    views,
+                    {"snow_texture": snow_texture, "sparkle_mask": sparkle_mask},
+                ),
+            )
+        return SampledParams(params={"snow_point": snow_point}, target_params=tuple(groups))
 
 
 class RandomGravel(ImageOnlyTransform):
@@ -303,51 +332,40 @@ class RandomGravel(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray]:
-        metadata = self.get_image_data(data)
-        height, width = (metadata["height"], metadata["width"])
-
-        # Calculate ROI in pixels
-        x_min, y_min, x_max, y_max = (
-            int(coord * dim) for coord, dim in zip(self.gravel_roi, [width, height, width, height], strict=True)
-        )
-
-        roi_width = x_max - x_min
-        roi_height = y_max - y_min
-
-        gravels_info = []
-
-        for _ in range(self.number_of_patches):
-            # Generate a random rectangular region within the ROI
-            patch_width = sampling.py_random.randint(roi_width // 10, roi_width // 5)
-            patch_height = sampling.py_random.randint(roi_height // 10, roi_height // 5)
-
-            patch_x = sampling.py_random.randint(x_min, x_max - patch_width)
-            patch_y = sampling.py_random.randint(y_min, y_max - patch_height)
-
-            # Generate gravel particles within this patch
-            num_particles = (patch_width * patch_height) // 100  # Adjust this divisor to control density
-
-            for _ in range(num_particles):
-                x = sampling.py_random.randint(patch_x, patch_x + patch_width)
-                y = sampling.py_random.randint(patch_y, patch_y + patch_height)
-                r = sampling.py_random.randint(1, 3)
-                sat = sampling.py_random.randint(0, 255)
-
-                gravels_info.append(
-                    [
-                        max(y - r, 0),  # min_y
-                        min(y + r, height - 1),  # max_y
-                        max(x - r, 0),  # min_x
-                        min(x + r, width - 1),  # max_x
-                        sat,  # saturation
-                    ],
-                )
-
+    ) -> SampledParams:
         sampling.applied_overrides.update({"number_of_patches": self.number_of_patches, "gravel_roi": self.gravel_roi})
-
-        return {"gravels_infos": np.array(gravels_info, dtype=np.int64)}
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("RandomGravel requires image-like targets with known spatial shapes")
+            height, width = spatial_shape[-2:]
+            x_min, y_min, x_max, y_max = (
+                int(coord * dim) for coord, dim in zip(self.gravel_roi, [width, height, width, height], strict=True)
+            )
+            roi_width = x_max - x_min
+            roi_height = y_max - y_min
+            gravels_info = []
+            for _ in range(self.number_of_patches):
+                patch_width = sampling.py_random.randint(roi_width // 10, roi_width // 5)
+                patch_height = sampling.py_random.randint(roi_height // 10, roi_height // 5)
+                patch_x = sampling.py_random.randint(x_min, x_max - patch_width)
+                patch_y = sampling.py_random.randint(y_min, y_max - patch_height)
+                num_particles = (patch_width * patch_height) // 100
+                for _ in range(num_particles):
+                    x = sampling.py_random.randint(patch_x, patch_x + patch_width)
+                    y = sampling.py_random.randint(patch_y, patch_y + patch_height)
+                    r = sampling.py_random.randint(1, 3)
+                    sat = sampling.py_random.randint(0, 255)
+                    gravels_info.append(
+                        [max(y - r, 0), min(y + r, height - 1), max(x - r, 0), min(x + r, width - 1), sat],
+                    )
+            groups.append(
+                _weather_group(views, {"gravels_infos": np.array(gravels_info, dtype=np.int64)}),
+            )
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class RandomRain(ImageOnlyTransform):
@@ -490,43 +508,14 @@ class RandomRain(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        metadata = self.get_image_data(data)
-        height, width = (metadata["height"], metadata["width"])
-
-        # Simpler calculations, directly following Kornia
-        if self.rain_type == "drizzle":
-            num_drops = height // 4
-        elif self.rain_type == "heavy":
-            num_drops = height
-        elif self.rain_type == "torrential":
-            num_drops = height * 2
-        else:
-            num_drops = height // 3
-
-        drop_length = max(1, height // 8) if self.drop_length is None else self.drop_length
-
-        # Simplified slant calculation
+    ) -> SampledParams:
         slant = sampling.py_random.uniform(*self.slant_range)
-
-        # Single random call for all coordinates
-        if num_drops > 0:
-            # Generate all coordinates in one call
-            coords = sampling.random_generator.integers(
-                low=[0, 0],
-                high=[width, height - drop_length],
-                size=(num_drops, 2),
-                dtype=np.int32,
-            )
-            rain_drops = coords
-        else:
-            rain_drops = np.empty((0, 2), dtype=np.int32)
-
         sampling.applied_overrides.update(
             {
                 "slant_range": slant,
-                "drop_length": drop_length,
+                "drop_length": self.drop_length,
                 "drop_width": self.drop_width,
                 "blur_value": self.blur_value,
                 "brightness_coefficient": self.brightness_coefficient,
@@ -534,7 +523,32 @@ class RandomRain(ImageOnlyTransform):
             },
         )
 
-        return {"drop_length": drop_length, "slant": slant, "rain_drops": rain_drops}
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("RandomRain requires image-like targets with known spatial shapes")
+            height, width = spatial_shape[-2:]
+            if self.rain_type == "drizzle":
+                num_drops = height // 4
+            elif self.rain_type == "heavy":
+                num_drops = height
+            elif self.rain_type == "torrential":
+                num_drops = height * 2
+            else:
+                num_drops = height // 3
+            drop_length = max(1, height // 8) if self.drop_length is None else self.drop_length
+            if num_drops > 0:
+                rain_drops = sampling.random_generator.integers(
+                    low=[0, 0],
+                    high=[width, height - drop_length],
+                    size=(num_drops, 2),
+                    dtype=np.int32,
+                )
+            else:
+                rain_drops = np.empty((0, 2), dtype=np.int32)
+            groups.append(_weather_group(views, {"drop_length": drop_length, "rain_drops": rain_drops}))
+        return SampledParams(params={"slant": slant}, target_params=tuple(groups))
 
 
 class RandomFog(ImageOnlyTransform):
@@ -650,72 +664,47 @@ class RandomFog(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        # Select a random fog intensity within the specified range
+    ) -> SampledParams:
         intensity = sampling.py_random.uniform(*self.fog_coef_range)
-
-        image_shape = params["shape"][:2]
-
-        image_height, image_width = image_shape
-
-        # Calculate the size of the fog effect region based on image width and fog intensity
-        fog_region_size = max(1, int(image_width // 3 * intensity))
-
-        particle_positions = []
-
-        # Initialize the central region where fog will be most dense
-        center_x, center_y = (int(x) for x in fgeometric.center(image_shape))
-
-        # Define the initial size of the foggy area
-        current_width = image_width
-        current_height = image_height
-
-        # Define shrink factor for reducing the foggy area each iteration
-        shrink_factor = 0.1
-
-        max_iterations = 10  # Prevent infinite loop
-        iteration = 0
-
-        while current_width > fog_region_size and current_height > fog_region_size and iteration < max_iterations:
-            # Calculate the number of particles for this region
-            area = current_width * current_height
-            particles_in_region = int(
-                area / (fog_region_size * fog_region_size) * intensity * 10,
-            )
-
-            for _ in range(particles_in_region):
-                # Generate random positions within the current region
-                x = sampling.py_random.randint(
-                    center_x - current_width // 2,
-                    center_x + current_width // 2,
-                )
-                y = sampling.py_random.randint(
-                    center_y - current_height // 2,
-                    center_y + current_height // 2,
-                )
-                particle_positions.append((x, y))
-
-            # Shrink the region for the next iteration
-            current_width = int(current_width * (1 - shrink_factor))
-            current_height = int(current_height * (1 - shrink_factor))
-
-            iteration += 1
-
-        radiuses = fpixel.get_fog_particle_radiuses(
-            image_shape,
-            len(particle_positions),
-            intensity,
-            sampling.random_generator,
-        )
-
         sampling.applied_overrides.update({"fog_coef_range": intensity, "alpha_coef": self.alpha_coef})
-
-        return {
-            "particle_positions": particle_positions,
-            "intensity": intensity,
-            "radiuses": radiuses,
-        }
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("RandomFog requires image-like targets with known spatial shapes")
+            image_shape = (spatial_shape[-2], spatial_shape[-1])
+            image_height, image_width = image_shape
+            fog_region_size = max(1, int(image_width // 3 * intensity))
+            particle_positions: list[tuple[int, int]] = []
+            center_x, center_y = (int(x) for x in fgeometric.center(image_shape))
+            current_width = image_width
+            current_height = image_height
+            iteration = 0
+            while current_width > fog_region_size and current_height > fog_region_size and iteration < 10:
+                area = current_width * current_height
+                particles_in_region = int(area / (fog_region_size * fog_region_size) * intensity * 10)
+                for _ in range(particles_in_region):
+                    x = sampling.py_random.randint(center_x - current_width // 2, center_x + current_width // 2)
+                    y = sampling.py_random.randint(center_y - current_height // 2, center_y + current_height // 2)
+                    particle_positions.append((x, y))
+                current_width = int(current_width * 0.9)
+                current_height = int(current_height * 0.9)
+                iteration += 1
+            radiuses = fpixel.get_fog_particle_radiuses(
+                image_shape,
+                len(particle_positions),
+                intensity,
+                sampling.random_generator,
+            )
+            groups.append(
+                _weather_group(
+                    views,
+                    {"particle_positions": particle_positions, "radiuses": radiuses},
+                ),
+            )
+        return SampledParams(params={"intensity": intensity}, target_params=tuple(groups))
 
 
 class RandomSunFlare(ImageOnlyTransform):
@@ -924,67 +913,46 @@ class RandomSunFlare(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        metadata = self.get_image_data(data)
-        height, width = (metadata["height"], metadata["width"])
-        diagonal = math.sqrt(height**2 + width**2)
-
+    ) -> SampledParams:
         angle = 2 * math.pi * sampling.py_random.uniform(*self.angle_range)
-
-        # Calculate flare center in pixel coordinates
-        x_min, y_min, x_max, y_max = self.flare_roi
-        flare_center_x = int(width * sampling.py_random.uniform(x_min, x_max))
-        flare_center_y = int(height * sampling.py_random.uniform(y_min, y_max))
-
-        num_circles = sampling.py_random.randint(*self.num_flare_circles_range)
-
-        # Calculate parameters relative to image size
-        step_size = max(1, int(diagonal * 0.01))  # 1% of diagonal, minimum 1 pixel
-        max_radius = max(2, int(height * 0.01))  # 1% of height, minimum 2 pixels
-        color_range = int(max(self.src_color) * 0.2)  # 20% of max color value
-
-        def line(t: float) -> tuple[float, float]:
-            return (
-                flare_center_x + t * math.cos(angle),
-                flare_center_y + t * math.sin(angle),
-            )
-
-        # Generate points along the flare line
-        t_range = range(-flare_center_x, width - flare_center_x, step_size)
-        points = [line(t) for t in t_range]
-
-        circles = []
-        for _ in range(num_circles):
-            alpha = sampling.py_random.uniform(0.05, 0.2)
-            point = sampling.py_random.choice(points)
-            rad = sampling.py_random.randint(1, max_radius)
-
-            # Generate colors relative to src_color
-            colors = [sampling.py_random.randint(max(c - color_range, 0), c) for c in self.src_color]
-
-            circles.append(
-                (
-                    alpha,
-                    (int(point[0]), int(point[1])),
-                    pow(rad, 3),
-                    tuple(colors),
-                ),
-            )
-
         sampling.applied_overrides.update(
             {
                 "angle_range": angle / (2 * math.pi),
-                "num_flare_circles_range": num_circles,
+                "num_flare_circles_range": self.num_flare_circles_range,
                 "src_radius": self.src_radius,
                 "src_color": self.src_color,
             },
         )
 
-        return {
-            "circles": circles,
-            "flare_center": (flare_center_x, flare_center_y),
-        }
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("RandomSunFlare requires image-like targets with known spatial shapes")
+            height, width = spatial_shape[-2:]
+            diagonal = math.sqrt(height**2 + width**2)
+            x_min, y_min, x_max, y_max = self.flare_roi
+            flare_center_x = int(width * sampling.py_random.uniform(x_min, x_max))
+            flare_center_y = int(height * sampling.py_random.uniform(y_min, y_max))
+            num_circles = sampling.py_random.randint(*self.num_flare_circles_range)
+            step_size = max(1, int(diagonal * 0.01))
+            max_radius = max(2, int(height * 0.01))
+            color_range = int(max(self.src_color) * 0.2)
+            t_range = range(-flare_center_x, width - flare_center_x, step_size)
+            points = [(flare_center_x + t * math.cos(angle), flare_center_y + t * math.sin(angle)) for t in t_range]
+            circles = []
+            for _ in range(num_circles):
+                alpha = sampling.py_random.uniform(0.05, 0.2)
+                point = sampling.py_random.choice(points)
+                rad = sampling.py_random.randint(1, max_radius)
+                colors = [sampling.py_random.randint(max(c - color_range, 0), c) for c in self.src_color]
+                circles.append((alpha, (int(point[0]), int(point[1])), pow(rad, 3), tuple(colors)))
+            groups.append(
+                _weather_group(views, {"circles": circles, "flare_center": (flare_center_x, flare_center_y)}),
+            )
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class RandomShadow(ImageOnlyTransform):
@@ -1124,55 +1092,40 @@ class RandomShadow(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, list[np.ndarray] | np.ndarray]:
-        metadata = self.get_image_data(data)
-        height, width = (metadata["height"], metadata["width"])
-
-        num_shadows = sampling.py_random.randint(*self.num_shadows_range)
-
-        x_min, y_min, x_max, y_max = self.shadow_roi
-
-        x_min = int(x_min * width)
-        x_max = int(x_max * width)
-        y_min = int(y_min * height)
-        y_max = int(y_max * height)
-
-        vertices_list = [
-            np.stack(
-                [
-                    sampling.random_generator.integers(
-                        x_min,
-                        x_max,
-                        size=self.shadow_dimension,
-                    ),
-                    sampling.random_generator.integers(
-                        y_min,
-                        y_max,
-                        size=self.shadow_dimension,
-                    ),
-                ],
-                axis=1,
-            )
-            for _ in range(num_shadows)
-        ]
-
-        # Sample shadow intensity for each shadow
-        intensities = sampling.random_generator.uniform(
-            *self.shadow_intensity_range,
-            size=num_shadows,
-        )
-
+    ) -> SampledParams:
         sampling.applied_overrides.update(
             {
-                "num_shadows_range": num_shadows,
+                "num_shadows_range": self.num_shadows_range,
                 "shadow_dimension": self.shadow_dimension,
                 "shadow_roi": self.shadow_roi,
-                "shadow_intensity_range": (float(intensities.min()), float(intensities.max())),
+                "shadow_intensity_range": self.shadow_intensity_range,
             },
         )
-
-        return {"vertices_list": vertices_list, "intensities": intensities}
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("RandomShadow requires image-like targets with known spatial shapes")
+            height, width = spatial_shape[-2:]
+            num_shadows = sampling.py_random.randint(*self.num_shadows_range)
+            x_min, y_min, x_max, y_max = self.shadow_roi
+            x_min, x_max = int(x_min * width), int(x_max * width)
+            y_min, y_max = int(y_min * height), int(y_max * height)
+            vertices_list = [
+                np.stack(
+                    [
+                        sampling.random_generator.integers(x_min, x_max, size=self.shadow_dimension),
+                        sampling.random_generator.integers(y_min, y_max, size=self.shadow_dimension),
+                    ],
+                    axis=1,
+                )
+                for _ in range(num_shadows)
+            ]
+            intensities = sampling.random_generator.uniform(*self.shadow_intensity_range, size=num_shadows)
+            groups.append(_weather_group(views, {"vertices_list": vertices_list, "intensities": intensities}))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class Spatter(ImageOnlyTransform):
@@ -1378,11 +1331,9 @@ class Spatter(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        metadata = self.get_image_data(data)
-        height, width = (metadata["height"], metadata["width"])
-
+    ) -> SampledParams:
         mean = sampling.py_random.uniform(*self.mean_range)
         std = sampling.py_random.uniform(*self.std_range)
         cutout_threshold = sampling.py_random.uniform(*self.cutout_threshold_range)
@@ -1390,27 +1341,6 @@ class Spatter(ImageOnlyTransform):
         mode = self.mode
         intensity = sampling.py_random.uniform(*self.intensity_range)
         color = np.asarray(self.color, dtype=np.float32) / np.float32(255)
-
-        liquid_layer = sampling.random_generator.normal(
-            size=(height, width),
-            loc=mean,
-            scale=std,
-        )
-        if mode == "rain":
-            liquid_layer = liquid_layer.astype(np.float32)
-        # Convert sigma to kernel size (must be odd)
-        ksize = 2 * round(3 * sigma) + 1  # 3 sigma rule, rounded to nearest odd
-        cv2.GaussianBlur(
-            src=liquid_layer,
-            dst=liquid_layer,  # in-place operation
-            ksize=(ksize, ksize),
-            sigmaX=sigma,
-            sigmaY=sigma,
-            borderType=cv2.BORDER_REPLICATE,
-        )
-
-        # Important line, without it the rain effect looses drops
-        liquid_layer[liquid_layer < cutout_threshold] = 0
 
         sampling.applied_overrides.update(
             {
@@ -1422,23 +1352,38 @@ class Spatter(ImageOnlyTransform):
             },
         )
 
-        if mode == "rain":
-            return {
-                "mode": "rain",
-                **fpixel.get_rain_params(liquid_layer=liquid_layer, color=color, intensity=intensity),
-            }
-
-        return {
-            "mode": "mud",
-            **fpixel.get_mud_params(
-                liquid_layer=liquid_layer,
-                color=color,
-                cutout_threshold=cutout_threshold,
-                sigma=sigma,
-                intensity=intensity,
-                random_generator=sampling.random_generator,
-            ),
-        }
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("Spatter requires image-like targets with known spatial shapes")
+            height, width = spatial_shape[-2:]
+            liquid_layer = sampling.random_generator.normal(size=(height, width), loc=mean, scale=std)
+            if mode == "rain":
+                liquid_layer = liquid_layer.astype(np.float32)
+            ksize = 2 * round(3 * sigma) + 1
+            cv2.GaussianBlur(
+                src=liquid_layer,
+                dst=liquid_layer,
+                ksize=(ksize, ksize),
+                sigmaX=sigma,
+                sigmaY=sigma,
+                borderType=cv2.BORDER_REPLICATE,
+            )
+            liquid_layer[liquid_layer < cutout_threshold] = 0
+            if mode == "rain":
+                group_params = fpixel.get_rain_params(liquid_layer=liquid_layer, color=color, intensity=intensity)
+            else:
+                group_params = fpixel.get_mud_params(
+                    liquid_layer=liquid_layer,
+                    color=color,
+                    cutout_threshold=cutout_threshold,
+                    sigma=sigma,
+                    intensity=intensity,
+                    random_generator=sampling.random_generator,
+                )
+            groups.append(_weather_group(views, group_params))
+        return SampledParams(params={"mode": mode}, target_params=tuple(groups))
 
 
 class AtmosphericFog(ImageOnlyTransform):
@@ -1535,35 +1480,39 @@ class AtmosphericFog(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+    ) -> SampledParams:
         density = sampling.py_random.uniform(*self.density_range)
-
-        if self.depth_mode == "linear":
-            depth_map = np.linspace(1.0, 0.0, height, dtype=np.float32)[:, np.newaxis]
-            depth_map = np.broadcast_to(depth_map, (height, width)).copy()
-        elif self.depth_mode == "diagonal":
-            y = np.linspace(1.0, 0.0, height, dtype=np.float32)
-            x = np.linspace(1.0, 0.0, width, dtype=np.float32)
-            depth_map = (y[:, np.newaxis] + x[np.newaxis, :]) / 2.0
-        else:
-            cy, cx = height / 2.0, width / 2.0
-            y = np.arange(height, dtype=np.float32)[:, np.newaxis] - cy
-            x = np.arange(width, dtype=np.float32)[np.newaxis, :] - cx
-            depth_map = x * x + y * y
-            depth_map = albucore.sqrt(depth_map, inplace=True)
-            depth_map *= np.float32(1 / math.hypot(cy, cx))
-
         max_val = albucore.MAX_VALUES_BY_DTYPE[np.uint8]
-        image_data = self.get_image_data(data)
-        img_dtype = image_data["dtype"]
-        actual_max = albucore.MAX_VALUES_BY_DTYPE[img_dtype]
-        fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)
-
         sampling.applied_overrides["density_range"] = density
-        return {
-            "density": density,
-            "depth_map": depth_map,
-            "fog_color_scaled": fog_color_scaled,
-        }
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: (_weather_shape_key(view), view.descriptor.value_scale)):
+            view = views[0]
+            spatial_shape = view.descriptor.spatial_shape
+            actual_max = view.descriptor.value_scale
+            if spatial_shape is None or actual_max is None:
+                raise ValueError("AtmosphericFog requires image-like targets with known shape and dtype")
+            height, width = spatial_shape[-2:]
+            if self.depth_mode == "linear":
+                depth_map = np.linspace(1.0, 0.0, height, dtype=np.float32)[:, np.newaxis]
+                depth_map = np.broadcast_to(depth_map, (height, width)).copy()
+            elif self.depth_mode == "diagonal":
+                y = np.linspace(1.0, 0.0, height, dtype=np.float32)
+                x = np.linspace(1.0, 0.0, width, dtype=np.float32)
+                depth_map = (y[:, np.newaxis] + x[np.newaxis, :]) / 2.0
+            else:
+                cy, cx = height / 2.0, width / 2.0
+                y = np.arange(height, dtype=np.float32)[:, np.newaxis] - cy
+                x = np.arange(width, dtype=np.float32)[np.newaxis, :] - cx
+                depth_map = albucore.sqrt(x * x + y * y, inplace=True)
+                depth_map *= np.float32(1 / math.hypot(cy, cx))
+            fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)
+            groups.append(
+                _weather_group(
+                    views,
+                    {"depth_map": depth_map, "fog_color_scaled": fog_color_scaled},
+                    dtype=True,
+                ),
+            )
+        return SampledParams(params={"density": density}, target_params=tuple(groups))

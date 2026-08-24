@@ -11,6 +11,7 @@ from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, no
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.type_definitions import ImageType, Targets
 
 __all__ = ["GuidedCoarseDropout"]
@@ -224,15 +225,16 @@ class GuidedCoarseDropout(BaseDropout):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> SampledParams:
+        image_shape = targets.require_aligned_spatial_shape(2)
         height, width = image_shape
         region = self._get_dropout_region(data, image_shape)
         protected_mask = self._build_protected_mask(self._get_protected_bboxes(data, image_shape), image_shape)
         eligible_mask = region & ~protected_mask
         if not eligible_mask.any():
-            return {"holes": np.empty((0, 4), dtype=np.int32), "dropout_mask": None, "seed": 0}
+            return SampledParams(params={"holes": np.empty((0, 4), dtype=np.int32), "dropout_mask": None, "seed": 0})
 
         num_holes = sampling.py_random.randint(*self.num_holes_range)
         centers = self._sample_centers_uniform(eligible_mask, num_holes, sampling.random_generator)
@@ -246,11 +248,13 @@ class GuidedCoarseDropout(BaseDropout):
         )
         holes = self._centers_to_holes(centers, hole_heights, hole_widths, image_shape)
         dropout_mask = self._rasterize_holes(holes, image_shape) & eligible_mask
-        return {
-            "holes": holes,
-            "dropout_mask": dropout_mask if dropout_mask.any() else None,
-            "seed": int(sampling.random_generator.integers(0, 2**32 - 1)),
-        }
+        return SampledParams(
+            params={
+                "holes": holes,
+                "dropout_mask": dropout_mask if dropout_mask.any() else None,
+                "seed": int(sampling.random_generator.integers(0, 2**32 - 1)),
+            }
+        )
 
     def apply(
         self,

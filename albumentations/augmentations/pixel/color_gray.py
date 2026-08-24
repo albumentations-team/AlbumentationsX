@@ -3,6 +3,12 @@
 from typing import Annotated, Any, Literal, cast
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import (
+    SampledParams,
+    TargetParams,
+    TargetSet,
+    requirements_for_views,
+)
 
 from ._color_shared import (
     NUM_RGB_CHANNELS,
@@ -405,8 +411,9 @@ class Colorize(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         black_color = self._sample_color(self.black_range, sampling)
         white_color = self._sample_color(self.white_range, sampling)
         mid_color = self._sample_color(self.mid_range, sampling) if self.mid_range is not None else None
@@ -424,12 +431,14 @@ class Colorize(ImageOnlyTransform):
         sampling.applied_overrides["mid_range"] = mid_color
         sampling.applied_overrides["mid_value_range"] = applied_mid_value
 
-        return {
-            "black_color": black_color,
-            "white_color": white_color,
-            "mid_color": mid_color,
-            "mid_value": mid_value,
-        }
+        return SampledParams(
+            params={
+                "black_color": black_color,
+                "white_color": white_color,
+                "mid_color": mid_color,
+                "mid_value": mid_value,
+            }
+        )
 
     def apply(
         self,
@@ -611,15 +620,24 @@ class FancyPCA(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        shape = params["shape"]
-        # All images now have channel dimension
-        num_channels = shape[-1]
-        alpha_vector = sampling.random_generator.normal(0, self.alpha, num_channels).astype(
-            np.float32,
+    ) -> SampledParams:
+        groups = tuple(
+            TargetParams(
+                targets=tuple(view.name for view in views),
+                params={
+                    "alpha_vector": sampling.random_generator.normal(
+                        0,
+                        self.alpha,
+                        views[0].descriptor.channels or 1,
+                    ).astype(np.float32),
+                },
+                requirements=requirements_for_views(views, channels=True),
+            )
+            for views in targets.group_image_like_by(lambda view: view.descriptor.channels)
         )
-        return {"alpha_vector": alpha_vector}
+        return SampledParams(params={}, target_params=groups)
 
 
 __all__ = [

@@ -51,8 +51,8 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 - Pyrefly runs through the official pre-commit hook in system mode, using the same `uv` environment as CI.
 
 The repository-specific deterministic rules run through one package-wide hook:
-`pre-commit run check-ax-coding-guidance --all-files`. It emits `AXG001`–`AXG020` diagnostics for transform API,
-sampling, schema, naming, performance-shape, documentation, and bbox propagation contracts. The public
+`pre-commit run check-ax-coding-guidance --all-files`. It emits `AXG001`–`AXG024` diagnostics for transform API,
+sampling, schema, naming, performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
 `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional; all internal transform, processor, and
 functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
 review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.codex/skills/` point to
@@ -367,22 +367,28 @@ applied-configuration record. Do not read RNG state from the transform instance 
 
 ```python
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 
 def sample_parameters(
     self,
     params: dict[str, Any],
     data: dict[str, Any],
+    targets: TargetSet,
     sampling: SamplingContext,
-) -> dict[str, Any]:
+) -> SampledParams:
     brightness = sampling.py_random.uniform(*self.brightness_range)
-    noise = sampling.random_generator.uniform(-1, 1, size=params["shape"])
+    height, width = targets.require_aligned_spatial_shape(2)
+    noise = sampling.random_generator.uniform(-1, 1, size=(height, width))
     sampling.applied_overrides["brightness_range"] = brightness
-    return {"brightness": brightness, "noise": noise}
+    return SampledParams(params={"brightness": brightness, "noise": noise})
 ```
 
 Use `sampling.py_random` for a few scalar choices. Use `sampling.random_generator` for array-valued draws. Generate
-all stochastic parameters before `apply`, then pass the generated values to `apply` through the returned dictionary.
+all stochastic parameters before `apply`, then return a `SampledParams`. Values that apply to every target go in
+`SampledParams.params`; representation-dependent values belong in `TargetParams` entries addressed by actual target key.
+Use `targets` and its descriptors for channel, dtype, layout, topology, or target-content decisions. Do not derive
+those decisions from the first-target `params["shape"]` field.
 
 ## Transform Development
 
@@ -417,36 +423,37 @@ does not apply to `Compose` orchestration such as `apply_in_invocation`; it is e
 
 #### Using sample_parameters
 
-This method provides access to image shape and target data for parameter generation:
+This method receives explicit execution parameters, preprocessed data, and invocation-local target descriptors for parameter
+generation:
 
 ```python
 def sample_parameters(
     self,
     params: dict[str, Any],
     data: dict[str, Any],
+    targets: TargetSet,
     sampling: SamplingContext,
-) -> dict[str, Any]:
-    # Access image shape - always available
-    height, width = params["shape"][:2]
+) -> SampledParams:
+    height, width = targets.require_aligned_spatial_shape(2)
 
-    # Access targets if they were passed to transform
-    image = data.get("image")  # Original image
-    mask = data.get("mask")  # Segmentation mask
-    bboxes = data.get("bboxes")  # Bounding boxes
-    keypoints = data.get("keypoints")  # Keypoint coordinates
+    image = data.get("image")
+    mask = data.get("mask")
+    bboxes = data.get("bboxes")
+    keypoints = data.get("keypoints")
 
     # Example: Calculate parameters based on image size
     crop_size = min(height, width) // 2
     center_x = width // 2
     center_y = height // 2
 
-    return {"crop_size": crop_size, "center": (center_x, center_y)}
+    return SampledParams(params={"crop_size": crop_size, "center": (center_x, center_y)})
 ```
 
 The method receives:
 
-- `params`: Dictionary containing image metadata, where `params["shape"]` is always available
-- `data`: Dictionary containing all targets passed to the transform
+- `params`: Execution parameters such as interpolation and fill values
+- `data`: The full preprocessed invocation, including auxiliary values outside the active targets
+- `targets`: The ordered `TargetSet`; use `require_aligned_spatial_shape(2)` or `require_aligned_spatial_shape(3)` for synchronized geometry
 - `sampling`: Call-local Python and NumPy RNG streams plus the applied-configuration sink
 
 Use this method when you need to:
@@ -454,6 +461,10 @@ Use this method when you need to:
 - Calculate parameters based on image dimensions
 - Access target data for parameter generation
 - Ensure transform parameters are appropriate for the input data
+
+Never return a plain dictionary. For target-specific materialization, group by a transform-defined compatibility key and
+return `TargetParams(targets=..., params=..., requirements=...)`. The core stores the resulting schema in replay and
+rejects legacy flat payloads.
 
 ### Parameter Validation with `InitSchema`
 
@@ -524,6 +535,12 @@ If a transform only repeats inherited constructor inputs and explicitly forwards
 When it adds an input or changes an annotation, its non-empty schema must declare that input (`AXG020`).
 Compatibility aliases that deliberately preserve a parent validator's permissive boundary may retain an empty schema;
 they must not introduce new constructor fields.
+
+Sampling overrides must return `SampledParams` rather than a flat dictionary (`AXG021`), and must not derive
+target-sensitive values from first-target `params["shape"]` or legacy shape helpers (`AXG022`). Application methods
+use semantic parameter names; target routing belongs in `TargetParams` entries rather than names such as `volume_noise_map`
+(`AXG023`). When choosing among canonical image targets, samplers use `TargetSet` rather than selecting `image`,
+`images`, or `volume` from `data` (`AXG024`).
 
 #### No `get_transform_init_args_names` Override
 
@@ -713,14 +730,14 @@ Examples:
     ...         super().__init__(*args, **kwargs)
     ...         # Add custom parameters here
     ...
-    ...     def sample_parameters(self, params, data, sampling):
-    ...         height, width = params["shape"][:2]
+    ...     def sample_parameters(self, params, data, targets, sampling):
+    ...         height, width = targets.require_aligned_spatial_shape(2)
     ...         # Generate distortion maps
     ...         map_x = np.zeros((height, width), dtype=np.float32)
     ...         map_y = np.zeros((height, width), dtype=np.float32)
     ...         # Apply your custom distortion logic here
     ...         # ...
-    ...         return {"map_x": map_x, "map_y": map_y}
+    ...         return SampledParams(params={"map_x": map_x, "map_y": map_y})
     >>>
     >>> # Prepare sample data
     >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)

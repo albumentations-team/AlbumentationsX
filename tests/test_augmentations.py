@@ -23,7 +23,7 @@ from .utils import (
     get_primary_dual_transform_params,
     get_primary_image_only_transform_params,
     get_resolved_applied_params,
-    make_sampling_input,
+    make_sampling_args,
     set_seed,
 )
 
@@ -1111,7 +1111,7 @@ def test_constrained_coarse_dropout_with_mask():
 
     # Get holes
     params = transform.sample_parameters(
-        make_sampling_input(transform, {"image": image, "mask": mask}),
+        *make_sampling_args(transform, {"image": image, "mask": mask}),
         SamplingContext.from_owner(transform, {}),
     ).shared
     holes = params["holes"]
@@ -1636,7 +1636,7 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         transform.set_random_seed(137 + iteration)
         # Get params without actually applying transform
         params = transform.sample_parameters(
-            make_sampling_input(transform, {"image": image}),
+            *make_sampling_args(transform, {"image": image}),
             SamplingContext.from_owner(transform, {}),
         ).shared
         slants.append(params["slant"])

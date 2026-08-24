@@ -254,13 +254,13 @@ def rule_sampling_signature(index: SourceIndex) -> list[Diagnostic]:
             continue
         args = node.args
         names = [arg.arg for arg in [*args.posonlyargs, *args.args]]
-        if names != ["self", "inputs", "sampling"] or args.kwonlyargs or args.vararg or args.kwarg:
+        if names != ["self", "params", "data", "targets", "sampling"] or args.kwonlyargs or args.vararg or args.kwarg:
             result.append(
                 _d(
                     "AXG004",
                     info,
                     node,
-                    "sample_parameters must have exactly self, inputs, sampling",
+                    "sample_parameters must have exactly self, params, data, targets, sampling",
                     f"{info.name}.sample_parameters",
                 )
             )
@@ -324,7 +324,7 @@ def _direct_sampler_returns(node: ast.FunctionDef | ast.AsyncFunctionDef) -> lis
 def _is_first_target_shape_access(node: ast.AST) -> bool:
     return (
         isinstance(node, ast.Subscript)
-        and ast.unparse(node.value) == "inputs.base_params"
+        and ast.unparse(node.value) == "params"
         and (ast.unparse(node.slice).strip("\"'") == "shape")
     )
 
@@ -360,14 +360,14 @@ def rule_sampling_plan_contract(index: SourceIndex) -> list[Diagnostic]:
                         "AXG021",
                         info,
                         returned,
-                        "sample_parameters must return TransformParameterPlan, not a plain dictionary",
+                        "sample_parameters must return SampledParams, not a plain dictionary",
                         f"{info.name}.sample_parameters",
                     )
                 )
         for child in ast.walk(node):
             if _is_first_target_shape_access(child) or _is_legacy_shape_helper_call(child):
                 detail = (
-                    "instead of first-target base_params['shape']"
+                    "instead of first-target params['shape']"
                     if _is_first_target_shape_access(child)
                     else "instead of a first-target helper"
                 )
@@ -376,7 +376,7 @@ def rule_sampling_plan_contract(index: SourceIndex) -> list[Diagnostic]:
                         "AXG022",
                         info,
                         child,
-                        (f"sample_parameters must use TransformSamplingInput.targets or spatial_frame {detail}"),
+                        f"sample_parameters must use TargetSet metadata {detail}",
                         f"{info.name}.sample_parameters",
                     )
                 )
@@ -398,7 +398,7 @@ def rule_target_routing_parameters(index: SourceIndex) -> list[Diagnostic]:
                             arg,
                             (
                                 "application parameters must use semantic names; target-specific routing belongs "
-                                "in TransformParameterPlan groups"
+                                "in SampledParams groups"
                             ),
                             f"{info.name}.{name}",
                         )

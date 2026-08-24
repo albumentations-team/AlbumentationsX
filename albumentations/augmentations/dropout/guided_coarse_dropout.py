@@ -11,7 +11,7 @@ from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, no
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.type_definitions import ImageType, Targets
 
 __all__ = ["GuidedCoarseDropout"]
@@ -223,17 +223,18 @@ class GuidedCoarseDropout(BaseDropout):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        data = inputs.data
-        image_shape = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        image_shape = targets.require_spatial_shape(2)
         height, width = image_shape
         region = self._get_dropout_region(data, image_shape)
         protected_mask = self._build_protected_mask(self._get_protected_bboxes(data, image_shape), image_shape)
         eligible_mask = region & ~protected_mask
         if not eligible_mask.any():
-            return TransformParameterPlan.shared_only(
+            return SampledParams.shared_only(
                 {"holes": np.empty((0, 4), dtype=np.int32), "dropout_mask": None, "seed": 0}
             )
 
@@ -249,7 +250,7 @@ class GuidedCoarseDropout(BaseDropout):
         )
         holes = self._centers_to_holes(centers, hole_heights, hole_widths, image_shape)
         dropout_mask = self._rasterize_holes(holes, image_shape) & eligible_mask
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "holes": holes,
                 "dropout_mask": dropout_mask if dropout_mask.any() else None,

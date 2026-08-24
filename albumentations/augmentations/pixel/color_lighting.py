@@ -4,9 +4,9 @@ from typing import Annotated, Any, Literal
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
-    TransformParameterPlan,
-    TransformSamplingInput,
+    SampledParams,
+    TargetParams,
+    TargetSet,
     requirements_for_views,
 )
 
@@ -182,9 +182,11 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         # Sample adjustment strengths
         brightness = sampling.py_random.uniform(*self.brightness_range)
         contrast = sampling.py_random.uniform(*self.contrast_range)
@@ -192,7 +194,7 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         sampling.applied_overrides.update({"brightness_range": brightness, "contrast_range": contrast})
 
         groups = []
-        for views in inputs.targets.group_image_like_by(
+        for views in targets.group_image_like_by(
             lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
         ):
             spatial_shape = views[0].descriptor.spatial_shape
@@ -206,13 +208,13 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
                 random_generator=sampling.random_generator,
             )
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(view.name for view in views),
                     params={"plasma_pattern": plasma},
                     requirements=requirements_for_views(views),
                 ),
             )
-        return TransformParameterPlan(
+        return SampledParams(
             shared={"brightness_factor": brightness, "contrast_factor": contrast},
             groups=tuple(groups),
         )
@@ -354,16 +356,18 @@ class PlasmaShadow(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         # Sample shadow intensity
         intensity = sampling.py_random.uniform(*self.shadow_intensity_range)
 
         sampling.applied_overrides["shadow_intensity_range"] = intensity
 
         groups = []
-        for views in inputs.targets.group_image_like_by(
+        for views in targets.group_image_like_by(
             lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
         ):
             spatial_shape = views[0].descriptor.spatial_shape
@@ -377,13 +381,13 @@ class PlasmaShadow(ImageOnlyTransform):
                 random_generator=sampling.random_generator,
             )
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(view.name for view in views),
                     params={"plasma_pattern": plasma},
                     requirements=requirements_for_views(views),
                 ),
             )
-        return TransformParameterPlan(shared={"intensity": intensity}, groups=tuple(groups))
+        return SampledParams(shared={"intensity": intensity}, groups=tuple(groups))
 
     def apply(
         self,
@@ -572,9 +576,11 @@ class Illumination(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         intensity = sampling.py_random.uniform(*self.intensity_range)
 
         # Determine if brightening or darkening
@@ -600,7 +606,7 @@ class Illumination(ImageOnlyTransform):
         if self.mode == "linear":
             angle = sampling.py_random.uniform(*self.angle_range)
             sampling.applied_overrides["angle_range"] = angle
-            return TransformParameterPlan.shared_only(
+            return SampledParams.shared_only(
                 {
                     "intensity": intensity,
                     "angle": angle,
@@ -608,7 +614,7 @@ class Illumination(ImageOnlyTransform):
             )
         if self.mode == "corner":
             corner = sampling.py_random.randint(0, 3)  # Choose random corner
-            return TransformParameterPlan.shared_only(
+            return SampledParams.shared_only(
                 {
                     "intensity": intensity,
                     "corner": corner,
@@ -620,7 +626,7 @@ class Illumination(ImageOnlyTransform):
         sigma = sampling.py_random.uniform(*self.sigma_range)
         sampling.applied_overrides["center_range"] = (x, y)
         sampling.applied_overrides["sigma_range"] = sigma
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "intensity": intensity,
                 "center": (x, y),
@@ -731,9 +737,11 @@ class Vignetting(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         intensity = sampling.py_random.uniform(*self.intensity_range)
         center_x = sampling.py_random.uniform(*self.center_range)
         center_y = sampling.py_random.uniform(*self.center_range)
@@ -743,7 +751,7 @@ class Vignetting(ImageOnlyTransform):
                 "center_range": (min(center_x, center_y), max(center_x, center_y)),
             },
         )
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "intensity": intensity,
                 "center_x": center_x,

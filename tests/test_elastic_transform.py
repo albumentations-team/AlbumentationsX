@@ -10,7 +10,7 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.invocation import SamplingContext
-from tests.utils import make_sampling_input
+from tests.utils import make_sampling_args
 
 
 class _LabelMappingElasticTransform(A.ElasticTransform):
@@ -256,7 +256,7 @@ def test_zero_spatial_extent_does_not_sample_coefficients() -> None:
 
     data = {"image": np.empty((0, 10, 3), dtype=np.float32)}
     params = transform.sample_parameters(
-        make_sampling_input(transform, data),
+        *make_sampling_args(transform, data),
         SamplingContext.from_owner(transform, {}),
     ).shared
 

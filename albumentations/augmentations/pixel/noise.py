@@ -28,9 +28,9 @@ from albumentations.core.pydantic import (
     nondecreasing,
 )
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
-    TransformParameterPlan,
-    TransformSamplingInput,
+    SampledParams,
+    TargetParams,
+    TargetSet,
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import (
@@ -87,8 +87,8 @@ def _target_parameter_group(
     channels: bool = False,
     dtype: bool = False,
     topology: bool = False,
-) -> TargetParameterGroup:
-    return TargetParameterGroup(
+) -> TargetParams:
+    return TargetParams(
         targets=tuple(view.name for view in views),
         params={parameter_name: value},
         requirements=requirements_for_views(
@@ -199,16 +199,18 @@ class GaussNoise(_FullVolumeNoiseTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         sigma = sampling.py_random.uniform(*self.std_range)
         mean = sampling.py_random.uniform(*self.mean_range)
         sampling.applied_overrides.update({"std_range": sigma, "mean_range": mean})
         spatial_mode: Literal["per_pixel", "shared"] = "per_pixel" if self.per_channel else "shared"
         noise_params = {"mean_range": (mean, mean), "std_range": (sigma, sigma)}
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
             lambda view: (
                 _target_noise_map_shape(view),
                 view.descriptor.dtype_scale,
@@ -234,7 +236,7 @@ class GaussNoise(_FullVolumeNoiseTransform):
                     topology=True,
                 ),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
 
 class ISONoise(_FullVolumeNoiseTransform):
@@ -357,16 +359,18 @@ class ISONoise(_FullVolumeNoiseTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         random_seed = sampling.random_generator.integers(0, 2**32 - 1)
         color_shift = sampling.py_random.uniform(*self.color_shift_range)
         intensity = sampling.py_random.uniform(*self.intensity_range)
 
         sampling.applied_overrides.update({"color_shift_range": color_shift, "intensity_range": intensity})
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "color_shift": color_shift,
                 "intensity": intensity,
@@ -476,12 +480,14 @@ class MultiplicativeNoise(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        groups: list[TargetParameterGroup] = []
+    ) -> SampledParams:
+        groups: list[TargetParams] = []
         if not self.elementwise and not self.per_channel:
-            compatible_groups = inputs.targets.group_image_like_by(lambda view: view.descriptor.channels)
+            compatible_groups = targets.group_image_like_by(lambda view: view.descriptor.channels)
             for compatible_views in compatible_groups:
                 channels = compatible_views[0].descriptor.channels or 1
                 groups.append(
@@ -496,9 +502,9 @@ class MultiplicativeNoise(ImageOnlyTransform):
                         channels=True,
                     ),
                 )
-            return TransformParameterPlan(shared={}, groups=tuple(groups))
+            return SampledParams(shared={}, groups=tuple(groups))
 
-        for compatible_views in inputs.targets.group_image_like_by(
+        for compatible_views in targets.group_image_like_by(
             lambda view: (_target_noise_map_shape(view), _sampling_family(view)),
         ):
             view = compatible_views[0]
@@ -512,7 +518,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
                     topology=True,
                 ),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
     def _sample_multiplier(
         self,
@@ -627,12 +633,14 @@ class ShotNoise(_FullVolumeNoiseTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         scale = sampling.py_random.uniform(*self.scale_range)
         sampling.applied_overrides["scale_range"] = scale
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "scale": scale,
                 "random_seed": sampling.random_generator.integers(0, 2**32 - 1),
@@ -939,11 +947,13 @@ class AdditiveNoise(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(
+    ) -> SampledParams:
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
             lambda view: (
                 _target_additive_shape(self, view),
                 view.descriptor.dtype_scale,
@@ -957,7 +967,7 @@ class AdditiveNoise(ImageOnlyTransform):
                 sampling,
             )
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(item.name for item in views),
                     params=sampled,
                     requirements=requirements_for_views(
@@ -968,7 +978,7 @@ class AdditiveNoise(ImageOnlyTransform):
                     ),
                 ),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
     def _sample_noise_map(
         self,
@@ -1139,14 +1149,16 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         total_amount = sampling.py_random.uniform(*self.amount_range)
         salt_ratio = sampling.py_random.uniform(*self.salt_vs_pepper_range)
         sampling.applied_overrides.update({"amount_range": total_amount, "salt_vs_pepper_range": salt_ratio})
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
             lambda view: (
                 tuple((view.descriptor.shape or ())[:3])
                 if view.canonical_type == "volume"
@@ -1162,13 +1174,13 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
             )
             salt_mask, pepper_mask = self._sample_masks(spatial_shape, total_amount, salt_ratio, sampling)
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(item.name for item in views),
                     params={"salt_mask": salt_mask, "pepper_mask": pepper_mask},
                     requirements=requirements_for_views(views, shape=True, sampling_topology=True),
                 ),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
     @staticmethod
     def _sample_masks(
@@ -1299,9 +1311,11 @@ class FilmGrain(_FullVolumeNoiseTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         intensity = sampling.py_random.uniform(*self.intensity_range)
         grain_size = (
             sampling.py_random.randint(*self.grain_size_range)
@@ -1309,8 +1323,8 @@ class FilmGrain(_FullVolumeNoiseTransform):
             else self.grain_size_range[0]
         )
         sampling.applied_overrides.update({"intensity_range": intensity, "grain_size_range": grain_size})
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
             lambda view: (
                 tuple((view.descriptor.shape or ())[:3])
                 if view.canonical_type == "volume"
@@ -1325,13 +1339,13 @@ class FilmGrain(_FullVolumeNoiseTransform):
                 else tuple(view.descriptor.spatial_shape or ())
             )
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(item.name for item in views),
                     params={"grain": self._sample_grain(spatial_shape, grain_size, sampling)},
                     requirements=requirements_for_views(views, shape=True, sampling_topology=True),
                 ),
             )
-        return TransformParameterPlan(shared={"intensity": intensity}, groups=tuple(groups))
+        return SampledParams(shared={"intensity": intensity}, groups=tuple(groups))
 
     @staticmethod
     def _sample_grain(
@@ -1447,18 +1461,20 @@ class RicianNoise(_FullVolumeNoiseTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         std = sampling.py_random.uniform(*self.std_range)
         sampling.applied_overrides["std_range"] = std
         if std == 0:
-            return TransformParameterPlan(
+            return SampledParams(
                 shared={"std": std, "real_noise": None, "imaginary_noise": None},
             )
 
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
             lambda view: (
                 _target_noise_map_shape(view),
                 self.per_channel,
@@ -1471,13 +1487,13 @@ class RicianNoise(_FullVolumeNoiseTransform):
                 noise_shape = (*noise_shape[:-1], 1)
             real_noise, imaginary_noise = self._sample_noise(noise_shape, std, sampling)
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(item.name for item in views),
                     params={"real_noise": real_noise, "imaginary_noise": imaginary_noise},
                     requirements=requirements_for_views(views, shape=True, sampling_topology=True),
                 ),
             )
-        return TransformParameterPlan(shared={"std": std}, groups=tuple(groups))
+        return SampledParams(shared={"std": std}, groups=tuple(groups))
 
     @staticmethod
     def _sample_noise(

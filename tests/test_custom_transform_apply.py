@@ -11,7 +11,7 @@ import pytest
 
 import albumentations as A
 from albumentations.core.invocation import SamplingContext
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
@@ -52,10 +52,12 @@ class BrightnessWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        return TransformParameterPlan.shared_only({"factor": 0.5})
+    ) -> SampledParams:
+        return SampledParams.shared_only({"factor": 0.5})
 
     def apply(self, img: np.ndarray, factor: float = 1.0, **p) -> np.ndarray:
         return np.clip(img.astype(np.float32) * factor, 0, 255).astype(img.dtype)
@@ -82,10 +84,12 @@ class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        return TransformParameterPlan.shared_only({"factor": 1})
+    ) -> SampledParams:
+        return SampledParams.shared_only({"factor": 1})
 
     def apply(self, img: np.ndarray, factor: int = 0, **p) -> np.ndarray:
         return np.rot90(img, factor)
@@ -102,10 +106,12 @@ class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        return TransformParameterPlan.shared_only({"factor": 2})
+    ) -> SampledParams:
+        return SampledParams.shared_only({"factor": 2})
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
         return img
@@ -125,10 +131,12 @@ class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        return TransformParameterPlan.shared_only({"factor": 1})
+    ) -> SampledParams:
+        return SampledParams.shared_only({"factor": 1})
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
         return img
@@ -450,8 +458,14 @@ class TestParamsPassthrough:
         received = {}
 
         class _Capture(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def sample_parameters(self, inputs: TransformSamplingInput, sampling: SamplingContext):
-                return TransformParameterPlan.shared_only({"factor": 7})
+            def sample_parameters(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
+                sampling: SamplingContext,
+            ) -> SampledParams:
+                return SampledParams.shared_only({"factor": 7})
 
             def apply(self, img, factor=0, **p):
                 received["apply_factor"] = factor
@@ -470,8 +484,14 @@ class TestParamsPassthrough:
         received = {}
 
         class _CaptureMulti(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def sample_parameters(self, inputs: TransformSamplingInput, sampling: SamplingContext):
-                return TransformParameterPlan.shared_only({"alpha": 3, "beta": 9})
+            def sample_parameters(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
+                sampling: SamplingContext,
+            ) -> SampledParams:
+                return SampledParams.shared_only({"alpha": 3, "beta": 9})
 
             def apply(self, img, **p):
                 return img
@@ -583,11 +603,13 @@ class TestGetParamsDependentOnData:
 
             def sample_parameters(
                 self,
-                inputs: TransformSamplingInput,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> TransformParameterPlan:
-                label = inputs.data.get("label", 0)
-                return TransformParameterPlan.shared_only({"base": 10, "offset": label * 2})
+            ) -> SampledParams:
+                label = data.get("label", 0)
+                return SampledParams.shared_only({"base": 10, "offset": label * 2})
 
             def apply(self, img: np.ndarray, base: int = 0, offset: int = 0, **p) -> np.ndarray:
                 return img
@@ -606,10 +628,12 @@ class TestGetParamsDependentOnData:
 
             def sample_parameters(
                 self,
-                inputs: TransformSamplingInput,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> TransformParameterPlan:
-                return TransformParameterPlan.shared_only({})
+            ) -> SampledParams:
+                return SampledParams.shared_only({})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -631,10 +655,12 @@ class TestAddTargetsWithCustomKeys:
         class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             def sample_parameters(
                 self,
-                inputs: TransformSamplingInput,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> TransformParameterPlan:
-                return TransformParameterPlan.shared_only({})
+            ) -> SampledParams:
+                return SampledParams.shared_only({})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -655,10 +681,12 @@ class TestAddTargetsWithCustomKeys:
         class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             def sample_parameters(
                 self,
-                inputs: TransformSamplingInput,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> TransformParameterPlan:
-                return TransformParameterPlan.shared_only({})
+            ) -> SampledParams:
+                return SampledParams.shared_only({})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -742,10 +770,12 @@ class TestAvailableKeysAndComposition:
         class AddOne(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             def sample_parameters(
                 self,
-                inputs: TransformSamplingInput,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> TransformParameterPlan:
-                return TransformParameterPlan.shared_only({})
+            ) -> SampledParams:
+                return SampledParams.shared_only({})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -756,10 +786,12 @@ class TestAvailableKeysAndComposition:
         class MulTwo(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             def sample_parameters(
                 self,
-                inputs: TransformSamplingInput,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> TransformParameterPlan:
-                return TransformParameterPlan.shared_only({})
+            ) -> SampledParams:
+                return SampledParams.shared_only({})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -777,10 +809,12 @@ class TestAvailableKeysAndComposition:
         class BaseWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
             def sample_parameters(
                 self,
-                inputs: TransformSamplingInput,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> TransformParameterPlan:
-                return TransformParameterPlan.shared_only({})
+            ) -> SampledParams:
+                return SampledParams.shared_only({})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img

@@ -14,7 +14,7 @@ from typing_extensions import Self
 
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
 from albumentations.core.invocation import SamplingContext
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
@@ -206,9 +206,11 @@ class RandomScale(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         if isinstance(self.scale_range, dict):
             scale_x = sampling.py_random.uniform(*self.scale_range["x"]) + 1.0
             scale_y = sampling.py_random.uniform(*self.scale_range["y"]) + 1.0
@@ -217,7 +219,7 @@ class RandomScale(DualTransform):
             scale = sampling.py_random.uniform(*self.scale_range) + 1.0
             scale_x = scale_y = scale
             sampling.applied_overrides["scale_range"] = scale - 1.0
-        return TransformParameterPlan.shared_only({"scale_x": scale_x, "scale_y": scale_y})
+        return SampledParams.shared_only({"scale_x": scale_x, "scale_y": scale_y})
 
     def apply(
         self,
@@ -321,13 +323,13 @@ class BaseMaxSizeTransform(DualTransform):
         >>>
         >>> # Example of creating a custom transform that extends BaseMaxSizeTransform
         >>> class CustomMaxSize(BaseMaxSizeTransform):
-        ...     def sample_parameters(self, inputs, sampling):
-        ...         img_h, img_w = inputs.require_spatial_frame().spatial_shape_2d
+        ...     def sample_parameters(self, params, data, targets, sampling):
+        ...         img_h, img_w = targets.require_spatial_shape(2)
         ...         # Calculate scale factor - here we scale to make the image area constant
         ...         target_area = 300 * 300  # Target area of 300x300
         ...         current_area = img_h * img_w
         ...         scale = np.sqrt(target_area / current_area)
-        ...         return TransformParameterPlan.shared_only({"scale": scale})
+        ...         return SampledParams.shared_only({"scale": scale})
         >>>
         >>> # Prepare sample data
         >>> image = np.zeros((100, 200, 3), dtype=np.uint8)
@@ -551,10 +553,12 @@ class LongestMaxSize(BaseMaxSizeTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        img_h, img_w = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        img_h, img_w = targets.require_spatial_shape(2)
 
         if self.max_size is not None:
             max_size = self.max_size if isinstance(self.max_size, int) else sampling.py_random.choice(self.max_size)
@@ -575,7 +579,7 @@ class LongestMaxSize(BaseMaxSizeTransform):
         else:
             raise RuntimeError("Either max_size or max_size_hw must be set")
 
-        return TransformParameterPlan.shared_only({"scale": scale})
+        return SampledParams.shared_only({"scale": scale})
 
 
 class SmallestMaxSize(BaseMaxSizeTransform):
@@ -670,10 +674,12 @@ class SmallestMaxSize(BaseMaxSizeTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        img_h, img_w = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        img_h, img_w = targets.require_spatial_shape(2)
 
         if self.max_size is not None:
             max_size = self.max_size if isinstance(self.max_size, int) else sampling.py_random.choice(self.max_size)
@@ -694,7 +700,7 @@ class SmallestMaxSize(BaseMaxSizeTransform):
         else:
             raise RuntimeError("Either max_size or max_size_hw must be set")
 
-        return TransformParameterPlan.shared_only({"scale": scale})
+        return SampledParams.shared_only({"scale": scale})
 
 
 class Resize(DualTransform):
@@ -1044,10 +1050,12 @@ class LetterBox(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        img_h, img_w = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        img_h, img_w = targets.require_spatial_shape(2)
         target_h, target_w = self.size
 
         scale = min(target_h / img_h, target_w / img_w)
@@ -1070,7 +1078,7 @@ class LetterBox(DualTransform):
             py_random=sampling.py_random,
         )
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "scale": scale,
                 "new_height": new_h,

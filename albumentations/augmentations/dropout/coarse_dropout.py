@@ -18,7 +18,7 @@ from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDro
 from albumentations.core.bbox_utils import denormalize_bboxes
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 __all__ = ["CoarseDropout", "ConstrainedCoarseDropout", "Erasing"]
 
@@ -167,9 +167,11 @@ class CoarseDropout(BaseDropout):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         def materialize(image_shape: tuple[int, int], _: tuple[Any, ...]) -> dict[str, Any]:
             num_holes = sampling.py_random.randint(*self.num_holes_range)
             hole_heights, hole_widths = self.calculate_hole_dimensions(
@@ -194,7 +196,7 @@ class CoarseDropout(BaseDropout):
             )
             return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
 
-        return self._build_spatial_parameter_plan(inputs, materialize)
+        return self._build_spatial_parameter_plan(targets, materialize)
 
 
 class Erasing(BaseDropout):
@@ -292,9 +294,11 @@ class Erasing(BaseDropout):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         """Calculate erasing parameters (box position and size) from image shape and ratio ranges.
         Direct derivation; used by Erasing sample_parameters.
 
@@ -361,7 +365,7 @@ class Erasing(BaseDropout):
             )
             return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
 
-        return self._build_spatial_parameter_plan(inputs, materialize)
+        return self._build_spatial_parameter_plan(targets, materialize)
 
 
 class ConstrainedCoarseDropout(BaseDropout):
@@ -556,10 +560,11 @@ class ConstrainedCoarseDropout(BaseDropout):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        data = inputs.data
+    ) -> SampledParams:
         """Get hole parameters from mask indices or bbox labels. Dispatches to get_holes_from_mask or
         get_holes_from_boxes. Returns holes (n, 4) and num_holes.
         """
@@ -579,7 +584,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             if target_boxes is None:
                 holes = np.array([], dtype=np.int32).reshape((0, 4))
             else:
-                image_shape = inputs.targets.primary_image_like().descriptor.spatial_shape
+                image_shape = targets.primary_image_like().descriptor.spatial_shape
                 if image_shape is None:
                     raise ValueError("ConstrainedCoarseDropout requires an image-like spatial target")
                 target_boxes = denormalize_bboxes(target_boxes, (image_shape[-2], image_shape[-1]))
@@ -602,7 +607,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             },
         )
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "holes": holes,
                 "seed": sampling.random_generator.integers(0, 2**32 - 1),

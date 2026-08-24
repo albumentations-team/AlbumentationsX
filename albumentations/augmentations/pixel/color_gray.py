@@ -4,9 +4,9 @@ from typing import Annotated, Any, Literal, cast
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
-    TransformParameterPlan,
-    TransformSamplingInput,
+    SampledParams,
+    TargetParams,
+    TargetSet,
     requirements_for_views,
 )
 
@@ -409,9 +409,11 @@ class Colorize(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         black_color = self._sample_color(self.black_range, sampling)
         white_color = self._sample_color(self.white_range, sampling)
         mid_color = self._sample_color(self.mid_range, sampling) if self.mid_range is not None else None
@@ -429,7 +431,7 @@ class Colorize(ImageOnlyTransform):
         sampling.applied_overrides["mid_range"] = mid_color
         sampling.applied_overrides["mid_value_range"] = applied_mid_value
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "black_color": black_color,
                 "white_color": white_color,
@@ -616,11 +618,13 @@ class FancyPCA(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         groups = tuple(
-            TargetParameterGroup(
+            TargetParams(
                 targets=tuple(view.name for view in views),
                 params={
                     "alpha_vector": sampling.random_generator.normal(
@@ -631,9 +635,9 @@ class FancyPCA(ImageOnlyTransform):
                 },
                 requirements=requirements_for_views(views, channels=True),
             )
-            for views in inputs.targets.group_image_like_by(lambda view: view.descriptor.channels)
+            for views in targets.group_image_like_by(lambda view: view.descriptor.channels)
         )
-        return TransformParameterPlan(shared={}, groups=groups)
+        return SampledParams(shared={}, groups=groups)
 
 
 __all__ = [

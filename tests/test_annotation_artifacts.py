@@ -5,7 +5,7 @@ import albumentations as A
 from albumentations.augmentations.other import annotation_artifacts_functional as fannotation
 from albumentations.core.invocation import SamplingContext
 from tests.helpers import TestDataFactory
-from tests.utils import get_resolved_applied_params, make_sampling_input
+from tests.utils import get_resolved_applied_params, make_sampling_args
 
 
 @pytest.mark.parametrize("element_type", ["text", "rectangle", "arrow", "line", "callout"])
@@ -53,7 +53,7 @@ def test_annotation_artifacts_default_sampling_sequence_is_unchanged() -> None:
 
     data = {"image": np.empty((160, 160, 3), dtype=np.uint8)}
     artifacts = transform.sample_parameters(
-        make_sampling_input(transform, data),
+        *make_sampling_args(transform, data),
         SamplingContext.from_owner(transform, {}),
     ).shared["artifacts"]
 
@@ -214,7 +214,7 @@ def test_annotation_artifacts_line_length_range_controls_lines() -> None:
     transform.set_random_seed(137)
 
     artifacts = transform.sample_parameters(
-        make_sampling_input(transform, {"image": image}),
+        *make_sampling_args(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
     ).shared["artifacts"]
     lengths = np.array(

@@ -27,7 +27,7 @@ from .utils import (
     get_primary_2d_transform_params,
     get_primary_dual_transform_params,
     get_primary_image_only_transform_params,
-    make_sampling_input,
+    make_sampling_args,
 )
 
 
@@ -633,11 +633,11 @@ def test_multiplicative_noise_grayscale(image):
     m = 0.5
     aug = A.MultiplicativeNoise((m, m), elementwise=False, p=1)
     data = {"image": image}
-    plan = aug.sample_parameters(
-        inputs=make_sampling_input(aug, data),
+    sampled_params = aug.sample_parameters(
+        *make_sampling_args(aug, data),
         sampling=SamplingContext.from_owner(aug, {}),
     )
-    params = plan.params_for("image")
+    params = sampled_params.params_for("image")
     assert m == params["multiplier"]
     result_e = aug(image=image)["image"]
 
@@ -646,11 +646,11 @@ def test_multiplicative_noise_grayscale(image):
     np.testing.assert_allclose(clip(expected, image.dtype), result_e, rtol=1e-5, atol=1e-8, equal_nan=False)
 
     aug = A.MultiplicativeNoise((m, m), elementwise=True, p=1)
-    plan = aug.sample_parameters(
-        inputs=make_sampling_input(aug, data),
+    sampled_params = aug.sample_parameters(
+        *make_sampling_args(aug, data),
         sampling=SamplingContext.from_owner(aug, {}),
     )
-    params = plan.params_for("image")
+    params = sampled_params.params_for("image")
     result_ne = aug.apply(image, params["multiplier"])
 
     expected = image.astype(np.float32) * params["multiplier"]
@@ -671,11 +671,11 @@ def test_multiplicative_noise_rgb(image, elementwise):
 
     aug = A.MultiplicativeNoise(multiplier=(0.9, 1.1), elementwise=elementwise, p=1)
     data = {"image": image}
-    plan = aug.sample_parameters(
-        inputs=make_sampling_input(aug, data),
+    sampled_params = aug.sample_parameters(
+        *make_sampling_args(aug, data),
         sampling=SamplingContext.from_owner(aug, {}),
     )
-    mul = plan.params_for("image")["multiplier"]
+    mul = sampled_params.params_for("image")["multiplier"]
 
     if elementwise:
         assert mul.shape == image.shape
@@ -1048,7 +1048,7 @@ def test_affine_scale_ratio(params):
 
     data = {"image": image}
     apply_params = aug.sample_parameters(
-        inputs=make_sampling_input(aug, data),
+        *make_sampling_args(aug, data),
         sampling=SamplingContext.from_owner(aug, {}),
     ).shared
 
@@ -1085,7 +1085,7 @@ def test_affine_default_keep_ratio_behavior():
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
     apply_params = transform.sample_parameters(
-        inputs=make_sampling_input(transform, data),
+        *make_sampling_args(transform, data),
         sampling=SamplingContext.from_owner(transform, {}),
     ).shared
 
@@ -1104,7 +1104,7 @@ def test_affine_explicit_keep_ratio_false():
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
     apply_params = transform.sample_parameters(
-        inputs=make_sampling_input(transform, data),
+        *make_sampling_args(transform, data),
         sampling=SamplingContext.from_owner(transform, {}),
     ).shared
 
@@ -1114,7 +1114,7 @@ def test_affine_explicit_keep_ratio_false():
     for seed in range(10):
         transform.set_random_seed(seed)
         apply_params = transform.sample_parameters(
-            inputs=make_sampling_input(transform, data),
+            *make_sampling_args(transform, data),
             sampling=SamplingContext.from_owner(transform, {}),
         ).shared
         if apply_params["scale"]["x"] != apply_params["scale"]["y"]:
@@ -1135,7 +1135,7 @@ def test_affine_with_dict_scale_keep_ratio_true():
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
     apply_params = transform.sample_parameters(
-        inputs=make_sampling_input(transform, data),
+        *make_sampling_args(transform, data),
         sampling=SamplingContext.from_owner(transform, {}),
     ).shared
 
@@ -1158,7 +1158,7 @@ def test_affine_keep_ratio_with_single_scale_value():
     image = SQUARE_UINT8_IMAGE
     data = {"image": image}
     apply_params = transform.sample_parameters(
-        inputs=make_sampling_input(transform, data),
+        *make_sampling_args(transform, data),
         sampling=SamplingContext.from_owner(transform, {}),
     ).shared
 
@@ -1420,7 +1420,7 @@ def test_motion_blur_allow_shifted():
         blur_range=(7, 7),  # Fixed kernel size
     )
     kernel = transform.sample_parameters(
-        inputs=make_sampling_input(transform, {}),
+        *make_sampling_args(transform, {}),
         sampling=SamplingContext.from_owner(transform, {}),
     ).shared["kernel"]
 
@@ -1459,7 +1459,7 @@ def test_motion_blur_allow_shifted_true():
     kernels = []
     for _ in range(10):
         kernel = transform.sample_parameters(
-            inputs=make_sampling_input(transform, {}),
+            *make_sampling_args(transform, {}),
             sampling=SamplingContext.from_owner(transform, {}),
         ).shared["kernel"]
         kernels.append(kernel)
@@ -2056,11 +2056,11 @@ def test_gauss_noise(mean, image):
     aug = A.GaussNoise(p=1, mean_range=(mean, mean))
     aug.set_random_seed(42)
 
-    plan = aug.sample_parameters(
-        inputs=make_sampling_input(aug, {"image": image}),
+    sampled_params = aug.sample_parameters(
+        *make_sampling_args(aug, {"image": image}),
         sampling=SamplingContext.from_owner(aug, {}),
     )
-    apply_params = plan.params_for("image")
+    apply_params = sampled_params.params_for("image")
 
     assert (
         np.abs(
@@ -2093,7 +2093,7 @@ def test_additive_noise_spatial_map_is_float32(noise_type, noise_params, spatial
     )
 
     apply_params = aug.sample_parameters(
-        inputs=make_sampling_input(aug, {"image": image}),
+        *make_sampling_args(aug, {"image": image}),
         sampling=SamplingContext.from_owner(aug, {}),
     ).params_for("image")
 
@@ -2222,7 +2222,7 @@ def test_additive_noise_uniform_rejects_too_few_channel_ranges_before_sampling(
     numpy_random_state = copy.deepcopy(sampling.random_generator.bit_generator.state)
 
     with pytest.raises(ValueError, match="Not enough ranges provided"):
-        transform.sample_parameters(inputs=make_sampling_input(transform, {"image": image}), sampling=sampling)
+        transform.sample_parameters(*make_sampling_args(transform, {"image": image}), sampling=sampling)
 
     np.testing.assert_equal(sampling.py_random.getstate(), py_random_state)
     np.testing.assert_equal(sampling.random_generator.bit_generator.state, numpy_random_state)

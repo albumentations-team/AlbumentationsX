@@ -32,7 +32,7 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -294,10 +294,12 @@ class Perspective(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        image_shape = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        image_shape = targets.require_spatial_shape(2)
         scale = sampling.py_random.uniform(*self.scale)
 
         points = fgeometric.generate_perspective_points(
@@ -320,7 +322,7 @@ class Perspective(DualTransform):
 
         sampling.applied_overrides["scale"] = scale
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "matrix": matrix,
                 "max_height": max_height,
@@ -752,10 +754,12 @@ class Affine(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        image_shape = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        image_shape = targets.require_spatial_shape(2)
 
         translate = self._get_translate_params(image_shape, sampling)
         shear = self._get_shear_params(sampling)
@@ -803,7 +807,7 @@ class Affine(DualTransform):
         else:
             output_shape = image_shape
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "rotate": rotate,
                 "scale": scale,
@@ -1136,10 +1140,12 @@ class GridElasticDeform(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        image_shape = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        image_shape = targets.require_spatial_shape(2)
 
         # Replace calculate_grid_dimensions with split_uniform_grid
         tiles = fgeometric.split_uniform_grid(
@@ -1171,7 +1177,7 @@ class GridElasticDeform(DualTransform):
 
         generated_mesh = self._generate_mesh(polygons, dimensions)
 
-        return TransformParameterPlan.shared_only({"generated_mesh": generated_mesh})
+        return SampledParams.shared_only({"generated_mesh": generated_mesh})
 
     def apply(
         self,
@@ -1380,10 +1386,12 @@ class RandomGridShuffle(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        image_shape = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        image_shape = targets.require_spatial_shape(2)
 
         original_tiles = fgeometric.split_uniform_grid(
             image_shape,
@@ -1396,7 +1404,7 @@ class RandomGridShuffle(DualTransform):
             sampling.random_generator,
         )
 
-        return TransformParameterPlan.shared_only({"tiles": original_tiles, "mapping": mapping})
+        return SampledParams.shared_only({"tiles": original_tiles, "mapping": mapping})
 
 
 class Morphological(DualTransform):
@@ -1532,10 +1540,12 @@ class Morphological(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        return TransformParameterPlan.shared_only(
+    ) -> SampledParams:
+        return SampledParams.shared_only(
             {
                 "kernel": cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.scale),
             }

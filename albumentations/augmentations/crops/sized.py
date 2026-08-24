@@ -1,9 +1,9 @@
 """Random sized crop transforms."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from albumentations.core.invocation import SamplingContext
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -159,10 +159,12 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        image_shape = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        image_shape = targets.require_spatial_shape(2)
 
         crop_height = sampling.py_random.randint(*self.min_max_height)
         crop_width = int(crop_height * self.w2h_ratio)
@@ -176,7 +178,7 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
 
         sampling.applied_overrides["min_max_height"] = (crop_height, crop_height)
 
-        return TransformParameterPlan.shared_only({"crop_coords": crop_coords})
+        return SampledParams.shared_only({"crop_coords": crop_coords})
 
 
 class RandomResizedCrop(_BaseRandomSizedCrop):
@@ -324,10 +326,12 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        image_shape = inputs.require_spatial_frame().spatial_shape_2d
+    ) -> SampledParams:
+        image_shape = targets.require_spatial_shape(2)
         image_height, image_width = image_shape
 
         area = image_height * image_width
@@ -356,7 +360,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
                         "ratio": (aspect_ratio, aspect_ratio),
                     },
                 )
-                return TransformParameterPlan.shared_only({"crop_coords": crop_coords})
+                return SampledParams.shared_only({"crop_coords": crop_coords})
 
         # Fallback to central crop - use proper function
         in_ratio = image_width / image_height
@@ -379,7 +383,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
                 "ratio": (fallback_ratio, fallback_ratio),
             },
         )
-        return TransformParameterPlan.shared_only({"crop_coords": crop_coords})
+        return SampledParams.shared_only({"crop_coords": crop_coords})
 
 
 __all__ = [

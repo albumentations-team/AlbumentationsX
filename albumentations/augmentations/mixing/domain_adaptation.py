@@ -25,7 +25,7 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -102,14 +102,16 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         ...
         ...     def sample_parameters(
         ...         self,
-        ...         inputs: TransformSamplingInput,
+        ...         params: dict[str, Any],
+        ...         data: dict[str, Any],
+        ...         targets: TargetSet,
         ...         sampling: SamplingContext,
-        ...     ) -> TransformParameterPlan:
-        ...         target_image = inputs.data.get(self.reference_key)
+        ...     ) -> SampledParams:
+        ...         target_image = data.get(self.reference_key)
         ...         if target_image is None:
         ...             # Fallback if target image is not provided
-        ...             return TransformParameterPlan.shared_only({"target_image": None})
-        ...         return TransformParameterPlan.shared_only({"target_image": target_image})
+        ...             return SampledParams.shared_only({"target_image": None})
+        ...         return SampledParams.shared_only({"target_image": target_image})
         ...
         ...     def apply(
         ...         self,
@@ -306,16 +308,17 @@ class HistogramMatching(BaseDomainAdaptation):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        data = inputs.data
+    ) -> SampledParams:
         reference_image = self._get_reference_image(data, sampling)
         blend_ratio = sampling.py_random.uniform(*self.blend_ratio)
 
         sampling.applied_overrides["blend_ratio"] = blend_ratio
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "reference_image": reference_image,
                 "blend_ratio": blend_ratio,
@@ -496,12 +499,13 @@ class FDA(BaseDomainAdaptation):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        data = inputs.data
+    ) -> SampledParams:
         target_image = self._get_reference_image(data, sampling)
-        height, width = inputs.require_spatial_frame().spatial_shape_2d
+        height, width = targets.require_spatial_shape(2)
 
         # Resize the target image to match the input image dimensions
         target_image_resized = fgeometric.resize(target_image, (height, width), cv2.INTER_LINEAR)
@@ -510,7 +514,7 @@ class FDA(BaseDomainAdaptation):
 
         sampling.applied_overrides["beta_range"] = beta
 
-        return TransformParameterPlan.shared_only({"target_image": target_image_resized, "beta": beta})
+        return SampledParams.shared_only({"target_image": target_image_resized, "beta": beta})
 
     def apply(
         self,
@@ -681,15 +685,16 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        data = inputs.data
+    ) -> SampledParams:
         blend_ratio = sampling.py_random.uniform(*self.blend_ratio)
 
         sampling.applied_overrides["blend_ratio"] = blend_ratio
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "reference_image": self._get_reference_image(data, sampling),
                 "blend_ratio": blend_ratio,

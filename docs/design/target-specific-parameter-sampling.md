@@ -1,12 +1,12 @@
 # Greenfield Target-Specific Parameter Sampling
 
-**Status**: Implemented (greenfield cutover)
+**Status**: Implementation complete; paired base-to-head performance evidence pending before merge
 
 **Owner**: AlbumentationsX core transform maintainers
 
 ## Overview
 
-AlbumentationsX now samples one structured parameter plan for a transform invocation and resolves it for each active target.
+AlbumentationsX now samples structured execution parameters for a transform invocation and resolves them for each active target.
 The old flat dictionary model worked when all targets could consume the same realized parameters. It failed when a parameter depends
 on the actual target's channel count, dtype, shape, batch layout, or volume layout.
 
@@ -29,9 +29,9 @@ The implementation will make these changes as one atomic repository cutover:
 
 1. Build an ordered `TargetSet` for every invocation. Its entries are keyed by the actual input name, including aliases such
    as `image2`, and carry the canonical target type plus representation metadata.
-2. Replace flat dictionaries returned by `sample_parameters` with `TransformParameterPlan`.
-3. Store target-independent values in `TransformParameterPlan.shared`.
-4. Store representation-dependent values in `TargetParameterGroup` objects. Each group names the actual targets that consume
+2. Replace flat dictionaries returned by `sample_parameters` with `SampledParams`.
+3. Store target-independent values in `SampledParams.shared`.
+4. Store representation-dependent values in `TargetParams` objects. Each group names the actual targets that consume
    its parameters. Groups may overlap when different parameters have different sharing domains.
 5. Resolve the relevant group before calling `apply`, `apply_to_images`, `apply_to_volume`, or an alias of those methods.
 6. Persist the same structure in deterministic mode and `ReplayCompose` so replay performs no sampling or rematerialization.
@@ -51,8 +51,8 @@ preserved, while target routing moves into the shared core contract defined here
 `volume_*` fields as part of the cutover.
 
 Because the sampling override and execution-replay schemas are customization contracts, the completed cutover ships as a
-documented breaking change. The implementation PR owns the migration guide, paired performance evidence, and exact-head test
-results.
+documented breaking change. This is a correctness change, not an optimization: it must preserve the shared-only fast path
+and must not claim a speedup without paired base-to-head, full-route evidence.
 
 ## Problem Statement
 
@@ -128,15 +128,15 @@ the required abstraction.
 - Preserve the meaning of one transform invocation as one random augmentation event.
 - Allow exact parameter sharing when targets are semantically compatible.
 - Materialize correct values for targets with different shapes, channel counts, dtypes, layouts, or content.
-- Keep geometric synchronization explicit through a shared spatial frame.
+- Keep geometric synchronization explicit through a common spatial shape obtained from `TargetSet`.
 - Make target routing visible in types and replay data instead of parameter-name conventions.
-- Fail before applying any target when a plan is incomplete, ambiguous, or incompatible with the current invocation.
+- Fail before applying any target when sampled parameters are incomplete, ambiguous, or incompatible with the current invocation.
 - Preserve the fast path for the common single-target, shared-parameter case.
 - Give custom transforms one documented way to express shared and target-specific parameters.
 
 ## Non-Goals
 
-- Supporting different spatial frames for targets that a synchronized geometric transform requires to be aligned.
+- Supporting different spatial shapes for targets that a synchronized geometric transform requires to be aligned.
 - Inferring transform-specific sharing semantics in `BasicTransform`.
 - Changing random-number generators, seed derivation, probability gates, or transform ordering.
 - Moving execution parameters into `applied_config`; constructor replay and execution replay remain separate contracts.
@@ -173,20 +173,21 @@ The framework provides deterministic grouping helpers. Each transform supplies t
 
 ### Spatial synchronization is separate from representation
 
-Geometric transforms need a validated spatial frame shared by aligned targets. Photometric and dense-value transforms need
+Geometric transforms need one validated spatial shape shared by aligned targets. Photometric and dense-value transforms need
 per-target representation metadata. A single global `shape` derived from the first target conflates these concerns.
 
-The sampling input therefore contains both `spatial_frame` and `targets`. Geometry reads the former. Representation-dependent
-sampling reads the latter.
+`TargetSet.require_spatial_shape(2)` provides the common height-width shape for 2D geometry and
+`TargetSet.require_spatial_shape(3)` provides depth-height-width for 3D geometry. Representation-dependent sampling uses
+the same `TargetSet` descriptors. There is no wrapper object that hides `params` or `data`.
 
 ### Replay stores realized execution
 
-Replay records the complete structured plan used by the original call. It does not rerun grouping, rescale values, or draw
+Replay records the complete structured sampled values used by the original call. It does not rerun grouping, rescale values, or draw
 random numbers. Target-specific replay validates the current target schema before any target is mutated.
 
 ### The ordinary path stays small
 
-Shared-only plans use one shared dictionary and no per-target group lookup. Mixed-target calls pay work proportional to the
+Shared-only sampled values use one shared dictionary and no per-target group lookup. Mixed-target calls pay work proportional to the
 number of active targets. Dense arrays are materialized once per compatible group.
 
 ## Terminology
@@ -195,12 +196,12 @@ number of active targets. Dense arrays are materialized once per compatible grou
 - **Active target**: A non-`None` input whose actual key resolves through the transform's target mapping.
 - **Canonical target type**: The built-in role to which a key resolves, such as `image` or `volume`.
 - **Target view**: A read-only invocation-local view of one target and its representation metadata.
-- **Spatial frame**: Validated spatial dimensions and coordinate conventions shared by synchronized targets.
+- **Common spatial shape**: Validated spatial dimensions shared by synchronized targets.
 - **Shared parameter**: A realized value consumed by every applicable target in an invocation.
 - **Target parameter group**: One parameter mapping shared by a named set of compatible actual targets.
 - **Sampling topology**: The semantic layout used to generate a parameter, such as one 2D map, one map per batch item, or
   one full 3D map.
-- **Parameter plan**: The shared parameters and target groups for one transform invocation.
+- **Sampled parameters**: The shared values and target groups for one transform invocation.
 
 ## Implemented Types
 
@@ -239,12 +240,6 @@ class TargetRequirement:
     sampling_topology: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class SpatialFrame:
-    rank: int
-    shape: tuple[int, ...]
-
-
 class TargetSet:
     ordered: tuple[TargetView, ...]
 
@@ -253,36 +248,30 @@ class TargetSet:
     def image_like(self) -> tuple[TargetView, ...]: ...
     def primary_image_like(self) -> TargetView: ...
     def group_by(self, key: Callable[[TargetView], Hashable]) -> tuple[tuple[TargetView, ...], ...]: ...
+    def spatial_shape(self, rank: int) -> tuple[int, ...] | None: ...
+    def require_spatial_shape(self, rank: int) -> tuple[int, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
-class TargetParameterGroup:
+class TargetParams:
     targets: tuple[str, ...]
     params: Mapping[str, Any]
     requirements: Mapping[str, TargetRequirement]
 
 
 @dataclass(frozen=True, slots=True)
-class TransformParameterPlan:
+class SampledParams:
     shared: Mapping[str, Any]
-    groups: tuple[TargetParameterGroup, ...] = ()
+    groups: tuple[TargetParams, ...] = ()
     target_schema: Mapping[str, str] | None = None
 
     @classmethod
-    def shared_only(cls, params: Mapping[str, Any]) -> TransformParameterPlan: ...
+    def shared_only(cls, params: Mapping[str, Any]) -> SampledParams: ...
 
     def params_for(self, target_name: str) -> Mapping[str, Any]: ...
 
 
-class TransformParameterPlanError(ValueError): ...
-
-
-@dataclass(frozen=True, slots=True)
-class TransformSamplingInput:
-    base_params: Mapping[str, Any]
-    spatial_frame: SpatialFrame | None
-    targets: TargetSet
-    data: dict[str, Any]
+class SampledParamsError(ValueError): ...
 ```
 
 `TargetView.value` is a borrowed reference for content-dependent sampling. Constructing a target view does not copy an array;
@@ -290,11 +279,11 @@ sampling code must not mutate the borrowed value. Metadata is derived after inpu
 representation that the application function will receive. Layout and topology are stable strings derived from the canonical
 target type plus the validated value; array rank alone never decides whether a value is a batch or a volume.
 
-`SpatialFrame.rank` is declared by the transform family: 2D transforms consume the aligned height-width frame and 3D
-transforms consume the aligned depth-height-width frame. A transform that has no shared geometric domain can opt out with a
-`None` rank and derive representation-dependent sizes from target descriptors.
+The transform family declares the rank it requires. 2D transforms consume the aligned height-width shape and 3D transforms
+consume the aligned depth-height-width shape. A transform that has no shared geometric domain can opt out and derive
+representation-dependent sizes from target descriptors.
 
-`TargetParameterGroup.params` contains only the group-specific delta. `params_for` builds one keyword dictionary from `shared`
+`TargetParams.params` contains only the group-specific delta. `params_for` builds one keyword dictionary from `shared`
 and every group that contains the actual target; dense arrays are referenced, not copied.
 
 `TargetRequirement` records only the representation properties on which a materialized parameter depends. A dense map may
@@ -304,9 +293,9 @@ permutation may require only channel count. Replay
 uses these declared constraints and does not reject harmless differences. `dtype` and `dtype_scale` are separate constraints:
 some parameters require the exact storage type, while others require only an equivalent numeric range.
 
-## Parameter Plan Invariants
+## Sampled-Parameter Invariants
 
-The core validates a complete plan immediately after sampling:
+The core validates complete sampled parameters immediately after sampling:
 
 1. `shared` and every group parameter mapping are treated as immutable by the execution layer for the rest of the invocation.
 2. A parameter name cannot appear in both `shared` and a group. This prevents silent shadowing.
@@ -322,8 +311,8 @@ The core validates a complete plan immediately after sampling:
 11. Application functions cannot access another target's groups.
 12. Sampling and validation finish before the first application function is called.
 
-The framework raises `TransformParameterPlanError`, a `ValueError` subclass containing the transform name and violated
-invariant (or a `TypeError` when a sampler returns a non-plan). It must not fall through to a NumPy broadcasting error.
+The framework raises `SampledParamsError`, a `ValueError` subclass containing the transform name and violated
+invariant (or a `TypeError` when a sampler returns the wrong type). It must not fall through to a NumPy broadcasting error.
 
 ## Deterministic Target Ordering
 
@@ -343,29 +332,33 @@ for existing mixed-target invocations; after the cutover, the new ordering is st
 ```python
 def sample_parameters(
     self,
-    inputs: TransformSamplingInput,
+    params: dict[str, Any],
+    data: dict[str, Any],
+    targets: TargetSet,
     sampling: SamplingContext,
-) -> TransformParameterPlan: ...
+) -> SampledParams: ...
 ```
 
-The base implementation returns `TransformParameterPlan.shared_only({})`. Shared-only transforms return a plan explicitly:
+`params` contains common execution values, `data` contains the whole preprocessed invocation, and `targets` describes the
+active transform targets. The base implementation returns `SampledParams.shared_only({})`. Shared-only transforms return
+sampled values explicitly:
 
 ```python
-return TransformParameterPlan.shared_only({"angle": angle})
+return SampledParams.shared_only({"angle": angle})
 ```
 
 Target-sensitive transforms return shared policy plus groups:
 
 ```python
-return TransformParameterPlan(
+return SampledParams(
     shared={"distribution": distribution, "intensity": intensity},
     groups=(
-        TargetParameterGroup(
+        TargetParams(
             targets=("image", "image2"),
             params={"noise_map": shared_image_noise},
             requirements=image_noise_requirements,
         ),
-        TargetParameterGroup(
+        TargetParams(
             targets=("volume",),
             params={"noise_map": volume_noise},
             requirements=volume_noise_requirements,
@@ -383,21 +376,21 @@ boundary.
 start of `Compose`, because an earlier transform may change shape, dtype, channels, or content. The stable actual-key ordering
 template can be cached with the configured target mapping; values and descriptors belong to the current transform step.
 
-Only active targets enter the set. Unknown metadata stays in `TransformSamplingInput.data`, and recognized keys with `None`
-values remain inactive. Replay treats missing and `None` target values equivalently for target-schema validation.
+Only active targets enter the set. Unknown metadata stays in `data`, and recognized keys with `None` values remain inactive.
+Replay treats missing and `None` target values equivalently for target-schema validation.
 
 Representation metadata is derived once from the borrowed values for the current transform step. The descriptors do not copy
 arrays, and shared-only samplers take the same fast path as before; target-aware samplers use the already available descriptors.
 
 ### Shared base parameters
 
-Core-derived values such as interpolation, fill values, and annotation processor metadata enter through
-`TransformSamplingInput.base_params`. The core combines them with `plan.shared` after checking for duplicate keys.
+Core-derived values such as interpolation, fill values, and annotation processor metadata enter through `params`. The core
+combines them with `SampledParams.shared` after checking for duplicate keys.
 
-The shared `base_params["shape"]` compatibility field remains for existing geometry and application code. It is normalized
+The shared `params["shape"]` compatibility field remains for existing geometry and application code. It is normalized
 to the canonical 2D shape for batched images, volumes, batched masks, and 3D masks. New target-sensitive sampling must not
-derive representation from that first-target field: geometry reads `spatial_frame`, while target-specific sampling reads the
-relevant descriptor from `inputs.targets`.
+derive representation from that first-target field: geometry reads `targets.require_spatial_shape(...)`, while
+target-specific sampling reads the relevant descriptor from `targets`.
 
 ### Grouping helpers
 
@@ -410,7 +403,7 @@ relevant descriptor from `inputs.targets`.
 | Full 3D value map | `(sampling_topology, spatial_shape, channels, dtype_scale)` |
 | Channel permutation | `(channels,)` |
 | Content-derived reference matching | actual target key |
-| Shared geometry | no target groups; use `spatial_frame` |
+| Shared geometry | no target groups; use `targets.require_spatial_shape(...)` |
 
 `dtype_scale` is a transform-defined semantic value. Raw `dtype` is insufficient when several dtypes share the same value
 range or when a transform operates in normalized floating-point space.
@@ -429,10 +422,10 @@ channels or dtype.
 
 ## Application Dispatch
 
-`apply_with_params` receives the validated plan and keeps two execution paths.
+`apply_with_params` receives validated sampled parameters and keeps two execution paths.
 
-The shared-only path performs the current loop with `plan.shared`. It checks once that `plan.groups` is empty and performs no
-per-target lookup.
+The shared-only path performs the current loop with `sampled_params.shared`. It checks once that `sampled_params.groups` is
+empty and performs no per-target lookup.
 
 The target-aware path resolves by actual key:
 
@@ -440,7 +433,7 @@ The target-aware path resolves by actual key:
 for target_name, value in data.items():
     if target_name in self._key2func and value is not None:
         target_function = self._key2func[target_name]
-        target_params = plan.params_for(target_name)
+        target_params = sampled_params.params_for(target_name)
         result[target_name] = target_function(value, **target_params)
 ```
 
@@ -448,15 +441,15 @@ Application methods use semantic parameter names consistently. `apply`, `apply_t
 accept `noise_map`; dispatch selects the correct value. Fields whose only purpose was target routing are deleted.
 
 Required keyword names for each canonical application function are compiled once from its signature when the transform class
-is prepared. Plan validation resolves those requirements through every actual key before the application loop. Methods that
+is prepared. Validation resolves those requirements through every actual key before the application loop. Methods that
 accept only shared parameters keep the shared-only path.
 
 Annotation postprocessing that needs realized geometry receives the shared geometry parameters. If a future annotation target
-requires its own materialization, it participates through its actual target key under the same plan contract.
+requires its own materialization, it participates through its actual target key under the same sampled-parameter contract.
 
 ## Replay and Deterministic Execution
 
-The in-memory plan is normalized into this replay shape:
+In-memory sampled parameters are normalized into this replay shape:
 
 ```python
 {
@@ -490,9 +483,9 @@ JSON `applied_config` contract.
 
 Replay follows these rules:
 
-1. It reconstructs `TransformParameterPlan` without calling a sampler.
-2. Shared-only plans keep current replay applicability.
-3. A plan with target groups requires the exact recorded set of active actual target keys; extra keys fail as well as missing
+1. It reconstructs `SampledParams` without calling a sampler.
+2. Shared-only sampled values keep current replay applicability.
+3. Sampled values with target groups require the exact recorded set of active actual target keys; extra keys fail as well as missing
    keys because no realized target-specific parameters exist for an added target.
 4. Each current key must resolve to the canonical target type recorded in `target_schema`.
 5. Each current descriptor must satisfy the properties declared by its `TargetRequirement`. Unconstrained properties may
@@ -508,10 +501,10 @@ need a migration note. `applied_config()` remains constructor-valid and unchange
 This is a breaking change for custom transforms that override `sample_parameters` or inspect deterministic execution params.
 The release containing the cutover must include a migration guide with these cases:
 
-- wrap shared dictionaries with `TransformParameterPlan.shared_only`;
+- wrap shared dictionaries with `SampledParams.shared_only`;
 - replace `image_*` and `volume_*` execution fields with groups keyed by actual target names;
-- use `inputs.spatial_frame` for synchronized geometry;
-- use `inputs.targets` for representation metadata and content access;
+- use `targets.require_spatial_shape(2)` or `targets.require_spatial_shape(3)` for synchronized geometry;
+- use `targets` for representation metadata and content access;
 - use a transform-defined `group_by` key when compatible aliases should share parameters; and
 - update deterministic and replay assertions to the structured payload.
 
@@ -546,7 +539,7 @@ The audit must also classify transforms that currently depend on first-target me
 | Noise and color scaling | `AdditiveNoise`, `GaussNoise`, advanced color transforms | Does dtype or channel count change materialization? |
 | Content-derived sampling | `ExposureMatching` and reference-based transforms | Is a sampled value tied to one target's pixels? |
 | Batch and volume sampling | transforms with `apply_to_images` or `apply_to_volume` | Does sampling topology match the application method? |
-| Geometry | all shape-dependent geometric transforms | Can the transform use the validated shared spatial frame exclusively? |
+| Geometry | all shape-dependent geometric transforms | Can the transform use the validated common spatial shape exclusively? |
 | Semantic 3D policy | transforms with volume-specific kernel or sigma policy | Is the difference true transform policy or only dispatch encoded in a name? |
 
 Volume-specific constructor policy may remain when it expresses real 3D semantics. Realized execution values still use the
@@ -568,13 +561,12 @@ classifications and the review hook's coverage.
 **Completion condition**: every built-in sampler has an assigned migration class; no target-sensitive transform remains under
 an implicit first-target assumption.
 
-### Phase 1: Add target and plan types — complete
+### Phase 1: Add target and sampled-parameter types — complete
 
-- Add `TargetView`, `TargetSet`, `SpatialFrame`, `TransformSamplingInput`, `TargetParameterGroup`, and
-  `TransformParameterPlan` in the core transform execution layer.
+- Add `TargetView`, `TargetSet`, `TargetParams`, and `SampledParams` in the core transform execution layer.
 - Derive target views from the post-preprocessing values that application functions receive.
-- Add deterministic target ordering and grouping helpers.
-- Add plan validation and dedicated errors.
+- Add deterministic target ordering, grouping helpers, and `TargetSet.require_spatial_shape`.
+- Add sampled-parameter validation and dedicated errors.
 - Add the shared-only application fast path and actual-key group dispatch.
 
 **Completion condition**: focused core tests prove routing, validation, ordering, and zero application before a validation
@@ -582,9 +574,9 @@ failure.
 
 ### Phase 2: Migrate the sampling boundary — complete
 
-- Change the base sampling signature to accept `TransformSamplingInput` and return `TransformParameterPlan`.
+- Change the base sampling signature to accept `params`, `data`, `targets`, and `sampling`, and return `SampledParams`.
 - Convert every shared-only transform explicitly.
-- Replace global first-target `shape` reads with `spatial_frame` or a specific `TargetView`.
+- Replace global first-target `shape` reads with `targets.require_spatial_shape(...)` or a specific `TargetView`.
 - Reject dictionary returns.
 - Update deterministic state and `get_applied_params()`.
 
@@ -604,7 +596,7 @@ in channel count and dtype.
 
 ### Phase 4: Cut over replay — complete
 
-- Store `parameter_schema: 2` and the normalized plan in deterministic state and `ReplayCompose`.
+- Store `parameter_schema: 2` and normalized sampled parameters in deterministic state and `ReplayCompose`.
 - Validate actual keys, canonical types, and materialized parameter compatibility before replay.
 - Update replay fixtures and tests.
 - Document the intentional incompatibility with flat execution-param payloads.
@@ -626,15 +618,15 @@ materialization code.
 **Completion condition**: a repository search and AST audit find no target-name execution fields or first-target sampling
 dependencies.
 
-### Phase 6: Validate and benchmark the atomic cutover — complete
+### Phase 6: Validate and measure the atomic cutover — pending paired evidence
 
 - Run the focused core and transform matrices described below.
 - Run the full test suite, type checks, documentation checks, and pre-commit hooks.
 - Benchmark the same base commit and exact cutover head in the same environment.
 - Inspect the final diff for duplicate compatibility logic, transitional branches, and obsolete tests.
 
-**Completion condition**: all correctness gates pass, performance stays within budget, and the cutover contains one runtime
-contract.
+**Completion condition**: all correctness gates pass, paired base-to-head measurements satisfy the performance budget, and
+the cutover contains one runtime contract. This phase does not assert an optimization; it detects an unacceptable regression.
 
 ### Merge strategy
 
@@ -659,7 +651,7 @@ Add focused tests for:
 - unknown, repeated, empty, and missing group targets;
 - missing required parameters;
 - validation before any application function runs;
-- read-only plan behavior and no caller-input mutation; and
+- read-only sampled-parameter behavior and no caller-input mutation; and
 - precise diagnostic messages containing transform and target identity.
 
 ### Representation matrix
@@ -698,7 +690,7 @@ shared-policy relationship.
 ### Replay and determinism tests
 
 - Same seed plus the same target set produces identical structured plans and outputs.
-- Permuting call keyword order does not change the plan or outputs.
+- Permuting call keyword order does not change sampled parameters or outputs.
 - Replay produces exact outputs for mixed channel counts and dtypes.
 - Replay performs zero RNG calls and zero materialization calls.
 - Missing or renamed aliases fail before any output is produced.
@@ -762,10 +754,10 @@ policy names containing words such as `volume`.
 
 The implementation is expected to touch these ownership areas:
 
-- `albumentations/core/transforms_interface.py`: sampling boundary, plan validation, actual-key dispatch, deterministic state;
-- core type modules: target views, spatial frame, parameter plans, and errors;
+- `albumentations/core/transforms_interface.py`: sampling boundary, sampled-parameter validation, actual-key dispatch, deterministic state;
+- core type modules: target views, target geometry, sampled parameters, and errors;
 - `albumentations/core/composition.py`: target-set construction, preprocessing boundary, and replay integration;
-- transform modules: explicit plan construction and removal of target-named execution fields;
+- transform modules: explicit sampled-parameter construction and removal of target-named execution fields;
 - `tests/`: core contract, family regressions, aliases, determinism, and replay;
 - `tools/ax_coding_guidance/`: post-cutover deterministic enforcement; and
 - public customization and replay documentation: migration guidance and structured parameter examples;
@@ -792,13 +784,13 @@ The final diff must confirm all of the following:
 
 The class of bugs is resolved when:
 
-1. Every built-in sampler returns `TransformParameterPlan`.
+1. Every built-in sampler returns `SampledParams`.
 2. Every target-sensitive transform addresses parameters by actual target key through groups.
 3. Multiple aliases of the same canonical target type can differ in channels, dtype, shape where allowed, and content without
    misrouting or silent rescaling.
 4. Compatible aliases retain their declared parameter correlation.
 5. Mixed `image`, `images`, and `volume` calls pass the representation matrix.
-6. Replay records and restores the structured plan exactly and rejects incompatible target schemas before applying data.
+6. Replay records and restores structured sampled parameters exactly and rejects incompatible target schemas before applying data.
 7. `applied_config` behavior remains unchanged.
 8. The full transform inventory has no unresolved first-target dependency.
 9. Legacy target-routing fields and adapters are deleted.

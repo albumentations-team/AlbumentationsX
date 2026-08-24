@@ -22,7 +22,7 @@ from albumentations.core.composition import (
     SomeOf,
 )
 from albumentations.core.invocation import SamplingContext
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import DualTransform, ImageOnlyTransform, NoOp
 from tests.conftest import (
     IMAGES,
@@ -124,7 +124,7 @@ def test_image_only_transform(image):
         with mock.patch.object(
             ImageOnlyTransform,
             "sample_parameters",
-            return_value=TransformParameterPlan.shared_only({"interpolation": cv2.INTER_LINEAR}),
+            return_value=SampledParams.shared_only({"interpolation": cv2.INTER_LINEAR}),
         ):
             aug = ImageOnlyTransform(p=1)
             data = aug(image=image, mask=mask)
@@ -141,7 +141,7 @@ def test_dual_transform(image):
     mask = image.copy()
 
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "sample_parameters", return_value=TransformParameterPlan.shared_only({})):
+        with mock.patch.object(DualTransform, "sample_parameters", return_value=SampledParams.shared_only({})):
             aug = DualTransform(p=1)
             aug(image=image, mask=mask)
 
@@ -179,7 +179,7 @@ def test_additional_targets(image):
         with mock.patch.object(
             DualTransform,
             "sample_parameters",
-            return_value=TransformParameterPlan.shared_only({"interpolation": cv2.INTER_LINEAR}),
+            return_value=SampledParams.shared_only({"interpolation": cv2.INTER_LINEAR}),
         ):
             aug = DualTransform(p=1)
             aug.add_targets({"image2": "image"})
@@ -2860,10 +2860,14 @@ def test_user_data_targets_as_params() -> None:
         targets_as_params = ("user_data",)
 
         def sample_parameters(
-            self, inputs: TransformSamplingInput, sampling: SamplingContext
-        ) -> TransformParameterPlan:
-            ud = inputs.data.get("user_data")
-            return TransformParameterPlan.shared_only({"seen_user_data": ud is not None, "ud_value": ud})
+            self,
+            params: dict[str, Any],
+            data: dict[str, Any],
+            targets: TargetSet,
+            sampling: SamplingContext,
+        ) -> SampledParams:
+            ud = data.get("user_data")
+            return SampledParams.shared_only({"seen_user_data": ud is not None, "ud_value": ud})
 
         def apply_to_user_data(self, data: Any, **params: Any) -> Any:
             return {**data, "seen": params.get("seen_user_data", False)}
@@ -2928,9 +2932,15 @@ def test_applied_config_invalid_key_raises():
     """Transforms that set invalid applied_config keys must raise ValueError."""
 
     class BadTransform(A.NoOp):
-        def sample_parameters(self, inputs: TransformSamplingInput, sampling: SamplingContext):
+        def sample_parameters(
+            self,
+            params: dict[str, Any],
+            data: dict[str, Any],
+            targets: TargetSet,
+            sampling: SamplingContext,
+        ) -> SampledParams:
             sampling.applied_overrides["not_a_real_constructor_param_xyz"] = 42
-            return TransformParameterPlan.shared_only({})
+            return SampledParams.shared_only({})
 
     aug = BadTransform(p=1.0)
     with pytest.raises(ValueError, match="not_a_real_constructor_param_xyz"):

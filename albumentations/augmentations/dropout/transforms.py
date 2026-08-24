@@ -25,11 +25,11 @@ from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, no
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
+    SampledParams,
+    TargetParams,
     TargetRequirement,
+    TargetSet,
     TargetView,
-    TransformParameterPlan,
-    TransformSamplingInput,
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
@@ -94,12 +94,12 @@ def _pixel_dropout_group(
     params: dict[str, Any],
     *,
     annotations: tuple[Any, ...] = (),
-) -> TargetParameterGroup:
+) -> TargetParams:
     target_views = list(views)
     requirements = requirements_for_views(views, shape=True, dtype=True, sampling_topology=True)
     target_views.extend(annotations)
     requirements.update({view.name: TargetRequirement() for view in annotations})
-    return TargetParameterGroup(
+    return TargetParams(
         targets=tuple(view.name for view in target_views),
         params=params,
         requirements=requirements,
@@ -142,8 +142,8 @@ class BaseDropout(DualTransform):
         ...         self.num_holes_range = num_holes_range
         ...         self.hole_size_range = hole_size_range
         ...
-        ...     def sample_parameters(self, inputs, sampling):
-        ...         img = inputs.data["image"]
+        ...     def sample_parameters(self, params, data, targets, sampling):
+        ...         img = data["image"]
         ...         height, width = img.shape[:2]
         ...
         ...         # Generate random holes
@@ -159,9 +159,9 @@ class BaseDropout(DualTransform):
         ...             y2 = min(height, y1 + hole_sizes[i])
         ...             holes.append([x1, y1, x2, y2])
         ...
-        ...         from albumentations.core.transform_params import TransformParameterPlan
+        ...         from albumentations.core.transform_params import SampledParams
         ...
-        ...         return TransformParameterPlan.shared_only({
+        ...         return SampledParams.shared_only({
         ...             "holes": np.array(holes) if holes else np.empty((0, 4), dtype=np.int32),
         ...             "seed": int(sampling.random_generator.integers(0, 100000)),
         ...         })
@@ -216,20 +216,20 @@ class BaseDropout(DualTransform):
 
     def _build_spatial_parameter_plan(
         self,
-        inputs: TransformSamplingInput,
+        targets: TargetSet,
         materialize: Callable[[tuple[int, int], tuple[TargetView, ...]], dict[str, Any]],
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         spatial_views = tuple(
             view
-            for view in inputs.targets.ordered
+            for view in targets.ordered
             if view.descriptor.spatial_shape is not None
             and view.canonical_type in {"image", "images", "volume", "mask", "masks", "mask3d"}
         )
-        annotations = tuple(view for view in inputs.targets.ordered if view.canonical_type in {"bboxes", "keypoints"})
+        annotations = tuple(view for view in targets.ordered if view.canonical_type in {"bboxes", "keypoints"})
         spatial_names = {view.name for view in spatial_views}
         annotations_attached = False
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_by(
+        groups: list[TargetParams] = []
+        for views in targets.group_by(
             lambda view: None if view.descriptor.spatial_shape is None else tuple(view.descriptor.spatial_shape[-2:]),
         ):
             if not views or views[0].name not in spatial_names:
@@ -249,13 +249,13 @@ class BaseDropout(DualTransform):
             )
             annotations_attached = annotations_attached or bool(group_annotations)
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(view.name for view in target_views),
                     params=materialize((spatial_shape[-2], spatial_shape[-1]), group_views),
                     requirements=requirements,
                 )
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
     def apply(self, img: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:
@@ -328,9 +328,11 @@ class BaseDropout(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         raise NotImplementedError("Subclasses must implement this method.")
 
 
@@ -483,14 +485,16 @@ class PixelDropout(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         sampling.applied_overrides["dropout_prob"] = self.dropout_prob
-        annotations = tuple(view for view in inputs.targets.ordered if view.canonical_type in {"bboxes", "keypoints"})
-        groups: list[TargetParameterGroup] = []
+        annotations = tuple(view for view in targets.ordered if view.canonical_type in {"bboxes", "keypoints"})
+        groups: list[TargetParams] = []
 
-        for index, views in enumerate(inputs.targets.group_image_like_by(_pixel_dropout_group_key)):
+        for index, views in enumerate(targets.group_image_like_by(_pixel_dropout_group_key)):
             reference = _pixel_dropout_reference(views[0])
             groups.append(
                 _pixel_dropout_group(
@@ -516,7 +520,7 @@ class PixelDropout(DualTransform):
                 )
             )
 
-        for views in inputs.targets.group_by(_pixel_dropout_group_key):
+        for views in targets.group_by(_pixel_dropout_group_key):
             if not views or views[0].canonical_type not in {"mask", "masks", "mask3d"}:
                 continue
             reference = _pixel_dropout_reference(views[0])
@@ -555,4 +559,4 @@ class PixelDropout(DualTransform):
                 )
             )
 
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))

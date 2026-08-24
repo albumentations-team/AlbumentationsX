@@ -3,7 +3,7 @@
 from typing import Any
 
 from albumentations.core.invocation import SamplingContext
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 from ._transforms_shared import (
     LENGTH_RAW_BBOX,
@@ -211,17 +211,18 @@ class OverlayElements(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        data = inputs.data
+    ) -> SampledParams:
         metadata = data[self.metadata_key]
-        image_views = inputs.targets.image_like()
+        image_views = targets.image_like()
         reference = (
             image_views[0]
             if image_views
             else next(
-                (view for view in inputs.targets.ordered if view.descriptor.spatial_shape is not None),
+                (view for view in targets.ordered if view.descriptor.spatial_shape is not None),
                 None,
             )
         )
@@ -234,7 +235,7 @@ class OverlayElements(DualTransform):
         else:
             overlay_data = [self.preprocess_metadata(metadata, img_shape, sampling.py_random)]
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "overlay_data": overlay_data,
             }

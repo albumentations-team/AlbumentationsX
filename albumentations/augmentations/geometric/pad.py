@@ -28,7 +28,7 @@ from albumentations.core.bbox_utils import (
     normalize_bboxes,
 )
 from albumentations.core.invocation import SamplingContext
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -307,9 +307,11 @@ class Pad(DualTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         if isinstance(self.padding, Real):
             pad_top = pad_bottom = pad_left = pad_right = self.padding
         elif isinstance(self.padding, (tuple, list)):
@@ -327,7 +329,7 @@ class Pad(DualTransform):
                 "Padding must be a single number, a pair of numbers, or a quadruple of numbers",
             )
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "pad_top": pad_top,
                 "pad_bottom": pad_bottom,
@@ -561,11 +563,13 @@ class PadIfNeeded(Pad):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         h_pad_top, h_pad_bottom, w_pad_left, w_pad_right = fgeometric.get_padding_params(
-            image_shape=inputs.require_spatial_frame().spatial_shape_2d,
+            image_shape=targets.require_spatial_shape(2),
             min_height=self.min_height,
             min_width=self.min_width,
             pad_height_divisor=self.pad_height_divisor,
@@ -581,7 +585,7 @@ class PadIfNeeded(Pad):
             py_random=sampling.py_random,
         )
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "pad_top": h_pad_top,
                 "pad_bottom": h_pad_bottom,

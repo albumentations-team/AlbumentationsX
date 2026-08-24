@@ -5,10 +5,10 @@ from typing import Annotated, Any, Literal
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
+    SampledParams,
+    TargetParams,
     TargetRequirement,
-    TransformParameterPlan,
-    TransformSamplingInput,
+    TargetSet,
     requirements_for_views,
 )
 
@@ -139,12 +139,14 @@ class RandomToneCurve(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         sampling.applied_overrides["scale"] = self.scale
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(lambda view: view.descriptor.channels):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
             view = views[0]
             num_channels = view.descriptor.channels or 1
             if self.per_channel and num_channels != 1:
@@ -162,13 +164,13 @@ class RandomToneCurve(ImageOnlyTransform):
                 low_y = np.clip(sampling.random_generator.normal(loc=0.25, scale=self.scale), 0, 1)
                 high_y = np.clip(sampling.random_generator.normal(loc=0.75, scale=self.scale), 0, 1)
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(target.name for target in views),
                     params={"low_y": low_y, "high_y": high_y, "num_channels": num_channels},
                     requirements=requirements_for_views(views, channels=True),
                 ),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
 
 class HueSaturationValue(ImageOnlyTransform):
@@ -268,9 +270,11 @@ class HueSaturationValue(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         hue_shift = sampling.py_random.uniform(*self.hue_shift_range)
         sat_shift = sampling.py_random.uniform(*self.sat_shift_range)
         val_shift = sampling.py_random.uniform(*self.val_shift_range)
@@ -283,7 +287,7 @@ class HueSaturationValue(ImageOnlyTransform):
             },
         )
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "hue_shift": hue_shift,
                 "sat_shift": sat_shift,
@@ -386,14 +390,16 @@ class Solarize(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         threshold = sampling.py_random.uniform(*self.threshold_range)
 
         sampling.applied_overrides["threshold_range"] = threshold
 
-        return TransformParameterPlan.shared_only({"threshold": threshold})
+        return SampledParams.shared_only({"threshold": threshold})
 
 
 class Posterize(ImageOnlyTransform):
@@ -503,16 +509,18 @@ class Posterize(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         if isinstance(self.num_bits, list):
             num_bits_list = [sampling.py_random.randint(*i) for i in self.num_bits]
             sampling.applied_overrides["num_bits"] = num_bits_list
-            return TransformParameterPlan.shared_only({"num_bits": num_bits_list})
+            return SampledParams.shared_only({"num_bits": num_bits_list})
         num_bits = sampling.py_random.randint(*self.num_bits)
         sampling.applied_overrides["num_bits"] = num_bits
-        return TransformParameterPlan.shared_only({"num_bits": num_bits})
+        return SampledParams.shared_only({"num_bits": num_bits})
 
 
 class Equalize(ImageOnlyTransform):
@@ -647,13 +655,14 @@ class Equalize(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        data = inputs.data
+    ) -> SampledParams:
         if not callable(self.mask):
             sampling.applied_overrides.update({"mask": None, "mask_params": ()})
-            return TransformParameterPlan.shared_only({"mask": self.mask})
+            return SampledParams.shared_only({"mask": self.mask})
 
         mask_params = {"image": data["image"]}
         for key in self.mask_params:
@@ -664,7 +673,7 @@ class Equalize(ImageOnlyTransform):
             mask_params[key] = data[key]
 
         sampling.applied_overrides.update({"mask": None, "mask_params": ()})
-        return TransformParameterPlan.shared_only({"mask": self.mask(**mask_params)})
+        return SampledParams.shared_only({"mask": self.mask(**mask_params)})
 
     @property
     def targets_as_params(self) -> list[str]:
@@ -823,9 +832,11 @@ class RandomBrightnessContrast(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         # Sample initial values
         alpha = 1.0 + sampling.py_random.uniform(*self.contrast_range)
         beta = sampling.py_random.uniform(*self.brightness_range)
@@ -837,7 +848,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             },
         )
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "alpha": alpha,
                 "beta": beta,
@@ -961,17 +972,19 @@ class ExposureMatching(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         target_mean = sampling.py_random.uniform(*self.target_mean_range)
         sampling.applied_overrides["target_mean_range"] = target_mean
-        groups: list[TargetParameterGroup] = []
-        for view in inputs.targets.image_like():
+        groups: list[TargetParams] = []
+        for view in targets.image_like():
             gain = fpixel.get_exposure_gains(view.value, target_mean, self.gain_range)
             gain = float(gain) if view.canonical_type == "image" else np.asarray(gain).tolist()
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=(view.name,),
                     params={"gain": gain},
                     requirements={view.name: TargetRequirement()},
@@ -980,7 +993,7 @@ class ExposureMatching(ImageOnlyTransform):
         if not groups:
             raise RuntimeError("Expected image, images, or volume data for exposure matching")
 
-        return TransformParameterPlan(shared={"target_mean": target_mean}, groups=tuple(groups))
+        return SampledParams(shared={"target_mean": target_mean}, groups=tuple(groups))
 
 
 class CLAHE(ImageOnlyTransform):
@@ -1062,14 +1075,16 @@ class CLAHE(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         clip_limit = sampling.py_random.uniform(*self.clip_range)
 
         sampling.applied_overrides["clip_range"] = clip_limit
 
-        return TransformParameterPlan.shared_only({"clip_limit": clip_limit})
+        return SampledParams.shared_only({"clip_limit": clip_limit})
 
 
 class RandomGamma(ImageOnlyTransform):
@@ -1165,14 +1180,16 @@ class RandomGamma(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         gamma = sampling.py_random.uniform(*self.gamma_range)
 
         sampling.applied_overrides["gamma_range"] = gamma
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "gamma": gamma / 100.0,
             }

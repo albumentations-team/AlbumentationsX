@@ -24,9 +24,9 @@ from albumentations.core.pydantic import (
     nondecreasing,
 )
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
-    TransformParameterPlan,
-    TransformSamplingInput,
+    SampledParams,
+    TargetParams,
+    TargetSet,
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import (
@@ -62,8 +62,8 @@ def _weather_group(
     params: dict[str, Any],
     *,
     dtype: bool = False,
-) -> TargetParameterGroup:
-    return TargetParameterGroup(
+) -> TargetParams:
+    return TargetParams(
         targets=tuple(view.name for view in views),
         params=params,
         requirements=requirements_for_views(views, dtype=dtype),
@@ -194,18 +194,20 @@ class RandomSnow(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         snow_point = sampling.py_random.uniform(*self.snow_point_range)
         sampling.applied_overrides["snow_point_range"] = snow_point
         if self.method != "texture":
-            return TransformParameterPlan.shared_only(
+            return SampledParams.shared_only(
                 {"snow_point": snow_point, "snow_texture": None, "sparkle_mask": None},
             )
 
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(_weather_shape_key):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
             spatial_shape = views[0].descriptor.spatial_shape
             if spatial_shape is None:
                 raise ValueError("RandomSnow requires image-like targets with known spatial shapes")
@@ -220,7 +222,7 @@ class RandomSnow(ImageOnlyTransform):
                     {"snow_texture": snow_texture, "sparkle_mask": sparkle_mask},
                 ),
             )
-        return TransformParameterPlan(shared={"snow_point": snow_point}, groups=tuple(groups))
+        return SampledParams(shared={"snow_point": snow_point}, groups=tuple(groups))
 
 
 class RandomGravel(ImageOnlyTransform):
@@ -328,12 +330,14 @@ class RandomGravel(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         sampling.applied_overrides.update({"number_of_patches": self.number_of_patches, "gravel_roi": self.gravel_roi})
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(_weather_shape_key):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
             spatial_shape = views[0].descriptor.spatial_shape
             if spatial_shape is None:
                 raise ValueError("RandomGravel requires image-like targets with known spatial shapes")
@@ -361,7 +365,7 @@ class RandomGravel(ImageOnlyTransform):
             groups.append(
                 _weather_group(views, {"gravels_infos": np.array(gravels_info, dtype=np.int64)}),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
 
 class RandomRain(ImageOnlyTransform):
@@ -502,9 +506,11 @@ class RandomRain(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         slant = sampling.py_random.uniform(*self.slant_range)
         sampling.applied_overrides.update(
             {
@@ -517,8 +523,8 @@ class RandomRain(ImageOnlyTransform):
             },
         )
 
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(_weather_shape_key):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
             spatial_shape = views[0].descriptor.spatial_shape
             if spatial_shape is None:
                 raise ValueError("RandomRain requires image-like targets with known spatial shapes")
@@ -542,7 +548,7 @@ class RandomRain(ImageOnlyTransform):
             else:
                 rain_drops = np.empty((0, 2), dtype=np.int32)
             groups.append(_weather_group(views, {"drop_length": drop_length, "rain_drops": rain_drops}))
-        return TransformParameterPlan(shared={"slant": slant}, groups=tuple(groups))
+        return SampledParams(shared={"slant": slant}, groups=tuple(groups))
 
 
 class RandomFog(ImageOnlyTransform):
@@ -656,13 +662,15 @@ class RandomFog(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         intensity = sampling.py_random.uniform(*self.fog_coef_range)
         sampling.applied_overrides.update({"fog_coef_range": intensity, "alpha_coef": self.alpha_coef})
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(_weather_shape_key):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
             spatial_shape = views[0].descriptor.spatial_shape
             if spatial_shape is None:
                 raise ValueError("RandomFog requires image-like targets with known spatial shapes")
@@ -696,7 +704,7 @@ class RandomFog(ImageOnlyTransform):
                     {"particle_positions": particle_positions, "radiuses": radiuses},
                 ),
             )
-        return TransformParameterPlan(shared={"intensity": intensity}, groups=tuple(groups))
+        return SampledParams(shared={"intensity": intensity}, groups=tuple(groups))
 
 
 class RandomSunFlare(ImageOnlyTransform):
@@ -903,9 +911,11 @@ class RandomSunFlare(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         angle = 2 * math.pi * sampling.py_random.uniform(*self.angle_range)
         sampling.applied_overrides.update(
             {
@@ -916,8 +926,8 @@ class RandomSunFlare(ImageOnlyTransform):
             },
         )
 
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(_weather_shape_key):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
             spatial_shape = views[0].descriptor.spatial_shape
             if spatial_shape is None:
                 raise ValueError("RandomSunFlare requires image-like targets with known spatial shapes")
@@ -942,7 +952,7 @@ class RandomSunFlare(ImageOnlyTransform):
             groups.append(
                 _weather_group(views, {"circles": circles, "flare_center": (flare_center_x, flare_center_y)}),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
 
 class RandomShadow(ImageOnlyTransform):
@@ -1080,9 +1090,11 @@ class RandomShadow(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         sampling.applied_overrides.update(
             {
                 "num_shadows_range": self.num_shadows_range,
@@ -1091,8 +1103,8 @@ class RandomShadow(ImageOnlyTransform):
                 "shadow_intensity_range": self.shadow_intensity_range,
             },
         )
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(_weather_shape_key):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
             spatial_shape = views[0].descriptor.spatial_shape
             if spatial_shape is None:
                 raise ValueError("RandomShadow requires image-like targets with known spatial shapes")
@@ -1113,7 +1125,7 @@ class RandomShadow(ImageOnlyTransform):
             ]
             intensities = sampling.random_generator.uniform(*self.shadow_intensity_range, size=num_shadows)
             groups.append(_weather_group(views, {"vertices_list": vertices_list, "intensities": intensities}))
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
 
 class Spatter(ImageOnlyTransform):
@@ -1317,9 +1329,11 @@ class Spatter(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         mean = sampling.py_random.uniform(*self.mean_range)
         std = sampling.py_random.uniform(*self.std_range)
         cutout_threshold = sampling.py_random.uniform(*self.cutout_threshold_range)
@@ -1338,8 +1352,8 @@ class Spatter(ImageOnlyTransform):
             },
         )
 
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(_weather_shape_key):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(_weather_shape_key):
             spatial_shape = views[0].descriptor.spatial_shape
             if spatial_shape is None:
                 raise ValueError("Spatter requires image-like targets with known spatial shapes")
@@ -1369,7 +1383,7 @@ class Spatter(ImageOnlyTransform):
                     random_generator=sampling.random_generator,
                 )
             groups.append(_weather_group(views, group_params))
-        return TransformParameterPlan(shared={"mode": mode}, groups=tuple(groups))
+        return SampledParams(shared={"mode": mode}, groups=tuple(groups))
 
 
 class AtmosphericFog(ImageOnlyTransform):
@@ -1464,16 +1478,16 @@ class AtmosphericFog(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         density = sampling.py_random.uniform(*self.density_range)
         max_val = albucore.MAX_VALUES_BY_DTYPE[np.uint8]
         sampling.applied_overrides["density_range"] = density
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(
-            lambda view: (_weather_shape_key(view), view.descriptor.dtype_scale)
-        ):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: (_weather_shape_key(view), view.descriptor.dtype_scale)):
             view = views[0]
             spatial_shape = view.descriptor.spatial_shape
             if spatial_shape is None or view.descriptor.dtype is None:
@@ -1501,4 +1515,4 @@ class AtmosphericFog(ImageOnlyTransform):
                     dtype=True,
                 ),
             )
-        return TransformParameterPlan(shared={"density": density}, groups=tuple(groups))
+        return SampledParams(shared={"density": density}, groups=tuple(groups))

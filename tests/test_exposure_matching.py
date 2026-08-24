@@ -5,7 +5,7 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.pixel import functional as fpixel
-from albumentations.core.transform_params import TransformParameterPlan
+from albumentations.core.transform_params import SampledParams
 
 from .utils import get_resolved_applied_params
 
@@ -128,7 +128,7 @@ def test_exposure_matching_keeps_gains_separate_for_simultaneous_target_routes()
     transform = A.ExposureMatching(target_mean_range=(0.4, 0.4), p=1.0)
 
     result = transform(image=image, images=images, volume=volume)
-    params = TransformParameterPlan.from_dict(transform.get_applied_params())
+    params = SampledParams.from_dict(transform.get_applied_params())
 
     for target in ("image", "images", "volume"):
         np.testing.assert_allclose(result[target], 0.4, rtol=0, atol=1e-6)
@@ -174,7 +174,7 @@ def test_exposure_matching_records_sampled_target_and_gains_for_replay() -> None
     pipeline = A.Compose([transform], save_applied_params=True, seed=137)
 
     result = pipeline(images=images)
-    params = TransformParameterPlan.from_dict(transform.get_applied_params())
+    params = SampledParams.from_dict(transform.get_applied_params())
     applied_transforms = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
     _, applied_config = applied_transforms[0]
 
@@ -203,7 +203,7 @@ def test_exposure_matching_replay_compose_reuses_applied_gains(target: str) -> N
     pipeline = A.ReplayCompose([A.ExposureMatching(target_mean_range=(0.3, 0.5), p=1.0)], seed=137)
 
     result = pipeline(**{target: data})
-    replay_params = TransformParameterPlan.from_dict(result["replay"]["transforms"][0]["params"])
+    replay_params = SampledParams.from_dict(result["replay"]["transforms"][0]["params"])
     replayed = A.ReplayCompose.replay(result["replay"], **{target: data})
 
     assert 0.3 <= replay_params.shared["target_mean"] <= 0.5

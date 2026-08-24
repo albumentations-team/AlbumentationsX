@@ -6,7 +6,7 @@ import inspect
 from collections.abc import Callable, Hashable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal, overload
 
 import torch
 
@@ -26,8 +26,8 @@ _TARGET_ORDER = {
 _PARAMETER_SCHEMA = 2
 
 
-class TransformParameterPlanError(ValueError):
-    """Raised when a sampled parameter plan cannot be applied to an invocation."""
+class SampledParamsError(ValueError):
+    """Raised when sampled parameters cannot be applied to an invocation."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +125,7 @@ class TargetRequirement:
 
 
 @dataclass(frozen=True, slots=True)
-class TargetParameterGroup:
+class TargetParams:
     """Parameters shared by a named set of compatible actual target keys."""
 
     targets: tuple[str, ...]
@@ -134,11 +134,11 @@ class TargetParameterGroup:
 
     def __post_init__(self) -> None:
         if not self.targets:
-            raise TransformParameterPlanError("target parameter groups cannot be empty")
+            raise SampledParamsError("target parameter groups cannot be empty")
         if len(set(self.targets)) != len(self.targets):
-            raise TransformParameterPlanError("target parameter groups cannot repeat target keys")
+            raise SampledParamsError("target parameter groups cannot repeat target keys")
         if set(self.targets) != set(self.requirements):
-            raise TransformParameterPlanError("target parameter groups require one requirement per target")
+            raise SampledParamsError("target parameter groups require one requirement per target")
         object.__setattr__(self, "params", dict(self.params))
         object.__setattr__(self, "requirements", dict(self.requirements))
 
@@ -156,6 +156,7 @@ class TargetSet:
     def __init__(self, views: tuple[TargetView, ...]) -> None:
         self.ordered = views
         self._by_name = {view.name: view for view in views}
+        self._spatial_shapes: dict[int, tuple[int, ...] | None] = {}
 
     @classmethod
     def from_data(cls, data: Mapping[str, Any], canonical_by_name: Mapping[str, str]) -> TargetSet:
@@ -185,7 +186,7 @@ class TargetSet:
         for view in self.ordered:
             if view.canonical_type in {"images", "volume"}:
                 return view
-        raise TransformParameterPlanError("transform sampling requires an image-like target")
+        raise SampledParamsError("transform sampling requires an image-like target")
 
     def group_by(self, key: Callable[[TargetView], Hashable]) -> tuple[tuple[TargetView, ...], ...]:
         grouped: dict[Hashable, list[TargetView]] = {}
@@ -200,6 +201,58 @@ class TargetSet:
             grouped.setdefault(key(view), []).append(view)
         return tuple(tuple(views) for views in grouped.values())
 
+    @overload
+    def spatial_shape(self, rank: Literal[2]) -> tuple[int, int] | None: ...
+
+    @overload
+    def spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int] | None: ...
+
+    @overload
+    def spatial_shape(self, rank: int) -> tuple[int, ...] | None: ...
+
+    def spatial_shape(self, rank: int) -> tuple[int, ...] | None:
+        """Return the common spatial shape for a transform family, if these targets provide one."""
+        if rank not in {2, 3}:
+            raise ValueError(f"spatial rank must be 2 or 3, got {rank}")
+        if rank in self._spatial_shapes:
+            return self._spatial_shapes[rank]
+
+        shapes = {
+            shape
+            for view in self.ordered
+            if _target_has_elements(view.value)
+            if (shape := _spatial_shape_for_rank(view, rank)) is not None
+        }
+        if not shapes:
+            fallback = next(
+                (shape for view in self.ordered if (shape := _spatial_shape_for_rank(view, rank)) is not None),
+                None,
+            )
+            self._spatial_shapes[rank] = fallback
+            return fallback
+        if len(shapes) != 1:
+            raise SampledParamsError(f"transform sampling requires aligned spatial targets, got {sorted(shapes)}")
+
+        shape = next(iter(shapes))
+        self._spatial_shapes[rank] = shape
+        return shape
+
+    @overload
+    def require_spatial_shape(self, rank: Literal[2]) -> tuple[int, int]: ...
+
+    @overload
+    def require_spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int]: ...
+
+    @overload
+    def require_spatial_shape(self, rank: int) -> tuple[int, ...]: ...
+
+    def require_spatial_shape(self, rank: int) -> tuple[int, ...]:
+        """Return the common spatial shape required by a spatial sampler."""
+        shape = self.spatial_shape(rank)
+        if shape is None:
+            raise SampledParamsError("transform sampling requires a spatial target")
+        return shape
+
     @property
     def names(self) -> frozenset[str]:
         return frozenset(self._by_name)
@@ -209,50 +262,19 @@ class TargetSet:
 
 
 @dataclass(frozen=True, slots=True)
-class SpatialFrame:
-    """Validated spatial coordinates shared by a geometric transform family."""
-
-    rank: int
-    shape: tuple[int, ...]
-
-    @property
-    def spatial_shape_2d(self) -> tuple[int, int]:
-        """Return the height/width suffix used by 2D transforms."""
-        if len(self.shape) < 2:
-            raise TransformParameterPlanError("a 2D spatial frame requires at least two dimensions")
-        return self.shape[-2], self.shape[-1]
-
-
-@dataclass(frozen=True, slots=True)
-class TransformSamplingInput:
-    """Inputs supplied to a transform sampler for one invocation step."""
-
-    base_params: Mapping[str, Any]
-    spatial_frame: SpatialFrame | None
-    targets: TargetSet
-    data: dict[str, Any]
-
-    def require_spatial_frame(self) -> SpatialFrame:
-        """Return the validated spatial frame required by spatial samplers."""
-        if self.spatial_frame is None:
-            raise TransformParameterPlanError("transform sampling requires a spatial frame")
-        return self.spatial_frame
-
-
-@dataclass(frozen=True, slots=True)
-class TransformParameterPlan:
-    """Shared and target-specific realized parameters for one transform event."""
+class SampledParams:
+    """Shared and target-specific values sampled for one transform event."""
 
     shared: Mapping[str, Any]
-    groups: tuple[TargetParameterGroup, ...] = ()
+    groups: tuple[TargetParams, ...] = ()
     target_schema: Mapping[str, str] | None = None
 
     @classmethod
-    def shared_only(cls, params: Mapping[str, Any]) -> TransformParameterPlan:
+    def shared_only(cls, params: Mapping[str, Any]) -> SampledParams:
         return cls(shared=dict(params))
 
-    def bind(self, targets: TargetSet) -> TransformParameterPlan:
-        return TransformParameterPlan(self.shared, self.groups, targets.schema())
+    def bind(self, targets: TargetSet) -> SampledParams:
+        return SampledParams(self.shared, self.groups, targets.schema())
 
     def validate(
         self,
@@ -274,13 +296,13 @@ class TransformParameterPlan:
         if self.target_schema is None:
             return
         if set(self.target_schema) != active_names:
-            raise TransformParameterPlanError(
-                f"{transform_name} parameter plan target keys do not match the active invocation",
+            raise SampledParamsError(
+                f"{transform_name} sampled parameter targets do not match the active invocation",
             )
         for name, canonical in self.target_schema.items():
             if targets.by_name(name).canonical_type != canonical:
-                raise TransformParameterPlanError(
-                    f"{transform_name} parameter plan canonical target mismatch for {name!r}",
+                raise SampledParamsError(
+                    f"{transform_name} sampled parameter canonical target mismatch for {name!r}",
                 )
 
     def _validate_groups(
@@ -292,18 +314,18 @@ class TransformParameterPlan:
         seen: dict[str, set[str]] = {}
         for group in self.groups:
             if any(name not in active_names for name in group.targets):
-                raise TransformParameterPlanError(f"{transform_name} parameter plan names an inactive target")
+                raise SampledParamsError(f"{transform_name} sampled parameters name an inactive target")
             for name in group.targets:
                 descriptor = targets.by_name(name).descriptor
                 requirement = group.requirements[name]
                 if not requirement.check(descriptor):
-                    raise TransformParameterPlanError(
-                        f"{transform_name} parameter plan requirement mismatch for target {name!r}",
+                    raise SampledParamsError(
+                        f"{transform_name} sampled parameter requirements do not match target {name!r}",
                     )
                 duplicate = seen.setdefault(name, set()).intersection(group.params)
                 if duplicate or set(group.params).intersection(self.shared):
-                    raise TransformParameterPlanError(
-                        f"{transform_name} parameter plan has duplicate keys for target {name!r}",
+                    raise SampledParamsError(
+                        f"{transform_name} sampled parameters have duplicate keys for target {name!r}",
                     )
                 seen[name].update(group.params)
         return seen
@@ -318,8 +340,8 @@ class TransformParameterPlan:
             available = set(self.shared).union(seen.get(name, set()))
             missing = required - available
             if missing:
-                raise TransformParameterPlanError(
-                    f"{transform_name} parameter plan is missing {sorted(missing)} for target {name!r}",
+                raise SampledParamsError(
+                    f"{transform_name} sampled parameters are missing {sorted(missing)} for target {name!r}",
                 )
 
     def params_for(self, target_name: str) -> Mapping[str, Any]:
@@ -340,11 +362,11 @@ class TransformParameterPlan:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> TransformParameterPlan:
+    def from_dict(cls, payload: Mapping[str, Any]) -> SampledParams:
         if payload.get("parameter_schema") != _PARAMETER_SCHEMA:
-            raise TransformParameterPlanError("unsupported or legacy transform parameter schema")
+            raise SampledParamsError("unsupported or legacy transform parameter schema")
         groups = tuple(
-            TargetParameterGroup(
+            TargetParams(
                 targets=tuple(group["targets"]),
                 params=dict(group["params"]),
                 requirements={
@@ -360,6 +382,22 @@ class TransformParameterPlan:
             groups=groups,
             target_schema=None if target_schema is None else dict(target_schema),
         )
+
+
+def _target_has_elements(value: Any) -> bool:
+    if isinstance(value, torch.Tensor):
+        return value.numel() > 0
+    size = getattr(value, "size", None)
+    return not isinstance(size, int) or size > 0
+
+
+def _spatial_shape_for_rank(view: TargetView, rank: int) -> tuple[int, ...] | None:
+    spatial_shape = view.descriptor.spatial_shape
+    if spatial_shape is None:
+        return None
+    if rank == 3:
+        return tuple(spatial_shape) if view.canonical_type in {"volume", "mask3d"} and len(spatial_shape) == 3 else None
+    return tuple(spatial_shape[-2:]) if len(spatial_shape) >= 2 else None
 
 
 def _target_sort_key(descriptor: TargetDescriptor) -> tuple[int, int, str]:
@@ -462,15 +500,13 @@ def requirements_for_views(
 
 
 __all__ = [
-    "SpatialFrame",
+    "SampledParams",
+    "SampledParamsError",
     "TargetDescriptor",
-    "TargetParameterGroup",
+    "TargetParams",
     "TargetRequirement",
     "TargetSet",
     "TargetView",
-    "TransformParameterPlan",
-    "TransformParameterPlanError",
-    "TransformSamplingInput",
     "required_parameter_names",
     "requirements_for_views",
 ]

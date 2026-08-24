@@ -6,9 +6,9 @@ from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
-    TransformParameterPlan,
-    TransformSamplingInput,
+    SampledParams,
+    TargetParams,
+    TargetSet,
     requirements_for_views,
 )
 
@@ -159,9 +159,11 @@ class ColorJitter(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         brightness = sampling.py_random.uniform(*self.brightness_range)
         contrast = sampling.py_random.uniform(*self.contrast_range)
         saturation = sampling.py_random.uniform(*self.saturation_range)
@@ -186,7 +188,7 @@ class ColorJitter(ImageOnlyTransform):
             order = [o for o in order if o not in ("brightness", "contrast")]
             order.insert(min(idx_b, idx_c), merged)
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "brightness": brightness,
                 "contrast": contrast,
@@ -323,9 +325,11 @@ class ChromaticAberration(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         primary_distortion_red = sampling.py_random.uniform(*self.primary_distortion_range)
         secondary_distortion_red = sampling.py_random.uniform(
             *self.secondary_distortion_range,
@@ -371,7 +375,7 @@ class ChromaticAberration(ImageOnlyTransform):
                 "secondary_distortion_range": (secondary_distortion_red, secondary_distortion_blue),
             },
         )
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "primary_distortion_red": primary_distortion_red,
                 "secondary_distortion_red": secondary_distortion_red,
@@ -561,9 +565,11 @@ class PlanckianJitter(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         sampling_prob_boundary = PLANKIAN_JITTER_CONST["SAMPLING_TEMP_PROB"]
         sampling_temp_boundary = PLANKIAN_JITTER_CONST["WHITE_TEMP"]
 
@@ -618,7 +624,7 @@ class PlanckianJitter(ImageOnlyTransform):
                 ),
             },
         )
-        return TransformParameterPlan.shared_only({"temperature": int(temperature)})
+        return SampledParams.shared_only({"temperature": int(temperature)})
 
 
 class RGBShift(AdditiveNoise):
@@ -731,11 +737,13 @@ class RGBShift(AdditiveNoise):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(
+    ) -> SampledParams:
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
             lambda view: (
                 _rgb_shift_shape(view),
                 view.descriptor.dtype_scale,
@@ -756,7 +764,7 @@ class RGBShift(AdditiveNoise):
                 sampling.applied_overrides["b_shift_range"] = float(shifts[2])
 
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(item.name for item in views),
                     params=sampled,
                     requirements=requirements_for_views(
@@ -766,7 +774,7 @@ class RGBShift(AdditiveNoise):
                 ),
             )
 
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
 
 class HEStain(ImageOnlyTransform):
@@ -1070,11 +1078,12 @@ class HEStain(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         # Get stain matrix
-        data = inputs.data
         if "image" in data:
             image = data["image"]
         elif "images" in data:
@@ -1119,7 +1128,7 @@ class HEStain(ImageOnlyTransform):
             },
         )
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "stain_matrix": stain_matrix,
                 "scale_factors": scale_factors,
@@ -1251,9 +1260,11 @@ class PhotoMetricDistort(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         brightness_factor = (
             sampling.py_random.uniform(*self.brightness_range) if sampling.py_random.random() < self.distort_p else None
         )
@@ -1280,8 +1291,8 @@ class PhotoMetricDistort(ImageOnlyTransform):
             applied["hue_range"] = hue_factor
         sampling.applied_overrides.update(applied)
 
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(lambda view: view.descriptor.channels):
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
             num_channels = views[0].descriptor.channels or 1
             if sampling.py_random.random() < self.distort_p and num_channels > 1:
                 channel_permutation = list(range(num_channels))
@@ -1289,13 +1300,13 @@ class PhotoMetricDistort(ImageOnlyTransform):
             else:
                 channel_permutation = None
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(view.name for view in views),
                     params={"channel_permutation": channel_permutation},
                     requirements=requirements_for_views(views, channels=True),
                 ),
             )
-        return TransformParameterPlan(
+        return SampledParams(
             shared={
                 "brightness_factor": brightness_factor,
                 "contrast_factor": contrast_factor,

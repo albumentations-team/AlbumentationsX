@@ -4,11 +4,11 @@ import numpy as np
 import pytest
 
 import albumentations as A
-from albumentations.core.transform_params import TransformParameterPlan
+from albumentations.core.transform_params import SampledParams
 
 
 def _applied_shared(transform: A.XYMasking) -> dict:
-    return dict(TransformParameterPlan.from_dict(transform.get_applied_params()).params_for("image"))
+    return dict(SampledParams.from_dict(transform.get_applied_params()).params_for("image"))
 
 
 def _sample_holes(transform: A.XYMasking, shape: tuple[int, int, int], seed: int = 137) -> np.ndarray:

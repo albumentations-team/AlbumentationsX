@@ -16,7 +16,7 @@ import albumentations as A
 import albumentations.core.composition as composition_module
 import albumentations.core.invocation as invocation_module
 from albumentations.core.invocation import SamplingContext
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import ImageOnlyTransform
 
 T = TypeVar("T")
@@ -34,12 +34,14 @@ class _BlockingNumpyOnlyProbe(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        marker = int(inputs.data["image"][0, 0, 0])
+    ) -> SampledParams:
+        marker = int(data["image"][0, 0, 0])
         sampling.applied_overrides["marker_range"] = (marker, marker)
-        return TransformParameterPlan.shared_only({"marker": marker})
+        return SampledParams.shared_only({"marker": marker})
 
     def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
         if marker == 1:
@@ -60,12 +62,14 @@ class _BlockingRandomProbe(_BlockingNumpyOnlyProbe):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         with self._ids_lock:
             self.py_random_ids.append(id(sampling.py_random))
-        return super().sample_parameters(inputs, sampling)
+        return super().sample_parameters(params, data, targets, sampling)
 
 
 class _NumpyRandomMarker(ImageOnlyTransform):
@@ -73,11 +77,13 @@ class _NumpyRandomMarker(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        del inputs
-        return TransformParameterPlan.shared_only(
+    ) -> SampledParams:
+        del params, data, targets
+        return SampledParams.shared_only(
             {"marker": int(sampling.random_generator.integers(np.iinfo(np.int64).max, dtype=np.int64))},
         )
 
@@ -112,11 +118,13 @@ class _ExplicitExternalSampler(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        del inputs
-        return TransformParameterPlan.shared_only({"offset": sampling.py_random.randint(1, 7)})
+    ) -> SampledParams:
+        del params, data, targets
+        return SampledParams.shared_only({"offset": sampling.py_random.randint(1, 7)})
 
     def apply(self, image: np.ndarray, offset: int, **params: Any) -> np.ndarray:
         del params
@@ -158,12 +166,14 @@ class _FailAfterSampling(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        del inputs
+    ) -> SampledParams:
+        del params, data, targets
         sampling.applied_overrides["marker"] = self.marker
-        return TransformParameterPlan.shared_only({"marker": self.marker})
+        return SampledParams.shared_only({"marker": self.marker})
 
     def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
         del image, marker, params

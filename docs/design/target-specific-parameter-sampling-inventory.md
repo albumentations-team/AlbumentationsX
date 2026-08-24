@@ -31,7 +31,7 @@ when the sampled value is independent of target representation and content.
 
 ## Grouped by representation or actual target
 
-These samplers materialize one or more `TargetParameterGroup` values. The grouping key is part of each transform's contract;
+These samplers materialize one or more `TargetParams` values. The grouping key is part of each transform's contract;
 it must include every property used to construct the execution value.
 
 - `albumentations/augmentations/blur/transforms.py`: `GaussianBlur`.
@@ -120,7 +120,7 @@ representation test before changing the implementation.
 ## Review requirements for additions
 
 1. Add the sampler to exactly one category and state the sharing key in its docstring or the implementation comment next
-   to the `TargetParameterGroup` construction.
+   to the `TargetParams` construction.
 2. Test at least two actual target keys, including an `additional_targets` alias when the transform supports one.
 3. Vary the representation property that drives materialization: shape, channels, dtype scale, layout, topology, or
    content. A test that only checks output shape does not prove the plan is target-correct.

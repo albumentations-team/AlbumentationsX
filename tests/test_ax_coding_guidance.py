@@ -150,8 +150,8 @@ from random import randint
 
 class DualTransform: pass
 class Example(DualTransform):
-    def sample_parameters(self, inputs, sampling: SamplingContext, /):
-        return {"x": uniform(), "y": randint(0, 1), "image": resize(inputs.data["image"], (4, 4))}
+    def sample_parameters(self, params, data, targets, sampling: SamplingContext, /):
+        return {"x": uniform(), "y": randint(0, 1), "image": resize(data["image"], (4, 4))}
 """,
         },
     )
@@ -231,8 +231,8 @@ def test_sampling_plan_rules_reject_flat_returns_and_first_target_shape() -> Non
             "albumentations/augmentations/example.py": """
 class DualTransform: pass
 class Example(DualTransform):
-    def sample_parameters(self, inputs, sampling: SamplingContext):
-        shape = inputs.base_params["shape"]
+    def sample_parameters(self, params, data, targets, sampling: SamplingContext):
+        shape = params["shape"]
         return {"shape": shape}
 """,
         },

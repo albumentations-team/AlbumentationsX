@@ -15,7 +15,7 @@ import albumentations.augmentations.text.functional as ftext
 from albumentations.core.bbox_utils import check_bboxes, denormalize_bboxes
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -224,16 +224,17 @@ class TextImage(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        data = inputs.data
+    ) -> SampledParams:
         image = data["image"] if "image" in data else data["images"][0]
 
         metadata = data[self.metadata_key]
 
         if metadata == []:
-            return TransformParameterPlan.shared_only(
+            return SampledParams.shared_only(
                 {
                     "overlay_data": [],
                 }
@@ -261,7 +262,7 @@ class TextImage(ImageOnlyTransform):
 
         sampling.applied_overrides["fraction_range"] = fraction
 
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "overlay_data": overlay_data,
             }
@@ -275,12 +276,12 @@ class TextImage(ImageOnlyTransform):
     ) -> ImageType:
         return ftext.render_text(img, overlay_data, clear_bg=self.clear_bg)
 
-    def apply_with_params(self, plan: TransformParameterPlan, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def apply_with_params(self, sampled_params: SampledParams, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Apply transform and include overlay data in result. Returns dict with transformed data and
         overlay info. Used by Compose when metadata_key present.
 
         Args:
-            plan (TransformParameterPlan): Realized shared and target-specific parameters.
+            sampled_params (SampledParams): Realized shared and target-specific parameters.
             *args (Any): Additional positional arguments
             **kwargs (Any): Additional keyword arguments
 
@@ -288,7 +289,7 @@ class TextImage(ImageOnlyTransform):
             dict[str, Any]: Dictionary containing the transformed data and simplified overlay information
 
         """
-        res = super().apply_with_params(plan, *args, **kwargs)
+        res = super().apply_with_params(sampled_params, *args, **kwargs)
         res["overlay_data"] = [
             {
                 "bbox_coords": overlay["bbox_coords"],
@@ -297,7 +298,7 @@ class TextImage(ImageOnlyTransform):
                 "bbox_index": overlay["bbox_index"],
                 "font_color": overlay["font_color"],
             }
-            for overlay in plan.params_for("image")["overlay_data"]
+            for overlay in sampled_params.params_for("image")["overlay_data"]
         ]
 
         return res

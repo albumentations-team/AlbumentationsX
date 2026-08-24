@@ -30,9 +30,9 @@ from albumentations.core.pydantic import (
     nondecreasing,
 )
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
-    TransformParameterPlan,
-    TransformSamplingInput,
+    SampledParams,
+    TargetParams,
+    TargetSet,
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import (
@@ -438,15 +438,17 @@ class Sharpen(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         alpha = sampling.py_random.uniform(*self.alpha_range)
 
         if self.method == "kernel":
             lightness = sampling.py_random.uniform(*self.lightness_range)
             sampling.applied_overrides.update({"alpha_range": alpha, "lightness_range": lightness})
-            return TransformParameterPlan.shared_only(
+            return SampledParams.shared_only(
                 {
                     "alpha": alpha,
                     "sharpening_matrix": self.__generate_sharpening_matrix(
@@ -457,7 +459,7 @@ class Sharpen(ImageOnlyTransform):
             )
 
         sampling.applied_overrides["alpha_range"] = alpha
-        return TransformParameterPlan.shared_only({"alpha": alpha, "sharpening_matrix": None})
+        return SampledParams.shared_only({"alpha": alpha, "sharpening_matrix": None})
 
     def apply(
         self,
@@ -562,9 +564,11 @@ class Emboss(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         alpha = sampling.py_random.uniform(*self.alpha_range)
         strength = sampling.py_random.uniform(*self.strength_range)
         emboss_matrix = self.__generate_emboss_matrix(
@@ -572,7 +576,7 @@ class Emboss(ImageOnlyTransform):
             strength_sample=strength,
         )
         sampling.applied_overrides.update({"alpha_range": alpha, "strength_range": strength})
-        return TransformParameterPlan.shared_only({"emboss_matrix": emboss_matrix})
+        return SampledParams.shared_only({"emboss_matrix": emboss_matrix})
 
     def apply(
         self,
@@ -678,14 +682,16 @@ class Enhance(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         alpha = sampling.py_random.uniform(*self.alpha_range)
         # Record the resolved scalar (not the range) for replay/debug, per the
         # applied record contract documented on get_applied_config.
         sampling.applied_overrides["alpha_range"] = alpha
-        return TransformParameterPlan.shared_only({"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)})
+        return SampledParams.shared_only({"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)})
 
     def apply(
         self,
@@ -819,13 +825,15 @@ class Superpixels(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         n_segments = sampling.py_random.randint(*self.n_segments_range)
         p = sampling.py_random.uniform(*self.p_replace_range)
         sampling.applied_overrides.update({"n_segments_range": n_segments, "p_replace_range": p})
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "replace_samples": sampling.random_generator.random(n_segments) < p,
                 "n_segments": n_segments,
@@ -949,9 +957,11 @@ class RingingOvershoot(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         ksize = sampling.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
         if ksize % 2 == 0:
             ksize += 1
@@ -976,7 +986,7 @@ class RingingOvershoot(ImageOnlyTransform):
         kernel = kernel.astype(np.float32) / reduce_sum(kernel)
 
         sampling.applied_overrides.update({"blur_range": ksize, "cutoff_range": cutoff})
-        return TransformParameterPlan.shared_only({"kernel": kernel})
+        return SampledParams.shared_only({"kernel": kernel})
 
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel)
@@ -1085,14 +1095,16 @@ class UnsharpMask(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         ksize = sampling.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
         sigma = sampling.py_random.uniform(*self.sigma_range)
         alpha = sampling.py_random.uniform(*self.alpha_range)
         sampling.applied_overrides.update({"blur_range": ksize, "sigma_range": sigma, "alpha_range": alpha})
-        return TransformParameterPlan.shared_only({"ksize": ksize, "sigma": sigma, "alpha": alpha})
+        return SampledParams.shared_only({"ksize": ksize, "sigma": sigma, "alpha": alpha})
 
     def apply(
         self,
@@ -1327,14 +1339,16 @@ class Dithering(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         sampling.applied_overrides["noise_range"] = self.noise_range
         if self.method != "random":
-            return TransformParameterPlan.shared_only({"random_noise": None})
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(
+            return SampledParams.shared_only({"random_noise": None})
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
             lambda view: (
                 view.descriptor.shape,
                 view.descriptor.dtype_scale,
@@ -1360,13 +1374,13 @@ class Dithering(ImageOnlyTransform):
             else:
                 random_noise = sampling.random_generator.uniform(*self.noise_range, size=noise_shape)
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(target.name for target in views),
                     params={"random_noise": random_noise},
                     requirements=requirements_for_views(views, shape=True, dtype=True, sampling_topology=True),
                 ),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         random_noise = params.pop("random_noise", None)
@@ -1460,13 +1474,15 @@ class Halftone(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         dot_size = sampling.py_random.randint(*self.dot_size_range)
         blend = sampling.py_random.uniform(*self.blend_range)
         sampling.applied_overrides.update({"dot_size_range": dot_size, "blend_range": blend})
-        return TransformParameterPlan.shared_only(
+        return SampledParams.shared_only(
             {
                 "dot_size": dot_size,
                 "blend": blend,
@@ -1606,9 +1622,11 @@ class LensFlare(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         x_min, y_min, x_max, y_max = self.flare_roi
         intensity = sampling.py_random.uniform(*self.intensity_range)
         sampling.applied_overrides.update(
@@ -1620,7 +1638,7 @@ class LensFlare(ImageOnlyTransform):
             },
         )
         groups = []
-        for views in inputs.targets.group_image_like_by(
+        for views in targets.group_image_like_by(
             lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
         ):
             spatial_shape = views[0].descriptor.spatial_shape
@@ -1653,7 +1671,7 @@ class LensFlare(ImageOnlyTransform):
             bloom_frac = sampling.py_random.uniform(*self.bloom_range)
             bloom_radius = max(1, int(diag * bloom_frac)) | 1
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(view.name for view in views),
                     params={
                         "flare_center": (fx, fy),
@@ -1664,4 +1682,4 @@ class LensFlare(ImageOnlyTransform):
                     requirements=requirements_for_views(views),
                 ),
             )
-        return TransformParameterPlan(shared={"starburst_intensity": intensity}, groups=tuple(groups))
+        return SampledParams(shared={"starburst_intensity": intensity}, groups=tuple(groups))

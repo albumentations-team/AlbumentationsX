@@ -18,7 +18,7 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
-from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema
 
 __all__ = ["XYMasking"]
@@ -173,9 +173,11 @@ class XYMasking(BaseDropout):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
+    ) -> SampledParams:
         def materialize(image_shape: tuple[int, int], _: tuple[Any, ...]) -> dict[str, Any]:
             self._validate_integer_axis_ranges(image_shape)
 
@@ -209,7 +211,7 @@ class XYMasking(BaseDropout):
             )
             return {"holes": holes, "seed": int(sampling.random_generator.integers(0, 2**32 - 1))}
 
-        return self._build_spatial_parameter_plan(inputs, materialize)
+        return self._build_spatial_parameter_plan(targets, materialize)
 
     def _validate_integer_axis_ranges(self, image_shape: tuple[int, int]) -> None:
         if self._mask_x_length_is_integer and self.mask_x_length_range[1] > image_shape[1]:

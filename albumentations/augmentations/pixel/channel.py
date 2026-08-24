@@ -11,9 +11,9 @@ from pydantic import field_validator
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
-    TargetParameterGroup,
-    TransformParameterPlan,
-    TransformSamplingInput,
+    SampledParams,
+    TargetParams,
+    TargetSet,
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import (
@@ -129,11 +129,13 @@ class ChannelShuffle(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        inputs: TransformSamplingInput,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> TransformParameterPlan:
-        groups: list[TargetParameterGroup] = []
-        for views in inputs.targets.group_image_like_by(lambda view: view.descriptor.channels):
+    ) -> SampledParams:
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
             view = views[0]
             num_channels = view.descriptor.channels or 1
             if self.channel_order is not None:
@@ -154,13 +156,13 @@ class ChannelShuffle(ImageOnlyTransform):
                 channels_shuffled = list(range(num_channels))
                 sampling.py_random.shuffle(channels_shuffled)
             groups.append(
-                TargetParameterGroup(
+                TargetParams(
                     targets=tuple(item.name for item in views),
                     params={"channels_shuffled": channels_shuffled},
                     requirements=requirements_for_views(views, channels=True),
                 ),
             )
-        return TransformParameterPlan(shared={}, groups=tuple(groups))
+        return SampledParams(shared={}, groups=tuple(groups))
 
 
 class ChannelSwap(ChannelShuffle):

@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import torch
 
 import albumentations as A
 from albumentations.core.transform_params import (
@@ -11,7 +12,7 @@ from albumentations.core.transform_params import (
 )
 
 
-def test_multiplicative_noise_groups_channel_vectors_by_actual_target_representation() -> None:
+def test_multiplicative_noise_shares_a_scalar_across_target_representations() -> None:
     image = np.ones((6, 7, 3), dtype=np.float32)
     volume = np.ones((2, 6, 7, 5), dtype=np.float32)
     transform = A.MultiplicativeNoise(multiplier=(0.5, 0.5), p=1.0)
@@ -19,11 +20,29 @@ def test_multiplicative_noise_groups_channel_vectors_by_actual_target_representa
     result = transform(image=image, volume=volume)
     sampled_params = SampledParams.from_dict(transform.get_applied_params())
 
-    assert {tuple(target_params.targets) for target_params in sampled_params.target_params} == {("image",), ("volume",)}
+    assert sampled_params.target_params == ()
+    assert sampled_params.params["multiplier"] == 0.5
     assert result["image"].shape == image.shape
     assert result["volume"].shape == volume.shape
     np.testing.assert_allclose(result["image"], 0.5)
     np.testing.assert_allclose(result["volume"], 0.5)
+
+
+def test_multiplicative_noise_elementwise_shared_channels_share_one_map() -> None:
+    image = np.ones((6, 7, 3), dtype=np.float32)
+    image2 = np.ones((6, 7, 5), dtype=np.float32)
+    transform = A.MultiplicativeNoise(elementwise=True, per_channel=False, p=1.0)
+    transform.add_targets({"image2": "image"})
+
+    result = transform(image=image, image2=image2)
+    sampled_params = SampledParams.from_dict(transform.get_applied_params())
+
+    assert [target_params.targets for target_params in sampled_params.target_params] == [("image", "image2")]
+    assert sampled_params.params_for("image")["multiplier"].shape == (6, 7, 1)
+    np.testing.assert_array_equal(result["image"][:, :, 0], result["image"][:, :, 1])
+    np.testing.assert_array_equal(result["image"][:, :, 0], result["image"][:, :, 2])
+    np.testing.assert_array_equal(result["image2"][:, :, 0], result["image2"][:, :, 4])
+    np.testing.assert_array_equal(result["image"][:, :, 0], result["image2"][:, :, 0])
 
 
 def test_additive_noise_scales_materialized_maps_per_dtype_and_alias() -> None:
@@ -125,6 +144,55 @@ def test_aligned_spatial_shape_rejects_unaligned_targets_before_application() ->
 
     with pytest.raises(SampledParamsError, match="requires aligned spatial targets"):
         transform(image=image, image2=image2)
+
+
+def test_image_only_sampling_allows_unaligned_aliases() -> None:
+    image = np.zeros((4, 5, 3), dtype=np.uint8)
+    image2 = np.zeros((3, 5, 3), dtype=np.uint8)
+    transform = A.Compose(
+        [
+            A.AdditiveNoise(
+                noise_type="uniform",
+                spatial_mode="per_pixel",
+                noise_params={"ranges": [(0.1, 0.1)]},
+                p=1.0,
+            ),
+        ],
+        additional_targets={"image2": "image"},
+        is_check_shapes=False,
+        strict=True,
+    )
+
+    result = transform(image=image, image2=image2)
+
+    assert result["image"].shape == image.shape
+    assert result["image2"].shape == image2.shape
+    assert np.any(result["image"])
+    assert np.any(result["image2"])
+
+
+def test_channel_dropout_ignores_user_data_during_sampling() -> None:
+    image = np.full((4, 5, 3), 255, dtype=np.uint8)
+    user_data = {"source": "fixture"}
+    transform = A.ChannelDropout(channel_drop_range=(1, 1), fill=0, p=1.0)
+
+    result = transform(image=image, user_data=user_data)
+
+    assert result["user_data"] == user_data
+    assert sum(np.all(result["image"][:, :, channel] == 0) for channel in range(3)) == 1
+
+
+def test_tensor_image_sequence_descriptor_uses_channel_first_sequence_layout() -> None:
+    targets = TargetSet.from_data(
+        {"images": torch.zeros((3, 5, 11, 13), dtype=torch.uint8)},
+        {"images": "images"},
+    )
+
+    descriptor = targets.by_name("images").descriptor
+
+    assert descriptor.layout == "images_clhw"
+    assert descriptor.channels == 3
+    assert descriptor.spatial_shape == (11, 13)
 
 
 def test_sampled_params_reject_duplicate_keys_and_invalid_target_params() -> None:

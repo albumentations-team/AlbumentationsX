@@ -678,9 +678,9 @@ def test_multiplicative_noise_rgb(image, elementwise):
     mul = sampled_params.params_for("image")["multiplier"]
 
     if elementwise:
-        assert mul.shape == image.shape
+        assert mul.shape == (*image.shape[:2], 1)
     else:
-        assert mul.shape == (image.shape[-1],)
+        assert np.isscalar(mul)
 
     result = aug.apply(image, mul)
 

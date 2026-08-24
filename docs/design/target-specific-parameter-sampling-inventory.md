@@ -54,8 +54,9 @@ it must include every property used to construct the execution value.
 
 ## Shared spatial frame
 
-These samplers use `inputs.spatial_frame`, which is validated against every active spatial target before sampling. They
-share geometry intentionally; representation-dependent values must not be added to this category without a group key.
+These samplers call `TargetSet.require_aligned_spatial_shape(...)`, which validates every active spatial target before
+sampling. They share geometry intentionally; representation-dependent values must not be added to this category without a
+group key.
 
 - `albumentations/augmentations/blur/transforms.py`: `GlassBlur`.
 - `albumentations/augmentations/crops/basic.py`: `RandomCrop`, `CenterCrop`, `Crop`, `CropAndPad`.

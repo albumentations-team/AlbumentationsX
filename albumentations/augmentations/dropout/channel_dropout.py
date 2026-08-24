@@ -115,7 +115,7 @@ class ChannelDropout(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         groups: list[TargetParams] = []
-        for views in targets.group_by(lambda view: view.descriptor.channels):
+        for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
             view = views[0]
             num_channels = view.descriptor.channels or 1
             if num_channels == 1:

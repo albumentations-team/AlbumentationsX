@@ -426,7 +426,7 @@ def _describe_target_cached(
         elif canonical_type == "images":
             spatial_shape = shape[2:4] if tensor else shape[1:3]
             channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)
-            layout, topology = ("images_nchw", "batch_2d") if tensor else ("images_nhwc", "batch_2d")
+            layout, topology = ("images_clhw", "batch_2d") if tensor else ("images_nhwc", "batch_2d")
         elif canonical_type == "volume":
             spatial_shape = shape[1:] if tensor else shape[:3]
             channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)

@@ -163,7 +163,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _supports_cpu_tensor: ClassVar[bool] = False
     _cpu_tensor_targets: ClassVar[frozenset[str] | None] = None
     _cpu_tensor_channels: ClassVar[frozenset[int] | None] = None
-    _sampling_spatial_rank: ClassVar[int | None] = 2
+    _sampling_spatial_rank: ClassVar[int | None] = None
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
@@ -925,7 +925,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                     shared_shape: tuple[int, ...]
                     if view.descriptor.layout == "image_chw":
                         shared_shape = (shape[1], shape[2], shape[0])
-                    elif view.descriptor.layout in {"images_nchw", "volume_cdhw"}:
+                    elif view.descriptor.layout in {"images_clhw", "volume_cdhw"}:
                         shared_shape = (shape[2], shape[3], shape[0])
                     elif view.canonical_type in {"images", "volume", "masks", "mask3d"}:
                         shared_shape = shape[1:]
@@ -1253,6 +1253,8 @@ class DualTransform(BasicTransform):
             multiple single-channel masks.
 
     """
+
+    _sampling_spatial_rank = 2
 
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})  # Default: only axis-aligned boxes
     _semantic_mask_label_mappings: dict[str, dict[int, int]]
@@ -1799,7 +1801,6 @@ class VolumeOnlyTransform(BasicTransform):
     """
 
     _targets = (Targets.VOLUME,)
-    _sampling_spatial_rank = 3
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         raise NotImplementedError

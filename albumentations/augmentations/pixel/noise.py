@@ -485,10 +485,13 @@ class MultiplicativeNoise(ImageOnlyTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        groups: list[TargetParams] = []
         if not self.elementwise and not self.per_channel:
-            compatible_groups = targets.group_image_like_by(lambda view: view.descriptor.channels)
-            for compatible_views in compatible_groups:
+            multiplier = sampling.random_generator.uniform(self.multiplier[0], self.multiplier[1])
+            return SampledParams(params={"multiplier": multiplier})
+
+        groups: list[TargetParams] = []
+        if not self.elementwise:
+            for compatible_views in targets.group_image_like_by(lambda view: view.descriptor.channels):
                 channels = compatible_views[0].descriptor.channels or 1
                 groups.append(
                     _target_parameter_group(
@@ -505,7 +508,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
             return SampledParams(params={}, target_params=tuple(groups))
 
         for compatible_views in targets.group_image_like_by(
-            lambda view: (_target_noise_map_shape(view), _sampling_family(view)),
+            lambda view: (self._multiplier_shape(_target_noise_map_shape(view)), _sampling_family(view)),
         ):
             view = compatible_views[0]
             groups.append(
@@ -513,7 +516,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
                     compatible_views,
                     "multiplier",
                     self._sample_multiplier(_target_noise_map_shape(view), sampling),
-                    shape=True,
+                    spatial_shape=True,
                     channels=self.per_channel,
                     topology=True,
                 ),
@@ -522,33 +525,20 @@ class MultiplicativeNoise(ImageOnlyTransform):
 
     def _sample_multiplier(
         self,
-        image_shape: tuple[int, ...],
+        target_shape: tuple[int, ...],
         sampling: SamplingContext,
     ) -> np.ndarray:
         """Generates the multiplier for the current layout without replay-policy overrides, keeping pixel execution
         independent from constructor serialization concerns.
         """
-        num_channels = image_shape[-1]
-
-        multiplier_shape = image_shape if self.elementwise else (num_channels,) if self.per_channel else (1,)
-
-        multiplier = sampling.random_generator.uniform(
+        return sampling.random_generator.uniform(
             self.multiplier[0],
             self.multiplier[1],
-            multiplier_shape,
+            self._multiplier_shape(target_shape),
         ).astype(np.float32)
 
-        if not self.elementwise and self.per_channel:
-            # Reshape to broadcast correctly when not elementwise but per_channel
-            multiplier = multiplier.reshape((1,) * (len(image_shape) - 1) + (-1,))
-
-        if not self.elementwise and not self.per_channel:
-            return multiplier
-
-        if not self.elementwise and multiplier.shape != image_shape:
-            multiplier = multiplier.squeeze()
-
-        return multiplier
+    def _multiplier_shape(self, target_shape: tuple[int, ...]) -> tuple[int, ...]:
+        return target_shape if self.per_channel else (*target_shape[:-1], 1)
 
 
 class ShotNoise(_FullVolumeNoiseTransform):

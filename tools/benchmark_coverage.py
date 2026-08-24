@@ -187,6 +187,7 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "sharpen": "Sharpen",
     "shot_noise": "ShotNoise",
     "rician_noise": "RicianNoise",
+    "stochastic_convolution": "StochasticConvolution",
     "posterize": "Posterize",
     "solarize": "Solarize",
     "spatter": "Spatter",
@@ -243,6 +244,7 @@ VOLUME_ALIAS_TO_TRANSFORM = {
     "random_rotate90_3d": "RandomRotate90_3D",
     "resize3d": "Resize3D",
     "rician_noise": "RicianNoise",
+    "stochastic_convolution": "StochasticConvolution",
 }
 
 BATCH_ALIAS_TO_TRANSFORM = {
@@ -262,6 +264,7 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "random_shadow": "RandomShadow",
     "random_tone_curve": "RandomToneCurve",
     "random_tone_curve_per_channel": "RandomToneCurve",
+    "stochastic_convolution": "StochasticConvolution",
     "resize": "Resize",
     "spatter_mud": "Spatter",
     "spatter_rain": "Spatter",
@@ -388,6 +391,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "PixelDropout": ("pixel_dropout",),
     "Posterize": ("posterize",),
     "RicianNoise": ("rician_noise",),
+    "StochasticConvolution": ("stochastic_convolve_shared", "stochastic_convolve_per_channel"),
     "RandomGamma": ("gamma_transform",),
     "RandomToneCurve": ("move_tone_curve_shared", "move_tone_curve_per_channel"),
     "Resize": ("resize", "resize_bboxes"),

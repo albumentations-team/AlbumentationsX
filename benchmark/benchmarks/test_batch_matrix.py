@@ -77,6 +77,13 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     "random_tone_curve_per_channel": BatchSpec(
         lambda: albumentations.RandomToneCurve(per_channel=True, p=1.0),
     ),
+    "stochastic_convolution": BatchSpec(
+        lambda: albumentations.StochasticConvolution(
+            kernel_range=(3, 3),
+            strength_range=(0.1, 0.1),
+            p=1.0,
+        ),
+    ),
     "resize": BatchSpec(lambda: albumentations.Resize(height=128, width=128, p=1.0)),
     "spatter_mud": BatchSpec(
         lambda: albumentations.Spatter(mode="mud", p=1.0),

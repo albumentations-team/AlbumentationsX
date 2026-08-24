@@ -1189,9 +1189,8 @@ class GlassBlur(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         height, width = targets.require_aligned_spatial_shape(2)
-        # generate array containing all necessary values for transformations
-        width_pixels = height - self.max_delta * 2
-        height_pixels = width - self.max_delta * 2
+        height_pixels = height - self.max_delta * 2
+        width_pixels = width - self.max_delta * 2
         total_pixels = width_pixels * height_pixels
         dxy = sampling.random_generator.integers(
             -self.max_delta,

@@ -422,9 +422,10 @@ class PixelDropout(DualTransform):
     ) -> SampledParams:
         sampling.applied_overrides["dropout_prob"] = self.dropout_prob
         annotations = tuple(view for view in targets.ordered if view.canonical_type in {"bboxes", "keypoints"})
+        annotations_attached = False
         groups: list[TargetParams] = []
 
-        for index, views in enumerate(targets.group_image_like_by(_pixel_dropout_group_key)):
+        for views in targets.group_image_like_by(_pixel_dropout_group_key):
             reference = _pixel_dropout_reference(views[0])
             groups.append(
                 _pixel_dropout_group(
@@ -446,9 +447,10 @@ class PixelDropout(DualTransform):
                             sampling.random_generator,
                         ),
                     },
-                    annotations=annotations if index == 0 else (),
+                    annotations=annotations if not annotations_attached else (),
                 )
             )
+            annotations_attached = annotations_attached or bool(annotations)
 
         for views in targets.group_by(_pixel_dropout_group_key):
             if not views or views[0].canonical_type not in {"mask", "masks", "mask3d"}:
@@ -486,7 +488,9 @@ class PixelDropout(DualTransform):
                             )
                         ),
                     },
+                    annotations=annotations if not annotations_attached else (),
                 )
             )
+            annotations_attached = annotations_attached or bool(annotations)
 
         return SampledParams(params={}, target_params=tuple(groups))

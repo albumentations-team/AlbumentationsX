@@ -326,6 +326,13 @@ def _is_first_target_shape_access(node: ast.AST) -> bool:
         isinstance(node, ast.Subscript)
         and ast.unparse(node.value) == "params"
         and (ast.unparse(node.slice).strip("\"'") == "shape")
+    ) or (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and ast.unparse(node.func.value) == "params"
+        and node.func.attr == "get"
+        and len(node.args) == 1
+        and ast.unparse(node.args[0]).strip("\"'") == "shape"
     )
 
 
@@ -367,7 +374,7 @@ def rule_sampling_plan_contract(index: SourceIndex) -> list[Diagnostic]:
         for child in ast.walk(node):
             if _is_first_target_shape_access(child) or _is_legacy_shape_helper_call(child):
                 detail = (
-                    "instead of first-target params['shape']"
+                    "instead of first-target params shape access"
                     if _is_first_target_shape_access(child)
                     else "instead of a first-target helper"
                 )

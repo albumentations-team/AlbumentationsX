@@ -233,7 +233,8 @@ class DualTransform: pass
 class Example(DualTransform):
     def sample_parameters(self, params, data, targets, sampling: SamplingContext):
         shape = params["shape"]
-        return {"shape": shape}
+        alternate_shape = params.get("shape")
+        return {"shape": alternate_shape}
 """,
         },
     )

@@ -7,7 +7,6 @@ from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
     SampledParams,
     TargetParams,
-    TargetRequirement,
     TargetSet,
     TargetView,
     requirements_for_views,
@@ -1007,7 +1006,10 @@ class ExposureMatching(ImageOnlyTransform):
                 TargetParams(
                     targets=(view.name,),
                     params={"gain": gain},
-                    requirements={view.name: TargetRequirement()},
+                    requirements=requirements_for_views(
+                        (view,),
+                        shape=view.canonical_type in {"images", "volume"},
+                    ),
                 ),
             )
         if not groups:

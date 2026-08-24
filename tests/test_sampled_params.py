@@ -3,6 +3,7 @@ import pytest
 import torch
 
 import albumentations as A
+from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
     SampledParams,
     SampledParamsError,
@@ -10,6 +11,7 @@ from albumentations.core.transform_params import (
     TargetRequirement,
     TargetSet,
 )
+from tests.utils import make_sampling_args
 
 
 def test_multiplicative_noise_shares_a_scalar_across_target_representations() -> None:
@@ -270,6 +272,59 @@ def test_tensor_image_sequence_descriptor_uses_channel_first_sequence_layout() -
     assert descriptor.channels == 3
     assert descriptor.spatial_shape == (11, 13)
     assert descriptor.value_scale == 255
+
+
+@pytest.mark.parametrize(
+    ("transform", "parameter_name"),
+    [
+        (A.GaussNoise(p=1.0), "noise_map"),
+        (A.AdditiveNoise(p=1.0), "noise_map"),
+        (A.RGBShift(p=1.0), "noise_map"),
+        (A.AtmosphericFog(p=1.0), "depth_map"),
+    ],
+)
+def test_tensor_samplers_use_descriptor_value_scale(transform, parameter_name: str) -> None:
+    data = {"image": torch.zeros((3, 5, 7), dtype=torch.uint8)}
+
+    sampled_params = transform.sample_parameters(
+        *make_sampling_args(transform, data),
+        SamplingContext.from_owner(transform, {}),
+    )
+
+    assert parameter_name in sampled_params.params_for("image")
+
+
+def test_rgb_shift_replay_rejects_changed_channel_count() -> None:
+    recorded = A.ReplayCompose([A.RGBShift(p=1.0)], seed=137)(
+        image=np.zeros((8, 9, 3), dtype=np.uint8),
+    )["replay"]
+
+    with pytest.raises(SampledParamsError, match="requirements do not match target 'image'"):
+        A.ReplayCompose.replay(recorded, image=np.zeros((8, 9, 1), dtype=np.uint8))
+
+
+def test_exposure_matching_replay_rejects_changed_batch_size() -> None:
+    recorded = A.ReplayCompose([A.ExposureMatching(p=1.0)], seed=137)(
+        images=np.zeros((2, 8, 9, 3), dtype=np.uint8),
+    )["replay"]
+
+    with pytest.raises(SampledParamsError, match="requirements do not match target 'images'"):
+        A.ReplayCompose.replay(recorded, images=np.zeros((3, 8, 9, 3), dtype=np.uint8))
+
+
+def test_pixel_dropout_attaches_bboxes_to_a_mask_group_without_an_image() -> None:
+    transform = A.PixelDropout(mask_drop_value=0, p=1.0)
+    data = {
+        "mask": np.ones((5, 7), dtype=np.uint8),
+        "bboxes": np.array([[0.1, 0.1, 0.9, 0.9]], dtype=np.float32),
+    }
+
+    sampled_params = transform.sample_parameters(
+        *make_sampling_args(transform, data),
+        SamplingContext.from_owner(transform, {}),
+    )
+
+    assert "drop_mask" in sampled_params.params_for("bboxes")
 
 
 def test_sampled_params_reject_duplicate_keys_and_invalid_target_params() -> None:

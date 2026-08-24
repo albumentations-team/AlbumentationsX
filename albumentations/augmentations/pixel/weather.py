@@ -1490,7 +1490,8 @@ class AtmosphericFog(ImageOnlyTransform):
         for views in targets.group_image_like_by(lambda view: (_weather_shape_key(view), view.descriptor.value_scale)):
             view = views[0]
             spatial_shape = view.descriptor.spatial_shape
-            if spatial_shape is None or view.descriptor.dtype is None:
+            actual_max = view.descriptor.value_scale
+            if spatial_shape is None or actual_max is None:
                 raise ValueError("AtmosphericFog requires image-like targets with known shape and dtype")
             height, width = spatial_shape[-2:]
             if self.depth_mode == "linear":
@@ -1506,7 +1507,6 @@ class AtmosphericFog(ImageOnlyTransform):
                 x = np.arange(width, dtype=np.float32)[np.newaxis, :] - cx
                 depth_map = albucore.sqrt(x * x + y * y, inplace=True)
                 depth_map *= np.float32(1 / math.hypot(cy, cx))
-            actual_max = albucore.MAX_VALUES_BY_DTYPE[view.descriptor.dtype]
             fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)
             groups.append(
                 _weather_group(

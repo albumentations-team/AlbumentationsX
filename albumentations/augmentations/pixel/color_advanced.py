@@ -14,7 +14,6 @@ from albumentations.core.transform_params import (
 
 from ._color_shared import (
     CV2_INTER_LINEAR,
-    MAX_VALUES_BY_DTYPE,
     AdditiveNoise,
     AfterValidator,
     BaseTransformInitSchema,
@@ -737,9 +736,12 @@ class RGBShift(AdditiveNoise):
             ),
         ):
             view = views[0]
+            value_scale = view.descriptor.value_scale
+            if value_scale is None:
+                raise ValueError(f"RGBShift target {view.name!r} has an unsupported dtype")
             sampled = self._sample_noise_map(
                 (view.descriptor.channels or 1,),
-                MAX_VALUES_BY_DTYPE[view.value.dtype],
+                value_scale,
                 sampling,
             )
 
@@ -756,6 +758,7 @@ class RGBShift(AdditiveNoise):
                     params=sampled,
                     requirements=requirements_for_views(
                         views,
+                        channels=True,
                         dtype=True,
                     ),
                 ),

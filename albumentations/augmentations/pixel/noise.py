@@ -9,12 +9,7 @@ from typing import Annotated, Any, ClassVar, Literal, TypeAlias, cast
 
 import cv2
 import numpy as np
-from albucore import (
-    MAX_VALUES_BY_DTYPE,
-    clip,
-    multiply,
-    resize3d,
-)
+from albucore import clip, multiply, resize3d
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
@@ -31,6 +26,7 @@ from albumentations.core.transform_params import (
     SampledParams,
     TargetParams,
     TargetSet,
+    TargetView,
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import (
@@ -75,6 +71,13 @@ def _sampling_family(view: Any, *, volume_is_3d: bool = True) -> str:
     if view.canonical_type == "volume" and volume_is_3d:
         return "volume_3d"
     return "image_2d"
+
+
+def _target_value_scale(view: TargetView) -> float:
+    value_scale = view.descriptor.value_scale
+    if value_scale is None:
+        raise ValueError(f"Noise target {view.name!r} has an unsupported dtype")
+    return value_scale
 
 
 def _target_parameter_group(
@@ -223,7 +226,7 @@ class GaussNoise(_FullVolumeNoiseTransform):
                 spatial_mode=spatial_mode,
                 shape=_target_noise_map_shape(view),
                 params=noise_params,
-                max_value=MAX_VALUES_BY_DTYPE[view.value.dtype],
+                max_value=_target_value_scale(view),
                 random_generator=sampling.random_generator,
             )
             groups.append(
@@ -953,7 +956,7 @@ class AdditiveNoise(ImageOnlyTransform):
             view = views[0]
             sampled = self._sample_noise_map(
                 _target_additive_shape(self, view),
-                MAX_VALUES_BY_DTYPE[view.value.dtype],
+                _target_value_scale(view),
                 sampling,
             )
             groups.append(

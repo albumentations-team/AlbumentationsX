@@ -10,7 +10,6 @@ interface and implements specific 3D augmentation logic.
 from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
-import torch
 from albucore import resize3d
 from pydantic import AfterValidator, field_validator, model_validator
 from typing_extensions import Self
@@ -20,6 +19,7 @@ from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D, VolumeOnlyTransform
 from albumentations.core.type_definitions import (
     C4_INVERSE,
@@ -65,34 +65,11 @@ DEFAULT_FLIP_AXES: tuple[AxisIndex3D, ...] = (0, 1, 2)
 AXIS_NAMES_3D: tuple[AxisName3D, ...] = ("x", "y", "z")
 
 
-def _get_volume_shape(data: dict[str, Any]) -> tuple[int, ...]:
-    """Return a volume shape from available image and mask targets without indexing into potentially empty input arrays.
-    Avoids indexing empty leading axes.
-    """
-    if "volume" in data:
-        volume = data["volume"]
-        if isinstance(volume, np.ndarray):
-            if volume.ndim not in (NUM_DIMENSIONS, NUM_DIMENSIONS + 1):
-                raise ValueError("volume must be a 3D or 4D array")
-            return volume.shape
-        if isinstance(volume, torch.Tensor):
-            if volume.ndim != NUM_DIMENSIONS + 1:
-                raise ValueError("volume must be a 4D torch.Tensor")
-            return tuple(volume.shape[1:])
-    if "mask3d" in data:
-        if isinstance(data["mask3d"], np.ndarray) and data["mask3d"].ndim != NUM_DIMENSIONS:
-            raise ValueError("mask3d must be a 3D array")
-        if isinstance(data["mask3d"], torch.Tensor) and data["mask3d"].ndim != NUM_DIMENSIONS:
-            raise ValueError("mask3d must be a 3D Tensor")
-        return data["mask3d"].shape
-    raise ValueError("No volume or mask3d found in data")
-
-
-def _get_volume_spatial_shape(data: dict[str, Any]) -> tuple[int, int, int]:
-    """Return depth, height, and width for one input volume target while retaining support for empty leading dimensions.
-    Avoids indexing empty leading axes.
-    """
-    return cast("tuple[int, int, int]", _get_volume_shape(data)[:3])
+def _sampling_volume_shape(inputs: TransformSamplingInput) -> tuple[int, int, int]:
+    frame = inputs.spatial_frame
+    if frame is None or frame.rank != NUM_DIMENSIONS:
+        raise ValueError("3D transform sampling requires a volume spatial frame")
+    return cast("tuple[int, int, int]", frame.shape)
 
 
 class Affine3D(Transform3D):
@@ -218,11 +195,10 @@ class Affine3D(Transform3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        source_shape = _get_volume_spatial_shape(data)
+    ) -> TransformParameterPlan:
+        source_shape = _sampling_volume_shape(inputs)
         rotate = {axis: sampling.py_random.uniform(*self.rotate_range[axis]) for axis in AXIS_NAMES_3D}
         scale = {axis: sampling.py_random.uniform(*self.scale_range[axis]) for axis in AXIS_NAMES_3D}
         translate_percent = {
@@ -245,7 +221,7 @@ class Affine3D(Transform3D):
                 },
             },
         )
-        return {"matrix": matrix, "output_shape": source_shape}
+        return TransformParameterPlan.shared_only({"matrix": matrix, "output_shape": source_shape})
 
     def apply_to_volume(
         self,
@@ -368,15 +344,14 @@ class Anisotropy3D(VolumeOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         selected_axis_count = sampling.py_random.randint(*self.num_axes_range)
         selected_axes = tuple(sorted(sampling.py_random.sample(self.axes, selected_axis_count)))
         downscale_factor = sampling.py_random.uniform(*self.downscale_factor_range)
         downsample_shape = f3d.get_anisotropy_downsample_shape(
-            _get_volume_spatial_shape(data),
+            _sampling_volume_shape(inputs),
             selected_axes,
             downscale_factor,
         )
@@ -388,7 +363,7 @@ class Anisotropy3D(VolumeOnlyTransform):
                 "downscale_factor_range": (downscale_factor, downscale_factor),
             },
         )
-        return {"downsample_shape": downsample_shape}
+        return TransformParameterPlan.shared_only({"downsample_shape": downsample_shape})
 
     def apply_to_volume(
         self,
@@ -477,11 +452,10 @@ class Resize3D(Transform3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, tuple[int, int, int]]:
-        return {"source_shape": _get_volume_spatial_shape(data)}
+    ) -> TransformParameterPlan:
+        return TransformParameterPlan.shared_only({"source_shape": _sampling_volume_shape(inputs)})
 
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
@@ -541,11 +515,11 @@ class BasePad3D(Transform3D):
         ...         super().__init__(*args, **kwargs)
         ...         self.padding_size = padding_size
         ...
-        ...     def sample_parameters(self, params, data, sampling):
+        ...     def sample_parameters(self, inputs, sampling):
         ...         # Create symmetric padding: same amount on all sides of each dimension
         ...         pad_d, pad_h, pad_w = self.padding_size
         ...         padding = (pad_d, pad_d, pad_h, pad_h, pad_w, pad_w)
-        ...         return {"padding": padding}
+        ...         return TransformParameterPlan.shared_only({"padding": padding})
         >>>
         >>> # Prepare sample data
         >>> volume = np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)  # (D, H, W)
@@ -738,20 +712,18 @@ class Pad3D(BasePad3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        """Get padding parameters from input data (volume shape). Returns dict with padding tuple
+    ) -> TransformParameterPlan:
+        """Get padding parameters from input data (volume shape) as a structured plan with a padding tuple
         (d_front, d_back, h_top, h_bottom, w_left, w_right). For Pad3D.
 
         Args:
-            params (dict[str, Any]): Dictionary of existing parameters
-            data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            inputs (TransformSamplingInput): Preprocessed volume targets and shared sampling metadata.
             sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
-            dict[str, Any]: Dictionary containing the padding parameter tuple in format:
+            TransformParameterPlan: Plan containing the padding parameter tuple in format:
                 (depth_front, depth_back, height_top, height_bottom, width_left, width_right)
 
         """
@@ -764,7 +736,7 @@ class Pad3D(BasePad3D):
         else:
             padding = self.padding  # type: ignore[assignment]
 
-        return {"padding": padding}
+        return TransformParameterPlan.shared_only({"padding": padding})
 
 
 class PadIfNeeded3D(BasePad3D):
@@ -870,23 +842,21 @@ class PadIfNeeded3D(BasePad3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         """Calculate padding parameters from volume shape to meet min_zyx or pad_divisor_zyx.
-        Returns dict with padding tuple. For PadIfNeeded3D.
+        Returns a structured plan with a padding tuple. For PadIfNeeded3D.
 
         Args:
-            params (dict[str, Any]): Dictionary of existing parameters
-            data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            inputs (TransformSamplingInput): Preprocessed volume targets and shared sampling metadata.
             sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
-            dict[str, Any]: Dictionary containing calculated padding parameters
+            TransformParameterPlan: Plan containing calculated padding parameters
 
         """
-        depth, height, width = _get_volume_spatial_shape(data)
+        depth, height, width = _sampling_volume_shape(inputs)
         sizes = (depth, height, width)
 
         paddings = [
@@ -904,7 +874,7 @@ class PadIfNeeded3D(BasePad3D):
             py_random=sampling.py_random,
         )
 
-        return {"padding": padding}
+        return TransformParameterPlan.shared_only({"padding": padding})
 
 
 class BaseCropAndPad3D(Transform3D):
@@ -948,10 +918,9 @@ class BaseCropAndPad3D(Transform3D):
         ...         )
         ...         self.crop_size = crop_size
         ...
-        ...     def sample_parameters(self, params, data, sampling):
-        ...         # Get the volume shape
-        ...         volume = data["volume"]
-        ...         z, h, w = volume.shape[:3]
+        ...     def sample_parameters(self, inputs, sampling):
+        ...         # Get the validated spatial frame
+        ...         z, h, w = inputs.require_spatial_frame().shape
         ...         target_z, target_h, target_w = self.crop_size
         ...
         ...         # Check if padding is needed and calculate parameters
@@ -970,10 +939,12 @@ class BaseCropAndPad3D(Transform3D):
         ...         # Calculate fixed crop coordinates - always start at position (0,0,0)
         ...         crop_coords = (0, target_z, 0, target_h, 0, target_w)
         ...
-        ...         return {
+        ...         from albumentations.core.transform_params import TransformParameterPlan
+        ...
+        ...         return TransformParameterPlan.shared_only({
         ...             "crop_coords": crop_coords,
         ...             "pad_params": pad_params,
-        ...         }
+        ...         })
         >>>
         >>> # Prepare sample data
         >>> volume = np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)  # (D, H, W)
@@ -1297,23 +1268,21 @@ class CenterCrop3D(BaseCropAndPad3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        """Calculate center crop coordinates from volume shape and self.size. Returns dict with
+    ) -> TransformParameterPlan:
+        """Calculate center crop coordinates from volume shape and self.size as a structured plan with
         crop_coords (z_min, z_max, y_min, y_max, x_min, x_max). For CenterCrop3D.
 
         Args:
-            params (dict[str, Any]): Dictionary of existing parameters
-            data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            inputs (TransformSamplingInput): Preprocessed volume targets and shared sampling metadata.
             sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
-            dict[str, Any]: Dictionary containing crop coordinates and optional padding parameters
+            TransformParameterPlan: Plan containing crop coordinates and optional padding parameters
 
         """
-        z, h, w = _get_volume_spatial_shape(data)
+        z, h, w = _sampling_volume_shape(inputs)
         target_z, target_h, target_w = self.size
 
         # Get padding params if needed
@@ -1351,10 +1320,12 @@ class CenterCrop3D(BaseCropAndPad3D):
             w_start + target_w,
         )
 
-        return {
-            "crop_coords": crop_coords,
-            "pad_params": pad_params,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "crop_coords": crop_coords,
+                "pad_params": pad_params,
+            }
+        )
 
 
 class RandomCrop3D(BaseCropAndPad3D):
@@ -1443,23 +1414,21 @@ class RandomCrop3D(BaseCropAndPad3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        """Calculate random crop coordinates from volume shape and self.size. Returns dict with
+    ) -> TransformParameterPlan:
+        """Calculate random crop coordinates from volume shape and self.size as a structured plan with
         crop_coords (z_min, z_max, y_min, y_max, x_min, x_max). For RandomCrop3D.
 
         Args:
-            params (dict[str, Any]): Dictionary of existing parameters
-            data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            inputs (TransformSamplingInput): Preprocessed volume targets and shared sampling metadata.
             sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
-            dict[str, Any]: Dictionary containing randomly generated crop coordinates and optional padding parameters
+            TransformParameterPlan: Plan containing randomly generated crop coordinates and optional padding parameters
 
         """
-        z, h, w = _get_volume_spatial_shape(data)
+        z, h, w = _sampling_volume_shape(inputs)
         target_z, target_h, target_w = self.size
 
         # Get padding params if needed
@@ -1489,10 +1458,12 @@ class RandomCrop3D(BaseCropAndPad3D):
             w_start + target_w,
         )
 
-        return {
-            "crop_coords": crop_coords,
-            "pad_params": pad_params,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "crop_coords": crop_coords,
+                "pad_params": pad_params,
+            }
+        )
 
 
 class CoarseDropout3D(Transform3D):
@@ -1660,23 +1631,21 @@ class CoarseDropout3D(Transform3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        """Generate hole parameters for CoarseDropout3D from volume shape. Returns dict with holes
+    ) -> TransformParameterPlan:
+        """Generate hole parameters for CoarseDropout3D from volume shape as a structured plan with holes
         (n, 6) and params. Uses depth/height/width ranges, num_holes.
 
         Args:
-            params (dict[str, Any]): Dictionary of existing parameters
-            data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            inputs (TransformSamplingInput): Preprocessed volume targets and shared sampling metadata.
             sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
-            dict[str, Any]: Dictionary containing generated hole parameters for dropout
+            TransformParameterPlan: Plan containing generated hole parameters for dropout
 
         """
-        volume_shape = _get_volume_spatial_shape(data)
+        volume_shape = _sampling_volume_shape(inputs)
 
         num_holes = sampling.py_random.randint(*self.num_holes_range)
 
@@ -1709,7 +1678,7 @@ class CoarseDropout3D(Transform3D):
             },
         )
 
-        return {"holes": holes}
+        return TransformParameterPlan.shared_only({"holes": holes})
 
     def apply_to_volume(self, volume: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
         if holes.size == 0:
@@ -1821,16 +1790,17 @@ class Flip3D(Transform3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         flip_axes = self.flip_axes
         if flip_axes is None:
             flip_axes = tuple(axis for axis in self.axes if sampling.py_random.random() < 0.5)
 
         sampling.applied_overrides["flip_axes"] = flip_axes
-        return {"flip_axes": flip_axes, "volume_shape": _get_volume_spatial_shape(data)}
+        return TransformParameterPlan.shared_only(
+            {"flip_axes": flip_axes, "volume_shape": _sampling_volume_shape(inputs)}
+        )
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Return the Flip3D semantic-mapping event for a realized orientation-reversing reflection, allowing mask3d
@@ -1958,25 +1928,25 @@ class CubicSymmetry(Transform3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        """Generate cubic symmetry params: random index 0-47. Returns dict with index for
+    ) -> TransformParameterPlan:
+        """Generate cubic symmetry parameters: random index 0-47. Returns a structured plan with index for
         transform_cube and transform_cube_keypoints. For CubicSymmetry.
 
         Args:
-            params (dict[str, Any]): Dictionary of existing parameters
-            data (dict[str, Any]): Dictionary containing input data with volume, mask, etc.
+            inputs (TransformSamplingInput): Preprocessed volume targets and shared sampling metadata.
             sampling (SamplingContext): Call-local random streams and applied-configuration capture.
 
         Returns:
-            dict[str, Any]: Dictionary containing the randomly selected transformation index
+            TransformParameterPlan: Plan containing the randomly selected transformation index
 
         """
         # Randomly select one of 48 possible transformations
-        volume_shape = _get_volume_shape(data)
-        return {"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape}
+        volume_shape = _sampling_volume_shape(inputs)
+        return TransformParameterPlan.shared_only(
+            {"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape}
+        )
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Return the CubicSymmetry mapping event for a rotoreflection, while pure cube rotations preserve class
@@ -2072,10 +2042,9 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         axis_pair = self.axis_pair if self.axis_pair is not None else sampling.py_random.choice(self.axis_pairs)
         if self.group_element is not None:
             group_element = self.group_element
@@ -2085,11 +2054,13 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         rotation_count = cast("RotationCount3D", fgeometric.C4_GROUP_ELEMENT_TO_K[group_element])
 
         sampling.applied_overrides.update({"axis_pair": axis_pair, "group_element": group_element})
-        return {
-            "axis_pair": axis_pair,
-            "rotation_count": rotation_count,
-            "volume_shape": _get_volume_spatial_shape(data),
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "axis_pair": axis_pair,
+                "rotation_count": rotation_count,
+                "volume_shape": _sampling_volume_shape(inputs),
+            }
+        )
 
     def apply_to_volume(
         self,
@@ -2234,11 +2205,10 @@ class GridShuffle3D(Transform3D):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray | list[int]]:
-        volume_shape = _get_volume_spatial_shape(data)
+    ) -> TransformParameterPlan:
+        volume_shape = _sampling_volume_shape(inputs)
 
         original_tiles = f3d.split_uniform_grid_3d(
             volume_shape,
@@ -2251,4 +2221,4 @@ class GridShuffle3D(Transform3D):
             sampling.random_generator,
         )
 
-        return {"tiles": original_tiles, "mapping": mapping}
+        return TransformParameterPlan.shared_only({"tiles": original_tiles, "mapping": mapping})

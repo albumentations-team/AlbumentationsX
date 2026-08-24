@@ -5,6 +5,12 @@ from typing import Annotated, Any, Literal, TypedDict, cast
 from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import (
+    TargetParameterGroup,
+    TransformParameterPlan,
+    TransformSamplingInput,
+    requirements_for_views,
+)
 
 from ._color_shared import (
     CV2_INTER_LINEAR,
@@ -27,6 +33,19 @@ from ._color_shared import (
     nondecreasing,
     np,
 )
+
+
+def _rgb_shift_shape(view: Any) -> tuple[int, int, int]:
+    shape = view.descriptor.shape
+    if shape is None:
+        raise ValueError(f"RGBShift target {view.name!r} has no shape")
+    if view.canonical_type == "volume":
+        return (shape[1], shape[2], view.descriptor.channels or 1)
+    spatial_shape = view.descriptor.spatial_shape
+    if spatial_shape is None:
+        raise ValueError(f"RGBShift target {view.name!r} has no spatial shape")
+    return (*spatial_shape[-2:], view.descriptor.channels or 1)
+
 
 ColorRange = tuple[tuple[int, int, int], tuple[int, int, int]]
 
@@ -140,10 +159,9 @@ class ColorJitter(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         brightness = sampling.py_random.uniform(*self.brightness_range)
         contrast = sampling.py_random.uniform(*self.contrast_range)
         saturation = sampling.py_random.uniform(*self.saturation_range)
@@ -168,13 +186,15 @@ class ColorJitter(ImageOnlyTransform):
             order = [o for o in order if o not in ("brightness", "contrast")]
             order.insert(min(idx_b, idx_c), merged)
 
-        return {
-            "brightness": brightness,
-            "contrast": contrast,
-            "saturation": saturation,
-            "hue": hue,
-            "order": order,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "brightness": brightness,
+                "contrast": contrast,
+                "saturation": saturation,
+                "hue": hue,
+                "order": order,
+            }
+        )
 
     def apply(
         self,
@@ -303,10 +323,9 @@ class ChromaticAberration(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, float]:
+    ) -> TransformParameterPlan:
         primary_distortion_red = sampling.py_random.uniform(*self.primary_distortion_range)
         secondary_distortion_red = sampling.py_random.uniform(
             *self.secondary_distortion_range,
@@ -352,12 +371,14 @@ class ChromaticAberration(ImageOnlyTransform):
                 "secondary_distortion_range": (secondary_distortion_red, secondary_distortion_blue),
             },
         )
-        return {
-            "primary_distortion_red": primary_distortion_red,
-            "secondary_distortion_red": secondary_distortion_red,
-            "primary_distortion_blue": primary_distortion_blue,
-            "secondary_distortion_blue": secondary_distortion_blue,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "primary_distortion_red": primary_distortion_red,
+                "secondary_distortion_red": secondary_distortion_red,
+                "primary_distortion_blue": primary_distortion_blue,
+                "secondary_distortion_blue": secondary_distortion_blue,
+            }
+        )
 
     @staticmethod
     def _match_sign(a: float, b: float) -> float:
@@ -540,10 +561,9 @@ class PlanckianJitter(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         sampling_prob_boundary = PLANKIAN_JITTER_CONST["SAMPLING_TEMP_PROB"]
         sampling_temp_boundary = PLANKIAN_JITTER_CONST["WHITE_TEMP"]
 
@@ -598,7 +618,7 @@ class PlanckianJitter(ImageOnlyTransform):
                 ),
             },
         )
-        return {"temperature": int(temperature)}
+        return TransformParameterPlan.shared_only({"temperature": int(temperature)})
 
 
 class RGBShift(AdditiveNoise):
@@ -711,29 +731,42 @@ class RGBShift(AdditiveNoise):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        metadata = self.get_image_data(data)
-        result = self._sample_noise_map(
-            (metadata["height"], metadata["width"], metadata["num_channels"]),
-            MAX_VALUES_BY_DTYPE[metadata["dtype"]],
-            sampling,
-        )
-        if "volume" in data:
-            result["volume_noise_map"] = result["noise_map"]
+    ) -> TransformParameterPlan:
+        groups: list[TargetParameterGroup] = []
+        for views in inputs.targets.group_image_like_by(
+            lambda view: (
+                _rgb_shift_shape(view),
+                view.descriptor.dtype_scale,
+                "image_2d",
+            ),
+        ):
+            view = views[0]
+            shape = _rgb_shift_shape(view)
+            sampled = self._sample_noise_map(shape, MAX_VALUES_BY_DTYPE[view.value.dtype], sampling)
 
-        # spatial_mode="constant" produces a (C,) noise_map of per-channel shifts already
-        # scaled to image dtype (uint8: [-255, 255], float: [-1, 1]). Record them as sampled scalars.
-        noise_map = result.get("noise_map")
-        if noise_map is not None and noise_map.size >= 3:
-            shifts = noise_map.reshape(-1)[:3].tolist()
-            sampling.applied_overrides["r_shift_range"] = float(shifts[0])
-            sampling.applied_overrides["g_shift_range"] = float(shifts[1])
-            sampling.applied_overrides["b_shift_range"] = float(shifts[2])
+            # spatial_mode="constant" produces a (C,) noise_map of per-channel shifts already
+            # scaled to image dtype (uint8: [-255, 255], float: [-1, 1]). Record them as sampled scalars.
+            noise_map = sampled.get("noise_map")
+            if noise_map is not None and noise_map.size >= 3:
+                shifts = noise_map.reshape(-1)[:3].tolist()
+                sampling.applied_overrides["r_shift_range"] = float(shifts[0])
+                sampling.applied_overrides["g_shift_range"] = float(shifts[1])
+                sampling.applied_overrides["b_shift_range"] = float(shifts[2])
 
-        return result
+            groups.append(
+                TargetParameterGroup(
+                    targets=tuple(item.name for item in views),
+                    params=sampled,
+                    requirements=requirements_for_views(
+                        views,
+                        dtype=True,
+                    ),
+                ),
+            )
+
+        return TransformParameterPlan(shared={}, groups=tuple(groups))
 
 
 class HEStain(ImageOnlyTransform):
@@ -1037,11 +1070,11 @@ class HEStain(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         # Get stain matrix
+        data = inputs.data
         if "image" in data:
             image = data["image"]
         elif "images" in data:
@@ -1086,11 +1119,13 @@ class HEStain(ImageOnlyTransform):
             },
         )
 
-        return {
-            "stain_matrix": stain_matrix,
-            "scale_factors": scale_factors,
-            "shift_values": shift_values,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "stain_matrix": stain_matrix,
+                "scale_factors": scale_factors,
+                "shift_values": shift_values,
+            }
+        )
 
 
 class PhotoMetricDistort(ImageOnlyTransform):
@@ -1216,13 +1251,9 @@ class PhotoMetricDistort(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        shape = params["shape"]
-        num_channels = 1 if len(shape) == 2 else shape[-1]
-
+    ) -> TransformParameterPlan:
         brightness_factor = (
             sampling.py_random.uniform(*self.brightness_range) if sampling.py_random.random() < self.distort_p else None
         )
@@ -1238,13 +1269,6 @@ class PhotoMetricDistort(ImageOnlyTransform):
         # contrast_before controls where contrast sits relative to sat/hue; brightness always precedes contrast
         contrast_before = sampling.py_random.random() < 0.5
 
-        if sampling.py_random.random() < self.distort_p and num_channels > 1:
-            ch_arr = list(range(num_channels))
-            sampling.py_random.shuffle(ch_arr)
-            channel_permutation: list[int] | None = ch_arr
-        else:
-            channel_permutation = None
-
         applied: dict[str, Any] = {}
         if brightness_factor is not None:
             applied["brightness_range"] = brightness_factor
@@ -1256,14 +1280,31 @@ class PhotoMetricDistort(ImageOnlyTransform):
             applied["hue_range"] = hue_factor
         sampling.applied_overrides.update(applied)
 
-        return {
-            "brightness_factor": brightness_factor,
-            "contrast_factor": contrast_factor,
-            "saturation_factor": saturation_factor,
-            "hue_factor": hue_factor,
-            "contrast_before": contrast_before,
-            "channel_permutation": channel_permutation,
-        }
+        groups: list[TargetParameterGroup] = []
+        for views in inputs.targets.group_image_like_by(lambda view: view.descriptor.channels):
+            num_channels = views[0].descriptor.channels or 1
+            if sampling.py_random.random() < self.distort_p and num_channels > 1:
+                channel_permutation = list(range(num_channels))
+                sampling.py_random.shuffle(channel_permutation)
+            else:
+                channel_permutation = None
+            groups.append(
+                TargetParameterGroup(
+                    targets=tuple(view.name for view in views),
+                    params={"channel_permutation": channel_permutation},
+                    requirements=requirements_for_views(views, channels=True),
+                ),
+            )
+        return TransformParameterPlan(
+            shared={
+                "brightness_factor": brightness_factor,
+                "contrast_factor": contrast_factor,
+                "saturation_factor": saturation_factor,
+                "hue_factor": hue_factor,
+                "contrast_before": contrast_before,
+            },
+            groups=tuple(groups),
+        )
 
     def apply(
         self,

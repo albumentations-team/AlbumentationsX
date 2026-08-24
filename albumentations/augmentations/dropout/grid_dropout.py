@@ -14,6 +14,7 @@ import albumentations.augmentations.dropout.functional as fdropout
 from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema, DropoutFillValue
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 
 __all__ = ["GridDropout"]
 
@@ -138,38 +139,37 @@ class GridDropout(BaseDropout):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"]
-        if self.holes_number_xy:
-            grid = self.holes_number_xy
-        else:
-            # Calculate grid based on unit_size_range or default
-            unit_height, unit_width = fdropout.calculate_grid_dimensions(
+    ) -> TransformParameterPlan:
+        def materialize(image_shape: tuple[int, int], _: tuple[Any, ...]) -> dict[str, Any]:
+            if self.holes_number_xy:
+                grid = self.holes_number_xy
+            else:
+                unit_height, unit_width = fdropout.calculate_grid_dimensions(
+                    image_shape,
+                    self.unit_size_range,
+                    self.holes_number_xy,
+                    sampling.random_generator,
+                )
+                grid = (image_shape[0] // unit_height, image_shape[1] // unit_width)
+
+            holes = fdropout.generate_grid_holes(
                 image_shape,
-                self.unit_size_range,
-                self.holes_number_xy,
+                grid,
+                self.ratio,
+                self.random_offset,
+                self.shift_xy,
                 sampling.random_generator,
             )
-            grid = (image_shape[0] // unit_height, image_shape[1] // unit_width)
 
-        holes = fdropout.generate_grid_holes(
-            image_shape,
-            grid,
-            self.ratio,
-            self.random_offset,
-            self.shift_xy,
-            sampling.random_generator,
-        )
+            sampling.applied_overrides.update(
+                {
+                    "holes_number_xy": grid,
+                    "ratio": self.ratio,
+                    "shift_xy": self.shift_xy,
+                },
+            )
+            return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
 
-        sampling.applied_overrides.update(
-            {
-                "holes_number_xy": grid,
-                "ratio": self.ratio,
-                "shift_xy": self.shift_xy,
-            },
-        )
-
-        return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
+        return self._build_spatial_parameter_plan(inputs, materialize)

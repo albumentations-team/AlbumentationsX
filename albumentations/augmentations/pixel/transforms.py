@@ -29,6 +29,12 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
+from albumentations.core.transform_params import (
+    TargetParameterGroup,
+    TransformParameterPlan,
+    TransformSamplingInput,
+    requirements_for_views,
+)
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
@@ -432,25 +438,26 @@ class Sharpen(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         alpha = sampling.py_random.uniform(*self.alpha_range)
 
         if self.method == "kernel":
             lightness = sampling.py_random.uniform(*self.lightness_range)
             sampling.applied_overrides.update({"alpha_range": alpha, "lightness_range": lightness})
-            return {
-                "alpha": alpha,
-                "sharpening_matrix": self.__generate_sharpening_matrix(
-                    alpha,
-                    lightness,
-                ),
-            }
+            return TransformParameterPlan.shared_only(
+                {
+                    "alpha": alpha,
+                    "sharpening_matrix": self.__generate_sharpening_matrix(
+                        alpha,
+                        lightness,
+                    ),
+                }
+            )
 
         sampling.applied_overrides["alpha_range"] = alpha
-        return {"alpha": alpha, "sharpening_matrix": None}
+        return TransformParameterPlan.shared_only({"alpha": alpha, "sharpening_matrix": None})
 
     def apply(
         self,
@@ -555,10 +562,9 @@ class Emboss(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray]:
+    ) -> TransformParameterPlan:
         alpha = sampling.py_random.uniform(*self.alpha_range)
         strength = sampling.py_random.uniform(*self.strength_range)
         emboss_matrix = self.__generate_emboss_matrix(
@@ -566,7 +572,7 @@ class Emboss(ImageOnlyTransform):
             strength_sample=strength,
         )
         sampling.applied_overrides.update({"alpha_range": alpha, "strength_range": strength})
-        return {"emboss_matrix": emboss_matrix}
+        return TransformParameterPlan.shared_only({"emboss_matrix": emboss_matrix})
 
     def apply(
         self,
@@ -672,15 +678,14 @@ class Enhance(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         alpha = sampling.py_random.uniform(*self.alpha_range)
         # Record the resolved scalar (not the range) for replay/debug, per the
         # applied record contract documented on get_applied_config.
         sampling.applied_overrides["alpha_range"] = alpha
-        return {"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)}
+        return TransformParameterPlan.shared_only({"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)})
 
     def apply(
         self,
@@ -814,17 +819,18 @@ class Superpixels(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         n_segments = sampling.py_random.randint(*self.n_segments_range)
         p = sampling.py_random.uniform(*self.p_replace_range)
         sampling.applied_overrides.update({"n_segments_range": n_segments, "p_replace_range": p})
-        return {
-            "replace_samples": sampling.random_generator.random(n_segments) < p,
-            "n_segments": n_segments,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "replace_samples": sampling.random_generator.random(n_segments) < p,
+                "n_segments": n_segments,
+            }
+        )
 
     def apply(
         self,
@@ -943,10 +949,9 @@ class RingingOvershoot(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray]:
+    ) -> TransformParameterPlan:
         ksize = sampling.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
         if ksize % 2 == 0:
             ksize += 1
@@ -971,7 +976,7 @@ class RingingOvershoot(ImageOnlyTransform):
         kernel = kernel.astype(np.float32) / reduce_sum(kernel)
 
         sampling.applied_overrides.update({"blur_range": ksize, "cutoff_range": cutoff})
-        return {"kernel": kernel}
+        return TransformParameterPlan.shared_only({"kernel": kernel})
 
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel)
@@ -1080,15 +1085,14 @@ class UnsharpMask(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         ksize = sampling.py_random.randrange(self.blur_range[0], self.blur_range[1] + 1, 2)
         sigma = sampling.py_random.uniform(*self.sigma_range)
         alpha = sampling.py_random.uniform(*self.alpha_range)
         sampling.applied_overrides.update({"blur_range": ksize, "sigma_range": sigma, "alpha_range": alpha})
-        return {"ksize": ksize, "sigma": sigma, "alpha": alpha}
+        return TransformParameterPlan.shared_only({"ksize": ksize, "sigma": sigma, "alpha": alpha})
 
     def apply(
         self,
@@ -1323,29 +1327,46 @@ class Dithering(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         sampling.applied_overrides["noise_range"] = self.noise_range
         if self.method != "random":
-            return {"random_noise": None}
-
-        height, width = params["shape"][:2]
-        channels = params["shape"][2] if len(params["shape"]) > 2 else 1
-        per_item_noise_shape = (height, width, 1) if self.color_mode == "grayscale" else (height, width, channels)
-        item_count = len(data["images"]) if "images" in data else len(data["volume"]) if "volume" in data else 1
-        noise_shape = per_item_noise_shape if item_count == 1 else (item_count, *per_item_noise_shape)
-        dtype = self.get_image_data(data)["dtype"]
-        if dtype == np.uint8:
-            random_noise = sampling.random_generator.uniform(
-                self.noise_range[0] * 255,
-                self.noise_range[1] * 255,
-                size=noise_shape,
-            ).astype(np.int16)
-        else:
-            random_noise = sampling.random_generator.uniform(*self.noise_range, size=noise_shape)
-        return {"random_noise": random_noise}
+            return TransformParameterPlan.shared_only({"random_noise": None})
+        groups: list[TargetParameterGroup] = []
+        for views in inputs.targets.group_image_like_by(
+            lambda view: (
+                view.descriptor.shape,
+                view.descriptor.dtype_scale,
+                view.descriptor.sampling_topology,
+            ),
+        ):
+            view = views[0]
+            shape = view.descriptor.shape
+            spatial_shape = view.descriptor.spatial_shape
+            if shape is None or spatial_shape is None:
+                raise ValueError("Dithering requires image-like targets with known shapes")
+            height, width = spatial_shape[-2:]
+            channels = view.descriptor.channels or 1
+            per_item_noise_shape = (height, width, 1) if self.color_mode == "grayscale" else (height, width, channels)
+            item_count = shape[0] if view.canonical_type in {"images", "volume"} else 1
+            noise_shape = per_item_noise_shape if item_count == 1 else (item_count, *per_item_noise_shape)
+            if view.descriptor.dtype == np.uint8:
+                random_noise = sampling.random_generator.uniform(
+                    self.noise_range[0] * 255,
+                    self.noise_range[1] * 255,
+                    size=noise_shape,
+                ).astype(np.int16)
+            else:
+                random_noise = sampling.random_generator.uniform(*self.noise_range, size=noise_shape)
+            groups.append(
+                TargetParameterGroup(
+                    targets=tuple(target.name for target in views),
+                    params={"random_noise": random_noise},
+                    requirements=requirements_for_views(views, shape=True, dtype=True, sampling_topology=True),
+                ),
+            )
+        return TransformParameterPlan(shared={}, groups=tuple(groups))
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         random_noise = params.pop("random_noise", None)
@@ -1439,17 +1460,18 @@ class Halftone(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         dot_size = sampling.py_random.randint(*self.dot_size_range)
         blend = sampling.py_random.uniform(*self.blend_range)
         sampling.applied_overrides.update({"dot_size_range": dot_size, "blend_range": blend})
-        return {
-            "dot_size": dot_size,
-            "blend": blend,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "dot_size": dot_size,
+                "blend": blend,
+            }
+        )
 
 
 class LensFlare(ImageOnlyTransform):
@@ -1584,56 +1606,62 @@ class LensFlare(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+    ) -> TransformParameterPlan:
         x_min, y_min, x_max, y_max = self.flare_roi
-
-        fx_lo = min(int(x_min * width), width - 1)
-        fx_hi = min(int(x_max * width), width - 1)
-        fx = sampling.py_random.randint(fx_lo, max(fx_lo, fx_hi))
-        fy_lo = min(int(y_min * height), height - 1)
-        fy_hi = min(int(y_max * height), height - 1)
-        fy = sampling.py_random.randint(fy_lo, max(fy_lo, fy_hi))
-
         intensity = sampling.py_random.uniform(*self.intensity_range)
-        num_rays = sampling.py_random.randint(*self.num_rays_range)
-        num_ghosts = sampling.py_random.randint(*self.num_ghosts_range)
-
-        base_angle = sampling.py_random.uniform(0, math.pi / num_rays) if num_rays > 0 else 0
-        starburst_angles = np.array(
-            [base_angle + i * math.pi / num_rays for i in range(num_rays * 2)],
-            dtype=np.float32,
-        )
-
-        cx, cy = width // 2, height // 2
-        ghosts = []
-        for i in range(num_ghosts):
-            t = (i + 1) / (num_ghosts + 1)
-            gx = int(fx + (cx - fx) * 2 * t)
-            gy = int(fy + (cy - fy) * 2 * t)
-            gradius = max(2, int(min(height, width) * 0.02 * (1.0 - t * 0.5)))
-            galpha = intensity * (1.0 - t * 0.6)
-            ghosts.append((gx, gy, gradius, galpha))
-
-        diag = math.sqrt(height**2 + width**2)
-        bloom_frac = sampling.py_random.uniform(*self.bloom_range)
-        bloom_radius = max(1, int(diag * bloom_frac)) | 1
-
         sampling.applied_overrides.update(
             {
                 "intensity_range": intensity,
-                "num_rays_range": num_rays,
-                "num_ghosts_range": num_ghosts,
-                "bloom_range": bloom_frac,
+                "num_rays_range": self.num_rays_range,
+                "num_ghosts_range": self.num_ghosts_range,
+                "bloom_range": self.bloom_range,
             },
         )
-        return {
-            "flare_center": (fx, fy),
-            "ghosts": ghosts,
-            "starburst_angles": starburst_angles,
-            "starburst_intensity": intensity,
-            "bloom_radius": bloom_radius,
-        }
+        groups = []
+        for views in inputs.targets.group_image_like_by(
+            lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("LensFlare requires image-like targets with known shapes")
+            height, width = spatial_shape[-2:]
+            fx_lo = min(int(x_min * width), width - 1)
+            fx_hi = min(int(x_max * width), width - 1)
+            fx = sampling.py_random.randint(fx_lo, max(fx_lo, fx_hi))
+            fy_lo = min(int(y_min * height), height - 1)
+            fy_hi = min(int(y_max * height), height - 1)
+            fy = sampling.py_random.randint(fy_lo, max(fy_lo, fy_hi))
+            num_rays = sampling.py_random.randint(*self.num_rays_range)
+            num_ghosts = sampling.py_random.randint(*self.num_ghosts_range)
+            base_angle = sampling.py_random.uniform(0, math.pi / num_rays) if num_rays > 0 else 0
+            starburst_angles = np.array(
+                [base_angle + i * math.pi / num_rays for i in range(num_rays * 2)],
+                dtype=np.float32,
+            )
+            cx, cy = width // 2, height // 2
+            ghosts = []
+            for i in range(num_ghosts):
+                t = (i + 1) / (num_ghosts + 1)
+                gx = int(fx + (cx - fx) * 2 * t)
+                gy = int(fy + (cy - fy) * 2 * t)
+                gradius = max(2, int(min(height, width) * 0.02 * (1.0 - t * 0.5)))
+                galpha = intensity * (1.0 - t * 0.6)
+                ghosts.append((gx, gy, gradius, galpha))
+            diag = math.sqrt(height**2 + width**2)
+            bloom_frac = sampling.py_random.uniform(*self.bloom_range)
+            bloom_radius = max(1, int(diag * bloom_frac)) | 1
+            groups.append(
+                TargetParameterGroup(
+                    targets=tuple(view.name for view in views),
+                    params={
+                        "flare_center": (fx, fy),
+                        "ghosts": ghosts,
+                        "starburst_angles": starburst_angles,
+                        "bloom_radius": bloom_radius,
+                    },
+                    requirements=requirements_for_views(views),
+                ),
+            )
+        return TransformParameterPlan(shared={"starburst_intensity": intensity}, groups=tuple(groups))

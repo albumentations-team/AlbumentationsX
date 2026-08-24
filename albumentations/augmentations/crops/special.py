@@ -1,10 +1,11 @@
 """Specialized crop transforms."""
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -181,10 +182,10 @@ class CropNonEmptyMaskIfExists(BaseCrop):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
+        data = inputs.data
         if "mask" in data:
             mask = self._preprocess_mask(data["mask"])
         elif "masks" in data and len(data["masks"]):
@@ -219,7 +220,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         x_max = x_min + self.width
         y_max = y_min + self.height
 
-        return {"crop_coords": (x_min, y_min, x_max, y_max)}
+        return TransformParameterPlan.shared_only({"crop_coords": (x_min, y_min, x_max, y_max)})
 
 
 class RandomCropNearBBox(BaseCrop):
@@ -270,13 +271,13 @@ class RandomCropNearBBox(BaseCrop):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, tuple[float, ...]]:
+    ) -> TransformParameterPlan:
+        data = inputs.data
         bbox = data[self.cropping_bbox_key]
 
-        image_shape = params["shape"][:2]
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
 
         bbox = self._clip_bbox(bbox, image_shape)
 
@@ -295,7 +296,7 @@ class RandomCropNearBBox(BaseCrop):
             crop_shape = (bbox[3] - bbox[1], bbox[2] - bbox[0])
             crop_coords = fcrops.get_center_crop_coords(image_shape, crop_shape)
 
-        return {"crop_coords": crop_coords}
+        return TransformParameterPlan.shared_only({"crop_coords": crop_coords})
 
     @property
     def targets_as_params(self) -> list[str]:
@@ -435,11 +436,10 @@ class RandomCropFromBorders(BaseCrop):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, tuple[int, int, int, int]]:
-        height, width = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        height, width = inputs.require_spatial_frame().spatial_shape_2d
 
         x_min = sampling.py_random.randint(0, int(self.crop_left * width))
         x_max = sampling.py_random.randint(max(x_min + 1, int((1 - self.crop_right) * width)), width)
@@ -458,7 +458,7 @@ class RandomCropFromBorders(BaseCrop):
             },
         )
 
-        return {"crop_coords": crop_coords}
+        return TransformParameterPlan.shared_only({"crop_coords": crop_coords})
 
 
 __all__ = [

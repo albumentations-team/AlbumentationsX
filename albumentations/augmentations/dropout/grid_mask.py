@@ -14,6 +14,7 @@ from albumentations.augmentations.dropout import functional as fdropout
 from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema, DropoutFillValue
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 
 __all__ = ["GridMask"]
 
@@ -96,30 +97,29 @@ class GridMask(BaseDropout):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        def materialize(image_shape: tuple[int, int], _: tuple[Any, ...]) -> dict[str, Any]:
+            num_grid = sampling.py_random.randint(*self.num_grid_range)
+            line_width_ratio = sampling.py_random.uniform(*self.line_width_range)
+            rotation = sampling.py_random.uniform(*self.rotation_range)
 
-        num_grid = sampling.py_random.randint(*self.num_grid_range)
-        line_width_ratio = sampling.py_random.uniform(*self.line_width_range)
-        rotation = sampling.py_random.uniform(*self.rotation_range)
+            holes = fdropout.generate_grid_mask_holes(
+                image_shape,
+                num_grid,
+                line_width_ratio,
+                rotation,
+                sampling.random_generator,
+            )
 
-        holes = fdropout.generate_grid_mask_holes(
-            image_shape,
-            num_grid,
-            line_width_ratio,
-            rotation,
-            sampling.random_generator,
-        )
+            sampling.applied_overrides.update(
+                {
+                    "num_grid_range": num_grid,
+                    "line_width_range": line_width_ratio,
+                    "rotation_range": rotation,
+                },
+            )
+            return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
 
-        sampling.applied_overrides.update(
-            {
-                "num_grid_range": num_grid,
-                "line_width_range": line_width_ratio,
-                "rotation_range": rotation,
-            },
-        )
-
-        return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
+        return self._build_spatial_parameter_plan(inputs, materialize)

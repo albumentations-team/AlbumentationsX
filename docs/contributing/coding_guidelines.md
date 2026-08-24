@@ -51,8 +51,8 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 - Pyrefly runs through the official pre-commit hook in system mode, using the same `uv` environment as CI.
 
 The repository-specific deterministic rules run through one package-wide hook:
-`pre-commit run check-ax-coding-guidance --all-files`. It emits `AXG001`–`AXG020` diagnostics for transform API,
-sampling, schema, naming, performance-shape, documentation, and bbox propagation contracts. The public
+`pre-commit run check-ax-coding-guidance --all-files`. It emits `AXG001`–`AXG023` diagnostics for transform API,
+sampling, schema, naming, performance-shape, documentation, bbox propagation, and target-plan contracts. The public
 `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional; all internal transform, processor, and
 functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
 review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.codex/skills/` point to
@@ -263,7 +263,7 @@ Instead, follow this preferred pattern:
 
 1. **Pass the auxiliary data** within the main `data` dictionary provided to the transform's `__call__` method, using a descriptive key (e.g., `mosaic_metadata`, `copy_paste_metadata`).
 2. **Declare this key** in the transform's `targets_as_params` property. This signals to `Compose` that the key should be extracted and forwarded to `sample_parameters`.
-3. **Access the data** inside `sample_parameters` using `data.get("your_metadata_key")`.
+3. **Access the data** inside `sample_parameters` using `inputs.data.get("your_metadata_key")`.
 4. **Define empty metadata deliberately**. A transform may no-op or use a documented fallback; it must not reach into a
    dataset or another global donor source to fill the gap.
 
@@ -367,22 +367,26 @@ applied-configuration record. Do not read RNG state from the transform instance 
 
 ```python
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 
 
 def sample_parameters(
     self,
-    params: dict[str, Any],
-    data: dict[str, Any],
+    inputs: TransformSamplingInput,
     sampling: SamplingContext,
-) -> dict[str, Any]:
+) -> TransformParameterPlan:
     brightness = sampling.py_random.uniform(*self.brightness_range)
-    noise = sampling.random_generator.uniform(-1, 1, size=params["shape"])
+    height, width = inputs.require_spatial_frame().spatial_shape_2d
+    noise = sampling.random_generator.uniform(-1, 1, size=(height, width))
     sampling.applied_overrides["brightness_range"] = brightness
-    return {"brightness": brightness, "noise": noise}
+    return TransformParameterPlan.shared_only({"brightness": brightness, "noise": noise})
 ```
 
 Use `sampling.py_random` for a few scalar choices. Use `sampling.random_generator` for array-valued draws. Generate
-all stochastic parameters before `apply`, then pass the generated values to `apply` through the returned dictionary.
+all stochastic parameters before `apply`, then pass them through a `TransformParameterPlan`. Shared values go in
+`plan.shared`; representation-dependent values belong in `TargetParameterGroup` entries addressed by actual target key.
+Use `inputs.targets` and its descriptors for channel, dtype, layout, topology, or target-content decisions. Do not derive
+those decisions from the first-target `inputs.base_params["shape"]` field.
 
 ## Transform Development
 
@@ -417,36 +421,36 @@ does not apply to `Compose` orchestration such as `apply_in_invocation`; it is e
 
 #### Using sample_parameters
 
-This method provides access to image shape and target data for parameter generation:
+This method provides the invocation-local target descriptors, spatial frame, preprocessed data, and shared metadata for
+parameter generation:
 
 ```python
 def sample_parameters(
     self,
-    params: dict[str, Any],
-    data: dict[str, Any],
+    inputs: TransformSamplingInput,
     sampling: SamplingContext,
-) -> dict[str, Any]:
-    # Access image shape - always available
-    height, width = params["shape"][:2]
+) -> TransformParameterPlan:
+    # Shared geometry uses the declared frame; target-dependent code uses inputs.targets.
+    height, width = inputs.require_spatial_frame().spatial_shape_2d
 
-    # Access targets if they were passed to transform
-    image = data.get("image")  # Original image
-    mask = data.get("mask")  # Segmentation mask
-    bboxes = data.get("bboxes")  # Bounding boxes
-    keypoints = data.get("keypoints")  # Keypoint coordinates
+    # Auxiliary content is still available through inputs.data.
+    image = inputs.data.get("image")
+    mask = inputs.data.get("mask")
+    bboxes = inputs.data.get("bboxes")
+    keypoints = inputs.data.get("keypoints")
 
     # Example: Calculate parameters based on image size
     crop_size = min(height, width) // 2
     center_x = width // 2
     center_y = height // 2
 
-    return {"crop_size": crop_size, "center": (center_x, center_y)}
+    return TransformParameterPlan.shared_only({"crop_size": crop_size, "center": (center_x, center_y)})
 ```
 
 The method receives:
 
-- `params`: Dictionary containing image metadata, where `params["shape"]` is always available
-- `data`: Dictionary containing all targets passed to the transform
+- `inputs`: `TransformSamplingInput`, containing `base_params`, `spatial_frame`, the ordered `TargetSet`, and all preprocessed
+  data
 - `sampling`: Call-local Python and NumPy RNG streams plus the applied-configuration sink
 
 Use this method when you need to:
@@ -454,6 +458,10 @@ Use this method when you need to:
 - Calculate parameters based on image dimensions
 - Access target data for parameter generation
 - Ensure transform parameters are appropriate for the input data
+
+Never return a plain dictionary. For target-specific materialization, group by a transform-defined compatibility key and
+return `TargetParameterGroup(targets=..., params=..., requirements=...)`. The core stores the resulting schema in replay and
+rejects legacy flat payloads.
 
 ### Parameter Validation with `InitSchema`
 
@@ -524,6 +532,11 @@ If a transform only repeats inherited constructor inputs and explicitly forwards
 When it adds an input or changes an annotation, its non-empty schema must declare that input (`AXG020`).
 Compatibility aliases that deliberately preserve a parent validator's permissive boundary may retain an empty schema;
 they must not introduce new constructor fields.
+
+Sampling overrides must return `TransformParameterPlan` rather than a flat dictionary (`AXG021`), and must not derive
+target-sensitive values from first-target `base_params["shape"]` or legacy shape helpers (`AXG022`). Application methods
+use semantic parameter names; target routing belongs in plan groups rather than names such as `volume_noise_map`
+(`AXG023`).
 
 #### No `get_transform_init_args_names` Override
 
@@ -713,14 +726,14 @@ Examples:
     ...         super().__init__(*args, **kwargs)
     ...         # Add custom parameters here
     ...
-    ...     def sample_parameters(self, params, data, sampling):
-    ...         height, width = params["shape"][:2]
+    ...     def sample_parameters(self, inputs, sampling):
+    ...         height, width = inputs.require_spatial_frame().spatial_shape_2d
     ...         # Generate distortion maps
     ...         map_x = np.zeros((height, width), dtype=np.float32)
     ...         map_y = np.zeros((height, width), dtype=np.float32)
     ...         # Apply your custom distortion logic here
     ...         # ...
-    ...         return {"map_x": map_x, "map_y": map_y}
+    ...         return TransformParameterPlan.shared_only({"map_x": map_x, "map_y": map_y})
     >>>
     >>> # Prepare sample data
     >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)

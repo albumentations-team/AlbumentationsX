@@ -22,6 +22,7 @@ from albumentations.core.composition import (
     SomeOf,
 )
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import DualTransform, ImageOnlyTransform, NoOp
 from tests.conftest import (
     IMAGES,
@@ -123,7 +124,7 @@ def test_image_only_transform(image):
         with mock.patch.object(
             ImageOnlyTransform,
             "sample_parameters",
-            return_value={"interpolation": cv2.INTER_LINEAR},
+            return_value=TransformParameterPlan.shared_only({"interpolation": cv2.INTER_LINEAR}),
         ):
             aug = ImageOnlyTransform(p=1)
             data = aug(image=image, mask=mask)
@@ -140,7 +141,7 @@ def test_dual_transform(image):
     mask = image.copy()
 
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "sample_parameters", return_value={}):
+        with mock.patch.object(DualTransform, "sample_parameters", return_value=TransformParameterPlan.shared_only({})):
             aug = DualTransform(p=1)
             aug(image=image, mask=mask)
 
@@ -178,7 +179,7 @@ def test_additional_targets(image):
         with mock.patch.object(
             DualTransform,
             "sample_parameters",
-            return_value={"interpolation": cv2.INTER_LINEAR},
+            return_value=TransformParameterPlan.shared_only({"interpolation": cv2.INTER_LINEAR}),
         ):
             aug = DualTransform(p=1)
             aug.add_targets({"image2": "image"})
@@ -1486,7 +1487,7 @@ def test_mask_interpolation_someof(interpolation, compose):
 
 
 @pytest.mark.parametrize(
-    ["transform", "expected_param_keys"],
+    ["transform", "expected_shared_keys"],
     [
         (A.HorizontalFlip(p=1), {"shape"}),
         (A.VerticalFlip(p=1), {"shape"}),
@@ -1511,12 +1512,13 @@ def test_mask_interpolation_someof(interpolation, compose):
         ),
     ],
 )
-def test_transform_returns_params(transform, expected_param_keys):
+def test_transform_returns_params(transform, expected_shared_keys):
     image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
     transform(image=image)
     params = transform.get_applied_params()
     assert isinstance(params, dict)
-    assert set(params.keys()) == expected_param_keys
+    assert set(params) == {"parameter_schema", "target_schema", "shared", "groups"}
+    assert expected_shared_keys.issubset(params["shared"])
 
 
 @pytest.mark.parametrize(
@@ -2857,9 +2859,11 @@ def test_user_data_targets_as_params() -> None:
     class UserDataAwareTransform(A.NoOp):
         targets_as_params = ("user_data",)
 
-        def sample_parameters(self, params: dict, data: dict, sampling: SamplingContext) -> dict:
-            ud = data.get("user_data")
-            return {"seen_user_data": ud is not None, "ud_value": ud}
+        def sample_parameters(
+            self, inputs: TransformSamplingInput, sampling: SamplingContext
+        ) -> TransformParameterPlan:
+            ud = inputs.data.get("user_data")
+            return TransformParameterPlan.shared_only({"seen_user_data": ud is not None, "ud_value": ud})
 
         def apply_to_user_data(self, data: Any, **params: Any) -> Any:
             return {**data, "seen": params.get("seen_user_data", False)}
@@ -2924,9 +2928,9 @@ def test_applied_config_invalid_key_raises():
     """Transforms that set invalid applied_config keys must raise ValueError."""
 
     class BadTransform(A.NoOp):
-        def sample_parameters(self, params, data, sampling: SamplingContext):
+        def sample_parameters(self, inputs: TransformSamplingInput, sampling: SamplingContext):
             sampling.applied_overrides["not_a_real_constructor_param_xyz"] = 42
-            return {}
+            return TransformParameterPlan.shared_only({})
 
     aug = BadTransform(p=1.0)
     with pytest.raises(ValueError, match="not_a_real_constructor_param_xyz"):

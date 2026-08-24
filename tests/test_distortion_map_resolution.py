@@ -6,6 +6,7 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.invocation import SamplingContext
+from tests.utils import make_sampling_input
 
 DISTORTION_TRANSFORMS = [
     pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.2, 0.2)}, id="GridDistortion"),
@@ -59,10 +60,9 @@ def test_low_map_resolution_returns_full_size_maps(transform_cls, params):
     transform.set_random_seed(137)
 
     result = transform.sample_parameters(
-        {"shape": image.shape},
-        {"image": image},
+        make_sampling_input(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
-    )
+    ).shared
 
     assert result["map_x"].shape == image.shape[:2]
     assert result["map_y"].shape == image.shape[:2]
@@ -78,10 +78,9 @@ def test_low_map_resolution_returns_full_size_maps_for_tiny_images(transform_cls
     transform.set_random_seed(137)
 
     result = transform.sample_parameters(
-        {"shape": image.shape},
-        {"image": image},
+        make_sampling_input(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
-    )
+    ).shared
 
     assert result["map_x"].shape == image.shape[:2]
     assert result["map_y"].shape == image.shape[:2]

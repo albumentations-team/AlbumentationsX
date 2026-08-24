@@ -10,6 +10,12 @@ from pydantic import field_validator
 
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import (
+    TargetParameterGroup,
+    TransformParameterPlan,
+    TransformSamplingInput,
+    requirements_for_views,
+)
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
@@ -123,31 +129,38 @@ class ChannelShuffle(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        shape = params["shape"]
-        num_channels = 1 if len(shape) == 2 else shape[-1]
-
-        if self.channel_order is not None:
-            if num_channels != len(self.channel_order):
-                warnings.warn(
-                    f"channel_order has {len(self.channel_order)} elements "
-                    f"but data has {num_channels} channel(s); "
-                    f"returning data unchanged.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                return {"channels_shuffled": None}
-            return {"channels_shuffled": list(self.channel_order)}
-
-        if num_channels <= 1:
-            return {"channels_shuffled": None}
-
-        ch_arr = list(range(num_channels))
-        sampling.py_random.shuffle(ch_arr)
-        return {"channels_shuffled": ch_arr}
+    ) -> TransformParameterPlan:
+        groups: list[TargetParameterGroup] = []
+        for views in inputs.targets.group_image_like_by(lambda view: view.descriptor.channels):
+            view = views[0]
+            num_channels = view.descriptor.channels or 1
+            if self.channel_order is not None:
+                if num_channels != len(self.channel_order):
+                    warnings.warn(
+                        f"channel_order has {len(self.channel_order)} elements "
+                        f"but data has {num_channels} channel(s); "
+                        f"returning data unchanged.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    channels_shuffled = None
+                else:
+                    channels_shuffled = list(self.channel_order)
+            elif num_channels <= 1:
+                channels_shuffled = None
+            else:
+                channels_shuffled = list(range(num_channels))
+                sampling.py_random.shuffle(channels_shuffled)
+            groups.append(
+                TargetParameterGroup(
+                    targets=tuple(item.name for item in views),
+                    params={"channels_shuffled": channels_shuffled},
+                    requirements=requirements_for_views(views, channels=True),
+                ),
+            )
+        return TransformParameterPlan(shared={}, groups=tuple(groups))
 
 
 class ChannelSwap(ChannelShuffle):

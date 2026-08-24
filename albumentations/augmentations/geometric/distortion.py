@@ -51,6 +51,7 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -325,6 +326,8 @@ class ElasticTransform(BaseRemapTransform):
 
     """
 
+    _runtime_generated_params = frozenset({"map_x", "map_y"})
+
     class InitSchema(BaseRemapTransform.InitSchema):
         displacement_range: Annotated[
             tuple[float, float],
@@ -376,22 +379,24 @@ class ElasticTransform(BaseRemapTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
+        data = inputs.data
         del data
-        image_shape = params["shape"][:2]
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
         low, high = self.displacement_range
         magnitude = low if low == high else sampling.py_random.uniform(low, high)
         sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
 
         height, width = image_shape
         if magnitude == 0 or min(height - 1, width - 1) <= 0:
-            return {
-                "displacement_magnitude": magnitude,
-                "control_coefficients": [],
-            }
+            return TransformParameterPlan.shared_only(
+                {
+                    "displacement_magnitude": magnitude,
+                    "control_coefficients": [],
+                }
+            )
 
         random_values = sampling.random_generator.random((*self.control_grid_shape, 2), dtype=np.float32)
         radius = np.float32(magnitude * min(height - 1, width - 1))
@@ -400,10 +405,12 @@ class ElasticTransform(BaseRemapTransform):
         control_coefficients = np.empty((*self.control_grid_shape, 2), dtype=np.float32)
         control_coefficients[..., 0] = vector_radius * np.cos(angle)
         control_coefficients[..., 1] = vector_radius * np.sin(angle)
-        return {
-            "displacement_magnitude": magnitude,
-            "control_coefficients": control_coefficients.tolist(),
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "displacement_magnitude": magnitude,
+                "control_coefficients": control_coefficients.tolist(),
+            }
+        )
 
     def _apply_label_mappings_without_geometry(
         self,
@@ -420,17 +427,19 @@ class ElasticTransform(BaseRemapTransform):
             result = self._apply_label_mapping_to_semantic_masks(result, **params)
         return result
 
-    def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def apply_with_params(self, plan: TransformParameterPlan, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Build one dense map for the invocation and reject replay on another spatial shape before dispatching all
         synchronized targets with exact map sharing.
         """
+        params = dict(plan.params_for("image"))
         recorded_shape = tuple(params["shape"][:2])
         if self.replay_mode:
-            current_shape = self._extract_shape_from_data(kwargs)
-            if current_shape is not None and tuple(current_shape[:2]) != recorded_shape:
+            current_targets = self._build_target_set(kwargs)
+            current_frame = self._build_spatial_frame(current_targets)
+            if current_frame is not None and current_frame.shape != recorded_shape:
                 raise ValueError(
                     f"ElasticTransform replay requires the same spatial shape {recorded_shape}, "
-                    f"got {tuple(current_shape[:2])}",
+                    f"got {current_frame.shape}",
                 )
         if not params["control_coefficients"]:
             return self._apply_label_mappings_without_geometry(params, kwargs)
@@ -442,7 +451,12 @@ class ElasticTransform(BaseRemapTransform):
             control_coefficients,
             recorded_shape,
         )
-        return super().apply_with_params(runtime_params, *args, **kwargs)
+        runtime_plan = TransformParameterPlan(
+            shared=runtime_params,
+            groups=plan.groups,
+            target_schema=plan.target_schema,
+        )
+        return super().apply_with_params(runtime_plan, *args, **kwargs)
 
     def apply_to_keypoints(
         self,
@@ -569,11 +583,10 @@ class PiecewiseAffine(BaseDistortion):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
         nb_rows = np.clip(sampling.py_random.randint(*self.nb_rows_range), 2, None)
@@ -600,7 +613,7 @@ class PiecewiseAffine(BaseDistortion):
         else:
             map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return {"map_x": map_x, "map_y": map_y}
+        return TransformParameterPlan.shared_only({"map_x": map_x, "map_y": map_y})
 
 
 class OpticalDistortion(BaseDistortion):
@@ -705,11 +718,10 @@ class OpticalDistortion(BaseDistortion):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
         k = sampling.py_random.uniform(*self.distort_range)
@@ -723,7 +735,7 @@ class OpticalDistortion(BaseDistortion):
                 np.arange(width, dtype=np.float32),
                 indexing="ij",
             )
-            return {"map_x": map_x, "map_y": map_y}
+            return TransformParameterPlan.shared_only({"map_x": map_x, "map_y": map_y})
 
         if self.mode == "camera":
             map_x, map_y = fgeometric.get_camera_matrix_distortion_maps(
@@ -737,7 +749,7 @@ class OpticalDistortion(BaseDistortion):
             )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return {"map_x": map_x, "map_y": map_y}
+        return TransformParameterPlan.shared_only({"map_x": map_x, "map_y": map_y})
 
 
 class GridDistortion(BaseDistortion):
@@ -847,11 +859,10 @@ class GridDistortion(BaseDistortion):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         num_steps = min(self.num_steps, *scaled_shape)
 
@@ -870,7 +881,7 @@ class GridDistortion(BaseDistortion):
                 np.arange(width, dtype=np.float32),
                 indexing="ij",
             )
-            return {"map_x": map_x, "map_y": map_y}
+            return TransformParameterPlan.shared_only({"map_x": map_x, "map_y": map_y})
 
         if self.normalized:
             normalized_params = fgeometric.normalize_grid_distortion_steps(
@@ -892,7 +903,7 @@ class GridDistortion(BaseDistortion):
         )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return {"map_x": map_x, "map_y": map_y}
+        return TransformParameterPlan.shared_only({"map_x": map_x, "map_y": map_y})
 
 
 class ThinPlateSpline(BaseDistortion):
@@ -1051,11 +1062,10 @@ class ThinPlateSpline(BaseDistortion):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        height, width = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        height, width = inputs.require_spatial_frame().spatial_shape_2d
         image_shape = (height, width)
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
@@ -1090,10 +1100,12 @@ class ThinPlateSpline(BaseDistortion):
         map_y = transformed[:, 1].reshape(scaled_height, scaled_width).astype(np.float32)
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return {
-            "map_x": map_x,
-            "map_y": map_y,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "map_x": map_x,
+                "map_y": map_y,
+            }
+        )
 
 
 class WaterRefraction(BaseDistortion):
@@ -1192,11 +1204,10 @@ class WaterRefraction(BaseDistortion):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
 
@@ -1221,10 +1232,12 @@ class WaterRefraction(BaseDistortion):
         )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return {
-            "map_x": map_x,
-            "map_y": map_y,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "map_x": map_x,
+                "map_y": map_y,
+            }
+        )
 
 
 class PixelSpread(BaseDistortion):
@@ -1333,11 +1346,10 @@ class PixelSpread(BaseDistortion):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
         map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
 
@@ -1357,4 +1369,4 @@ class PixelSpread(BaseDistortion):
         map_x = (col_coords + offsets[..., 1]).astype(np.float32)
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return {"map_x": map_x, "map_y": map_y}
+        return TransformParameterPlan.shared_only({"map_x": map_x, "map_y": map_y})

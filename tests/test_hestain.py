@@ -5,6 +5,7 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.transform_params import TransformParameterPlan
 from tests.helpers import TestDataFactory
 
 CUSTOM_STAIN_MATRIX = np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32)
@@ -76,7 +77,7 @@ def test_hestain_augment_residual_matches_full_basis_reference(dtype: type[np.ge
     )
 
     result = transform(image=image)["image"]
-    params = transform.get_applied_params()
+    params = TransformParameterPlan.from_dict(transform.get_applied_params()).shared
 
     assert params["scale_factors"].shape == (3,)
     assert params["shift_values"].shape == (3,)
@@ -103,7 +104,7 @@ def test_hestain_preserve_residual_reconstructs_identity() -> None:
     )
 
     result = transform(image=image)["image"]
-    params = transform.get_applied_params()
+    params = TransformParameterPlan.from_dict(transform.get_applied_params()).shared
 
     np.testing.assert_array_equal(params["scale_factors"], np.array([1.0, 1.0, 1.0]))
     np.testing.assert_array_equal(params["shift_values"], np.array([0.0, 0.0, 0.0]))
@@ -115,7 +116,7 @@ def test_hestain_default_project_mode_does_not_consume_a_root_probability_draw()
     transform = A.HEStain(method="custom", stain_matrix=CUSTOM_STAIN_MATRIX, p=1.0)
 
     result = A.Compose([transform], save_applied_params=True, seed=137, strict=True)(image=image)["image"]
-    params = transform.get_applied_params()
+    params = TransformParameterPlan.from_dict(transform.get_applied_params()).shared
     explicit_project = A.Compose(
         [A.HEStain(method="custom", stain_matrix=CUSTOM_STAIN_MATRIX, residual_mode="project", p=1.0)],
         seed=137,
@@ -223,7 +224,7 @@ def test_hestain_project_mode_stays_within_accepted_legacy_tolerance(
     )
 
     result = transform(image=data)["image"]
-    params = transform.get_applied_params()
+    params = TransformParameterPlan.from_dict(transform.get_applied_params()).shared
     expected = _apply_he_project_legacy_reference(
         data,
         CUSTOM_STAIN_MATRIX,
@@ -263,7 +264,7 @@ def test_hestain_augment_residual_replay_reuses_all_sampled_parameters(
     )
 
     result = pipeline(**{target: data})
-    replay_params = result["replay"]["transforms"][0]["params"]
+    replay_params = TransformParameterPlan.from_dict(result["replay"]["transforms"][0]["params"]).shared
     replayed = A.ReplayCompose.replay(result["replay"], **{target: data})
 
     assert len(replay_params["scale_factors"]) == 3
@@ -312,7 +313,8 @@ def test_hestain_uses_custom_stain_matrix() -> None:
 
     result = transform(image=image)
 
-    np.testing.assert_array_equal(transform.get_applied_params()["stain_matrix"], CUSTOM_STAIN_MATRIX)
+    params = TransformParameterPlan.from_dict(transform.get_applied_params()).shared
+    np.testing.assert_array_equal(params["stain_matrix"], CUSTOM_STAIN_MATRIX)
     expected = fpixel.apply_he_stain_augmentation(
         img=image,
         stain_matrix=CUSTOM_STAIN_MATRIX,

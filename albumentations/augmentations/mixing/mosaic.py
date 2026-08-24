@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal, cast
 from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 
 from ._transforms_shared import (
     _BBOX_INSTANCE_ID,
@@ -368,10 +369,10 @@ class Mosaic(DualTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
+        data = inputs.data
         cell_placements = self._calculate_geometry(data, sampling)
 
         num_cells = len(cell_placements)
@@ -439,7 +440,7 @@ class Mosaic(DualTransform):
         # way to mirror the survival, breaking positional alignment on the way to the next
         # transform (the root cause of the Mosaic+Perspective+CopyAndPaste IndexError).
         result.update(self._compute_mosaic_survival(processed_cells, data))
-        return result
+        return TransformParameterPlan.shared_only(result)
 
     @staticmethod
     def _filter_cell_masks_to_surviving_bboxes(

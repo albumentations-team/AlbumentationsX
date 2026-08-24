@@ -6,6 +6,7 @@ PixelDropout. These transforms randomly remove or modify pixels, channels, or re
 in images, which can help models become more robust to occlusions and missing information.
 """
 
+from collections.abc import Callable
 from typing import Any, ClassVar, cast
 
 import numpy as np
@@ -23,6 +24,14 @@ from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.bbox_utils import BboxProcessor, denormalize_bboxes, normalize_bboxes
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
+from albumentations.core.transform_params import (
+    TargetParameterGroup,
+    TargetRequirement,
+    TargetView,
+    TransformParameterPlan,
+    TransformSamplingInput,
+    requirements_for_views,
+)
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
 
@@ -55,6 +64,46 @@ def _get_pixel_dropout_reference(data: dict[str, Any]) -> np.ndarray:
         return np.empty(target.shape[leading_dimensions:], dtype=target.dtype)
 
     raise RuntimeError("PixelDropout requires at least one image, volume, or mask target")
+
+
+def _pixel_dropout_reference(view: Any) -> np.ndarray:
+    value = view.value
+    if view.canonical_type in {"images", "volume", "masks", "mask3d"}:
+        if value.shape[0] == 0:
+            return np.empty(value.shape[1:], dtype=value.dtype)
+        return value[0]
+    return value
+
+
+def _pixel_dropout_is_empty(view: Any) -> bool:
+    return view.canonical_type in {"images", "volume", "masks", "mask3d"} and view.value.shape[0] == 0
+
+
+def _pixel_dropout_group_key(view: Any) -> tuple[Any, ...]:
+    descriptor = view.descriptor
+    return (
+        "mask" if view.canonical_type in {"mask", "masks", "mask3d"} else "image",
+        descriptor.shape,
+        descriptor.dtype_scale,
+        descriptor.sampling_topology,
+    )
+
+
+def _pixel_dropout_group(
+    views: tuple[Any, ...],
+    params: dict[str, Any],
+    *,
+    annotations: tuple[Any, ...] = (),
+) -> TargetParameterGroup:
+    target_views = list(views)
+    requirements = requirements_for_views(views, shape=True, dtype=True, sampling_topology=True)
+    target_views.extend(annotations)
+    requirements.update({view.name: TargetRequirement() for view in annotations})
+    return TargetParameterGroup(
+        targets=tuple(view.name for view in target_views),
+        params=params,
+        requirements=requirements,
+    )
 
 
 class BaseDropoutInitSchema(BaseTransformInitSchema):
@@ -93,8 +142,8 @@ class BaseDropout(DualTransform):
         ...         self.num_holes_range = num_holes_range
         ...         self.hole_size_range = hole_size_range
         ...
-        ...     def sample_parameters(self, params, data, sampling):
-        ...         img = data["image"]
+        ...     def sample_parameters(self, inputs, sampling):
+        ...         img = inputs.data["image"]
         ...         height, width = img.shape[:2]
         ...
         ...         # Generate random holes
@@ -110,11 +159,12 @@ class BaseDropout(DualTransform):
         ...             y2 = min(height, y1 + hole_sizes[i])
         ...             holes.append([x1, y1, x2, y2])
         ...
-        ...         # Return holes and random seed
-        ...         return {
+        ...         from albumentations.core.transform_params import TransformParameterPlan
+        ...
+        ...         return TransformParameterPlan.shared_only({
         ...             "holes": np.array(holes) if holes else np.empty((0, 4), dtype=np.int32),
-        ...             "seed": int(sampling.random_generator.integers(0, 100000))
-        ...         }
+        ...             "seed": int(sampling.random_generator.integers(0, 100000)),
+        ...         })
         >>>
         >>> # Prepare sample data
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
@@ -163,6 +213,49 @@ class BaseDropout(DualTransform):
 
         if self.fill in {"inpaint_telea", "inpaint_ns"} and num_channels not in {1, 3}:
             raise ValueError("Inpainting works only for 1 or 3 channel images")
+
+    def _build_spatial_parameter_plan(
+        self,
+        inputs: TransformSamplingInput,
+        materialize: Callable[[tuple[int, int], tuple[TargetView, ...]], dict[str, Any]],
+    ) -> TransformParameterPlan:
+        spatial_views = tuple(
+            view
+            for view in inputs.targets.ordered
+            if view.descriptor.spatial_shape is not None
+            and view.canonical_type in {"image", "images", "volume", "mask", "masks", "mask3d"}
+        )
+        annotations = tuple(view for view in inputs.targets.ordered if view.canonical_type in {"bboxes", "keypoints"})
+        spatial_names = {view.name for view in spatial_views}
+        annotations_attached = False
+        groups: list[TargetParameterGroup] = []
+        for views in inputs.targets.group_by(
+            lambda view: None if view.descriptor.spatial_shape is None else tuple(view.descriptor.spatial_shape[-2:]),
+        ):
+            if not views or views[0].name not in spatial_names:
+                continue
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                continue
+            group_views = tuple(view for view in views if view.name in spatial_names)
+            if not group_views:
+                continue
+            group_annotations = annotations if not annotations_attached else ()
+            target_views = group_views + group_annotations
+            requirements = requirements_for_views(group_views, spatial_shape_suffix=True)
+            group_names = {view.name for view in group_views}
+            requirements.update(
+                {view.name: TargetRequirement() for view in group_annotations if view.name not in group_names},
+            )
+            annotations_attached = annotations_attached or bool(group_annotations)
+            groups.append(
+                TargetParameterGroup(
+                    targets=tuple(view.name for view in target_views),
+                    params=materialize((spatial_shape[-2], spatial_shape[-1]), group_views),
+                    requirements=requirements,
+                )
+            )
+        return TransformParameterPlan(shared={}, groups=tuple(groups))
 
     def apply(self, img: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:
@@ -235,10 +328,9 @@ class BaseDropout(DualTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         raise NotImplementedError("Subclasses must implement this method.")
 
 
@@ -327,17 +419,19 @@ class PixelDropout(DualTransform):
     def apply(
         self,
         img: ImageType,
-        drop_mask: np.ndarray,
-        drop_values: np.ndarray,
+        drop_mask: np.ndarray | None,
+        drop_values: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
+        if drop_mask is None or drop_values is None:
+            return img
         return fpixel.pixel_dropout(img, drop_mask, drop_values)
 
     def apply_to_images(
         self,
         images: ImageType,
-        drop_mask: np.ndarray,
-        drop_values: np.ndarray,
+        drop_mask: np.ndarray | None,
+        drop_values: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
         return self.apply(images, drop_mask, drop_values, **params)
@@ -345,14 +439,14 @@ class PixelDropout(DualTransform):
     def apply_to_mask(
         self,
         mask: ImageType,
-        mask_drop_mask: np.ndarray | None,
-        mask_drop_values: np.ndarray | None,
+        drop_mask: np.ndarray | None,
+        drop_values: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
-        if self.mask_drop_value is None or mask_drop_mask is None or mask_drop_values is None:
+        if self.mask_drop_value is None or drop_mask is None or drop_values is None:
             return mask
 
-        return fpixel.pixel_dropout(mask, mask_drop_mask, mask_drop_values)
+        return fpixel.pixel_dropout(mask, drop_mask, drop_values)
 
     def apply_to_bboxes(
         self,
@@ -389,47 +483,76 @@ class PixelDropout(DualTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        reference_array = _get_pixel_dropout_reference(data)
-
-        # Generate drop mask and values for all targets
-        drop_mask = fpixel.get_drop_mask(
-            reference_array.shape,
-            self.per_channel,
-            self.dropout_prob,
-            sampling.random_generator,
-        )
-        drop_values = fpixel.prepare_drop_values(
-            reference_array,
-            self.drop_value,
-            sampling.random_generator,
-        )
-
-        # Handle mask drop values if specified
-        mask_drop_mask = None
-        mask_drop_values = None
-        mask = fpixel.get_mask_array(data)
-        if self.mask_drop_value is not None and mask is not None:
-            mask_drop_mask = fpixel.get_drop_mask(
-                mask.shape,
-                self.per_channel,
-                self.dropout_prob,
-                sampling.random_generator,
-            )
-            mask_drop_values = fpixel.prepare_drop_values(
-                mask,
-                self.mask_drop_value,
-                sampling.random_generator,
-            )
-
+    ) -> TransformParameterPlan:
         sampling.applied_overrides["dropout_prob"] = self.dropout_prob
+        annotations = tuple(view for view in inputs.targets.ordered if view.canonical_type in {"bboxes", "keypoints"})
+        groups: list[TargetParameterGroup] = []
 
-        return {
-            "drop_mask": drop_mask,
-            "drop_values": drop_values,
-            "mask_drop_mask": mask_drop_mask if mask_drop_mask is not None else None,
-            "mask_drop_values": mask_drop_values if mask_drop_values is not None else None,
-        }
+        for index, views in enumerate(inputs.targets.group_image_like_by(_pixel_dropout_group_key)):
+            reference = _pixel_dropout_reference(views[0])
+            groups.append(
+                _pixel_dropout_group(
+                    views,
+                    {
+                        "drop_mask": None
+                        if _pixel_dropout_is_empty(views[0])
+                        else fpixel.get_drop_mask(
+                            reference.shape,
+                            self.per_channel,
+                            self.dropout_prob,
+                            sampling.random_generator,
+                        ),
+                        "drop_values": None
+                        if _pixel_dropout_is_empty(views[0])
+                        else fpixel.prepare_drop_values(
+                            reference,
+                            self.drop_value,
+                            sampling.random_generator,
+                        ),
+                    },
+                    annotations=annotations if index == 0 else (),
+                )
+            )
+
+        for views in inputs.targets.group_by(_pixel_dropout_group_key):
+            if not views or views[0].canonical_type not in {"mask", "masks", "mask3d"}:
+                continue
+            reference = _pixel_dropout_reference(views[0])
+            groups.append(
+                _pixel_dropout_group(
+                    views,
+                    {
+                        "drop_mask": (
+                            None
+                            if _pixel_dropout_is_empty(views[0])
+                            else (
+                                fpixel.get_drop_mask(
+                                    reference.shape,
+                                    self.per_channel,
+                                    self.dropout_prob,
+                                    sampling.random_generator,
+                                )
+                                if self.mask_drop_value is not None
+                                else None
+                            )
+                        ),
+                        "drop_values": (
+                            None
+                            if _pixel_dropout_is_empty(views[0])
+                            else (
+                                fpixel.prepare_drop_values(
+                                    reference,
+                                    self.mask_drop_value,
+                                    sampling.random_generator,
+                                )
+                                if self.mask_drop_value is not None
+                                else None
+                            )
+                        ),
+                    },
+                )
+            )
+
+        return TransformParameterPlan(shared={}, groups=tuple(groups))

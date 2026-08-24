@@ -3,6 +3,12 @@
 from typing import Annotated, Any, Literal
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import (
+    TargetParameterGroup,
+    TransformParameterPlan,
+    TransformSamplingInput,
+    requirements_for_views,
+)
 
 from ._color_shared import (
     AfterValidator,
@@ -176,30 +182,40 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        shape = params["shape"]
-
+    ) -> TransformParameterPlan:
         # Sample adjustment strengths
         brightness = sampling.py_random.uniform(*self.brightness_range)
         contrast = sampling.py_random.uniform(*self.contrast_range)
 
         sampling.applied_overrides.update({"brightness_range": brightness, "contrast_range": contrast})
 
-        plasma = _generate_resized_plasma(
-            target_shape=shape[:2],
-            plasma_size=self.plasma_size,
-            roughness=self.roughness,
-            random_generator=sampling.random_generator,
+        groups = []
+        for views in inputs.targets.group_image_like_by(
+            lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("PlasmaBrightnessContrast requires image-like targets with known shapes")
+            target_shape = (spatial_shape[-2], spatial_shape[-1])
+            plasma = _generate_resized_plasma(
+                target_shape=target_shape,
+                plasma_size=self.plasma_size,
+                roughness=self.roughness,
+                random_generator=sampling.random_generator,
+            )
+            groups.append(
+                TargetParameterGroup(
+                    targets=tuple(view.name for view in views),
+                    params={"plasma_pattern": plasma},
+                    requirements=requirements_for_views(views),
+                ),
+            )
+        return TransformParameterPlan(
+            shared={"brightness_factor": brightness, "contrast_factor": contrast},
+            groups=tuple(groups),
         )
-
-        return {
-            "brightness_factor": brightness,
-            "contrast_factor": contrast,
-            "plasma_pattern": plasma,
-        }
 
     def apply(
         self,
@@ -338,28 +354,36 @@ class PlasmaShadow(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        shape = params["shape"]
-
+    ) -> TransformParameterPlan:
         # Sample shadow intensity
         intensity = sampling.py_random.uniform(*self.shadow_intensity_range)
 
         sampling.applied_overrides["shadow_intensity_range"] = intensity
 
-        plasma = _generate_resized_plasma(
-            target_shape=shape[:2],
-            plasma_size=self.plasma_size,
-            roughness=self.roughness,
-            random_generator=sampling.random_generator,
-        )
-
-        return {
-            "intensity": intensity,
-            "plasma_pattern": plasma,
-        }
+        groups = []
+        for views in inputs.targets.group_image_like_by(
+            lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("PlasmaShadow requires image-like targets with known shapes")
+            target_shape = (spatial_shape[-2], spatial_shape[-1])
+            plasma = _generate_resized_plasma(
+                target_shape=target_shape,
+                plasma_size=self.plasma_size,
+                roughness=self.roughness,
+                random_generator=sampling.random_generator,
+            )
+            groups.append(
+                TargetParameterGroup(
+                    targets=tuple(view.name for view in views),
+                    params={"plasma_pattern": plasma},
+                    requirements=requirements_for_views(views),
+                ),
+            )
+        return TransformParameterPlan(shared={"intensity": intensity}, groups=tuple(groups))
 
     def apply(
         self,
@@ -548,10 +572,9 @@ class Illumination(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         intensity = sampling.py_random.uniform(*self.intensity_range)
 
         # Determine if brightening or darkening
@@ -577,27 +600,33 @@ class Illumination(ImageOnlyTransform):
         if self.mode == "linear":
             angle = sampling.py_random.uniform(*self.angle_range)
             sampling.applied_overrides["angle_range"] = angle
-            return {
-                "intensity": intensity,
-                "angle": angle,
-            }
+            return TransformParameterPlan.shared_only(
+                {
+                    "intensity": intensity,
+                    "angle": angle,
+                }
+            )
         if self.mode == "corner":
             corner = sampling.py_random.randint(0, 3)  # Choose random corner
-            return {
-                "intensity": intensity,
-                "corner": corner,
-            }
+            return TransformParameterPlan.shared_only(
+                {
+                    "intensity": intensity,
+                    "corner": corner,
+                }
+            )
 
         x = sampling.py_random.uniform(*self.center_range)
         y = sampling.py_random.uniform(*self.center_range)
         sigma = sampling.py_random.uniform(*self.sigma_range)
         sampling.applied_overrides["center_range"] = (x, y)
         sampling.applied_overrides["sigma_range"] = sigma
-        return {
-            "intensity": intensity,
-            "center": (x, y),
-            "sigma": sigma,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "intensity": intensity,
+                "center": (x, y),
+                "sigma": sigma,
+            }
+        )
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         if self.mode == "linear":
@@ -702,10 +731,9 @@ class Vignetting(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, float]:
+    ) -> TransformParameterPlan:
         intensity = sampling.py_random.uniform(*self.intensity_range)
         center_x = sampling.py_random.uniform(*self.center_range)
         center_y = sampling.py_random.uniform(*self.center_range)
@@ -715,11 +743,13 @@ class Vignetting(ImageOnlyTransform):
                 "center_range": (min(center_x, center_y), max(center_x, center_y)),
             },
         )
-        return {
-            "intensity": intensity,
-            "center_x": center_x,
-            "center_y": center_y,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "intensity": intensity,
+                "center_x": center_x,
+                "center_y": center_y,
+            }
+        )
 
 
 __all__ = [

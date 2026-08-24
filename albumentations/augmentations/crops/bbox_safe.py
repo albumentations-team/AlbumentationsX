@@ -3,6 +3,7 @@
 from typing import Annotated, Any, ClassVar
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -164,21 +165,21 @@ class BBoxSafeRandomCrop(BaseCrop):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, tuple[int, int, int, int]]:
-        image_shape = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        data = inputs.data
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
 
         if len(data["bboxes"]) == 0:  # less likely, this class is for use with bboxes.
             crop_coords = self._get_coords_no_bbox(image_shape, sampling)
-            return {"crop_coords": crop_coords}
+            return TransformParameterPlan.shared_only({"crop_coords": crop_coords})
 
         bbox_union = union_of_bboxes(bboxes=data["bboxes"], erosion_rate=self.erosion_rate)
 
         if bbox_union is None:
             crop_coords = self._get_coords_no_bbox(image_shape, sampling)
-            return {"crop_coords": crop_coords}
+            return TransformParameterPlan.shared_only({"crop_coords": crop_coords})
 
         x_min, y_min, x_max, y_max = bbox_union
 
@@ -197,7 +198,7 @@ class BBoxSafeRandomCrop(BaseCrop):
         crop_x_max = int(bbox_xmax * image_width)
         crop_y_max = int(bbox_ymax * image_height)
 
-        return {"crop_coords": (crop_x_min, crop_y_min, crop_x_max, crop_y_max)}
+        return TransformParameterPlan.shared_only({"crop_coords": (crop_x_min, crop_y_min, crop_x_max, crop_y_max)})
 
 
 class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
@@ -567,15 +568,15 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        data = inputs.data
+        image_shape = inputs.require_spatial_frame().spatial_shape_2d
 
         if len(data["bboxes"]) == 0:
             crop_coords = self._get_coords_no_bbox(image_shape, sampling)
-            return {"crop_coords": crop_coords}
+            return TransformParameterPlan.shared_only({"crop_coords": crop_coords})
 
         num_bboxes = len(data["bboxes"])
         min_subset_size = math.ceil(num_bboxes * self.subset_fraction_range[0])
@@ -584,10 +585,12 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
         subset_size = sampling.random_generator.integers(min_subset_size, max_subset_size + 1)
         bbox_indices = sampling.random_generator.choice(num_bboxes, size=subset_size, replace=False)
         bbox_union = union_of_bboxes(data["bboxes"][bbox_indices], erosion_rate=self.erosion_rate)
-        return {
-            "crop_coords": self._get_crop_coords(bbox_union, image_shape, sampling),
-            "bbox_indices": tuple(sorted(int(index) for index in bbox_indices)),
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "crop_coords": self._get_crop_coords(bbox_union, image_shape, sampling),
+                "bbox_indices": tuple(sorted(int(index) for index in bbox_indices)),
+            }
+        )
 
 
 class AtLeastOneBBoxRandomCrop(BaseCrop):
@@ -738,11 +741,11 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, tuple[int, int, int, int]]:
-        image_height, image_width = params["shape"][:2]
+    ) -> TransformParameterPlan:
+        data = inputs.data
+        image_height, image_width = inputs.require_spatial_frame().spatial_shape_2d
         bboxes = data.get("bboxes", [])
 
         if self.height > image_height or self.width > image_width:
@@ -829,7 +832,7 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
         crop_x2 = crop_x1 + self.width
         crop_y2 = crop_y1 + self.height
 
-        return {"crop_coords": (crop_x1, crop_y1, crop_x2, crop_y2)}
+        return TransformParameterPlan.shared_only({"crop_coords": (crop_x1, crop_y1, crop_x2, crop_y2)})
 
 
 __all__ = [

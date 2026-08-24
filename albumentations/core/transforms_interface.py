@@ -31,6 +31,15 @@ from albumentations.core.invocation import (
     publish_completed_transform_state,
 )
 from albumentations.core.keypoints_utils import KeypointsProcessor
+from albumentations.core.transform_params import (
+    SpatialFrame,
+    TargetParameterGroup,
+    TargetSet,
+    TransformParameterPlan,
+    TransformParameterPlanError,
+    TransformSamplingInput,
+    required_parameter_names,
+)
 from albumentations.core.validation import ValidatedTransformMeta
 
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
@@ -43,7 +52,6 @@ from .type_definitions import (
     VolumeType,
 )
 from .utils import format_args
-from .utils import get_image_data as _get_image_data_impl
 
 __all__ = [
     "BasicTransform",
@@ -52,7 +60,13 @@ __all__ = [
     "ImageOnlyTransform",
     "NoOp",
     "SamplingContext",
+    "SpatialFrame",
+    "TargetParameterGroup",
+    "TargetSet",
     "Transform3D",
+    "TransformParameterPlan",
+    "TransformParameterPlanError",
+    "TransformSamplingInput",
     "VolumeOnlyTransform",
 ]
 
@@ -153,6 +167,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _supports_cpu_tensor: ClassVar[bool] = False
     _cpu_tensor_targets: ClassVar[frozenset[str] | None] = None
     _cpu_tensor_channels: ClassVar[frozenset[int] | None] = None
+    _sampling_spatial_rank: ClassVar[int | None] = 2
+    _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
 
@@ -170,7 +186,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             names = ", ".join(removed_hooks)
             raise TypeError(
                 f"{cls.__name__} defines removed sampling hook(s): {names}. "
-                "Implement sample_parameters(params, data, sampling) instead.",
+                "Implement sample_parameters(inputs, sampling) instead.",
             )
 
     @property
@@ -473,7 +489,10 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """Samples parameters after probability succeeds and records policy only for replay, trace, or explicit
         observation that needs the durable artifact.
         """
-        params = self.update_transform_params(params={}, data=kwargs, invocation=invocation)
+        targets = (
+            None if type(self).sample_parameters is BasicTransform.sample_parameters else self._build_target_set(kwargs)
+        )
+        params = self.update_transform_params(params={}, data=kwargs, invocation=invocation, targets=targets)
 
         if self.targets_as_params:
             missing_keys = set(self.targets_as_params).difference(kwargs.keys())
@@ -481,23 +500,31 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 msg = f"{self.__class__.__name__} requires {self.targets_as_params} missing keys: {missing_keys}"
                 raise ValueError(msg)
 
-        if type(self).sample_parameters is BasicTransform.sample_parameters:
-            applied_overrides = _EMPTY_APPLIED_OVERRIDES
-        else:
-            if invocation is None:
-                msg = "sampling transforms require an active sampling context"
-                raise RuntimeError(msg)
-            applied_overrides = {} if collect_applied else cast("dict[str, Any]", _DISCARDED_APPLIED_OVERRIDES)
-            params.update(
-                self.sample_parameters(
-                    params=params,
-                    data=kwargs,
-                    sampling=invocation.sampling_context(applied_overrides),
-                ),
-            )
+        if (
+            targets is None
+            and state is None
+            and not self.deterministic
+            and type(self).apply_with_params in {BasicTransform.apply_with_params, DualTransform.apply_with_params}
+        ):
+            return self.apply_with_shared_params(params, **kwargs)
+
+        applied_overrides, plan = self._sample_parameters_for_inputs(
+            params=params,
+            data=kwargs,
+            targets=targets,
+            invocation=invocation,
+            collect_applied=collect_applied,
+        )
+
+        effective_plan = TransformParameterPlan(
+            shared={**params, **plan.shared},
+            groups=plan.groups,
+            target_schema=targets.schema() if targets is not None and plan.groups else None,
+        )
+        self._validate_parameter_plan(effective_plan, targets, kwargs)
 
         if state is not None:
-            state.params = params
+            state.params = effective_plan.to_dict()
             self._build_applied_config(state=state, overrides=applied_overrides)
 
         if self.deterministic:
@@ -505,12 +532,90 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             transform_id = id(self)
             existing = saved_params.get(transform_id)
             if existing is None:
-                saved_params[transform_id] = [deepcopy(params)]
+                saved_params[transform_id] = [deepcopy(effective_plan.to_dict())]
             elif isinstance(existing, list):
-                existing.append(deepcopy(params))
+                existing.append(deepcopy(effective_plan.to_dict()))
             else:
-                saved_params[transform_id] = [existing, deepcopy(params)]
-        return self.apply_with_params(params, **kwargs)
+                saved_params[transform_id] = [existing, deepcopy(effective_plan.to_dict())]
+        return self.apply_with_params(effective_plan, **kwargs)
+
+    def _sample_parameters_for_inputs(
+        self,
+        *,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet | None,
+        invocation: InvocationContext | None,
+        collect_applied: bool,
+    ) -> tuple[Any, TransformParameterPlan]:
+        if targets is None:
+            return _EMPTY_APPLIED_OVERRIDES, TransformParameterPlan.shared_only({})
+        if invocation is None:
+            msg = "sampling transforms require an active sampling context"
+            raise RuntimeError(msg)
+
+        applied_overrides = {} if collect_applied else cast("dict[str, Any]", _DISCARDED_APPLIED_OVERRIDES)
+        plan = self.sample_parameters(
+            inputs=TransformSamplingInput(
+                base_params=params,
+                spatial_frame=self._build_spatial_frame(targets),
+                targets=targets,
+                data=data,
+            ),
+            sampling=invocation.sampling_context(applied_overrides),
+        )
+        if not isinstance(plan, TransformParameterPlan):
+            raise TypeError(f"{self.__class__.__name__}.sample_parameters must return TransformParameterPlan")
+        return applied_overrides, plan
+
+    def _validate_parameter_plan(
+        self,
+        plan: TransformParameterPlan,
+        targets: TargetSet | None,
+        data: Mapping[str, Any],
+    ) -> None:
+        if targets is None:
+            self._validate_shared_plan(plan, data)
+            return
+
+        plan.validate(
+            targets,
+            {
+                name: required.difference(self._runtime_generated_params)
+                for name, required in self._get_required_parameters_by_target().items()
+                if name in targets.names
+            },
+            self.__class__.__name__,
+        )
+
+    def _validate_shared_plan(self, plan: TransformParameterPlan, data: Mapping[str, Any]) -> None:
+        """Validate required parameters without describing targets for shared-only samplers."""
+        required_by_target = self._get_required_parameters_by_target()
+        if not required_by_target:
+            return
+
+        missing_by_target = {
+            name: required.difference(self._runtime_generated_params).difference(plan.shared)
+            for name, required in required_by_target.items()
+            if name in data and data[name] is not None
+        }
+        missing_by_target = {name: missing for name, missing in missing_by_target.items() if missing}
+        if missing_by_target:
+            raise ValueError(f"{self.__class__.__name__} missing required parameters: {missing_by_target}")
+
+    def _get_required_parameters_by_target(self) -> dict[str, frozenset[str]]:
+        transform_cls = type(self)
+        target_names = tuple(self._key2func)
+        cached = transform_cls.__dict__.get("_required_parameters_by_target_cache")
+        if cached is None or cached[0] != target_names:
+            required_by_target: dict[str, frozenset[str]] = {}
+            for name, function in self._key2func.items():
+                required = required_parameter_names(function)
+                if required:
+                    required_by_target[name] = required
+            cached = (target_names, required_by_target)
+            type.__setattr__(transform_cls, "_required_parameters_by_target_cache", cached)
+        return cached[1]
 
     def _should_apply_in_invocation(self, invocation: InvocationContext, *, force_apply: bool) -> bool:
         """Evaluates this leaf's probability against the root Python stream, avoiding configured mutable generators
@@ -524,10 +629,21 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """
         if not self.applied_in_replay:
             return kwargs
-        params = deepcopy(self._replay_params)
+        plan = TransformParameterPlan.from_dict(deepcopy(self._replay_params))
+        targets = self._build_target_set(kwargs)
+        self._build_spatial_frame(targets)
+        plan.validate(
+            targets,
+            {
+                name: required_parameter_names(function).difference(self._runtime_generated_params)
+                for name, function in self._key2func.items()
+                if any(view.name == name for view in targets.ordered)
+            },
+            self.__class__.__name__,
+        )
         if state is not None:
-            state.params = params
-        return self.apply_with_params(params, **kwargs)
+            state.params = plan.to_dict()
+        return self.apply_with_params(plan, **kwargs)
 
     def get_applied_params(self) -> dict[str, Any]:
         """Returns the parameters that were used in the last transform application; returns empty
@@ -626,7 +742,22 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             "Only transforms that override `inverse()` can be used for TTA inversion.",
         )
 
-    def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def apply_with_shared_params(self, params: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Apply shared-only parameters without constructing a target plan."""
+        res: dict[str, Any] = {}
+        for key, arg in kwargs.items():
+            if key in self._key2func and arg is not None:
+                res[key] = self._key2func[key](arg, **params)
+            else:
+                res[key] = arg
+        return res
+
+    def apply_with_params(
+        self,
+        plan: TransformParameterPlan,
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """Apply transforms with parameters. Dispatches each target (image, mask, bboxes, etc.) to
         the corresponding apply_* method.
         """
@@ -634,7 +765,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         for key, arg in kwargs.items():
             if key in self._key2func and arg is not None:
                 target_function = self._key2func[key]
-                res[key] = target_function(arg, **params)
+                res[key] = target_function(arg, **plan.params_for(key))
             else:
                 res[key] = arg
         return res
@@ -774,6 +905,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         params: dict[str, Any],
         data: dict[str, Any],
         invocation: InvocationContext | None = None,
+        targets: TargetSet | None = None,
     ) -> dict[str, Any]:
         """Update parameters with input shape and transform-specific settings (interpolation, fill,
         fill_mask, bbox type) before data-aware parameter sampling.
@@ -782,15 +914,31 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             params (dict[str, Any]): Parameters to be updated
             data (dict[str, Any]): Input data dictionary containing images and volume data
             invocation (InvocationContext | None): Active call state, when this transform runs in a Compose graph.
+            targets (TargetSet | None): Prebuilt invocation-local target descriptors, when available.
 
         Returns:
             dict[str, Any]: Updated parameters dictionary with shape and transform-specific params
 
         """
-        # Extract shape from any available data source
-        shape = self._extract_shape_from_data(data)
-        if shape is not None:
-            params["shape"] = shape
+        if targets is None:
+            shape = self._extract_shared_shape_from_data(data)
+            if shape is not None:
+                params["shape"] = shape
+        else:
+            for view in targets.ordered:
+                if view.descriptor.shape is not None:
+                    shape = view.descriptor.shape
+                    shared_shape: tuple[int, ...]
+                    if view.descriptor.layout == "image_chw":
+                        shared_shape = (shape[1], shape[2], shape[0])
+                    elif view.descriptor.layout in {"images_nchw", "volume_cdhw"}:
+                        shared_shape = (shape[2], shape[3], shape[0])
+                    elif view.canonical_type in {"images", "volume", "masks", "mask3d"}:
+                        shared_shape = shape[1:]
+                    else:
+                        shared_shape = shape
+                    params["shape"] = shared_shape
+                    break
 
         bbox_processor = None if invocation is None else invocation.get_processor("bboxes")
         if isinstance(bbox_processor, BboxProcessor):
@@ -801,8 +949,49 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         return params
 
+    def _build_target_set(self, data: Mapping[str, Any]) -> TargetSet:
+        canonical_by_name = {name: self._additional_targets.get(name, name) for name in self._key2func}
+        return TargetSet.from_data(data, canonical_by_name)
+
+    def _spatial_frame_shape(self, view: Any) -> tuple[int, ...] | None:
+        descriptor = view.descriptor
+        spatial_shape = descriptor.spatial_shape
+        if spatial_shape is None:
+            return None
+        if self._sampling_spatial_rank == 3:
+            if view.canonical_type in {"volume", "mask3d"} and len(spatial_shape) == 3:
+                return tuple(spatial_shape)
+            return None
+        if self._sampling_spatial_rank == 2:
+            return tuple(spatial_shape[-2:])
+        return None
+
+    def _build_spatial_frame(self, targets: TargetSet) -> SpatialFrame | None:
+        if self._sampling_spatial_rank is None:
+            return None
+        frame_shapes: set[tuple[int, ...]] = set()
+        for view in targets.ordered:
+            if (isinstance(view.value, np.ndarray) and view.value.size == 0) or (
+                isinstance(view.value, torch.Tensor) and view.value.numel() == 0
+            ):
+                continue
+            shape = self._spatial_frame_shape(view)
+            if shape is not None:
+                frame_shapes.add(shape)
+        if not frame_shapes:
+            first_shape = next((self._spatial_frame_shape(view) for view in targets.ordered), None)
+            if first_shape is not None:
+                frame_shapes.add(first_shape)
+        if not frame_shapes:
+            return None
+        if len(frame_shapes) != 1:
+            raise TransformParameterPlanError(
+                f"{self.__class__.__name__} requires aligned spatial targets, got {sorted(frame_shapes)}",
+            )
+        return SpatialFrame(self._sampling_spatial_rank, next(iter(frame_shapes)))
+
     @staticmethod
-    def _shape_from_data_key(key: str, value: Any) -> tuple[int, ...]:
+    def _shared_shape_from_data_key(key: str, value: Any) -> tuple[int, ...]:
         if key == "image":
             if isinstance(value, torch.Tensor):
                 return value.shape[1], value.shape[2], value.shape[0]
@@ -813,25 +1002,16 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             return value.shape[1:]
         return value.shape if key == "mask" else value.shape[1:]
 
-    def _extract_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
-        """Return the raw canonical spatial shape using the layout convention expected by every data-aware
-        transform parameter sampler.
+    def _extract_shared_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
+        """Return the shared shape needed by the no-sampler execution fast path.
+
+        Data-dependent samplers receive target descriptors and must not call this helper.
         """
         for key in ("image", "images", "volume", "mask", "masks", "mask3d"):
             value = data.get(key)
             if value is not None:
-                return self._shape_from_data_key(key, value)
+                return self._shared_shape_from_data_key(key, value)
         return None
-
-    def get_image_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Return dtype, spatial dimensions, and channel count from the first canonical image, image batch, or
-        volume for parameter sampling.
-
-        Raises:
-            ValueError: If no valid image/volume data is present in `data`.
-
-        """
-        return _get_image_data_impl(data)
 
     def _add_transform_specific_params(self, params: dict[str, Any]) -> None:
         """Add transform-specific parameters to params dict (interpolation, fill, fill_mask).
@@ -846,19 +1026,19 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         """Generates parameters and stores realized replay policy in call-local data, never retaining per-sample values
         on transform instances.
 
-        Override this method in every transform that samples data-dependent parameters. Return values consumed by
-        `apply_*` methods and write constructor-valid realized policy values to `sampling.applied_overrides`. The
-        default supports deterministic transforms with no sampled parameters.
+        Override this method in every transform that samples data-dependent parameters. Return a structured plan whose
+        shared values and target groups are consumed by `apply_*` methods. Write constructor-valid realized policy
+        values to `sampling.applied_overrides`. The default supports deterministic transforms with no sampled
+        parameters.
         """
-        del params, data, sampling
-        return {}
+        del inputs, sampling
+        return TransformParameterPlan.shared_only({})
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
@@ -1422,19 +1602,31 @@ class DualTransform(BasicTransform):
 
         return keypoints
 
-    def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def apply_with_params(self, plan: TransformParameterPlan, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Apply a dual transform with its parameters, including configured keypoint and transform-aware
         semantic-mask label mappings.
         """
-        res = super().apply_with_params(params, *args, **kwargs)
+        res = super().apply_with_params(plan, *args, **kwargs)
 
         # Apply label mapping to keypoints if they were transformed
         if "keypoints" in res and res["keypoints"] is not None:
-            res["keypoints"] = self._apply_label_mapping_to_keypoints(res["keypoints"], **params)
+            res["keypoints"] = self._apply_label_mapping_to_keypoints(
+                res["keypoints"],
+                **plan.params_for("keypoints"),
+            )
 
         if self._semantic_mask_label_mappings:
-            res = self._apply_label_mapping_to_semantic_masks(res, **params)
+            res = self._apply_label_mapping_to_semantic_masks(res, **plan.shared)
 
+        return res
+
+    def apply_with_shared_params(self, params: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Apply shared-only parameters while preserving dual-target label mappings."""
+        res = super().apply_with_shared_params(params, *args, **kwargs)
+        if "keypoints" in res and res["keypoints"] is not None:
+            res["keypoints"] = self._apply_label_mapping_to_keypoints(res["keypoints"], **params)
+        if self._semantic_mask_label_mappings:
+            res = self._apply_label_mapping_to_semantic_masks(res, **params)
         return res
 
 
@@ -1579,6 +1771,8 @@ class Transform3D(DualTransform):
         keypoints: 3D numpy array of shape (N, 3)
     """
 
+    _sampling_spatial_rank = 3
+
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to single 3D volume. Override in subclasses; input shape (D, H, W, C)
         or (D, H, W). Returns same shape and dtype.
@@ -1641,6 +1835,7 @@ class VolumeOnlyTransform(BasicTransform):
     """
 
     _targets = (Targets.VOLUME,)
+    _sampling_spatial_rank = 3
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         raise NotImplementedError
@@ -1683,8 +1878,8 @@ class CustomTransformsApplyMixin:
         >>> mask = np.random.randint(0, 2, (64, 64), dtype=np.uint8)
         >>>
         >>> class Rotate90WithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
-        ...     def sample_parameters(self, params, data, sampling):
-        ...         return {"k": 1}
+        ...     def sample_parameters(self, inputs, sampling):
+        ...         return TransformParameterPlan.shared_only({"k": 1})
         ...     def apply(self, img, k=0, **p):
         ...         return np.rot90(img, k)
         ...     def apply_to_mask(self, mask, k=0, **p):

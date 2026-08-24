@@ -55,6 +55,15 @@ sample-dependent work, with separate branch-free executors for ordinary, observe
 
 ## Active Design Work
 
+### [Greenfield Target-Specific Parameter Sampling](target-specific-parameter-sampling.md)
+
+Plan for replacing flat sampled-parameter dictionaries and special `volume_*` fields with shared parameters plus
+actual-target-key parameter groups, including aliases, mixed representations, deterministic execution, and replay.
+
+**Status**: Implemented (greenfield cutover).
+
+The maintained sampler inventory is in [Target-Specific Sampling Inventory](target-specific-parameter-sampling-inventory.md).
+
 ### [Shared CI Foundation](https://github.com/albumentations-team/ci-foundation/blob/main/docs/architecture.md)
 
 The public, SHA-pinned foundation owns Python and uv bootstrap, CPU-only Torch mechanics, and trusted Antigravity

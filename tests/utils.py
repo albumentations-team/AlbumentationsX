@@ -7,6 +7,23 @@ from io import StringIO
 import numpy as np
 
 import albumentations
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
+
+
+def make_sampling_input(transform, data):
+    """Build the public sampler input used by direct sampler regression tests."""
+    targets = transform._build_target_set(data)
+    return TransformSamplingInput(
+        base_params=transform.update_transform_params({}, data, targets=targets),
+        spatial_frame=transform._build_spatial_frame(targets),
+        targets=targets,
+        data=data,
+    )
+
+
+def get_resolved_applied_params(transform, target="image"):
+    """Resolve one target's parameters from a recorded structured plan."""
+    return TransformParameterPlan.from_dict(transform.get_applied_params()).params_for(target)
 
 
 class FrozenParams(dict):

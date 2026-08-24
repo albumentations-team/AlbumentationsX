@@ -30,6 +30,7 @@ import torch
 from albucore import hflip, vflip
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -571,16 +572,15 @@ class D4(DualTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
+    ) -> TransformParameterPlan:
         if self.group_element is not None:
             group_element = self.group_element
         else:
             group_element = sampling.random_generator.choice(d4_group_elements)
         sampling.applied_overrides["group_element"] = group_element
-        return {"group_element": group_element}
+        return TransformParameterPlan.shared_only({"group_element": group_element})
 
     def inverse(self) -> D4:
         """Return a new D4 with the inverse group element to undo this transform. Use after inference

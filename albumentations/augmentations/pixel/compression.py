@@ -14,6 +14,7 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
@@ -112,20 +113,21 @@ class ImageCompression(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, int | str]:
+    ) -> TransformParameterPlan:
         image_type = ".jpg" if self.compression_type == "jpeg" else ".webp"
 
         quality = sampling.py_random.randint(*self.quality_range)
 
         sampling.applied_overrides["quality_range"] = quality
 
-        return {
-            "quality": quality,
-            "image_type": image_type,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "quality": quality,
+                "image_type": image_type,
+            }
+        )
 
 
 class InterpolationPydantic(BaseModel):
@@ -223,12 +225,11 @@ class Downscale(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         scale = sampling.py_random.uniform(*self.scale_range)
 
         sampling.applied_overrides["scale_range"] = scale
 
-        return {"scale": scale}
+        return TransformParameterPlan.shared_only({"scale": scale})

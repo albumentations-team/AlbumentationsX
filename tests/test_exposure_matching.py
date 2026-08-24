@@ -5,6 +5,9 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.transform_params import TransformParameterPlan
+
+from .utils import get_resolved_applied_params
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -65,7 +68,7 @@ def test_exposure_matching_handles_zero_and_near_zero_means(
     result = transform(image=image)["image"]
 
     np.testing.assert_allclose(result, expected_value, rtol=1e-6, atol=1e-12)
-    np.testing.assert_allclose(transform.get_applied_params()["gain"], expected_gain, rtol=1e-6)
+    np.testing.assert_allclose(get_resolved_applied_params(transform)["gain"], expected_gain, rtol=1e-6)
 
 
 def test_exposure_matching_clips_saturated_pixels_without_compensation() -> None:
@@ -98,7 +101,7 @@ def test_exposure_matching_clips_derived_gain(
     result = transform(image=image)["image"]
 
     np.testing.assert_allclose(result, expected_value, rtol=0, atol=1e-6)
-    np.testing.assert_allclose(transform.get_applied_params()["gain"], expected_gain)
+    np.testing.assert_allclose(get_resolved_applied_params(transform)["gain"], expected_gain)
 
 
 @pytest.mark.parametrize("target", ["images", "volume"])
@@ -115,8 +118,7 @@ def test_exposure_matching_derives_one_gain_per_image_or_slice(
 
     expected_value = 102 if dtype == np.uint8 else 0.4
     np.testing.assert_allclose(result, expected_value, rtol=0, atol=1e-6)
-    gains_key = "image_gains" if target == "images" else "volume_gains"
-    np.testing.assert_allclose(transform.get_applied_params()[gains_key], [2.0, 1.0, 0.5])
+    np.testing.assert_allclose(get_resolved_applied_params(transform, target)["gain"], [2.0, 1.0, 0.5])
 
 
 def test_exposure_matching_keeps_gains_separate_for_simultaneous_target_routes() -> None:
@@ -126,13 +128,13 @@ def test_exposure_matching_keeps_gains_separate_for_simultaneous_target_routes()
     transform = A.ExposureMatching(target_mean_range=(0.4, 0.4), p=1.0)
 
     result = transform(image=image, images=images, volume=volume)
-    params = transform.get_applied_params()
+    params = TransformParameterPlan.from_dict(transform.get_applied_params())
 
     for target in ("image", "images", "volume"):
         np.testing.assert_allclose(result[target], 0.4, rtol=0, atol=1e-6)
-    np.testing.assert_allclose(params["gain"], 2.0)
-    np.testing.assert_allclose(params["image_gains"], [2.0, 1.0])
-    np.testing.assert_allclose(params["volume_gains"], [2.0, 0.5, 1.0])
+    np.testing.assert_allclose(params.params_for("image")["gain"], 2.0)
+    np.testing.assert_allclose(params.params_for("images")["gain"], [2.0, 1.0])
+    np.testing.assert_allclose(params.params_for("volume")["gain"], [2.0, 0.5, 1.0])
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -172,16 +174,16 @@ def test_exposure_matching_records_sampled_target_and_gains_for_replay() -> None
     pipeline = A.Compose([transform], save_applied_params=True, seed=137)
 
     result = pipeline(images=images)
-    params = transform.get_applied_params()
+    params = TransformParameterPlan.from_dict(transform.get_applied_params())
     applied_transforms = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
     _, applied_config = applied_transforms[0]
 
-    assert 0.3 <= params["target_mean"] <= 0.5
+    assert 0.3 <= params.shared["target_mean"] <= 0.5
     np.testing.assert_allclose(
-        params["image_gains"],
-        [params["target_mean"] / 0.2, params["target_mean"] / 0.8],
+        params.params_for("images")["gain"],
+        [params.shared["target_mean"] / 0.2, params.shared["target_mean"] / 0.8],
     )
-    assert applied_config["target_mean_range"] == params["target_mean"]
+    assert applied_config["target_mean_range"] == params.shared["target_mean"]
     assert applied_config["gain_range"] == [0.25, 3.0]
 
     replay = A.Compose.from_applied_transforms(applied_transforms)
@@ -189,11 +191,8 @@ def test_exposure_matching_records_sampled_target_and_gains_for_replay() -> None
     np.testing.assert_array_equal(replayed["images"], result["images"])
 
 
-@pytest.mark.parametrize(
-    ("target", "gains_key"),
-    [("images", "image_gains"), ("volume", "volume_gains")],
-)
-def test_exposure_matching_replay_compose_reuses_applied_gains(target: str, gains_key: str) -> None:
+@pytest.mark.parametrize("target", ["images", "volume"])
+def test_exposure_matching_replay_compose_reuses_applied_gains(target: str) -> None:
     images = np.stack(
         [
             np.full((4, 6, 3), 0.2, dtype=np.float32),
@@ -204,11 +203,11 @@ def test_exposure_matching_replay_compose_reuses_applied_gains(target: str, gain
     pipeline = A.ReplayCompose([A.ExposureMatching(target_mean_range=(0.3, 0.5), p=1.0)], seed=137)
 
     result = pipeline(**{target: data})
-    replay_params = result["replay"]["transforms"][0]["params"]
+    replay_params = TransformParameterPlan.from_dict(result["replay"]["transforms"][0]["params"])
     replayed = A.ReplayCompose.replay(result["replay"], **{target: data})
 
-    assert 0.3 <= replay_params["target_mean"] <= 0.5
-    assert len(replay_params[gains_key]) == len(data)
+    assert 0.3 <= replay_params.shared["target_mean"] <= 0.5
+    assert len(replay_params.params_for(target)["gain"]) == len(data)
     np.testing.assert_array_equal(replayed[target], result[target])
 
 

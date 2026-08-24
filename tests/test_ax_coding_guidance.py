@@ -59,7 +59,7 @@ class DualTransform: pass
 class RandomNew(DualTransform):
     def apply(self, image, value=1):
         return sampling.py_random.random()
-    def sample_parameters(self, self2, params, data, sampling):
+    def sample_parameters(self, self2, inputs, sampling):
         return {'x': np.random.uniform(0, 1), 'y': random.random(), 'z': sampling.py_random.random()}
 """,
         },
@@ -150,8 +150,8 @@ from random import randint
 
 class DualTransform: pass
 class Example(DualTransform):
-    def sample_parameters(self, params, data, sampling: SamplingContext, /):
-        return {"x": uniform(), "y": randint(0, 1), "image": resize(data["image"], (4, 4))}
+    def sample_parameters(self, inputs, sampling: SamplingContext, /):
+        return {"x": uniform(), "y": randint(0, 1), "image": resize(inputs.data["image"], (4, 4))}
 """,
         },
     )
@@ -220,6 +220,45 @@ class Child(Parent):
 class BasicTransform: pass
 class Child(BasicTransform):
     def __init__(self, transpose: bool = False, p: float = 1.0): super().__init__(p=p)
+""",
+        },
+    )
+
+
+def test_sampling_plan_rules_reject_flat_returns_and_first_target_shape() -> None:
+    ids = rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+class DualTransform: pass
+class Example(DualTransform):
+    def sample_parameters(self, inputs, sampling: SamplingContext):
+        shape = inputs.base_params["shape"]
+        return {"shape": shape}
+""",
+        },
+    )
+    assert {"AXG021", "AXG022"} <= set(ids)
+
+
+def test_target_plan_rule_rejects_target_routing_parameter_names() -> None:
+    ids = rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+class DualTransform: pass
+class Example(DualTransform):
+    def apply(self, image, volume_noise_map):
+        return image
+""",
+        },
+    )
+    assert "AXG023" in ids
+    assert "AXG023" not in rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+class DualTransform: pass
+class Example(DualTransform):
+    def apply(self, image, image_type):
+        return image
 """,
         },
     )

@@ -28,6 +28,7 @@ from albumentations.core.bbox_utils import (
     normalize_bboxes,
 )
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -306,10 +307,9 @@ class Pad(DualTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         if isinstance(self.padding, Real):
             pad_top = pad_bottom = pad_left = pad_right = self.padding
         elif isinstance(self.padding, (tuple, list)):
@@ -327,12 +327,14 @@ class Pad(DualTransform):
                 "Padding must be a single number, a pair of numbers, or a quadruple of numbers",
             )
 
-        return {
-            "pad_top": pad_top,
-            "pad_bottom": pad_bottom,
-            "pad_left": pad_left,
-            "pad_right": pad_right,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "pad_top": pad_top,
+                "pad_bottom": pad_bottom,
+                "pad_left": pad_left,
+                "pad_right": pad_right,
+            }
+        )
 
 
 class PadIfNeeded(Pad):
@@ -559,12 +561,11 @@ class PadIfNeeded(Pad):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         h_pad_top, h_pad_bottom, w_pad_left, w_pad_right = fgeometric.get_padding_params(
-            image_shape=params["shape"][:2],
+            image_shape=inputs.require_spatial_frame().spatial_shape_2d,
             min_height=self.min_height,
             min_width=self.min_width,
             pad_height_divisor=self.pad_height_divisor,
@@ -580,9 +581,11 @@ class PadIfNeeded(Pad):
             py_random=sampling.py_random,
         )
 
-        return {
-            "pad_top": h_pad_top,
-            "pad_bottom": h_pad_bottom,
-            "pad_left": w_pad_left,
-            "pad_right": w_pad_right,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "pad_top": h_pad_top,
+                "pad_bottom": h_pad_bottom,
+                "pad_left": w_pad_left,
+                "pad_right": w_pad_right,
+            }
+        )

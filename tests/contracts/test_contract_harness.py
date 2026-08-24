@@ -8,6 +8,7 @@ from pydantic import model_validator
 from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 from tests.helpers.applied_config import (
@@ -42,12 +43,11 @@ class CrossFieldConflict(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         sampling.applied_overrides["choice"] = "a"
-        return {}
+        return TransformParameterPlan.shared_only({})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -56,12 +56,11 @@ class CrossFieldConflict(ImageOnlyTransform):
 class UnknownEmittedKey(ImageOnlyTransform):
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         sampling.applied_overrides["unknown_key"] = 137
-        return {}
+        return TransformParameterPlan.shared_only({})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -77,12 +76,11 @@ class NonJsonValue(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         sampling.applied_overrides["payload"] = {1, 2}
-        return {}
+        return TransformParameterPlan.shared_only({})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -98,13 +96,12 @@ class MutatesPreviousRecord(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         self.history.append(len(self.history) + 1)
         sampling.applied_overrides["history"] = self.history
-        return {}
+        return TransformParameterPlan.shared_only({})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -120,12 +117,11 @@ class ReconstructsButCannotRun(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         sampling.applied_overrides["mode"] = "replay"
-        return {}
+        return TransformParameterPlan.shared_only({})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         if self.mode == "replay":
@@ -143,12 +139,11 @@ class ReconstructsWithDifferentOutput(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         sampling.applied_overrides["mode"] = "replay"
-        return {}
+        return TransformParameterPlan.shared_only({})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return np.zeros_like(img) if self.mode == "replay" else img

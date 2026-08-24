@@ -43,12 +43,11 @@ Built-in samplers receive randomness explicitly:
 ```python
 def sample_parameters(
     self,
-    params: dict[str, Any],
-    data: dict[str, Any],
+    inputs: TransformSamplingInput,
     sampling: SamplingContext,
-) -> dict[str, Any]:
+) -> TransformParameterPlan:
     value = sampling.py_random.uniform(0.0, 1.0)
-    return {"value": value}
+    return TransformParameterPlan.shared_only({"value": value})
 ```
 
 `SamplingContext` exposes the invocation-local Python and NumPy streams plus `applied_overrides`. Built-in sampler
@@ -56,6 +55,8 @@ code must use these streams, never `self.py_random` or `self.random_generator`. 
 sampling context is pointed at a no-op override sink: samplers can keep the same interface without allocating or
 retaining an applied-configuration dictionary. Observed calls provide a real sink and build the durable replay record.
 `apply_*` receives realized parameters and target data only; it does not generate randomness.
+Target-sensitive samplers use `inputs.targets` and return `TargetParameterGroup` entries keyed by actual target names;
+they must not route through target-named fields such as `volume_noise_map`.
 
 ## Ordinary hot path
 

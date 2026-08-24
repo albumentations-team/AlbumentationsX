@@ -3,6 +3,7 @@
 from typing import Any
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 
 from ._transforms_shared import (
     LENGTH_RAW_BBOX,
@@ -210,21 +211,34 @@ class OverlayElements(DualTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
+        data = inputs.data
         metadata = data[self.metadata_key]
-        img_shape = params["shape"]
+        image_views = inputs.targets.image_like()
+        reference = (
+            image_views[0]
+            if image_views
+            else next(
+                (view for view in inputs.targets.ordered if view.descriptor.spatial_shape is not None),
+                None,
+            )
+        )
+        if reference is None or reference.descriptor.spatial_shape is None:
+            raise ValueError("OverlayElements requires a spatial target with a known shape")
+        img_shape = (reference.descriptor.spatial_shape[-2], reference.descriptor.spatial_shape[-1])
 
         if isinstance(metadata, list):
             overlay_data = [self.preprocess_metadata(md, img_shape, sampling.py_random) for md in metadata]
         else:
             overlay_data = [self.preprocess_metadata(metadata, img_shape, sampling.py_random)]
 
-        return {
-            "overlay_data": overlay_data,
-        }
+        return TransformParameterPlan.shared_only(
+            {
+                "overlay_data": overlay_data,
+            }
+        )
 
     def apply(
         self,

@@ -12,6 +12,7 @@ from typing_extensions import Self
 from albumentations.augmentations.other import annotation_artifacts_functional as fannotation
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -292,13 +293,15 @@ class AnnotationArtifacts(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        shape = params["shape"]
+    ) -> TransformParameterPlan:
+        image_view = inputs.targets.primary_image_like()
+        shape = image_view.descriptor.shape
+        if shape is None:
+            raise ValueError("AnnotationArtifacts requires an image target with a known shape")
         image_height, image_width = shape[:2]
-        num_channels = shape[2] if len(shape) > 2 else 1
+        num_channels = image_view.descriptor.channels or 1
         artifacts = self._generate_artifacts(image_height, image_width, num_channels, sampling)
         record_line_length_ratio = self.line_geometry != "random_endpoints" and not (
             self.line_geometry == "random_angle" and self.line_length_range is not None
@@ -311,7 +314,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
                 record_line_length_ratio=record_line_length_ratio,
             )
         )
-        return {"artifacts": artifacts}
+        return TransformParameterPlan.shared_only({"artifacts": artifacts})
 
     @staticmethod
     def _get_applied_config(

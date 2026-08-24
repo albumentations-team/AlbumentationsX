@@ -4,12 +4,17 @@ import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.core.transform_params import TransformParameterPlan
+
+
+def _applied_shared(transform: A.XYMasking) -> dict:
+    return dict(TransformParameterPlan.from_dict(transform.get_applied_params()).params_for("image"))
 
 
 def _sample_holes(transform: A.XYMasking, shape: tuple[int, int, int], seed: int = 137) -> np.ndarray:
     pipeline = A.Compose([transform], save_applied_params=True, seed=seed, strict=True)
     pipeline(image=np.ones(shape, dtype=np.uint8))
-    return transform.get_applied_params()["holes"]
+    return _applied_shared(transform)["holes"]
 
 
 def _assert_canonical_empty_holes(holes: np.ndarray) -> None:
@@ -107,7 +112,7 @@ def test_fractional_zero_length_is_noop_for_every_supported_target() -> None:
         mask3d=mask3d,
     )
 
-    _assert_canonical_empty_holes(transform.get_applied_params()["holes"])
+    _assert_canonical_empty_holes(_applied_shared(transform)["holes"])
     np.testing.assert_array_equal(result["image"], image)
     np.testing.assert_array_equal(result["mask"], mask)
     np.testing.assert_array_equal(result["bboxes"], bboxes)
@@ -184,7 +189,7 @@ def test_fractional_zero_length_is_noop_for_float32_inpainting() -> None:
 
     result = A.Compose([transform], save_applied_params=True, seed=137, strict=True)(image=image)
 
-    _assert_canonical_empty_holes(transform.get_applied_params()["holes"])
+    _assert_canonical_empty_holes(_applied_shared(transform)["holes"])
     np.testing.assert_array_equal(result["image"], image)
 
 
@@ -197,7 +202,7 @@ def test_fractional_zero_length_keeps_rng_order_for_later_masks() -> None:
     transform.set_random_seed(137)
 
     transform(image=np.ones((7, 5, 1), dtype=np.uint8))
-    holes = transform.get_applied_params()["holes"]
+    holes = _applied_shared(transform)["holes"]
 
     np.testing.assert_array_equal(holes, [[1, 0, 2, 7], [0, 0, 1, 7]])
 
@@ -336,7 +341,7 @@ def test_float_range_transport_preserves_integral_valued_float_identity(value: o
     restored = A.from_dict(transported)
     restored_transform = restored.transforms[0]
     restored(image=np.ones((7, 11, 1), dtype=np.uint8))
-    holes = restored_transform.get_applied_params()["holes"]
+    holes = _applied_shared(restored_transform)["holes"]
 
     assert transform.mask_x_length_range == (1.0, 1.0)
     assert all(type(element) is float for element in transform.mask_x_length_range)
@@ -408,16 +413,16 @@ def test_integer_dimension_error_does_not_advance_rng(invalid_axis: str) -> None
         retried(image=invalid_image)
 
     retried_result = retried(image=valid_image)
-    retried_holes = retried.get_applied_params()["holes"]
+    retried_holes = _applied_shared(retried)["holes"]
     fresh_result = fresh(image=valid_image)
-    fresh_holes = fresh.get_applied_params()["holes"]
+    fresh_holes = _applied_shared(fresh)["holes"]
     np.testing.assert_array_equal(retried_holes, fresh_holes)
     np.testing.assert_array_equal(retried_result["image"], fresh_result["image"])
 
     retried(image=valid_image)
-    retried_holes = retried.get_applied_params()["holes"]
+    retried_holes = _applied_shared(retried)["holes"]
     fresh(image=valid_image)
-    np.testing.assert_array_equal(retried_holes, fresh.get_applied_params()["holes"])
+    np.testing.assert_array_equal(retried_holes, _applied_shared(fresh)["holes"])
 
 
 def test_integer_dimension_preflight_checks_x_before_y() -> None:
@@ -468,7 +473,7 @@ def test_strict_json_applied_configuration_reconstructs_runnable_policy_at_new_r
     reconstructed = A.Compose.from_applied_transforms(transported, save_applied_params=True, seed=151)
     reconstructed_transform = reconstructed.transforms[0]
     reconstructed(image=np.ones((24, 40, 1), dtype=np.uint8))
-    holes = reconstructed_transform.get_applied_params()["holes"]
+    holes = _applied_shared(reconstructed_transform)["holes"]
 
     assert reconstructed_transform.mask_x_length_range == (0.25, 0.25)
     assert reconstructed_transform.mask_y_length_range == (3, 3)
@@ -501,9 +506,9 @@ def test_one_serialized_relative_pipeline_scales_across_resolutions() -> None:
     transform = pipeline.transforms[0]
 
     pipeline(image=np.ones((7, 10, 1), dtype=np.uint8))
-    first_holes = transform.get_applied_params()["holes"]
+    first_holes = _applied_shared(transform)["holes"]
     pipeline(image=np.ones((7, 20, 1), dtype=np.uint8))
-    second_holes = transform.get_applied_params()["holes"]
+    second_holes = _applied_shared(transform)["holes"]
 
     np.testing.assert_array_equal(first_holes[:, 2] - first_holes[:, 0], [5])
     np.testing.assert_array_equal(second_holes[:, 2] - second_holes[:, 0], [10])
@@ -597,7 +602,7 @@ def test_integer_sampling_matches_permanent_baseline_golden_vectors(
     transform = A.XYMasking(**kwargs, p=1)
     transform.set_random_seed(seed)
     transform(image=np.ones(shape, dtype=np.uint8))
-    holes = transform.get_applied_params()["holes"]
+    holes = _applied_shared(transform)["holes"]
 
     np.testing.assert_array_equal(holes, expected)
 
@@ -620,4 +625,4 @@ def test_integer_sampling_preserves_sequential_rng_progression() -> None:
 
     for expected in expected_calls:
         transform(image=image)
-        np.testing.assert_array_equal(transform.get_applied_params()["holes"], expected)
+        np.testing.assert_array_equal(_applied_shared(transform)["holes"], expected)

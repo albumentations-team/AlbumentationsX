@@ -10,6 +10,7 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.invocation import SamplingContext
+from tests.utils import make_sampling_input
 
 
 class _LabelMappingElasticTransform(A.ElasticTransform):
@@ -127,7 +128,7 @@ def test_sampled_control_coefficients_are_bounded_and_replayable() -> None:
         seed=137,
     )
     result = transform(image=image)
-    params = result["replay"]["transforms"][0]["params"]
+    params = result["replay"]["transforms"][0]["params"]["shared"]
     coefficients = np.asarray(params["control_coefficients"], dtype=np.float32)
     radius = 0.05 * min(image.shape[0] - 1, image.shape[1] - 1)
 
@@ -253,11 +254,11 @@ def test_keypoint_inverse_marks_divergent_iterations_invalid() -> None:
 def test_zero_spatial_extent_does_not_sample_coefficients() -> None:
     transform = A.ElasticTransform(displacement_range=(0.01, 0.01), p=1.0)
 
+    data = {"image": np.empty((0, 10, 3), dtype=np.float32)}
     params = transform.sample_parameters(
-        {"shape": (0, 10, 3)},
-        {},
+        make_sampling_input(transform, data),
         SamplingContext.from_owner(transform, {}),
-    )
+    ).shared
 
     assert params["control_coefficients"] == []
 

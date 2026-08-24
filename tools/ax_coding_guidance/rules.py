@@ -52,6 +52,8 @@ LEGACY_RANDOM_TRANSFORM_NAMES = frozenset(
     },
 )
 RANGE_ALIASES = frozenset({"AxisRanges3D", "MaskLengthRange", "PixelLengthRange", "PositiveAxisRanges3D"})
+TARGET_ROUTING_PREFIXES = ("image_", "images_", "volume_", "mask_", "masks_", "mask3d_")
+TARGET_ROUTING_PARAMETER_ALLOWLIST = frozenset({"image_type", "volume_shape"})
 NUMPY_MATH_TO_MATH = {
     "arccos": "acos",
     "arccosh": "acosh",
@@ -252,13 +254,13 @@ def rule_sampling_signature(index: SourceIndex) -> list[Diagnostic]:
             continue
         args = node.args
         names = [arg.arg for arg in [*args.posonlyargs, *args.args]]
-        if names != ["self", "params", "data", "sampling"] or args.kwonlyargs or args.vararg or args.kwarg:
+        if names != ["self", "inputs", "sampling"] or args.kwonlyargs or args.vararg or args.kwarg:
             result.append(
                 _d(
                     "AXG004",
                     info,
                     node,
-                    "sample_parameters must have exactly self, params, data, sampling",
+                    "sample_parameters must have exactly self, inputs, sampling",
                     f"{info.name}.sample_parameters",
                 )
             )
@@ -275,6 +277,132 @@ def rule_sampling_signature(index: SourceIndex) -> list[Diagnostic]:
                     f"{info.name}.sample_parameters",
                 )
             )
+    return result
+
+
+def _plain_plan_dict_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    names: set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Assign) and isinstance(child.value, (ast.Dict, ast.Call)):
+            if isinstance(child.value, ast.Call) and dotted(child.value.func) != "dict":
+                continue
+            for target in child.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif isinstance(child, ast.AnnAssign) and isinstance(child.value, (ast.Dict, ast.Call)):
+            if isinstance(child.value, ast.Call) and dotted(child.value.func) != "dict":
+                continue
+            if isinstance(child.target, ast.Name):
+                names.add(child.target.id)
+    return names
+
+
+class _DirectSamplerReturnVisitor(ast.NodeVisitor):
+    def __init__(self, root: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self.root = root
+        self.returns: list[ast.Return] = []
+
+    def visit_Return(self, returned: ast.Return) -> None:
+        if returned.value is not None:
+            self.returns.append(returned)
+
+    def visit_FunctionDef(self, function: ast.FunctionDef) -> None:
+        if function is self.root:
+            self.generic_visit(function)
+
+    def visit_AsyncFunctionDef(self, function: ast.AsyncFunctionDef) -> None:
+        if function is self.root:
+            self.generic_visit(function)
+
+
+def _direct_sampler_returns(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Return]:
+    visitor = _DirectSamplerReturnVisitor(node)
+    visitor.visit(node)
+    return visitor.returns
+
+
+def _is_first_target_shape_access(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Subscript)
+        and ast.unparse(node.value) == "inputs.base_params"
+        and (ast.unparse(node.slice).strip("\"'") == "shape")
+    )
+
+
+def _is_legacy_shape_helper_call(node: ast.AST) -> bool:
+    return isinstance(node, ast.Call) and dotted(node.func) in {
+        "get_image_data",
+        "self.get_image_data",
+        "_extract_shape_from_data",
+        "self._extract_shape_from_data",
+        "_extract_shared_shape_from_data",
+        "self._extract_shared_shape_from_data",
+    }
+
+
+def rule_sampling_plan_contract(index: SourceIndex) -> list[Diagnostic]:
+    result: list[Diagnostic] = []
+    for info in index.concrete_transforms():
+        node = info.methods.get("sample_parameters")
+        if node is None:
+            continue
+        plain_names = _plain_plan_dict_names(node)
+        for returned in _direct_sampler_returns(node):
+            value = returned.value
+            is_plain_dict = (
+                isinstance(value, ast.Dict)
+                or (isinstance(value, ast.Call) and dotted(value.func) == "dict")
+                or (isinstance(value, ast.Name) and value.id in plain_names)
+            )
+            if is_plain_dict:
+                result.append(
+                    _d(
+                        "AXG021",
+                        info,
+                        returned,
+                        "sample_parameters must return TransformParameterPlan, not a plain dictionary",
+                        f"{info.name}.sample_parameters",
+                    )
+                )
+        for child in ast.walk(node):
+            if _is_first_target_shape_access(child) or _is_legacy_shape_helper_call(child):
+                detail = (
+                    "instead of first-target base_params['shape']"
+                    if _is_first_target_shape_access(child)
+                    else "instead of a first-target helper"
+                )
+                result.append(
+                    _d(
+                        "AXG022",
+                        info,
+                        child,
+                        (f"sample_parameters must use TransformSamplingInput.targets or spatial_frame {detail}"),
+                        f"{info.name}.sample_parameters",
+                    )
+                )
+    return result
+
+
+def rule_target_routing_parameters(index: SourceIndex) -> list[Diagnostic]:
+    result: list[Diagnostic] = []
+    for info in index.concrete_transforms():
+        for name, node in _method_targets(info):
+            for arg in argument_nodes(node)[1:]:
+                if arg.arg in TARGET_ROUTING_PARAMETER_ALLOWLIST:
+                    continue
+                if arg.arg.startswith(TARGET_ROUTING_PREFIXES):
+                    result.append(
+                        _d(
+                            "AXG023",
+                            info,
+                            arg,
+                            (
+                                "application parameters must use semantic names; target-specific routing belongs "
+                                "in TransformParameterPlan groups"
+                            ),
+                            f"{info.name}.{name}",
+                        )
+                    )
     return result
 
 
@@ -488,7 +616,7 @@ def rule_removed_sampling(index: SourceIndex) -> list[Diagnostic]:
                 "AXG010",
                 info,
                 info.methods[name],
-                f"{info.name}.{name} was removed; implement sample_parameters(params, data, sampling) instead",
+                f"{info.name}.{name} was removed; implement sample_parameters(inputs, sampling) instead",
                 f"{info.name}.{name}",
             )
             for name in ("get_params", "get_params_dependent_on_data")
@@ -1126,6 +1254,7 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
         rule_apply_defaults,
         rule_apply_length,
         rule_sampling_signature,
+        rule_sampling_plan_contract,
         rule_random_usage,
         rule_sampling_rng,
         rule_transform_names,
@@ -1142,6 +1271,7 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
         rule_method_docstrings,
         rule_apply_docstrings,
         rule_constructor_schema,
+        rule_target_routing_parameters,
     )
     diagnostics: list[Diagnostic] = []
     for check in checks:

@@ -16,6 +16,7 @@ import albumentations as A
 import albumentations.core.composition as composition_module
 import albumentations.core.invocation as invocation_module
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import TransformParameterPlan, TransformSamplingInput
 from albumentations.core.transforms_interface import ImageOnlyTransform
 
 T = TypeVar("T")
@@ -33,13 +34,12 @@ class _BlockingNumpyOnlyProbe(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        marker = int(data["image"][0, 0, 0])
+    ) -> TransformParameterPlan:
+        marker = int(inputs.data["image"][0, 0, 0])
         sampling.applied_overrides["marker_range"] = (marker, marker)
-        return {"marker": marker}
+        return TransformParameterPlan.shared_only({"marker": marker})
 
     def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
         if marker == 1:
@@ -60,13 +60,12 @@ class _BlockingRandomProbe(_BlockingNumpyOnlyProbe):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
         with self._ids_lock:
             self.py_random_ids.append(id(sampling.py_random))
-        return super().sample_parameters(params, data, sampling)
+        return super().sample_parameters(inputs, sampling)
 
 
 class _NumpyRandomMarker(ImageOnlyTransform):
@@ -74,12 +73,13 @@ class _NumpyRandomMarker(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        del params, data
-        return {"marker": int(sampling.random_generator.integers(np.iinfo(np.int64).max, dtype=np.int64))}
+    ) -> TransformParameterPlan:
+        del inputs
+        return TransformParameterPlan.shared_only(
+            {"marker": int(sampling.random_generator.integers(np.iinfo(np.int64).max, dtype=np.int64))},
+        )
 
     def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
         del params
@@ -112,12 +112,11 @@ class _ExplicitExternalSampler(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        del params, data
-        return {"offset": sampling.py_random.randint(1, 7)}
+    ) -> TransformParameterPlan:
+        del inputs
+        return TransformParameterPlan.shared_only({"offset": sampling.py_random.randint(1, 7)})
 
     def apply(self, image: np.ndarray, offset: int, **params: Any) -> np.ndarray:
         del params
@@ -159,12 +158,12 @@ class _FailAfterSampling(ImageOnlyTransform):
 
     def sample_parameters(
         self,
-        params: dict[str, Any],
-        data: dict[str, Any],
+        inputs: TransformSamplingInput,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> TransformParameterPlan:
+        del inputs
         sampling.applied_overrides["marker"] = self.marker
-        return {"marker": self.marker}
+        return TransformParameterPlan.shared_only({"marker": self.marker})
 
     def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
         del image, marker, params
@@ -250,7 +249,7 @@ def test_deterministic_direct_transform_keeps_caller_local_observation() -> None
 
     def run(image: np.ndarray) -> tuple[tuple[int, ...], np.ndarray]:
         result = transform(image=image)
-        return transform.get_applied_params()["shape"], result["image"]
+        return transform.get_applied_params()["shared"]["shape"], result["image"]
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_future = _submit(executor, lambda: run(first_image))

@@ -170,17 +170,17 @@ class BBoxSafeRandomCrop(BaseCrop):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         if len(data["bboxes"]) == 0:  # less likely, this class is for use with bboxes.
             crop_coords = self._get_coords_no_bbox(image_shape, sampling)
-            return SampledParams.shared_only({"crop_coords": crop_coords})
+            return SampledParams(params={"crop_coords": crop_coords})
 
         bbox_union = union_of_bboxes(bboxes=data["bboxes"], erosion_rate=self.erosion_rate)
 
         if bbox_union is None:
             crop_coords = self._get_coords_no_bbox(image_shape, sampling)
-            return SampledParams.shared_only({"crop_coords": crop_coords})
+            return SampledParams(params={"crop_coords": crop_coords})
 
         x_min, y_min, x_max, y_max = bbox_union
 
@@ -199,7 +199,7 @@ class BBoxSafeRandomCrop(BaseCrop):
         crop_x_max = int(bbox_xmax * image_width)
         crop_y_max = int(bbox_ymax * image_height)
 
-        return SampledParams.shared_only({"crop_coords": (crop_x_min, crop_y_min, crop_x_max, crop_y_max)})
+        return SampledParams(params={"crop_coords": (crop_x_min, crop_y_min, crop_x_max, crop_y_max)})
 
 
 class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
@@ -574,11 +574,11 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         if len(data["bboxes"]) == 0:
             crop_coords = self._get_coords_no_bbox(image_shape, sampling)
-            return SampledParams.shared_only({"crop_coords": crop_coords})
+            return SampledParams(params={"crop_coords": crop_coords})
 
         num_bboxes = len(data["bboxes"])
         min_subset_size = math.ceil(num_bboxes * self.subset_fraction_range[0])
@@ -587,8 +587,8 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
         subset_size = sampling.random_generator.integers(min_subset_size, max_subset_size + 1)
         bbox_indices = sampling.random_generator.choice(num_bboxes, size=subset_size, replace=False)
         bbox_union = union_of_bboxes(data["bboxes"][bbox_indices], erosion_rate=self.erosion_rate)
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "crop_coords": self._get_crop_coords(bbox_union, image_shape, sampling),
                 "bbox_indices": tuple(sorted(int(index) for index in bbox_indices)),
             }
@@ -748,7 +748,7 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_height, image_width = targets.require_spatial_shape(2)
+        image_height, image_width = targets.require_aligned_spatial_shape(2)
         bboxes = data.get("bboxes", [])
 
         if self.height > image_height or self.width > image_width:
@@ -835,7 +835,7 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
         crop_x2 = crop_x1 + self.width
         crop_y2 = crop_y1 + self.height
 
-        return SampledParams.shared_only({"crop_coords": (crop_x1, crop_y1, crop_x2, crop_y2)})
+        return SampledParams(params={"crop_coords": (crop_x1, crop_y1, crop_x2, crop_y2)})
 
 
 __all__ = [

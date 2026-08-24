@@ -236,7 +236,7 @@ class GaussNoise(_FullVolumeNoiseTransform):
                     topology=True,
                 ),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class ISONoise(_FullVolumeNoiseTransform):
@@ -370,8 +370,8 @@ class ISONoise(_FullVolumeNoiseTransform):
 
         sampling.applied_overrides.update({"color_shift_range": color_shift, "intensity_range": intensity})
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "color_shift": color_shift,
                 "intensity": intensity,
                 "random_seed": random_seed,
@@ -502,7 +502,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
                         channels=True,
                     ),
                 )
-            return SampledParams(shared={}, groups=tuple(groups))
+            return SampledParams(params={}, target_params=tuple(groups))
 
         for compatible_views in targets.group_image_like_by(
             lambda view: (_target_noise_map_shape(view), _sampling_family(view)),
@@ -518,7 +518,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
                     topology=True,
                 ),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
     def _sample_multiplier(
         self,
@@ -640,8 +640,8 @@ class ShotNoise(_FullVolumeNoiseTransform):
     ) -> SampledParams:
         scale = sampling.py_random.uniform(*self.scale_range)
         sampling.applied_overrides["scale_range"] = scale
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "scale": scale,
                 "random_seed": sampling.random_generator.integers(0, 2**32 - 1),
             }
@@ -978,7 +978,7 @@ class AdditiveNoise(ImageOnlyTransform):
                     ),
                 ),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
     def _sample_noise_map(
         self,
@@ -1180,7 +1180,7 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
                     requirements=requirements_for_views(views, shape=True, sampling_topology=True),
                 ),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
     @staticmethod
     def _sample_masks(
@@ -1345,7 +1345,7 @@ class FilmGrain(_FullVolumeNoiseTransform):
                     requirements=requirements_for_views(views, shape=True, sampling_topology=True),
                 ),
             )
-        return SampledParams(shared={"intensity": intensity}, groups=tuple(groups))
+        return SampledParams(params={"intensity": intensity}, target_params=tuple(groups))
 
     @staticmethod
     def _sample_grain(
@@ -1470,7 +1470,7 @@ class RicianNoise(_FullVolumeNoiseTransform):
         sampling.applied_overrides["std_range"] = std
         if std == 0:
             return SampledParams(
-                shared={"std": std, "real_noise": None, "imaginary_noise": None},
+                params={"std": std, "real_noise": None, "imaginary_noise": None},
             )
 
         groups: list[TargetParams] = []
@@ -1493,7 +1493,7 @@ class RicianNoise(_FullVolumeNoiseTransform):
                     requirements=requirements_for_views(views, shape=True, sampling_topology=True),
                 ),
             )
-        return SampledParams(shared={"std": std}, groups=tuple(groups))
+        return SampledParams(params={"std": std}, target_params=tuple(groups))
 
     @staticmethod
     def _sample_noise(

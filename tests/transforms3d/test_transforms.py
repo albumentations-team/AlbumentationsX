@@ -1430,7 +1430,7 @@ def test_cubic_symmetry_remaps_keypoint_labels_without_reordering_transformed_ro
         sampling: Any,
     ) -> SampledParams:
         del self, params, targets, sampling
-        return SampledParams.shared_only({"index": index, "volume_shape": data["volume"].shape})
+        return SampledParams(params={"index": index, "volume_shape": data["volume"].shape})
 
     monkeypatch.setattr(A.CubicSymmetry, "sample_parameters", fixed_index)
     result = A.Compose(
@@ -1528,7 +1528,7 @@ def test_flip3d_random_mode_samples_the_full_reflection_group() -> None:
         transform.sample_parameters(
             *make_sampling_args(transform, {"volume": volume}),
             SamplingContext.from_owner(transform, {}),
-        ).shared["flip_axes"]
+        ).params["flip_axes"]
         for _ in range(64)
     }
 

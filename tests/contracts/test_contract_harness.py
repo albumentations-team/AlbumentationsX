@@ -49,7 +49,7 @@ class CrossFieldConflict(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         sampling.applied_overrides["choice"] = "a"
-        return SampledParams.shared_only({})
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -64,7 +64,7 @@ class UnknownEmittedKey(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         sampling.applied_overrides["unknown_key"] = 137
-        return SampledParams.shared_only({})
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -86,7 +86,7 @@ class NonJsonValue(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         sampling.applied_overrides["payload"] = {1, 2}
-        return SampledParams.shared_only({})
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -109,7 +109,7 @@ class MutatesPreviousRecord(ImageOnlyTransform):
     ) -> SampledParams:
         self.history.append(len(self.history) + 1)
         sampling.applied_overrides["history"] = self.history
-        return SampledParams.shared_only({})
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -131,7 +131,7 @@ class ReconstructsButCannotRun(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         sampling.applied_overrides["mode"] = "replay"
-        return SampledParams.shared_only({})
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         if self.mode == "replay":
@@ -155,7 +155,7 @@ class ReconstructsWithDifferentOutput(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         sampling.applied_overrides["mode"] = "replay"
-        return SampledParams.shared_only({})
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return np.zeros_like(img) if self.mode == "replay" else img

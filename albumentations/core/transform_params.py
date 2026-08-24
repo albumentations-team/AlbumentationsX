@@ -24,6 +24,7 @@ _TARGET_ORDER = {
     "user_data": 8,
 }
 _PARAMETER_SCHEMA = 2
+_PARAMETER_PAYLOAD_KEYS = frozenset({"parameter_schema", "target_schema", "params", "target_params"})
 
 
 class SampledParamsError(ValueError):
@@ -126,7 +127,7 @@ class TargetRequirement:
 
 @dataclass(frozen=True, slots=True)
 class TargetParams:
-    """Parameters shared by a named set of compatible actual target keys."""
+    """Parameters for a named set of actual targets with compatible representations."""
 
     targets: tuple[str, ...]
     params: Mapping[str, Any]
@@ -134,11 +135,11 @@ class TargetParams:
 
     def __post_init__(self) -> None:
         if not self.targets:
-            raise SampledParamsError("target parameter groups cannot be empty")
+            raise SampledParamsError("target parameter sets cannot be empty")
         if len(set(self.targets)) != len(self.targets):
-            raise SampledParamsError("target parameter groups cannot repeat target keys")
+            raise SampledParamsError("target parameter sets cannot repeat target keys")
         if set(self.targets) != set(self.requirements):
-            raise SampledParamsError("target parameter groups require one requirement per target")
+            raise SampledParamsError("target parameter sets require one requirement per target")
         object.__setattr__(self, "params", dict(self.params))
         object.__setattr__(self, "requirements", dict(self.requirements))
 
@@ -156,7 +157,7 @@ class TargetSet:
     def __init__(self, views: tuple[TargetView, ...]) -> None:
         self.ordered = views
         self._by_name = {view.name: view for view in views}
-        self._spatial_shapes: dict[int, tuple[int, ...] | None] = {}
+        self._aligned_spatial_shapes: dict[int, tuple[int, ...] | None] = {}
 
     @classmethod
     def from_data(cls, data: Mapping[str, Any], canonical_by_name: Mapping[str, str]) -> TargetSet:
@@ -202,20 +203,20 @@ class TargetSet:
         return tuple(tuple(views) for views in grouped.values())
 
     @overload
-    def spatial_shape(self, rank: Literal[2]) -> tuple[int, int] | None: ...
+    def aligned_spatial_shape(self, rank: Literal[2]) -> tuple[int, int] | None: ...
 
     @overload
-    def spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int] | None: ...
+    def aligned_spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int] | None: ...
 
     @overload
-    def spatial_shape(self, rank: int) -> tuple[int, ...] | None: ...
+    def aligned_spatial_shape(self, rank: int) -> tuple[int, ...] | None: ...
 
-    def spatial_shape(self, rank: int) -> tuple[int, ...] | None:
-        """Return the common spatial shape for a transform family, if these targets provide one."""
+    def aligned_spatial_shape(self, rank: int) -> tuple[int, ...] | None:
+        """Return the spatial shape after verifying that all relevant targets are aligned."""
         if rank not in {2, 3}:
             raise ValueError(f"spatial rank must be 2 or 3, got {rank}")
-        if rank in self._spatial_shapes:
-            return self._spatial_shapes[rank]
+        if rank in self._aligned_spatial_shapes:
+            return self._aligned_spatial_shapes[rank]
 
         shapes = {
             shape
@@ -228,27 +229,27 @@ class TargetSet:
                 (shape for view in self.ordered if (shape := _spatial_shape_for_rank(view, rank)) is not None),
                 None,
             )
-            self._spatial_shapes[rank] = fallback
+            self._aligned_spatial_shapes[rank] = fallback
             return fallback
         if len(shapes) != 1:
             raise SampledParamsError(f"transform sampling requires aligned spatial targets, got {sorted(shapes)}")
 
         shape = next(iter(shapes))
-        self._spatial_shapes[rank] = shape
+        self._aligned_spatial_shapes[rank] = shape
         return shape
 
     @overload
-    def require_spatial_shape(self, rank: Literal[2]) -> tuple[int, int]: ...
+    def require_aligned_spatial_shape(self, rank: Literal[2]) -> tuple[int, int]: ...
 
     @overload
-    def require_spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int]: ...
+    def require_aligned_spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int]: ...
 
     @overload
-    def require_spatial_shape(self, rank: int) -> tuple[int, ...]: ...
+    def require_aligned_spatial_shape(self, rank: int) -> tuple[int, ...]: ...
 
-    def require_spatial_shape(self, rank: int) -> tuple[int, ...]:
-        """Return the common spatial shape required by a spatial sampler."""
-        shape = self.spatial_shape(rank)
+    def require_aligned_spatial_shape(self, rank: int) -> tuple[int, ...]:
+        """Return the spatial shape required by a sampler with aligned targets."""
+        shape = self.aligned_spatial_shape(rank)
         if shape is None:
             raise SampledParamsError("transform sampling requires a spatial target")
         return shape
@@ -263,18 +264,11 @@ class TargetSet:
 
 @dataclass(frozen=True, slots=True)
 class SampledParams:
-    """Shared and target-specific values sampled for one transform event."""
+    """Parameters and target-specific values sampled for one transform event."""
 
-    shared: Mapping[str, Any]
-    groups: tuple[TargetParams, ...] = ()
+    params: Mapping[str, Any]
+    target_params: tuple[TargetParams, ...] = ()
     target_schema: Mapping[str, str] | None = None
-
-    @classmethod
-    def shared_only(cls, params: Mapping[str, Any]) -> SampledParams:
-        return cls(shared=dict(params))
-
-    def bind(self, targets: TargetSet) -> SampledParams:
-        return SampledParams(self.shared, self.groups, targets.schema())
 
     def validate(
         self,
@@ -284,7 +278,7 @@ class SampledParams:
     ) -> None:
         active_names = targets.names
         self._validate_target_schema(targets, active_names, transform_name)
-        seen = self._validate_groups(targets, active_names, transform_name)
+        seen = self._validate_target_params(targets, active_names, transform_name)
         self._validate_required(required_params, seen, transform_name)
 
     def _validate_target_schema(
@@ -305,29 +299,29 @@ class SampledParams:
                     f"{transform_name} sampled parameter canonical target mismatch for {name!r}",
                 )
 
-    def _validate_groups(
+    def _validate_target_params(
         self,
         targets: TargetSet,
         active_names: frozenset[str],
         transform_name: str,
     ) -> dict[str, set[str]]:
         seen: dict[str, set[str]] = {}
-        for group in self.groups:
-            if any(name not in active_names for name in group.targets):
+        for target_params in self.target_params:
+            if any(name not in active_names for name in target_params.targets):
                 raise SampledParamsError(f"{transform_name} sampled parameters name an inactive target")
-            for name in group.targets:
+            for name in target_params.targets:
                 descriptor = targets.by_name(name).descriptor
-                requirement = group.requirements[name]
+                requirement = target_params.requirements[name]
                 if not requirement.check(descriptor):
                     raise SampledParamsError(
                         f"{transform_name} sampled parameter requirements do not match target {name!r}",
                     )
-                duplicate = seen.setdefault(name, set()).intersection(group.params)
-                if duplicate or set(group.params).intersection(self.shared):
+                duplicate = seen.setdefault(name, set()).intersection(target_params.params)
+                if duplicate or set(target_params.params).intersection(self.params):
                     raise SampledParamsError(
                         f"{transform_name} sampled parameters have duplicate keys for target {name!r}",
                     )
-                seen[name].update(group.params)
+                seen[name].update(target_params.params)
         return seen
 
     def _validate_required(
@@ -337,7 +331,7 @@ class SampledParams:
         transform_name: str,
     ) -> None:
         for name, required in required_params.items():
-            available = set(self.shared).union(seen.get(name, set()))
+            available = set(self.params).union(seen.get(name, set()))
             missing = required - available
             if missing:
                 raise SampledParamsError(
@@ -345,41 +339,40 @@ class SampledParams:
                 )
 
     def params_for(self, target_name: str) -> Mapping[str, Any]:
-        if not self.groups:
-            return self.shared
-        resolved = dict(self.shared)
-        for group in self.groups:
-            if target_name in group.targets:
-                resolved.update(group.params)
+        if not self.target_params:
+            return self.params
+        resolved = dict(self.params)
+        for target_params in self.target_params:
+            if target_name in target_params.targets:
+                resolved.update(target_params.params)
         return resolved
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "parameter_schema": _PARAMETER_SCHEMA,
             "target_schema": None if self.target_schema is None else dict(self.target_schema),
-            "shared": dict(self.shared),
-            "groups": [group.to_dict() for group in self.groups],
+            "params": dict(self.params),
+            "target_params": [target_params.to_dict() for target_params in self.target_params],
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> SampledParams:
-        if payload.get("parameter_schema") != _PARAMETER_SCHEMA:
+        if payload.get("parameter_schema") != _PARAMETER_SCHEMA or set(payload) != _PARAMETER_PAYLOAD_KEYS:
             raise SampledParamsError("unsupported or legacy transform parameter schema")
-        groups = tuple(
+        target_params = tuple(
             TargetParams(
-                targets=tuple(group["targets"]),
-                params=dict(group["params"]),
+                targets=tuple(item["targets"]),
+                params=dict(item["params"]),
                 requirements={
-                    name: TargetRequirement.from_dict(requirement)
-                    for name, requirement in group["requirements"].items()
+                    name: TargetRequirement.from_dict(requirement) for name, requirement in item["requirements"].items()
                 },
             )
-            for group in payload.get("groups", ())
+            for item in payload.get("target_params", ())
         )
         target_schema = payload.get("target_schema")
         return cls(
-            shared=dict(payload.get("shared", {})),
-            groups=groups,
+            params=dict(payload.get("params", {})),
+            target_params=target_params,
             target_schema=None if target_schema is None else dict(target_schema),
         )
 

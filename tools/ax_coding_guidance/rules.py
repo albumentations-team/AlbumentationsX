@@ -398,7 +398,7 @@ def rule_target_routing_parameters(index: SourceIndex) -> list[Diagnostic]:
                             arg,
                             (
                                 "application parameters must use semantic names; target-specific routing belongs "
-                                "in SampledParams groups"
+                                "in SampledParams.target_params"
                             ),
                             f"{info.name}.{name}",
                         )

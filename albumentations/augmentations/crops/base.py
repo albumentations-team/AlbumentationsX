@@ -74,7 +74,7 @@ class BaseCrop(DualTransform):
         ...
         ...     def sample_parameters(self, params, data, targets, sampling):
         ...         '''Calculate crop coordinates based on center of image'''
-        ...         image_height, image_width = targets.require_spatial_shape(2)
+        ...         image_height, image_width = targets.require_aligned_spatial_shape(2)
         ...
         ...         # Calculate center crop coordinates
         ...         x_min = max(0, (image_width - self.crop_width) // 2)
@@ -82,7 +82,7 @@ class BaseCrop(DualTransform):
         ...         x_max = min(image_width, x_min + self.crop_width)
         ...         y_max = min(image_height, y_min + self.crop_height)
         ...
-        ...         return SampledParams.shared_only({"crop_coords": (x_min, y_min, x_max, y_max)})
+        ...         return SampledParams(params={"crop_coords": (x_min, y_min, x_max, y_max)})
         >>>
         >>> # Prepare sample data
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
@@ -288,7 +288,7 @@ class BaseCropAndPad(BaseCrop):
         ...
         ...     def sample_parameters(self, params, data, targets, sampling):
         ...         '''Calculate crop coordinates and padding if needed'''
-        ...         image_shape = targets.require_spatial_shape(2)
+        ...         image_shape = targets.require_aligned_spatial_shape(2)
         ...         image_height, image_width = image_shape
         ...
         ...         # Calculate crop coordinates with offsets
@@ -306,7 +306,7 @@ class BaseCropAndPad(BaseCrop):
         ...
         ...         from albumentations.core.transform_params import SampledParams
         ...
-        ...         return SampledParams.shared_only({
+        ...         return SampledParams(params={
         ...             "crop_coords": (x_min, y_min, x_max, y_max),
         ...             "pad_params": pad_params,
         ...         })
@@ -646,7 +646,7 @@ class _BaseRandomSizedCrop(DualTransform):
         ...
         ...     def sample_parameters(self, params, data, targets, sampling):
         ...         # Custom logic to select crop coordinates
-        ...         image_height, image_width = targets.require_spatial_shape(2)
+        ...         image_height, image_width = targets.require_aligned_spatial_shape(2)
         ...
         ...         # Simple example: calculate crop size based on custom_parameter
         ...         crop_height = int(image_height * self.custom_parameter)
@@ -658,7 +658,7 @@ class _BaseRandomSizedCrop(DualTransform):
         ...         y2 = y1 + crop_height
         ...         x2 = x1 + crop_width
         ...
-        ...         return SampledParams.shared_only({"crop_coords": (x1, y1, x2, y2)})
+        ...         return SampledParams(params={"crop_coords": (x1, y1, x2, y2)})
         >>>
         >>> # Prepare sample data
         >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)

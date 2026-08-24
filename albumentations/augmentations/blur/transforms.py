@@ -173,7 +173,7 @@ class Blur(ImageOnlyTransform):
             self.blur_range[1],
         )
         sampling.applied_overrides["blur_range"] = kernel
-        return SampledParams.shared_only({"kernel": kernel})
+        return SampledParams(params={"kernel": kernel})
 
 
 class MotionBlur(Blur):
@@ -454,7 +454,7 @@ class MotionBlur(Blur):
             random_state=sampling.py_random,
         )
 
-        return SampledParams.shared_only({"kernel": kernel.astype(np.float32) / float(reduce_sum(kernel))})
+        return SampledParams(params={"kernel": kernel.astype(np.float32) / float(reduce_sum(kernel))})
 
 
 class MedianBlur(Blur):
@@ -688,7 +688,7 @@ class ModeFilter(ImageOnlyTransform):
             self.kernel_range[1],
         )
         sampling.applied_overrides["kernel_range"] = kernel_size
-        return SampledParams.shared_only({"kernel_size": kernel_size})
+        return SampledParams(params={"kernel_size": kernel_size})
 
 
 class GaussianBlur(ImageOnlyTransform):
@@ -969,8 +969,8 @@ class GaussianBlur(ImageOnlyTransform):
             "pillow_mode": ksize == 0,
         }
         if self.volume_mode == "slice":
-            return SampledParams.shared_only(
-                {
+            return SampledParams(
+                params={
                     **result,
                     "sigma": (sigma, sigma, sigma),
                     "kernel_size": (ksize, ksize, ksize),
@@ -999,7 +999,7 @@ class GaussianBlur(ImageOnlyTransform):
                     requirements={view.name: TargetRequirement() for view in volume_views},
                 ),
             )
-        return SampledParams(shared=result, groups=volume_group)
+        return SampledParams(params=result, target_params=volume_group)
 
 
 class GlassBlur(ImageOnlyTransform):
@@ -1188,7 +1188,7 @@ class GlassBlur(ImageOnlyTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        height, width = targets.require_spatial_shape(2)
+        height, width = targets.require_aligned_spatial_shape(2)
         # generate array containing all necessary values for transformations
         width_pixels = height - self.max_delta * 2
         height_pixels = width - self.max_delta * 2
@@ -1199,7 +1199,7 @@ class GlassBlur(ImageOnlyTransform):
             size=(total_pixels, self.iterations, 2),
         )
 
-        return SampledParams.shared_only({"dxy": dxy})
+        return SampledParams(params={"dxy": dxy})
 
 
 class AdvancedBlur(ImageOnlyTransform):
@@ -1530,7 +1530,7 @@ class AdvancedBlur(ImageOnlyTransform):
 
         # Normalize kernel
         kernel = kernel.astype(np.float32) / reduce_sum(kernel)
-        return SampledParams.shared_only({"kernel": kernel})
+        return SampledParams(params={"kernel": kernel})
 
 
 class Defocus(ImageOnlyTransform):
@@ -1679,7 +1679,7 @@ class Defocus(ImageOnlyTransform):
         radius = sampling.py_random.randint(*self.radius_range)
         alias_blur = sampling.py_random.uniform(*self.alias_blur_range)
         sampling.applied_overrides.update({"radius_range": radius, "alias_blur_range": alias_blur})
-        return SampledParams.shared_only({"radius": radius, "alias_blur": alias_blur})
+        return SampledParams(params={"radius": radius, "alias_blur": alias_blur})
 
 
 class ZoomBlur(ImageOnlyTransform):
@@ -1812,4 +1812,4 @@ class ZoomBlur(ImageOnlyTransform):
         step_factor = sampling.py_random.uniform(*self.step_factor_range)
         max_factor = max(1 + step_factor, sampling.py_random.uniform(*self.max_factor_range))
         sampling.applied_overrides.update({"step_factor_range": step_factor, "max_factor_range": max_factor})
-        return SampledParams.shared_only({"zoom_factors": np.arange(1.0, max_factor, step_factor)})
+        return SampledParams(params={"zoom_factors": np.arange(1.0, max_factor, step_factor)})

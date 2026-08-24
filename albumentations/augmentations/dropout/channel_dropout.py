@@ -133,4 +133,4 @@ class ChannelDropout(ImageOnlyTransform):
                     requirements=requirements_for_views(views, channels=True),
                 ),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))

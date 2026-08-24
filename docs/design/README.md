@@ -57,8 +57,8 @@ sample-dependent work, with separate branch-free executors for ordinary, observe
 
 ### [Greenfield Target-Specific Parameter Sampling](target-specific-parameter-sampling.md)
 
-Plan for replacing flat sampled-parameter dictionaries and special `volume_*` fields with shared parameters plus
-actual-target-key parameter groups, including aliases, mixed representations, deterministic execution, and replay.
+Plan for replacing flat sampled-parameter dictionaries and special `volume_*` fields with parameters plus
+actual-target-key `TargetParams` records, including aliases, mixed representations, deterministic execution, and replay.
 
 **Status**: Implemented (greenfield cutover).
 

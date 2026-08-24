@@ -502,7 +502,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             and not self.deterministic
             and type(self).apply_with_params in {BasicTransform.apply_with_params, DualTransform.apply_with_params}
         ):
-            return self.apply_with_shared_params(params, **kwargs)
+            return self.apply_with_uniform_params(params, **kwargs)
 
         applied_overrides, sampled_params = self._sample_parameters(
             params=params,
@@ -513,9 +513,9 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         )
 
         effective_params = SampledParams(
-            shared={**params, **sampled_params.shared},
-            groups=sampled_params.groups,
-            target_schema=targets.schema() if targets is not None and sampled_params.groups else None,
+            params={**params, **sampled_params.params},
+            target_params=sampled_params.target_params,
+            target_schema=targets.schema() if targets is not None and sampled_params.target_params else None,
         )
         self._validate_sampled_params(effective_params, targets, kwargs)
 
@@ -545,7 +545,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         collect_applied: bool,
     ) -> tuple[Any, SampledParams]:
         if targets is None:
-            return _EMPTY_APPLIED_OVERRIDES, SampledParams.shared_only({})
+            return _EMPTY_APPLIED_OVERRIDES, SampledParams(params={})
         if invocation is None:
             msg = "sampling transforms require an active sampling context"
             raise RuntimeError(msg)
@@ -569,7 +569,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         data: Mapping[str, Any],
     ) -> None:
         if targets is None:
-            self._validate_shared_params(sampled_params, data)
+            self._validate_uniform_params(sampled_params, data)
             return
 
         sampled_params.validate(
@@ -582,14 +582,14 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             self.__class__.__name__,
         )
 
-    def _validate_shared_params(self, sampled_params: SampledParams, data: Mapping[str, Any]) -> None:
-        """Validate required parameters without describing targets for shared-only samplers."""
+    def _validate_uniform_params(self, sampled_params: SampledParams, data: Mapping[str, Any]) -> None:
+        """Validate required parameters when sampling returns no target-specific parameters."""
         required_by_target = self._get_required_parameters_by_target()
         if not required_by_target:
             return
 
         missing_by_target = {
-            name: required.difference(self._runtime_generated_params).difference(sampled_params.shared)
+            name: required.difference(self._runtime_generated_params).difference(sampled_params.params)
             for name, required in required_by_target.items()
             if name in data and data[name] is not None
         }
@@ -736,8 +736,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             "Only transforms that override `inverse()` can be used for TTA inversion.",
         )
 
-    def apply_with_shared_params(self, params: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Apply shared-only parameters without constructing target-specific sampled values."""
+    def apply_with_uniform_params(self, params: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Apply one parameter mapping to every target without target-specific values."""
         res: dict[str, Any] = {}
         for key, arg in kwargs.items():
             if key in self._key2func and arg is not None:
@@ -949,7 +949,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def _validate_spatial_targets(self, targets: TargetSet) -> None:
         if self._sampling_spatial_rank is not None:
-            targets.spatial_shape(self._sampling_spatial_rank)
+            targets.aligned_spatial_shape(self._sampling_spatial_rank)
 
     @staticmethod
     def _shared_shape_from_data_key(key: str, value: Any) -> tuple[int, ...]:
@@ -995,14 +995,14 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """Generates parameters and stores realized replay policy in call-local data, never retaining per-sample values
         on transform instances.
 
-        Override this method in every transform that samples data-dependent parameters. `params` contains the common
-        execution parameters, `data` contains all invocation data, and `targets` describes active transform targets.
-        Return shared values and target-specific groups consumed by `apply_*` methods. Write constructor-valid
+        Override this method in every transform that samples data-dependent parameters. `params` contains execution
+        parameters, `data` contains all invocation data, and `targets` describes active transform targets.
+        Return parameters and target-specific values consumed by `apply_*` methods. Write constructor-valid
         realized policy values to `sampling.applied_overrides`. The default supports deterministic transforms with no
         sampled parameters.
         """
         del params, data, targets, sampling
-        return SampledParams.shared_only({})
+        return SampledParams(params={})
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
@@ -1580,13 +1580,13 @@ class DualTransform(BasicTransform):
             )
 
         if self._semantic_mask_label_mappings:
-            res = self._apply_label_mapping_to_semantic_masks(res, **sampled_params.shared)
+            res = self._apply_label_mapping_to_semantic_masks(res, **sampled_params.params)
 
         return res
 
-    def apply_with_shared_params(self, params: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Apply shared-only parameters while preserving dual-target label mappings."""
-        res = super().apply_with_shared_params(params, *args, **kwargs)
+    def apply_with_uniform_params(self, params: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Apply one parameter mapping to every target while preserving dual-target label mappings."""
+        res = super().apply_with_uniform_params(params, *args, **kwargs)
         if "keypoints" in res and res["keypoints"] is not None:
             res["keypoints"] = self._apply_label_mapping_to_keypoints(res["keypoints"], **params)
         if self._semantic_mask_label_mappings:
@@ -1843,7 +1843,7 @@ class CustomTransformsApplyMixin:
         >>>
         >>> class Rotate90WithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
         ...     def sample_parameters(self, params, data, targets, sampling):
-        ...         return SampledParams.shared_only({"k": 1})
+        ...         return SampledParams(params={"k": 1})
         ...     def apply(self, img, k=0, **p):
         ...         return np.rot90(img, k)
         ...     def apply_to_mask(self, mask, k=0, **p):

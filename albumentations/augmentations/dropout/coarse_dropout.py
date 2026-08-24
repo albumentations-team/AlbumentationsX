@@ -607,8 +607,8 @@ class ConstrainedCoarseDropout(BaseDropout):
             },
         )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "holes": holes,
                 "seed": sampling.random_generator.integers(0, 2**32 - 1),
             }

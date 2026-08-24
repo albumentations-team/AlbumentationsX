@@ -43,7 +43,7 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray: ...
 
 - Define sampling and replay behavior at the `sample_parameters` boundary. Implement the greenfield
   `sample_parameters(params, data, targets, sampling) -> SampledParams` contract;
-  return `SampledParams.shared_only(...)` for shared values and use actual-key `TargetParams` entries
+  return `SampledParams(params={...})` for values used by every target and use actual-key `TargetParams` entries
   for representation-dependent values. The coding guidance document describes the complete contract and the hook reports
   mechanical violations.
 - Use relative parameters where users should transfer a policy across image sizes.

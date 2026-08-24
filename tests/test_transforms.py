@@ -1050,7 +1050,7 @@ def test_affine_scale_ratio(params):
     apply_params = aug.sample_parameters(
         *make_sampling_args(aug, data),
         sampling=SamplingContext.from_owner(aug, {}),
-    ).shared
+    ).params
 
     if "keep_ratio" not in params:
         # Default keep_ratio is True
@@ -1087,7 +1087,7 @@ def test_affine_default_keep_ratio_behavior():
     apply_params = transform.sample_parameters(
         *make_sampling_args(transform, data),
         sampling=SamplingContext.from_owner(transform, {}),
-    ).shared
+    ).params
 
     assert apply_params["scale"]["x"] == apply_params["scale"]["y"], (
         f"With default keep_ratio=True, scales should be equal "
@@ -1106,7 +1106,7 @@ def test_affine_explicit_keep_ratio_false():
     apply_params = transform.sample_parameters(
         *make_sampling_args(transform, data),
         sampling=SamplingContext.from_owner(transform, {}),
-    ).shared
+    ).params
 
     # With keep_ratio=False, x and y can be different (not always will be, but can be)
     # Let's test multiple seeds to ensure we get different values at least once
@@ -1116,7 +1116,7 @@ def test_affine_explicit_keep_ratio_false():
         apply_params = transform.sample_parameters(
             *make_sampling_args(transform, data),
             sampling=SamplingContext.from_owner(transform, {}),
-        ).shared
+        ).params
         if apply_params["scale"]["x"] != apply_params["scale"]["y"]:
             found_different = True
             break
@@ -1137,7 +1137,7 @@ def test_affine_with_dict_scale_keep_ratio_true():
     apply_params = transform.sample_parameters(
         *make_sampling_args(transform, data),
         sampling=SamplingContext.from_owner(transform, {}),
-    ).shared
+    ).params
 
     assert apply_params["scale"]["x"] == apply_params["scale"]["y"], (
         "With keep_ratio=True and dict scale, x and y should be equal"
@@ -1160,7 +1160,7 @@ def test_affine_keep_ratio_with_single_scale_value():
     apply_params = transform.sample_parameters(
         *make_sampling_args(transform, data),
         sampling=SamplingContext.from_owner(transform, {}),
-    ).shared
+    ).params
 
     # With a single scale value, both x and y should be that value
     assert apply_params["scale"]["x"] == 1.5, f"Expected scale_x=1.5 but got {apply_params['scale']['x']}"
@@ -1422,7 +1422,7 @@ def test_motion_blur_allow_shifted():
     kernel = transform.sample_parameters(
         *make_sampling_args(transform, {}),
         sampling=SamplingContext.from_owner(transform, {}),
-    ).shared["kernel"]
+    ).params["kernel"]
 
     center = kernel.shape[0] / 2 - 0.5
 
@@ -1461,7 +1461,7 @@ def test_motion_blur_allow_shifted_true():
         kernel = transform.sample_parameters(
             *make_sampling_args(transform, {}),
             sampling=SamplingContext.from_owner(transform, {}),
-        ).shared["kernel"]
+        ).params["kernel"]
         kernels.append(kernel)
 
     # Check that not all kernels are identical (shifting should cause variation)
@@ -2118,7 +2118,7 @@ def test_additive_noise_patch_changes_only_sampled_rectangle() -> None:
     )
 
     result = transform(image=image)
-    patch = result["replay"]["transforms"][0]["params"]["groups"][0]["params"]["patches"][0]
+    patch = result["replay"]["transforms"][0]["params"]["target_params"][0]["params"]["patches"][0]
     x_min, y_min, x_max, y_max = patch
     expected_changed = np.zeros(image.shape[:2], dtype=bool)
     expected_changed[y_min:y_max, x_min:x_max] = True
@@ -2266,7 +2266,7 @@ def test_additive_noise_patch_handles_single_pixel_grayscale() -> None:
     result = transform(image=image)
 
     np.testing.assert_array_equal(
-        result["replay"]["transforms"][0]["params"]["groups"][0]["params"]["patches"],
+        result["replay"]["transforms"][0]["params"]["target_params"][0]["params"]["patches"],
         [[0, 0, 1, 1]],
     )
     np.testing.assert_equal(result["image"].shape, image.shape)
@@ -2309,7 +2309,7 @@ def test_additive_noise_patch_distributions_preserve_outside_pixels(
     )
 
     result = transform(image=image)
-    patches = result["replay"]["transforms"][0]["params"]["groups"][0]["params"]["patches"]
+    patches = result["replay"]["transforms"][0]["params"]["target_params"][0]["params"]["patches"]
     patch_mask = np.zeros(image.shape[:2], dtype=bool)
     for x_min, y_min, x_max, y_max in patches:
         patch_mask[y_min:y_max, x_min:x_max] = True

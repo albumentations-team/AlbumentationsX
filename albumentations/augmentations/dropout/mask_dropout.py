@@ -170,7 +170,7 @@ class MaskDropout(DualTransform):
 
         sampling.applied_overrides["max_objects_range"] = objects_to_drop
 
-        return SampledParams.shared_only({"dropout_mask": dropout_mask})
+        return SampledParams(params={"dropout_mask": dropout_mask})
 
     def apply(self, img: ImageType, dropout_mask: np.ndarray | None, **params: Any) -> ImageType:
         if dropout_mask is None:

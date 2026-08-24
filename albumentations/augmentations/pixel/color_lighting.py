@@ -215,8 +215,8 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
                 ),
             )
         return SampledParams(
-            shared={"brightness_factor": brightness, "contrast_factor": contrast},
-            groups=tuple(groups),
+            params={"brightness_factor": brightness, "contrast_factor": contrast},
+            target_params=tuple(groups),
         )
 
     def apply(
@@ -387,7 +387,7 @@ class PlasmaShadow(ImageOnlyTransform):
                     requirements=requirements_for_views(views),
                 ),
             )
-        return SampledParams(shared={"intensity": intensity}, groups=tuple(groups))
+        return SampledParams(params={"intensity": intensity}, target_params=tuple(groups))
 
     def apply(
         self,
@@ -606,16 +606,16 @@ class Illumination(ImageOnlyTransform):
         if self.mode == "linear":
             angle = sampling.py_random.uniform(*self.angle_range)
             sampling.applied_overrides["angle_range"] = angle
-            return SampledParams.shared_only(
-                {
+            return SampledParams(
+                params={
                     "intensity": intensity,
                     "angle": angle,
                 }
             )
         if self.mode == "corner":
             corner = sampling.py_random.randint(0, 3)  # Choose random corner
-            return SampledParams.shared_only(
-                {
+            return SampledParams(
+                params={
                     "intensity": intensity,
                     "corner": corner,
                 }
@@ -626,8 +626,8 @@ class Illumination(ImageOnlyTransform):
         sigma = sampling.py_random.uniform(*self.sigma_range)
         sampling.applied_overrides["center_range"] = (x, y)
         sampling.applied_overrides["sigma_range"] = sigma
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "intensity": intensity,
                 "center": (x, y),
                 "sigma": sigma,
@@ -751,8 +751,8 @@ class Vignetting(ImageOnlyTransform):
                 "center_range": (min(center_x, center_y), max(center_x, center_y)),
             },
         )
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "intensity": intensity,
                 "center_x": center_x,
                 "center_y": center_y,

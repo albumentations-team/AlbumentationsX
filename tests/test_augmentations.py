@@ -1113,7 +1113,7 @@ def test_constrained_coarse_dropout_with_mask():
     params = transform.sample_parameters(
         *make_sampling_args(transform, {"image": image, "mask": mask}),
         SamplingContext.from_owner(transform, {}),
-    ).shared
+    ).params
     holes = params["holes"]
 
     # Verify number of holes (2 per object, 3 objects)
@@ -1638,7 +1638,7 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         params = transform.sample_parameters(
             *make_sampling_args(transform, {"image": image}),
             SamplingContext.from_owner(transform, {}),
-        ).shared
+        ).params
         slants.append(params["slant"])
 
     # Assert all slants are within the expected range

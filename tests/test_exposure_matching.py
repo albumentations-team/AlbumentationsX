@@ -178,12 +178,12 @@ def test_exposure_matching_records_sampled_target_and_gains_for_replay() -> None
     applied_transforms = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
     _, applied_config = applied_transforms[0]
 
-    assert 0.3 <= params.shared["target_mean"] <= 0.5
+    assert 0.3 <= params.params["target_mean"] <= 0.5
     np.testing.assert_allclose(
         params.params_for("images")["gain"],
-        [params.shared["target_mean"] / 0.2, params.shared["target_mean"] / 0.8],
+        [params.params["target_mean"] / 0.2, params.params["target_mean"] / 0.8],
     )
-    assert applied_config["target_mean_range"] == params.shared["target_mean"]
+    assert applied_config["target_mean_range"] == params.params["target_mean"]
     assert applied_config["gain_range"] == [0.25, 3.0]
 
     replay = A.Compose.from_applied_transforms(applied_transforms)
@@ -206,7 +206,7 @@ def test_exposure_matching_replay_compose_reuses_applied_gains(target: str) -> N
     replay_params = SampledParams.from_dict(result["replay"]["transforms"][0]["params"])
     replayed = A.ReplayCompose.replay(result["replay"], **{target: data})
 
-    assert 0.3 <= replay_params.shared["target_mean"] <= 0.5
+    assert 0.3 <= replay_params.params["target_mean"] <= 0.5
     assert len(replay_params.params_for(target)["gain"]) == len(data)
     np.testing.assert_array_equal(replayed[target], result[target])
 

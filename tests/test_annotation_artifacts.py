@@ -55,7 +55,7 @@ def test_annotation_artifacts_default_sampling_sequence_is_unchanged() -> None:
     artifacts = transform.sample_parameters(
         *make_sampling_args(transform, data),
         SamplingContext.from_owner(transform, {}),
-    ).shared["artifacts"]
+    ).params["artifacts"]
 
     assert artifacts == [
         {
@@ -216,7 +216,7 @@ def test_annotation_artifacts_line_length_range_controls_lines() -> None:
     artifacts = transform.sample_parameters(
         *make_sampling_args(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
-    ).shared["artifacts"]
+    ).params["artifacts"]
     lengths = np.array(
         [
             int(np.hypot(artifact["end"][0] - artifact["start"][0], artifact["end"][1] - artifact["start"][1]))

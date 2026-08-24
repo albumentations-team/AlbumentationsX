@@ -110,8 +110,8 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         ...         target_image = data.get(self.reference_key)
         ...         if target_image is None:
         ...             # Fallback if target image is not provided
-        ...             return SampledParams.shared_only({"target_image": None})
-        ...         return SampledParams.shared_only({"target_image": target_image})
+        ...             return SampledParams(params={"target_image": None})
+        ...         return SampledParams(params={"target_image": target_image})
         ...
         ...     def apply(
         ...         self,
@@ -318,8 +318,8 @@ class HistogramMatching(BaseDomainAdaptation):
 
         sampling.applied_overrides["blend_ratio"] = blend_ratio
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "reference_image": reference_image,
                 "blend_ratio": blend_ratio,
             }
@@ -505,7 +505,7 @@ class FDA(BaseDomainAdaptation):
         sampling: SamplingContext,
     ) -> SampledParams:
         target_image = self._get_reference_image(data, sampling)
-        height, width = targets.require_spatial_shape(2)
+        height, width = targets.require_aligned_spatial_shape(2)
 
         # Resize the target image to match the input image dimensions
         target_image_resized = fgeometric.resize(target_image, (height, width), cv2.INTER_LINEAR)
@@ -514,7 +514,7 @@ class FDA(BaseDomainAdaptation):
 
         sampling.applied_overrides["beta_range"] = beta
 
-        return SampledParams.shared_only({"target_image": target_image_resized, "beta": beta})
+        return SampledParams(params={"target_image": target_image_resized, "beta": beta})
 
     def apply(
         self,
@@ -694,8 +694,8 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
 
         sampling.applied_overrides["blend_ratio"] = blend_ratio
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "reference_image": self._get_reference_image(data, sampling),
                 "blend_ratio": blend_ratio,
             }

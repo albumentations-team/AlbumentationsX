@@ -448,8 +448,8 @@ class Sharpen(ImageOnlyTransform):
         if self.method == "kernel":
             lightness = sampling.py_random.uniform(*self.lightness_range)
             sampling.applied_overrides.update({"alpha_range": alpha, "lightness_range": lightness})
-            return SampledParams.shared_only(
-                {
+            return SampledParams(
+                params={
                     "alpha": alpha,
                     "sharpening_matrix": self.__generate_sharpening_matrix(
                         alpha,
@@ -459,7 +459,7 @@ class Sharpen(ImageOnlyTransform):
             )
 
         sampling.applied_overrides["alpha_range"] = alpha
-        return SampledParams.shared_only({"alpha": alpha, "sharpening_matrix": None})
+        return SampledParams(params={"alpha": alpha, "sharpening_matrix": None})
 
     def apply(
         self,
@@ -576,7 +576,7 @@ class Emboss(ImageOnlyTransform):
             strength_sample=strength,
         )
         sampling.applied_overrides.update({"alpha_range": alpha, "strength_range": strength})
-        return SampledParams.shared_only({"emboss_matrix": emboss_matrix})
+        return SampledParams(params={"emboss_matrix": emboss_matrix})
 
     def apply(
         self,
@@ -691,7 +691,7 @@ class Enhance(ImageOnlyTransform):
         # Record the resolved scalar (not the range) for replay/debug, per the
         # applied record contract documented on get_applied_config.
         sampling.applied_overrides["alpha_range"] = alpha
-        return SampledParams.shared_only({"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)})
+        return SampledParams(params={"enhance_matrix": fpixel.generate_enhance_matrix(self.mode, alpha)})
 
     def apply(
         self,
@@ -833,8 +833,8 @@ class Superpixels(ImageOnlyTransform):
         n_segments = sampling.py_random.randint(*self.n_segments_range)
         p = sampling.py_random.uniform(*self.p_replace_range)
         sampling.applied_overrides.update({"n_segments_range": n_segments, "p_replace_range": p})
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "replace_samples": sampling.random_generator.random(n_segments) < p,
                 "n_segments": n_segments,
             }
@@ -986,7 +986,7 @@ class RingingOvershoot(ImageOnlyTransform):
         kernel = kernel.astype(np.float32) / reduce_sum(kernel)
 
         sampling.applied_overrides.update({"blur_range": ksize, "cutoff_range": cutoff})
-        return SampledParams.shared_only({"kernel": kernel})
+        return SampledParams(params={"kernel": kernel})
 
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel)
@@ -1104,7 +1104,7 @@ class UnsharpMask(ImageOnlyTransform):
         sigma = sampling.py_random.uniform(*self.sigma_range)
         alpha = sampling.py_random.uniform(*self.alpha_range)
         sampling.applied_overrides.update({"blur_range": ksize, "sigma_range": sigma, "alpha_range": alpha})
-        return SampledParams.shared_only({"ksize": ksize, "sigma": sigma, "alpha": alpha})
+        return SampledParams(params={"ksize": ksize, "sigma": sigma, "alpha": alpha})
 
     def apply(
         self,
@@ -1346,7 +1346,7 @@ class Dithering(ImageOnlyTransform):
     ) -> SampledParams:
         sampling.applied_overrides["noise_range"] = self.noise_range
         if self.method != "random":
-            return SampledParams.shared_only({"random_noise": None})
+            return SampledParams(params={"random_noise": None})
         groups: list[TargetParams] = []
         for views in targets.group_image_like_by(
             lambda view: (
@@ -1380,7 +1380,7 @@ class Dithering(ImageOnlyTransform):
                     requirements=requirements_for_views(views, shape=True, dtype=True, sampling_topology=True),
                 ),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         random_noise = params.pop("random_noise", None)
@@ -1482,8 +1482,8 @@ class Halftone(ImageOnlyTransform):
         dot_size = sampling.py_random.randint(*self.dot_size_range)
         blend = sampling.py_random.uniform(*self.blend_range)
         sampling.applied_overrides.update({"dot_size_range": dot_size, "blend_range": blend})
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "dot_size": dot_size,
                 "blend": blend,
             }
@@ -1682,4 +1682,4 @@ class LensFlare(ImageOnlyTransform):
                     requirements=requirements_for_views(views),
                 ),
             )
-        return SampledParams(shared={"starburst_intensity": intensity}, groups=tuple(groups))
+        return SampledParams(params={"starburst_intensity": intensity}, target_params=tuple(groups))

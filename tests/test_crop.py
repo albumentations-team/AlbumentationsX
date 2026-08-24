@@ -458,7 +458,7 @@ def test_bbox_subset_safe_random_crop_selects_valid_subset_size():
         transform.set_random_seed(seed)
         sampling = SamplingContext.from_owner(transform, {})
         data = {"image": np.zeros((400, 400, 3), dtype=np.uint8), "bboxes": bboxes}
-        result = transform.sample_parameters(*make_sampling_args(transform, data), sampling).shared
+        result = transform.sample_parameters(*make_sampling_args(transform, data), sampling).params
         selected = result["bbox_indices"]
 
         assert min_subset_size <= len(selected) <= max_subset_size
@@ -483,7 +483,7 @@ def test_bbox_subset_safe_random_crop_preserves_selected_boxes_without_erosion()
         transform.set_random_seed(seed)
         sampling = SamplingContext.from_owner(transform, {})
         data = {"image": np.zeros((*image_shape, 3), dtype=np.uint8), "bboxes": bboxes}
-        result = transform.sample_parameters(*make_sampling_args(transform, data), sampling).shared
+        result = transform.sample_parameters(*make_sampling_args(transform, data), sampling).params
         selected = result["bbox_indices"]
         crop_x_min, crop_y_min, crop_x_max, crop_y_max = result["crop_coords"]
 
@@ -514,7 +514,7 @@ def test_bbox_subset_safe_random_crop_enforces_feasible_aspect_ratio():
         data = {"image": np.zeros((320, 640, 3), dtype=np.uint8), "bboxes": bboxes}
         crop_x_min, crop_y_min, crop_x_max, crop_y_max = transform.sample_parameters(
             *make_sampling_args(transform, data), sampling
-        ).shared["crop_coords"]
+        ).params["crop_coords"]
         assert (crop_y_max - crop_y_min) / (crop_x_max - crop_x_min) == 0.2
 
 
@@ -532,7 +532,7 @@ def test_bbox_subset_safe_random_crop_applies_aspect_ratio_without_protected_box
     }
     crop_x_min, crop_y_min, crop_x_max, crop_y_max = transform.sample_parameters(
         *make_sampling_args(transform, data), sampling
-    ).shared["crop_coords"]
+    ).params["crop_coords"]
 
     assert (crop_y_max - crop_y_min) / (crop_x_max - crop_x_min) == 0.2
 
@@ -548,6 +548,6 @@ def test_bbox_subset_safe_random_crop_returns_full_image_when_aspect_ratio_is_in
         "image": np.zeros((100, 200, 3), dtype=np.uint8),
         "bboxes": np.array([[0.0, 0.0, 1.0, 1.0]], dtype=np.float32),
     }
-    result = transform.sample_parameters(*make_sampling_args(transform, data), sampling).shared
+    result = transform.sample_parameters(*make_sampling_args(transform, data), sampling).params
 
     assert result == {"crop_coords": (0, 0, 200, 100), "bbox_indices": (0,)}

@@ -1093,10 +1093,10 @@ class CopyAndPaste(DualTransform):
         scale_jitter = sampling.py_random.uniform(*self.scale_range)
         sampling.applied_overrides["scale_range"] = scale_jitter
 
-        target_shape = targets.require_spatial_shape(2)
+        target_shape = targets.require_aligned_spatial_shape(2)
         gathered = self._gather_valid_copy_paste_items(data, target_shape, scale_jitter, sampling)
         if gathered is None:
-            return SampledParams.shared_only(self._no_op_params())
+            return SampledParams(params=self._no_op_params())
 
         valid_items, pasted_masks_list, composite_image, donor_mask = gathered
         pasted_masks = np.stack(pasted_masks_list, axis=0)
@@ -1135,8 +1135,8 @@ class CopyAndPaste(DualTransform):
                 stacklevel=2,
             )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "paste_donor_image": composite_image,
                 "paste_alpha": alpha,
                 "paste_instance_masks": pasted_masks,

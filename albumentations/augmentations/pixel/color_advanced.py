@@ -188,8 +188,8 @@ class ColorJitter(ImageOnlyTransform):
             order = [o for o in order if o not in ("brightness", "contrast")]
             order.insert(min(idx_b, idx_c), merged)
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "brightness": brightness,
                 "contrast": contrast,
                 "saturation": saturation,
@@ -375,8 +375,8 @@ class ChromaticAberration(ImageOnlyTransform):
                 "secondary_distortion_range": (secondary_distortion_red, secondary_distortion_blue),
             },
         )
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "primary_distortion_red": primary_distortion_red,
                 "secondary_distortion_red": secondary_distortion_red,
                 "primary_distortion_blue": primary_distortion_blue,
@@ -624,7 +624,7 @@ class PlanckianJitter(ImageOnlyTransform):
                 ),
             },
         )
-        return SampledParams.shared_only({"temperature": int(temperature)})
+        return SampledParams(params={"temperature": int(temperature)})
 
 
 class RGBShift(AdditiveNoise):
@@ -774,7 +774,7 @@ class RGBShift(AdditiveNoise):
                 ),
             )
 
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class HEStain(ImageOnlyTransform):
@@ -1128,8 +1128,8 @@ class HEStain(ImageOnlyTransform):
             },
         )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "stain_matrix": stain_matrix,
                 "scale_factors": scale_factors,
                 "shift_values": shift_values,
@@ -1307,14 +1307,14 @@ class PhotoMetricDistort(ImageOnlyTransform):
                 ),
             )
         return SampledParams(
-            shared={
+            params={
                 "brightness_factor": brightness_factor,
                 "contrast_factor": contrast_factor,
                 "saturation_factor": saturation_factor,
                 "hue_factor": hue_factor,
                 "contrast_before": contrast_before,
             },
-            groups=tuple(groups),
+            target_params=tuple(groups),
         )
 
     def apply(

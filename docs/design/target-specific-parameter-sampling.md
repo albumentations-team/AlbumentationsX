@@ -16,8 +16,8 @@ with different representations. The same defect appears whenever a transform der
 image-like input and reuses it for every other input.
 
 This document defines a greenfield cutover to structured, target-aware execution parameters. Each transform invocation still
-represents one sampled augmentation event. The event can contain shared parameters and one or more materialized parameter
-groups addressed by actual target key. Compatible targets may share a group; incompatible targets receive parameters suited
+represents one sampled augmentation event. The event can contain parameters and one or more materialized `TargetParams`
+records addressed by actual target key. Compatible targets may share a record; incompatible targets receive parameters suited
 to their own representation.
 
 The cutover is complete only when all sampled transforms use the structured contract and target-specific fields are removed.
@@ -30,16 +30,16 @@ The implementation will make these changes as one atomic repository cutover:
 1. Build an ordered `TargetSet` for every invocation. Its entries are keyed by the actual input name, including aliases such
    as `image2`, and carry the canonical target type plus representation metadata.
 2. Replace flat dictionaries returned by `sample_parameters` with `SampledParams`.
-3. Store target-independent values in `SampledParams.shared`.
-4. Store representation-dependent values in `TargetParams` objects. Each group names the actual targets that consume
-   its parameters. Groups may overlap when different parameters have different sharing domains.
-5. Resolve the relevant group before calling `apply`, `apply_to_images`, `apply_to_volume`, or an alias of those methods.
+3. Store target-independent values in `SampledParams.params`.
+4. Store representation-dependent values in `TargetParams` records. Each record names the actual targets that consume
+   its parameters. Records may overlap when different parameters have different sharing domains.
+5. Resolve the relevant target parameters before calling `apply`, `apply_to_images`, `apply_to_volume`, or an alias of those methods.
 6. Persist the same structure in deterministic mode and `ReplayCompose` so replay performs no sampling or rematerialization.
 7. Remove first-target sampling helpers from transform implementations and delete target names embedded in execution
    parameter names.
 
-The core dispatch layer will not guess whether two targets are compatible. The transform defines its sharing key or constructs
-groups directly because compatibility depends on transform semantics.
+The core dispatch layer will not guess whether two targets are compatible. The transform defines its compatibility key or constructs
+`TargetParams` records directly because compatibility depends on transform semantics.
 
 ## Delivery and Dependencies
 
@@ -51,7 +51,7 @@ preserved, while target routing moves into the shared core contract defined here
 `volume_*` fields as part of the cutover.
 
 Because the sampling override and execution-replay schemas are customization contracts, the completed cutover ships as a
-documented breaking change. This is a correctness change, not an optimization: it must preserve the shared-only fast path
+documented breaking change. This is a correctness change, not an optimization: it must preserve the uniform-parameter fast path
 and must not claim a speedup without paired base-to-head, full-route evidence.
 
 ## Problem Statement
@@ -128,10 +128,10 @@ the required abstraction.
 - Preserve the meaning of one transform invocation as one random augmentation event.
 - Allow exact parameter sharing when targets are semantically compatible.
 - Materialize correct values for targets with different shapes, channel counts, dtypes, layouts, or content.
-- Keep geometric synchronization explicit through a common spatial shape obtained from `TargetSet`.
+- Keep geometric synchronization explicit through an aligned spatial shape obtained from `TargetSet`.
 - Make target routing visible in types and replay data instead of parameter-name conventions.
 - Fail before applying any target when sampled parameters are incomplete, ambiguous, or incompatible with the current invocation.
-- Preserve the fast path for the common single-target, shared-parameter case.
+- Preserve the fast path for the single-target path with one parameter mapping.
 - Give custom transforms one documented way to express shared and target-specific parameters.
 
 ## Non-Goals
@@ -154,14 +154,14 @@ canonical target type remains metadata used to select the application function a
 This distinction is essential. Two inputs may both map to `image` while requiring different arrays, scaling, or channel
 indices.
 
-### A shared event may have multiple materializations
+### One event may have multiple materializations
 
-The transform samples one conceptual event. Shared policy values describe that event, while target parameter groups describe
+The transform samples one conceptual event. Target-independent policy values describe that event, while `TargetParams` records describe
 how it is realized for compatible inputs.
 
 For example, additive noise may share distribution parameters and intensity across all image-like targets. Targets with equal
 shape, channel behavior, dtype scale, and sampling topology can share one dense noise map. A volume with a different channel
-count or topology receives another map sampled from the same shared policy.
+count or topology receives another map sampled from the same target-independent policy.
 
 ### Transforms define compatibility
 
@@ -169,15 +169,16 @@ Compatibility is semantic. Equal array shapes do not prove that a batch and a vo
 may matter for one transform and be irrelevant for another. Content-derived transforms may require one group per input even
 when all metadata matches.
 
-The framework provides deterministic grouping helpers. Each transform supplies the grouping key or the groups themselves.
+The framework provides deterministic grouping helpers. Each transform supplies the compatibility key or the `TargetParams`
+records themselves.
 
 ### Spatial synchronization is separate from representation
 
 Geometric transforms need one validated spatial shape shared by aligned targets. Photometric and dense-value transforms need
 per-target representation metadata. A single global `shape` derived from the first target conflates these concerns.
 
-`TargetSet.require_spatial_shape(2)` provides the common height-width shape for 2D geometry and
-`TargetSet.require_spatial_shape(3)` provides depth-height-width for 3D geometry. Representation-dependent sampling uses
+`TargetSet.require_aligned_spatial_shape(2)` provides the aligned height-width shape for 2D geometry and
+`TargetSet.require_aligned_spatial_shape(3)` provides depth-height-width for 3D geometry. Representation-dependent sampling uses
 the same `TargetSet` descriptors. There is no wrapper object that hides `params` or `data`.
 
 ### Replay stores realized execution
@@ -187,8 +188,8 @@ random numbers. Target-specific replay validates the current target schema befor
 
 ### The ordinary path stays small
 
-Shared-only sampled values use one shared dictionary and no per-target group lookup. Mixed-target calls pay work proportional to the
-number of active targets. Dense arrays are materialized once per compatible group.
+When `target_params` is empty, sampled values use one `params` dictionary and no per-target lookup. Mixed-target calls pay work
+proportional to the number of active targets. Dense arrays are materialized once per compatible target set.
 
 ## Terminology
 
@@ -196,12 +197,12 @@ number of active targets. Dense arrays are materialized once per compatible grou
 - **Active target**: A non-`None` input whose actual key resolves through the transform's target mapping.
 - **Canonical target type**: The built-in role to which a key resolves, such as `image` or `volume`.
 - **Target view**: A read-only invocation-local view of one target and its representation metadata.
-- **Common spatial shape**: Validated spatial dimensions shared by synchronized targets.
-- **Shared parameter**: A realized value consumed by every applicable target in an invocation.
-- **Target parameter group**: One parameter mapping shared by a named set of compatible actual targets.
+- **Aligned spatial shape**: Validated spatial dimensions shared by synchronized targets.
+- **Parameter**: A realized value consumed by every applicable target in an invocation.
+- **Target parameters**: One parameter mapping for a named set of compatible actual targets.
 - **Sampling topology**: The semantic layout used to generate a parameter, such as one 2D map, one map per batch item, or
   one full 3D map.
-- **Sampled parameters**: The shared values and target groups for one transform invocation.
+- **Sampled parameters**: The parameters and target-specific parameter records for one transform invocation.
 
 ## Implemented Types
 
@@ -248,8 +249,8 @@ class TargetSet:
     def image_like(self) -> tuple[TargetView, ...]: ...
     def primary_image_like(self) -> TargetView: ...
     def group_by(self, key: Callable[[TargetView], Hashable]) -> tuple[tuple[TargetView, ...], ...]: ...
-    def spatial_shape(self, rank: int) -> tuple[int, ...] | None: ...
-    def require_spatial_shape(self, rank: int) -> tuple[int, ...]: ...
+    def aligned_spatial_shape(self, rank: int) -> tuple[int, ...] | None: ...
+    def require_aligned_spatial_shape(self, rank: int) -> tuple[int, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,12 +262,9 @@ class TargetParams:
 
 @dataclass(frozen=True, slots=True)
 class SampledParams:
-    shared: Mapping[str, Any]
-    groups: tuple[TargetParams, ...] = ()
+    params: Mapping[str, Any]
+    target_params: tuple[TargetParams, ...] = ()
     target_schema: Mapping[str, str] | None = None
-
-    @classmethod
-    def shared_only(cls, params: Mapping[str, Any]) -> SampledParams: ...
 
     def params_for(self, target_name: str) -> Mapping[str, Any]: ...
 
@@ -283,8 +281,8 @@ The transform family declares the rank it requires. 2D transforms consume the al
 consume the aligned depth-height-width shape. A transform that has no shared geometric domain can opt out and derive
 representation-dependent sizes from target descriptors.
 
-`TargetParams.params` contains only the group-specific delta. `params_for` builds one keyword dictionary from `shared`
-and every group that contains the actual target; dense arrays are referenced, not copied.
+`TargetParams.params` contains only the target-specific delta. `params_for` builds one keyword dictionary from `params`
+and every `TargetParams` record that contains the actual target; dense arrays are referenced, not copied.
 
 `TargetRequirement` records only the representation properties on which a materialized parameter depends. A dense map may
 require exact array shape, channels, dtype scale, and topology. A 2D spatial parameter applied slice-wise to a volume can
@@ -297,18 +295,18 @@ some parameters require the exact storage type, while others require only an equ
 
 The core validates complete sampled parameters immediately after sampling:
 
-1. `shared` and every group parameter mapping are treated as immutable by the execution layer for the rest of the invocation.
-2. A parameter name cannot appear in both `shared` and a group. This prevents silent shadowing.
-3. Every group contains at least one actual target key.
+1. `params` and every target-specific parameter mapping are treated as immutable by the execution layer for the rest of the invocation.
+2. A parameter name cannot appear in both `params` and `TargetParams.params`. This prevents silent shadowing.
+3. Every `TargetParams` record contains at least one actual target key.
 4. Every named key exists in the invocation and is supported by the transform.
-5. A target key may appear in multiple groups when the groups supply different parameter names.
-6. For any actual target, a parameter name appears in at most one group and never also in `shared`.
-7. Group target names are stored in canonical deterministic order.
-8. Every group declares requirements for each target it names, including an empty requirement when the materialization is
+5. A target key may appear in multiple `TargetParams` records when they supply different parameter names.
+6. For any actual target, a parameter name appears in at most one `TargetParams` record and never also in `params`.
+7. Target names in every `TargetParams` record are stored in canonical deterministic order.
+8. Every `TargetParams` record declares requirements for each target it names, including an empty requirement when the materialization is
    representation-independent.
-9. Parameters required by an application method are present in either `shared` or one of that target's groups.
-10. A target that needs only shared parameters may remain outside all groups.
-11. Application functions cannot access another target's groups.
+9. Parameters required by an application method are present in either `params` or one of that target's `TargetParams` records.
+10. A target that needs no target-specific parameters may remain outside all `TargetParams` records.
+11. Application functions cannot access another target's target-specific parameters.
 12. Sampling and validation finish before the first application function is called.
 
 The framework raises `SampledParamsError`, a `ValueError` subclass containing the transform name and violated
@@ -339,23 +337,23 @@ def sample_parameters(
 ) -> SampledParams: ...
 ```
 
-`params` contains common execution values, `data` contains the whole preprocessed invocation, and `targets` describes the
-active transform targets. The base implementation returns `SampledParams.shared_only({})`. Shared-only transforms return
-sampled values explicitly:
+`params` contains execution values, `data` contains the whole preprocessed invocation, and `targets` describes the
+active transform targets. The base implementation returns `SampledParams(params={})`. Transforms with no target-specific
+parameters return values explicitly:
 
 ```python
-return SampledParams.shared_only({"angle": angle})
+return SampledParams(params={"angle": angle})
 ```
 
-Target-sensitive transforms return shared policy plus groups:
+Target-sensitive transforms return target-independent policy plus target-specific parameters:
 
 ```python
 return SampledParams(
-    shared={"distribution": distribution, "intensity": intensity},
-    groups=(
+    params={"distribution": distribution, "intensity": intensity},
+    target_params=(
         TargetParams(
             targets=("image", "image2"),
-            params={"noise_map": shared_image_noise},
+            params={"noise_map": image_noise},
             requirements=image_noise_requirements,
         ),
         TargetParams(
@@ -380,16 +378,16 @@ Only active targets enter the set. Unknown metadata stays in `data`, and recogni
 Replay treats missing and `None` target values equivalently for target-schema validation.
 
 Representation metadata is derived once from the borrowed values for the current transform step. The descriptors do not copy
-arrays, and shared-only samplers take the same fast path as before; target-aware samplers use the already available descriptors.
+arrays, and samplers with no target-specific parameters take the same fast path as before; target-aware samplers use the already available descriptors.
 
-### Shared base parameters
+### Base parameters
 
 Core-derived values such as interpolation, fill values, and annotation processor metadata enter through `params`. The core
-combines them with `SampledParams.shared` after checking for duplicate keys.
+combines them with `SampledParams.params` after checking for duplicate keys.
 
-The shared `params["shape"]` compatibility field remains for existing geometry and application code. It is normalized
+The existing `params["shape"]` compatibility field remains for existing geometry and application code. It is normalized
 to the canonical 2D shape for batched images, volumes, batched masks, and 3D masks. New target-sensitive sampling must not
-derive representation from that first-target field: geometry reads `targets.require_spatial_shape(...)`, while
+derive representation from that first-target field: geometry reads `targets.require_aligned_spatial_shape(...)`, while
 target-specific sampling reads the relevant descriptor from `targets`.
 
 ### Grouping helpers
@@ -403,7 +401,7 @@ target-specific sampling reads the relevant descriptor from `targets`.
 | Full 3D value map | `(sampling_topology, spatial_shape, channels, dtype_scale)` |
 | Channel permutation | `(channels,)` |
 | Content-derived reference matching | actual target key |
-| Shared geometry | no target groups; use `targets.require_spatial_shape(...)` |
+| Aligned geometry | no target-specific parameters; use `targets.require_aligned_spatial_shape(...)` |
 
 `dtype_scale` is a transform-defined semantic value. Raw `dtype` is insufficient when several dtypes share the same value
 range or when a transform operates in normalized floating-point space.
@@ -424,8 +422,8 @@ channels or dtype.
 
 `apply_with_params` receives validated sampled parameters and keeps two execution paths.
 
-The shared-only path performs the current loop with `sampled_params.shared`. It checks once that `sampled_params.groups` is
-empty and performs no per-target lookup.
+The uniform-parameter path performs the current loop with `sampled_params.params`. It checks once that
+`sampled_params.target_params` is empty and performs no per-target lookup.
 
 The target-aware path resolves by actual key:
 
@@ -442,9 +440,9 @@ accept `noise_map`; dispatch selects the correct value. Fields whose only purpos
 
 Required keyword names for each canonical application function are compiled once from its signature when the transform class
 is prepared. Validation resolves those requirements through every actual key before the application loop. Methods that
-accept only shared parameters keep the shared-only path.
+accept no target-specific parameters keep the uniform-parameter path.
 
-Annotation postprocessing that needs realized geometry receives the shared geometry parameters. If a future annotation target
+Annotation postprocessing that needs realized geometry receives the geometry parameters. If a future annotation target
 requires its own materialization, it participates through its actual target key under the same sampled-parameter contract.
 
 ## Replay and Deterministic Execution
@@ -459,8 +457,8 @@ In-memory sampled parameters are normalized into this replay shape:
         "image2": "image",
         "volume": "volume",
     },
-    "shared": {"distribution": "gaussian", "intensity": 0.1},
-    "groups": [
+    "params": {"distribution": "gaussian", "intensity": 0.1},
+    "target_params": [
         {
             "targets": ["image", "image2"],
             "params": {"noise_map": image_noise},
@@ -484,8 +482,8 @@ JSON `applied_config` contract.
 Replay follows these rules:
 
 1. It reconstructs `SampledParams` without calling a sampler.
-2. Shared-only sampled values keep current replay applicability.
-3. Sampled values with target groups require the exact recorded set of active actual target keys; extra keys fail as well as missing
+2. Sampled values without target-specific parameters keep current replay applicability.
+3. Sampled values with `TargetParams` records require the exact recorded set of active actual target keys; extra keys fail as well as missing
    keys because no realized target-specific parameters exist for an added target.
 4. Each current key must resolve to the canonical target type recorded in `target_schema`.
 5. Each current descriptor must satisfy the properties declared by its `TargetRequirement`. Unconstrained properties may
@@ -501,9 +499,9 @@ need a migration note. `applied_config()` remains constructor-valid and unchange
 This is a breaking change for custom transforms that override `sample_parameters` or inspect deterministic execution params.
 The release containing the cutover must include a migration guide with these cases:
 
-- wrap shared dictionaries with `SampledParams.shared_only`;
-- replace `image_*` and `volume_*` execution fields with groups keyed by actual target names;
-- use `targets.require_spatial_shape(2)` or `targets.require_spatial_shape(3)` for synchronized geometry;
+- return `SampledParams(params={...})` for values used by every target;
+- replace `image_*` and `volume_*` execution fields with `TargetParams` records keyed by actual target names;
+- use `targets.require_aligned_spatial_shape(2)` or `targets.require_aligned_spatial_shape(3)` for synchronized geometry;
 - use `targets` for representation metadata and content access;
 - use a transform-defined `group_by` key when compatible aliases should share parameters; and
 - update deterministic and replay assertions to the structured payload.
@@ -539,11 +537,11 @@ The audit must also classify transforms that currently depend on first-target me
 | Noise and color scaling | `AdditiveNoise`, `GaussNoise`, advanced color transforms | Does dtype or channel count change materialization? |
 | Content-derived sampling | `ExposureMatching` and reference-based transforms | Is a sampled value tied to one target's pixels? |
 | Batch and volume sampling | transforms with `apply_to_images` or `apply_to_volume` | Does sampling topology match the application method? |
-| Geometry | all shape-dependent geometric transforms | Can the transform use the validated common spatial shape exclusively? |
+| Geometry | all shape-dependent geometric transforms | Can the transform use the validated aligned spatial shape exclusively? |
 | Semantic 3D policy | transforms with volume-specific kernel or sigma policy | Is the difference true transform policy or only dispatch encoded in a name? |
 
 Volume-specific constructor policy may remain when it expresses real 3D semantics. Realized execution values still use the
-same semantic parameter names inside target groups.
+same semantic parameter names inside `TargetParams` records.
 
 ## Implementation Plan
 
@@ -551,7 +549,8 @@ same semantic parameter names inside target groups.
 
 - Record every `sample_parameters` override, `get_image_data` call, `_extract_shape_from_data` dependency, and target-specific
   application signature.
-- Assign each transform to shared-only, shared-spatial, grouped-by-representation, grouped-by-content, or mixed.
+- Assign each transform to params-only, aligned-spatial, target-parameters-by-representation,
+  target-parameters-by-content, or mixed.
 - Write the expected grouping and correlation policy beside every target-sensitive transform in the inventory.
 - Confirm which execution-param inspection APIs are public and include them in the migration note.
 
@@ -565,9 +564,9 @@ an implicit first-target assumption.
 
 - Add `TargetView`, `TargetSet`, `TargetParams`, and `SampledParams` in the core transform execution layer.
 - Derive target views from the post-preprocessing values that application functions receive.
-- Add deterministic target ordering, grouping helpers, and `TargetSet.require_spatial_shape`.
+- Add deterministic target ordering, grouping helpers, and `TargetSet.require_aligned_spatial_shape`.
 - Add sampled-parameter validation and dedicated errors.
-- Add the shared-only application fast path and actual-key group dispatch.
+- Add the uniform-parameter application fast path and actual-key target-parameter dispatch.
 
 **Completion condition**: focused core tests prove routing, validation, ordering, and zero application before a validation
 failure.
@@ -575,8 +574,8 @@ failure.
 ### Phase 2: Migrate the sampling boundary — complete
 
 - Change the base sampling signature to accept `params`, `data`, `targets`, and `sampling`, and return `SampledParams`.
-- Convert every shared-only transform explicitly.
-- Replace global first-target `shape` reads with `targets.require_spatial_shape(...)` or a specific `TargetView`.
+- Convert every transform that samples no target-specific parameters explicitly.
+- Replace global first-target `shape` reads with `targets.require_aligned_spatial_shape(...)` or a specific `TargetView`.
 - Reject dictionary returns.
 - Update deterministic state and `get_applied_params()`.
 
@@ -585,7 +584,7 @@ dictionary.
 
 ### Phase 3: Migrate target-sensitive families — complete
 
-- Migrate noise transforms as one family so shared distribution and dtype-scale rules stay consistent.
+- Migrate noise transforms as one family so target-independent distribution and dtype-scale rules stay consistent.
 - Migrate channel transforms and dropout transforms.
 - Migrate content-derived and reference-based transforms.
 - Migrate remaining image, batch, and volume special cases from the inventory.
@@ -642,13 +641,13 @@ Add focused tests for:
 
 - actual-key routing for canonical targets and aliases;
 - deterministic target ordering independent of call keyword order;
-- shared-only fast-path dispatch;
+- uniform-parameter fast-path dispatch;
 - exact sharing of one parameter object by compatible targets;
-- separate groups for incompatible targets;
-- overlapping target groups with disjoint parameter names;
-- duplicate parameter names across overlapping groups;
-- duplicate shared/group keys;
-- unknown, repeated, empty, and missing group targets;
+- separate `TargetParams` records for incompatible targets;
+- overlapping `TargetParams` records with disjoint parameter names;
+- duplicate parameter names across overlapping `TargetParams` records;
+- duplicate parameter/target-specific parameter keys;
+- unknown, repeated, empty, and missing target keys in `TargetParams` records;
 - missing required parameters;
 - validation before any application function runs;
 - read-only sampled-parameter behavior and no caller-input mutation; and
@@ -696,7 +695,7 @@ shared-policy relationship.
 - Missing or renamed aliases fail before any output is produced.
 - Canonical-type changes fail even if the array shapes happen to match.
 - Incompatible shape, channels, dtype scale, or topology fails with the recorded and current descriptors.
-- Shared-only replay retains existing behavior.
+- Replay of values with no target-specific parameters retains existing behavior.
 - `applied_config` remains constructor-valid and strict-JSON serializable.
 
 ### Negative controls
@@ -716,8 +715,8 @@ Each negative control must fail on the pre-cutover base or demonstrate the wrong
 Measure base and exact head in the same process environment with identical inputs, seeds, warmup, and repetitions. Report
 median and dispersion for these cells:
 
-- cheap shared-only transform on one image;
-- cheap shared-only transform inside `Compose`;
+- cheap transform with no target-specific parameters on one image;
+- cheap transform with no target-specific parameters inside `Compose`;
 - target-sensitive transform on one image;
 - compatible `image` plus alias;
 - incompatible `image` plus alias;
@@ -727,11 +726,11 @@ median and dispersion for these cells:
 
 The implementation must satisfy these budgets:
 
-- shared-only application performs one empty-group branch per transform and no per-target group lookup;
+- uniform-parameter application performs one empty-target-parameters branch per transform and no per-target lookup;
 - target view construction is allocation-light and does not copy arrays;
 - target-aware dispatch is `O(T)` in active targets;
-- dense parameters are materialized once per compatible group;
-- ordinary single-target and shared-only representative cells regress by no more than 5%; and
+- dense parameters are materialized once per compatible target set;
+- ordinary single-target and uniform-parameter representative cells regress by no more than 5%; and
 - a larger regression blocks the cutover unless the implementation removes equivalent work elsewhere and provides measured
   full-route evidence.
 
@@ -776,7 +775,7 @@ The final diff must confirm all of the following:
 - [x] No `volume_*`, `image_*`, or alias-specific execution field exists solely for dispatch.
 - [x] No compatibility decoder accepts parameter schema 1.
 - [x] No temporary dual dispatch path remains.
-- [x] No dense parameter is duplicated across compatible groups.
+- [x] No dense parameter is duplicated across compatible target sets.
 - [x] No tests assert legacy target-specific field names.
 - [x] No documentation teaches the legacy sampling signature.
 
@@ -785,7 +784,7 @@ The final diff must confirm all of the following:
 The class of bugs is resolved when:
 
 1. Every built-in sampler returns `SampledParams`.
-2. Every target-sensitive transform addresses parameters by actual target key through groups.
+2. Every target-sensitive transform addresses parameters by actual target key through `TargetParams` records.
 3. Multiple aliases of the same canonical target type can differ in channels, dtype, shape where allowed, and content without
    misrouting or silent rescaling.
 4. Compatible aliases retain their declared parameter correlation.

@@ -49,7 +49,7 @@ def sample_parameters(
     sampling: SamplingContext,
 ) -> SampledParams:
     value = sampling.py_random.uniform(0.0, 1.0)
-    return SampledParams.shared_only({"value": value})
+    return SampledParams(params={"value": value})
 ```
 
 `SamplingContext` exposes the invocation-local Python and NumPy streams plus `applied_overrides`. Built-in sampler

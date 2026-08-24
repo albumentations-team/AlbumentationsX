@@ -316,7 +316,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
                 record_line_length_ratio=record_line_length_ratio,
             )
         )
-        return SampledParams.shared_only({"artifacts": artifacts})
+        return SampledParams(params={"artifacts": artifacts})
 
     @staticmethod
     def _get_applied_config(

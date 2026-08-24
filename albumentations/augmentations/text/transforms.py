@@ -234,8 +234,8 @@ class TextImage(ImageOnlyTransform):
         metadata = data[self.metadata_key]
 
         if metadata == []:
-            return SampledParams.shared_only(
-                {
+            return SampledParams(
+                params={
                     "overlay_data": [],
                 }
             )
@@ -262,8 +262,8 @@ class TextImage(ImageOnlyTransform):
 
         sampling.applied_overrides["fraction_range"] = fraction
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "overlay_data": overlay_data,
             }
         )

@@ -385,15 +385,15 @@ class ElasticTransform(BaseRemapTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         del data
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         low, high = self.displacement_range
         magnitude = low if low == high else sampling.py_random.uniform(low, high)
         sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
 
         height, width = image_shape
         if magnitude == 0 or min(height - 1, width - 1) <= 0:
-            return SampledParams.shared_only(
-                {
+            return SampledParams(
+                params={
                     "displacement_magnitude": magnitude,
                     "control_coefficients": [],
                 }
@@ -406,8 +406,8 @@ class ElasticTransform(BaseRemapTransform):
         control_coefficients = np.empty((*self.control_grid_shape, 2), dtype=np.float32)
         control_coefficients[..., 0] = vector_radius * np.cos(angle)
         control_coefficients[..., 1] = vector_radius * np.sin(angle)
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "displacement_magnitude": magnitude,
                 "control_coefficients": control_coefficients.tolist(),
             }
@@ -436,7 +436,7 @@ class ElasticTransform(BaseRemapTransform):
         recorded_shape = tuple(params["shape"][:2])
         if self.replay_mode:
             current_targets = self._build_target_set(kwargs)
-            current_shape = current_targets.spatial_shape(2)
+            current_shape = current_targets.aligned_spatial_shape(2)
             if current_shape is not None and current_shape != recorded_shape:
                 raise ValueError(
                     f"ElasticTransform replay requires the same spatial shape {recorded_shape}, got {current_shape}",
@@ -452,8 +452,8 @@ class ElasticTransform(BaseRemapTransform):
             recorded_shape,
         )
         runtime_sampled_params = SampledParams(
-            shared=runtime_params,
-            groups=sampled_params.groups,
+            params=runtime_params,
+            target_params=sampled_params.target_params,
             target_schema=sampled_params.target_schema,
         )
         return super().apply_with_params(runtime_sampled_params, *args, **kwargs)
@@ -588,7 +588,7 @@ class PiecewiseAffine(BaseDistortion):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
         nb_rows = np.clip(sampling.py_random.randint(*self.nb_rows_range), 2, None)
@@ -615,7 +615,7 @@ class PiecewiseAffine(BaseDistortion):
         else:
             map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return SampledParams.shared_only({"map_x": map_x, "map_y": map_y})
+        return SampledParams(params={"map_x": map_x, "map_y": map_y})
 
 
 class OpticalDistortion(BaseDistortion):
@@ -725,7 +725,7 @@ class OpticalDistortion(BaseDistortion):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
         k = sampling.py_random.uniform(*self.distort_range)
@@ -739,7 +739,7 @@ class OpticalDistortion(BaseDistortion):
                 np.arange(width, dtype=np.float32),
                 indexing="ij",
             )
-            return SampledParams.shared_only({"map_x": map_x, "map_y": map_y})
+            return SampledParams(params={"map_x": map_x, "map_y": map_y})
 
         if self.mode == "camera":
             map_x, map_y = fgeometric.get_camera_matrix_distortion_maps(
@@ -753,7 +753,7 @@ class OpticalDistortion(BaseDistortion):
             )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return SampledParams.shared_only({"map_x": map_x, "map_y": map_y})
+        return SampledParams(params={"map_x": map_x, "map_y": map_y})
 
 
 class GridDistortion(BaseDistortion):
@@ -868,7 +868,7 @@ class GridDistortion(BaseDistortion):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         num_steps = min(self.num_steps, *scaled_shape)
 
@@ -887,7 +887,7 @@ class GridDistortion(BaseDistortion):
                 np.arange(width, dtype=np.float32),
                 indexing="ij",
             )
-            return SampledParams.shared_only({"map_x": map_x, "map_y": map_y})
+            return SampledParams(params={"map_x": map_x, "map_y": map_y})
 
         if self.normalized:
             normalized_params = fgeometric.normalize_grid_distortion_steps(
@@ -909,7 +909,7 @@ class GridDistortion(BaseDistortion):
         )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return SampledParams.shared_only({"map_x": map_x, "map_y": map_y})
+        return SampledParams(params={"map_x": map_x, "map_y": map_y})
 
 
 class ThinPlateSpline(BaseDistortion):
@@ -1073,7 +1073,7 @@ class ThinPlateSpline(BaseDistortion):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        height, width = targets.require_spatial_shape(2)
+        height, width = targets.require_aligned_spatial_shape(2)
         image_shape = (height, width)
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
@@ -1108,8 +1108,8 @@ class ThinPlateSpline(BaseDistortion):
         map_y = transformed[:, 1].reshape(scaled_height, scaled_width).astype(np.float32)
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "map_x": map_x,
                 "map_y": map_y,
             }
@@ -1217,7 +1217,7 @@ class WaterRefraction(BaseDistortion):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
 
@@ -1242,8 +1242,8 @@ class WaterRefraction(BaseDistortion):
         )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "map_x": map_x,
                 "map_y": map_y,
             }
@@ -1361,7 +1361,7 @@ class PixelSpread(BaseDistortion):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
 
@@ -1381,4 +1381,4 @@ class PixelSpread(BaseDistortion):
         map_x = (col_coords + offsets[..., 1]).astype(np.float32)
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return SampledParams.shared_only({"map_x": map_x, "map_y": map_y})
+        return SampledParams(params={"map_x": map_x, "map_y": map_y})

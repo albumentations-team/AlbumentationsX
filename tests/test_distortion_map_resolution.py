@@ -62,7 +62,7 @@ def test_low_map_resolution_returns_full_size_maps(transform_cls, params):
     result = transform.sample_parameters(
         *make_sampling_args(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
-    ).shared
+    ).params
 
     assert result["map_x"].shape == image.shape[:2]
     assert result["map_y"].shape == image.shape[:2]
@@ -80,7 +80,7 @@ def test_low_map_resolution_returns_full_size_maps_for_tiny_images(transform_cls
     result = transform.sample_parameters(
         *make_sampling_args(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
-    ).shared
+    ).params
 
     assert result["map_x"].shape == image.shape[:2]
     assert result["map_y"].shape == image.shape[:2]

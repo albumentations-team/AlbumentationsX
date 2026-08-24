@@ -124,8 +124,8 @@ class ImageCompression(ImageOnlyTransform):
 
         sampling.applied_overrides["quality_range"] = quality
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "quality": quality,
                 "image_type": image_type,
             }
@@ -236,4 +236,4 @@ class Downscale(ImageOnlyTransform):
 
         sampling.applied_overrides["scale_range"] = scale
 
-        return SampledParams.shared_only({"scale": scale})
+        return SampledParams(params={"scale": scale})

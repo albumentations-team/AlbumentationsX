@@ -170,7 +170,7 @@ class RandomCrop(BaseCropAndPad):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         image_height, image_width = image_shape
 
         if not self.pad_if_needed and (self.height > image_height or self.width > image_width):
@@ -203,8 +203,8 @@ class RandomCrop(BaseCropAndPad):
             w_start = sampling.py_random.random()
             crop_coords = fcrops.get_crop_coords(image_shape, (self.height, self.width), h_start, w_start)
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "crop_coords": crop_coords,
                 "pad_params": pad_params,
             }
@@ -350,7 +350,7 @@ class CenterCrop(BaseCropAndPad):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         image_height, image_width = image_shape
 
         if not self.pad_if_needed and (self.height > image_height or self.width > image_width):
@@ -379,8 +379,8 @@ class CenterCrop(BaseCropAndPad):
             # Get crop coordinates based on original dimensions
             crop_coords = fcrops.get_center_crop_coords(image_shape, (self.height, self.width))
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "crop_coords": crop_coords,
                 "pad_params": pad_params,
             }
@@ -603,12 +603,12 @@ class Crop(BaseCropAndPad):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         image_height, image_width = image_shape
 
         if not self.pad_if_needed:
-            return SampledParams.shared_only(
-                {"crop_coords": (self.x_min, self.y_min, self.x_max, self.y_max), "pad_params": None}
+            return SampledParams(
+                params={"crop_coords": (self.x_min, self.y_min, self.x_max, self.y_max), "pad_params": None}
             )
 
         pad_top, pad_bottom, pad_left, pad_right = self._compute_min_padding(image_height, image_width)
@@ -617,8 +617,8 @@ class Crop(BaseCropAndPad):
         if any([pad_top, pad_bottom, pad_left, pad_right]):
             pad_params = self._compute_adjusted_padding(pad_top, pad_bottom, pad_left, pad_right, sampling)
 
-        return SampledParams.shared_only(
-            {"crop_coords": (self.x_min, self.y_min, self.x_max, self.y_max), "pad_params": pad_params}
+        return SampledParams(
+            params={"crop_coords": (self.x_min, self.y_min, self.x_max, self.y_max), "pad_params": pad_params}
         )
 
 
@@ -1021,7 +1021,7 @@ class CropAndPad(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        height, width = targets.require_spatial_shape(2)
+        height, width = targets.require_aligned_spatial_shape(2)
         new_params, percent_params = self._sample_crop_values(height, width, sampling)
 
         pad_params = [max(i, 0) for i in new_params]
@@ -1057,8 +1057,8 @@ class CropAndPad(DualTransform):
             applied_config["fill_mask"] = sampled_fill_mask
         sampling.applied_overrides.update(applied_config)
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "crop_params": tuple(crop_params) if crop_params else None,
                 "pad_params": tuple(pad_params) if pad_params else None,
                 "fill": sampled_fill,

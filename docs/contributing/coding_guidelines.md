@@ -378,15 +378,15 @@ def sample_parameters(
     sampling: SamplingContext,
 ) -> SampledParams:
     brightness = sampling.py_random.uniform(*self.brightness_range)
-    height, width = targets.require_spatial_shape(2)
+    height, width = targets.require_aligned_spatial_shape(2)
     noise = sampling.random_generator.uniform(-1, 1, size=(height, width))
     sampling.applied_overrides["brightness_range"] = brightness
-    return SampledParams.shared_only({"brightness": brightness, "noise": noise})
+    return SampledParams(params={"brightness": brightness, "noise": noise})
 ```
 
 Use `sampling.py_random` for a few scalar choices. Use `sampling.random_generator` for array-valued draws. Generate
-all stochastic parameters before `apply`, then return a `SampledParams`. Shared values go in
-`SampledParams.shared`; representation-dependent values belong in `TargetParams` entries addressed by actual target key.
+all stochastic parameters before `apply`, then return a `SampledParams`. Values that apply to every target go in
+`SampledParams.params`; representation-dependent values belong in `TargetParams` entries addressed by actual target key.
 Use `targets` and its descriptors for channel, dtype, layout, topology, or target-content decisions. Do not derive
 those decisions from the first-target `params["shape"]` field.
 
@@ -434,7 +434,7 @@ def sample_parameters(
     targets: TargetSet,
     sampling: SamplingContext,
 ) -> SampledParams:
-    height, width = targets.require_spatial_shape(2)
+    height, width = targets.require_aligned_spatial_shape(2)
 
     image = data.get("image")
     mask = data.get("mask")
@@ -446,14 +446,14 @@ def sample_parameters(
     center_x = width // 2
     center_y = height // 2
 
-    return SampledParams.shared_only({"crop_size": crop_size, "center": (center_x, center_y)})
+    return SampledParams(params={"crop_size": crop_size, "center": (center_x, center_y)})
 ```
 
 The method receives:
 
-- `params`: Common execution parameters such as interpolation and fill values
+- `params`: Execution parameters such as interpolation and fill values
 - `data`: The full preprocessed invocation, including auxiliary values outside the active targets
-- `targets`: The ordered `TargetSet`; use `require_spatial_shape(2)` or `require_spatial_shape(3)` for synchronized geometry
+- `targets`: The ordered `TargetSet`; use `require_aligned_spatial_shape(2)` or `require_aligned_spatial_shape(3)` for synchronized geometry
 - `sampling`: Call-local Python and NumPy RNG streams plus the applied-configuration sink
 
 Use this method when you need to:
@@ -538,7 +538,7 @@ they must not introduce new constructor fields.
 
 Sampling overrides must return `SampledParams` rather than a flat dictionary (`AXG021`), and must not derive
 target-sensitive values from first-target `params["shape"]` or legacy shape helpers (`AXG022`). Application methods
-use semantic parameter names; target routing belongs in target groups rather than names such as `volume_noise_map`
+use semantic parameter names; target routing belongs in `TargetParams` entries rather than names such as `volume_noise_map`
 (`AXG023`).
 
 #### No `get_transform_init_args_names` Override
@@ -730,13 +730,13 @@ Examples:
     ...         # Add custom parameters here
     ...
     ...     def sample_parameters(self, params, data, targets, sampling):
-    ...         height, width = targets.require_spatial_shape(2)
+    ...         height, width = targets.require_aligned_spatial_shape(2)
     ...         # Generate distortion maps
     ...         map_x = np.zeros((height, width), dtype=np.float32)
     ...         map_y = np.zeros((height, width), dtype=np.float32)
     ...         # Apply your custom distortion logic here
     ...         # ...
-    ...         return SampledParams.shared_only({"map_x": map_x, "map_y": map_y})
+    ...         return SampledParams(params={"map_x": map_x, "map_y": map_y})
     >>>
     >>> # Prepare sample data
     >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)

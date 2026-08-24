@@ -164,7 +164,7 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         crop_height = sampling.py_random.randint(*self.min_max_height)
         crop_width = int(crop_height * self.w2h_ratio)
@@ -178,7 +178,7 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
 
         sampling.applied_overrides["min_max_height"] = (crop_height, crop_height)
 
-        return SampledParams.shared_only({"crop_coords": crop_coords})
+        return SampledParams(params={"crop_coords": crop_coords})
 
 
 class RandomResizedCrop(_BaseRandomSizedCrop):
@@ -331,7 +331,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         image_height, image_width = image_shape
 
         area = image_height * image_width
@@ -360,7 +360,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
                         "ratio": (aspect_ratio, aspect_ratio),
                     },
                 )
-                return SampledParams.shared_only({"crop_coords": crop_coords})
+                return SampledParams(params={"crop_coords": crop_coords})
 
         # Fallback to central crop - use proper function
         in_ratio = image_width / image_height
@@ -383,7 +383,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
                 "ratio": (fallback_ratio, fallback_ratio),
             },
         )
-        return SampledParams.shared_only({"crop_coords": crop_coords})
+        return SampledParams(params={"crop_coords": crop_coords})
 
 
 __all__ = [

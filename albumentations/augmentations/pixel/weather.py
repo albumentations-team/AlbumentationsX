@@ -202,8 +202,8 @@ class RandomSnow(ImageOnlyTransform):
         snow_point = sampling.py_random.uniform(*self.snow_point_range)
         sampling.applied_overrides["snow_point_range"] = snow_point
         if self.method != "texture":
-            return SampledParams.shared_only(
-                {"snow_point": snow_point, "snow_texture": None, "sparkle_mask": None},
+            return SampledParams(
+                params={"snow_point": snow_point, "snow_texture": None, "sparkle_mask": None},
             )
 
         groups: list[TargetParams] = []
@@ -222,7 +222,7 @@ class RandomSnow(ImageOnlyTransform):
                     {"snow_texture": snow_texture, "sparkle_mask": sparkle_mask},
                 ),
             )
-        return SampledParams(shared={"snow_point": snow_point}, groups=tuple(groups))
+        return SampledParams(params={"snow_point": snow_point}, target_params=tuple(groups))
 
 
 class RandomGravel(ImageOnlyTransform):
@@ -365,7 +365,7 @@ class RandomGravel(ImageOnlyTransform):
             groups.append(
                 _weather_group(views, {"gravels_infos": np.array(gravels_info, dtype=np.int64)}),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class RandomRain(ImageOnlyTransform):
@@ -548,7 +548,7 @@ class RandomRain(ImageOnlyTransform):
             else:
                 rain_drops = np.empty((0, 2), dtype=np.int32)
             groups.append(_weather_group(views, {"drop_length": drop_length, "rain_drops": rain_drops}))
-        return SampledParams(shared={"slant": slant}, groups=tuple(groups))
+        return SampledParams(params={"slant": slant}, target_params=tuple(groups))
 
 
 class RandomFog(ImageOnlyTransform):
@@ -704,7 +704,7 @@ class RandomFog(ImageOnlyTransform):
                     {"particle_positions": particle_positions, "radiuses": radiuses},
                 ),
             )
-        return SampledParams(shared={"intensity": intensity}, groups=tuple(groups))
+        return SampledParams(params={"intensity": intensity}, target_params=tuple(groups))
 
 
 class RandomSunFlare(ImageOnlyTransform):
@@ -952,7 +952,7 @@ class RandomSunFlare(ImageOnlyTransform):
             groups.append(
                 _weather_group(views, {"circles": circles, "flare_center": (flare_center_x, flare_center_y)}),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class RandomShadow(ImageOnlyTransform):
@@ -1125,7 +1125,7 @@ class RandomShadow(ImageOnlyTransform):
             ]
             intensities = sampling.random_generator.uniform(*self.shadow_intensity_range, size=num_shadows)
             groups.append(_weather_group(views, {"vertices_list": vertices_list, "intensities": intensities}))
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class Spatter(ImageOnlyTransform):
@@ -1383,7 +1383,7 @@ class Spatter(ImageOnlyTransform):
                     random_generator=sampling.random_generator,
                 )
             groups.append(_weather_group(views, group_params))
-        return SampledParams(shared={"mode": mode}, groups=tuple(groups))
+        return SampledParams(params={"mode": mode}, target_params=tuple(groups))
 
 
 class AtmosphericFog(ImageOnlyTransform):
@@ -1515,4 +1515,4 @@ class AtmosphericFog(ImageOnlyTransform):
                     dtype=True,
                 ),
             )
-        return SampledParams(shared={"density": density}, groups=tuple(groups))
+        return SampledParams(params={"density": density}, target_params=tuple(groups))

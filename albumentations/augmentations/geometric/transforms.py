@@ -299,7 +299,7 @@ class Perspective(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         scale = sampling.py_random.uniform(*self.scale)
 
         points = fgeometric.generate_perspective_points(
@@ -322,8 +322,8 @@ class Perspective(DualTransform):
 
         sampling.applied_overrides["scale"] = scale
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "matrix": matrix,
                 "max_height": max_height,
                 "max_width": max_width,
@@ -759,7 +759,7 @@ class Affine(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         translate = self._get_translate_params(image_shape, sampling)
         shear = self._get_shear_params(sampling)
@@ -807,8 +807,8 @@ class Affine(DualTransform):
         else:
             output_shape = image_shape
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "rotate": rotate,
                 "scale": scale,
                 "matrix": matrix,
@@ -1145,7 +1145,7 @@ class GridElasticDeform(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         # Replace calculate_grid_dimensions with split_uniform_grid
         tiles = fgeometric.split_uniform_grid(
@@ -1177,7 +1177,7 @@ class GridElasticDeform(DualTransform):
 
         generated_mesh = self._generate_mesh(polygons, dimensions)
 
-        return SampledParams.shared_only({"generated_mesh": generated_mesh})
+        return SampledParams(params={"generated_mesh": generated_mesh})
 
     def apply(
         self,
@@ -1391,7 +1391,7 @@ class RandomGridShuffle(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         original_tiles = fgeometric.split_uniform_grid(
             image_shape,
@@ -1404,7 +1404,7 @@ class RandomGridShuffle(DualTransform):
             sampling.random_generator,
         )
 
-        return SampledParams.shared_only({"tiles": original_tiles, "mapping": mapping})
+        return SampledParams(params={"tiles": original_tiles, "mapping": mapping})
 
 
 class Morphological(DualTransform):
@@ -1545,8 +1545,8 @@ class Morphological(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "kernel": cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.scale),
             }
         )

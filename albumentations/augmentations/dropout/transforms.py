@@ -161,7 +161,7 @@ class BaseDropout(DualTransform):
         ...
         ...         from albumentations.core.transform_params import SampledParams
         ...
-        ...         return SampledParams.shared_only({
+        ...         return SampledParams(params={
         ...             "holes": np.array(holes) if holes else np.empty((0, 4), dtype=np.int32),
         ...             "seed": int(sampling.random_generator.integers(0, 100000)),
         ...         })
@@ -255,7 +255,7 @@ class BaseDropout(DualTransform):
                     requirements=requirements,
                 )
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
     def apply(self, img: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:
@@ -559,4 +559,4 @@ class PixelDropout(DualTransform):
                 )
             )
 
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))

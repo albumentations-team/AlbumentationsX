@@ -431,8 +431,8 @@ class Colorize(ImageOnlyTransform):
         sampling.applied_overrides["mid_range"] = mid_color
         sampling.applied_overrides["mid_value_range"] = applied_mid_value
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "black_color": black_color,
                 "white_color": white_color,
                 "mid_color": mid_color,
@@ -637,7 +637,7 @@ class FancyPCA(ImageOnlyTransform):
             )
             for views in targets.group_image_like_by(lambda view: view.descriptor.channels)
         )
-        return SampledParams(shared={}, groups=groups)
+        return SampledParams(params={}, target_params=groups)
 
 
 __all__ = [

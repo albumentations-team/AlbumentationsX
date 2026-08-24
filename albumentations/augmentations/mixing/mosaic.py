@@ -441,7 +441,7 @@ class Mosaic(DualTransform):
         # way to mirror the survival, breaking positional alignment on the way to the next
         # transform (the root cause of the Mosaic+Perspective+CopyAndPaste IndexError).
         result.update(self._compute_mosaic_survival(processed_cells, data))
-        return SampledParams.shared_only(result)
+        return SampledParams(params=result)
 
     @staticmethod
     def _filter_cell_masks_to_surviving_bboxes(

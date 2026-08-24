@@ -26,7 +26,7 @@ PY
 ```
 
 The source hook enforces the boundaries mechanically: `AXG021` rejects flat sampler returns, `AXG022` rejects first-target
-shape helpers, and `AXG023` rejects target-routing names in application parameters. A transform may remain shared-only only
+shape helpers, and `AXG023` rejects target-routing names in application parameters. A transform may return no target-specific parameters
 when the sampled value is independent of target representation and content.
 
 ## Grouped by representation or actual target
@@ -78,7 +78,7 @@ share geometry intentionally; representation-dependent values must not be added 
 ## Content-derived or mixed policy
 
 These samplers read caller content or annotation metadata. They must document which target is the reference and, when the
-realized value is consumed by multiple representations, move the materialization into target groups.
+realized value is consumed by multiple representations, move the materialization into `TargetParams` records.
 
 - `albumentations/augmentations/crops/special.py`: `CropNonEmptyMaskIfExists`.
 - `albumentations/augmentations/dropout/coarse_dropout.py`: `ConstrainedCoarseDropout`.
@@ -92,7 +92,7 @@ realized value is consumed by multiple representations, move the materialization
 - `albumentations/augmentations/pixel/color_basic.py`: `Equalize`.
 - `albumentations/augmentations/text/transforms.py`: `TextImage`.
 
-## Shared-only policy
+## Parameters without target-specific values
 
 These samplers produce values independent of active target representation. If a future change makes one of these values
 depend on shape, channels, dtype, topology, or target content, move it to one of the two sections above and add a mixed

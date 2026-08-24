@@ -170,7 +170,7 @@ class RandomToneCurve(ImageOnlyTransform):
                     requirements=requirements_for_views(views, channels=True),
                 ),
             )
-        return SampledParams(shared={}, groups=tuple(groups))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class HueSaturationValue(ImageOnlyTransform):
@@ -287,8 +287,8 @@ class HueSaturationValue(ImageOnlyTransform):
             },
         )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "hue_shift": hue_shift,
                 "sat_shift": sat_shift,
                 "val_shift": val_shift,
@@ -399,7 +399,7 @@ class Solarize(ImageOnlyTransform):
 
         sampling.applied_overrides["threshold_range"] = threshold
 
-        return SampledParams.shared_only({"threshold": threshold})
+        return SampledParams(params={"threshold": threshold})
 
 
 class Posterize(ImageOnlyTransform):
@@ -517,10 +517,10 @@ class Posterize(ImageOnlyTransform):
         if isinstance(self.num_bits, list):
             num_bits_list = [sampling.py_random.randint(*i) for i in self.num_bits]
             sampling.applied_overrides["num_bits"] = num_bits_list
-            return SampledParams.shared_only({"num_bits": num_bits_list})
+            return SampledParams(params={"num_bits": num_bits_list})
         num_bits = sampling.py_random.randint(*self.num_bits)
         sampling.applied_overrides["num_bits"] = num_bits
-        return SampledParams.shared_only({"num_bits": num_bits})
+        return SampledParams(params={"num_bits": num_bits})
 
 
 class Equalize(ImageOnlyTransform):
@@ -662,7 +662,7 @@ class Equalize(ImageOnlyTransform):
     ) -> SampledParams:
         if not callable(self.mask):
             sampling.applied_overrides.update({"mask": None, "mask_params": ()})
-            return SampledParams.shared_only({"mask": self.mask})
+            return SampledParams(params={"mask": self.mask})
 
         mask_params = {"image": data["image"]}
         for key in self.mask_params:
@@ -673,7 +673,7 @@ class Equalize(ImageOnlyTransform):
             mask_params[key] = data[key]
 
         sampling.applied_overrides.update({"mask": None, "mask_params": ()})
-        return SampledParams.shared_only({"mask": self.mask(**mask_params)})
+        return SampledParams(params={"mask": self.mask(**mask_params)})
 
     @property
     def targets_as_params(self) -> list[str]:
@@ -848,8 +848,8 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             },
         )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "alpha": alpha,
                 "beta": beta,
             }
@@ -993,7 +993,7 @@ class ExposureMatching(ImageOnlyTransform):
         if not groups:
             raise RuntimeError("Expected image, images, or volume data for exposure matching")
 
-        return SampledParams(shared={"target_mean": target_mean}, groups=tuple(groups))
+        return SampledParams(params={"target_mean": target_mean}, target_params=tuple(groups))
 
 
 class CLAHE(ImageOnlyTransform):
@@ -1084,7 +1084,7 @@ class CLAHE(ImageOnlyTransform):
 
         sampling.applied_overrides["clip_range"] = clip_limit
 
-        return SampledParams.shared_only({"clip_limit": clip_limit})
+        return SampledParams(params={"clip_limit": clip_limit})
 
 
 class RandomGamma(ImageOnlyTransform):
@@ -1189,8 +1189,8 @@ class RandomGamma(ImageOnlyTransform):
 
         sampling.applied_overrides["gamma_range"] = gamma
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "gamma": gamma / 100.0,
             }
         )

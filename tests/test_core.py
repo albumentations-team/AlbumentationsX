@@ -124,7 +124,7 @@ def test_image_only_transform(image):
         with mock.patch.object(
             ImageOnlyTransform,
             "sample_parameters",
-            return_value=SampledParams.shared_only({"interpolation": cv2.INTER_LINEAR}),
+            return_value=SampledParams(params={"interpolation": cv2.INTER_LINEAR}),
         ):
             aug = ImageOnlyTransform(p=1)
             data = aug(image=image, mask=mask)
@@ -141,7 +141,7 @@ def test_dual_transform(image):
     mask = image.copy()
 
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "sample_parameters", return_value=SampledParams.shared_only({})):
+        with mock.patch.object(DualTransform, "sample_parameters", return_value=SampledParams(params={})):
             aug = DualTransform(p=1)
             aug(image=image, mask=mask)
 
@@ -179,7 +179,7 @@ def test_additional_targets(image):
         with mock.patch.object(
             DualTransform,
             "sample_parameters",
-            return_value=SampledParams.shared_only({"interpolation": cv2.INTER_LINEAR}),
+            return_value=SampledParams(params={"interpolation": cv2.INTER_LINEAR}),
         ):
             aug = DualTransform(p=1)
             aug.add_targets({"image2": "image"})
@@ -1487,7 +1487,7 @@ def test_mask_interpolation_someof(interpolation, compose):
 
 
 @pytest.mark.parametrize(
-    ["transform", "expected_shared_keys"],
+    ["transform", "expected_params_keys"],
     [
         (A.HorizontalFlip(p=1), {"shape"}),
         (A.VerticalFlip(p=1), {"shape"}),
@@ -1512,13 +1512,13 @@ def test_mask_interpolation_someof(interpolation, compose):
         ),
     ],
 )
-def test_transform_returns_params(transform, expected_shared_keys):
+def test_transform_returns_params(transform, expected_params_keys):
     image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
     transform(image=image)
     params = transform.get_applied_params()
     assert isinstance(params, dict)
-    assert set(params) == {"parameter_schema", "target_schema", "shared", "groups"}
-    assert expected_shared_keys.issubset(params["shared"])
+    assert set(params) == {"parameter_schema", "target_schema", "params", "target_params"}
+    assert expected_params_keys.issubset(params["params"])
 
 
 @pytest.mark.parametrize(
@@ -2867,7 +2867,7 @@ def test_user_data_targets_as_params() -> None:
             sampling: SamplingContext,
         ) -> SampledParams:
             ud = data.get("user_data")
-            return SampledParams.shared_only({"seen_user_data": ud is not None, "ud_value": ud})
+            return SampledParams(params={"seen_user_data": ud is not None, "ud_value": ud})
 
         def apply_to_user_data(self, data: Any, **params: Any) -> Any:
             return {**data, "seen": params.get("seen_user_data", False)}
@@ -2940,7 +2940,7 @@ def test_applied_config_invalid_key_raises():
             sampling: SamplingContext,
         ) -> SampledParams:
             sampling.applied_overrides["not_a_real_constructor_param_xyz"] = 42
-            return SampledParams.shared_only({})
+            return SampledParams(params={})
 
     aug = BadTransform(p=1.0)
     with pytest.raises(ValueError, match="not_a_real_constructor_param_xyz"):

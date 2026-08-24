@@ -41,7 +41,7 @@ class _BlockingNumpyOnlyProbe(ImageOnlyTransform):
     ) -> SampledParams:
         marker = int(data["image"][0, 0, 0])
         sampling.applied_overrides["marker_range"] = (marker, marker)
-        return SampledParams.shared_only({"marker": marker})
+        return SampledParams(params={"marker": marker})
 
     def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
         if marker == 1:
@@ -83,8 +83,8 @@ class _NumpyRandomMarker(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         del params, data, targets
-        return SampledParams.shared_only(
-            {"marker": int(sampling.random_generator.integers(np.iinfo(np.int64).max, dtype=np.int64))},
+        return SampledParams(
+            params={"marker": int(sampling.random_generator.integers(np.iinfo(np.int64).max, dtype=np.int64))},
         )
 
     def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
@@ -124,7 +124,7 @@ class _ExplicitExternalSampler(ImageOnlyTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         del params, data, targets
-        return SampledParams.shared_only({"offset": sampling.py_random.randint(1, 7)})
+        return SampledParams(params={"offset": sampling.py_random.randint(1, 7)})
 
     def apply(self, image: np.ndarray, offset: int, **params: Any) -> np.ndarray:
         del params
@@ -173,7 +173,7 @@ class _FailAfterSampling(ImageOnlyTransform):
     ) -> SampledParams:
         del params, data, targets
         sampling.applied_overrides["marker"] = self.marker
-        return SampledParams.shared_only({"marker": self.marker})
+        return SampledParams(params={"marker": self.marker})
 
     def apply(self, image: np.ndarray, marker: int, **params: Any) -> np.ndarray:
         del image, marker, params
@@ -259,7 +259,7 @@ def test_deterministic_direct_transform_keeps_caller_local_observation() -> None
 
     def run(image: np.ndarray) -> tuple[tuple[int, ...], np.ndarray]:
         result = transform(image=image)
-        return transform.get_applied_params()["shared"]["shape"], result["image"]
+        return transform.get_applied_params()["params"]["shape"], result["image"]
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_future = _submit(executor, lambda: run(first_image))

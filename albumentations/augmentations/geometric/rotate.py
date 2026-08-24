@@ -210,7 +210,7 @@ class RandomRotate90(DualTransform):
         # merge the unused constructor tuple (e.g. ("r90", "r270")) into the record,
         # which would cause InitSchema to reject the replay as mutually exclusive.
         sampling.applied_overrides.update({"group_element": group_element, "group_elements": None})
-        return SampledParams.shared_only({"group_element": group_element})
+        return SampledParams(params={"group_element": group_element})
 
     def apply_to_bboxes(
         self,
@@ -537,13 +537,13 @@ class Rotate(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         angle = sampling.py_random.uniform(*self.angle_range)
 
         sampling.applied_overrides["angle_range"] = angle
 
         if self.crop_border:
-            height, width = targets.require_spatial_shape(2)
+            height, width = targets.require_aligned_spatial_shape(2)
             out_params: dict[str, Any] = self._rotated_rect_with_max_area(height, width, angle)
         else:
             out_params = {"x_min": -1, "x_max": -1, "y_min": -1, "y_max": -1}
@@ -573,7 +573,7 @@ class Rotate(DualTransform):
         out_params["matrix"] = matrix
         out_params["bbox_matrix"] = bbox_matrix
 
-        return SampledParams.shared_only(out_params)
+        return SampledParams(params=out_params)
 
 
 class SafeRotate(Affine):
@@ -736,7 +736,7 @@ class SafeRotate(Affine):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_spatial_shape(2)
+        image_shape = targets.require_aligned_spatial_shape(2)
         angle = sampling.py_random.uniform(*self.angle_range)
 
         sampling.applied_overrides["angle_range"] = angle
@@ -755,8 +755,8 @@ class SafeRotate(Affine):
             image_shape,
         )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "rotate": angle,
                 "scale": scale,
                 "matrix": matrix,

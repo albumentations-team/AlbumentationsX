@@ -66,7 +66,7 @@ AXIS_NAMES_3D: tuple[AxisName3D, ...] = ("x", "y", "z")
 
 
 def _sampling_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
-    return targets.require_spatial_shape(NUM_DIMENSIONS)
+    return targets.require_aligned_spatial_shape(NUM_DIMENSIONS)
 
 
 class Affine3D(Transform3D):
@@ -220,7 +220,7 @@ class Affine3D(Transform3D):
                 },
             },
         )
-        return SampledParams.shared_only({"matrix": matrix, "output_shape": source_shape})
+        return SampledParams(params={"matrix": matrix, "output_shape": source_shape})
 
     def apply_to_volume(
         self,
@@ -364,7 +364,7 @@ class Anisotropy3D(VolumeOnlyTransform):
                 "downscale_factor_range": (downscale_factor, downscale_factor),
             },
         )
-        return SampledParams.shared_only({"downsample_shape": downsample_shape})
+        return SampledParams(params={"downsample_shape": downsample_shape})
 
     def apply_to_volume(
         self,
@@ -458,7 +458,7 @@ class Resize3D(Transform3D):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        return SampledParams.shared_only({"source_shape": _sampling_volume_shape(targets)})
+        return SampledParams(params={"source_shape": _sampling_volume_shape(targets)})
 
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
         return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
@@ -522,7 +522,7 @@ class BasePad3D(Transform3D):
         ...         # Create symmetric padding: same amount on all sides of each dimension
         ...         pad_d, pad_h, pad_w = self.padding_size
         ...         padding = (pad_d, pad_d, pad_h, pad_h, pad_w, pad_w)
-        ...         return SampledParams.shared_only({"padding": padding})
+        ...         return SampledParams(params={"padding": padding})
         >>>
         >>> # Prepare sample data
         >>> volume = np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)  # (D, H, W)
@@ -743,7 +743,7 @@ class Pad3D(BasePad3D):
         else:
             padding = self.padding
 
-        return SampledParams.shared_only({"padding": padding})
+        return SampledParams(params={"padding": padding})
 
 
 class PadIfNeeded3D(BasePad3D):
@@ -885,7 +885,7 @@ class PadIfNeeded3D(BasePad3D):
             py_random=sampling.py_random,
         )
 
-        return SampledParams.shared_only({"padding": padding})
+        return SampledParams(params={"padding": padding})
 
 
 class BaseCropAndPad3D(Transform3D):
@@ -931,7 +931,7 @@ class BaseCropAndPad3D(Transform3D):
         ...
         ...     def sample_parameters(self, params, data, targets, sampling):
         ...         # Get the validated spatial frame
-        ...         z, h, w = targets.require_spatial_shape(3)
+        ...         z, h, w = targets.require_aligned_spatial_shape(3)
         ...         target_z, target_h, target_w = self.crop_size
         ...
         ...         # Check if padding is needed and calculate parameters
@@ -952,7 +952,7 @@ class BaseCropAndPad3D(Transform3D):
         ...
         ...         from albumentations.core.transform_params import SampledParams
         ...
-        ...         return SampledParams.shared_only({
+        ...         return SampledParams(params={
         ...             "crop_coords": crop_coords,
         ...             "pad_params": pad_params,
         ...         })
@@ -1335,8 +1335,8 @@ class CenterCrop3D(BaseCropAndPad3D):
             w_start + target_w,
         )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "crop_coords": crop_coords,
                 "pad_params": pad_params,
             }
@@ -1477,8 +1477,8 @@ class RandomCrop3D(BaseCropAndPad3D):
             w_start + target_w,
         )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "crop_coords": crop_coords,
                 "pad_params": pad_params,
             }
@@ -1701,7 +1701,7 @@ class CoarseDropout3D(Transform3D):
             },
         )
 
-        return SampledParams.shared_only({"holes": holes})
+        return SampledParams(params={"holes": holes})
 
     def apply_to_volume(self, volume: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
         if holes.size == 0:
@@ -1823,7 +1823,7 @@ class Flip3D(Transform3D):
             flip_axes = tuple(axis for axis in self.axes if sampling.py_random.random() < 0.5)
 
         sampling.applied_overrides["flip_axes"] = flip_axes
-        return SampledParams.shared_only({"flip_axes": flip_axes, "volume_shape": _sampling_volume_shape(targets)})
+        return SampledParams(params={"flip_axes": flip_axes, "volume_shape": _sampling_volume_shape(targets)})
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Return the Flip3D semantic-mapping event for a realized orientation-reversing reflection, allowing mask3d
@@ -1971,7 +1971,7 @@ class CubicSymmetry(Transform3D):
         """
         # Randomly select one of 48 possible transformations
         volume_shape = _sampling_volume_shape(targets)
-        return SampledParams.shared_only({"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape})
+        return SampledParams(params={"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape})
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Return the CubicSymmetry mapping event for a rotoreflection, while pure cube rotations preserve class
@@ -2081,8 +2081,8 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         rotation_count = cast("RotationCount3D", fgeometric.C4_GROUP_ELEMENT_TO_K[group_element])
 
         sampling.applied_overrides.update({"axis_pair": axis_pair, "group_element": group_element})
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "axis_pair": axis_pair,
                 "rotation_count": rotation_count,
                 "volume_shape": _sampling_volume_shape(targets),
@@ -2250,4 +2250,4 @@ class GridShuffle3D(Transform3D):
             sampling.random_generator,
         )
 
-        return SampledParams.shared_only({"tiles": original_tiles, "mapping": mapping})
+        return SampledParams(params={"tiles": original_tiles, "mapping": mapping})

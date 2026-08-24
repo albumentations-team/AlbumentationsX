@@ -141,7 +141,7 @@ def test_semantic_mask_label_mapping_follows_realized_cubic_symmetry_operation(
         sampling: Any,
     ) -> SampledParams:
         del self, params, targets, sampling
-        return SampledParams.shared_only({"index": index, "volume_shape": data["volume"].shape})
+        return SampledParams(params={"index": index, "volume_shape": data["volume"].shape})
 
     monkeypatch.setattr(A.CubicSymmetry, "sample_parameters", fixed_index)
     result = A.Compose(

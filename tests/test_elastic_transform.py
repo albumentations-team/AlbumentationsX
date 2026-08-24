@@ -128,7 +128,7 @@ def test_sampled_control_coefficients_are_bounded_and_replayable() -> None:
         seed=137,
     )
     result = transform(image=image)
-    params = result["replay"]["transforms"][0]["params"]["shared"]
+    params = result["replay"]["transforms"][0]["params"]["params"]
     coefficients = np.asarray(params["control_coefficients"], dtype=np.float32)
     radius = 0.05 * min(image.shape[0] - 1, image.shape[1] - 1)
 
@@ -258,7 +258,7 @@ def test_zero_spatial_extent_does_not_sample_coefficients() -> None:
     params = transform.sample_parameters(
         *make_sampling_args(transform, data),
         SamplingContext.from_owner(transform, {}),
-    ).shared
+    ).params
 
     assert params["control_coefficients"] == []
 

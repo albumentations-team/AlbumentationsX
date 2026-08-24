@@ -57,7 +57,7 @@ class BrightnessWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        return SampledParams.shared_only({"factor": 0.5})
+        return SampledParams(params={"factor": 0.5})
 
     def apply(self, img: np.ndarray, factor: float = 1.0, **p) -> np.ndarray:
         return np.clip(img.astype(np.float32) * factor, 0, 255).astype(img.dtype)
@@ -89,7 +89,7 @@ class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        return SampledParams.shared_only({"factor": 1})
+        return SampledParams(params={"factor": 1})
 
     def apply(self, img: np.ndarray, factor: int = 0, **p) -> np.ndarray:
         return np.rot90(img, factor)
@@ -111,7 +111,7 @@ class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        return SampledParams.shared_only({"factor": 2})
+        return SampledParams(params={"factor": 2})
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
         return img
@@ -136,7 +136,7 @@ class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        return SampledParams.shared_only({"factor": 1})
+        return SampledParams(params={"factor": 1})
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
         return img
@@ -465,7 +465,7 @@ class TestParamsPassthrough:
                 targets: TargetSet,
                 sampling: SamplingContext,
             ) -> SampledParams:
-                return SampledParams.shared_only({"factor": 7})
+                return SampledParams(params={"factor": 7})
 
             def apply(self, img, factor=0, **p):
                 received["apply_factor"] = factor
@@ -491,7 +491,7 @@ class TestParamsPassthrough:
                 targets: TargetSet,
                 sampling: SamplingContext,
             ) -> SampledParams:
-                return SampledParams.shared_only({"alpha": 3, "beta": 9})
+                return SampledParams(params={"alpha": 3, "beta": 9})
 
             def apply(self, img, **p):
                 return img
@@ -609,7 +609,7 @@ class TestGetParamsDependentOnData:
                 sampling: SamplingContext,
             ) -> SampledParams:
                 label = data.get("label", 0)
-                return SampledParams.shared_only({"base": 10, "offset": label * 2})
+                return SampledParams(params={"base": 10, "offset": label * 2})
 
             def apply(self, img: np.ndarray, base: int = 0, offset: int = 0, **p) -> np.ndarray:
                 return img
@@ -633,7 +633,7 @@ class TestGetParamsDependentOnData:
                 targets: TargetSet,
                 sampling: SamplingContext,
             ) -> SampledParams:
-                return SampledParams.shared_only({})
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -660,7 +660,7 @@ class TestAddTargetsWithCustomKeys:
                 targets: TargetSet,
                 sampling: SamplingContext,
             ) -> SampledParams:
-                return SampledParams.shared_only({})
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -686,7 +686,7 @@ class TestAddTargetsWithCustomKeys:
                 targets: TargetSet,
                 sampling: SamplingContext,
             ) -> SampledParams:
-                return SampledParams.shared_only({})
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -775,7 +775,7 @@ class TestAvailableKeysAndComposition:
                 targets: TargetSet,
                 sampling: SamplingContext,
             ) -> SampledParams:
-                return SampledParams.shared_only({})
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -791,7 +791,7 @@ class TestAvailableKeysAndComposition:
                 targets: TargetSet,
                 sampling: SamplingContext,
             ) -> SampledParams:
-                return SampledParams.shared_only({})
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -814,7 +814,7 @@ class TestAvailableKeysAndComposition:
                 targets: TargetSet,
                 sampling: SamplingContext,
             ) -> SampledParams:
-                return SampledParams.shared_only({})
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img

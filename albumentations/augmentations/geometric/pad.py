@@ -329,8 +329,8 @@ class Pad(DualTransform):
                 "Padding must be a single number, a pair of numbers, or a quadruple of numbers",
             )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "pad_top": pad_top,
                 "pad_bottom": pad_bottom,
                 "pad_left": pad_left,
@@ -569,7 +569,7 @@ class PadIfNeeded(Pad):
         sampling: SamplingContext,
     ) -> SampledParams:
         h_pad_top, h_pad_bottom, w_pad_left, w_pad_right = fgeometric.get_padding_params(
-            image_shape=targets.require_spatial_shape(2),
+            image_shape=targets.require_aligned_spatial_shape(2),
             min_height=self.min_height,
             min_width=self.min_width,
             pad_height_divisor=self.pad_height_divisor,
@@ -585,8 +585,8 @@ class PadIfNeeded(Pad):
             py_random=sampling.py_random,
         )
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "pad_top": h_pad_top,
                 "pad_bottom": h_pad_bottom,
                 "pad_left": w_pad_left,

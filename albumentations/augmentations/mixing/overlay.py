@@ -235,8 +235,8 @@ class OverlayElements(DualTransform):
         else:
             overlay_data = [self.preprocess_metadata(metadata, img_shape, sampling.py_random)]
 
-        return SampledParams.shared_only(
-            {
+        return SampledParams(
+            params={
                 "overlay_data": overlay_data,
             }
         )

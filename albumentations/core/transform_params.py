@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Literal, overload
 
+import numpy as np
 import torch
+from albucore import MAX_VALUES_BY_DTYPE
 
 from .type_definitions import Targets
 
@@ -25,6 +27,19 @@ _TARGET_ORDER = {
 }
 _PARAMETER_SCHEMA = 2
 _PARAMETER_PAYLOAD_KEYS = frozenset({"parameter_schema", "target_schema", "params", "target_params"})
+_TARGET_PARAMETER_PAYLOAD_KEYS = frozenset({"targets", "params", "requirements"})
+_TARGET_REQUIREMENT_PAYLOAD_KEYS = frozenset(
+    {
+        "shape",
+        "spatial_shape",
+        "spatial_shape_suffix",
+        "channels",
+        "dtype",
+        "value_scale",
+        "layout",
+        "sampling_topology",
+    },
+)
 
 
 class SampledParamsError(ValueError):
@@ -41,7 +56,7 @@ class TargetDescriptor:
     spatial_shape: tuple[int, ...] | None
     channels: int | None
     dtype: Any
-    dtype_scale: str | None
+    value_scale: float | None
     layout: str
     sampling_topology: str
 
@@ -71,7 +86,7 @@ class TargetRequirement:
     spatial_shape_suffix: tuple[int, ...] | None = None
     channels: int | None = None
     dtype: Any = None
-    dtype_scale: str | None = None
+    value_scale: float | None = None
     layout: str | None = None
     sampling_topology: str | None = None
 
@@ -91,7 +106,7 @@ class TargetRequirement:
                 ),
                 ("channels", self.channels, descriptor.channels),
                 ("dtype", self.dtype, descriptor.dtype),
-                ("dtype_scale", self.dtype_scale, descriptor.dtype_scale),
+                ("value_scale", self.value_scale, descriptor.value_scale),
                 ("layout", self.layout, descriptor.layout),
                 ("sampling_topology", self.sampling_topology, descriptor.sampling_topology),
             )
@@ -104,13 +119,15 @@ class TargetRequirement:
             "spatial_shape_suffix": self.spatial_shape_suffix,
             "channels": self.channels,
             "dtype": None if self.dtype is None else str(self.dtype),
-            "dtype_scale": self.dtype_scale,
+            "value_scale": self.value_scale,
             "layout": self.layout,
             "sampling_topology": self.sampling_topology,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> TargetRequirement:
+        if set(payload) != _TARGET_REQUIREMENT_PAYLOAD_KEYS:
+            raise SampledParamsError("unsupported target parameter requirement schema")
         return cls(
             shape=None if payload.get("shape") is None else tuple(payload["shape"]),
             spatial_shape=None if payload.get("spatial_shape") is None else tuple(payload["spatial_shape"]),
@@ -119,7 +136,7 @@ class TargetRequirement:
             ),
             channels=payload.get("channels"),
             dtype=payload.get("dtype"),
-            dtype_scale=payload.get("dtype_scale"),
+            value_scale=payload.get("value_scale"),
             layout=payload.get("layout"),
             sampling_topology=payload.get("sampling_topology"),
         )
@@ -359,20 +376,34 @@ class SampledParams:
     def from_dict(cls, payload: Mapping[str, Any]) -> SampledParams:
         if payload.get("parameter_schema") != _PARAMETER_SCHEMA or set(payload) != _PARAMETER_PAYLOAD_KEYS:
             raise SampledParamsError("unsupported or legacy transform parameter schema")
-        target_params = tuple(
-            TargetParams(
-                targets=tuple(item["targets"]),
-                params=dict(item["params"]),
-                requirements={
-                    name: TargetRequirement.from_dict(requirement) for name, requirement in item["requirements"].items()
-                },
+        raw_target_params = payload.get("target_params", ())
+        if not isinstance(raw_target_params, list):
+            raise SampledParamsError("target parameters must be a list")
+        target_params: list[TargetParams] = []
+        for item in raw_target_params:
+            if not isinstance(item, Mapping) or set(item) != _TARGET_PARAMETER_PAYLOAD_KEYS:
+                raise SampledParamsError("unsupported target parameter schema")
+            raw_requirements = item["requirements"]
+            if not isinstance(raw_requirements, Mapping):
+                raise SampledParamsError("target parameter requirements must be a mapping")
+            requirements: dict[str, TargetRequirement] = {}
+            for name, requirement in raw_requirements.items():
+                if not isinstance(name, str) or not isinstance(requirement, Mapping):
+                    raise SampledParamsError(
+                        "target parameter requirements must map target names to requirement objects"
+                    )
+                requirements[name] = TargetRequirement.from_dict(requirement)
+            target_params.append(
+                TargetParams(
+                    targets=tuple(item["targets"]),
+                    params=dict(item["params"]),
+                    requirements=requirements,
+                ),
             )
-            for item in payload.get("target_params", ())
-        )
         target_schema = payload.get("target_schema")
         return cls(
             params=dict(payload.get("params", {})),
-            target_params=target_params,
+            target_params=tuple(target_params),
             target_schema=None if target_schema is None else dict(target_schema),
         )
 
@@ -403,6 +434,15 @@ def _describe_target(name: str, canonical_type: str, value: Any) -> TargetDescri
     shape = tuple(int(dim) for dim in value.shape) if hasattr(value, "shape") else None
     dtype = getattr(value, "dtype", None)
     return _describe_target_cached(name, canonical_type, shape, dtype, isinstance(value, torch.Tensor))
+
+
+def _value_scale(dtype: Any) -> float | None:
+    if dtype is None:
+        return None
+    try:
+        return MAX_VALUES_BY_DTYPE.get(np.dtype(str(dtype).removeprefix("torch.")))
+    except (TypeError, ValueError):
+        return None
 
 
 @lru_cache(maxsize=4096)
@@ -444,8 +484,17 @@ def _describe_target_cached(
             channels = shape[-1] if len(shape) > 3 else 1
             layout, topology = "mask3d_dhw", "mask_3d"
 
-    dtype_scale = None if dtype is None else str(dtype).replace("torch.", "")
-    return TargetDescriptor(name, canonical_type, shape, spatial_shape, channels, dtype, dtype_scale, layout, topology)
+    return TargetDescriptor(
+        name,
+        canonical_type,
+        shape,
+        spatial_shape,
+        channels,
+        dtype,
+        _value_scale(dtype),
+        layout,
+        topology,
+    )
 
 
 @lru_cache(maxsize=1024)
@@ -469,6 +518,7 @@ def requirements_for_views(
     spatial_shape_suffix: bool = False,
     channels: bool = False,
     dtype: bool = False,
+    value_scale: bool = False,
     layout: bool = False,
     sampling_topology: bool = False,
 ) -> dict[str, TargetRequirement]:
@@ -484,7 +534,7 @@ def requirements_for_views(
             ),
             channels=view.descriptor.channels if channels else None,
             dtype=view.descriptor.dtype if dtype else None,
-            dtype_scale=view.descriptor.dtype_scale if dtype else None,
+            value_scale=view.descriptor.value_scale if value_scale else None,
             layout=view.descriptor.layout if layout else None,
             sampling_topology=view.descriptor.sampling_topology if sampling_topology else None,
         )

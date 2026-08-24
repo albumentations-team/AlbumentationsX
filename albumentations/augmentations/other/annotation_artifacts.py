@@ -12,7 +12,7 @@ from typing_extensions import Self
 from albumentations.augmentations.other import annotation_artifacts_functional as fannotation
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
-from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.transform_params import SampledParams, TargetParams, TargetSet, requirements_for_views
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -298,25 +298,45 @@ class AnnotationArtifacts(ImageOnlyTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_view = targets.primary_image_like()
-        shape = image_view.descriptor.shape
-        if shape is None:
-            raise ValueError("AnnotationArtifacts requires an image target with a known shape")
-        image_height, image_width = shape[:2]
-        num_channels = image_view.descriptor.channels or 1
-        artifacts = self._generate_artifacts(image_height, image_width, num_channels, sampling)
         record_line_length_ratio = self.line_geometry != "random_endpoints" and not (
             self.line_geometry == "random_angle" and self.line_length_range is not None
         )
-        sampling.applied_overrides.update(
-            self._get_applied_config(
-                artifacts,
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                tuple((view.descriptor.spatial_shape or ())[-2:]),
+                view.descriptor.channels,
+            ),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("AnnotationArtifacts requires image-like targets with known spatial shapes")
+            image_height, image_width = spatial_shape[-2:]
+            artifacts = self._generate_artifacts(
                 image_height,
                 image_width,
-                record_line_length_ratio=record_line_length_ratio,
+                views[0].descriptor.channels or 1,
+                sampling,
             )
-        )
-        return SampledParams(params={"artifacts": artifacts})
+            if not groups:
+                sampling.applied_overrides.update(
+                    self._get_applied_config(
+                        artifacts,
+                        image_height,
+                        image_width,
+                        record_line_length_ratio=record_line_length_ratio,
+                    )
+                )
+            groups.append(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params={"artifacts": artifacts},
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True, channels=True),
+                ),
+            )
+        if len(groups) == 1:
+            return SampledParams(params=groups[0].params)
+        return SampledParams(params={}, target_params=tuple(groups))
 
     @staticmethod
     def _get_applied_config(

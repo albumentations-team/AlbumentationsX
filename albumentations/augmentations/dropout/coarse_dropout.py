@@ -172,31 +172,29 @@ class CoarseDropout(BaseDropout):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        def materialize(image_shape: tuple[int, int], _: tuple[Any, ...]) -> dict[str, Any]:
-            num_holes = sampling.py_random.randint(*self.num_holes_range)
-            hole_heights, hole_widths = self.calculate_hole_dimensions(
-                image_shape,
-                self.hole_height_range,
-                self.hole_width_range,
-                size=num_holes,
-                sampling=sampling,
-            )
-            height, width = image_shape
-            y_min = sampling.random_generator.integers(0, height - hole_heights + 1, size=num_holes)
-            x_min = sampling.random_generator.integers(0, width - hole_widths + 1, size=num_holes)
-            y_max = y_min + hole_heights
-            x_max = x_min + hole_widths
-            holes = np.stack([x_min, y_min, x_max, y_max], axis=-1)
-            sampling.applied_overrides.update(
-                {
-                    "num_holes_range": num_holes,
-                    "hole_height_range": (int(hole_heights.min()), int(hole_heights.max())),
-                    "hole_width_range": (int(hole_widths.min()), int(hole_widths.max())),
-                },
-            )
-            return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
-
-        return self._build_spatial_parameter_plan(targets, materialize)
+        image_shape = targets.require_aligned_spatial_shape(2)
+        num_holes = sampling.py_random.randint(*self.num_holes_range)
+        hole_heights, hole_widths = self.calculate_hole_dimensions(
+            image_shape,
+            self.hole_height_range,
+            self.hole_width_range,
+            size=num_holes,
+            sampling=sampling,
+        )
+        height, width = image_shape
+        y_min = sampling.random_generator.integers(0, height - hole_heights + 1, size=num_holes)
+        x_min = sampling.random_generator.integers(0, width - hole_widths + 1, size=num_holes)
+        y_max = y_min + hole_heights
+        x_max = x_min + hole_widths
+        holes = np.stack([x_min, y_min, x_max, y_max], axis=-1)
+        sampling.applied_overrides.update(
+            {
+                "num_holes_range": num_holes,
+                "hole_height_range": (int(hole_heights.min()), int(hole_heights.max())),
+                "hole_width_range": (int(hole_widths.min()), int(hole_widths.max())),
+            },
+        )
+        return SampledParams(params={"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)})
 
 
 class Erasing(BaseDropout):
@@ -299,73 +297,50 @@ class Erasing(BaseDropout):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        """Calculate erasing parameters (box position and size) from image shape and ratio ranges.
-        Direct derivation; used by Erasing sample_parameters.
+        height, width = targets.require_aligned_spatial_shape(2)
+        total_area = height * width
+        max_area = total_area * self.scale[1]
+        min_area = total_area * self.scale[0]
+        r_min, r_max = self.ratio
 
-        Given:
-        - Image dimensions (H, W)
-        - Target area (A)
-        - Aspect ratio (r = w/h)
+        def area_constraint_h(r: float) -> float:
+            return r * height * height
 
-        We know:
-        - h * w = A (area equation)
-        - w = r * h (aspect ratio equation)
+        def area_constraint_w(r: float) -> float:
+            return width * width / r
 
-        Therefore:
-        - h * (r * h) = A
-        - h² = A/r
-        - h = sqrt(A/r)
-        - w = r * sqrt(A/r) = sqrt(A*r)
-        """
+        max_area_h = min(area_constraint_h(r_min), area_constraint_h(r_max))
+        max_area_w = min(area_constraint_w(r_min), area_constraint_w(r_max))
+        max_valid_area = min(max_area, max_area_h, max_area_w)
 
-        def materialize(image_shape: tuple[int, int], _: tuple[Any, ...]) -> dict[str, Any]:
-            height, width = image_shape
-            total_area = height * width
-            max_area = total_area * self.scale[1]
-            min_area = total_area * self.scale[0]
-            r_min, r_max = self.ratio
-
-            def area_constraint_h(r: float) -> float:
-                return r * height * height
-
-            def area_constraint_w(r: float) -> float:
-                return width * width / r
-
-            max_area_h = min(area_constraint_h(r_min), area_constraint_h(r_max))
-            max_area_w = min(area_constraint_w(r_min), area_constraint_w(r_max))
-            max_valid_area = min(max_area, max_area_h, max_area_w)
-
-            if max_valid_area < min_area:
-                return {
+        if max_valid_area < min_area:
+            return SampledParams(
+                params={
                     "holes": np.empty((0, 4), dtype=np.int32),
                     "seed": sampling.random_generator.integers(0, 2**32 - 1),
-                }
-
-            erase_area = sampling.py_random.uniform(min_area, max_valid_area)
-            max_r = min(r_max, width * width / erase_area)
-            min_r = max(r_min, erase_area / (height * height))
-
-            if min_r > max_r:
-                return {
-                    "holes": np.empty((0, 4), dtype=np.int32),
-                    "seed": sampling.random_generator.integers(0, 2**32 - 1),
-                }
-
-            aspect_ratio = sampling.py_random.uniform(min_r, max_r)
-            h = round(np.sqrt(erase_area / aspect_ratio))
-            w = round(np.sqrt(erase_area * aspect_ratio))
-            top = sampling.py_random.randint(0, height - h)
-            left = sampling.py_random.randint(0, width - w)
-            holes = np.array([[left, top, left + w, top + h]], dtype=np.int32)
-            sampling.applied_overrides.update(
-                {
-                    "scale": erase_area / total_area,
-                    "ratio": aspect_ratio,
                 },
             )
-            return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
 
-        return self._build_spatial_parameter_plan(targets, materialize)
+        erase_area = sampling.py_random.uniform(min_area, max_valid_area)
+        max_r = min(r_max, width * width / erase_area)
+        min_r = max(r_min, erase_area / (height * height))
+
+        if min_r > max_r:
+            return SampledParams(
+                params={
+                    "holes": np.empty((0, 4), dtype=np.int32),
+                    "seed": sampling.random_generator.integers(0, 2**32 - 1),
+                },
+            )
+
+        aspect_ratio = sampling.py_random.uniform(min_r, max_r)
+        h = round(np.sqrt(erase_area / aspect_ratio))
+        w = round(np.sqrt(erase_area * aspect_ratio))
+        top = sampling.py_random.randint(0, height - h)
+        left = sampling.py_random.randint(0, width - w)
+        holes = np.array([[left, top, left + w, top + h]], dtype=np.int32)
+        sampling.applied_overrides.update({"scale": erase_area / total_area, "ratio": aspect_ratio})
+        return SampledParams(params={"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)})
 
 
 class ConstrainedCoarseDropout(BaseDropout):

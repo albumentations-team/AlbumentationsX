@@ -616,7 +616,7 @@ def rule_removed_sampling(index: SourceIndex) -> list[Diagnostic]:
                 "AXG010",
                 info,
                 info.methods[name],
-                f"{info.name}.{name} was removed; implement sample_parameters(inputs, sampling) instead",
+                f"{info.name}.{name} was removed; implement sample_parameters(params, data, targets, sampling) instead",
                 f"{info.name}.{name}",
             )
             for name in ("get_params", "get_params_dependent_on_data")

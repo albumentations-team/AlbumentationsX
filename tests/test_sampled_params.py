@@ -120,6 +120,36 @@ def test_replay_preserves_mixed_target_materialization() -> None:
     assert first["replay"]["transforms"][0]["params"]["parameter_schema"] == 2
 
 
+def test_structured_payload_with_retired_requirement_fields_is_rejected() -> None:
+    with pytest.raises(SampledParamsError, match="unsupported target parameter requirement"):
+        SampledParams.from_dict(
+            {
+                "parameter_schema": 2,
+                "target_schema": {"image": "image"},
+                "params": {},
+                "target_params": [
+                    {
+                        "targets": ["image"],
+                        "params": {"noise_map": [1]},
+                        "requirements": {
+                            "image": {
+                                "shape": None,
+                                "spatial_shape": None,
+                                "spatial_shape_suffix": None,
+                                "channels": None,
+                                "dtype": None,
+                                "value_scale": None,
+                                "layout": None,
+                                "sampling_topology": None,
+                                "dtype_scale": "uint8",
+                            },
+                        },
+                    },
+                ],
+            },
+        )
+
+
 def test_pixel_dropout_routes_mixed_alias_representations_by_actual_key() -> None:
     image = np.full((4, 5, 3), 255, dtype=np.uint8)
     image2 = np.full((4, 5, 5), 1.0, dtype=np.float32)
@@ -134,6 +164,52 @@ def test_pixel_dropout_routes_mixed_alias_representations_by_actual_key() -> Non
     assert result["image2"].shape == image2.shape
     np.testing.assert_array_equal(result["image"], 0)
     np.testing.assert_array_equal(result["image2"], 0)
+
+
+def test_equalize_materializes_callable_masks_for_each_alias() -> None:
+    image = np.full((4, 5, 3), 137, dtype=np.uint8)
+    image2 = np.full((6, 7, 3), 137, dtype=np.uint8)
+    volume = np.full((2, 8, 9, 3), 137, dtype=np.uint8)
+    sampled_shapes: list[tuple[int, ...]] = []
+
+    def mask_for(image: np.ndarray) -> np.ndarray:
+        sampled_shapes.append(image.shape)
+        return np.ones((*image.shape[:2], 1), dtype=np.uint8)
+
+    transform = A.Equalize(mask=mask_for, p=1.0)
+    transform.add_targets({"image2": "image"})
+
+    result = transform(image=image, image2=image2, volume=volume)
+    sampled_params = SampledParams.from_dict(transform.get_applied_params())
+
+    assert sampled_shapes == [image.shape, image2.shape, volume[0].shape]
+    assert {target_params.targets for target_params in sampled_params.target_params} == {
+        ("image",),
+        ("image2",),
+        ("volume",),
+    }
+    assert result["image"].shape == image.shape
+    assert result["image2"].shape == image2.shape
+    assert result["volume"].shape == volume.shape
+
+
+def test_replay_rejects_target_specific_spatial_parameters_for_changed_alias_shape() -> None:
+    transform = A.ReplayCompose(
+        [A.PlasmaShadow(plasma_size=4, roughness=1.0, p=1.0)],
+        additional_targets={"image2": "image"},
+        is_check_shapes=False,
+    )
+    image = np.full((10, 12, 3), 120, dtype=np.uint8)
+    image2 = np.full((8, 9, 3), 120, dtype=np.uint8)
+
+    recorded = transform(image=image, image2=image2)["replay"]
+
+    with pytest.raises(SampledParamsError, match="requirements do not match target 'image2'"):
+        A.ReplayCompose.replay(
+            recorded,
+            image=image,
+            image2=np.full((7, 9, 3), 120, dtype=np.uint8),
+        )
 
 
 def test_aligned_spatial_shape_rejects_unaligned_targets_before_application() -> None:
@@ -193,6 +269,7 @@ def test_tensor_image_sequence_descriptor_uses_channel_first_sequence_layout() -
     assert descriptor.layout == "images_clhw"
     assert descriptor.channels == 3
     assert descriptor.spatial_shape == (11, 13)
+    assert descriptor.value_scale == 255
 
 
 def test_sampled_params_reject_duplicate_keys_and_invalid_target_params() -> None:

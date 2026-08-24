@@ -6,7 +6,6 @@ PixelDropout. These transforms randomly remove or modify pixels, channels, or re
 in images, which can help models become more robust to occlusions and missing information.
 """
 
-from collections.abc import Callable
 from typing import Any, ClassVar, cast
 
 import numpy as np
@@ -39,34 +38,8 @@ __all__ = ["PixelDropout"]
 
 DropoutFillValue = tuple[float, ...] | float | FillValueLiteral
 
-_PIXEL_DROPOUT_REFERENCE_TARGETS = (
-    ("image", 0),
-    ("images", 1),
-    ("volume", 1),
-    ("mask", 0),
-    ("masks", 1),
-    ("mask3d", 1),
-)
 
-
-def _get_pixel_dropout_reference(data: dict[str, Any]) -> np.ndarray:
-    """Return one spatial target for PixelDropout parameter sampling while preserving shape and dtype metadata for
-    empty batches and zero-depth volume data.
-    """
-    for key, leading_dimensions in _PIXEL_DROPOUT_REFERENCE_TARGETS:
-        if key not in data:
-            continue
-        target = data[key]
-        if leading_dimensions == 0:
-            return target
-        if all(size > 0 for size in target.shape[:leading_dimensions]):
-            return target[(0,) * leading_dimensions]
-        return np.empty(target.shape[leading_dimensions:], dtype=target.dtype)
-
-    raise RuntimeError("PixelDropout requires at least one image, volume, or mask target")
-
-
-def _pixel_dropout_reference(view: Any) -> np.ndarray:
+def _pixel_dropout_reference(view: TargetView) -> np.ndarray:
     value = view.value
     if view.canonical_type in {"images", "volume", "masks", "mask3d"}:
         if value.shape[0] == 0:
@@ -75,25 +48,25 @@ def _pixel_dropout_reference(view: Any) -> np.ndarray:
     return value
 
 
-def _pixel_dropout_is_empty(view: Any) -> bool:
+def _pixel_dropout_is_empty(view: TargetView) -> bool:
     return view.canonical_type in {"images", "volume", "masks", "mask3d"} and view.value.shape[0] == 0
 
 
-def _pixel_dropout_group_key(view: Any) -> tuple[Any, ...]:
+def _pixel_dropout_group_key(view: TargetView) -> tuple[Any, ...]:
     descriptor = view.descriptor
     return (
         "mask" if view.canonical_type in {"mask", "masks", "mask3d"} else "image",
         descriptor.shape,
-        descriptor.dtype_scale,
+        descriptor.value_scale,
         descriptor.sampling_topology,
     )
 
 
 def _pixel_dropout_group(
-    views: tuple[Any, ...],
+    views: tuple[TargetView, ...],
     params: dict[str, Any],
     *,
-    annotations: tuple[Any, ...] = (),
+    annotations: tuple[TargetView, ...] = (),
 ) -> TargetParams:
     target_views = list(views)
     requirements = requirements_for_views(views, shape=True, dtype=True, sampling_topology=True)
@@ -213,49 +186,6 @@ class BaseDropout(DualTransform):
 
         if self.fill in {"inpaint_telea", "inpaint_ns"} and num_channels not in {1, 3}:
             raise ValueError("Inpainting works only for 1 or 3 channel images")
-
-    def _build_spatial_parameter_plan(
-        self,
-        targets: TargetSet,
-        materialize: Callable[[tuple[int, int], tuple[TargetView, ...]], dict[str, Any]],
-    ) -> SampledParams:
-        spatial_views = tuple(
-            view
-            for view in targets.ordered
-            if view.descriptor.spatial_shape is not None
-            and view.canonical_type in {"image", "images", "volume", "mask", "masks", "mask3d"}
-        )
-        annotations = tuple(view for view in targets.ordered if view.canonical_type in {"bboxes", "keypoints"})
-        spatial_names = {view.name for view in spatial_views}
-        annotations_attached = False
-        groups: list[TargetParams] = []
-        for views in targets.group_by(
-            lambda view: None if view.descriptor.spatial_shape is None else tuple(view.descriptor.spatial_shape[-2:]),
-        ):
-            if not views or views[0].name not in spatial_names:
-                continue
-            spatial_shape = views[0].descriptor.spatial_shape
-            if spatial_shape is None:
-                continue
-            group_views = tuple(view for view in views if view.name in spatial_names)
-            if not group_views:
-                continue
-            group_annotations = annotations if not annotations_attached else ()
-            target_views = group_views + group_annotations
-            requirements = requirements_for_views(group_views, spatial_shape_suffix=True)
-            group_names = {view.name for view in group_views}
-            requirements.update(
-                {view.name: TargetRequirement() for view in group_annotations if view.name not in group_names},
-            )
-            annotations_attached = annotations_attached or bool(group_annotations)
-            groups.append(
-                TargetParams(
-                    targets=tuple(view.name for view in target_views),
-                    params=materialize((spatial_shape[-2], spatial_shape[-1]), group_views),
-                    requirements=requirements,
-                )
-            )
-        return SampledParams(params={}, target_params=tuple(groups))
 
     def apply(self, img: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if holes.size == 0:

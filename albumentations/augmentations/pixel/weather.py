@@ -66,7 +66,7 @@ def _weather_group(
     return TargetParams(
         targets=tuple(view.name for view in views),
         params=params,
-        requirements=requirements_for_views(views, dtype=dtype),
+        requirements=requirements_for_views(views, spatial_shape_suffix=True, dtype=dtype),
     )
 
 
@@ -1487,7 +1487,7 @@ class AtmosphericFog(ImageOnlyTransform):
         max_val = albucore.MAX_VALUES_BY_DTYPE[np.uint8]
         sampling.applied_overrides["density_range"] = density
         groups: list[TargetParams] = []
-        for views in targets.group_image_like_by(lambda view: (_weather_shape_key(view), view.descriptor.dtype_scale)):
+        for views in targets.group_image_like_by(lambda view: (_weather_shape_key(view), view.descriptor.value_scale)):
             view = views[0]
             spatial_shape = view.descriptor.spatial_shape
             if spatial_shape is None or view.descriptor.dtype is None:

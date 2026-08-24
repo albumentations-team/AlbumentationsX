@@ -25,7 +25,7 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
-from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.transform_params import SampledParams, TargetParams, TargetSet, requirements_for_views
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -505,16 +505,38 @@ class FDA(BaseDomainAdaptation):
         sampling: SamplingContext,
     ) -> SampledParams:
         target_image = self._get_reference_image(data, sampling)
-        height, width = targets.require_aligned_spatial_shape(2)
-
-        # Resize the target image to match the input image dimensions
-        target_image_resized = fgeometric.resize(target_image, (height, width), cv2.INTER_LINEAR)
-
         beta = sampling.py_random.uniform(*self.beta_range)
-
         sampling.applied_overrides["beta_range"] = beta
-
-        return SampledParams(params={"target_image": target_image_resized, "beta": beta})
+        reference_channels = target_image.shape[-1] if target_image.ndim > 2 else 1
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                tuple((view.descriptor.spatial_shape or ())[-2:]),
+                view.descriptor.channels,
+            ),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("FDA requires image-like targets with known spatial shapes")
+            channels = views[0].descriptor.channels or 1
+            if channels != reference_channels:
+                raise ValueError(
+                    f"FDA reference image has {reference_channels} channels; target {views[0].name!r} has {channels}",
+                )
+            height, width = spatial_shape[-2:]
+            target_image_resized = fgeometric.resize(
+                target_image,
+                (height, width),
+                cv2.INTER_LINEAR,
+            )
+            groups.append(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params={"target_image": target_image_resized},
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True, channels=True),
+                ),
+            )
+        return SampledParams(params={"beta": beta}, target_params=tuple(groups))
 
     def apply(
         self,

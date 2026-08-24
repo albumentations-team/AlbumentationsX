@@ -4,6 +4,7 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.other import annotation_artifacts_functional as fannotation
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams
 from tests.helpers import TestDataFactory
 from tests.utils import get_resolved_applied_params, make_sampling_args
 
@@ -40,6 +41,28 @@ def test_annotation_artifacts_deterministic_with_compose_seed() -> None:
     same_seed_result = same_seed_transform(image=image)["image"]
 
     np.testing.assert_array_equal(result, same_seed_result)
+
+
+def test_annotation_artifacts_materializes_artifacts_per_target_representation() -> None:
+    image = np.full((32, 40, 3), 137, dtype=np.uint8)
+    image2 = np.full((24, 28, 5), 137, dtype=np.uint8)
+    transform = A.AnnotationArtifacts(
+        element_types=("line",),
+        element_probabilities=(1.0,),
+        count_range=(1, 1),
+        random_color_prob=1.0,
+        p=1.0,
+    )
+    transform.add_targets({"image2": "image"})
+
+    result = transform(image=image, image2=image2)
+    sampled_params = SampledParams.from_dict(transform.get_applied_params())
+
+    assert {target_params.targets for target_params in sampled_params.target_params} == {("image",), ("image2",)}
+    assert len(sampled_params.params_for("image")["artifacts"][0]["color"]) == 3
+    assert len(sampled_params.params_for("image2")["artifacts"][0]["color"]) == 5
+    assert result["image"].shape == image.shape
+    assert result["image2"].shape == image2.shape
 
 
 def test_annotation_artifacts_default_sampling_sequence_is_unchanged() -> None:

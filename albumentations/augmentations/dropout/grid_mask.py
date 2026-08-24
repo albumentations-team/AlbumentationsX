@@ -102,26 +102,24 @@ class GridMask(BaseDropout):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        def materialize(image_shape: tuple[int, int], _: tuple[Any, ...]) -> dict[str, Any]:
-            num_grid = sampling.py_random.randint(*self.num_grid_range)
-            line_width_ratio = sampling.py_random.uniform(*self.line_width_range)
-            rotation = sampling.py_random.uniform(*self.rotation_range)
+        image_shape = targets.require_aligned_spatial_shape(2)
+        num_grid = sampling.py_random.randint(*self.num_grid_range)
+        line_width_ratio = sampling.py_random.uniform(*self.line_width_range)
+        rotation = sampling.py_random.uniform(*self.rotation_range)
 
-            holes = fdropout.generate_grid_mask_holes(
-                image_shape,
-                num_grid,
-                line_width_ratio,
-                rotation,
-                sampling.random_generator,
-            )
+        holes = fdropout.generate_grid_mask_holes(
+            image_shape,
+            num_grid,
+            line_width_ratio,
+            rotation,
+            sampling.random_generator,
+        )
 
-            sampling.applied_overrides.update(
-                {
-                    "num_grid_range": num_grid,
-                    "line_width_range": line_width_ratio,
-                    "rotation_range": rotation,
-                },
-            )
-            return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
-
-        return self._build_spatial_parameter_plan(targets, materialize)
+        sampling.applied_overrides.update(
+            {
+                "num_grid_range": num_grid,
+                "line_width_range": line_width_ratio,
+                "rotation_range": rotation,
+            },
+        )
+        return SampledParams(params={"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)})

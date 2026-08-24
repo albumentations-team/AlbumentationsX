@@ -218,7 +218,7 @@ class TargetDescriptor:
     spatial_shape: tuple[int, ...] | None
     channels: int | None
     dtype: Any
-    dtype_scale: str | None
+    value_scale: float | None
     layout: str
     sampling_topology: str
 
@@ -236,7 +236,7 @@ class TargetRequirement:
     spatial_shape_suffix: tuple[int, ...] | None = None
     channels: int | None = None
     dtype: Any = None
-    dtype_scale: str | None = None
+    value_scale: float | None = None
     layout: str | None = None
     sampling_topology: str | None = None
 
@@ -285,10 +285,10 @@ representation-dependent sizes from target descriptors.
 and every `TargetParams` record that contains the actual target; dense arrays are referenced, not copied.
 
 `TargetRequirement` records only the representation properties on which a materialized parameter depends. A dense map may
-require exact array shape, channels, dtype scale, and topology. A 2D spatial parameter applied slice-wise to a volume can
+require exact array shape, channels, value scale, and topology. A 2D spatial parameter applied slice-wise to a volume can
 declare `spatial_shape_suffix` so replay checks height and width without coupling the parameter to volume depth. A channel
 permutation may require only channel count. Replay
-uses these declared constraints and does not reject harmless differences. `dtype` and `dtype_scale` are separate constraints:
+uses these declared constraints and does not reject harmless differences. `dtype` and `value_scale` are separate constraints:
 some parameters require the exact storage type, while others require only an equivalent numeric range.
 
 ## Sampled-Parameter Invariants
@@ -396,14 +396,14 @@ target-specific sampling reads the relevant descriptor from `targets`.
 
 | Transform behavior | Example sharing key |
 |---|---|
-| Channel scalar or vector | `(channels, dtype_scale)` |
-| Dense 2D value map | `(sampling_topology, spatial_shape, channels, dtype_scale)` |
-| Full 3D value map | `(sampling_topology, spatial_shape, channels, dtype_scale)` |
+| Channel scalar or vector | `(channels, value_scale)` |
+| Dense 2D value map | `(sampling_topology, spatial_shape, channels, value_scale)` |
+| Full 3D value map | `(sampling_topology, spatial_shape, channels, value_scale)` |
 | Channel permutation | `(channels,)` |
 | Content-derived reference matching | actual target key |
 | Aligned geometry | no target-specific parameters; use `targets.require_aligned_spatial_shape(...)` |
 
-`dtype_scale` is a transform-defined semantic value. Raw `dtype` is insufficient when several dtypes share the same value
+`value_scale` is the maximum value represented by the input dtype. Raw `dtype` is insufficient when several dtypes share the same value
 range or when a transform operates in normalized floating-point space.
 
 ### Correlation rules
@@ -790,7 +790,7 @@ The class of bugs is resolved when:
 4. Compatible aliases retain their declared parameter correlation.
 5. Mixed `image`, `images`, and `volume` calls pass the representation matrix.
 6. Replay records and restores structured sampled parameters exactly and rejects incompatible target schemas before applying data.
-7. `applied_config` behavior remains unchanged.
+7. `applied_config` keeps its single-target contract; structured execution replay preserves every target-specific materialization.
 8. The full transform inventory has no unresolved first-target dependency.
 9. Legacy target-routing fields and adapters are deleted.
 10. Focused, full-suite, type, lint, documentation, and coding-guidance gates pass.

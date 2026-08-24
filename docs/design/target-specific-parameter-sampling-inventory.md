@@ -36,11 +36,8 @@ it must include every property used to construct the execution value.
 
 - `albumentations/augmentations/blur/transforms.py`: `GaussianBlur`.
 - `albumentations/augmentations/dropout/channel_dropout.py`: `ChannelDropout`.
-- `albumentations/augmentations/dropout/coarse_dropout.py`: `CoarseDropout`, `Erasing`.
-- `albumentations/augmentations/dropout/grid_dropout.py`: `GridDropout`.
-- `albumentations/augmentations/dropout/grid_mask.py`: `GridMask`.
 - `albumentations/augmentations/dropout/transforms.py`: `PixelDropout`.
-- `albumentations/augmentations/dropout/xy_masking.py`: `XYMasking`.
+- `albumentations/augmentations/other/annotation_artifacts.py`: `AnnotationArtifacts`.
 - `albumentations/augmentations/pixel/channel.py`: `ChannelShuffle`.
 - `albumentations/augmentations/pixel/color_advanced.py`: `RGBShift`, `PhotoMetricDistort`.
 - `albumentations/augmentations/pixel/color_basic.py`: `RandomToneCurve`, `ExposureMatching`.
@@ -64,6 +61,10 @@ group key.
   `AtLeastOneBBoxRandomCrop`.
 - `albumentations/augmentations/crops/sized.py`: `RandomSizedCrop`, `RandomResizedCrop`.
 - `albumentations/augmentations/crops/special.py`: `RandomCropNearBBox`, `RandomCropFromBorders`.
+- `albumentations/augmentations/dropout/coarse_dropout.py`: `CoarseDropout`, `Erasing`.
+- `albumentations/augmentations/dropout/grid_dropout.py`: `GridDropout`.
+- `albumentations/augmentations/dropout/grid_mask.py`: `GridMask`.
+- `albumentations/augmentations/dropout/xy_masking.py`: `XYMasking`.
 - `albumentations/augmentations/geometric/distortion.py`: `ElasticTransform`, `PiecewiseAffine`, `OpticalDistortion`,
   `GridDistortion`, `ThinPlateSpline`, `WaterRefraction`, `PixelSpread`.
 - `albumentations/augmentations/geometric/pad.py`: `PadIfNeeded`.
@@ -88,7 +89,6 @@ realized value is consumed by multiple representations, move the materialization
 - `albumentations/augmentations/mixing/domain_adaptation.py`: `HistogramMatching`, `PixelDistributionAdaptation`.
 - `albumentations/augmentations/mixing/mosaic.py`: `Mosaic`.
 - `albumentations/augmentations/mixing/overlay.py`: `OverlayElements`.
-- `albumentations/augmentations/other/annotation_artifacts.py`: `AnnotationArtifacts`.
 - `albumentations/augmentations/pixel/color_advanced.py`: `HEStain`.
 - `albumentations/augmentations/pixel/color_basic.py`: `Equalize`.
 - `albumentations/augmentations/text/transforms.py`: `TextImage`.

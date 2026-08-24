@@ -1351,7 +1351,7 @@ class Dithering(ImageOnlyTransform):
         for views in targets.group_image_like_by(
             lambda view: (
                 view.descriptor.shape,
-                view.descriptor.dtype_scale,
+                view.descriptor.value_scale,
                 view.descriptor.sampling_topology,
             ),
         ):
@@ -1679,7 +1679,7 @@ class LensFlare(ImageOnlyTransform):
                         "starburst_angles": starburst_angles,
                         "bloom_radius": bloom_radius,
                     },
-                    requirements=requirements_for_views(views),
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True),
                 ),
             )
         return SampledParams(params={"starburst_intensity": intensity}, target_params=tuple(groups))

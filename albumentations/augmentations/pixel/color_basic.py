@@ -9,6 +9,7 @@ from albumentations.core.transform_params import (
     TargetParams,
     TargetRequirement,
     TargetSet,
+    TargetView,
     requirements_for_views,
 )
 
@@ -33,6 +34,15 @@ from ._color_shared import (
     nondecreasing,
     np,
 )
+
+
+def _equalize_mask_input(view: TargetView) -> ImageType:
+    """Return the image unit Equalize will receive when it applies a target."""
+    if view.canonical_type not in {"images", "volume"}:
+        return view.value
+    if view.value.shape[0] == 0:
+        return np.empty(view.value.shape[1:], dtype=view.value.dtype)
+    return view.value[0]
 
 
 class RandomToneCurve(ImageOnlyTransform):
@@ -664,16 +674,26 @@ class Equalize(ImageOnlyTransform):
             sampling.applied_overrides.update({"mask": None, "mask_params": ()})
             return SampledParams(params={"mask": self.mask})
 
-        mask_params = {"image": data["image"]}
-        for key in self.mask_params:
-            if key not in data:
-                raise KeyError(
-                    f"Required parameter '{key}' for mask function is missing in data.",
-                )
-            mask_params[key] = data[key]
-
         sampling.applied_overrides.update({"mask": None, "mask_params": ()})
-        return SampledParams(params={"mask": self.mask(**mask_params)})
+        groups: list[TargetParams] = []
+        for view in targets.image_like():
+            mask_params = {"image": _equalize_mask_input(view)}
+            for key in self.mask_params:
+                if key not in data:
+                    raise KeyError(
+                        f"Required parameter '{key}' for mask function is missing in data.",
+                    )
+                mask_params[key] = data[key]
+            groups.append(
+                TargetParams(
+                    targets=(view.name,),
+                    params={"mask": self.mask(**mask_params)},
+                    requirements=requirements_for_views((view,), spatial_shape_suffix=True, channels=True),
+                ),
+            )
+        if len(groups) == 1:
+            return SampledParams(params=groups[0].params)
+        return SampledParams(params={}, target_params=tuple(groups))
 
     @property
     def targets_as_params(self) -> list[str]:

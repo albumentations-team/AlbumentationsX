@@ -178,40 +178,38 @@ class XYMasking(BaseDropout):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        def materialize(image_shape: tuple[int, int], _: tuple[Any, ...]) -> dict[str, Any]:
-            self._validate_integer_axis_ranges(image_shape)
+        image_shape = targets.require_aligned_spatial_shape(2)
+        self._validate_integer_axis_ranges(image_shape)
 
-            masks_x = self._generate_axis_masks(
-                self.num_masks_x_range,
-                image_shape,
-                self.mask_x_length_range,
-                axis="x",
-                sampling=sampling,
-            )
-            masks_y = self._generate_axis_masks(
-                self.num_masks_y_range,
-                image_shape,
-                self.mask_y_length_range,
-                axis="y",
-                sampling=sampling,
-            )
+        masks_x = self._generate_axis_masks(
+            self.num_masks_x_range,
+            image_shape,
+            self.mask_x_length_range,
+            axis="x",
+            sampling=sampling,
+        )
+        masks_y = self._generate_axis_masks(
+            self.num_masks_y_range,
+            image_shape,
+            self.mask_y_length_range,
+            axis="y",
+            sampling=sampling,
+        )
 
-            rectangles = masks_x + masks_y
-            holes = np.array(rectangles) if rectangles else np.empty((0, 4), dtype=np.int32)
+        rectangles = masks_x + masks_y
+        holes = np.array(rectangles) if rectangles else np.empty((0, 4), dtype=np.int32)
 
-            sampling.applied_overrides.update(
-                {
-                    "num_masks_x_range": len(masks_x),
-                    "num_masks_y_range": len(masks_y),
-                    "mask_x_length_range": self.mask_x_length_range,
-                    "mask_y_length_range": self.mask_y_length_range,
-                    "fill": self.fill,
-                    "fill_mask": self.fill_mask,
-                },
-            )
-            return {"holes": holes, "seed": int(sampling.random_generator.integers(0, 2**32 - 1))}
-
-        return self._build_spatial_parameter_plan(targets, materialize)
+        sampling.applied_overrides.update(
+            {
+                "num_masks_x_range": len(masks_x),
+                "num_masks_y_range": len(masks_y),
+                "mask_x_length_range": self.mask_x_length_range,
+                "mask_y_length_range": self.mask_y_length_range,
+                "fill": self.fill,
+                "fill_mask": self.fill_mask,
+            },
+        )
+        return SampledParams(params={"holes": holes, "seed": int(sampling.random_generator.integers(0, 2**32 - 1))})
 
     def _validate_integer_axis_ranges(self, image_shape: tuple[int, int]) -> None:
         if self._mask_x_length_is_integer and self.mask_x_length_range[1] > image_shape[1]:

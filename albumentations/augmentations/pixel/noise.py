@@ -213,7 +213,7 @@ class GaussNoise(_FullVolumeNoiseTransform):
         for views in targets.group_image_like_by(
             lambda view: (
                 _target_noise_map_shape(view),
-                view.descriptor.dtype_scale,
+                view.descriptor.value_scale,
                 _sampling_family(view),
             ),
         ):
@@ -946,7 +946,7 @@ class AdditiveNoise(ImageOnlyTransform):
         for views in targets.group_image_like_by(
             lambda view: (
                 _target_additive_shape(self, view),
-                view.descriptor.dtype_scale,
+                view.descriptor.value_scale,
                 _sampling_family(view, volume_is_3d=not self._volume_sampling_is_slice_wise),
             ),
         ):

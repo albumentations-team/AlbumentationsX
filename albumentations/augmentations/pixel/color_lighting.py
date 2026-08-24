@@ -211,7 +211,7 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
                 TargetParams(
                     targets=tuple(view.name for view in views),
                     params={"plasma_pattern": plasma},
-                    requirements=requirements_for_views(views),
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True),
                 ),
             )
         return SampledParams(
@@ -384,7 +384,7 @@ class PlasmaShadow(ImageOnlyTransform):
                 TargetParams(
                     targets=tuple(view.name for view in views),
                     params={"plasma_pattern": plasma},
-                    requirements=requirements_for_views(views),
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True),
                 ),
             )
         return SampledParams(params={"intensity": intensity}, target_params=tuple(groups))

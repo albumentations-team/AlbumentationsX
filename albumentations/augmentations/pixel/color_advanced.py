@@ -34,19 +34,6 @@ from ._color_shared import (
     np,
 )
 
-
-def _rgb_shift_shape(view: Any) -> tuple[int, int, int]:
-    shape = view.descriptor.shape
-    if shape is None:
-        raise ValueError(f"RGBShift target {view.name!r} has no shape")
-    if view.canonical_type == "volume":
-        return (shape[1], shape[2], view.descriptor.channels or 1)
-    spatial_shape = view.descriptor.spatial_shape
-    if spatial_shape is None:
-        raise ValueError(f"RGBShift target {view.name!r} has no spatial shape")
-    return (*spatial_shape[-2:], view.descriptor.channels or 1)
-
-
 ColorRange = tuple[tuple[int, int, int], tuple[int, int, int]]
 
 
@@ -745,19 +732,19 @@ class RGBShift(AdditiveNoise):
         groups: list[TargetParams] = []
         for views in targets.group_image_like_by(
             lambda view: (
-                _rgb_shift_shape(view),
-                view.descriptor.dtype_scale,
-                "image_2d",
+                view.descriptor.channels,
+                view.descriptor.value_scale,
             ),
         ):
             view = views[0]
-            shape = _rgb_shift_shape(view)
-            sampled = self._sample_noise_map(shape, MAX_VALUES_BY_DTYPE[view.value.dtype], sampling)
+            sampled = self._sample_noise_map(
+                (view.descriptor.channels or 1,),
+                MAX_VALUES_BY_DTYPE[view.value.dtype],
+                sampling,
+            )
 
-            # spatial_mode="constant" produces a (C,) noise_map of per-channel shifts already
-            # scaled to image dtype (uint8: [-255, 255], float: [-1, 1]). Record them as sampled scalars.
             noise_map = sampled.get("noise_map")
-            if noise_map is not None and noise_map.size >= 3:
+            if not groups and noise_map is not None and noise_map.size >= 3:
                 shifts = noise_map.reshape(-1)[:3].tolist()
                 sampling.applied_overrides["r_shift_range"] = float(shifts[0])
                 sampling.applied_overrides["g_shift_range"] = float(shifts[1])

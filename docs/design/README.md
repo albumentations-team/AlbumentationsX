@@ -9,9 +9,9 @@ Design documents are created for:
 - Complex features requiring detailed planning
 - Significant architectural changes
 - Features with multiple implementation phases
-- Systems that need comprehensive documentation for maintainers
+- System-wide behavior that needs maintainer documentation
 
-**Note**: Regular bug fixes and small improvements should be documented in commit messages and PR descriptions, not as separate design documents.
+Document regular bug fixes and small improvements in commit messages and PR descriptions.
 
 ## Current Architectural References
 

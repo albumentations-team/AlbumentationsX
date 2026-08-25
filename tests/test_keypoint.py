@@ -482,18 +482,14 @@ def test_compose_with_keypoint_noop(keypoints, keypoint_format: str, labels: int
     np.testing.assert_allclose(transformed["keypoints"], keypoints)
 
 
-@pytest.mark.parametrize(
-    ["keypoints", "keypoint_format"],
-    [([[20, 30, 40, 50]], "xyas"), (np.array([[20, 30, 40, 50]]), "xyas")],
-)
-def test_compose_with_keypoint_noop_error_label_fields(keypoints, keypoint_format: str) -> None:
+def test_compose_with_keypoint_noop_error_label_fields() -> None:
     # Now with Pydantic validation, the error is caught during Compose creation (fail fast)
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match=r"'str' instances are not allowed as a Sequence value"):
         A.Compose(
             [A.NoOp(p=1.0)],
-            keypoint_params={"coord_format": keypoint_format, "label_fields": "class_id"},
+            keypoint_params={"coord_format": "xyas", "label_fields": "class_id"},
             strict=True,
         )
 

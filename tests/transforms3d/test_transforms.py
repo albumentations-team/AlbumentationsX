@@ -464,48 +464,41 @@ def test_crop_3d_shapes(transform, input_shape, expected_shape):
     ],
 )
 @pytest.mark.parametrize(
-    ["input_shape", "target_shape", "description"],
+    ["input_shape", "target_shape"],
     [
-        # Padding needed in all dimensions
-        (
+        pytest.param(
             (10, 100, 100),
             (16, 128, 128),
-            "pad_all_dims",
+            id="pad_all_dims",
         ),
-        # Padding needed only in depth
-        (
+        pytest.param(
             (5, 100, 100),
             (10, 50, 50),
-            "pad_depth_only",
+            id="pad_depth_only",
         ),
-        # Padding needed only in height
-        (
+        pytest.param(
             (10, 40, 100),
             (8, 64, 50),
-            "pad_height_only",
+            id="pad_height_only",
         ),
-        # Padding needed only in width
-        (
+        pytest.param(
             (10, 100, 40),
             (8, 50, 64),
-            "pad_width_only",
+            id="pad_width_only",
         ),
-        # Padding needed in height and width
-        (
+        pytest.param(
             (10, 40, 40),
             (8, 64, 64),
-            "pad_height_width",
+            id="pad_height_width",
         ),
-        # No padding needed (smaller crop)
-        (
+        pytest.param(
             (10, 100, 100),
             (8, 64, 64),
-            "no_padding_needed",
+            id="no_padding_needed",
         ),
     ],
-    ids=lambda x: x[2] if isinstance(x, tuple) else x,
 )
-def test_crop_3d_padding(transform_cls, input_shape, target_shape, description):
+def test_crop_3d_padding(transform_cls, input_shape, target_shape):
     volume = np.random.randint(0, 256, input_shape, dtype=np.uint8)
 
     transform = A.Compose([transform_cls(p=1, size=target_shape, pad_if_needed=True, fill=0, fill_mask=0)], seed=0)

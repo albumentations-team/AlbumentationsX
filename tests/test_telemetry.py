@@ -1,6 +1,5 @@
 """Tests for telemetry functionality in AlbumentationsX."""
 
-import time
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -116,17 +115,14 @@ class TestTelemetryClient:
             first_time = client.last_send_time
             assert first_time > 0
 
-            # Second event within rate limit should be skipped
-            time.sleep(0.1)  # Small delay
             event2 = {
                 "pipeline_hash": "hash2",
                 "transforms": ["HorizontalFlip"],
             }
             client.track_compose_init(event2, telemetry=True)
-            assert client.last_send_time == first_time  # Time shouldn't update
+            assert client.last_send_time == first_time
 
-            # Wait for rate limit to expire
-            client.last_send_time = 0  # Force expire
+            client.last_send_time = 0
             client.track_compose_init(event2, telemetry=True)
             assert client.last_send_time > first_time
         finally:

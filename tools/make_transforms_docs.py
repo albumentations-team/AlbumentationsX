@@ -50,10 +50,7 @@ def is_deprecated(cls) -> bool:
     if not cls.__doc__:
         return False
 
-    # Split docstring into sections and look only at the first section (before Args:)
     main_desc = cls.__doc__.split("Args:")[0]
-
-    # Check if there's a deprecation notice in the main description
     return any("deprecated" in line.lower() for line in main_desc.split("\n") if line.strip())
 
 
@@ -83,7 +80,6 @@ def get_dual_transforms_info():
             and not issubclass(cls, albumentations.Transform3D)  # Exclude 3D transforms
             and name not in IGNORED_CLASSES
         ) and not is_deprecated(cls):
-            # Get supported bbox types
             supported_bbox_types = getattr(cls, "_supported_bbox_types", frozenset({"hbb"}))
 
             dual_transforms_info[name] = {
@@ -103,7 +99,6 @@ def get_3d_transforms_info():
             and issubclass(cls, (albumentations.Transform3D, albumentations.VolumeOnlyTransform))
             and name not in IGNORED_CLASSES
         ) and not is_deprecated(cls):
-            # Get targets from class or parent class if not defined
             targets = cls._targets if hasattr(cls, "_targets") else albumentations.Transform3D._targets
 
             transforms_3d_info[name] = {
@@ -120,7 +115,6 @@ def make_transforms_targets_table(transforms_info, header, targets_to_check=None
         targets_iter = targets_to_check or Targets
         for target in targets_iter:
             if split_bboxes and target == Targets.BBOXES:
-                # Split BBoxes into HBB and OBB columns
                 supported_bbox_types = info.get("supported_bbox_types", frozenset({"hbb"}))
                 hbb_mark = "✓" if target in info["targets"] and "hbb" in supported_bbox_types else ""
                 obb_mark = "✓" if target in info["targets"] and "obb" in supported_bbox_types else ""
@@ -176,7 +170,6 @@ def check_docs(
     with Path(filepath).open(encoding="utf8") as f:
         text = f.read()
 
-    # Find sections using regex
     sections = {
         "Pixel-level": {
             "pattern": r"### Pixel-level transforms\n\n(.*?)(?=###|\Z)",
@@ -197,9 +190,7 @@ def check_docs(
 
     outdated_docs = set()
 
-    # Check each section
     for section_name, section_info in sections.items():
-        # Find section content
         match = re.search(section_info["pattern"], text, re.DOTALL)
         if not match:
             outdated_docs.add(section_name)
@@ -208,14 +199,12 @@ def check_docs(
             )
             continue
 
-        # Check if all generated lines are in the section
         section_content = strip_utm_query_params(match[1].strip())
         for line in section_info["generated"].split("\n"):
             if line.strip() and line not in section_content:
                 outdated_docs.add(section_name)
                 section_info["lines_not_in_text"].append(line)
 
-    # If any sections are outdated, raise error with detailed information
     if outdated_docs:
         msg = (
             "Docs for the following transform types are outdated: {outdated_docs_headers}.\n"
@@ -227,7 +216,6 @@ def check_docs(
             filename=Path(filepath).name,
         )
 
-        # Add missing lines for each outdated section
         for section_name, section_info in sections.items():
             if section_name in outdated_docs:
                 msg += (
@@ -250,7 +238,6 @@ def main() -> None:
 
     image_only_transforms_links = make_transforms_targets_links(image_only_transforms)
 
-    # Build header for dual transforms with split BBoxes columns
     # Exclude USER_DATA - it is passthrough by default, not a spatial target
     dual_header = []
     for target in ALL_TARGETS:

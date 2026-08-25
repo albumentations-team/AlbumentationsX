@@ -115,16 +115,6 @@ class _FullVolumeNoiseTransform(ImageOnlyTransform):
     _volume_sampling_is_slice_wise: ClassVar[bool] = False
 
 
-_STOCHASTIC_CONVOLUTION_BORDER_MODES = frozenset(
-    {
-        cv2.BORDER_CONSTANT,
-        cv2.BORDER_REPLICATE,
-        cv2.BORDER_REFLECT,
-        cv2.BORDER_REFLECT_101,
-    },
-)
-
-
 class StochasticConvolution(_FullVolumeNoiseTransform):
     """Apply a stochastic identity-centered convolution kernel with configurable spectral strength and channel sharing
     for images and volumes.
@@ -204,23 +194,13 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
             AfterValidator(nondecreasing),
         ]
         per_channel: bool
-        border_mode: BorderModeType
+        border_mode: Literal[0, 1, 2, 4]
 
         @field_validator("kernel_range")
         @classmethod
         def _check_odd_kernel_range(cls, value: tuple[int, int]) -> tuple[int, int]:
             if any(size % 2 == 0 for size in value):
                 raise ValueError(f"kernel_range values must be odd, got {value}")
-            return value
-
-        @field_validator("border_mode")
-        @classmethod
-        def _check_border_mode(cls, value: BorderModeType) -> BorderModeType:
-            if value not in _STOCHASTIC_CONVOLUTION_BORDER_MODES:
-                raise ValueError(
-                    "border_mode must be one of cv2.BORDER_CONSTANT, cv2.BORDER_REPLICATE, "
-                    "cv2.BORDER_REFLECT, or cv2.BORDER_REFLECT_101",
-                )
             return value
 
     def __init__(

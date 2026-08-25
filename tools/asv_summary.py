@@ -70,20 +70,21 @@ def summarize_asv_output(path: Path, *, asv_exit_code: int | None, max_items: in
 
     lines = path.read_text(errors="replace").splitlines()
     rows = [row for line in lines if (row := _parse_table_row(line)) is not None]
+    status = _status_flags(lines)
     regressions = [row for row in rows if row["change"] == "+"]
     improvements = [row for row in rows if row["change"] == "-"]
     return {
         "schema_version": 1,
         "kind": "asv-comparison",
         "source": str(path),
-        "missing": False,
+        "missing": not rows and not any(status.values()),
         "asv_exit_code": asv_exit_code,
         "totals": {
             "changed": len(rows),
             "improvements": len(improvements),
             "regressions": len(regressions),
         },
-        "status": _status_flags(lines),
+        "status": status,
         "improvements": _sorted_rows(improvements, reverse=False, max_items=max_items),
         "regressions": _sorted_rows(regressions, reverse=True, max_items=max_items),
     }

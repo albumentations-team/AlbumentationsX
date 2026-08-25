@@ -160,14 +160,15 @@ They also retain lower-bound, property/regression, optional-extra, PyTorch,
 performance, and release artifact evidence where appropriate.
 
 The Performance workflow separates benchmark coverage from timed comparisons.
-Every runtime pull request runs the advisory `pr-core` base-to-head smoke. A
-`run-performance` label selects the changed-family comparison. The Tuesday
-schedule compares the previous release tag with the exact `main` commit using
-`stf-core`; it does not run the catalog-wide matrices as one timed job. Manual
-runs use `stf-core` when no filter is supplied, while a full-family comparison
-requires an explicit filter. The version-bump `Release preflight` runs the
-same `stf-core` comparison and fails if its release bundle lacks comparison
-evidence or contains a stable release-blocking regression.
+Every runtime pull request runs the advisory `pr-core` comparison from its base
+commit to the checked-out merge commit. A `run-performance` label selects the
+changed-family comparison. The Tuesday schedule compares the previous release
+tag with the exact `main` commit using `stf-core`; it does not run the
+catalog-wide matrices as one timed job. Manual runs use `stf-core` when no
+filter is supplied, while a full-family comparison requires an explicit filter.
+The version-bump `Release preflight` runs the same `stf-core` comparison and
+fails if its release bundle lacks comparison evidence or contains a stable
+release-blocking regression.
 
 CodeQL uses two path-scoped advanced workflows. `codeql-python.yml` runs for
 Python source, stubs, or CodeQL configuration changes. `codeql-actions.yml`

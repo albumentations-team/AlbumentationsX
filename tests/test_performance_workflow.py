@@ -42,6 +42,8 @@ def test_performance_workflow_keeps_targeted_comparison_label_or_manual_gated() 
     assert "targeted-performance-evidence/changed-files.txt" in run_text
     assert "--profile changed" in run_text
     assert "--profile stf-core" in run_text
+    assert 'CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"' in run_text
+    assert "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"" in run_text
     assert not re.search(r"asv --config asv\.conf\.json\s+run\b", run_text)
 
 
@@ -54,11 +56,25 @@ def test_performance_workflow_adds_bounded_pr_and_scheduled_comparisons() -> Non
     assert pr_job["timeout-minutes"] == 10
     assert "--profile pr-core" in _job_run_text(pr_job)
     assert "asv --config asv.conf.json continuous" in _job_run_text(pr_job)
+    resolve_step = next(step for step in pr_job["steps"] if step.get("name") == "Resolve PR core comparison")
+    assert resolve_step["env"] == {
+        "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+        "PR_CANDIDATE_SHA": "${{ github.sha }}",
+    }
+    assert "$PR_CANDIDATE_SHA" in _job_run_text(pr_job)
+    assert "$PR_HEAD_SHA" not in _job_run_text(pr_job)
     assert scheduled_job["if"] == "github.event_name == 'schedule'"
     assert scheduled_job["timeout-minutes"] == 20
     assert "--profile stf-core" in _job_run_text(scheduled_job)
     assert "git describe --tags --abbrev=0 --match '[0-9]*' HEAD^" in _job_run_text(scheduled_job)
     assert not re.search(r"HEAD\^!", PERFORMANCE_WORKFLOW.read_text())
+
+
+def test_pytorch_performance_uses_candidate_revision_for_default_baseline() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "pytorch-performance.yml").read_text()
+
+    assert 'CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"' in workflow
+    assert "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"" in workflow
 
 
 def test_asv_install_commands_are_separate_cpu_torch_steps() -> None:

@@ -52,11 +52,11 @@ jobs:
         INPUT_CANDIDATE_REF: ${{ inputs.candidate_ref }}
       run: |
         set -o pipefail
+        CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"
         BASELINE_REF="$INPUT_BASELINE_REF"
         if [ -z "$BASELINE_REF" ]; then
-          BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' HEAD^)"
+          BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' "$CANDIDATE_REF^")"
         fi
-        CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"
         BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
         CANDIDATE_SHA="$(git rev-parse "$CANDIDATE_REF")"
         printf '%s\n' "$BASELINE_REF" > "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/benchmark-baseline-ref.txt"

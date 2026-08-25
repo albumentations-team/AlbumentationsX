@@ -315,11 +315,26 @@ def _dependency_group_packages(
     return packages
 
 
+def _dependency_group_reference_issues(dependency_groups: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    for group, entries in dependency_groups.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            included_group = entry.get("include-group") if isinstance(entry, dict) else None
+            if isinstance(included_group, str) and included_group not in dependency_groups:
+                issues.append(
+                    f"pyproject.toml dependency group {group!r} refers to non-existent group {included_group!r}",
+                )
+    return issues
+
+
 def _check_ci_dependency_groups(dependency_groups: dict[str, Any]) -> list[str]:
     issues: list[str] = []
     unexpected_groups = set(dependency_groups) - {*CI_DEPENDENCY_GROUPS, "dev"}
     if unexpected_groups:
         issues.append(f"pyproject.toml defines unsupported dependency groups {sorted(unexpected_groups)!r}")
+    issues.extend(_dependency_group_reference_issues(dependency_groups))
 
     for group, required_packages in sorted(CI_DEPENDENCY_GROUPS.items()):
         entries = dependency_groups.get(group)
@@ -825,8 +840,19 @@ def _check_pr_core_comparison_job(job: Any) -> list[str]:
         issues.append(f"{PERFORMANCE_WORKFLOW} pr_core_comparison must keep timeout-minutes at 10")
     if "benchmark_evidence" not in str(job.get("needs", "")):
         issues.append(f"{PERFORMANCE_WORKFLOW} pr_core_comparison must consume benchmark_evidence")
-    if "--profile pr-core" not in _workflow_job_run_text(job):
+    run_text = _workflow_job_run_text(job)
+    if "--profile pr-core" not in run_text:
         issues.append(f"{PERFORMANCE_WORKFLOW} pr_core_comparison must select pr-core")
+    resolve_step = next(
+        (
+            step
+            for step in job.get("steps", [])
+            if isinstance(step, dict) and step.get("name") == "Resolve PR core comparison"
+        ),
+        None,
+    )
+    if not isinstance(resolve_step, dict) or resolve_step.get("env", {}).get("PR_CANDIDATE_SHA") != "${{ github.sha }}":
+        issues.append(f"{PERFORMANCE_WORKFLOW} pr_core_comparison must compare the checked-out merge commit")
     return issues
 
 
@@ -839,6 +865,8 @@ def _check_targeted_comparison_job(job: Any) -> list[str]:
     run_text = _workflow_job_run_text(job)
     if "asv --config asv.conf.json continuous" not in run_text:
         issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job is missing timing command")
+    if "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"" not in run_text:
+        issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison must derive its default baseline from the candidate ref")
     if RETIRED_ASV_RUN_PATTERN.search(run_text):
         issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job must not use the retired ASV run command")
     return issues
@@ -911,6 +939,7 @@ def _check_pytorch_performance_workflow() -> list[str]:
             "runtime-profile: torch-cpu",
             "asv --config asv-pytorch.conf.json check --verbose",
             "asv --config asv-pytorch.conf.json continuous",
+            "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"",
             "benchmark-baseline-sha.txt",
             "benchmark-candidate-sha.txt",
             "benchmark-asv-summary.json",

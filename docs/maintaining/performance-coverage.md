@@ -288,8 +288,8 @@ Pull requests:
 
 - required: benchmark coverage validation through `tools.benchmark_coverage`
 - required: ASV suite importability where the performance workflow runs
-- advisory: every runtime PR runs a base-to-head `pr-core` comparison covering
-  `TimeCorePipeline` and its target-processor/tracing variants
+- advisory: every runtime PR runs a base-to-merge-commit `pr-core` comparison
+  covering `TimeCorePipeline` and its target-processor/tracing variants
 - advisory: a PR labeled `run-performance` runs the `changed` profile selected
   from its changed files; this is the deep family comparison route
 - benchmark infrastructure changes rely on ASV importability and benchmark

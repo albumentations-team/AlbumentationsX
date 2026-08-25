@@ -207,7 +207,8 @@ def test_generate_report_rejects_missing_asv_comparison_in_strict_mode() -> None
         )
 
 
-def test_generate_report_rejects_budget_without_provided_comparison() -> None:
+@pytest.mark.parametrize("comparison", [{"provided": False}, None])
+def test_generate_report_rejects_budget_without_provided_comparison(comparison: dict | None) -> None:
     with pytest.raises(ValueError, match=r"comparison\.provided=true"):
         _validate_required_evidence(
             [{}],
@@ -216,7 +217,7 @@ def test_generate_report_rejects_budget_without_provided_comparison() -> None:
                 {"asv_cases": 1, "coverage_depth": {}, "memory_benchmarks": 1},
                 {"kind": "benchmark-coverage-detail", "summary": {}, "layer_counts": {}},
                 {"kind": "asv-comparison", "missing": False},
-                {"kind": "performance-budget", "comparison": {"provided": False}},
+                {"kind": "performance-budget", "comparison": comparison},
             ],
             [{}],
             allow_missing_evidence=False,

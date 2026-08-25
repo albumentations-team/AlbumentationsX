@@ -49,12 +49,13 @@ The GitHub performance workflow can also be run manually with
 - `bench_filter`: optional ASV `--bench` regular expression for manual
   baseline/candidate comparisons.
 
-Every runtime pull request runs a bounded `pr-core` comparison over the core
-pipeline. A PR labeled `run-performance` selects the `changed` profile from
-changed files. The Tuesday schedule compares the previous release with `main`
-using `stf-core`, which combines catalog smoke, core pipeline routes, and
-selected memory sentinels. Manual comparisons with an empty `bench_filter` also
-select `stf-core`; a full-family run requires an explicit regex.
+Every runtime pull request runs a bounded `pr-core` comparison from the PR base
+to the checked-out merge commit over the core pipeline. A PR labeled
+`run-performance` selects the `changed` profile from changed files. The Tuesday
+schedule compares the previous release with `main` using `stf-core`, which
+combines catalog smoke, core pipeline routes, and selected memory sentinels.
+Manual comparisons with an empty `bench_filter` also select `stf-core`; a
+full-family run requires an explicit regex.
 
 Resolve the named profiles locally with:
 

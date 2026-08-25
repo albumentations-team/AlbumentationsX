@@ -151,15 +151,15 @@ jobs:
       working-directory: benchmark
       env:
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_CANDIDATE_SHA: ${{ github.sha }}
       run: |
         BASELINE_SHA="$(git rev-parse "$PR_BASE_SHA")"
-        CANDIDATE_SHA="$(git rev-parse "$PR_HEAD_SHA")"
+        CANDIDATE_SHA="$(git rev-parse "$PR_CANDIDATE_SHA")"
         FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile pr-core)"
         mkdir -p "$GITHUB_WORKSPACE/pr-core-performance-evidence"
         printf '%s\n' "$PR_BASE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-baseline-ref.txt"
         printf '%s\n' "$BASELINE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-baseline-sha.txt"
-        printf '%s\n' "$PR_HEAD_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-candidate-ref.txt"
+        printf '%s\n' "$PR_CANDIDATE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-candidate-ref.txt"
         printf '%s\n' "$CANDIDATE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-candidate-sha.txt"
         printf '%s\n' "$FILTER" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-filter.txt"
         set -o pipefail
@@ -167,7 +167,7 @@ jobs:
         asv --config asv.conf.json continuous \
           --factor 1.05 --split --show-stderr \
           --attribute repeat=1 --attribute number=1 \
-          --bench "$FILTER" "$PR_BASE_SHA" "$PR_HEAD_SHA" \
+          --bench "$FILTER" "$PR_BASE_SHA" "$PR_CANDIDATE_SHA" \
           2>&1 | tee "$GITHUB_WORKSPACE/pr-core-performance-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
         printf '%s\n' "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/asv-continuous-exit-code.txt"
     - name: Summarize PR core comparison
@@ -253,11 +253,11 @@ jobs:
             --profile changed \
             --changed-files "$GITHUB_WORKSPACE/targeted-performance-evidence/changed-files.txt")"
         else
+          CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"
           BASELINE_REF="$INPUT_BASELINE_REF"
           if [ -z "$BASELINE_REF" ]; then
-            BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' HEAD^)"
+            BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' "$CANDIDATE_REF^")"
           fi
-          CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"
           BENCH_FILTER="${INPUT_BENCH_FILTER:-}"
           if [ -z "$BENCH_FILTER" ]; then
             BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile stf-core)"

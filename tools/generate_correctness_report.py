@@ -220,7 +220,9 @@ def _has_asv_comparison(summaries: list[dict[str, Any]]) -> bool:
 
 def _has_provided_performance_budget(summaries: list[dict[str, Any]]) -> bool:
     return any(
-        summary.get("kind") == "performance-budget" and summary.get("comparison", {}).get("provided") is True
+        summary.get("kind") == "performance-budget"
+        and isinstance(summary.get("comparison"), dict)
+        and summary["comparison"].get("provided") is True
         for summary in summaries
     )
 

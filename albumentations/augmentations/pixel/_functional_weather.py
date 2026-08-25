@@ -94,24 +94,18 @@ def add_snow_bleach(
     """
     max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
-    # Precompute snow_point threshold
     snow_point = (snow_point * max_value / 2) + (max_value / 3)
 
-    # Convert image to HLS color space once and avoid repeated dtype casting
     image_hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
     lightness_channel = image_hls[:, :, 1].astype(np.float32)
 
-    # Utilize boolean indexing for efficient lightness adjustment
     mask = lightness_channel < snow_point
     lightness_channel[mask] *= brightness_coeff
 
-    # Clip the lightness values in place
     lightness_channel = clip(lightness_channel, img.dtype, inplace=True)
 
-    # Update the lightness channel in the original image
     image_hls[:, :, 1] = lightness_channel
 
-    # Convert back to RGB
     return cast("ImageType", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
 
 

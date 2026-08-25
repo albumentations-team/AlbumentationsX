@@ -173,18 +173,13 @@ def test_label_encoder_update_numeric_noop():
     assert encoder.is_numerical is True
 
 
-# Tests for LabelManager Implicit Update via process_field
 @pytest.mark.parametrize(
-    "data_name, label_field, initial_data, update_data, expected_final_labels, expected_dtype_after_decode",
+    "data_name, label_field, initial_data, update_data, expected_final_labels",
     [
-        # String labels
-        ("bboxes", "class_labels", ["cat", "dog"], ["bird", "cat"], ["cat", "dog", "bird", "cat"], object),
-        # Mixed labels
-        ("keypoints", "kp_labels", ["head", 1], [2, "tail", "head"], ["head", 1, 2, "tail", "head"], object),
-        # Initial empty, then update
-        ("bboxes", "instance_ids", [], ["obj1", "obj2"], ["obj1", "obj2"], object),
-        # Update with only existing
-        ("bboxes", "class_labels", ["cat", "dog"], ["dog", "cat"], ["cat", "dog", "dog", "cat"], object),
+        ("bboxes", "class_labels", ["cat", "dog"], ["bird", "cat"], ["cat", "dog", "bird", "cat"]),
+        ("keypoints", "kp_labels", ["head", 1], [2, "tail", "head"], ["head", 1, 2, "tail", "head"]),
+        ("bboxes", "instance_ids", [], ["obj1", "obj2"], ["obj1", "obj2"]),
+        ("bboxes", "class_labels", ["cat", "dog"], ["dog", "cat"], ["cat", "dog", "dog", "cat"]),
     ],
 )
 def test_label_manager_process_field_updates_encoder(
@@ -193,44 +188,34 @@ def test_label_manager_process_field_updates_encoder(
     initial_data,
     update_data,
     expected_final_labels,
-    expected_dtype_after_decode,
 ):
     manager = LabelManager()
 
-    # Process initial data
     encoded_initial = manager.process_field(data_name, label_field, initial_data)
     metadata_initial = manager.metadata[data_name][label_field]
     encoder_initial = metadata_initial.encoder
     num_classes_initial = encoder_initial.num_classes if encoder_initial else 0
 
-    # Process update data (should trigger implicit update)
     encoded_update = manager.process_field(data_name, label_field, update_data)
     metadata_updated = manager.metadata[data_name][label_field]
     encoder_updated = metadata_updated.encoder
     num_classes_updated = encoder_updated.num_classes if encoder_updated else 0
 
-    # Check if encoder was updated (if new labels were present)
     if set(update_data) - set(initial_data):
         assert num_classes_updated > num_classes_initial
-        assert encoder_updated is encoder_initial  # Should be the same instance
+        assert encoder_updated is encoder_initial
     else:
         assert num_classes_updated == num_classes_initial
 
-    # Check restoration of both batches using the final updated encoder
     restored_initial = manager.restore_field(data_name, label_field, encoded_initial)
     restored_update = manager.restore_field(data_name, label_field, encoded_update)
 
-    # Combine original + update data for checking restored combined labels
-    np.concatenate([np.array(initial_data).flatten(), np.array(update_data).flatten()])
     combined_encoded = np.concatenate([encoded_initial, encoded_update])
 
-    # Decode the combined encoded data
     decoded_combined = manager.restore_field(data_name, label_field, combined_encoded)
 
-    # Check final decoded labels (order might differ from input due to sorting in encoder)
     np.testing.assert_array_equal(sorted(decoded_combined, key=str), sorted(expected_final_labels, key=str))
 
-    # Check type preservation
     assert isinstance(restored_initial, list if isinstance(initial_data, np.ndarray) else type(initial_data))
     assert isinstance(restored_update, list if isinstance(update_data, np.ndarray) else type(update_data))
 

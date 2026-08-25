@@ -5,28 +5,26 @@ from albumentations.augmentations.transforms3d import functional as f3d
 
 
 @pytest.mark.parametrize(
-    "input_shape,n_channels",
+    "input_shape",
     [
-        ((3, 3, 3), None),  # 3D case
-        ((3, 3, 3, 2), 2),  # 4D case
+        (3, 3, 3),
+        (3, 3, 3, 2),
     ],
 )
-def test_uniqueness(input_shape: tuple, n_channels: int | None):
-    # Create test cube with unique values
+def test_uniqueness(input_shape: tuple):
     n_elements = np.prod(input_shape)
     test_cube = np.arange(n_elements).reshape(input_shape)
 
-    # Generate all 48 transformations
     transformations = [f3d.transform_cube(test_cube, i) for i in range(48)]
 
-    # Check uniqueness
-    unique_transforms = {str(t) for t in transformations}
+    unique_transforms = {str(transformation) for transformation in transformations}
     assert len(unique_transforms) == 48, "Not all transformations are unique!"
 
-    # Check shape preservation
     expected_shape = input_shape
-    for t in transformations:
-        assert t.shape == expected_shape, f"Wrong shape: got {t.shape}, expected {expected_shape}"
+    for transformation in transformations:
+        assert transformation.shape == expected_shape, (
+            f"Wrong shape: got {transformation.shape}, expected {expected_shape}"
+        )
 
 
 @pytest.mark.parametrize(

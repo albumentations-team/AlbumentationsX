@@ -26,7 +26,6 @@ def parse_requirement(req: str) -> tuple[str, str]:
 
 def normalize_package_name(name: str) -> str:
     """Normalize package name for comparison (conda vs pip naming)."""
-    # Common package name mappings between pip and conda
     mappings = {
         "opencv-python-headless": "opencv-python-headless",
         "torch": "pytorch",
@@ -46,11 +45,9 @@ def versions_match(version1: str, version2: str) -> bool:
         bool: True if versions match (considering .0 suffixes are equivalent).
 
     """
-    # Direct match
     if version1 == version2:
         return True
 
-    # Extract operator and version
     match1 = re.match(r"([>=<~!]+)(.+)", version1)
     match2 = re.match(r"([>=<~!]+)(.+)", version2)
 
@@ -60,14 +57,11 @@ def versions_match(version1: str, version2: str) -> bool:
     op1, ver1 = match1.groups()
     op2, ver2 = match2.groups()
 
-    # Operators must match
     if op1 != op2:
         return False
 
-    # Normalize versions by removing trailing .0 segments
     def normalize_version(ver: str) -> str:
         parts = ver.split(".")
-        # Remove trailing zeros
         while len(parts) > 1 and parts[-1] == "0":
             parts.pop()
         return ".".join(parts)

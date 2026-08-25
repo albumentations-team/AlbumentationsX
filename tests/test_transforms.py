@@ -2035,11 +2035,12 @@ def test_crop_and_pad_px_pixel_values(px, expected_shape):
     image = np.ones((10, 10, 3), dtype=np.uint8) * 255
 
     transformed_image = transform(image=image)["image"]
+    assert transformed_image.shape == expected_shape
 
     if isinstance(px, int):
-        px = [px] * 4  # Convert to list of 4 elements
+        px = [px] * 4
     if isinstance(px, tuple) and len(px) == 2:
-        px = [px[0], px[1], px[0], px[1]]  # Convert to 4 elements for padding
+        px = [px[0], px[1], px[0], px[1]]
 
     if px is not None:
         if all(p >= 0 for p in px):  # Padding

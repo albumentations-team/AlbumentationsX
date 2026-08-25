@@ -4,6 +4,7 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.transform_params import SampledParams, SampledParamsError
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -112,10 +113,12 @@ def test_batch_and_volume_reuse_one_kernel_realization() -> None:
     np.testing.assert_array_equal(result["volume"][0], result["volume"][1])
 
 
-def test_per_channel_rejects_mismatched_image_and_volume_channels() -> None:
-    image = np.zeros((11, 13, 3), dtype=np.float32)
-    volume = np.zeros((2, 11, 13, 5), dtype=np.float32)
-    transform = A.Compose(
+def test_per_channel_groups_compatible_targets_and_replays() -> None:
+    image = np.random.default_rng(137).random((11, 13, 3), dtype=np.float32)
+    image2 = image.copy()
+    volume_image = np.concatenate((image, np.zeros((11, 13, 2), dtype=np.float32)), axis=-1)
+    volume = np.stack((volume_image, volume_image), axis=0)
+    pipeline = A.ReplayCompose(
         [
             A.StochasticConvolution(
                 kernel_range=(3, 3),
@@ -124,11 +127,36 @@ def test_per_channel_rejects_mismatched_image_and_volume_channels() -> None:
                 p=1.0,
             ),
         ],
+        additional_targets={"image2": "image"},
+        is_check_shapes=False,
         seed=137,
     )
 
-    with pytest.raises(ValueError, match="same channel count"):
-        transform(image=image, volume=volume)
+    original = pipeline(image=image, image2=image2, volume=volume)
+    sampled_params = SampledParams.from_dict(original["replay"]["transforms"][0]["params"])
+    replayed = A.ReplayCompose.replay(original["replay"], image=image, image2=image2, volume=volume)
+
+    assert {params.targets for params in sampled_params.target_params} == {("image", "image2"), ("volume",)}
+    assert sampled_params.params_for("image")["kernel"].shape == (3, 3, 3)
+    assert sampled_params.params_for("volume")["kernel"].shape == (5, 3, 3)
+    np.testing.assert_array_equal(original["image"], original["image2"])
+    for target in ("image", "image2", "volume"):
+        np.testing.assert_array_equal(replayed[target], original[target])
+
+
+def test_per_channel_replay_rejects_changed_channel_count() -> None:
+    image = np.zeros((11, 13, 3), dtype=np.float32)
+    pipeline = A.ReplayCompose(
+        [A.StochasticConvolution(kernel_range=(3, 3), strength_range=(0.1, 0.1), per_channel=True, p=1.0)],
+        additional_targets={"image2": "image"},
+        is_check_shapes=False,
+        seed=137,
+    )
+
+    recorded = pipeline(image=image, image2=image.copy())["replay"]
+
+    with pytest.raises(SampledParamsError, match="requirements do not match target 'image2'"):
+        A.ReplayCompose.replay(recorded, image=image, image2=np.zeros((11, 13, 5), dtype=np.float32))
 
 
 def test_stochastic_convolution_is_seed_reproducible() -> None:

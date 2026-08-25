@@ -238,49 +238,46 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
         self.per_channel = per_channel
         self.border_mode = border_mode
 
-    @staticmethod
-    def _channel_count(value: Any, target: str) -> int:
-        if value.ndim == 2 or (target in {"images", "volume"} and value.ndim == 3):
-            return 1
-        return int(value.shape[-1])
-
     def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
         return fpixel.convolve(img, kernel=kernel, border_mode=self.border_mode)
+
+    @staticmethod
+    def _sample_kernel(
+        kernel_shape: tuple[int, ...],
+        strength: float,
+        sampling: SamplingContext,
+    ) -> np.ndarray:
+        random_field = (
+            np.zeros(kernel_shape, dtype=np.float32)
+            if strength == 0
+            else sampling.random_generator.standard_normal(kernel_shape, dtype=np.float32)
+        )
+        return fpixel.create_stochastic_convolution_kernel(random_field, strength)
 
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        del params
+    ) -> SampledParams:
+        del params, data
         kernel_size = sampling.py_random.randrange(self.kernel_range[0], self.kernel_range[1] + 1, 2)
         strength = sampling.py_random.uniform(*self.strength_range)
         sampling.applied_overrides.update({"kernel_range": kernel_size, "strength_range": strength})
 
-        if self.per_channel:
-            channel_counts = {
-                target: self._channel_count(value, target)
-                for target in ("image", "images", "volume")
-                if (value := data.get(target)) is not None
-            }
-            if len(set(channel_counts.values())) > 1:
-                raise ValueError(
-                    "per_channel=True requires image, images, and volume targets to have the same channel count; "
-                    f"got {channel_counts}",
-                )
-            channel_count = next(iter(channel_counts.values()))
-            field_shape: tuple[int, ...] = (channel_count, kernel_size, kernel_size)
-        else:
-            field_shape = (kernel_size, kernel_size)
+        if not self.per_channel:
+            kernel = self._sample_kernel((kernel_size, kernel_size), strength, sampling)
+            return SampledParams(params={"kernel": kernel})
 
-        random_field: np.ndarray
-        if strength == 0:
-            random_field = np.zeros(field_shape, dtype=np.float32)
-        else:
-            random_field = sampling.random_generator.standard_normal(field_shape, dtype=np.float32)
-        kernel = fpixel.create_stochastic_convolution_kernel(random_field, strength)
-        return {"kernel": kernel}
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
+            channel_count = views[0].descriptor.channels
+            if channel_count is None:
+                raise ValueError("StochasticConvolution requires image-like targets with a known channel count")
+            kernel = self._sample_kernel((channel_count, kernel_size, kernel_size), strength, sampling)
+            groups.append(_target_parameter_group(views, "kernel", kernel, channels=True))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class GaussNoise(_FullVolumeNoiseTransform):

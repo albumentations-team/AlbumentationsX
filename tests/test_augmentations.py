@@ -22,6 +22,8 @@ from .utils import (
     get_primary_2d_transform_params,
     get_primary_dual_transform_params,
     get_primary_image_only_transform_params,
+    get_resolved_applied_params,
+    make_sampling_args,
     set_seed,
 )
 
@@ -1109,10 +1111,9 @@ def test_constrained_coarse_dropout_with_mask():
 
     # Get holes
     params = transform.sample_parameters(
-        {},
-        {"image": image, "mask": mask},
+        *make_sampling_args(transform, {"image": image, "mask": mask}),
         SamplingContext.from_owner(transform, {}),
-    )
+    ).params
     holes = params["holes"]
 
     # Verify number of holes (2 per object, 3 objects)
@@ -1176,7 +1177,7 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
     # Apply transform
     transform(image=image, bboxes=bboxes_without_labels, class_labels=labels)
 
-    holes = ccd.params["holes"]
+    holes = get_resolved_applied_params(ccd)["holes"]
 
     # Verify number of holes (2 per object)
     assert len(holes) == expected_num_objects * 2, (
@@ -1635,10 +1636,9 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         transform.set_random_seed(137 + iteration)
         # Get params without actually applying transform
         params = transform.sample_parameters(
-            {"shape": image.shape},
-            {"image": image},
+            *make_sampling_args(transform, {"image": image}),
             SamplingContext.from_owner(transform, {}),
-        )
+        ).params
         slants.append(params["slant"])
 
     # Assert all slants are within the expected range
@@ -2125,7 +2125,7 @@ def test_random_shadow_batch_compose_routes_match_per_image_results(target_name,
     compose = A.Compose([transform], seed=seed, strict=True, save_applied_params=True)
 
     actual = compose(**{target_name: data})[target_name]
-    params = transform.get_applied_params()
+    params = get_resolved_applied_params(transform, target_name)
     expected = np.stack([transform.apply(image, **params) for image in data])
 
     np.testing.assert_array_equal(data, data_before)
@@ -2178,7 +2178,7 @@ def test_spatter_apply_to_images_matches_inherited_fallback(mode, dtype, seed, b
     images_before = images.copy()
     transform = A.Spatter(mode=mode, color=(137, 89, 211), p=1.0)
     compose_result = A.Compose([transform], save_applied_params=True, seed=seed, strict=True)(images=images)["images"]
-    params = transform.get_applied_params()
+    params = get_resolved_applied_params(transform, target="images")
     expected = ImageOnlyTransform.apply_to_images(transform, images, **params)
     direct_result = transform.apply_to_images(images, **params)
 
@@ -2341,7 +2341,7 @@ def test_spatter_batch_path_preserves_volume_routing(mode, dtype):
     transform = A.Spatter(mode=mode, p=1.0)
 
     actual = A.Compose([transform], save_applied_params=True, seed=137, strict=True)(volume=volume)["volume"]
-    params = transform.get_applied_params()
+    params = get_resolved_applied_params(transform, "volume")
     expected = ImageOnlyTransform.apply_to_images(transform, volume, **params)
 
     if dtype == np.uint8:

@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 from ._transforms_shared import (
     _BBOX_INSTANCE_ID,
@@ -1081,8 +1082,9 @@ class CopyAndPaste(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         # Sample blend_sigma + scale_jitter upfront so the applied record captures them even when the
         # no-op path is taken (e.g. no valid paste items provided). scale_jitter is shared across
         # all donors in a single call so the recorded value matches what was actually applied.
@@ -1091,10 +1093,10 @@ class CopyAndPaste(DualTransform):
         scale_jitter = sampling.py_random.uniform(*self.scale_range)
         sampling.applied_overrides["scale_range"] = scale_jitter
 
-        target_shape = params["shape"][:2]
+        target_shape = targets.require_aligned_spatial_shape(2)
         gathered = self._gather_valid_copy_paste_items(data, target_shape, scale_jitter, sampling)
         if gathered is None:
-            return self._no_op_params()
+            return SampledParams(params=self._no_op_params())
 
         valid_items, pasted_masks_list, composite_image, donor_mask = gathered
         pasted_masks = np.stack(pasted_masks_list, axis=0)
@@ -1133,18 +1135,20 @@ class CopyAndPaste(DualTransform):
                 stacklevel=2,
             )
 
-        return {
-            "paste_donor_image": composite_image,
-            "paste_alpha": alpha,
-            "paste_instance_masks": pasted_masks,
-            "paste_surviving_indices": surviving_indices,
-            "paste_surviving_ids_ordered": paste_surviving_ids_ordered,
-            "paste_primary_instance_count": paste_primary_instance_count,
-            "paste_bboxes": pasted_bboxes,
-            "paste_keypoints": pasted_keypoints,
-            "paste_donor_mask": donor_mask,
-            "paste_instance_ids": paste_instance_ids,
-        }
+        return SampledParams(
+            params={
+                "paste_donor_image": composite_image,
+                "paste_alpha": alpha,
+                "paste_instance_masks": pasted_masks,
+                "paste_surviving_indices": surviving_indices,
+                "paste_surviving_ids_ordered": paste_surviving_ids_ordered,
+                "paste_primary_instance_count": paste_primary_instance_count,
+                "paste_bboxes": pasted_bboxes,
+                "paste_keypoints": pasted_keypoints,
+                "paste_donor_mask": donor_mask,
+                "paste_instance_ids": paste_instance_ids,
+            }
+        )
 
     @staticmethod
     def _no_op_params() -> dict[str, Any]:

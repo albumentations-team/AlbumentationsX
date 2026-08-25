@@ -23,6 +23,7 @@ def test_summarize_asv_output_parses_changed_rows_with_parameter_pipes(tmp_path)
 
     summary = summarize_asv_output(asv_output, asv_exit_code=1, max_items=10)
 
+    assert summary["missing"] is False
     assert summary["asv_exit_code"] == 1
     assert summary["totals"] == {"changed": 2, "improvements": 1, "regressions": 1}
     assert summary["status"]["changed_significantly"] is True
@@ -38,3 +39,13 @@ def test_summarize_asv_output_handles_missing_input(tmp_path):
     assert summary["missing"] is True
     assert summary["totals"] == {"changed": 0, "improvements": 0, "regressions": 0}
     assert summary["regressions"] == []
+
+
+def test_summarize_asv_output_marks_unrecognized_failure_as_missing(tmp_path):
+    asv_output = tmp_path / "failed.txt"
+    asv_output.write_text("ASV failed before producing a comparison table.\n")
+
+    summary = summarize_asv_output(asv_output, asv_exit_code=1, max_items=10)
+
+    assert summary["missing"] is True
+    assert summary["asv_exit_code"] == 1

@@ -93,6 +93,24 @@ for size_name, (h, w) in SIZES.items():
 3. **Compare**: load both JSON files, compute speedup = old_time / new_time for each transform/size combo
 4. **Report** results in the PR/commit message body
 
+## Repository CI Profiles
+
+AlbumentationsX keeps benchmark definitions catalog-wide, but times only the
+profile that answers the current evidence question:
+
+- `pr-core`: `TimeCorePipeline` and its target-processor/tracing variants for
+  every runtime pull request;
+- `stf-core`: catalog smoke, core pipeline, and selected peak-memory sentinels
+  for the weekly schedule and release preflight;
+- `changed`: affected-family patterns selected from changed files for a
+  `run-performance` PR label or a maintainer-requested deep comparison.
+
+Resolve profiles with `tools/select_benchmark_filters.py`. Timed CI evidence
+must compare an explicit baseline ref with an explicit candidate ref using ASV
+`continuous`. Do not use a single-revision snapshot or treat an empty filter
+as permission to run the entire catalog. A full-family run requires an
+explicit regex so its cost is visible before execution.
+
 ### JSON Output Format
 
 Save benchmark results as JSON for automated comparison:

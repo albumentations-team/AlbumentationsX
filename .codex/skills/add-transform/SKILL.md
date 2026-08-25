@@ -28,8 +28,7 @@ kernel.
 Add the pure function in the corresponding `functional.py` file (no class state, no RNG):
 
 ```python
-def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
-    ...
+def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray: ...
 ```
 
 - Keep the functional layer deterministic; define stochastic behavior at the transform sampling boundary.
@@ -42,8 +41,11 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
 
 ## 3. Write the transform class
 
-- Define sampling and replay behavior at the `sample_parameters` boundary; the coding guidance document describes the
-  required `SamplingContext` contract and the hook reports mechanical violations.
+- Define sampling and replay behavior at the `sample_parameters` boundary. Implement the greenfield
+  `sample_parameters(params, data, targets, sampling) -> SampledParams` contract;
+  return `SampledParams(params={...})` for values used by every target and use actual-key `TargetParams` entries
+  for representation-dependent values. The coding guidance document describes the complete contract and the hook reports
+  mechanical violations.
 - Use relative parameters where users should transfer a policy across image sizes.
 - Use `ImageType` for image, mask, and volume signatures; reserve `np.ndarray` for bboxes and keypoints.
 - Compose inputs always have a channel dimension: `(H, W, C)`, `(N, H, W, C)`, and `(D, H, W, C)`; grayscale is

@@ -1,17 +1,25 @@
-"""Select an ASV benchmark regex for changed repository paths."""
+"""Select a bounded ASV benchmark regex."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-BASELINE_PATTERNS = frozenset(
-    {
-        "TimeBatch",
+PROFILE_PATTERNS = {
+    "pr-core": ("TimeCorePipeline",),
+    "stf-core": (
         "TimeCatalogTransformSmoke",
         "TimeCorePipeline",
-    },
-)
+        "peakmem_resize_large_rgb",
+        "peakmem_normalize_large_rgb",
+        "peakmem_batch_pipeline_medium_rgb",
+        "peakmem_mosaic_small_rgb",
+        "peakmem_copy_paste_small_rgb",
+        "peakmem_volume_pad_medium",
+    ),
+}
+
+BASELINE_PATTERNS = frozenset({"TimeBatch", "TimeCatalogTransformSmoke", "TimeCorePipeline"})
 
 PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
     (
@@ -144,14 +152,31 @@ def select_benchmark_regex(changed_paths: list[str]) -> str:
     return "|".join(select_benchmark_patterns(changed_paths))
 
 
-def _read_changed_paths(path: Path | None, positional_paths: list[str]) -> list[str]:
-    if path is None:
-        return positional_paths
+def select_profile_patterns(profile: str, changed_paths: list[str] | None = None) -> tuple[str, ...]:
+    """Return deterministic ASV patterns for a named evidence profile."""
+    if profile in PROFILE_PATTERNS:
+        if changed_paths is not None:
+            raise ValueError(f"profile {profile!r} does not accept changed paths")
+        return PROFILE_PATTERNS[profile]
+    if profile == "changed":
+        if changed_paths is None:
+            raise ValueError("profile 'changed' requires changed paths")
+        return select_benchmark_patterns(changed_paths)
+    raise ValueError(f"unknown benchmark profile: {profile}")
+
+
+def select_profile_regex(profile: str, changed_paths: list[str] | None = None) -> str:
+    """Return one ASV regex for a named evidence profile."""
+    return "|".join(select_profile_patterns(profile, changed_paths))
+
+
+def _read_changed_paths(path: Path) -> list[str]:
     return [line for line in path.read_text().splitlines() if line.strip()]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", choices=("pr-core", "stf-core", "changed"), required=True)
     parser.add_argument("paths", nargs="*", help="changed repository paths")
     parser.add_argument(
         "--changed-files",
@@ -163,8 +188,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    changed_paths = _read_changed_paths(args.changed_files, args.paths)
-    print(select_benchmark_regex(changed_paths))
+    if args.paths:
+        raise SystemExit("positional paths are not supported; use --changed-files with --profile changed")
+    if args.profile == "changed" and args.changed_files is None:
+        raise SystemExit("--profile changed requires --changed-files")
+    if args.profile != "changed" and args.changed_files is not None:
+        raise SystemExit(f"--profile {args.profile} does not accept --changed-files")
+    changed_paths = _read_changed_paths(args.changed_files) if args.changed_files is not None else None
+    print(select_profile_regex(args.profile, changed_paths))
     return 0
 
 

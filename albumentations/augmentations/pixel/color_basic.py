@@ -4,6 +4,13 @@ from collections.abc import Callable, Sequence
 from typing import Annotated, Any, Literal
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import (
+    SampledParams,
+    TargetParams,
+    TargetSet,
+    TargetView,
+    requirements_for_views,
+)
 
 from ._color_shared import (
     PAIR,
@@ -26,6 +33,15 @@ from ._color_shared import (
     nondecreasing,
     np,
 )
+
+
+def _equalize_mask_input(view: TargetView) -> ImageType:
+    """Return the image unit Equalize will receive when it applies a target."""
+    if view.canonical_type not in {"images", "volume"}:
+        return view.value
+    if view.value.shape[0] == 0:
+        return np.empty(view.value.shape[1:], dtype=view.value.dtype)
+    return view.value[0]
 
 
 class RandomToneCurve(ImageOnlyTransform):
@@ -134,40 +150,36 @@ class RandomToneCurve(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        num_channels = self.get_image_data(data)["num_channels"]
-        result = {
-            "num_channels": num_channels,
-        }
-
+    ) -> SampledParams:
         sampling.applied_overrides["scale"] = self.scale
-
-        if self.per_channel and result["num_channels"] != 1:
-            result["low_y"] = np.clip(
-                sampling.random_generator.normal(
-                    loc=0.25,
-                    scale=self.scale,
-                    size=(num_channels,),
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
+            view = views[0]
+            num_channels = view.descriptor.channels or 1
+            if self.per_channel and num_channels != 1:
+                low_y: float | np.ndarray = np.clip(
+                    sampling.random_generator.normal(loc=0.25, scale=self.scale, size=(num_channels,)),
+                    0,
+                    1,
+                )
+                high_y: float | np.ndarray = np.clip(
+                    sampling.random_generator.normal(loc=0.75, scale=self.scale, size=(num_channels,)),
+                    0,
+                    1,
+                )
+            else:
+                low_y = np.clip(sampling.random_generator.normal(loc=0.25, scale=self.scale), 0, 1)
+                high_y = np.clip(sampling.random_generator.normal(loc=0.75, scale=self.scale), 0, 1)
+            groups.append(
+                TargetParams(
+                    targets=tuple(target.name for target in views),
+                    params={"low_y": low_y, "high_y": high_y, "num_channels": num_channels},
+                    requirements=requirements_for_views(views, channels=True),
                 ),
-                0,
-                1,
             )
-            result["high_y"] = np.clip(
-                sampling.random_generator.normal(
-                    loc=0.75,
-                    scale=self.scale,
-                    size=(num_channels,),
-                ),
-                0,
-                1,
-            )
-            return result
-
-        low_y = np.clip(sampling.random_generator.normal(loc=0.25, scale=self.scale), 0, 1)
-        high_y = np.clip(sampling.random_generator.normal(loc=0.75, scale=self.scale), 0, 1)
-
-        return {"low_y": low_y, "high_y": high_y, "num_channels": num_channels}
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class HueSaturationValue(ImageOnlyTransform):
@@ -269,8 +281,9 @@ class HueSaturationValue(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, float]:
+    ) -> SampledParams:
         hue_shift = sampling.py_random.uniform(*self.hue_shift_range)
         sat_shift = sampling.py_random.uniform(*self.sat_shift_range)
         val_shift = sampling.py_random.uniform(*self.val_shift_range)
@@ -283,11 +296,13 @@ class HueSaturationValue(ImageOnlyTransform):
             },
         )
 
-        return {
-            "hue_shift": hue_shift,
-            "sat_shift": sat_shift,
-            "val_shift": val_shift,
-        }
+        return SampledParams(
+            params={
+                "hue_shift": hue_shift,
+                "sat_shift": sat_shift,
+                "val_shift": val_shift,
+            }
+        )
 
 
 class Solarize(ImageOnlyTransform):
@@ -386,13 +401,14 @@ class Solarize(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, float]:
+    ) -> SampledParams:
         threshold = sampling.py_random.uniform(*self.threshold_range)
 
         sampling.applied_overrides["threshold_range"] = threshold
 
-        return {"threshold": threshold}
+        return SampledParams(params={"threshold": threshold})
 
 
 class Posterize(ImageOnlyTransform):
@@ -504,15 +520,16 @@ class Posterize(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         if isinstance(self.num_bits, list):
             num_bits_list = [sampling.py_random.randint(*i) for i in self.num_bits]
             sampling.applied_overrides["num_bits"] = num_bits_list
-            return {"num_bits": num_bits_list}
+            return SampledParams(params={"num_bits": num_bits_list})
         num_bits = sampling.py_random.randint(*self.num_bits)
         sampling.applied_overrides["num_bits"] = num_bits
-        return {"num_bits": num_bits}
+        return SampledParams(params={"num_bits": num_bits})
 
 
 class Equalize(ImageOnlyTransform):
@@ -649,22 +666,33 @@ class Equalize(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         if not callable(self.mask):
             sampling.applied_overrides.update({"mask": None, "mask_params": ()})
-            return {"mask": self.mask}
-
-        mask_params = {"image": data["image"]}
-        for key in self.mask_params:
-            if key not in data:
-                raise KeyError(
-                    f"Required parameter '{key}' for mask function is missing in data.",
-                )
-            mask_params[key] = data[key]
+            return SampledParams(params={"mask": self.mask})
 
         sampling.applied_overrides.update({"mask": None, "mask_params": ()})
-        return {"mask": self.mask(**mask_params)}
+        groups: list[TargetParams] = []
+        for view in targets.image_like():
+            mask_params = {"image": _equalize_mask_input(view)}
+            for key in self.mask_params:
+                if key not in data:
+                    raise KeyError(
+                        f"Required parameter '{key}' for mask function is missing in data.",
+                    )
+                mask_params[key] = data[key]
+            groups.append(
+                TargetParams(
+                    targets=(view.name,),
+                    params={"mask": self.mask(**mask_params)},
+                    requirements=requirements_for_views((view,), spatial_shape_suffix=True, channels=True),
+                ),
+            )
+        if len(groups) == 1:
+            return SampledParams(params=groups[0].params)
+        return SampledParams(params={}, target_params=tuple(groups))
 
     @property
     def targets_as_params(self) -> list[str]:
@@ -825,8 +853,9 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, float]:
+    ) -> SampledParams:
         # Sample initial values
         alpha = 1.0 + sampling.py_random.uniform(*self.contrast_range)
         beta = sampling.py_random.uniform(*self.brightness_range)
@@ -838,10 +867,12 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             },
         )
 
-        return {
-            "alpha": alpha,
-            "beta": beta,
-        }
+        return SampledParams(
+            params={
+                "alpha": alpha,
+                "beta": beta,
+            }
+        )
 
 
 class ExposureMatching(ImageOnlyTransform):
@@ -952,40 +983,39 @@ class ExposureMatching(ImageOnlyTransform):
         result = albucore.multiply(img, gain, inplace=False)
         return fpixel.clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
-    def apply_to_images(self, images: ImageType, image_gains: list[float], **params: Any) -> ImageType:
-        return fpixel.exposure_match_batch(images, np.asarray(image_gains, dtype=np.float32))
+    def apply_to_images(self, images: ImageType, gain: float | list[float], **params: Any) -> ImageType:
+        return fpixel.exposure_match_batch(images, np.asarray(gain, dtype=np.float32))
 
-    def apply_to_volume(self, volume: VolumeType, volume_gains: list[float], **params: Any) -> VolumeType:
-        return fpixel.exposure_match_batch(volume, np.asarray(volume_gains, dtype=np.float32))
+    def apply_to_volume(self, volume: VolumeType, gain: float | list[float], **params: Any) -> VolumeType:
+        return fpixel.exposure_match_batch(volume, np.asarray(gain, dtype=np.float32))
 
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, float | list[float]]:
+    ) -> SampledParams:
         target_mean = sampling.py_random.uniform(*self.target_mean_range)
         sampling.applied_overrides["target_mean_range"] = target_mean
-        gains: dict[str, float | list[float]] = {}
-
-        if "image" in data:
-            gains["gain"] = float(
-                fpixel.get_exposure_gains(
-                    data["image"],
-                    target_mean,
-                    self.gain_range,
+        groups: list[TargetParams] = []
+        for view in targets.image_like():
+            gain = fpixel.get_exposure_gains(view.value, target_mean, self.gain_range)
+            gain = float(gain) if view.canonical_type == "image" else np.asarray(gain).tolist()
+            groups.append(
+                TargetParams(
+                    targets=(view.name,),
+                    params={"gain": gain},
+                    requirements=requirements_for_views(
+                        (view,),
+                        shape=view.canonical_type in {"images", "volume"},
+                    ),
                 ),
             )
-        if "images" in data:
-            image_gains = fpixel.get_exposure_gains(data["images"], target_mean, self.gain_range)
-            gains["image_gains"] = np.asarray(image_gains).tolist()
-        if "volume" in data:
-            volume_gains = fpixel.get_exposure_gains(data["volume"], target_mean, self.gain_range)
-            gains["volume_gains"] = np.asarray(volume_gains).tolist()
-        if not gains:
+        if not groups:
             raise RuntimeError("Expected image, images, or volume data for exposure matching")
 
-        return {"target_mean": target_mean, **gains}
+        return SampledParams(params={"target_mean": target_mean}, target_params=tuple(groups))
 
 
 class CLAHE(ImageOnlyTransform):
@@ -1069,13 +1099,14 @@ class CLAHE(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, float]:
+    ) -> SampledParams:
         clip_limit = sampling.py_random.uniform(*self.clip_range)
 
         sampling.applied_overrides["clip_range"] = clip_limit
 
-        return {"clip_limit": clip_limit}
+        return SampledParams(params={"clip_limit": clip_limit})
 
 
 class RandomGamma(ImageOnlyTransform):
@@ -1173,15 +1204,18 @@ class RandomGamma(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         gamma = sampling.py_random.uniform(*self.gamma_range)
 
         sampling.applied_overrides["gamma_range"] = gamma
 
-        return {
-            "gamma": gamma / 100.0,
-        }
+        return SampledParams(
+            params={
+                "gamma": gamma / 100.0,
+            }
+        )
 
 
 class AutoContrast(ImageOnlyTransform):

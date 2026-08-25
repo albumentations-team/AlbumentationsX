@@ -7,6 +7,22 @@ from io import StringIO
 import numpy as np
 
 import albumentations
+from albumentations.core.transform_params import SampledParams
+
+
+def make_sampling_args(transform, data):
+    """Build explicit sampler arguments for direct sampler regression tests."""
+    targets = transform._build_target_set(data)
+    return (
+        transform.update_transform_params({}, data, targets=targets),
+        data,
+        targets,
+    )
+
+
+def get_resolved_applied_params(transform, target="image"):
+    """Resolve one target's parameters from recorded structured sampled parameters."""
+    return SampledParams.from_dict(transform.get_applied_params()).params_for(target)
 
 
 class FrozenParams(dict):

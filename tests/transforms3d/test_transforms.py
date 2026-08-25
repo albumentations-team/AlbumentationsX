@@ -9,11 +9,13 @@ import torch.nn.functional as torch_f
 import albumentations as A
 from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 from tests.conftest import RECTANGULAR_UINT8_IMAGE
 from tests.utils import (
     get_primary_2d_transform_params,
     get_primary_3d_transform_params,
     get_primary_dual_transform_params,
+    make_sampling_args,
 )
 
 
@@ -1424,10 +1426,11 @@ def test_cubic_symmetry_remaps_keypoint_labels_without_reordering_transformed_ro
         self: A.CubicSymmetry,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: Any,
-    ) -> dict[str, Any]:
-        del self, params, sampling
-        return {"index": index, "volume_shape": data["volume"].shape}
+    ) -> SampledParams:
+        del self, params, targets, sampling
+        return SampledParams(params={"index": index, "volume_shape": data["volume"].shape})
 
     monkeypatch.setattr(A.CubicSymmetry, "sample_parameters", fixed_index)
     result = A.Compose(
@@ -1522,7 +1525,10 @@ def test_flip3d_random_mode_samples_the_full_reflection_group() -> None:
     volume = np.zeros((2, 3, 5, 1), dtype=np.uint8)
 
     sampled_axes = {
-        transform.sample_parameters({}, {"volume": volume}, SamplingContext.from_owner(transform, {}))["flip_axes"]
+        transform.sample_parameters(
+            *make_sampling_args(transform, {"volume": volume}),
+            SamplingContext.from_owner(transform, {}),
+        ).params["flip_axes"]
         for _ in range(64)
     }
 

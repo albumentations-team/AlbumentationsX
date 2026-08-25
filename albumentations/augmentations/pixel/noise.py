@@ -9,13 +9,7 @@ from typing import Annotated, Any, ClassVar, Literal, TypeAlias, cast
 
 import cv2
 import numpy as np
-from albucore import (
-    MAX_VALUES_BY_DTYPE,
-    clip,
-    get_num_channels,
-    multiply,
-    resize3d,
-)
+from albucore import clip, multiply, resize3d
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 from typing_extensions import Self
@@ -27,6 +21,13 @@ from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
+)
+from albumentations.core.transform_params import (
+    SampledParams,
+    TargetParams,
+    TargetSet,
+    TargetView,
+    requirements_for_views,
 )
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
@@ -52,16 +53,62 @@ __all__ = [
 ]
 
 
-def _get_noise_map_shape(
-    data: dict[str, Any],
-    metadata: dict[str, Any],
+def _target_noise_map_shape(view: Any) -> tuple[int, ...]:
+    descriptor = view.descriptor
+    if descriptor.canonical_type == "image":
+        return (*descriptor.spatial_shape, descriptor.channels or 1)
+    if descriptor.canonical_type == "images":
+        return (*descriptor.spatial_shape, descriptor.channels or 1)
+    if descriptor.canonical_type == "volume":
+        if descriptor.shape is None:
+            raise ValueError(f"Volume target {view.name!r} has no shape")
+        return descriptor.shape
+    raise ValueError(f"Noise transforms do not support target {view.name!r}")
+
+
+def _target_additive_shape(transform: Any, view: Any) -> tuple[int, ...]:
+    shape = _target_noise_map_shape(view)
+    if view.canonical_type == "volume" and transform._volume_sampling_is_slice_wise:  # noqa: SLF001
+        return (shape[1], shape[2], shape[3])
+    return shape
+
+
+def _sampling_family(view: Any, *, volume_is_3d: bool = True) -> str:
+    if view.canonical_type == "volume" and volume_is_3d:
+        return "volume_3d"
+    return "image_2d"
+
+
+def _target_value_scale(view: TargetView) -> float:
+    value_scale = view.descriptor.value_scale
+    if value_scale is None:
+        raise ValueError(f"Noise target {view.name!r} has an unsupported dtype")
+    return value_scale
+
+
+def _target_parameter_group(
+    views: tuple[Any, ...],
+    parameter_name: str,
+    value: Any,
     *,
-    use_volume: bool,
-) -> tuple[int, ...]:
-    if use_volume:
-        volume = data["volume"]
-        return (*volume.shape[:-1], get_num_channels(volume))
-    return (metadata["height"], metadata["width"], metadata["num_channels"])
+    shape: bool = False,
+    spatial_shape: bool = False,
+    channels: bool = False,
+    dtype: bool = False,
+    topology: bool = False,
+) -> TargetParams:
+    return TargetParams(
+        targets=tuple(view.name for view in views),
+        params={parameter_name: value},
+        requirements=requirements_for_views(
+            views,
+            shape=shape,
+            spatial_shape=spatial_shape,
+            channels=channels,
+            dtype=dtype,
+            sampling_topology=topology,
+        ),
+    )
 
 
 class _FullVolumeNoiseTransform(ImageOnlyTransform):
@@ -323,48 +370,50 @@ class GaussNoise(_FullVolumeNoiseTransform):
         self,
         volume: ImageType,
         noise_map: np.ndarray,
-        volume_noise_map: np.ndarray,
         **params: Any,
     ) -> ImageType:
-        return fpixel.add_noise(volume, volume_noise_map)
+        return fpixel.add_noise(volume, noise_map)
 
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray]:
-        metadata = self.get_image_data(data)
+    ) -> SampledParams:
         sigma = sampling.py_random.uniform(*self.std_range)
         mean = sampling.py_random.uniform(*self.mean_range)
         sampling.applied_overrides.update({"std_range": sigma, "mean_range": mean})
         spatial_mode: Literal["per_pixel", "shared"] = "per_pixel" if self.per_channel else "shared"
         noise_params = {"mean_range": (mean, mean), "std_range": (sigma, sigma)}
-        has_image_target = "image" in data or "images" in data
-        use_volume = "volume" in data and not has_image_target
-        noise_map = fpixel.generate_spatial_noise(
-            noise_type="gaussian",
-            spatial_mode=spatial_mode,
-            shape=_get_noise_map_shape(data, metadata, use_volume=use_volume),
-            params=noise_params,
-            max_value=MAX_VALUES_BY_DTYPE[data["volume"].dtype]
-            if use_volume
-            else MAX_VALUES_BY_DTYPE[metadata["dtype"]],
-            random_generator=sampling.random_generator,
-        )
-        result = {"noise_map": noise_map}
-        if "volume" in data and has_image_target:
-            result["volume_noise_map"] = fpixel.generate_spatial_noise(
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                _target_noise_map_shape(view),
+                view.descriptor.value_scale,
+                _sampling_family(view),
+            ),
+        ):
+            view = views[0]
+            noise_map = fpixel.generate_spatial_noise(
                 noise_type="gaussian",
                 spatial_mode=spatial_mode,
-                shape=_get_noise_map_shape(data, metadata, use_volume=True),
+                shape=_target_noise_map_shape(view),
                 params=noise_params,
-                max_value=MAX_VALUES_BY_DTYPE[data["volume"].dtype],
+                max_value=_target_value_scale(view),
                 random_generator=sampling.random_generator,
             )
-        elif "volume" in data:
-            result["volume_noise_map"] = noise_map
-        return result
+            groups.append(
+                _target_parameter_group(
+                    views,
+                    "noise_map",
+                    noise_map,
+                    shape=True,
+                    dtype=True,
+                    topology=True,
+                ),
+            )
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class ISONoise(_FullVolumeNoiseTransform):
@@ -489,19 +538,22 @@ class ISONoise(_FullVolumeNoiseTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         random_seed = sampling.random_generator.integers(0, 2**32 - 1)
         color_shift = sampling.py_random.uniform(*self.color_shift_range)
         intensity = sampling.py_random.uniform(*self.intensity_range)
 
         sampling.applied_overrides.update({"color_shift_range": color_shift, "intensity_range": intensity})
 
-        return {
-            "color_shift": color_shift,
-            "intensity": intensity,
-            "random_seed": random_seed,
-        }
+        return SampledParams(
+            params={
+                "color_shift": color_shift,
+                "intensity": intensity,
+                "random_seed": random_seed,
+            }
+        )
 
 
 class MultiplicativeNoise(ImageOnlyTransform):
@@ -599,73 +651,71 @@ class MultiplicativeNoise(ImageOnlyTransform):
         self,
         volume: ImageType,
         multiplier: float | np.ndarray,
-        volume_multiplier: np.ndarray,
         **kwargs: Any,
     ) -> ImageType:
-        return self.apply(volume, volume_multiplier, **kwargs)
+        return self.apply(volume, multiplier, **kwargs)
 
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        del params, sampling.applied_overrides
-        metadata = self.get_image_data(data)
-        has_image_target = "image" in data or "images" in data
-        use_volume = "volume" in data and not has_image_target
-        result = {
-            "multiplier": self._sample_multiplier(
-                _get_noise_map_shape(data, metadata, use_volume=use_volume),
-                sampling,
-                is_volume=use_volume,
-            ),
-        }
-        if "volume" in data and has_image_target and self.elementwise:
-            result["volume_multiplier"] = self._sample_multiplier(
-                _get_noise_map_shape(data, metadata, use_volume=True),
-                sampling,
-                is_volume=True,
+    ) -> SampledParams:
+        if not self.elementwise and not self.per_channel:
+            multiplier = sampling.random_generator.uniform(self.multiplier[0], self.multiplier[1])
+            return SampledParams(params={"multiplier": multiplier})
+
+        groups: list[TargetParams] = []
+        if not self.elementwise:
+            for compatible_views in targets.group_image_like_by(lambda view: view.descriptor.channels):
+                channels = compatible_views[0].descriptor.channels or 1
+                groups.append(
+                    _target_parameter_group(
+                        compatible_views,
+                        "multiplier",
+                        sampling.random_generator.uniform(
+                            self.multiplier[0],
+                            self.multiplier[1],
+                            size=(channels,),
+                        ).astype(np.float32),
+                        channels=True,
+                    ),
+                )
+            return SampledParams(params={}, target_params=tuple(groups))
+
+        for compatible_views in targets.group_image_like_by(
+            lambda view: (self._multiplier_shape(_target_noise_map_shape(view)), _sampling_family(view)),
+        ):
+            view = compatible_views[0]
+            groups.append(
+                _target_parameter_group(
+                    compatible_views,
+                    "multiplier",
+                    self._sample_multiplier(_target_noise_map_shape(view), sampling),
+                    spatial_shape=True,
+                    channels=self.per_channel,
+                    topology=True,
+                ),
             )
-        elif "volume" in data:
-            result["volume_multiplier"] = result["multiplier"]
-        return result
+        return SampledParams(params={}, target_params=tuple(groups))
 
     def _sample_multiplier(
         self,
-        image_shape: tuple[int, ...],
+        target_shape: tuple[int, ...],
         sampling: SamplingContext,
-        *,
-        is_volume: bool,
     ) -> np.ndarray:
         """Generates the multiplier for the current layout without replay-policy overrides, keeping pixel execution
         independent from constructor serialization concerns.
         """
-        num_channels = image_shape[-1]
-
-        if self.elementwise:
-            multiplier_shape: tuple[int, ...] = image_shape if self.per_channel else (*image_shape[:-1], 1)
-        else:
-            multiplier_shape = (num_channels,) if self.per_channel else (1,)
-
-        multiplier = sampling.random_generator.uniform(
+        return sampling.random_generator.uniform(
             self.multiplier[0],
             self.multiplier[1],
-            multiplier_shape,
+            self._multiplier_shape(target_shape),
         ).astype(np.float32)
 
-        if not self.per_channel and num_channels > 1 and not is_volume:
-            # Replicate the multiplier for all channels if not per_channel
-            multiplier = np.repeat(multiplier, num_channels, axis=-1)
-
-        if not self.elementwise and self.per_channel:
-            # Reshape to broadcast correctly when not elementwise but per_channel
-            multiplier = multiplier.reshape((1,) * (len(image_shape) - 1) + (-1,))
-
-        if not is_volume and multiplier.shape != image_shape:
-            multiplier = multiplier.squeeze()
-
-        return multiplier
+    def _multiplier_shape(self, target_shape: tuple[int, ...]) -> tuple[int, ...]:
+        return target_shape if self.per_channel else (*target_shape[:-1], 1)
 
 
 class ShotNoise(_FullVolumeNoiseTransform):
@@ -752,14 +802,17 @@ class ShotNoise(_FullVolumeNoiseTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         scale = sampling.py_random.uniform(*self.scale_range)
         sampling.applied_overrides["scale_range"] = scale
-        return {
-            "scale": scale,
-            "random_seed": sampling.random_generator.integers(0, 2**32 - 1),
-        }
+        return SampledParams(
+            params={
+                "scale": scale,
+                "random_seed": sampling.random_generator.integers(0, 2**32 - 1),
+            }
+        )
 
 
 class NoiseParamsBase(BaseModel):
@@ -1055,33 +1108,44 @@ class AdditiveNoise(ImageOnlyTransform):
         self,
         volume: ImageType,
         noise_map: np.ndarray,
-        volume_noise_map: np.ndarray,
         **params: Any,
     ) -> ImageType:
-        return self.apply(volume, volume_noise_map, **params)
+        return self.apply(volume, noise_map, **params)
 
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        del params, sampling.applied_overrides
-        metadata = self.get_image_data(data)
-        has_image_target = "image" in data or "images" in data
-        use_volume = "volume" in data and not has_image_target and self.spatial_mode != "patch"
-        shape = _get_noise_map_shape(data, metadata, use_volume=use_volume)
-        max_value = MAX_VALUES_BY_DTYPE[data["volume"].dtype] if use_volume else MAX_VALUES_BY_DTYPE[metadata["dtype"]]
-        result = self._sample_noise_map(shape, max_value, sampling)
-        if "volume" in data and has_image_target and self.spatial_mode in {"per_pixel", "shared"}:
-            result["volume_noise_map"] = self._sample_noise_map(
-                _get_noise_map_shape(data, metadata, use_volume=True),
-                MAX_VALUES_BY_DTYPE[data["volume"].dtype],
+    ) -> SampledParams:
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                _target_additive_shape(self, view),
+                view.descriptor.value_scale,
+                _sampling_family(view, volume_is_3d=not self._volume_sampling_is_slice_wise),
+            ),
+        ):
+            view = views[0]
+            sampled = self._sample_noise_map(
+                _target_additive_shape(self, view),
+                _target_value_scale(view),
                 sampling,
-            )["noise_map"]
-        elif "volume" in data:
-            result["volume_noise_map"] = result["noise_map"]
-        return result
+            )
+            groups.append(
+                TargetParams(
+                    targets=tuple(item.name for item in views),
+                    params=sampled,
+                    requirements=requirements_for_views(
+                        views,
+                        shape=True,
+                        dtype=True,
+                        sampling_topology=True,
+                    ),
+                ),
+            )
+        return SampledParams(params={}, target_params=tuple(groups))
 
     def _sample_noise_map(
         self,
@@ -1254,38 +1318,36 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        metadata = self.get_image_data(data)
+    ) -> SampledParams:
         total_amount = sampling.py_random.uniform(*self.amount_range)
         salt_ratio = sampling.py_random.uniform(*self.salt_vs_pepper_range)
         sampling.applied_overrides.update({"amount_range": total_amount, "salt_vs_pepper_range": salt_ratio})
-        has_image_target = "image" in data or "images" in data
-        use_volume = "volume" in data and not has_image_target
-        spatial_shape = tuple(data["volume"].shape[:-1]) if use_volume else (metadata["height"], metadata["width"])
-        salt_mask, pepper_mask = self._sample_masks(spatial_shape, total_amount, salt_ratio, sampling)
-        result = {"salt_mask": salt_mask, "pepper_mask": pepper_mask}
-        if "volume" in data and has_image_target:
-            volume_salt_mask, volume_pepper_mask = self._sample_masks(
-                tuple(data["volume"].shape[:-1]),
-                total_amount,
-                salt_ratio,
-                sampling,
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                tuple((view.descriptor.shape or ())[:3])
+                if view.canonical_type == "volume"
+                else tuple(view.descriptor.spatial_shape or ()),
+                _sampling_family(view),
+            ),
+        ):
+            view = views[0]
+            spatial_shape = (
+                tuple(view.descriptor.shape[:-1])
+                if view.canonical_type == "volume" and view.descriptor.shape is not None
+                else tuple(view.descriptor.spatial_shape or ())
             )
-            result.update(
-                {
-                    "volume_salt_mask": volume_salt_mask,
-                    "volume_pepper_mask": volume_pepper_mask,
-                },
+            salt_mask, pepper_mask = self._sample_masks(spatial_shape, total_amount, salt_ratio, sampling)
+            groups.append(
+                TargetParams(
+                    targets=tuple(item.name for item in views),
+                    params={"salt_mask": salt_mask, "pepper_mask": pepper_mask},
+                    requirements=requirements_for_views(views, shape=True, sampling_topology=True),
+                ),
             )
-        elif "volume" in data:
-            result.update(
-                {
-                    "volume_salt_mask": salt_mask,
-                    "volume_pepper_mask": pepper_mask,
-                },
-            )
-        return result
+        return SampledParams(params={}, target_params=tuple(groups))
 
     @staticmethod
     def _sample_masks(
@@ -1321,16 +1383,9 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
         volume: ImageType,
         salt_mask: np.ndarray,
         pepper_mask: np.ndarray,
-        volume_salt_mask: np.ndarray,
-        volume_pepper_mask: np.ndarray,
         **params: Any,
     ) -> ImageType:
-        return self.apply(
-            volume,
-            volume_salt_mask,
-            volume_pepper_mask,
-            **params,
-        )
+        return self.apply(volume, salt_mask, pepper_mask, **params)
 
 
 class FilmGrain(_FullVolumeNoiseTransform):
@@ -1417,17 +1472,17 @@ class FilmGrain(_FullVolumeNoiseTransform):
         volume: ImageType,
         grain: np.ndarray,
         intensity: float,
-        volume_grain: np.ndarray,
         **params: Any,
     ) -> ImageType:
-        return self.apply(volume, volume_grain, intensity, **params)
+        return self.apply(volume, grain, intensity, **params)
 
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         intensity = sampling.py_random.uniform(*self.intensity_range)
         grain_size = (
             sampling.py_random.randint(*self.grain_size_range)
@@ -1435,22 +1490,29 @@ class FilmGrain(_FullVolumeNoiseTransform):
             else self.grain_size_range[0]
         )
         sampling.applied_overrides.update({"intensity_range": intensity, "grain_size_range": grain_size})
-        metadata = self.get_image_data(data)
-        has_image_target = "image" in data or "images" in data
-        spatial_shape = (
-            tuple(data["volume"].shape[:3])
-            if "volume" in data and not has_image_target
-            else (
-                metadata["height"],
-                metadata["width"],
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                tuple((view.descriptor.shape or ())[:3])
+                if view.canonical_type == "volume"
+                else tuple(view.descriptor.spatial_shape or ()),
+                _sampling_family(view),
+            ),
+        ):
+            view = views[0]
+            spatial_shape = (
+                tuple(view.descriptor.shape[:3])
+                if view.canonical_type == "volume" and view.descriptor.shape is not None
+                else tuple(view.descriptor.spatial_shape or ())
             )
-        )
-        result = {"grain": self._sample_grain(spatial_shape, grain_size, sampling), "intensity": intensity}
-        if "volume" in data and has_image_target:
-            result["volume_grain"] = self._sample_grain(tuple(data["volume"].shape[:3]), grain_size, sampling)
-        elif "volume" in data:
-            result["volume_grain"] = result["grain"]
-        return result
+            groups.append(
+                TargetParams(
+                    targets=tuple(item.name for item in views),
+                    params={"grain": self._sample_grain(spatial_shape, grain_size, sampling)},
+                    requirements=requirements_for_views(views, shape=True, sampling_topology=True),
+                ),
+            )
+        return SampledParams(params={"intensity": intensity}, target_params=tuple(groups))
 
     @staticmethod
     def _sample_grain(
@@ -1558,70 +1620,47 @@ class RicianNoise(_FullVolumeNoiseTransform):
         self,
         volume: ImageType,
         std: float,
-        volume_real_noise: np.ndarray | None,
-        volume_imaginary_noise: np.ndarray | None,
+        real_noise: np.ndarray | None,
+        imaginary_noise: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
-        return self.apply(volume, std, volume_real_noise, volume_imaginary_noise)
+        return self.apply(volume, std, real_noise, imaginary_noise)
 
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        del params
-        metadata = self.get_image_data(data)
+    ) -> SampledParams:
         std = sampling.py_random.uniform(*self.std_range)
         sampling.applied_overrides["std_range"] = std
         if std == 0:
-            zero_params: dict[str, Any] = {"std": std, "real_noise": None, "imaginary_noise": None}
-            if "volume" in data:
-                zero_params.update({"volume_real_noise": None, "volume_imaginary_noise": None})
-            return zero_params
+            return SampledParams(
+                params={"std": std, "real_noise": None, "imaginary_noise": None},
+            )
 
-        has_image_target = "image" in data or "images" in data
-        use_volume = "volume" in data and not has_image_target
-        real_noise, imaginary_noise = self._sample_noise(
-            self._noise_shape(data, metadata, use_volume=use_volume),
-            std,
-            sampling,
-        )
-        result: dict[str, Any] = {
-            "std": std,
-            "real_noise": real_noise,
-            "imaginary_noise": imaginary_noise,
-        }
-        if "volume" in data and has_image_target:
-            volume_real_noise, volume_imaginary_noise = self._sample_noise(
-                self._noise_shape(data, metadata, use_volume=True),
-                std,
-                sampling,
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                _target_noise_map_shape(view),
+                self.per_channel,
+                _sampling_family(view),
+            ),
+        ):
+            view = views[0]
+            noise_shape = _target_noise_map_shape(view)
+            if not self.per_channel:
+                noise_shape = (*noise_shape[:-1], 1)
+            real_noise, imaginary_noise = self._sample_noise(noise_shape, std, sampling)
+            groups.append(
+                TargetParams(
+                    targets=tuple(item.name for item in views),
+                    params={"real_noise": real_noise, "imaginary_noise": imaginary_noise},
+                    requirements=requirements_for_views(views, shape=True, sampling_topology=True),
+                ),
             )
-            result.update(
-                {
-                    "volume_real_noise": volume_real_noise,
-                    "volume_imaginary_noise": volume_imaginary_noise,
-                },
-            )
-        elif "volume" in data:
-            result.update(
-                {
-                    "volume_real_noise": real_noise,
-                    "volume_imaginary_noise": imaginary_noise,
-                },
-            )
-        return result
-
-    def _noise_shape(
-        self,
-        data: dict[str, Any],
-        metadata: dict[str, Any],
-        *,
-        use_volume: bool,
-    ) -> tuple[int, ...]:
-        shape = _get_noise_map_shape(data, metadata, use_volume=use_volume)
-        return shape if self.per_channel else (*shape[:-1], 1)
+        return SampledParams(params={"std": std}, target_params=tuple(groups))
 
     @staticmethod
     def _sample_noise(

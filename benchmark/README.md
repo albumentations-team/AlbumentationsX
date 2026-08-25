@@ -3,11 +3,15 @@
 AlbumentationsX uses ASV for scheduled and release performance evidence. The
 benchmarks are separate from unit tests and should not be imported by tests.
 
-## Quick Run
+## Quick Comparison
 
 ```bash
 cd benchmark
-uv tool run --from asv asv --config asv.conf.json run --quick --show-stderr
+BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' HEAD^)"
+uv tool run --from asv asv --config asv.conf.json continuous \
+  --quick --show-stderr \
+  --attribute repeat=1 --attribute number=1 \
+  "$BASELINE_REF" HEAD
 ```
 
 For task-level before/after comparisons, use the same baseline/candidate shape
@@ -29,7 +33,11 @@ reviewable:
 
 ```bash
 cd benchmark
-uv tool run --from asv asv --config asv-pytorch.conf.json run --quick --show-stderr
+BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' HEAD^)"
+uv tool run --from asv asv --config asv-pytorch.conf.json continuous \
+  --quick --show-stderr \
+  --attribute repeat=1 --attribute number=1 \
+  "$BASELINE_REF" HEAD
 ```
 
 The GitHub performance workflow can also be run manually with
@@ -41,9 +49,21 @@ The GitHub performance workflow can also be run manually with
 - `bench_filter`: optional ASV `--bench` regular expression for manual
   baseline/candidate comparisons.
 
-Pull requests run a bounded comparison over catalog smoke, core pipeline,
-batch-route, and direct functional-kernel benchmarks. Scheduled runs and manual
-comparisons with an empty `bench_filter` run the full suite.
+Every runtime pull request runs a bounded `pr-core` comparison from the PR base
+to the checked-out merge commit over the core pipeline. A PR labeled
+`run-performance` selects the `changed` profile from changed files. The Tuesday
+schedule compares the previous release with `main` using `stf-core`, which
+combines catalog smoke, core pipeline routes, and selected memory sentinels.
+Manual comparisons with an empty `bench_filter` also select `stf-core`; a
+full-family run requires an explicit regex.
+
+Resolve the named profiles locally with:
+
+```bash
+uv run python tools/select_benchmark_filters.py --profile pr-core
+uv run python tools/select_benchmark_filters.py --profile stf-core
+uv run python tools/select_benchmark_filters.py --profile changed --changed-files changed-files.txt
+```
 
 ## Matrix
 

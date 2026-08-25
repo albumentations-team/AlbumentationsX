@@ -17,6 +17,7 @@ from typing_extensions import Self
 from albumentations.augmentations.crops import functional as fcrops
 from albumentations.augmentations.geometric.transforms import Affine
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -195,8 +196,9 @@ class RandomRotate90(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Literal["e", "r90", "r180", "r270"]]:
+    ) -> SampledParams:
         if self.group_element is not None:
             group_element = self.group_element
         elif self.group_elements is not None:
@@ -208,7 +210,7 @@ class RandomRotate90(DualTransform):
         # merge the unused constructor tuple (e.g. ("r90", "r270")) into the record,
         # which would cause InitSchema to reject the replay as mutually exclusive.
         sampling.applied_overrides.update({"group_element": group_element, "group_elements": None})
-        return {"group_element": group_element}
+        return SampledParams(params={"group_element": group_element})
 
     def apply_to_bboxes(
         self,
@@ -532,20 +534,22 @@ class Rotate(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
+        image_shape = targets.require_aligned_spatial_shape(2)
         angle = sampling.py_random.uniform(*self.angle_range)
 
         sampling.applied_overrides["angle_range"] = angle
 
         if self.crop_border:
-            height, width = params["shape"][:2]
+            height, width = targets.require_aligned_spatial_shape(2)
             out_params: dict[str, Any] = self._rotated_rect_with_max_area(height, width, angle)
         else:
             out_params = {"x_min": -1, "x_max": -1, "y_min": -1, "y_max": -1}
 
-        center = fgeometric.center(params["shape"][:2])
-        bbox_center = fgeometric.center_bbox(params["shape"][:2])
+        center = fgeometric.center(image_shape)
+        bbox_center = fgeometric.center_bbox(image_shape)
 
         translate: dict[str, int] = {"x": 0, "y": 0}
         shear: dict[str, float] = {"x": 0, "y": 0}
@@ -569,7 +573,7 @@ class Rotate(DualTransform):
         out_params["matrix"] = matrix
         out_params["bbox_matrix"] = bbox_matrix
 
-        return out_params
+        return SampledParams(params=out_params)
 
 
 class SafeRotate(Affine):
@@ -729,9 +733,10 @@ class SafeRotate(Affine):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> SampledParams:
+        image_shape = targets.require_aligned_spatial_shape(2)
         angle = sampling.py_random.uniform(*self.angle_range)
 
         sampling.applied_overrides["angle_range"] = angle
@@ -750,10 +755,12 @@ class SafeRotate(Affine):
             image_shape,
         )
 
-        return {
-            "rotate": angle,
-            "scale": scale,
-            "matrix": matrix,
-            "bbox_matrix": bbox_matrix,
-            "output_shape": image_shape,
-        }
+        return SampledParams(
+            params={
+                "rotate": angle,
+                "scale": scale,
+                "matrix": matrix,
+                "bbox_matrix": bbox_matrix,
+                "output_shape": image_shape,
+            }
+        )

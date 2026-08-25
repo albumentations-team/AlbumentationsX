@@ -284,7 +284,7 @@ def _apply_plasma_brightness_contrast_loop(
 
         result[index] = _finish_plasma_brightness_contrast_batch(work, output_dtype)
 
-    return result
+    return cast("ImageType", result)
 
 
 def _apply_plasma_brightness_contrast_per_image(
@@ -348,9 +348,9 @@ def apply_plasma_brightness_contrast_batch(
 
     if brightness_factor == 0 and contrast_factor == 0:
         if images.dtype == np.float32:
-            result = np.clip(images, 0.0, 1.0, order="C")
+            result: ImageType = cast("ImageFloat32", np.clip(images, 0.0, 1.0, order="C"))
         else:
-            result = cast("ImageType", np.array(images, copy=True, order="C"))
+            result = cast("ImageUInt8", np.array(images, copy=True, order="C"))
         return result
 
     if images.shape[0] == 1:

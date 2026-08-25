@@ -52,6 +52,8 @@ SECURITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "security.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
 SETUP_CI_ACTION = REPO_ROOT / ".github" / "actions" / "setup-ci" / "action.yml"
 CI_FOUNDATION_SHA = "6b9045dbea58026a1e8f96b0392c411934a27199"
+RETIRED_ASV_RUN_PATTERN = re.compile(r"asv --config asv\.conf\.json\s+run\b")
+RETIRED_REVISION_SELECTOR_PATTERN = re.compile(r"HEAD\^!")
 CONDA_RECIPE = REPO_ROOT / "conda.recipe" / "meta.yaml"
 DEVELOPMENT_REQUIREMENTS = REPO_ROOT / "requirements-dev.txt"
 CODEQL_ACTIONS_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql-actions.yml"
@@ -104,7 +106,7 @@ CI_DEPENDENCY_GROUPS = {
         "pytest",
         "ruff",
     },
-    "ci-release": {"cyclonedx-bom"},
+    "ci-release": {"asv", "cyclonedx-bom"},
     "ci-security": {"pip-audit", "zizmor"},
     "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-cov", "pytest-xdist"},
     "ci-torch-cpu": {"torch"},
@@ -135,7 +137,9 @@ TORCH_RUNTIME_JOBS = {
     },
     PERFORMANCE_WORKFLOW: {
         "benchmark_evidence": "ci-benchmark",
+        "pr_core_comparison": "ci-benchmark",
         "asv_comparison": "ci-benchmark",
+        "scheduled_core_comparison": "ci-benchmark",
     },
     PYTORCH_PERFORMANCE_WORKFLOW: {"pytorch_tensor_asv": "ci-benchmark"},
 }
@@ -292,6 +296,25 @@ def _direct_dependency_names(entries: list[Any]) -> set[str]:
     return {re.split(r"[<>=!~\[]", entry, maxsplit=1)[0].casefold() for entry in entries if isinstance(entry, str)}
 
 
+def _dependency_group_packages(
+    group_name: str,
+    dependency_groups: dict[str, Any],
+    active_groups: frozenset[str] = frozenset(),
+) -> set[str]:
+    """Return direct package names, including recursively included groups."""
+    if group_name in active_groups:
+        return set()
+    entries = dependency_groups.get(group_name, [])
+    if not isinstance(entries, list):
+        return set()
+    packages = _direct_dependency_names(entries)
+    next_active_groups = active_groups | {group_name}
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get("include-group"), str):
+            packages.update(_dependency_group_packages(entry["include-group"], dependency_groups, next_active_groups))
+    return packages
+
+
 def _check_ci_dependency_groups(dependency_groups: dict[str, Any]) -> list[str]:
     issues: list[str] = []
     unexpected_groups = set(dependency_groups) - {*CI_DEPENDENCY_GROUPS, "dev"}
@@ -303,7 +326,7 @@ def _check_ci_dependency_groups(dependency_groups: dict[str, Any]) -> list[str]:
         if not isinstance(entries, list):
             issues.append(f"pyproject.toml is missing CI dependency group {group!r}")
             continue
-        packages = _direct_dependency_names(entries)
+        packages = _dependency_group_packages(group, dependency_groups)
         missing_packages = required_packages - packages
         if missing_packages:
             issues.append(f"pyproject.toml group {group!r} is missing {sorted(missing_packages)!r}")
@@ -589,11 +612,25 @@ def _check_pr_workflow() -> list[str]:
                 "tools.release_bundle finalize",
                 "dependency-group: ci-release",
                 "--core-only",
+                "asv --config asv.conf.json continuous",
+                "--profile stf-core",
+                "benchmark-asv-summary.json",
+                "--require-comparison",
+                "benchmark-baseline-sha.txt",
+                "benchmark-candidate-sha.txt",
                 "release-preflight=${{ needs.release_preflight.result }}",
             ),
             "selective PR gate",
         ),
     )
+
+    release_job = jobs.get("release_preflight")
+    if isinstance(release_job, dict):
+        release_text = _workflow_job_run_text(release_job)
+        if RETIRED_ASV_RUN_PATTERN.search(release_text) or RETIRED_REVISION_SELECTOR_PATTERN.search(release_text):
+            issues.append(f"{PR_WORKFLOW} release_preflight uses a retired single-revision ASV path")
+        if "--fail-on-release-blockers" not in release_text:
+            issues.append(f"{PR_WORKFLOW} release_preflight must fail on release performance blockers")
 
     return issues
 
@@ -760,6 +797,70 @@ def _check_release_candidate_workflow() -> list[str]:
     return issues
 
 
+def _check_benchmark_evidence_job(job: Any) -> list[str]:
+    if not isinstance(job, dict):
+        return [f"{PERFORMANCE_WORKFLOW} is missing benchmark_evidence job"]
+    issues: list[str] = []
+    if job.get("timeout-minutes") != 10:
+        issues.append(f"{PERFORMANCE_WORKFLOW} benchmark_evidence job must keep timeout-minutes at 10")
+    if job.get("if") != "github.event_name == 'pull_request'":
+        issues.append(f"{PERFORMANCE_WORKFLOW} benchmark_evidence must be PR-only")
+    run_text = _workflow_job_run_text(job)
+    issues.extend(
+        f"{PERFORMANCE_WORKFLOW} benchmark_evidence job must not run timing command: {command}"
+        for command, is_present in (
+            ("asv --config asv.conf.json continuous", "asv --config asv.conf.json continuous" in run_text),
+            ("single-revision ASV run", RETIRED_ASV_RUN_PATTERN.search(run_text) is not None),
+        )
+        if is_present
+    )
+    return issues
+
+
+def _check_pr_core_comparison_job(job: Any) -> list[str]:
+    if not isinstance(job, dict):
+        return [f"{PERFORMANCE_WORKFLOW} is missing pr_core_comparison job"]
+    issues: list[str] = []
+    if job.get("timeout-minutes") != 10:
+        issues.append(f"{PERFORMANCE_WORKFLOW} pr_core_comparison must keep timeout-minutes at 10")
+    if "benchmark_evidence" not in str(job.get("needs", "")):
+        issues.append(f"{PERFORMANCE_WORKFLOW} pr_core_comparison must consume benchmark_evidence")
+    if "--profile pr-core" not in _workflow_job_run_text(job):
+        issues.append(f"{PERFORMANCE_WORKFLOW} pr_core_comparison must select pr-core")
+    return issues
+
+
+def _check_targeted_comparison_job(job: Any) -> list[str]:
+    if not isinstance(job, dict):
+        return [f"{PERFORMANCE_WORKFLOW} is missing asv_comparison job"]
+    issues: list[str] = []
+    if "run-performance" not in str(job.get("if", "")):
+        issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job must be PR label gated")
+    run_text = _workflow_job_run_text(job)
+    if "asv --config asv.conf.json continuous" not in run_text:
+        issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job is missing timing command")
+    if RETIRED_ASV_RUN_PATTERN.search(run_text):
+        issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job must not use the retired ASV run command")
+    return issues
+
+
+def _check_scheduled_comparison_job(job: Any) -> list[str]:
+    if not isinstance(job, dict):
+        return [f"{PERFORMANCE_WORKFLOW} is missing scheduled_core_comparison job"]
+    issues: list[str] = []
+    if job.get("timeout-minutes") != 20:
+        issues.append(f"{PERFORMANCE_WORKFLOW} scheduled_core_comparison must keep timeout-minutes at 20")
+    if job.get("if") != "github.event_name == 'schedule'":
+        issues.append(f"{PERFORMANCE_WORKFLOW} scheduled_core_comparison must be schedule-only")
+    run_text = _workflow_job_run_text(job)
+    issues.extend(
+        f"{PERFORMANCE_WORKFLOW} scheduled_core_comparison is missing {required}"
+        for required in ("--profile stf-core", "git describe --tags --abbrev=0 --match '[0-9]*' HEAD^")
+        if required not in run_text
+    )
+    return issues
+
+
 def _check_performance_workflow() -> list[str]:
     issues = _check_text_mentions(
         PERFORMANCE_WORKFLOW,
@@ -769,43 +870,33 @@ def _check_performance_workflow() -> list[str]:
             "tools.benchmark_coverage details",
             "asv --config asv.conf.json check --verbose",
             "asv --config asv.conf.json continuous",
-            "asv --config asv.conf.json run",
             "tools/asv_summary.py",
             "python -m tools.performance_budget summarize",
             "tools/select_benchmark_filters.py",
-            "benchmark-coverage-detail.json",
-            "benchmark-performance-budget.json",
+            "--profile pr-core",
+            "--profile stf-core",
+            "--profile changed",
+            "pr-core-performance-evidence/",
+            "targeted-performance-evidence/",
+            "scheduled-core-performance-evidence/",
             "benchmark-evidence/",
-            "benchmark-asv-evidence/",
             "benchmark-filter.txt",
             "changed-files.txt",
             "run-performance",
+            "git describe --tags --abbrev=0 --match '[0-9]*' HEAD^",
         ),
         "performance evidence gate",
     )
+    workflow_text = _read_text(PERFORMANCE_WORKFLOW)
+    if RETIRED_ASV_RUN_PATTERN.search(workflow_text):
+        issues.append(f"{PERFORMANCE_WORKFLOW} must not use the retired ASV run command")
+    if RETIRED_REVISION_SELECTOR_PATTERN.search(workflow_text):
+        issues.append(f"{PERFORMANCE_WORKFLOW} must not use the retired single-revision selector")
     jobs = _workflow_jobs(PERFORMANCE_WORKFLOW)
-    evidence_job = jobs.get("benchmark_evidence")
-    if not isinstance(evidence_job, dict):
-        issues.append(f"{PERFORMANCE_WORKFLOW} is missing benchmark_evidence job")
-    else:
-        if evidence_job.get("timeout-minutes") != 10:
-            issues.append(f"{PERFORMANCE_WORKFLOW} benchmark_evidence job must keep timeout-minutes at 10")
-        evidence_run_text = _workflow_job_run_text(evidence_job)
-        for command in ("asv --config asv.conf.json continuous", "asv --config asv.conf.json run"):
-            if command in evidence_run_text:
-                issues.append(f"{PERFORMANCE_WORKFLOW} benchmark_evidence job must not run timing command: {command}")
-
-    asv_job = jobs.get("asv_comparison")
-    if not isinstance(asv_job, dict):
-        issues.append(f"{PERFORMANCE_WORKFLOW} is missing asv_comparison job")
-        return issues
-
-    if "run-performance" not in str(asv_job.get("if", "")):
-        issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job must be PR label gated")
-    asv_run_text = _workflow_job_run_text(asv_job)
-    for command in ("asv --config asv.conf.json continuous", "asv --config asv.conf.json run"):
-        if command not in asv_run_text:
-            issues.append(f"{PERFORMANCE_WORKFLOW} asv_comparison job is missing timing command: {command}")
+    issues.extend(_check_benchmark_evidence_job(jobs.get("benchmark_evidence")))
+    issues.extend(_check_pr_core_comparison_job(jobs.get("pr_core_comparison")))
+    issues.extend(_check_targeted_comparison_job(jobs.get("asv_comparison")))
+    issues.extend(_check_scheduled_comparison_job(jobs.get("scheduled_core_comparison")))
     return issues
 
 
@@ -819,7 +910,10 @@ def _check_pytorch_performance_workflow() -> list[str]:
             "dependency-group: ci-benchmark",
             "runtime-profile: torch-cpu",
             "asv --config asv-pytorch.conf.json check --verbose",
-            "asv --config asv-pytorch.conf.json run",
+            "asv --config asv-pytorch.conf.json continuous",
+            "benchmark-baseline-sha.txt",
+            "benchmark-candidate-sha.txt",
+            "benchmark-asv-summary.json",
             "pytorch-benchmark-evidence/",
         ),
         "PyTorch tensor performance evidence gate",

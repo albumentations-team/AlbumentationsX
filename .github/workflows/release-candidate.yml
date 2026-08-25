@@ -13,7 +13,7 @@ on:
         required: false
         type: string
       benchmark_filter:
-        description: "Optional ASV --bench regex. Leave empty for the full release-candidate comparison."
+        description: "Optional ASV --bench regex. Leave empty for the bounded stf-core comparison."
         required: false
         type: string
 
@@ -168,8 +168,15 @@ jobs:
         if [ -z "$CANDIDATE_REF" ]; then
           CANDIDATE_REF="HEAD"
         fi
+        if [ -z "$BENCH_FILTER" ]; then
+          BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile stf-core)"
+        fi
+        BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
+        CANDIDATE_SHA="$(git rev-parse "$CANDIDATE_REF")"
         echo "$BASELINE_REF" > "$GITHUB_WORKSPACE/release-candidate-performance-evidence/benchmark-baseline-ref.txt"
+        echo "$BASELINE_SHA" > "$GITHUB_WORKSPACE/release-candidate-performance-evidence/benchmark-baseline-sha.txt"
         echo "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/release-candidate-performance-evidence/benchmark-candidate-ref.txt"
+        echo "$CANDIDATE_SHA" > "$GITHUB_WORKSPACE/release-candidate-performance-evidence/benchmark-candidate-sha.txt"
         echo "$BENCH_FILTER" > "$GITHUB_WORKSPACE/release-candidate-performance-evidence/benchmark-filter.txt"
         ASV_COMMAND=(
           asv --config asv.conf.json continuous

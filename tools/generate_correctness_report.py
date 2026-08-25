@@ -214,6 +214,35 @@ def _has_performance_budget(summaries: list[dict[str, Any]]) -> bool:
     return any(summary.get("kind") == "performance-budget" for summary in summaries)
 
 
+def _has_asv_comparison(summaries: list[dict[str, Any]]) -> bool:
+    return any(summary.get("kind") == "asv-comparison" and not summary.get("missing") for summary in summaries)
+
+
+def _has_provided_performance_budget(summaries: list[dict[str, Any]]) -> bool:
+    return any(
+        summary.get("kind") == "performance-budget" and summary.get("comparison", {}).get("provided") is True
+        for summary in summaries
+    )
+
+
+def _format_comparison_refs(evidence_dir: Path | None) -> str:
+    if evidence_dir is None:
+        return "- ASV comparison refs: not provided in this evidence bundle"
+
+    def read_ref(name: str) -> str | None:
+        path = evidence_dir / name
+        if not path.exists():
+            return None
+        value = path.read_text().strip()
+        return value or None
+
+    baseline = read_ref("benchmark-baseline-ref.txt")
+    candidate = read_ref("benchmark-candidate-ref.txt")
+    if baseline is None or candidate is None:
+        return "- ASV comparison refs: not provided in this evidence bundle"
+    return f"- ASV comparison refs: `{baseline}` -> `{candidate}`"
+
+
 def _pytest_summary_issue(summary: dict[str, Any]) -> str | None:
     source = str(summary.get("source", "unknown source"))
     status = summary.get("status", "ok")
@@ -237,17 +266,12 @@ def _pytest_summary_issues(summaries: list[dict[str, Any]]) -> list[str]:
     return [issue for summary in summaries if (issue := _pytest_summary_issue(summary)) is not None]
 
 
-def _validate_required_evidence(
+def _missing_required_evidence(
     environments: list[dict[str, Any]],
     pytest_summaries: list[dict[str, Any]],
     benchmark_summaries: list[dict[str, Any]],
     security_summaries: list[dict[str, Any]],
-    *,
-    allow_missing_evidence: bool,
-) -> None:
-    if allow_missing_evidence:
-        return
-
+) -> list[str]:
     missing: list[str] = []
     if not environments:
         missing.append("environment*.json")
@@ -259,9 +283,27 @@ def _validate_required_evidence(
         missing.append("benchmark coverage detail JSON")
     if not _has_performance_budget(benchmark_summaries):
         missing.append("benchmark performance budget JSON")
+    if not _has_asv_comparison(benchmark_summaries):
+        missing.append("ASV comparison summary JSON")
+    if not _has_provided_performance_budget(benchmark_summaries):
+        missing.append("performance budget with comparison.provided=true")
     if not security_summaries:
         missing.append("security*.json")
+    return missing
 
+
+def _validate_required_evidence(
+    environments: list[dict[str, Any]],
+    pytest_summaries: list[dict[str, Any]],
+    benchmark_summaries: list[dict[str, Any]],
+    security_summaries: list[dict[str, Any]],
+    *,
+    allow_missing_evidence: bool,
+) -> None:
+    if allow_missing_evidence:
+        return
+
+    missing = _missing_required_evidence(environments, pytest_summaries, benchmark_summaries, security_summaries)
     if missing:
         msg = "Missing required release evidence artifact(s): " + ", ".join(missing)
         raise ValueError(msg)
@@ -362,6 +404,7 @@ Dependency sets tracked by the support policy: {dependency_sets}
 ## Performance
 
 {_format_benchmark_summary(benchmark_summaries)}
+{_format_comparison_refs(evidence_dir)}
 
 ## Security And Release Integrity
 

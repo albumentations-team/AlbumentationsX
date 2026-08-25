@@ -250,10 +250,10 @@ def _regression_severity(policy: BenchmarkPolicy, ratio: float | None) -> str:
 
 
 def _classify_regressions(asv_summary: dict[str, Any] | None) -> dict[str, Any]:
-    if asv_summary is None:
+    if asv_summary is None or asv_summary.get("missing") is True:
         return {
             "provided": False,
-            "asv_exit_code": None,
+            "asv_exit_code": None if asv_summary is None else asv_summary.get("asv_exit_code"),
             "release_blockers": [],
             "triage_items": [],
             "changed_below_budget": [],

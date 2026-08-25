@@ -110,6 +110,7 @@ ci-quality = [
 ]
 ci-release = [
     { name = "albu-spec" },
+    { name = "asv" },
     { name = "cyclonedx-bom" },
     { name = "deepdiff" },
     { name = "defusedxml" },
@@ -253,6 +254,7 @@ ci-quality = [
 ]
 ci-release = [
     { name = "albu-spec", specifier = ">=0.0.6" },
+    { name = "asv" },
     { name = "cyclonedx-bom", specifier = ">=7.3.1" },
     { name = "deepdiff", specifier = ">=9.1.0" },
     { name = "defusedxml", specifier = ">=0.7.1" },

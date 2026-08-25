@@ -276,9 +276,11 @@ the tooling emit an explicit unavailable diff artifact instead of silently
 skipping the comparison.
 
 Release-candidate verification has a dedicated Ubuntu performance comparison
-job. It runs ASV `continuous` against the configured baseline, writes raw ASV
-output, summarizes the comparison, and runs the performance budget in strict
-mode with `--require-comparison --fail-on-release-blockers`.
+job. A blank filter selects the bounded `stf-core` profile; an explicit filter
+is available for deep investigations. The job runs ASV `continuous` against
+the configured baseline, writes raw ASV output, summarizes the comparison, and
+runs the performance budget in strict mode with
+`--require-comparison --fail-on-release-blockers`.
 
 ## CI And Release Evidence
 
@@ -286,14 +288,14 @@ Pull requests:
 
 - required: benchmark coverage validation through `tools.benchmark_coverage`
 - required: ASV suite importability where the performance workflow runs
-- advisory: ASV before/after comparison on GitHub-hosted runners when runtime
-  or benchmark code changes; PR comparison starts with catalog smoke, core
-  pipeline, batch-route, and direct functional-kernel benchmarks, then adds
-  changed-family matrix benchmarks through `tools/select_benchmark_filters.py`
+- advisory: every runtime PR runs a base-to-head `pr-core` comparison covering
+  `TimeCorePipeline` and its target-processor/tracing variants
+- advisory: a PR labeled `run-performance` runs the `changed` profile selected
+  from its changed files; this is the deep family comparison route
 - benchmark infrastructure changes rely on ASV importability and benchmark
-  coverage validation in PR; full-suite comparison remains scheduled or manual
-- selected PR benchmark filter and changed-file evidence are uploaded with
-  benchmark artifacts when a comparison runs
+  coverage validation in PR; family matrices run only when selected explicitly
+- each timing route uploads exact baseline/candidate refs, the resolved filter,
+  raw ASV output, a summary, and a performance budget
 - performance-budget evidence classifies coverage status, benchmark stability,
   triage items, and release-blocking regressions
 - the default performance workflow evaluates the core budget with `--core-only`;
@@ -306,12 +308,14 @@ Pull requests:
 
 Nightly and scheduled runs:
 
-- full ASV evidence from the default-branch scheduled workflow
-- dedicated PyTorch Tensor ASV evidence from the PyTorch Tensor Performance
-  workflow
+- the default-branch schedule compares the previous reachable release tag with
+  the exact `main` commit using the bounded `stf-core` profile
+- the dedicated PyTorch Tensor schedule compares the previous release with the
+  exact candidate using its separate ASV config
 - environment JSON
 - benchmark coverage JSON
-- ASV result artifacts
+- exact baseline/candidate refs, resolved filter, raw ASV output, comparison
+  summary, performance budget, and ASV result artifacts
 
 Release candidates:
 
@@ -335,14 +339,19 @@ uv run asv --config asv.conf.json continuous \
   <candidate-ref>
 ```
 
-Manual workflow runs may pass `bench_filter` to scope a comparison or leave it
-empty to compare the full suite.
+Manual workflow runs may pass `bench_filter` to scope a comparison. An empty
+filter selects `stf-core`; a full-family run requires an explicit filter so the
+requested cost is visible before the run starts.
 
 Dedicated PyTorch Tensor benchmarks can be run locally with:
 
 ```bash
 cd benchmark
-uv run asv --config asv-pytorch.conf.json run --quick --show-stderr
+BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' HEAD^)"
+uv run asv --config asv-pytorch.conf.json continuous \
+  --quick --show-stderr \
+  --attribute repeat=1 --attribute number=1 \
+  "$BASELINE_REF" HEAD
 ```
 
 The raw ASV comparison text is the source artifact. The compact JSON summary

@@ -2,14 +2,8 @@ name: Performance
 
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-      - labeled
-    branches:
-      - main
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    branches: [main]
     paths:
       - "albumentations/**"
       - "benchmark/**"
@@ -23,15 +17,15 @@ on:
   workflow_dispatch:
     inputs:
       baseline_ref:
-        description: "Optional git ref/SHA for the before baseline. Leave empty to run evidence for the selected ref only."
+        description: "Optional git ref/SHA for the before baseline. Leave empty to use the previous release tag."
         required: false
         type: string
       candidate_ref:
-        description: "Optional git ref/SHA for the after candidate. Defaults to the selected workflow ref."
+        description: "Optional git ref/SHA for the after candidate. Defaults to HEAD."
         required: false
         type: string
       bench_filter:
-        description: "Optional ASV --bench regex for manual baseline/candidate comparisons. Leave empty for the full suite."
+        description: "Optional ASV --bench regex. Leave empty to run the bounded stf-core profile."
         required: false
         type: string
 
@@ -45,6 +39,7 @@ concurrency:
 jobs:
   benchmark_evidence:
     name: ASV benchmark evidence
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 10
@@ -71,26 +66,26 @@ jobs:
         python -m tools.benchmark_coverage details \
           --output benchmark-evidence/benchmark-coverage-detail.json
     - name: Compare benchmark coverage with baseline
-      if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '')
       env:
-        EVENT_NAME: ${{ github.event_name }}
-        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
-        write_unavailable_diff() {
-          python - "$1" "$2" <<'PY'
+        BASE_WORKTREE="$RUNNER_TEMP/benchmark-coverage-base"
+        git worktree add --detach "$BASE_WORKTREE" "$PR_BASE_SHA"
+        if PYTHONPATH="$BASE_WORKTREE:$BASE_WORKTREE/benchmark" python "$BASE_WORKTREE/tools/benchmark_coverage.py" details \
+          --output "$GITHUB_WORKSPACE/benchmark-evidence/benchmark-coverage-detail-base.json"; then
+          python -m tools.benchmark_coverage diff \
+            --base-detail benchmark-evidence/benchmark-coverage-detail-base.json \
+            --output benchmark-evidence/benchmark-coverage-diff.json
+        else
+          python - <<'PY'
         import json
-        import sys
         from pathlib import Path
 
-        output = Path(sys.argv[1])
-        reason = sys.argv[2]
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(
+        Path("benchmark-evidence/benchmark-coverage-diff.json").write_text(
             json.dumps(
                 {
                     "kind": "benchmark-coverage-diff",
-                    "reason": reason,
+                    "reason": "baseline benchmark coverage detail could not be generated",
                     "schema_version": 1,
                     "summary": {"status": "unavailable"},
                 },
@@ -100,33 +95,8 @@ jobs:
             + "\n",
         )
         PY
-        }
-
-        if [ "$EVENT_NAME" = "pull_request" ]; then
-          BASELINE_REF="$PR_BASE_SHA"
-        else
-          BASELINE_REF="$INPUT_BASELINE_REF"
         fi
-
-        if git cat-file -e "$BASELINE_REF:tools/benchmark_coverage.py"; then
-          BASE_WORKTREE="$RUNNER_TEMP/benchmark-coverage-base"
-          git worktree add --detach "$BASE_WORKTREE" "$BASELINE_REF"
-          if PYTHONPATH="$BASE_WORKTREE:$BASE_WORKTREE/benchmark" python "$BASE_WORKTREE/tools/benchmark_coverage.py" details \
-            --output "$GITHUB_WORKSPACE/benchmark-evidence/benchmark-coverage-detail-base.json"; then
-            python -m tools.benchmark_coverage diff \
-              --base-detail benchmark-evidence/benchmark-coverage-detail-base.json \
-              --output benchmark-evidence/benchmark-coverage-diff.json
-          else
-            write_unavailable_diff \
-              benchmark-evidence/benchmark-coverage-diff.json \
-              "baseline benchmark coverage detail could not be generated"
-          fi
-          git worktree remove --force "$BASE_WORKTREE"
-        else
-          write_unavailable_diff \
-            benchmark-evidence/benchmark-coverage-diff.json \
-            "baseline ref does not include tools/benchmark_coverage.py"
-        fi
+        git worktree remove --force "$BASE_WORKTREE"
     - name: Register ASV machine profile
       working-directory: benchmark
       run: asv --config asv.conf.json machine --yes
@@ -149,10 +119,87 @@ jobs:
         path: benchmark-evidence/
         if-no-files-found: ignore
 
+  pr_core_comparison:
+    name: PR core performance smoke
+    needs: benchmark_evidence
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+    - name: Checkout
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        fetch-depth: 0
+    - name: Download benchmark contract evidence
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: benchmark-evidence
+        path: benchmark-evidence
+    - name: Set up benchmark environment
+      uses: ./.github/actions/setup-ci
+      with:
+        python-version: "3.12"
+        dependency-group: ci-benchmark
+        runtime-profile: torch-cpu
+    - name: Collect comparison environment evidence
+      run: >
+        python tools/collect_test_environment.py
+        --output pr-core-performance-evidence/environment-pr-core.json
+        --command "PR core ASV comparison"
+    - name: Resolve PR core comparison
+      working-directory: benchmark
+      env:
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        BASELINE_SHA="$(git rev-parse "$PR_BASE_SHA")"
+        CANDIDATE_SHA="$(git rev-parse "$PR_HEAD_SHA")"
+        FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile pr-core)"
+        mkdir -p "$GITHUB_WORKSPACE/pr-core-performance-evidence"
+        printf '%s\n' "$PR_BASE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-baseline-ref.txt"
+        printf '%s\n' "$BASELINE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-baseline-sha.txt"
+        printf '%s\n' "$PR_HEAD_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-candidate-ref.txt"
+        printf '%s\n' "$CANDIDATE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-candidate-sha.txt"
+        printf '%s\n' "$FILTER" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-filter.txt"
+        set -o pipefail
+        ASV_EXIT_CODE=0
+        asv --config asv.conf.json continuous \
+          --factor 1.05 --split --show-stderr \
+          --attribute repeat=1 --attribute number=1 \
+          --bench "$FILTER" "$PR_BASE_SHA" "$PR_HEAD_SHA" \
+          2>&1 | tee "$GITHUB_WORKSPACE/pr-core-performance-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
+        printf '%s\n' "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/asv-continuous-exit-code.txt"
+    - name: Summarize PR core comparison
+      if: always()
+      run: |
+        ASV_EXIT_CODE="$(cat pr-core-performance-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
+        python tools/asv_summary.py \
+          --input pr-core-performance-evidence/asv-continuous.txt \
+          --output pr-core-performance-evidence/benchmark-asv-summary.json \
+          --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
+    - name: Classify PR core performance budget
+      if: always()
+      run: >
+        python -m tools.performance_budget summarize
+        --coverage-summary benchmark-evidence/benchmark-coverage.json
+        --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
+        --asv-summary pr-core-performance-evidence/benchmark-asv-summary.json
+        --core-only
+        --output pr-core-performance-evidence/benchmark-performance-budget.json
+    - name: Upload PR core performance evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: pr-core-performance-evidence
+        path: |
+          pr-core-performance-evidence/
+          benchmark/.asv/results/
+        if-no-files-found: ignore
+
   asv_comparison:
-    name: ASV comparison evidence
+    name: Targeted ASV comparison
     if: >
-      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
       contains(github.event.pull_request.labels.*.name, 'run-performance'))
@@ -173,22 +220,21 @@ jobs:
     - name: Collect ASV environment evidence
       run: >
         python tools/collect_test_environment.py
-        --output benchmark-asv-evidence/environment-asv.json
-        --command "ASV timing evidence"
+        --output targeted-performance-evidence/environment-asv.json
+        --command "targeted ASV comparison"
     - name: Collect benchmark coverage evidence
       run: |
         python -m tools.benchmark_coverage summary \
-          --output benchmark-asv-evidence/benchmark-coverage.json
+          --output targeted-performance-evidence/benchmark-coverage.json
         python -m tools.benchmark_coverage details \
-          --output benchmark-asv-evidence/benchmark-coverage-detail.json
+          --output targeted-performance-evidence/benchmark-coverage-detail.json
     - name: Register ASV machine profile
       working-directory: benchmark
       run: asv --config asv.conf.json machine --yes
     - name: Check benchmark suite importability
       working-directory: benchmark
       run: asv --config asv.conf.json check --verbose
-    - name: Compare baseline and candidate benchmarks
-      if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '')
+    - name: Compare targeted benchmarks
       working-directory: benchmark
       env:
         EVENT_NAME: ${{ github.event_name }}
@@ -202,99 +248,140 @@ jobs:
         if [ "$EVENT_NAME" = "pull_request" ]; then
           BASELINE_REF="$PR_BASE_SHA"
           CANDIDATE_REF="$PR_HEAD_SHA"
-          git diff --name-only "$BASELINE_REF" "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/benchmark-asv-evidence/changed-files.txt"
-          BENCH_FILTER="$(
-            python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" \
-              --changed-files "$GITHUB_WORKSPACE/benchmark-asv-evidence/changed-files.txt"
-          )"
+          git diff --name-only "$BASELINE_REF" "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/targeted-performance-evidence/changed-files.txt"
+          BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" \
+            --profile changed \
+            --changed-files "$GITHUB_WORKSPACE/targeted-performance-evidence/changed-files.txt")"
         else
           BASELINE_REF="$INPUT_BASELINE_REF"
-          CANDIDATE_REF="$INPUT_CANDIDATE_REF"
-          BENCH_FILTER="$INPUT_BENCH_FILTER"
-          if [ -z "$CANDIDATE_REF" ]; then
-            CANDIDATE_REF="HEAD"
+          if [ -z "$BASELINE_REF" ]; then
+            BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' HEAD^)"
+          fi
+          CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"
+          BENCH_FILTER="${INPUT_BENCH_FILTER:-}"
+          if [ -z "$BENCH_FILTER" ]; then
+            BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile stf-core)"
           fi
         fi
-        echo "$BENCH_FILTER" > "$GITHUB_WORKSPACE/benchmark-asv-evidence/benchmark-filter.txt"
+        BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
+        CANDIDATE_SHA="$(git rev-parse "$CANDIDATE_REF")"
+        printf '%s\n' "$BASELINE_REF" > "$GITHUB_WORKSPACE/targeted-performance-evidence/benchmark-baseline-ref.txt"
+        printf '%s\n' "$BASELINE_SHA" > "$GITHUB_WORKSPACE/targeted-performance-evidence/benchmark-baseline-sha.txt"
+        printf '%s\n' "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/targeted-performance-evidence/benchmark-candidate-ref.txt"
+        printf '%s\n' "$CANDIDATE_SHA" > "$GITHUB_WORKSPACE/targeted-performance-evidence/benchmark-candidate-sha.txt"
+        printf '%s\n' "$BENCH_FILTER" > "$GITHUB_WORKSPACE/targeted-performance-evidence/benchmark-filter.txt"
         ASV_EXIT_CODE=0
-        ASV_COMMAND=(
-          asv --config asv.conf.json continuous
-          --factor 1.05
-          --split
-          --show-stderr
-          --attribute repeat=1
-          --attribute number=1
-        )
-        if [ -n "$BENCH_FILTER" ]; then
-          ASV_COMMAND+=(--bench "$BENCH_FILTER")
-        fi
-        ASV_COMMAND+=("$BASELINE_REF" "$CANDIDATE_REF")
-        "${ASV_COMMAND[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/benchmark-asv-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
-        echo "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/benchmark-asv-evidence/asv-continuous-exit-code.txt"
-        if [ "$ASV_EXIT_CODE" -ne 0 ]; then
-          echo "::warning::ASV comparison reported performance changes. See benchmark-asv-evidence/asv-continuous.txt and benchmark-asv-summary.json."
-        fi
-    - name: Summarize ASV comparison evidence
-      if: >
-        always() &&
-        (github.event_name == 'pull_request' ||
-        (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != ''))
+        asv --config asv.conf.json continuous \
+          --factor 1.05 --split --show-stderr \
+          --attribute repeat=1 --attribute number=1 \
+          --bench "$BENCH_FILTER" "$BASELINE_REF" "$CANDIDATE_REF" \
+          2>&1 | tee "$GITHUB_WORKSPACE/targeted-performance-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
+        printf '%s\n' "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/targeted-performance-evidence/asv-continuous-exit-code.txt"
+    - name: Summarize targeted comparison
+      if: always()
       run: |
-        ASV_EXIT_CODE="$(cat benchmark-asv-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
-        if [ -n "$ASV_EXIT_CODE" ]; then
-          python tools/asv_summary.py \
-            --input benchmark-asv-evidence/asv-continuous.txt \
-            --output benchmark-asv-evidence/benchmark-asv-summary.json \
-            --asv-exit-code "$ASV_EXIT_CODE"
-        else
-          python tools/asv_summary.py \
-            --input benchmark-asv-evidence/asv-continuous.txt \
-            --output benchmark-asv-evidence/benchmark-asv-summary.json \
-            --allow-missing
-        fi
-    - name: Classify ASV comparison budget evidence
-      if: >
-        always() &&
-        (github.event_name == 'pull_request' ||
-        (github.event_name == 'workflow_dispatch' && inputs.baseline_ref != ''))
-      env:
-        EVENT_NAME: ${{ github.event_name }}
-        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
-      run: |
-        BUDGET_COMMAND=(
-          python -m tools.performance_budget summarize
-          --coverage-summary benchmark-asv-evidence/benchmark-coverage.json
-          --coverage-detail benchmark-asv-evidence/benchmark-coverage-detail.json
-          --output benchmark-asv-evidence/benchmark-performance-budget.json
-          --core-only
-        )
-        if [ -f benchmark-asv-evidence/benchmark-asv-summary.json ]; then
-          BUDGET_COMMAND+=(--asv-summary benchmark-asv-evidence/benchmark-asv-summary.json)
-        fi
-        if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_BASELINE_REF" ]; then
-          BUDGET_COMMAND+=(--require-comparison --fail-on-release-blockers)
-        fi
-        "${BUDGET_COMMAND[@]}"
-    - name: Run scheduled benchmark evidence
-      if: >
-        github.event_name == 'schedule' ||
-        (github.event_name == 'workflow_dispatch' && inputs.baseline_ref == '')
-      working-directory: benchmark
-      run: |
-        set -o pipefail
-        asv --config asv.conf.json run \
-          --show-stderr \
-          --durations 20 \
-          --attribute repeat=1 \
-          --attribute number=1 \
-          'HEAD^!' \
-          2>&1 | tee "$GITHUB_WORKSPACE/benchmark-asv-evidence/asv-run.txt"
-    - name: Upload ASV artifacts
+        ASV_EXIT_CODE="$(cat targeted-performance-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
+        python tools/asv_summary.py \
+          --input targeted-performance-evidence/asv-continuous.txt \
+          --output targeted-performance-evidence/benchmark-asv-summary.json \
+          --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
+    - name: Classify targeted performance budget
+      if: always()
+      run: >
+        python -m tools.performance_budget summarize
+        --coverage-summary targeted-performance-evidence/benchmark-coverage.json
+        --coverage-detail targeted-performance-evidence/benchmark-coverage-detail.json
+        --asv-summary targeted-performance-evidence/benchmark-asv-summary.json
+        --core-only
+        --output targeted-performance-evidence/benchmark-performance-budget.json
+    - name: Upload targeted performance evidence
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
-        name: benchmark-asv-evidence
+        name: targeted-performance-evidence
         path: |
-          benchmark-asv-evidence/
+          targeted-performance-evidence/
+          benchmark/.asv/results/
+        if-no-files-found: ignore
+
+  scheduled_core_comparison:
+    name: Scheduled STF core performance
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        fetch-depth: 0
+    - name: Set up benchmark environment
+      uses: ./.github/actions/setup-ci
+      with:
+        python-version: "3.12"
+        dependency-group: ci-benchmark
+        runtime-profile: torch-cpu
+    - name: Collect scheduled benchmark environment evidence
+      run: >
+        python tools/collect_test_environment.py
+        --output scheduled-core-performance-evidence/environment-scheduled.json
+        --command "scheduled STF core ASV comparison"
+    - name: Collect scheduled benchmark coverage evidence
+      run: |
+        python -m tools.benchmark_coverage summary \
+          --output scheduled-core-performance-evidence/benchmark-coverage.json
+        python -m tools.benchmark_coverage details \
+          --output scheduled-core-performance-evidence/benchmark-coverage-detail.json
+    - name: Register ASV machine profile
+      working-directory: benchmark
+      run: asv --config asv.conf.json machine --yes
+    - name: Check benchmark suite importability
+      working-directory: benchmark
+      run: asv --config asv.conf.json check --verbose
+    - name: Compare previous release with main
+      working-directory: benchmark
+      run: |
+        set -o pipefail
+        BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' HEAD^)"
+        CANDIDATE_REF="HEAD"
+        BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
+        CANDIDATE_SHA="$(git rev-parse "$CANDIDATE_REF")"
+        BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile stf-core)"
+        printf '%s\n' "$BASELINE_REF" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/benchmark-baseline-ref.txt"
+        printf '%s\n' "$BASELINE_SHA" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/benchmark-baseline-sha.txt"
+        printf '%s\n' "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/benchmark-candidate-ref.txt"
+        printf '%s\n' "$CANDIDATE_SHA" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/benchmark-candidate-sha.txt"
+        printf '%s\n' "$BENCH_FILTER" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/benchmark-filter.txt"
+        ASV_EXIT_CODE=0
+        asv --config asv.conf.json continuous \
+          --factor 1.05 --split --show-stderr \
+          --attribute repeat=1 --attribute number=1 \
+          --bench "$BENCH_FILTER" "$BASELINE_REF" "$CANDIDATE_REF" \
+          2>&1 | tee "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
+        printf '%s\n' "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/asv-continuous-exit-code.txt"
+    - name: Summarize scheduled comparison
+      if: always()
+      run: |
+        ASV_EXIT_CODE="$(cat scheduled-core-performance-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
+        python tools/asv_summary.py \
+          --input scheduled-core-performance-evidence/asv-continuous.txt \
+          --output scheduled-core-performance-evidence/benchmark-asv-summary.json \
+          --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
+    - name: Classify scheduled performance budget
+      if: always()
+      run: >
+        python -m tools.performance_budget summarize
+        --coverage-summary scheduled-core-performance-evidence/benchmark-coverage.json
+        --coverage-detail scheduled-core-performance-evidence/benchmark-coverage-detail.json
+        --asv-summary scheduled-core-performance-evidence/benchmark-asv-summary.json
+        --core-only
+        --output scheduled-core-performance-evidence/benchmark-performance-budget.json
+    - name: Upload scheduled performance evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: scheduled-core-performance-evidence
+        path: |
+          scheduled-core-performance-evidence/
           benchmark/.asv/results/
         if-no-files-found: ignore

@@ -207,6 +207,7 @@ ci-benchmark = [
   "opencv-python-headless>=5.0.0.93",
 ]
 ci-release = [
+  { include-group = "ci-benchmark" },
   { include-group = "ci-test" },
   { include-group = "ci-package" },
   { include-group = "ci-security" },

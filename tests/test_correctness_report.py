@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from tools.generate_correctness_report import generate_report
+from tools.generate_correctness_report import _validate_required_evidence, generate_report
 
 
 def _write_json(path, data: dict) -> None:
@@ -83,7 +83,7 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
                 "smoke_only_transforms": 0,
             },
             "comparison": {
-                "provided": False,
+                "provided": True,
                 "release_blockers": [],
                 "triage_items": [],
             },
@@ -91,6 +91,18 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
             "status": "ok",
         },
     )
+    _write_json(
+        tmp_path / "benchmark-asv-summary-local.json",
+        {
+            "kind": "asv-comparison",
+            "missing": False,
+            "asv_exit_code": 0,
+            "status": {"performance_decreased": False},
+            "totals": {"changed": 0, "improvements": 0, "regressions": 0},
+        },
+    )
+    (tmp_path / "benchmark-baseline-ref.txt").write_text("2.4.2\n")
+    (tmp_path / "benchmark-candidate-ref.txt").write_text("release-head\n")
     _write_json(tmp_path / "security-local.json", {})
 
     report = generate_report(tmp_path)
@@ -104,6 +116,7 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
     assert "0 coverage contract failure(s)" in report
     assert "Security summary: provided" in report
     assert "CodeQL: managed through path-scoped advanced workflows" in report
+    assert "ASV comparison refs: `2.4.2` -> `release-head`" in report
 
 
 @pytest.mark.parametrize(
@@ -158,12 +171,53 @@ def test_generate_report_rejects_incomplete_or_failing_pytest_evidence(tmp_path,
         tmp_path / "benchmark-performance-budget-local.json",
         {
             "coverage": {"contract_failures": 0, "public_transforms": 1, "smoke_only_transforms": 0},
-            "comparison": {"provided": False, "release_blockers": [], "triage_items": []},
+            "comparison": {"provided": True, "release_blockers": [], "triage_items": []},
             "kind": "performance-budget",
             "status": "ok",
+        },
+    )
+    _write_json(
+        tmp_path / "benchmark-asv-summary-local.json",
+        {
+            "kind": "asv-comparison",
+            "missing": False,
+            "asv_exit_code": 0,
+            "status": {"performance_decreased": False},
+            "totals": {"changed": 0, "improvements": 0, "regressions": 0},
         },
     )
     _write_json(tmp_path / "security-local.json", {})
 
     with pytest.raises(ValueError, match=match):
         generate_report(tmp_path)
+
+
+def test_generate_report_rejects_missing_asv_comparison_in_strict_mode() -> None:
+    with pytest.raises(ValueError, match="ASV comparison summary JSON"):
+        _validate_required_evidence(
+            [{}],
+            [{"missing": False, "status": "ok", "totals": {}}],
+            [
+                {"asv_cases": 1, "coverage_depth": {}, "memory_benchmarks": 1},
+                {"kind": "benchmark-coverage-detail", "summary": {}, "layer_counts": {}},
+                {"kind": "performance-budget", "comparison": {"provided": True}},
+            ],
+            [{}],
+            allow_missing_evidence=False,
+        )
+
+
+def test_generate_report_rejects_budget_without_provided_comparison() -> None:
+    with pytest.raises(ValueError, match=r"comparison\.provided=true"):
+        _validate_required_evidence(
+            [{}],
+            [{"missing": False, "status": "ok", "totals": {}}],
+            [
+                {"asv_cases": 1, "coverage_depth": {}, "memory_benchmarks": 1},
+                {"kind": "benchmark-coverage-detail", "summary": {}, "layer_counts": {}},
+                {"kind": "asv-comparison", "missing": False},
+                {"kind": "performance-budget", "comparison": {"provided": False}},
+            ],
+            [{}],
+            allow_missing_evidence=False,
+        )

@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from tools.ci_matrix import CI_FOUNDATION_SHA, TORCH_RUNTIME_JOBS
+from tools.ci_matrix import CI_FOUNDATION_SHA, TORCH_RUNTIME_JOBS, _check_ci_dependency_groups
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SETUP_ACTION = REPO_ROOT / ".github" / "actions" / "setup-ci" / "action.yml"
@@ -62,3 +62,9 @@ def test_workflows_use_only_declared_groups_and_no_inline_torch_installs() -> No
                 }
 
         assert re.search(r"(?:uv |python -m )?pip install[^\n]*torch", text, flags=re.IGNORECASE) is None
+
+
+def test_dependency_group_check_reports_broken_include_reference() -> None:
+    issues = _check_ci_dependency_groups({"ci-release": [{"include-group": "ci-benhcmark"}]})
+
+    assert "refers to non-existent group 'ci-benhcmark'" in "\n".join(issues)

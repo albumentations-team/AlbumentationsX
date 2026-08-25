@@ -42,7 +42,10 @@ environment. It performs the release-specific work:
    `albumentations` outside the checkout.
 5. Checks `uv.lock` freshness.
 6. Verifies golden regression vectors and runs the regression/property suite.
-7. Collects benchmark coverage and classifies the core performance profile.
+7. Collects benchmark coverage and compares the previous reachable release
+   tag with the release candidate using the bounded `stf-core` profile. The
+   preflight stores exact refs, raw ASV output, a comparison summary, and a
+   strict performance budget; missing comparison evidence blocks the bundle.
 8. Audits locked runtime dependencies and GitHub Actions workflows.
 9. Generates the CycloneDX SBOM and Correctness & Compatibility Report.
 10. Creates checksums and an immutable release manifest.
@@ -182,8 +185,9 @@ Never publish different bytes under an existing version.
 ## Optional Release Candidate Verification
 
 `.github/workflows/release-candidate.yml` remains available for unusual,
-high-risk releases that need a full manual matrix or ASV comparison. It is not
-part of the normal release path.
+high-risk releases. Its blank benchmark filter selects `stf-core`; maintainers
+can provide an explicit regex when a full-family comparison is justified. It
+is not part of the normal release path.
 
 ## Security Releases
 

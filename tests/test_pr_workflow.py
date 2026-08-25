@@ -154,6 +154,13 @@ def test_version_bump_preflight_builds_publishable_bundle_in_core_profile() -> N
     assert "python -m tools.performance_budget summarize" in run_text
     assert "python tools/performance_budget.py" not in run_text
     assert "--core-only" in run_text
+    assert "asv --config asv.conf.json continuous" in run_text
+    assert "--profile stf-core" in run_text
+    assert "benchmark-asv-summary.json" in run_text
+    assert "benchmark-baseline-sha.txt" in run_text
+    assert "benchmark-candidate-sha.txt" in run_text
+    assert "--require-comparison" in run_text
+    assert "--fail-on-release-blockers" in run_text
     assert "--check performance_core" in run_text
     assert "release-preflight=${{ needs.release_preflight.result }}" in policy_run_text
 

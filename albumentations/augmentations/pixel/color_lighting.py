@@ -234,9 +234,20 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
             plasma_pattern,
         )
 
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
+    def apply_to_images(
+        self,
+        images: ImageType,
+        brightness_factor: float,
+        contrast_factor: float,
+        plasma_pattern: np.ndarray,
+        **params: Any,
+    ) -> ImageType:
+        return fpixel.apply_plasma_brightness_contrast_batch(
+            images,
+            brightness_factor,
+            contrast_factor,
+            plasma_pattern,
+        )
 
 
 class PlasmaShadow(ImageOnlyTransform):

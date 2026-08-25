@@ -24,6 +24,10 @@ BATCH_SIZES = (4, 8)
 ILLUMINATION_BATCH_SIZES = (2, 4, 8, 16)
 ILLUMINATION_MODES = ("linear", "corner", "gaussian")
 ILLUMINATION_NAMES = tuple(f"illumination_{mode}" for mode in ILLUMINATION_MODES)
+PLASMA_BRIGHTNESS_CONTRAST_BATCH_SIZES = (1, 2, 4, 5, 8, 16)
+PLASMA_BRIGHTNESS_CONTRAST_BRIGHTNESS_ONLY_BATCH_SIZES = (2, 3, 4, 5)
+PLASMA_BRIGHTNESS_CONTRAST_ZERO_BATCH_SIZES = (1, 2, 4, 16)
+PLASMA_BRIGHTNESS_CONTRAST_SIZES = ("small", "medium", "large")
 RANDOM_SHADOW_BATCH_SIZES = (2, 4, 8, 16)
 RANDOM_SHADOW_SIZES = ("small", "medium", "large")
 SPATTER_BATCH_SIZES = (2, 4, 8, 16)
@@ -105,6 +109,45 @@ MASK_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     "resize": BatchSpec(lambda: albumentations.Resize(height=128, width=128, p=1.0)),
 }
 
+PLASMA_BRIGHTNESS_CONTRAST_TRANSFORMS: Mapping[str, BatchSpec] = {
+    "plasma_brightness_contrast": BatchSpec(
+        partial(
+            albumentations.PlasmaBrightnessContrast,
+            brightness_range=(0.19, 0.19),
+            contrast_range=(-0.23, -0.23),
+            plasma_size=256,
+            roughness=2.0,
+            p=1.0,
+        ),
+        sizes=PLASMA_BRIGHTNESS_CONTRAST_SIZES,
+        batch_sizes=PLASMA_BRIGHTNESS_CONTRAST_BATCH_SIZES,
+    ),
+    "plasma_brightness_contrast_zero": BatchSpec(
+        partial(
+            albumentations.PlasmaBrightnessContrast,
+            brightness_range=(0.0, 0.0),
+            contrast_range=(0.0, 0.0),
+            plasma_size=256,
+            roughness=2.0,
+            p=1.0,
+        ),
+        sizes=PLASMA_BRIGHTNESS_CONTRAST_SIZES,
+        batch_sizes=PLASMA_BRIGHTNESS_CONTRAST_ZERO_BATCH_SIZES,
+    ),
+    "plasma_brightness_contrast_brightness_only": BatchSpec(
+        partial(
+            albumentations.PlasmaBrightnessContrast,
+            brightness_range=(0.19, 0.19),
+            contrast_range=(0.0, 0.0),
+            plasma_size=256,
+            roughness=2.0,
+            p=1.0,
+        ),
+        sizes=PLASMA_BRIGHTNESS_CONTRAST_SIZES,
+        batch_sizes=PLASMA_BRIGHTNESS_CONTRAST_BRIGHTNESS_ONLY_BATCH_SIZES,
+    ),
+}
+
 
 def _cases(transforms: Mapping[str, BatchSpec], target_route: str) -> tuple[str, ...]:
     return tuple(
@@ -122,6 +165,28 @@ ILLUMINATION_DIRECT_CASES = tuple(
     case_id.replace("|images|", "|direct_images|", 1)
     for case_id in IMAGE_BATCH_CASES
     if case_id.startswith(tuple(f"{name}|" for name in ILLUMINATION_NAMES))
+)
+PLASMA_BRIGHTNESS_CONTRAST_IMAGE_CASES = _cases(PLASMA_BRIGHTNESS_CONTRAST_TRANSFORMS, "images")
+PLASMA_BRIGHTNESS_CONTRAST_DIRECT_CASES = tuple(
+    case_id.replace("|images|", "|direct_images|", 1) for case_id in PLASMA_BRIGHTNESS_CONTRAST_IMAGE_CASES
+)
+PLASMA_BRIGHTNESS_CONTRAST_VOLUME_CASES = (
+    *(
+        case_id.replace("|images|", "|volume|", 1)
+        for case_id in PLASMA_BRIGHTNESS_CONTRAST_IMAGE_CASES
+        if case_id.endswith("|1")
+    ),
+    *(
+        f"plasma_brightness_contrast_zero|volume|large|{channels}|{dtype_name}|16"
+        for channels in (1, 5)
+        for dtype_name in DTYPES
+    ),
+)
+PLASMA_BRIGHTNESS_CONTRAST_PEAK_MEMORY_CASES = tuple(
+    f"{route}|{dtype_name}|{branch}"
+    for route in ("direct", "compose")
+    for dtype_name in DTYPES
+    for branch in ("normal_n16", "zero_n16", "normal_n1")
 )
 RANDOM_SHADOW_DIRECT_CASES = tuple(
     case_id.replace("|images|", "|direct_images|", 1)
@@ -158,6 +223,19 @@ def _make_image_batch(
     return np.stack([make_image(size_name, channels, dtype) for _ in range(batch_size)], axis=0)
 
 
+def _plasma_brightness_contrast_params(
+    images: np.ndarray,
+    name: str = "plasma_brightness_contrast",
+) -> dict[str, float | np.ndarray]:
+    is_zero = name == "plasma_brightness_contrast_zero"
+    is_brightness_only = name == "plasma_brightness_contrast_brightness_only"
+    return {
+        "brightness_factor": 0.0 if is_zero else 0.19,
+        "contrast_factor": 0.0 if is_zero or is_brightness_only else -0.23,
+        "plasma_pattern": np.random.default_rng(137).random(images.shape[1:3], dtype=np.float32),
+    }
+
+
 class TimeImageBatchMatrix:
     """Benchmark public `images` batch routes over size, channel, dtype, and batch-size variants."""
 
@@ -190,6 +268,60 @@ class TimeIlluminationDirectBatchMatrix:
 
     def time_apply_to_images(self, case_id: str) -> None:
         self.transform.apply_to_images(self.images, **self.params)
+
+
+class TimeBatchPlasmaBrightnessContrastDirectMatrix:
+    """Benchmark PlasmaBrightnessContrast's direct batch route over the issue #47 matrix."""
+
+    params = (PLASMA_BRIGHTNESS_CONTRAST_DIRECT_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = PLASMA_BRIGHTNESS_CONTRAST_TRANSFORMS[name].factory()
+        self.images = _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)
+        self.params = _plasma_brightness_contrast_params(self.images, name)
+
+    def time_apply_to_images(self, case_id: str) -> None:
+        self.transform.apply_to_images(self.images, **self.params)
+
+
+class TimeBatchPlasmaBrightnessContrastImageMatrix:
+    """Benchmark PlasmaBrightnessContrast's public Compose `images` route over the issue #47 matrix."""
+
+    params = (PLASMA_BRIGHTNESS_CONTRAST_IMAGE_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = albumentations.Compose(
+            [PLASMA_BRIGHTNESS_CONTRAST_TRANSFORMS[name].factory()],
+            seed=137,
+            strict=True,
+        )
+        self.data = {"images": _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)}
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
+
+
+class TimeBatchPlasmaBrightnessContrastVolumeMatrix:
+    """Benchmark PlasmaBrightnessContrast's public Compose `volume` singleton and zero sentinels."""
+
+    params = (PLASMA_BRIGHTNESS_CONTRAST_VOLUME_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
+        self.transform = albumentations.Compose(
+            [PLASMA_BRIGHTNESS_CONTRAST_TRANSFORMS[name].factory()],
+            seed=137,
+            strict=True,
+        )
+        self.data = {"volume": _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)}
+
+    def time_transform(self, case_id: str) -> None:
+        self.transform(**self.data)
 
 
 class TimeSpatterDirectBatchMatrix:
@@ -316,6 +448,31 @@ class PeakMemoryRandomShadowBatchMatrix:
             self.params = self.transform.get_applied_params()
 
     def peakmem_random_shadow_batch_large_multichannel(self, case_id: str) -> None:
+        if self.route == "compose":
+            self.compose(images=self.images)
+        else:
+            self.transform.apply_to_images(self.images, **self.params)
+
+
+class PeakMemoryPlasmaBrightnessContrastBatchMatrix:
+    """Measure singleton, zero, and retained PlasmaBrightnessContrast batch working sets."""
+
+    params = (PLASMA_BRIGHTNESS_CONTRAST_PEAK_MEMORY_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        route, dtype_name, branch = case_id.split("|")
+        self.route = route
+        batch_size = 1 if branch == "normal_n1" else 16
+        name = "plasma_brightness_contrast_zero" if branch == "zero_n16" else "plasma_brightness_contrast"
+        self.images = _make_image_batch("large", 5, dtype_from_name(dtype_name), batch_size)
+        self.transform = PLASMA_BRIGHTNESS_CONTRAST_TRANSFORMS[name].factory()
+        if route == "compose":
+            self.compose = albumentations.Compose([self.transform], seed=137, strict=True)
+        else:
+            self.params = _plasma_brightness_contrast_params(self.images, name)
+
+    def peakmem_plasma_brightness_contrast_batch_large_multichannel(self, case_id: str) -> None:
         if self.route == "compose":
             self.compose(images=self.images)
         else:

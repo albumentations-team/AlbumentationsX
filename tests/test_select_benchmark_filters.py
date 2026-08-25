@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from tools.select_benchmark_filters import (
@@ -55,6 +57,20 @@ def test_select_benchmark_filters_add_pixel_family_matrix_for_pixel_changes() ->
     assert "TimeBatch" in patterns
     assert "TimeParameterSensitivity" in patterns
     assert "TimeCatalogTransformSmoke" in patterns
+
+
+@pytest.mark.parametrize(
+    "benchmark_name",
+    [
+        "benchmarks.test_batch_matrix.TimeBatchPlasmaBrightnessContrastDirectMatrix.time_apply_to_images",
+        "benchmarks.test_batch_matrix.TimeBatchPlasmaBrightnessContrastImageMatrix.time_transform",
+        "benchmarks.test_batch_matrix.TimeBatchPlasmaBrightnessContrastVolumeMatrix.time_transform",
+    ],
+)
+def test_select_benchmark_filters_changed_pixel_profile_selects_plasma_batch_matrix(benchmark_name: str) -> None:
+    regex = select_profile_regex("changed", ["albumentations/augmentations/pixel/_functional_illumination.py"])
+
+    assert re.search(regex, benchmark_name) is not None
 
 
 def test_select_benchmark_filters_add_memory_for_blur_changes() -> None:

@@ -1977,6 +1977,53 @@ def test_enhance_apply_to_images_matches_per_image(mode, dtype):
     np.testing.assert_array_equal(batched, per_image)
 
 
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
+@pytest.mark.parametrize(
+    ("brightness_factor", "contrast_factor"),
+    [(0.0, 0.0), (0.19, 0.0), (0.19, -0.23)],
+)
+def test_plasma_brightness_contrast_batch_routes_match_per_image(
+    target_name,
+    dtype,
+    num_channels,
+    batch_size,
+    brightness_factor,
+    contrast_factor,
+):
+    rng = np.random.default_rng(137 + num_channels + batch_size)
+    source_shape = (batch_size, 11, 26, num_channels)
+    if dtype == np.uint8:
+        source = rng.integers(0, 256, source_shape, dtype=np.uint8)
+    else:
+        source = rng.random(source_shape, dtype=np.float32)
+    data = source[:, :, ::2]
+    data.setflags(write=False)
+    data_before = data.copy()
+    transform = A.PlasmaBrightnessContrast(
+        brightness_range=(brightness_factor, brightness_factor),
+        contrast_range=(contrast_factor, contrast_factor),
+        plasma_size=8,
+        roughness=2.0,
+        p=1.0,
+    )
+    compose = A.Compose([transform], seed=137, strict=True, save_applied_params=True)
+
+    actual = compose(**{target_name: data})[target_name]
+    params = get_resolved_applied_params(transform, target_name)
+    expected = np.stack([transform.apply(image, **params) for image in data])
+
+    assert actual.shape == data.shape
+    assert actual.dtype == data.dtype
+    assert actual.flags.c_contiguous
+    assert actual.flags.writeable
+    assert not np.shares_memory(actual, data)
+    np.testing.assert_array_equal(data, data_before)
+    np.testing.assert_array_equal(actual, expected)
+
+
 def _overlapping_shadow_params() -> tuple[list[np.ndarray], np.ndarray]:
     vertices_list = [
         np.array([[1, 1], [5, 1], [5, 5], [1, 5]], dtype=np.int32),

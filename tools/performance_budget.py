@@ -249,8 +249,22 @@ def _regression_severity(policy: BenchmarkPolicy, ratio: float | None) -> str:
     return "changed_below_budget"
 
 
+def _has_completed_comparison(asv_summary: dict[str, Any]) -> bool:
+    if asv_summary.get("missing") is True:
+        return False
+    if any(asv_summary.get(key) for key in ("regressions", "improvements")):
+        return True
+
+    totals = asv_summary.get("totals")
+    if isinstance(totals, dict) and any(isinstance(value, int) and value > 0 for value in totals.values()):
+        return True
+
+    status = asv_summary.get("status")
+    return isinstance(status, dict) and any(value is True for value in status.values())
+
+
 def _classify_regressions(asv_summary: dict[str, Any] | None) -> dict[str, Any]:
-    if asv_summary is None or asv_summary.get("missing") is True:
+    if asv_summary is None or not _has_completed_comparison(asv_summary):
         return {
             "provided": False,
             "asv_exit_code": None if asv_summary is None else asv_summary.get("asv_exit_code"),

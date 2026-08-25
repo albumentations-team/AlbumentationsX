@@ -146,6 +146,23 @@ def test_build_budget_treats_missing_asv_summary_as_missing_comparison() -> None
     assert budget["comparison"]["provided"] is False
 
 
+def test_build_budget_treats_empty_failed_asv_summary_as_missing_comparison() -> None:
+    budget = build_budget(
+        _coverage_summary(),
+        _coverage_detail(),
+        {
+            "missing": False,
+            "asv_exit_code": 1,
+            "status": {},
+            "totals": {"changed": 0, "improvements": 0, "regressions": 0},
+        },
+        require_comparison=True,
+    )
+
+    assert budget["status"] == "missing_comparison"
+    assert budget["comparison"]["provided"] is False
+
+
 def test_build_budget_rejects_missing_required_coverage_layers() -> None:
     coverage_detail = _coverage_detail()
     coverage_detail["layer_counts"] = {**coverage_detail["layer_counts"], "family_matrix": 0}

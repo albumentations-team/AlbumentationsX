@@ -876,6 +876,98 @@ def test_random_brightness_contrast_torchvision_mode_uses_per_image_batch_means(
     np.testing.assert_array_equal(result, expected)
 
 
+@pytest.mark.parametrize("target", ["images", "volume"])
+@pytest.mark.parametrize(
+    ("method", "cutoff", "ignore"),
+    [
+        ("cdf", 0, None),
+        ("pil", 0, None),
+        ("cdf", 5, 0),
+        ("pil", 5, 0),
+    ],
+)
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_auto_contrast_batch_matches_per_image(
+    target: str,
+    method: str,
+    cutoff: float,
+    ignore: int | None,
+    dtype: type[np.generic],
+    num_channels: int,
+) -> None:
+    histograms = np.array(
+        [
+            [0] * 4 + [10] + [40] * 14 + [90] * 16 + [150] * 16 + [220] * 12 + [250],
+            [0] * 8 + [30] + [60] * 10 + [100] * 14 + [140] * 16 + [190] * 14 + [245],
+        ],
+        dtype=np.uint8,
+    ).reshape(2, 8, 8, 1)
+    data = np.repeat(histograms, num_channels, axis=-1)
+    if dtype == np.float32:
+        data = data.astype(np.float32) / 255.0
+    transform = A.Compose(
+        [A.AutoContrast(cutoff=cutoff, ignore=ignore, method=method, p=1.0)],
+        seed=137,
+        strict=True,
+    )
+
+    actual = transform(**{target: data})[target]
+    expected = np.stack([transform(image=image)["image"] for image in data])
+
+    np.testing.assert_array_equal(actual, expected)
+
+    if ignore is not None:
+        without_ignore = A.Compose(
+            [A.AutoContrast(cutoff=cutoff, ignore=None, method=method, p=1.0)],
+            seed=137,
+            strict=True,
+        )(**{target: data})[target]
+        assert not np.array_equal(actual, without_ignore)
+
+        if num_channels > 1:
+            without_cutoff = A.Compose(
+                [A.AutoContrast(cutoff=0, ignore=ignore, method=method, p=1.0)],
+                seed=137,
+                strict=True,
+            )(**{target: data})[target]
+            assert not np.array_equal(actual, without_cutoff)
+
+
+@pytest.mark.parametrize("target", ["images", "volume"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_auto_contrast_preserves_empty_batch(target: str, dtype: type[np.generic]) -> None:
+    data = np.empty((0, 4, 6, 3), dtype=dtype)
+    transform = A.Compose([A.AutoContrast(p=1.0)], seed=137, strict=True)
+
+    result = transform(**{target: data})[target]
+
+    assert result.shape == data.shape
+    assert result.dtype == data.dtype
+
+
+@pytest.mark.parametrize("target", ["images", "volume"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_auto_contrast_batch_handles_non_contiguous_read_only_input(
+    target: str,
+    dtype: type[np.generic],
+) -> None:
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, (2, 4, 12, 3), dtype=np.uint8)
+    if dtype == np.float32:
+        source = source.astype(np.float32) / 255.0
+    data = source[:, :, ::2, :]
+    data.setflags(write=False)
+    data_before = data.copy()
+    transform = A.Compose([A.AutoContrast(p=1.0)], seed=137, strict=True)
+
+    actual = transform(**{target: data})[target]
+    expected = np.stack([transform(image=image)["image"] for image in data])
+
+    np.testing.assert_array_equal(data, data_before)
+    np.testing.assert_array_equal(actual, expected)
+
+
 def test_random_brightness_contrast_torchvision_mode_safe_output_uses_combined_coefficients():
     image = np.array([[[50], [100], [150]]], dtype=np.uint8)
     transform = A.RandomBrightnessContrast(

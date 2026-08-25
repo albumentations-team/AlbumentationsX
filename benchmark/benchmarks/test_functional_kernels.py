@@ -105,6 +105,8 @@ FUNCTIONAL_BLUR_KERNELS: Mapping[str, KernelSupport] = {
     "zoom_blur": KernelSupport(),
     "mode_filter": KernelSupport(),
     "glass_blur": KernelSupport(channels=(1, 3), sizes=("small", "medium")),
+    "stochastic_convolve_shared": KernelSupport(),
+    "stochastic_convolve_per_channel": KernelSupport(),
     **{name: KernelSupport() for name, _ in MEDIAN_BLUR_FUNCTIONAL_CASES},
 }
 
@@ -415,6 +417,14 @@ def _call_glass_blur(benchmark: Any) -> np.ndarray:
     return fblur.glass_blur(benchmark.image, 0.7, 2, benchmark.glass_iterations, benchmark.dxy, "fast")
 
 
+def _call_stochastic_convolve_shared(benchmark: Any) -> np.ndarray:
+    return fpixel.convolve(benchmark.image, benchmark.stochastic_kernel)
+
+
+def _call_stochastic_convolve_per_channel(benchmark: Any) -> np.ndarray:
+    return fpixel.convolve(benchmark.image, benchmark.stochastic_per_channel_kernel)
+
+
 def _make_median_blur_call(kernel_size: int) -> ImageKernelCall:
     def call(benchmark: Any) -> np.ndarray:
         return median_blur(benchmark.image, kernel_size)
@@ -429,6 +439,8 @@ BLUR_CALLS: Mapping[str, ImageKernelCall] = {
     "zoom_blur": _call_zoom_blur,
     "mode_filter": _call_mode_filter,
     "glass_blur": _call_glass_blur,
+    "stochastic_convolve_shared": _call_stochastic_convolve_shared,
+    "stochastic_convolve_per_channel": _call_stochastic_convolve_per_channel,
     **{name: _make_median_blur_call(kernel_size) for name, kernel_size in MEDIAN_BLUR_FUNCTIONAL_CASES},
 }
 
@@ -600,6 +612,10 @@ class TimeFunctionalBlurKernels:
         self.name = name
         self.image = make_image(size_name, channels, dtype_from_name(dtype_name))
         self.kernel = np.ones((3, 3), dtype=np.float32) / 9
+        random_field = np.random.default_rng(137).standard_normal((3, 3), dtype=np.float32)
+        per_channel_field = np.random.default_rng(138).standard_normal((channels, 3, 3), dtype=np.float32)
+        self.stochastic_kernel = fpixel.create_stochastic_convolution_kernel(random_field, 0.1)
+        self.stochastic_per_channel_kernel = fpixel.create_stochastic_convolution_kernel(per_channel_field, 0.1)
         self.zoom_factors = np.array([1.0, 1.02, 1.04], dtype=np.float32)
         self.glass_iterations = 1
         max_delta = 2

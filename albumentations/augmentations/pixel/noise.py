@@ -33,7 +33,11 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import PAIR, ImageType
+from albumentations.core.type_definitions import (
+    CV2_BORDER_REFLECT_101,
+    PAIR,
+    ImageType,
+)
 
 __all__ = [
     "AdditiveNoise",
@@ -44,6 +48,7 @@ __all__ = [
     "RicianNoise",
     "SaltAndPepper",
     "ShotNoise",
+    "StochasticConvolution",
 ]
 
 
@@ -107,6 +112,151 @@ def _target_parameter_group(
 
 class _FullVolumeNoiseTransform(ImageOnlyTransform):
     _volume_sampling_is_slice_wise: ClassVar[bool] = False
+
+
+class StochasticConvolution(_FullVolumeNoiseTransform):
+    """Apply a stochastic identity-centered convolution kernel with configurable spectral strength and channel sharing
+    for images and volumes.
+
+    The kernel is a discrete impulse plus a zero-mean Gaussian field. `kernel_range` controls the
+    odd side length `K` (the spectral resolution in PRIME), while `strength_range` controls the
+    perturbation energy. The random field is scaled by `strength / K` so the expected perturbation
+    energy remains comparable across kernel sizes.
+
+    Args:
+        kernel_range (tuple[int, int]): Inclusive odd range for the square kernel side length. Values must be
+            greater than or equal to 3. Default: (3, 7).
+        strength_range (tuple[float, float]): Non-negative range for the random field strength. Zero is an exact
+            identity. Default: (0.0, 1.0).
+        per_channel (bool): If True, sample an independent kernel for each channel. If False, share one kernel
+            across all channels. Default: False.
+        border_mode (BorderModeType): OpenCV border policy. Supported values are constant, replicate, reflect,
+            and reflect-101; wrap is rejected because it is not supported by the convolution backend. Default:
+            `cv2.BORDER_REFLECT_101`.
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Notes:
+        - The random weights are not normalized or mean-subtracted. They may be signed, and the realized DC gain
+          is the sampled kernel sum (with expected gain 1).
+        - `cv2.BORDER_CONSTANT` uses zero padding, matching the PRIME reference implementation. The default
+          reflect-101 border is the project-wide image-friendly choice.
+        - One kernel realization is sampled per transform invocation and reused for every image in a batch and every
+          depth slice in a volume.
+        - Applied configuration records the sampled scalar values for the range fields and remains runnable after JSON
+          transport. The in-memory replay path retains the realized kernel through transform parameters.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> import cv2
+        >>> image = np.random.default_rng(137).random((128, 128, 3), dtype=np.float32)
+        >>> transform = A.Compose(
+        ...     [
+        ...         A.StochasticConvolution(
+        ...             kernel_range=(3, 7),
+        ...             strength_range=(0.05, 0.25),
+        ...             border_mode=cv2.BORDER_REFLECT_101,
+        ...             p=1.0,
+        ...         ),
+        ...     ],
+        ...     seed=137,
+        ... )
+        >>> transformed = transform(image=image)["image"]
+
+        Use `per_channel=True` for independent spectral perturbations, or `strength_range=(0.0, 0.0)` for an
+        exact identity while keeping the transform in a pipeline.
+
+    References:
+        - PRIME issue: https://github.com/albumentations-team/AlbumentationsX/issues/330
+        - PRIME randomized-filter construction: https://github.com/amodas/PRIME-augmentations/blob/main/utils/rand_filter.py
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        kernel_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(3)),
+            AfterValidator(nondecreasing),
+        ]
+        strength_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
+            AfterValidator(nondecreasing),
+        ]
+        per_channel: bool
+        border_mode: Literal[0, 1, 2, 4]
+
+        @field_validator("kernel_range")
+        @classmethod
+        def _check_odd_kernel_range(cls, value: tuple[int, int]) -> tuple[int, int]:
+            if any(size % 2 == 0 for size in value):
+                raise ValueError(f"kernel_range values must be odd, got {value}")
+            return value
+
+    def __init__(
+        self,
+        *,
+        kernel_range: tuple[int, int] = (3, 7),
+        strength_range: tuple[float, float] = (0.0, 1.0),
+        per_channel: bool = False,
+        border_mode: Literal[0, 1, 2, 4] = CV2_BORDER_REFLECT_101,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.kernel_range = kernel_range
+        self.strength_range = strength_range
+        self.per_channel = per_channel
+        self.border_mode = border_mode
+
+    def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
+        return fpixel.convolve(img, kernel=kernel, border_mode=self.border_mode)
+
+    @staticmethod
+    def _sample_kernel(
+        kernel_shape: tuple[int, ...],
+        strength: float,
+        sampling: SamplingContext,
+    ) -> np.ndarray:
+        random_field = (
+            np.zeros(kernel_shape, dtype=np.float32)
+            if strength == 0
+            else sampling.random_generator.standard_normal(kernel_shape, dtype=np.float32)
+        )
+        return fpixel.create_stochastic_convolution_kernel(random_field, strength)
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        del params, data
+        kernel_size = sampling.py_random.randrange(self.kernel_range[0], self.kernel_range[1] + 1, 2)
+        strength = sampling.py_random.uniform(*self.strength_range)
+        sampling.applied_overrides.update({"kernel_range": kernel_size, "strength_range": strength})
+
+        if not self.per_channel:
+            kernel = self._sample_kernel((kernel_size, kernel_size), strength, sampling)
+            return SampledParams(params={"kernel": kernel})
+
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
+            channel_count = views[0].descriptor.channels
+            if channel_count is None:
+                raise ValueError("StochasticConvolution requires image-like targets with a known channel count")
+            kernel = self._sample_kernel((channel_count, kernel_size, kernel_size), strength, sampling)
+            groups.append(_target_parameter_group(views, "kernel", kernel, channels=True))
+        return SampledParams(params={}, target_params=tuple(groups))
 
 
 class GaussNoise(_FullVolumeNoiseTransform):
@@ -1186,8 +1336,8 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
         num_pixels = int(area * total_amount)
         num_salt = int(num_pixels * salt_ratio)
         noise_positions = sampling.random_generator.choice(area, size=num_pixels, replace=False)
-        salt_mask = np.zeros(area, dtype=bool)
-        pepper_mask = np.zeros(area, dtype=bool)
+        salt_mask: np.ndarray = np.zeros(area, dtype=bool)
+        pepper_mask: np.ndarray = np.zeros(area, dtype=bool)
         salt_mask[noise_positions[:num_salt]] = True
         pepper_mask[noise_positions[num_salt:]] = True
         return salt_mask.reshape(spatial_shape), pepper_mask.reshape(spatial_shape)

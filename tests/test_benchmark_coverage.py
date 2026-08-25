@@ -444,13 +444,10 @@ def test_benchmark_coverage_details_track_batch_and_annotation_audit_paths() -> 
     crop_and_pad = _coverage_for("CropAndPad")
 
     assert auto_contrast["performance_contract"]["batch"] == {
-        "implementation_methods": ["apply_to_images"],
-        "reason": (
-            "custom batch methods are inventoried for review; current release-critical evidence comes from "
-            "catalog smoke, family matrices, direct kernels, and core batch dispatch until this route is promoted"
-        ),
+        "implementation_methods": [],
+        "reason": "transform does not declare a custom batch route that needs dedicated batch scaling evidence",
         "required_layers": [],
-        "status": "tracked_without_dedicated_matrix",
+        "status": "not_required",
     }
     assert crop_and_pad["performance_contract"]["annotation"]["status"] == "tracked_without_dedicated_scaling"
     assert crop_and_pad["performance_contract"]["annotation"]["implementation_methods"] == [

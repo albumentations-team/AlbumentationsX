@@ -23,7 +23,6 @@ from ._color_shared import (
     Self,
     VolumeType,
     albucore,
-    batch_transform,
     check_range_bounds,
     field_validator,
     fpixel,
@@ -1291,10 +1290,6 @@ class AutoContrast(ImageOnlyTransform):
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return fpixel.auto_contrast(img, self.cutoff, self.ignore, self.method)
-
-    @batch_transform("channel")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
 
 
 __all__ = [

@@ -106,25 +106,20 @@ class TestTelemetryClient:
             client.enable()
             client.reset()  # Clear state
 
-            # First event should go through
-            event1 = {
-                "pipeline_hash": "hash1",
-                "transforms": ["RandomCrop"],
-            }
-            client.track_compose_init(event1, telemetry=True)
-            first_time = client.last_send_time
-            assert first_time > 0
+            with patch("albumentations.core.analytics.telemetry.time.time", side_effect=[100.0, 100.0, 101.0]):
+                client.track_compose_init(
+                    {"pipeline_hash": "hash1", "transforms": ["RandomCrop"]},
+                    telemetry=True,
+                )
+                assert client.last_send_time == 100.0
 
-            event2 = {
-                "pipeline_hash": "hash2",
-                "transforms": ["HorizontalFlip"],
-            }
-            client.track_compose_init(event2, telemetry=True)
-            assert client.last_send_time == first_time
+                event = {"pipeline_hash": "hash2", "transforms": ["HorizontalFlip"]}
+                client.track_compose_init(event, telemetry=True)
+                assert client.last_send_time == 100.0
 
-            client.last_send_time = 0
-            client.track_compose_init(event2, telemetry=True)
-            assert client.last_send_time > first_time
+                client.last_send_time = 0
+                client.track_compose_init(event, telemetry=True)
+                assert client.last_send_time == 101.0
         finally:
             settings.update(telemetry=original_telemetry)
 

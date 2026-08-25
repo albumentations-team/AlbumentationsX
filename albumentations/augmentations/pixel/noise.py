@@ -36,7 +36,6 @@ from albumentations.core.transforms_interface import (
 from albumentations.core.type_definitions import (
     CV2_BORDER_REFLECT_101,
     PAIR,
-    BorderModeType,
     ImageType,
 )
 
@@ -209,7 +208,7 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
         kernel_range: tuple[int, int] = (3, 7),
         strength_range: tuple[float, float] = (0.0, 1.0),
         per_channel: bool = False,
-        border_mode: BorderModeType = CV2_BORDER_REFLECT_101,
+        border_mode: Literal[0, 1, 2, 4] = CV2_BORDER_REFLECT_101,
         p: float = 0.5,
     ):
         super().__init__(p=p)

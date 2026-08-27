@@ -15,6 +15,7 @@ import albumentations as A
 import albumentations.augmentations.blur.functional as fblur
 import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel._functional_torchvision as ftorchvision
+import albumentations.augmentations.pixel._functional_weather as fweather
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.core.type_definitions import d4_group_elements
 from tests.conftest import (
@@ -541,6 +542,56 @@ def test_sun_flare_batch_matches_per_image(method, dtype, height, width):
     else:
         np.testing.assert_array_equal(actual, expected)
         np.testing.assert_array_equal(delegated, actual)
+
+
+@pytest.mark.parametrize("src_color", [(255,), (255, 200), (255, 200, 100, 50)])
+def test_sun_flare_overlay_batch_matches_cv2_color_semantics(src_color):
+    rng = np.random.default_rng(137)
+    images = rng.integers(0, 256, (2, 32, 28, 3), dtype=np.uint8)
+    params = {
+        "flare_center": (13, 9),
+        "src_radius": 40,
+        "src_color": src_color,
+        "circles": [(0.12, (4, 8), 8, src_color)],
+    }
+    expected = np.stack([fpixel.add_sun_flare_overlay(image, **params) for image in images])
+    transform = A.RandomSunFlare(src_radius=40, src_color=src_color, method="overlay", p=1)
+
+    actual = transform.apply_to_images(images, **params)
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_sun_flare_physics_batch_bounds_conversion_and_blending_per_image(monkeypatch):
+    images = np.zeros((3, 24, 20, 3), dtype=np.float32)
+    converted_shapes = []
+    blended_shapes = []
+    original_from_float = fweather.from_float
+    original_clip = fweather.clip
+
+    def tracked_from_float(image, *args, **kwargs):
+        converted_shapes.append(image.shape)
+        return original_from_float(image, *args, **kwargs)
+
+    def tracked_clip(image, *args, **kwargs):
+        blended_shapes.append(image.shape)
+        return original_clip(image, *args, **kwargs)
+
+    monkeypatch.setattr(fweather, "from_float", tracked_from_float)
+    monkeypatch.setattr(fweather, "clip", tracked_clip)
+
+    result = fweather.add_sun_flare_batch(
+        images,
+        "physics_based",
+        flare_center=(10, 10),
+        src_radius=40,
+        src_color=(255, 255, 255),
+        circles=[],
+    )
+
+    assert result.shape == images.shape
+    assert converted_shapes == [(24, 20, 3)] * len(images)
+    assert blended_shapes == [(24, 20, 3)] * len(images)
 
 
 @pytest.mark.parametrize("method", ["overlay", "physics_based"])

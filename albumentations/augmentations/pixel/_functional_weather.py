@@ -624,7 +624,7 @@ def add_sun_flare_physics_based(
 def add_sun_flare_batch(
     images: ImageType,
     method: str,
-    flare_center: tuple[float, float],
+    flare_center: tuple[int, int],
     src_radius: int,
     src_color: tuple[int, ...],
     circles: list[Any],
@@ -662,6 +662,12 @@ def _add_weighted_uint8_batch(
     return result
 
 
+def _normalize_cv2_rgb_color(color: tuple[int, ...]) -> tuple[int, int, int]:
+    """Match OpenCV's zero-padding and truncation for an RGB drawing color."""
+    padded = (*color, 0, 0, 0)
+    return padded[0], padded[1], padded[2]
+
+
 @uint8_io
 @preserve_channel_dim
 def _add_sun_flare_overlay_batch(
@@ -676,6 +682,7 @@ def _add_sun_flare_overlay_batch(
     overlay = images.copy()
     output = overlay.copy()
     overlay_pixels = overlay.reshape(images.shape[0], -1, images.shape[-1])
+    normalized_src_color = _normalize_cv2_rgb_color(src_color)
 
     weighted_brightness = 0.0
     total_radius_length = 0.0
@@ -690,7 +697,7 @@ def _add_sun_flare_overlay_batch(
             cv2.circle(circle_mask, (x - x_min, y - y_min), rad3, 1, -1)
             mask_y, mask_x = np.nonzero(circle_mask)
             indices = (mask_y + y_min) * width + mask_x + x_min
-            overlay_pixels[:, indices] = circle_color
+            overlay_pixels[:, indices] = _normalize_cv2_rgb_color(circle_color)
         output = _add_weighted_uint8_batch(overlay, alpha, output, 1 - alpha)
 
     point = [int(x) for x in flare_center]
@@ -715,24 +722,23 @@ def _add_sun_flare_overlay_batch(
 
         for i in range(num_times):
             indices = sorted_indices[offsets[i] : offsets[i + 1]]
-            overlay_pixels[:, indices] = src_color
+            overlay_pixels[:, indices] = normalized_src_color
             alp = alpha[num_times - i - 1] * alpha[num_times - i - 1] * alpha[num_times - i - 1]
             output = _add_weighted_uint8_batch(overlay, alp, output, 1 - alp)
 
     return output
 
 
-@uint8_io
-@clipped
 def _add_sun_flare_physics_based_batch(
     images: ImageType,
     flare_center: tuple[int, int],
     src_radius: int,
-    src_color: tuple[int, int, int],
+    src_color: tuple[int, ...],
     circles: list[Any],
 ) -> ImageType:
     """Apply the physics-based sun flare kernel across an image batch."""
-    output = images.copy()
+    convert_to_uint8 = images.dtype != np.uint8
+    output = np.empty(images.shape, dtype=np.float32 if convert_to_uint8 else np.uint8)
     height, width = images.shape[1:3]
 
     flare_layer = np.zeros((height, width, images.shape[-1]), dtype=np.float32)
@@ -776,7 +782,16 @@ def _add_sun_flare_physics_based_batch(
     )
     flare_layer = cv2.merge(channels)
 
-    return cast("ImageType", 255 - ((255 - output) * (255 - flare_layer) / 255))
+    np.subtract(np.float32(255), flare_layer, out=flare_layer)
+    for index, image in enumerate(images):
+        image_uint8 = (
+            from_float(cast("ImageFloat32", image), target_dtype=np.dtype(np.uint8)) if convert_to_uint8 else image
+        )
+        blended = cast("ImageFloat32", 255 - ((255 - image_uint8) * flare_layer / 255))
+        blended_uint8 = clip(blended, np.dtype(np.uint8))
+        output[index] = to_float(blended_uint8) if convert_to_uint8 else blended_uint8
+
+    return cast("ImageType", output)
 
 
 @uint8_io
